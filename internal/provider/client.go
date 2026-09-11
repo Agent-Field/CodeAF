@@ -2379,6 +2379,12 @@ type APIError struct {
 	// as a number, as a string, and sometimes omits it, so it is normalised here
 	// once rather than decoded at each reader.
 	Code string
+	// Payment, PlanPaused and PlanUnavailable are the three billing facts the
+	// refusal door classified from the vendor's numeric code. They travel on the
+	// refusal so the response boundary does not classify the same body again.
+	Payment         bool
+	PlanPaused      bool
+	PlanUnavailable bool
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the

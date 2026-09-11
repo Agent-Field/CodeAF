@@ -269,17 +269,26 @@ func (a *Agent) routedCompleter() Completer {
 // fallbackModels reads the adapter's own ordered chain without exposing that
 // adapter to the caller.
 func (a *Agent) fallbackModels(model string) []string {
+	models, _ := a.modelFallbackChain(model)
+	return models
+}
+
+// modelFallbackChain reads the optional model-chain capability behind the
+// client door. The bool preserves #858's distinction between a completer that
+// offers an empty bounded chain and one that has no chain capability at all,
+// without letting the turn loop bypass account-aware client routing.
+func (a *Agent) modelFallbackChain(model string) ([]string, bool) {
 	if a == nil {
-		return nil
+		return nil, false
 	}
 	a.mu.Lock()
 	client := a.client
 	a.mu.Unlock()
 	chain, ok := client.(modelChain)
 	if !ok {
-		return nil
+		return nil, false
 	}
-	return chain.FallbackModels(model)
+	return chain.FallbackModels(model), true
 }
 
 // probeClientLanes asks the optional prober without exposing the conversation

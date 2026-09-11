@@ -248,6 +248,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
+	// The address is part of the bound billing door. It changes only for the
+	// one separately authorised plan overflow below; every ordinary retry and
+	// endpoint move stays on the address the service was connected to.
+	currentBase := c.config.BaseURL
+	currentDoor := c.config.BillingDoor
+	usingOverflow := false
+	switchedDoor := false
 	// providerWait is the provider's own comeback instruction from the last
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.
@@ -344,22 +351,28 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if plan.Spent(spentAt()) {
 				break
 			}
-			// What the last refusal asked us to wait, which is the one input the
-			// move generator needs that changes between moves.
-			plan.Comeback = providerWait
-			move = control.Next(plan, plan.Moves.List())
-			if move.Kind == control.MoveNone {
-				break
+			// A billing-door switch is already the move this attempt owes. It must
+			// reach the authorised address before the endpoint controller is asked
+			// for another move; otherwise a plan pause could be turned into a lane
+			// walk or an early end without ever trying the metered door.
+			if !switchedDoor {
+				// What the last refusal asked us to wait, which is the one input the
+				// move generator needs that changes between moves.
+				plan.Comeback = providerWait
+				move = control.Next(plan, plan.Moves.List())
+				if move.Kind == control.MoveNone {
+					break
+				}
+				// A SHAPE IS NOT THIS LOOP'S MOVE TO MAKE. The ladder that takes a
+				// field off the request is endpoints.go's and it is entered from
+				// above ([Client.sendRecovered]), because only the layer holding the
+				// refusal's own body can say which rung it earned. This loop hands
+				// the refusal back and that layer climbs.
+				if move.Kind == control.MoveShape {
+					break
+				}
+				plan.Moves.Add(move)
 			}
-			// A SHAPE IS NOT THIS LOOP'S MOVE TO MAKE. The ladder that takes a
-			// field off the request is endpoints.go's and it is entered from
-			// above ([Client.sendRecovered]), because only the layer holding the
-			// refusal's own body can say which rung it earned. This loop hands
-			// the refusal back and that layer climbs.
-			if move.Kind == control.MoveShape {
-				break
-			}
-			plan.Moves.Add(move)
 		}
 		attempts++
 		// What the CALL has spent, for the row the completed answer writes at
@@ -367,7 +380,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 && !reconnected && moved {
+		if attempt > 0 && switchedDoor {
+			// A BILLING-DOOR SWITCH IS NEITHER A RECONNECTION NOR A RETRY. The
+			// person's opt-in already chose the next address, so it goes out at once
+			// and the phase clock's door is the only status change owed here.
+			providerWait = 0
+		} else if attempt > 0 && !reconnected && moved {
 			// A MOVE IS NOT A WAIT. The last attempt excluded the machine that
 			// refused it, so the body about to go out is a different request to a
 			// different machine — and sitting out a backoff first would be this
@@ -439,8 +457,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				owed += delay - took
 			}
 		}
-		reconnected, moved = false, false
-		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
+		reconnected, moved, switchedDoor = false, false, false
+		if waited, err := c.waitConnection(ctx, c.modelFor(request), currentBase, false); err != nil {
 			return nil, err
 		} else if waited && knobs.trace != nil {
 			knobs.trace.connectionRecovered = true
@@ -474,7 +492,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				knobs.trace.body = body
 			}
 		}
-		httpRequest, err := c.newHTTPRequest(attemptCtx, request, body, stream)
+		httpRequest, err := c.newHTTPRequestAt(attemptCtx, request, body, stream, currentBase)
 		if err != nil {
 			cancelAttempt()
 			return nil, err
@@ -561,7 +579,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// connection speed for the length of the deadline.
 			continue
 		}
-		rateLimited := response.StatusCode == http.StatusTooManyRequests
+		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
 		if stream {
@@ -571,10 +589,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// because it is what tells the limiter how wide this 429's window is:
 		// one window, one halving (limiter.go).
 		var named time.Duration
-		if rateLimited {
+		if potentialRateLimit {
 			named = retryAfter(response)
 		}
-		sharedLimiter.release(rateLimited, named)
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
 		// HAVE SAID NOTHING ─────────────────────────────────────────────────
 		//
@@ -603,28 +620,16 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if !retryableStatus(response.StatusCode) {
 			if !relayedByAMachine(response.StatusCode) || c.repairable(c.modelFor(request), knobs) ||
 				len(knobs.reasoning) > 0 {
+				sharedLimiter.release(false, 0)
 				return response, nil
 			}
 			read, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 			if upstream, ok := routerErrorEnvelope(read); !ok || upstream == "" {
 				response.Body = rewound(read, response.Body)
+				sharedLimiter.release(false, 0)
 				return response, nil
 			}
 			peek, relayed = read, true
-		}
-		if rateLimited {
-			providerWait = named
-			if pacedSince.IsZero() {
-				pacedSince = time.Now()
-			}
-			// The park begins on the FIRST 429 this call draws, not on the
-			// first one it decides to wait out: by the time the backoff is
-			// computed the call is already not moving, and that is the fact
-			// anybody watching wants.
-			if !parked && notice != nil {
-				parked = true
-				notice(true)
-			}
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.
@@ -642,9 +647,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// instead. A wait we cannot see is a wait we replace with our own
 		// doubling, which is how a pool that asked for three seconds was asked
 		// again after seven hundred milliseconds.
-		if rateLimited && named <= 0 {
+		if potentialRateLimit && named <= 0 {
 			named = retryAfterIn(peek)
-			providerWait = named
 		}
 		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
 		// done about it is decided there from what the refusal says rather than
@@ -655,6 +659,25 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// is handed over rather than left in this loop; a 429 naming nobody is
 		// this account's own ceiling and writes nothing at all.
 		refusal := c.refuseUpstream(request, knobs, lastErr, "", named)
+		// ONLY ORDINARY PACING NARROWS THE SHARED LIMITER. A payment refusal, a
+		// plan pause and a door this key cannot use all arrive under 429 too, but
+		// none says the request rate is too high.
+		rateLimited := refusal.Kind == refusalPaced
+		if !rateLimited {
+			named = 0
+		}
+		sharedLimiter.release(rateLimited, named)
+		if rateLimited {
+			providerWait = named
+			if pacedSince.IsZero() {
+				pacedSince = time.Now()
+			}
+			// The park begins on the FIRST ordinary pacing refusal this call draws.
+			if !parked && notice != nil {
+				parked = true
+				notice(true)
+			}
+		}
 		// AND THE MACHINE THAT REFUSED IS OFF THE NEXT BODY. This is the whole of
 		// "never repeat" (see THE BODY IS WRITTEN PER ATTEMPT above): the door
 		// above has already decided what the refusal MEANS for the process, and
@@ -684,6 +707,33 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
 			served: refusal.Lane, retryAfter: named,
 		})
+		// MONEY MOVES ONLY THROUGH THIS EXACT OPT-IN. A paused fixed-price window
+		// never reaches the endpoint walk or model chain: it either takes the one
+		// configured metered door, once, or returns its typed pause immediately.
+		if refusal.Kind == refusalPlanPaused {
+			useOverflow := c.config.OverflowOnPlanPause &&
+				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow
+			if useOverflow {
+				currentBase = strings.TrimRight(strings.TrimSpace(c.config.PlanOverflow), "/")
+				currentDoor = strings.TrimSpace(c.config.PlanOverflowDoor)
+				if phase := phaseClockFrom(ctx); phase != nil {
+					phase.useDoor(currentDoor)
+				}
+				usingOverflow = true
+				switchedDoor = true
+				pacedSince = time.Time{}
+				continue
+			}
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+			return nil, &PlanPauseError{
+				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
+			}
+		}
+		if refusal.Kind == refusalPayment || refusal.Kind == refusalNoPlan {
+			return nil, lastErr
+		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
 		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
@@ -757,6 +807,61 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// PlanPauseError is the typed end of a request whose fixed-price window is
+// temporarily unavailable. Cause preserves the vendor refusal for the journal;
+// surfaces read this type so the person sees only the actionable pause sentence
+// rather than a generic API error after it.
+type PlanPauseError struct {
+	Reset        string
+	OverflowDoor string
+	Cause        error
+}
+
+func (e *PlanPauseError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return PlanPauseSentence(e.Reset, e.OverflowDoor)
+}
+
+func (e *PlanPauseError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// PlanPauseFrom recovers a plan-pause ending through the wrappers added by the
+// provider and session loops.
+func PlanPauseFrom(err error) (*PlanPauseError, bool) {
+	var paused *PlanPauseError
+	if errors.As(err, &paused) && paused != nil {
+		return paused, true
+	}
+	return nil, false
+}
+
+// PlanPauseSentence is the one person-facing sentence for a temporarily spent
+// subscription window, shared by live status, the final row, and connection.
+func PlanPauseSentence(reset, overflowDoor string) string {
+	detail := planPauseDetail(reset, overflowDoor)
+	if detail == "" {
+		return string(PhasePlanPaused)
+	}
+	return string(PhasePlanPaused) + " · " + detail
+}
+
+func planPauseDetail(reset, overflowDoor string) string {
+	parts := make([]string, 0, 2)
+	if reset = strings.TrimSpace(reset); reset != "" {
+		parts = append(parts, "resets at "+reset)
+	}
+	if overflowDoor = strings.TrimSpace(overflowDoor); overflowDoor != "" {
+		parts = append(parts, "/connect can switch to "+overflowDoor)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // demandedLane is the ONE machine this request may go to, and whether a person

@@ -373,3 +373,18 @@ func TestARoutingRefusalIsTransportAndAMalformedRequestIsWork(t *testing.T) {
 		t.Fatalf("a 400 about our own bytes read as %s, want the work's report", ours)
 	}
 }
+
+// A PAUSED FIXED-PRICE WINDOW HAS NO RECOVERY MOVE. The dispatcher owns the
+// only authorised metered-door switch; once it returns a pause, a fallback
+// advertised by the caller must not turn that billing boundary into a model hop.
+func TestAPlanPauseReportsEvenWhenAFallbackExists(t *testing.T) {
+	verdict := Classify(Evidence{
+		Status: 429, PlanPaused: true, Attempt: 1, FallbackAvailable: true,
+	}, Limits{})
+	if verdict.Class != Transport || verdict.Action != ActionReport || verdict.Reason != ReasonPlanPaused {
+		t.Fatalf("a paused plan read as %s, want transport reported as paused", verdict)
+	}
+	if !verdict.EndsTurn() || verdict.Hops() || verdict.Retries() {
+		t.Fatalf("a paused plan retained a recovery move: %s", verdict)
+	}
+}

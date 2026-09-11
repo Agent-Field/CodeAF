@@ -101,7 +101,9 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 	connected := connectedPlanDoor(planDoorSource(plan, metered), modelsource.Outcome{
 		Door: planDoorSource(plan, metered).Doors[0],
 	}, "wait-mode-test-key")
-	agent := planDoorAgent(t, connected)
+	// A real fallback chain is present on purpose: the typed pause must end the
+	// turn before #858's model hop can carry it to another model on this door.
+	agent := planDoorAgentWithFallbacks(t, connected, []string{"z-ai/glm-5.3"})
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	events, err := agent.Submit(ctx, "wait on the plan I already paid for")
@@ -113,8 +115,8 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 	if got := metered.Requests(); len(got) != 0 {
 		t.Fatalf("wait mode sent %d requests to the metered host: %+v", len(got), got)
 	}
-	if got := completionRequestsOf(plan); len(got) == 0 {
-		t.Fatal("the real agent never reached the bound plan host")
+	if got := completionRequestsOf(plan); len(got) != 1 {
+		t.Fatalf("paused turn sent %d plan requests across retry, hedge, endpoint, or fallback roads; want one", len(got))
 	} else {
 		assertRequestsCarry(t, got, "wait-mode-test-key")
 	}
@@ -232,9 +234,14 @@ func TestChangingThePlanPauseSettingReplacesTheLiveClient(t *testing.T) {
 }
 
 func planDoorAgent(t *testing.T, service modelsource.Connected) *Agent {
+	return planDoorAgentWithFallbacks(t, service, nil)
+}
+
+func planDoorAgentWithFallbacks(t *testing.T, service modelsource.Connected, fallbacks []string) *Agent {
 	t.Helper()
 	agent, err := New(Config{
 		Workspace: t.TempDir(), Model: service.Qualify("glm-5.3-flash"),
+		ModelFallbacks: fallbacks,
 		Sources: modelsource.NewSet(
 			modelsource.Connected{Source: modelsource.DefaultSource("http://127.0.0.1:1"), Address: "http://127.0.0.1:1"},
 			service,

@@ -184,6 +184,11 @@ type Evidence struct {
 	// reached one.
 	Status int
 
+	// PlanPaused says a fixed-price subscription window is temporarily spent.
+	// It is a transport fact with no recovery move: retrying, rotating endpoints
+	// or hopping models would turn a spending boundary into ordinary pacing.
+	PlanPaused bool
+
 	// Upstream is the provider the router NAMED as the one that refused, empty
 	// when the router refused on its own account. The emptiness is the fact: a
 	// 4xx that named nobody is our own bytes being read and rejected, and every
@@ -274,8 +279,9 @@ type Evidence struct {
 	Spent bool
 
 	// Unserved says THE ACCOUNT could not be served at all: no key, a key this
-	// model is not permitted, a balance that ran out. It arrives as a 401, a 402
-	// or a 403.
+	// model or bound plan door is not permitted, or a balance that ran out. It
+	// arrives as a 401, 402 or 403, or as a vendor's structured payment/no-plan
+	// refusal.
 	//
 	// IT IS THE ONE REFUSAL WITH NO MOVE IN IT. Another machine, another shape
 	// and another model all lead to the identical answer, so there is nothing to

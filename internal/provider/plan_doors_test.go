@@ -39,6 +39,9 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 	if len(metered.Requests()) != 0 {
 		t.Fatalf("wait mode sent %d requests to the metered door", len(metered.Requests()))
 	}
+	if len(plan.Requests()) != 1 {
+		t.Fatalf("wait mode retried the paused plan door %d times; want one request", len(plan.Requests()))
+	}
 	refusal, ok := RefusalFrom(err)
 	if !ok || refusal.AccountCannotPay() {
 		t.Fatalf("window refusal = %+v, terminal=%t", refusal, ok && refusal.AccountCannotPay())
@@ -46,6 +49,9 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 	ending, ok := PlanPauseFrom(err)
 	if !ok || ending.Error() != "plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go" {
 		t.Fatalf("plan-pause ending = %+v, found=%t", ending, ok)
+	}
+	if evidence := Evidence(err); !evidence.PlanPaused || evidence.Unserved {
+		t.Fatalf("plan-pause evidence = %+v, want a distinct temporary pause", evidence)
 	}
 	paused, ok := told.find(PhasePlanPaused)
 	if !ok || paused.Detail != "resets at 18:30 UTC · /connect can switch to pay-as-you-go" {
@@ -151,5 +157,35 @@ func TestOverflowCanNameASecondDoorOnTheSameHost(t *testing.T) {
 	writing, ok := told.find(PhaseWriting)
 	if !ok || writing.Door != "pay-as-you-go" {
 		t.Fatalf("same-host writing phase = %+v, found %t", writing, ok)
+	}
+}
+
+func TestPlanOverflowHappensAtMostOnce(t *testing.T) {
+	oldLimiter := sharedLimiter
+	sharedLimiter = newAdaptiveLimiter()
+	defer func() { sharedLimiter = oldLimiter }()
+
+	plan, metered := sourcestub.New(), sourcestub.New()
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1316","message":"plan window exhausted"}`)
+	metered.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1316","message":"plan window exhausted"}`)
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: plan.URL(), Model: "glm-5.3-flash", Direct: true,
+		BillingDoor: "coding plan", PlanOverflow: metered.URL(), PlanOverflowDoor: "pay-as-you-go",
+		OverflowOnPlanPause: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.CompleteWithMessages(context.Background(), userMessages("hello"))
+	if response != nil {
+		t.Fatalf("twice-paused request became an answer: %+v", response)
+	}
+	if _, ok := PlanPauseFrom(err); !ok {
+		t.Fatalf("twice-paused request ended as %T %v, want PlanPauseError", err, err)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 1 {
+		t.Fatalf("overflow was not one-shot: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
 	}
 }
