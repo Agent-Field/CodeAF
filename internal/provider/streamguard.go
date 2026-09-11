@@ -565,14 +565,21 @@ type StreamCut struct {
 	// very next attempt is encoded away from it (velocity.go's noteCutProvider).
 	//
 	// It exists for one question a layer above has to answer before it moves a
-	// turn to another MODEL — has endpoint diversity actually been tried? Two
-	// different things make the answer no and both land here as false: `routing
-	// off`, where the ledger is switched off by the person's own instruction,
-	// and a stream that died before any chunk named its provider, where there
-	// was nothing to strike. In both, asking the same model again lands on the
-	// same lane deterministically, and the honest move is to stop asking it
-	// sooner. The decision itself is not this package's — internal/session's
-	// loop.go states the rule — and this is the one fact it cannot see.
+	// turn to another MODEL — has endpoint diversity actually been tried?
+	//
+	// TWO THINGS USED TO MAKE THE ANSWER NO AND NEITHER DOES ANY MORE. `routing
+	// off` switched the ledger off entirely, and a stream that died before any
+	// chunk named its provider had nothing to strike — so the one stall shape
+	// that most needed to reroute was the one that could not, and asking the same
+	// model again landed on the same lane deterministically. The ledger is no
+	// longer switched off by configuration (velocity.go's [Client.refuseLane]),
+	// and a cut that named no server is now filed against the machine this
+	// request ASKED FOR, which this process wrote itself and therefore knows
+	// ([Client.noteCutProvider]). What is left as false is a request that
+	// expressed no preference at all — a build with no router behind it, where
+	// there is one machine and diversity is not a thing that exists. The decision
+	// itself is not this package's — internal/session's loop.go states the rule —
+	// and this is the one fact it cannot see.
 	Rerouted bool
 }
 

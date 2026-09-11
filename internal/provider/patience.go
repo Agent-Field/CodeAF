@@ -16,16 +16,31 @@ import "context"
 // one. The call is the only thing that knows whose call it is, and the context
 // is what the call already carries.
 //
+// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ──
+//
+// A 429 is not a fault. It is the provider saying "not yet", and the FIRST
+// answer to "not yet" has nothing to do with patience at all: the machine that
+// said it comes off the next body and the next body goes out at once, to
+// another machine, with no wait of any kind (retry.go). Waiting is what is left
+// when there is nowhere else to go, and this file is only about that remainder.
+//
 // ── WHY THE TWO ARE DIFFERENT ANSWERS TO ONE FACT ──
 //
-// A 429 is not a fault. It is the provider saying "not yet", and the right
-// response to "not yet" depends entirely on whether anybody is sitting there:
-// a conversation's call gives up after the bounded patience in retry.go
-// because a person watching a cursor deserves an error long before they
-// deserve a ten-minute silence, while a task child's call has nobody to
-// disappoint and everything to lose — abandoning a node over pacing throws
-// away a worktree of work for a condition that was always going to clear. So
-// the child waits, and the surface is told it is waiting.
+// The remainder still depends on whether anybody is sitting there. When every
+// machine this request may go to is being held, a conversation's call hands the
+// refusal straight back so the session can offer the NEXT MODEL — which beats
+// any window, and is the owner's ruling of 2026-09-10: nobody should ever have
+// to work a rate limit around by switching models themselves. A task child's
+// call has nobody to disappoint, no fallback of its own and everything to lose
+// — abandoning a node over pacing throws away a worktree of work for a
+// condition that was always going to clear. So the child waits, for the window
+// the machine itself named, and the surface is told what it is waiting for and
+// until when.
+//
+// SO [WithPatientRateLimits] NO LONGER MEANS "sixty attempts against one
+// machine". It means MAY WAIT FOR THE EARLIEST WINDOW WHEN THERE IS NOWHERE
+// ELSE TO GO. The attempt ceiling below it is the arithmetic backstop for a
+// provider that answers 429 with no delay at all, and nothing else.
 //
 // Neither seam weakens the context: every wait is [Client.wait] against the
 // caller's own ctx, so an interrupt, a stop, or a deadline cuts through a
@@ -35,11 +50,15 @@ type patienceKey struct{}
 
 type pacingKey struct{}
 
-// WithPatientRateLimits marks every call made under ctx as one that will WAIT
-// OUT a provider's pacing rather than give up on it: the bounded 429 patience
-// in retry.go stops applying, the backoff still climbs and is still capped at
-// maxProviderWait per wait, and the context is still the only thing that ends
-// the call.
+// WithPatientRateLimits marks every call made under ctx as one that MAY WAIT for
+// a window when there is nowhere else to send the request: the bounded 429
+// patience in retry.go stops applying, the wait is the window the machine itself
+// named (capped at maxProviderWait), and the context is still the only thing
+// that ends the call.
+//
+// IT IS NOT PERMISSION TO ASK THE SAME MACHINE AGAIN WHILE ANOTHER IS FREE. A
+// patient call walks the machines exactly as a watched one does and reaches a
+// wait by the same road — every machine it may use being held at once.
 //
 // It says nothing about faults. A timeout, a torn connection and a 500 keep
 // the short patience they always had, here as everywhere: those are the

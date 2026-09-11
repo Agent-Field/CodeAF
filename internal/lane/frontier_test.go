@@ -77,28 +77,35 @@ func TestASightingOnlyLaneIsNotRefusedForWhatNobodyPublished(t *testing.T) {
 	}
 }
 
-// TestARowThatSaysNoToToolsIsStillRefused is the other half of the same law: a
-// fact the sheet DID publish is a fact the gate acts on, and widening the
-// unknown case must not widen the published one.
-func TestARowThatSaysNoToToolsIsStillRefused(t *testing.T) {
+// TestARowThatSaysNoToToolsIsDemotedAndNotRefused is the other half of the same
+// law, and it is the half that MOVED. A published `Tools: false` used to end the
+// argument; it is now a prior, because the flag has been measured wrong — the
+// 2026-09-10 screenshot has GMICloud gated out of a tool request while it was
+// serving that same task's tool calls (docs/design/recovery/DESIGN.md §1).
+func TestARowThatSaysNoToToolsIsDemotedAndNotRefused(t *testing.T) {
 	belief := seenOnly(scriptedModel, "Morph", 6409)
 	belief.Facts = Facts{Tools: false, Quant: "fp8", MaxOut: 8_000, Context: 128_000, Uptime5m: 100, PriceOut: 0.0000009}
-	if capable(belief, Request{Model: scriptedModel, Tools: true, Now: noon}, gateOptions{}) {
-		t.Fatal("a lane the sheet says will not take a tool call was admitted to a request that carries one")
+	req := Request{Model: scriptedModel, Tools: true, Now: noon}
+	if !capable(belief, req, gateOptions{}) {
+		t.Fatal("a lane the sheet says will not take a tool call left the candidate set rather than being demoted")
+	}
+	if !doubted(belief, req) {
+		t.Fatal("a published no-tools flag doubted nothing at all")
 	}
 }
 
-// TestAKnownToolsLaneOutranksAnUnknownOne is the tiebreak that replaced the
-// gate. The unknown lane stays a candidate — it is faster, so it would have led
-// the order on the numbers — and it is asked second all the same.
-func TestAKnownToolsLaneOutranksAnUnknownOne(t *testing.T) {
+// TestAKnownToolsLaneOutranksADoubtedOne is the ranking that replaced the gate.
+// The doubted lane stays a candidate — it is faster, so it would have led the
+// order on the numbers — and it is asked second all the same.
+func TestAKnownToolsLaneOutranksADoubtedOne(t *testing.T) {
 	quick := seenOnly(scriptedModel, "Unknown", 400)
 	slow := seenOnly(scriptedModel, "Modal", 900)
 	slow.Facts = Facts{Tools: true, Quant: "fp8", MaxOut: 32_000, Context: 256_000, Uptime5m: 100, PriceOut: 0.0000024}
 	aged := map[ID]Belief{quick.ID: quick, slow.ID: slow}
 
 	order := []Scored{{ID: quick.ID, TTFT: 400}, {ID: slow.ID, TTFT: 900}}
-	with := toolsLast(order, Request{Tools: true}, aged)
+	// A draw of 1 is every request that is not the probe.
+	with := sheetDoubtsLast(order, Request{Tools: true}, aged, 1)
 	if with[0].ID.Lane != "Modal" {
 		t.Fatalf("a request carrying tools was sent first to %q, which nobody has said takes one", with[0].ID.Lane)
 	}
@@ -106,13 +113,13 @@ func TestAKnownToolsLaneOutranksAnUnknownOne(t *testing.T) {
 		t.Fatalf("the unknown lane left the candidate set rather than being ranked behind: %+v", with)
 	}
 	// A request with no tools is left exactly as it was ranked.
-	without := toolsLast(order, Request{}, aged)
+	without := sheetDoubtsLast(order, Request{}, aged, 1)
 	if without[0].ID.Lane != "Unknown" {
 		t.Fatalf("a request with no tools was reordered: %+v", without)
 	}
 	// And with nothing known either way there is nothing to rank behind.
 	onlyUnknown := []Scored{{ID: quick.ID}}
-	if got := toolsLast(onlyUnknown, Request{Tools: true}, aged); len(got) != 1 {
+	if got := sheetDoubtsLast(onlyUnknown, Request{Tools: true}, aged, 1); len(got) != 1 {
 		t.Fatalf("the only lane there was left the set: %+v", got)
 	}
 }

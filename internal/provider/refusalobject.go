@@ -252,6 +252,7 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !ok {
 		return laneRefusal{}
 	}
+	demanded = strings.TrimSpace(demanded)
 	if refusal.Status == http.StatusTooManyRequests {
 		// A 429 IS PACING RATHER THAN A VERDICT ON THE REQUEST, and that half is
 		// unchanged: the lane is held for the wait the provider itself named
@@ -264,7 +265,18 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 		// reads. This used to return nothing at all, which was right for the
 		// account-wide case below and wrong for every 429 that named its pool:
 		// see [Client.refuseLane] for the ninety-three seconds it cost.
-		return laneRefusal{Kind: refusalPaced, Lane: strings.TrimSpace(refusal.Provider)}
+		//
+		// AND A POOL THAT NAMED NOBODY IS THE MACHINE WE DEMANDED, when the
+		// request demanded exactly one. The ledger is keyed on WHO SERVED
+		// (docs/design/recovery/DESIGN.md §3 clause 4), and the honest order of
+		// answers to that is: the wire's own name, else the one machine this
+		// request permitted, else nothing. A demand of one machine is the whole
+		// serving set, so there is no other machine the queue could have been.
+		pool := strings.TrimSpace(refusal.Provider)
+		if pool == "" {
+			pool = demanded
+		}
+		return laneRefusal{Kind: refusalPaced, Lane: pool}
 	}
 	// THE UPSTREAM'S OWN REFUSAL IS READ FIRST, because a named provider is the
 	// router telling us it found something to try and that something said no —
@@ -276,7 +288,6 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !c.routingRefusal(model, refusal.Status, []byte(refusal.Body)) {
 		return laneRefusal{}
 	}
-	demanded = strings.TrimSpace(demanded)
 	// A REFUSAL ABOUT A LIST IMPLICATES NO MACHINE — the second half of the law
 	// [velocityLedger.keepTheSetServable] enforces on the way out, standing here
 	// on the way back. This sentence says a list emptied the set, so the demanded

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -75,6 +78,18 @@ const (
 	// wait lands anyway, so clamping here changes nothing about a bounded call
 	// and makes an unbounded one arithmetic rather than undefined.
 	maxBackoffShift = 8
+	// freeMoves is how many times one call may go straight to another machine
+	// with no wait at all before it starts paying the backoff again.
+	//
+	// A MOVE IS FREE BECAUSE IT IS A DIFFERENT REQUEST, and that argument holds
+	// for the first few and stops holding somewhere. A patient call has sixty
+	// attempts and a router can have seventeen machines behind one model; a walk
+	// with no bound would let a bad minute spend all of them as fast as the
+	// connection allows, which is the traffic an account-wide limit is made of.
+	// Eight is past the point where another machine is likely to be the answer —
+	// the census's escaping chains all escaped on their first real move — and it
+	// still leaves the ordinary walk of three or four entirely unpaid for.
+	freeMoves = 8
 	// maxProviderWait caps what a Retry-After may ask for. The header may be an
 	// HTTP date, and a provider that names tomorrow morning is asking a call to
 	// sleep for hours inside a run the user is watching. A minute is already
@@ -82,12 +97,94 @@ const (
 	maxProviderWait = time.Minute
 )
 
+// ── THE BODY IS WRITTEN PER ATTEMPT, NOT PER CALL ───────────────────────────
+//
+// THE MEASURED FAILURE (the census, docs/design/recovery/census-20260910.md §6).
+// This loop used to be handed one encoded body above it and send those same
+// bytes again on every attempt. The bytes carry `provider.order`, `provider.only`
+// and `provider.ignore`, so "again" meant "to the same machine": 53 % of the
+// multi-attempt chains in ten days never left the lane they started on, three of
+// them spent sixteen and seventeen consecutive sends on one machine over eleven
+// minutes, and every one of those ended 429 anyway. The chains that DID escape
+// escaped on the one attempt that finally moved.
+//
+// THE LAW: A MACHINE THAT REFUSED THIS CALL IS NOT ASKED AGAIN WHILE ANOTHER ONE
+// IS ADMISSIBLE. Each attempt re-encodes ([Client.encodeRequest]), and the
+// encoder reads this set through [Client.dropRefusedHere], so the exclusion
+// travels the same plumbing every other routing preference does rather than as a
+// second opinion beside it. The same machine is re-asked only when the serving
+// set under this request is one machine wide — a person's strict pin, a rescue's
+// demand, an account-wide pacing that names nobody — and then only after the
+// wait it asked for itself.
+
+// refusedHere is every machine that has refused THIS CALL, and it is the whole
+// of what makes the next attempt a different request rather than the same one.
+//
+// IT IS THE CALL'S OWN MEMORY AND NOT THE LEDGER'S. The ledger
+// ([velocityLedger.pace]) already holds what the process believes about a
+// machine, on its own cooldown, shared by every session in the process; this is
+// narrower and shorter-lived — one call's list of who has already said no to it
+// — and it is what keeps a machine out of the very next body even when the
+// ledger declined to write anything at all (an upstream that named no wait, a
+// stream that died before naming its server, a 4xx over a list).
+//
+// It is carried on [callKnobs] by pointer because the knobs travel by value
+// through the repair, relax and ladder chains, and what must not be copied is
+// the answer to "who has already refused this call".
+type refusedHere struct {
+	mu    sync.Mutex
+	names []string
+}
+
+// add records one machine and reports whether it was new. An empty name is a
+// refusal that implicated nobody and records nothing — the attribution law the
+// ledger keeps, kept here for the same reason.
+func (r *refusedHere) add(name string) bool {
+	name = strings.TrimSpace(name)
+	if r == nil || name == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, held := range r.names {
+		if equalLane(held, name) {
+			return false
+		}
+	}
+	r.names = append(r.names, name)
+	return true
+}
+
+// count is how many machines have refused this call.
+func (r *refusedHere) count() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.names)
+}
+
+// list is a copy of what has refused so far, empty when nothing has.
+func (r *refusedHere) list() []string {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.names) == 0 {
+		return nil
+	}
+	return append([]string(nil), r.names...)
+}
+
 // send performs one request with retries, and returns a response whose body has
 // not been read.
 //
 // The request is rebuilt on each attempt rather than reused: its body is a
 // reader, and a retried request carrying a drained reader would silently post an
-// empty document.
+// empty document. AND ITS BYTES ARE REBUILT WITH IT — see THE BODY IS WRITTEN
+// PER ATTEMPT above.
 func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs, body []byte, stream bool) (*http.Response, error) {
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
@@ -124,6 +221,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	attempts := 0
 	var recoveryCtx context.Context
 	reconnected := false
+	// moved says the last attempt took a machine OFF the next body, so the next
+	// send is a different request to a different machine and owes nobody a wait.
+	// See the branch it governs below: a backoff is what we pay to ask the same
+	// machine again, and it is the only thing it is for.
+	moved := false
 	// The body this call is carrying, kept ONLY when somebody asked for it: the
 	// old bodies pin, which puts it on the line of the model-call log, or the
 	// debug record, which is where bodies are moving to (calllog.go). On every
@@ -148,7 +250,21 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 && !reconnected {
+		if attempt > 0 && !reconnected && moved {
+			// A MOVE IS NOT A WAIT. The last attempt excluded the machine that
+			// refused it, so the body about to go out is a different request to a
+			// different machine — and sitting out a backoff first would be this
+			// call serving a sentence another machine handed down. A backoff is
+			// for asking the SAME machine again, which is the next branch.
+			//
+			// The person is told all the same, in the ordinal, with no moment
+			// attached: there is nothing to count down to, because nothing is
+			// being waited for.
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), PhaseRetrying,
+				ordinalOf(attempts, patienceOf(patient)), now, now, "")
+			providerWait = 0
+		} else if attempt > 0 && !reconnected {
 			delay := backoffFor(attempt, providerWait)
 			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
 			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
@@ -180,7 +296,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, err
 			}
 		}
-		reconnected = false
+		reconnected, moved = false, false
 		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
 			return nil, err
 		} else if waited && knobs.trace != nil {
@@ -197,6 +313,24 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
 		})
 
+		// AND THE BYTES ARE WRITTEN HERE, immediately before the send, which is
+		// the same timing [Client.providerPreferences] exists for: the machine
+		// that refused a moment ago is off this body, and the ledger's own
+		// cooldowns are read as they stand now rather than as they stood when the
+		// call began. A caller that composed its body itself — the document path,
+		// which posts a multipart form rather than a completion — carries no
+		// refusal set and keeps the bytes it was given.
+		if attempt > 0 && knobs.refused != nil {
+			written, err := c.encodeRequest(request, knobs)
+			if err != nil {
+				cancelAttempt()
+				return nil, fmt.Errorf("marshal request: %w", err)
+			}
+			body = written
+			if knobs.trace != nil && knobs.trace.body != nil {
+				knobs.trace.body = body
+			}
+		}
 		httpRequest, err := c.newHTTPRequest(attemptCtx, request, body, stream)
 		if err != nil {
 			cancelAttempt()
@@ -240,6 +374,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
+			// A TRANSPORT FAULT NAMES NOBODY, so nothing is excluded from the next
+			// body: the bytes never reached a machine that could be blamed, and
+			// writing one down would be this loop guessing. What the next attempt
+			// still gets is a fresh encode, which re-reads every cooldown the
+			// ledger has written since this call began.
 			if connectionFailure(err) && !sent.Load() {
 				if knobs.trace != nil {
 					knobs.trace.connectionRecovered = true
@@ -267,7 +406,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				reconnected = true
 				continue
 			}
-			if retryElsewhere(ctx, knobs) {
+			if c.handBack(ctx, knobs, "", false) {
 				return nil, lastErr
 			}
 			if attempt >= maxAttempts-1 {
@@ -312,6 +451,17 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		response.Body.Close()
 		cancelAttempt()
 		lastErr = apiError(response.StatusCode, peek)
+		// AND THE COMEBACK IS READ OUT OF THE BODY WHEN NO HEADER CARRIED IT. The
+		// census found `retry_after` recorded on not one row in ten days, while
+		// every fourth failure was a 429: the header is what [retryAfter] reads
+		// and this router routinely names its wait in the refusal envelope
+		// instead. A wait we cannot see is a wait we replace with our own
+		// doubling, which is how a pool that asked for three seconds was asked
+		// again after seven hundred milliseconds.
+		if rateLimited && named <= 0 {
+			named = retryAfterIn(peek)
+			providerWait = named
+		}
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			attempt: attempts, began: attemptBegan,
@@ -325,24 +475,54 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// its pool is paced for the wait it asked for, which is why that wait
 		// is handed over rather than left in this loop; a 429 naming nobody is
 		// this account's own ceiling and writes nothing at all.
-		c.refuseUpstream(request, knobs, lastErr, "", named)
-		// One watched request has one recovery owner. When its existing race
-		// can fund an alternative, return the fault there instead of waiting
-		// and replaying the same encoded request up to three times first.
-		// Rate limits keep their named wait: an account-wide 429 is not a
-		// reason to multiply traffic, and a person's strict pin remains strict.
-		if !rateLimited && retryElsewhere(ctx, knobs) {
-			return nil, lastErr
+		refusal := c.refuseUpstream(request, knobs, lastErr, "", named)
+		// AND THE MACHINE THAT REFUSED IS OFF THE NEXT BODY. This is the whole of
+		// "never repeat" (see THE BODY IS WRITTEN PER ATTEMPT above): the door
+		// above has already decided what the refusal MEANS for the process, and
+		// this decides what it means for the remaining attempts of this one call,
+		// which is the narrower and shorter-lived question. A refusal that
+		// implicated no machine adds nothing.
+		fresh := knobs.refused.add(refusal.Lane)
+		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
+		//
+		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
+		// by switching models themselves. So the three moves, in this order.
+		//
+		// FIRST, ANOTHER MACHINE, AT ONCE. The refusing machine is off the next
+		// body and the next body goes out with no backoff at all — see [moved].
+		//
+		// SECOND, THE MODEL. When every machine this request may go to is being
+		// held for a wait, a conversation's call gives the refusal back
+		// immediately: `pacingExhausted` reads it as the pacing door it is
+		// (endpoints.go) and the session offers the next model, which is always
+		// faster than a window. A person never waits out a window while another
+		// model exists.
+		//
+		// THIRD, AND ONLY WHEN THERE IS NOWHERE ELSE AT ALL, the wait — and then
+		// it is the earliest window's own end, which is the moment a surface
+		// draws a countdown to rather than our doubling.
+		held, spent := c.pacedOut(c.modelFor(request), knobs)
+		if rateLimited && spent {
+			if !patient {
+				return nil, lastErr
+			}
+			// The machine's own answer to this call wins, because it is the
+			// window said out loud; the ledger's hold is what is left when this
+			// refusal named nothing — a window some EARLIER call was told about,
+			// which is still the honest moment to come back at.
+			if wait := held.Sub(c.clock()); providerWait <= 0 && wait > 0 && wait < maxProviderWait {
+				providerWait = wait
+			}
 		}
-		// AND A RESCUE WHOSE ONE MACHINE IS THE FULL POOL GOES BACK AT ONCE.
-		// A rescue demands exactly one machine (hedge.go's [hedgePreference]),
-		// so when the 429 names THAT machine every retry of this body is the
-		// same request to the same queue — the live replay of the 2026-09-10
-		// race spent twenty-eight seconds and six requests doing it. It is not
-		// the account-wide limit the rule above protects (that 429 names
-		// nobody), and the race always has an answer for it now: the walk, or
-		// the ladder a door deferred ([hedgeRace.exhausted]).
-		if rateLimited && demandedPoolIsFull(knobs, lastErr) {
+		// AND THE WALK IS NOT FREE FOREVER (see [freeMoves]). Past the eighth
+		// machine this call is no longer moving toward an answer, it is spending
+		// an account's allowance at connection speed.
+		moved = fresh && !spent && knobs.refused.count() <= freeMoves
+		// ONE RECOVERY OWNER, ASKED ONCE. Two exits used to answer this — the
+		// walk's for a fault and the full demanded pool's for a 429 (#835) — and
+		// keeping them apart is how the same question came to have two answers
+		// that could disagree. See [Client.handBack].
+		if c.handBack(ctx, knobs, refusal.Lane, rateLimited) {
 			return nil, lastErr
 		}
 		// Non-rate-limit faults keep the original, shorter patience.
@@ -359,21 +539,104 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
 }
 
-// demandedPoolIsFull reports that a 429 names the one machine this request
-// demanded as a rescue — a queue this body can never leave.
-func demandedPoolIsFull(knobs callKnobs, err error) bool {
-	if knobs.hedgeLane == "" {
-		return false
+// demandedLane is the ONE machine this request may go to, and whether a person
+// is the one who said so.
+//
+// TWO DEMANDS AND ONE FIELD. A rescue demands the machine the primary is not on
+// (hedge.go's [hedgePreference]) and a person's strict pin demands the machine
+// they named (lanepin.go); both arrive on the wire as `provider.only` with
+// `allow_fallbacks: false`, and both mean the same thing to this loop — the
+// serving set under this request is one machine wide, so there is no other
+// machine for the next body to go to. What they do NOT share is who may
+// override them, which is the second return: a rescue's demand is this build's
+// own tactic and the walk is free to replace it, while "and nowhere else" is a
+// sentence a person wrote and nothing here may quietly widen.
+//
+// A demand naming SEVERAL machines is not one machine wide, so it answers empty
+// and [Client.dropRefusedHere] narrows it a machine at a time instead.
+func demandedLane(knobs callKnobs) (lane string, strict bool) {
+	if knobs.hedgeLane != "" {
+		return knobs.hedgeLane, false
 	}
-	refusal, ok := RefusalFrom(err)
-	return ok && refusal.Status == http.StatusTooManyRequests && equalLane(refusal.Provider, knobs.hedgeLane)
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) == 1 {
+		return strings.TrimSpace(knobs.laneChoice.Only[0]), true
+	}
+	return "", false
 }
 
-func retryElsewhere(ctx context.Context, knobs callKnobs) bool {
-	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) > 0 {
+// handBack is the ONE place this loop gives a refusal to the recovery owner
+// above it rather than taking the next move itself.
+//
+// IT FOLDS THE TWO EXITS #835 LEFT BEHIND — `retryElsewhere`, which asked
+// whether the race could fund an alternative, and `demandedPoolIsFull`, which
+// asked whether a rescue's one machine was the pool that refused. They are one
+// question asked of two halves of the same fact, and asked separately they were
+// free to disagree: a 429 naming a rescue's machine went back, a 502 naming it
+// did not, and neither knew what the other had decided.
+//
+// THE RULE, in the order it applies:
+//
+//	a strict pin       never hands back — the walk demands a DIFFERENT machine,
+//	                   which is the one thing "and nowhere else" forbids
+//	a demand refused   goes back at once: this body can never leave that queue,
+//	                   and the race always has an answer for it (the walk, or a
+//	                   ladder a door deferred, [hedgeRace.exhausted])
+//	an account pacing  never hands back, because every machine behind the model
+//	                   is under the same account and moving would multiply the
+//	                   traffic that earned the limit
+//	anything else      goes back when the race can fund an alternative, because
+//	                   one watched request has one recovery owner
+func (c *Client) handBack(ctx context.Context, knobs callKnobs, refused string, rateLimited bool) bool {
+	demanded, strict := demandedLane(knobs)
+	if strict {
+		return false
+	}
+	// The refusal names the machine we demanded, or names nobody at all — and
+	// when only one machine was asked, nobody named is that machine.
+	if demanded != "" && (refused == "" || equalLane(refused, demanded)) {
+		return true
+	}
+	if rateLimited {
 		return false
 	}
 	return streamWatchFrom(ctx).canWalk()
+}
+
+// retryAfterIn is the comeback a refusal named in its BODY, zero when it named
+// none there.
+//
+// The header is read first ([retryAfter]) because it is the protocol's own
+// answer; this is the router's, and on the rows the census counted it is the
+// only one that ever arrives. Two spellings reach us — a seconds figure beside
+// the error and one nested in its metadata — and both are read as seconds,
+// which is the unit the envelope uses. A figure that is absurd is left to
+// [backoffFor]'s cap exactly as a header's is: this only says what was asked.
+func retryAfterIn(payload []byte) time.Duration {
+	if len(payload) == 0 {
+		return 0
+	}
+	var envelope struct {
+		RetryAfter float64 `json:"retry_after"`
+		Error      struct {
+			RetryAfter float64 `json:"retry_after"`
+			Metadata   struct {
+				RetryAfter float64 `json:"retry_after"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return 0
+	}
+	for _, seconds := range []float64{
+		envelope.RetryAfter,
+		envelope.Error.RetryAfter,
+		envelope.Error.Metadata.RetryAfter,
+	} {
+		if seconds > 0 {
+			return time.Duration(seconds * float64(time.Second))
+		}
+	}
+	return 0
 }
 
 // outOfPatience reports whether this call has spent everything it is willing to

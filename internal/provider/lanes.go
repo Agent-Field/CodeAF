@@ -891,9 +891,11 @@ func (c *Client) wireLaneSheet() {
 // Reason is a short machine-readable word for the log and never a sentence a
 // person reads ([lanes.Outcome] says so itself).
 func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
-	if c.routing() == RoutingOff {
-		return
-	}
+	// THE LEDGER ALWAYS RECORDS (velocity.go's [Client.refuseLane]). The routing
+	// gate that used to stand here is gone with its three siblings: a usable
+	// answer is the evidence that lets a doubted lane back into the candidate
+	// set (internal/lane's frontier.go), so a session that records refusals and
+	// not successes is a session whose lanes only ever get worse.
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
 	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
