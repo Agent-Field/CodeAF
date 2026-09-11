@@ -100,7 +100,7 @@ type tasksPlace struct {
 	// cursor settles and kept for as long as the place is open (taskpane.go).
 	// A key that is PRESENT with an empty value is a row that was read and had
 	// nothing to say, which is why this is read as presence-and-value.
-	paneTail map[tasksKey]string
+	paneTail map[tasksKey]taskPaneTail
 	// paneGen counts the cursor's moves, so a settle armed by an earlier one can
 	// be told from the settle armed by the move that stopped
 	// ([app.taskPaneFollow]).

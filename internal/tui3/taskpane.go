@@ -428,11 +428,28 @@ func (a *app) taskPaneWhere(entry session.TaskIndexEntry) []string {
 // that is merely late, and a preview that grew a spinner under a title would be
 // this surface saying something about progress it does not know.
 func (a *app) taskPaneReport(entry session.TaskIndexEntry) string {
-	tail, read := a.taskSheet.paneTail[tasksKeyOf(entry)]
+	kept, read := a.taskPaneKept(entry)
 	if !read {
 		return ""
 	}
-	return taskRecordParagraph(tail)
+	return taskRecordParagraph(kept)
+}
+
+// taskPaneKept is what has been read about ONE row, and whether it has been read
+// at all.
+//
+// A READ IS ABOUT A ROW AT A MOMENT, NOT ABOUT A ROW. [tasksKey] identifies the
+// piece of work and nothing more, and one piece of work can land twice — a node
+// re-run from its own record writes a second report over the first (#767 is the
+// same fact from the question's end). So the landing stamp travels with the
+// report, and a row that has landed again since the read reads as unread, which
+// is the one thing that cannot be wrong: the worst it costs is one file.
+func (a *app) taskPaneKept(entry session.TaskIndexEntry) (string, bool) {
+	kept, read := a.taskSheet.paneTail[tasksKeyOf(entry)]
+	if !read || !kept.at.Equal(entry.EndedAt) {
+		return "", false
+	}
+	return kept.report, true
 }
 
 // taskPaneFiles is up to [taskPaneFileRows] of the paths the work wrote, and the
@@ -702,7 +719,13 @@ func (a *app) taskPaneFollow() tea.Cmd {
 		return nil
 	}
 	key := tasksKeyOf(item.entry)
-	if _, read := a.taskSheet.paneTail[key]; read {
+	if _, read := a.taskPaneKept(item.entry); read && !item.entry.Live() {
+		// WHAT HAS LANDED CANNOT CHANGE, so it is read once and kept for as long
+		// as the place is open. A row that has NOT landed is still writing its
+		// journal, and the sentence at the end of it is a different sentence every
+		// time somebody walks onto the row — so arriving there reads it again. It
+		// is arriving that pays, never sitting: nothing here polls, and a cursor
+		// that does not move asks for nothing.
 		return nil
 	}
 	a.taskSheet.paneGen++
@@ -721,11 +744,11 @@ func (a *app) taskPaneSettled(msg taskPaneSettleMsg) tea.Cmd {
 		// to not pay for.
 		return nil
 	}
-	if _, read := a.taskSheet.paneTail[msg.key]; read {
-		return nil
-	}
 	item, ok := a.taskSheetCurrent()
 	if !ok || tasksKeyOf(item.entry) != msg.key {
+		return nil
+	}
+	if _, read := a.taskPaneKept(item.entry); read && !item.entry.Live() {
 		return nil
 	}
 	return a.readTaskTail(item.entry)
@@ -739,13 +762,20 @@ func (a *app) taskPaneSettled(msg taskPaneSettleMsg) tea.Cmd {
 // kept as readily as a full one: "this row has nothing to say" is an answer, and
 // a cache that only remembered the answers it liked would ask the disk about
 // every silent row on every cursor move.
-func (a *app) taskPaneKeep(key tasksKey, tail string) {
+func (a *app) taskPaneKeep(key tasksKey, at time.Time, tail string) {
 	if key == (tasksKey{}) {
 		return
 	}
 	if a.taskSheet.paneTail == nil {
-		a.taskSheet.paneTail = make(map[tasksKey]string)
+		a.taskSheet.paneTail = make(map[tasksKey]taskPaneTail)
 	}
-	a.taskSheet.paneTail[key] = tail
+	a.taskSheet.paneTail[key] = taskPaneTail{at: at, report: tail}
 	a.touch()
+}
+
+// taskPaneTail is one journal read: the report, and the landing it was read
+// about ([app.taskPaneKept] says why the stamp travels with it).
+type taskPaneTail struct {
+	at     time.Time
+	report string
 }

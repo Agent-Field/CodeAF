@@ -504,3 +504,45 @@ func TestAShortFrameKeepsThePanesTitleAndItsVerbs(t *testing.T) {
 		t.Fatal("the short pane's verb line answers nothing to a press")
 	}
 }
+
+// WHAT HAS NOT LANDED IS READ AGAIN WHEN THE CURSOR ARRIVES. A row still writing
+// its journal says something different every time somebody walks onto it, so a
+// kept report would be a preview frozen at whatever the work had said the first
+// time a person passed.
+func TestTheReportOfWorkStillRunningIsReadAgainOnArrival(t *testing.T) {
+	a, _ := paneReadLab(t, taskPaneFloor+12)
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("no row under the cursor")
+	}
+	key := tasksKeyOf(item.entry)
+	a.taskPaneKeep(key, item.entry.EndedAt, "what it said an hour ago")
+	if cmd := a.taskPaneFollow(); cmd != nil {
+		t.Fatal("a landed row that has been read armed another settle")
+	}
+	// The same row, still running: nothing has landed, so nothing is settled.
+	live := item.entry
+	live.EndedAt, live.Status = time.Time{}, string(session.TaskRunning)
+	if _, read := a.taskPaneKept(live); read {
+		t.Fatal("a row whose landing moved read back the old landing's report")
+	}
+}
+
+// AND A ROW THAT LANDED AGAIN IS NOT THE ROW THAT WAS READ. One piece of work
+// can land twice, and the second landing writes a second report over the first.
+func TestARowThatLandedAgainReadsAsUnread(t *testing.T) {
+	a, _ := paneReadLab(t, taskPaneFloor+12)
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("no row under the cursor")
+	}
+	a.taskPaneKeep(tasksKeyOf(item.entry), item.entry.EndedAt, "the first landing's report")
+	if kept, read := a.taskPaneKept(item.entry); !read || kept != "the first landing's report" {
+		t.Fatalf("the read was not kept: %q %v", kept, read)
+	}
+	again := item.entry
+	again.EndedAt = again.EndedAt.Add(time.Minute)
+	if _, read := a.taskPaneKept(again); read {
+		t.Fatal("a second landing read back the first landing's report")
+	}
+}

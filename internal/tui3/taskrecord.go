@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -205,6 +206,9 @@ type taskTailMsg struct {
 	// row and a path alone cannot key that cache, since two conversations may
 	// name the same journal after a replay (taskpane.go).
 	key tasksKey
+	// at is the landing the read was about, so a row that has landed AGAIN since
+	// can be told from the one this answer describes ([app.taskPaneKept]).
+	at time.Time
 	// kept says the journal is still on the disk of the machine that ran the
 	// work, and unread that the machine could not be asked at all
 	// ([tasksPlace.tail] holds the three sentences these pick between).
@@ -315,7 +319,7 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 		if a.taskSheet.detailOn {
 			a.taskSheet.tailRead = true
 		}
-		a.taskPaneKeep(key, "")
+		a.taskPaneKeep(key, entry.EndedAt, "")
 		return nil
 	}
 	// OVER A CONNECTION THE JOURNAL IS ON THE OTHER MACHINE, so the reading is
@@ -329,9 +333,9 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 		return func() tea.Msg {
 			record, err := read(entry.TranscriptURI, 0)
 			if err != nil {
-				return taskTailMsg{path: path, key: key, unread: true}
+				return taskTailMsg{path: path, key: key, at: entry.EndedAt, unread: true}
 			}
-			return taskTailMsg{path: path, key: key, tail: record.Report, kept: record.Kept}
+			return taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: record.Report, kept: record.Kept}
 		}
 	}
 	// AND A HOSTED SURFACE WITH NO SEAM ASKS NOBODY. It is the safety net rather
@@ -340,11 +344,11 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 	// is a read of THIS laptop's disk at a path on somebody else's. It is the
 	// same net [app.worldOf] keeps over the walk, for the same reason.
 	if a.hosted() {
-		return func() tea.Msg { return taskTailMsg{path: path, key: key, unread: true} }
+		return func() tea.Msg { return taskTailMsg{path: path, key: key, at: entry.EndedAt, unread: true} }
 	}
 	return func() tea.Msg {
 		record := session.ReadTaskRecord(entry.TranscriptURI, 0)
-		return taskTailMsg{path: path, key: key, tail: record.Report, kept: record.Kept}
+		return taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: record.Report, kept: record.Kept}
 	}
 }
 
@@ -355,7 +359,7 @@ func (a *app) taskTailRead(msg taskTailMsg) {
 	// once and two readers spend it: the card, which is showing this row right
 	// now, and the pane's cache, which is what stops a person walking back up the
 	// list paying for the same file twice (taskpane.go).
-	a.taskPaneKeep(msg.key, msg.tail)
+	a.taskPaneKeep(msg.key, msg.at, msg.tail)
 	if !a.taskSheet.detailOn || taskURIPath(a.taskSheet.detail.TranscriptURI) != msg.path {
 		return
 	}
