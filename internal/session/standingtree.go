@@ -66,6 +66,7 @@ package session
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -740,14 +741,28 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 // they never asked for sat in their repository, belonging to nothing.
 //
 // AN UNTOUCHED COPY IS THE ONLY KIND THIS REMOVES. The moment anything has been
-// written into one, the work is in there and nowhere else; [Agent.Land] is the
-// one door that moves work out of a copy and this is not a second one. A copy
-// with writes stays exactly where it is, and the chip still leads back to it.
+// done in one, the work is in there and nowhere else; [Agent.Land] is the one
+// door that moves work out of a copy and this is not a second one. A copy that
+// holds anything stays exactly where it is, record and all, and the chip still
+// leads back to it.
 //
-// THE BRANCH IS DELETED BY `git branch -d` AND NOT BY FORCE, so the refusal that
-// protects it is git's own: a branch holding a commit of its own is not merged,
-// `-d` says so, and the branch stays. Nothing here has to keep its own bookkeeping
-// about what "untouched" means for a branch.
+// AND WHAT "UNTOUCHED" MEANS IS NOT THIS FUNCTION'S TO DECIDE. [StandingTree.Wrote]
+// is only what the belt's `write` and `edit` put there ([noteStandingWrite] is its
+// one writer) — a shell command, a script the model ran, a task working in that
+// ground all leave it empty while the copy holds real work. So Wrote is the cheap
+// first answer and NEVER the authority; the road that made the copy is asked
+// before anything is removed:
+//
+//   - A WORKTREE IS REMOVED WITHOUT `--force`, so the refusal is git's own, the
+//     same way the branch below has always been deleted with `-d` and not `-D`.
+//     git refuses on a modified file, on a staged one and on an untracked one,
+//     which is every way a copy comes to hold something. A refusal is not an
+//     error here and is not announced: it is the copy being kept.
+//   - A PLAIN FOLDER HAS NO GIT TO ASK, so it is compared with the folder it was
+//     copied from ([mirrorHoldsWork]).
+//
+// This function forced the removal until 2026-09-11 and deleted, with no refusal
+// and no sentence, a file a shell command had put in the copy.
 func (a *Agent) retireUntouchedTree(folder string) {
 	tree, held := a.standingTreeFor(folder)
 	if !held || len(tree.Wrote) > 0 {
@@ -755,15 +770,71 @@ func (a *Agent) retireUntouchedTree(folder string) {
 	}
 	if tree.Mode == TaskModeWorktree {
 		release := lockGitRoot(a.placeHere(), tree.Root)
-		_, _ = git(tree.Root, "worktree", "remove", "--force", tree.Dir)
+		_, err := git(tree.Root, "worktree", "remove", tree.Dir)
+		if err != nil {
+			// git says the copy holds something. It is kept WHOLE — the directory,
+			// the branch and the record — because a record dropped here would take
+			// the chip that leads the person back to the work still sitting in it.
+			release()
+			return
+		}
 		_, _ = git(tree.Root, "worktree", "prune")
 		_, _ = git(tree.Root, "branch", "-d", tree.Branch)
 		release()
 	} else {
+		if mirrorHoldsWork(tree.Folder, tree.Dir) {
+			return
+		}
 		_ = os.RemoveAll(tree.Dir)
 		_ = os.Remove(filepath.Dir(tree.Dir))
 	}
 	a.dropStandingTree(folder)
+}
+
+// mirrorHoldsWork is `git worktree remove`'s refusal for a copy of a plain
+// folder, which has no git to ask: it is the comparison with the folder the copy
+// was made from ([copyFolderInto]).
+//
+// A PATH THE FOLDER DOES NOT HAVE, OR HAS AT A DIFFERENT LENGTH, IS WORK. Those
+// are the two facts a stat answers, and between them they cover the way a copy
+// comes to hold something — a file written into it that was never in the folder,
+// and a file rewritten to a different length.
+//
+// WHAT IT CANNOT SEE, written down rather than guarded against: an existing file
+// edited to EXACTLY its old length. Seeing that means reading both copies of
+// every file in the folder, which is the whole cost the copy was made to avoid
+// and would be paid on a word a person says in passing. The unreadable copy is
+// treated as holding work for the same reason the refusals above are: this
+// function's only destructive act is removal, so every answer it is unsure of
+// is "keep".
+func mirrorHoldsWork(folder, dir string) bool {
+	held := false
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			held = true
+			return filepath.SkipAll
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(dir, path)
+		if err != nil {
+			held = true
+			return filepath.SkipAll
+		}
+		made, err := entry.Info()
+		if err != nil {
+			held = true
+			return filepath.SkipAll
+		}
+		was, err := os.Lstat(filepath.Join(folder, relative))
+		if err != nil || was.Size() != made.Size() {
+			held = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return held || err != nil
 }
 
 // dropStandingTree forgets one copy and writes the record without it.
