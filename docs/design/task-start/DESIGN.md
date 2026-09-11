@@ -30,17 +30,34 @@ Neither number is what decides how wide work goes, and neither is presented as i
 - **Three levels** let a part of a wide job that opens its material and finds it wide in
   turn split its own share, instead of grinding through it.
 
-**The one sentence about the goal** lives on the fan-out page, where the page used to
-restate the arithmetic the belt-facts picture already states:
+**The one sentence about the goal** lives in the picture paragraph of `beltfacts.go`'s
+`handoffFacts`. That paragraph is the one text every agent that can hand work out reads,
+including the conversation, whose fan-out is uncapped:
 
-> THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: when its parts do not need each
-> other, hand them all out at once, however many there are, the way one mind with a team
-> of workers would, and keep one to begin yourself rather than doing them one after
-> another.
+> THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: when what is ahead has parts that
+> do not need each other, hand them all out at once, however many there are, before you
+> open the first, the way one mind with a team of workers would, and keep one to begin
+> yourself, rather than working through them in turn, the order you fall into unless you
+> choose otherwise.
 
-It replaced the `WEIGH THE CLOCK AT EVERY STEP` paragraph, so the depth-1 worker's page
-grew by 23 bytes. The conversation's fixed prefix grew by 24 bytes, all of them in
-`propose_task`'s description, which now names both bounds from their constants.
+It tightened the paragraph's existing `HAND THEM OUT AND KEEP ONE` sentence and absorbed
+two neighbours: "Working through them yourself is the slowest order there is" and "What
+they wait on is wall time, not calls". Those two now say the same law. It was first
+written onto `prompts/fanout.md`, which only a task node reads; review caught that the
+agent that fans out most never saw it. The fan-out page now carries neither this sentence
+nor its old `WEIGH THE CLOCK AT EVERY STEP` paragraph, which restated the picture's
+arithmetic.
+
+The law registry files it as `handoff.wall-time-goal` (`lawCore`). The registry now
+searches the pages only a task node is handed as well (`worker.md`, `revise.md`,
+`fanout.md`, `divide.md` and `quick.md`), so a second copy on any of them fails the build.
+
+Against `dev`:
+
+| page | before | after |
+| --- | --- | --- |
+| conversation fixed prefix | 38,742 | 38,843 (+101: +77 on the page, +24 in `propose_task`'s description naming both bounds from their constants) |
+| depth-1 worker page | 28,397 | 28,231 (−166) |
 
 **Depth is read once.** `fansOutAt(depth)` in `task.go` is the one reading of
 `taskDepthLimit`. The belt asks it of the worker itself (`Config.mayFanOut`), and the
@@ -96,5 +113,50 @@ it asks for": the message's instruction, not the piece's own reading of its shar
 - **The admission governor weighs the machine once per frontier pass.** A batch that
   becomes ready together is therefore admitted on one reading. At five pieces that was a
   small burst; at twenty it is twenty checkouts and twenty builds starting against a
-  reading taken before any of them. That is the governor's shape, and it is recorded here
-  as the next thing to change in `task_pressure.go`, not worked around in the cap.
+  reading taken before any of them. That is the governor's shape, not the cap's, and it
+  is not worked around in the cap. It is issue
+  [#878](https://github.com/Agent-Field/aforge-v2/issues/878), and lane G owns the fix.
+
+### The governor seam (#878)
+
+**What is true today.**
+
+- `runFrontier` (`task_run.go`) asks `g.governor.holds()` once, before it takes the
+  graph's lock.
+- It then walks every queued node, and `holdOnStartingLocked` answers each one from that
+  same `busy` bool.
+- The reading is load per core against `DefaultTaskMaxLoad` (1.5) and MemAvailable
+  against `DefaultTaskMinFreeMB` (1536 MB), behind a one-second cache
+  (`task_pressure.go`).
+- Nothing in it accounts for a node the pass itself has just started. A node's memory
+  arrives seconds after admission, when its checkout is carved and its first build runs,
+  and load average is a one-minute decayed figure. So no reading taken inside the burst
+  can see the burst. With `task.parallel` unset, every ready node in the pass starts.
+
+**The shape the fix takes.** Two changes, one mechanism:
+
+1. **The frontier asks the governor per admission, not once per pass.** Each node that
+   would take a slot is put to the governor at the moment it would start, so the answer
+   can differ between the first node of a batch and the twentieth. The reading itself
+   stays behind its cache and outside the graph's lock. What moves is the question, which
+   becomes "may THIS node start, given what has been admitted since the reading".
+2. **A reservation per admitted node, counted against the memory floor until a reading
+   taken after that node started.** The governor keeps the nodes it has admitted since its
+   last fresh reading and subtracts a per-node footprint from MemAvailable for each of
+   them.
+   - A reservation is released by the first reading taken after the node started, which is
+     the first reading that can see the node's own memory. It is never released by a timer.
+   - The footprint is a belief measured from nodes that actually ran on this machine, not
+     a constant somebody picked, for the same reason the count was never the resource
+     (`task_pressure.go`'s header).
+   - Until a node has been measured on this machine, there is no honest number to
+     reserve. The design question #878 carries is what stands in until then: the peak of
+     the last nodes seen, or one start per fresh reading. It also carries where that
+     measurement lives.
+
+**What does not change.**
+
+- Nothing running is stopped.
+- A machine this package cannot measure still never holds.
+- A node that takes no slot is held by neither ceiling.
+- The fan cap stays a runaway stop and is not lowered to stand in for any of the above.

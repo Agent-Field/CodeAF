@@ -13,11 +13,13 @@ invalidates:
 ---
 
 The owner asked for breadth to be large where work parallelises, and for the prompt to
-say that the goal is the shortest wall time for the whole job. The fan-out page carries
-that as one sentence. It replaced a paragraph that restated arithmetic the belt facts
-already state, so the conversation's fixed prefix grew by 24 bytes and the task worker's
-page by 23.
+say that the goal is the shortest wall time for the whole job. That is one sentence in the
+page's picture of the two ways to hand work out, which every agent that can hand work out
+reads, the conversation included. It tightened the sentence that was there and absorbed
+two neighbours that said the same thing. The conversation's fixed prefix grew by 101
+bytes, 24 of them in `propose_task`'s description naming both bounds. A task worker's page
+shrank by 166, because the fan-out page no longer restates the arithmetic.
 
-The admission governor still weighs the machine once per frontier pass, so twenty
-pieces that become ready together start on one reading. That is written down in
-`docs/design/task-start/DESIGN.md` as the governor's next change.
+The admission governor still weighs the machine once per frontier pass, so twenty pieces
+that become ready together start on one reading. That is issue #878, and
+`docs/design/task-start/DESIGN.md` says the shape its fix takes.

@@ -515,7 +515,15 @@ func (a *Agent) armDivision(spec taskSpec) string {
 	if spec.parent == 0 && (a.judgedDivisible(spec.request) || a.judgedDivisible(spec.brief)) {
 		return armedJudged
 	}
-	if enumeratesWidth(spec.title, partOwnWords(spec.brief), spec.acceptance) {
+	// ONLY A PIECE'S BRIEF CAN HAVE BEEN COMPOSED, so only a piece's is cut back
+	// to its own scope. A root's brief is whatever its proposer wrote, and one
+	// that happens to carry the part heading (a proposal copied out of a part's
+	// room) is still all its own.
+	own := spec.brief
+	if spec.parent != 0 {
+		own = partOwnWords(spec.brief)
+	}
+	if enumeratesWidth(spec.title, own, spec.acceptance) {
 		return armedCounted
 	}
 	return ""

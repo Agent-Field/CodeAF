@@ -27,11 +27,6 @@ ask, writes where you write, and its last message comes back to you. What must
 be checked and landed on its own is `propose_task`; what you will read and fold
 is quick, and you build and check ONCE, when they are all home.
 
-THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: when its parts do not
-need each other, hand them all out at once, however many there are, the way one
-mind with a team of workers would, and keep one to begin yourself rather than
-doing them one after another.
-
 SAY WHY WHEN YOU FAN OUT — one line before you call, naming the parts and what
 makes them independent.
 

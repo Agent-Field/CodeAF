@@ -186,7 +186,8 @@ func (f divisionFamily) partBrief(index int, scope string) string {
 // front. A brief no division composed wears no heading and is its author's own
 // words whole. The LAST heading is the one read, because a part of a part carries
 // its parent's own heading inside the ground composed around it, and the scope
-// always comes last.
+// always comes last. It is asked only of a piece's brief ([Agent.armDivision]),
+// because a root's was never composed and a heading in it is its author's.
 func partOwnWords(brief string) string {
 	if at := strings.LastIndex(brief, divisionThisPart+"\n"); at >= 0 {
 		return brief[at+len(divisionThisPart)+1:]

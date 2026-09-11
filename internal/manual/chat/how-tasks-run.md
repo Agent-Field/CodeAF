@@ -636,9 +636,9 @@ in its report instead of quietly widening the job. A top-level task, with nobody
 and you, still reads your message as the whole of what was asked for.
 
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
-out when its brief holds parts that do not need each other — at most **20**, and tasks
-nest at most **3** deep, so a piece it hands out may split its own share once more and a
-piece of that piece cannot — and `tasks` is how it then watches them. Inside a task
+out when its brief holds parts that do not need each other, at most **20** of them, and
+`tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
+may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
 whole world; the project's history is not its to read. The tasks page has the whole of it,
