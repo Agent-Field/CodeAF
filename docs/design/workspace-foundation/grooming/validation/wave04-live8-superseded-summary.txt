@@ -1,0 +1,11 @@
+# Superseded live8 (binary 4701f270d dirty = the b87a4e756 product code). Stopped by the lane at run08 when
+# the acceptance protocol moved to live9 at b87a4e756; run08 was aborted mid-run and is not counted.
+BINARY aforge 4701f270d (dirty) built 2026-09-10 22:10 · go1.26.5 linux/arm64
+run01 start=2026-09-11T02:24:39Z exit=0 verdict=DEMO PASSED calls=12 spend=$0.0362 cumulative=$0.0362
+run02 start=2026-09-11T02:31:44Z exit=0 verdict=DEMO PASSED calls=15 spend=$0.0353 cumulative=$0.0715
+run03 start=2026-09-11T02:41:42Z exit=0 verdict=DEMO PASSED calls=17 spend=$0.0207 cumulative=$0.0922
+run04 start=2026-09-11T02:51:32Z exit=0 verdict=DEMO PASSED calls=13 spend=$0.026 cumulative=$0.1182
+run05 start=2026-09-11T02:57:52Z exit=1 verdict=DEMO FAILED calls=15 spend=$0.03 cumulative=$0.1482
+run06 start=2026-09-11T03:05:21Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.0253 cumulative=$0.1735
+run07 start=2026-09-11T03:11:17Z exit=0 verdict=DEMO PASSED calls=16 spend=$0.0346 cumulative=$0.2081
+run08 aborted by the lane: calls=2 spend=$0.0009

@@ -1,0 +1,72 @@
+package session
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
+)
+
+// A FIRING IS TOLD WHICH FOLDERS ITS WORK IS PLACED IN, and each rule is marked
+// with the folder it reaches the work through. Validator S11 (2026-09-10): work
+// placed in Launch and Travel got both folders' rules, and the run dropped the
+// Travel one — "Travel one … not applicable" — because it was told only that
+// these were conditions over this place, and judged applicability again from
+// the rule's wording.
+func TestAFiringIsToldTheFoldersItsWorkIsPlacedIn(t *testing.T) {
+	root, project := t.TempDir(), t.TempDir()
+	rules, err := standing.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(t.TempDir(), "collections.db")
+	org, err := workspace.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	travel, _ := org.Create(ctx, "Travel")
+	launch, _ := org.Create(ctx, "Launch")
+	for _, rule := range []struct{ folder, words string }{
+		{travel.ID, "Reports for Travel work start with the exact first line: SCOPE-TRAVEL"},
+		{launch.ID, "Reports for Launch work end with the exact last line: SCOPE-LAUNCH"},
+	} {
+		if _, err := rules.Create(standing.Item{Words: rule.words, Workspace: project, When: standing.When{Kind: standing.WhenHold},
+			Scope: &standing.Scope{CollectionIDs: []string{rule.folder}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := reporting(project)
+	for _, folder := range []string{launch.ID, travel.ID} {
+		if err := org.AddPlacement(ctx, folder, workspace.Ref{Kind: workspace.StandingKind, ID: item.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = org.Close()
+
+	model := &scriptedCompleter{steps: []step{saying("<report>\nSCOPE-TRAVEL\n- press kit done\nSCOPE-LAUNCH\n</report>"), saying(`{"rules": [{"rule": 1, "kind": "obligation", "verdict": "kept", "quote": "SCOPE-TRAVEL"}, {"rule": 2, "kind": "obligation", "verdict": "kept", "quote": "SCOPE-LAUNCH"}]}`)}}
+	runner := standingChildRunner(t, root, model)
+	runner.parent.Organization = &Organization{Path: db}
+	runner.parent.Governing = &Governing{Reader: rules}
+	if _, err := runner.Run(ctx, item, filepath.Join(root, "runs", "0001"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(model.seen) == 0 {
+		t.Fatal("the run made no request")
+	}
+	system := messageText(model.seen[0][0])
+	for _, want := range []string{
+		"This work is placed in the folders Travel, Launch.",
+		"[Travel] Reports for Travel work start with the exact first line: SCOPE-TRAVEL",
+		"[Launch] Reports for Launch work end with the exact last line: SCOPE-LAUNCH",
+		"never decide from its wording whether it applies",
+	} {
+		if !strings.Contains(system, want) {
+			t.Errorf("the run was not told %q:\n%s", want, system)
+		}
+	}
+}
+

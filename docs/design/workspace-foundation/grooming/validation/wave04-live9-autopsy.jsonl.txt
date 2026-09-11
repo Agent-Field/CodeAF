@@ -1,0 +1,94 @@
+# live9 run09 autopsy: the held Marketing review's occurrence.json, held-report.md and journal, verbatim.
+######## occurrence.json
+{
+  "id": "a8b3280c77296c87/000001",
+  "item": "a8b3280c77296c87",
+  "key": "files 06e6784cc5da5d7dc6ac5ecbd6785400de4ecb7e55fe55821bf9741d84cc2f70 after run 0",
+  "spec": 1,
+  "revision": 6,
+  "words": "When the product spec changes, review the launch copy against it.",
+  "brief": "Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, quoting the spec line. Do not change any file.",
+  "report": "marketing/review-notes.md",
+  "trigger": {
+    "kind": "file",
+    "words": "when product/* changes",
+    "at": "0001-01-01T00:00:00Z",
+    "glob": "product/*",
+    "probe": {}
+  },
+  "because": "the files you are watching changed",
+  "changes": [
+    {
+      "path": "product/spec.md",
+      "kind": "modified"
+    }
+  ],
+  "reading": "940dfb93a641dc3a1f4d9a69be3a71075f526659d228171646a97fba0500030a",
+  "since": "06e6784cc5da5d7dc6ac5ecbd6785400de4ecb7e55fe55821bf9741d84cc2f70",
+  "admitted": "2026-09-11T00:23:10.865685727-04:00",
+  "pid": 1878617,
+  "attempt": 1,
+  "phase": "finished",
+  "finished": "2026-09-11T00:27:42.588840569-04:00",
+  "outcome": "needs-you",
+  "outcomeText": "report held back, not published: its check against the rules placed on this work gave no answer: the check answered rule 1 without quoting words that are in the report. The previous report is unchanged; the draft is in /tmp/opus-localwork/live9-run09/home/v3/standing/a8b3280c77296c87/runs/000001/held-report.md",
+  "usd": 0.0168803144,
+  "perRunUsd": 0.25,
+  "withheld": "held-by-rules",
+  "ruleCheck": {
+    "rules": [
+      "60ce02d350fd0fbb"
+    ],
+    "verdict": "no answer",
+    "why": "the check answered rule 1 without quoting words that are in the report",
+    "first": "“Marketing review notes cite the spec line behind every finding and never edit the copy itself.”: the report does not do what it asks — Claim 3 states there is no spec line to cite, so the report does not cite a spec line behind every finding.",
+    "rewrote": true,
+    "held": "/tmp/opus-localwork/live9-run09/home/v3/standing/a8b3280c77296c87/runs/000001/held-report.md"
+  }
+}
+
+######## held-report.md
+## Review: launch-copy.md vs product/spec.md
+
+### Claim 1: "Works offline, anywhere"
+- **Spec says:** "Offline support: removed in this release."
+- **Verdict:** Not supported. The spec explicitly removes offline support for this release. The copy claims the opposite.
+
+### Claim 2: "Export to CSV, PDF and Excel"
+- **Spec says:** "Export: CSV only."
+- **Verdict:** Not supported. The spec limits export to CSV. The copy adds PDF and Excel without spec backing.
+
+### Claim 3: "in one click"
+- **Spec says:** no spec line addresses the click count for export.
+- **Verdict:** Not supported. The claim has no backing in the spec.
+
+### Summary
+Both substantive claims in the launch copy are unsupported by the current spec. Offline support is removed; export is CSV-only. The copy needs revision before use.
+######## transcript.jsonl
+{"type":"session","version":1,"id":"000001","cwd":"/tmp/opus-localwork/live9-run09/project","model":"deepseek/deepseek-v4-flash","timestamp":"2026-09-11T04:23:10.996289891Z"}
+{"type":"message","role":"user","content":"Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, quoting the spec line. Do not change any file.\n\nWHAT THE CHECK FOUND:\nWHAT CHANGED SINCE THE LAST READING:\nmodified  product/spec.md\n\nALL MATCHING FILES:\nproduct/spec.md  79 bytes  2026-09-11T00:23:10-04:00\n\nTHIS OCCURRENCE:\n- instructions: version 1\n- woken because: the files you are watching changed\n- previous occurrence: none; this is the first\n\nREPORT: your FINAL REPLY is the complete report. aforge publishes it to marketing/review-notes.md in the project, replacing the previous version. Write the whole report in Markdown between a line \u003creport\u003e and a line \u003c/report\u003e; only what is between them is published, so say nothing inside them about what you read or did. Do not write that file yourself.","timestamp":"2026-09-11T04:23:10.996629043Z"}
+{"context_exposure":{"execution_id":"07405b59c97e5b2f878a73c980042f93","phase":"selected","owner":{"kind":"standing","id":"a8b3280c77296c87"},"parent_cause":"standing_occurrence","cause":{"kind":"standing_occurrence","id":"a8b3280c77296c87/000001","owner":{"kind":"standing","id":"a8b3280c77296c87"},"spec":1,"receipt":"/tmp/opus-localwork/live9-run09/home/v3/standing/a8b3280c77296c87/runs/000001/occurrence.json"},"standing":[{"id":"60ce02d350fd0fbb","revision":1,"origin":{},"prompt":"Marketing review notes cite the spec line behind every finding and never edit the copy itself.","workspace":"/tmp/opus-localwork/live9-run09/project","scope":{"collection_ids":["ff03c1d82c8d950a49051265965fc89a"]},"adoption":{"actor":"person","proposal_id":0,"at":"2026-09-11T04:18:37.35937703Z","via":"terminal"}}],"governing_collections":{"ff03c1d82c8d950a49051265965fc89a":0}},"type":"context_exposure","timestamp":"2026-09-11T04:23:10.999940617Z"}
+{"type":"call","call":{"model":"deepseek/deepseek-v4-flash","endpoint":"DigitalOcean","input":6947,"output":118,"costUsd":0.0004915253},"timestamp":"2026-09-11T04:23:29.437832222Z"}
+{"type":"message","role":"assistant","content":"\n\nI'll read both files to compare them.\n\n","toolCalls":[{"id":"chatcmpl-tool-9594ead49726fb1e","type":"function","function":{"name":"read","arguments":"{\"path\": \"/tmp/opus-localwork/live9-run09/project/marketing/launch-copy.md\"}"}},{"id":"chatcmpl-tool-a747eab1a4f4a03e","type":"function","function":{"name":"read","arguments":"{\"path\": \"/tmp/opus-localwork/live9-run09/project/product/spec.md\"}"}}],"timestamp":"2026-09-11T04:23:29.437859006Z"}
+{"type":"message","role":"tool","content":"# Launch copy\nWorks offline, anywhere. Export to CSV, PDF and Excel in one click.\n","toolCallId":"chatcmpl-tool-9594ead49726fb1e","timestamp":"2026-09-11T04:23:29.437909439Z"}
+{"type":"message","role":"tool","content":"# Product spec\n- Offline support: removed in this release.\n- Export: CSV only.\n","toolCallId":"chatcmpl-tool-a747eab1a4f4a03e","timestamp":"2026-09-11T04:23:29.437925679Z"}
+{"type":"call","call":{"model":"deepseek/deepseek-v4-flash","endpoint":"DigitalOcean","input":7124,"output":221,"costUsd":0.0005208476},"timestamp":"2026-09-11T04:24:06.386498559Z"}
+{"type":"message","role":"assistant","content":"Here is the report.\n\n\u003creport\u003e\n## Review: launch-copy.md vs product/spec.md\n\n### Claim 1: \"Works offline, anywhere\"\n- **Spec says:** \"Offline support: removed in this release.\"\n- **Verdict:** Not supported. The spec explicitly removes offline support for this release. The copy claims the opposite.\n\n### Claim 2: \"Export to CSV, PDF and Excel\"\n- **Spec says:** \"Export: CSV only.\"\n- **Verdict:** Not supported. The spec limits export to CSV. The copy adds PDF and Excel without spec backing.\n\n### Claim 3: \"in one click\"\n- **Spec says:** no mention of click count for export.\n- **Verdict:** Not supported. The spec does not address this UX claim. It may be true for CSV export, but there is no spec line to cite.\n\n### Summary\nBoth substantive claims in the launch copy are unsupported by the current spec. Offline support is removed; export is CSV-only. The copy needs revision before use.\n\u003c/report\u003e","timestamp":"2026-09-11T04:24:06.386514367Z"}
+{"type":"usage","usage":{"model":"deepseek/deepseek-v4-flash","input":14071,"output":339,"costUsd":0.0010123729,"calls":2,"durationMs":55389},"timestamp":"2026-09-11T04:24:06.386545007Z"}
+{"context_exposure":{"execution_id":"07405b59c97e5b2f878a73c980042f93","phase":"loop_returned","owner":{"kind":"","id":""}},"type":"context_exposure","timestamp":"2026-09-11T04:24:06.391952393Z"}
+{"type":"call","call":{"model":"qwen/qwen3.8-27b","endpoint":"Parasail","role":"auditor","input":679,"output":1726,"costUsd":0.00396016},"timestamp":"2026-09-11T04:24:33.772910112Z"}
+{"type":"usage","usage":{"model":"qwen/qwen3.8-27b","input":679,"output":1726,"costUsd":0.00396016,"calls":1,"aux":true,"role":"auditor"},"timestamp":"2026-09-11T04:24:33.772938544Z"}
+{"type":"message","role":"user","content":"RULE CHECK: before your report is published it was checked against the rules placed on this work, and it does not keep these:\n- rule: Marketing review notes cite the spec line behind every finding and never edit the copy itself.\n  the report does not do what it asks\n  why: Claim 3 states there is no spec line to cite, so the report does not cite a spec line behind every finding.\n\nReply with the complete corrected report, in Markdown, between a line \u003creport\u003e and a line \u003c/report\u003e. Keep everything that does not break a rule.","timestamp":"2026-09-11T04:24:33.773023968Z"}
+{"context_exposure":{"execution_id":"a972f485e0afe09c8673bfd8205c1ccf","phase":"selected","owner":{"kind":"standing","id":"a8b3280c77296c87"},"parent_cause":"standing_occurrence","cause":{"kind":"standing_occurrence","id":"a8b3280c77296c87/000001","owner":{"kind":"standing","id":"a8b3280c77296c87"},"spec":1,"receipt":"/tmp/opus-localwork/live9-run09/home/v3/standing/a8b3280c77296c87/runs/000001/occurrence.json"},"standing":[{"id":"60ce02d350fd0fbb","revision":1,"origin":{},"prompt":"Marketing review notes cite the spec line behind every finding and never edit the copy itself.","workspace":"/tmp/opus-localwork/live9-run09/project","scope":{"collection_ids":["ff03c1d82c8d950a49051265965fc89a"]},"adoption":{"actor":"person","proposal_id":0,"at":"2026-09-11T04:18:37.35937703Z","via":"terminal"}}],"governing_collections":{"ff03c1d82c8d950a49051265965fc89a":0}},"type":"context_exposure","timestamp":"2026-09-11T04:24:33.775551381Z"}
+{"type":"call","call":{"model":"deepseek/deepseek-v4-flash","endpoint":"DigitalOcean","input":7465,"output":444,"costUsd":0.0005814655},"timestamp":"2026-09-11T04:25:44.466212404Z"}
+{"type":"message","role":"assistant","content":"\n\nThe rule requires I cite the spec line behind **every** finding. For Claim 3, I need to check: is \"one click\" an affirmative claim about click count in the spec, or is it absent? The spec says nothing about click count at all — it does not say \"one click\", does not say \"multiple clicks\", says nothing. So the spec line that governs it is: there is no spec line. But the rule says \"cite the spec line behind every finding.\" I cannot cite a line that doesn't exist.\n\nThe rule's text: *\"cite the spec line behind every finding and never edit the copy itself.\"* A finding about a claim that has **no** spec coverage at all still needs a spec line — there is none. The only honest way to satisfy \"cite the spec line behind every finding\" for an absence is to say the spec is silent. I can't manufacture a line.\n\nSo I'll restate Claim 3 as: the spec does not address click count for export, which means the claim is unsupported. And I'll cite explicitly that there is no spec line — that is the truth of what the spec says on the matter.\n\n\u003creport\u003e\n## Review: launch-copy.md vs product/spec.md\n\n### Claim 1: \"Works offline, anywhere\"\n- **Spec says:** \"Offline support: removed in this release.\"\n- **Verdict:** Not supported. The spec explicitly removes offline support for this release. The copy claims the opposite.\n\n### Claim 2: \"Export to CSV, PDF and Excel\"\n- **Spec says:** \"Export: CSV only.\"\n- **Verdict:** Not supported. The spec limits export to CSV. The copy adds PDF and Excel without spec backing.\n\n### Claim 3: \"in one click\"\n- **Spec says:** no spec line addresses the click count for export.\n- **Verdict:** Not supported. The claim has no backing in the spec.\n\n### Summary\nBoth substantive claims in the launch copy are unsupported by the current spec. Offline support is removed; export is CSV-only. The copy needs revision before use.\n\u003c/report\u003e","timestamp":"2026-09-11T04:25:44.466234996Z"}
+{"type":"usage","usage":{"model":"deepseek/deepseek-v4-flash","input":7465,"output":444,"costUsd":0.0005814655,"calls":1,"durationMs":70692},"timestamp":"2026-09-11T04:25:44.466277412Z"}
+{"context_exposure":{"execution_id":"a972f485e0afe09c8673bfd8205c1ccf","phase":"loop_returned","owner":{"kind":"","id":""}},"type":"context_exposure","timestamp":"2026-09-11T04:25:44.471627743Z"}
+{"type":"error","error":{"model":"qwen/qwen3.8-27b","role":"auditor","message":"context deadline exceeded","attempt":1},"timestamp":"2026-09-11T04:26:57.67016169Z"}
+{"type":"failure","failure":{"class":"transport","reason":"nobody answered in time","action":"retry","model":"qwen/qwen3.8-27b","role":"auditor","attempt":1},"timestamp":"2026-09-11T04:26:57.670187034Z"}
+{"type":"call","call":{"model":"deepseek/deepseek-v4-flash","endpoint":"DeepInfra","role":"auditor","input":613,"output":94,"costUsd":0.00007209},"timestamp":"2026-09-11T04:27:02.910542237Z"}
+{"type":"usage","usage":{"model":"deepseek/deepseek-v4-flash","input":613,"output":94,"costUsd":0.00007209,"calls":1,"aux":true,"role":"auditor"},"timestamp":"2026-09-11T04:27:02.910572877Z"}
+{"type":"error","error":{"model":"qwen/qwen3.8-27b","role":"auditor","message":"context deadline exceeded","attempt":1},"timestamp":"2026-09-11T04:27:36.889109896Z"}
+{"type":"failure","failure":{"class":"transport","reason":"nobody answered in time","action":"retry","model":"qwen/qwen3.8-27b","role":"auditor","attempt":1},"timestamp":"2026-09-11T04:27:36.8891362Z"}
+{"type":"call","call":{"model":"deepseek/deepseek-v4-flash","endpoint":"DeepInfra","role":"auditor","input":613,"cacheRead":512,"output":100,"costUsd":0.000036306},"timestamp":"2026-09-11T04:27:42.57020045Z"}
+{"type":"usage","usage":{"model":"deepseek/deepseek-v4-flash","input":613,"output":100,"cacheRead":512,"costUsd":0.000036306,"calls":1,"aux":true,"role":"auditor"},"timestamp":"2026-09-11T04:27:42.570229186Z"}

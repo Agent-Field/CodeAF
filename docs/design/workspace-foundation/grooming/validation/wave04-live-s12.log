@@ -1,0 +1,48 @@
+$ aforge collections place f87f81dd7c251583b3d2076cae9cbbbf collection e8c4a619f4176c1f34226548c2ec9c41
+collection  e8c4a619f4176c1f34226548c2ec9c41
+Placed: this folder's rules now reach it. Nothing moved and nothing started.
+$ aforge collections add f87f81dd7c251583b3d2076cae9cbbbf collection 0f41ef1a2dd7445ee0a759932765a982
+collection  0f41ef1a2dd7445ee0a759932765a982
+$ aforge standing add --hold --scope f87f81dd7c251583b3d2076cae9cbbbf --workspace /tmp/opus-w4/live/s12-J22-descendants-reference/project --words Every Clients report includes the line MARK-P.
+set up 670a81cf7ca26216: Every Clients report includes the line MARK-P.
+a rule: applies in Clients (directly placed work only)
+$ aforge standing add --hold --scope f87f81dd7c251583b3d2076cae9cbbbf --descendants --workspace /tmp/opus-w4/live/s12-J22-descendants-reference/project --words Every Clients-family report includes the line MARK-D.
+set up b0acf60c9e803188: Every Clients-family report includes the line MARK-D.
+a rule: applies in Clients and its subfolders
+$ aforge standing add --hold --scope e8c4a619f4176c1f34226548c2ec9c41 --workspace /tmp/opus-w4/live/s12-J22-descendants-reference/project --words Every Acme report includes the line MARK-C.
+set up bfba713ffc5bbd97: Every Acme report includes the line MARK-C.
+a rule: applies in Acme (directly placed work only)
+$ aforge standing add --hold --scope 64de3360b93c7965f6f66c7d4f89d90e --workspace /tmp/opus-w4/live/s12-J22-descendants-reference/project --words Every Archive report includes the line MARK-O.
+set up 81d6e7e61a9e1a50: Every Archive report includes the line MARK-O.
+a rule: applies in Archive (directly placed work only)
+$ aforge collections add 64de3360b93c7965f6f66c7d4f89d90e standing 024d5610c2f18079
+standing  024d5610c2f18079
+
+== rules reaching the Acme item (expect MARK-C and MARK-D only)
+  rule reaching it: bfba713ffc5bbd97 Every Acme report includes the line MARK-C.
+  rule reaching it: b0acf60c9e803188 Every Clients-family report includes the line MARK-D.
+
+== rules reaching the Beta item (reference-nested under Clients; expect none)
+(no rule reaches Beta item)
+$ aforge standing check
+1 checked
+exit=0
+$ aforge standing check
+1 checked · 1 ran
+exit=0
+runs=1
+ - finished landed spec 1 attempt 1 usd 0.0025726715 changes ['modified acme/notes.md'] | published acme-status.md | rules 2 kept | text: report updated: acme-status.md — MARK-D
+--- acme-status.md
+MARK-D
+MARK-C
+
+Acme renewal: contract value up 8%, signature expected Oct 12. Legal asked for a new indemnity clause — pending review.
+ASSERT-OK: MARK-C present (should apply)
+ASSERT-OK: MARK-D present (should apply)
+ASSERT-OK: MARK-P absent (must not apply)
+ASSERT-OK: MARK-O absent (must not apply)
+AUDIT item 024d5610c2f18079 rules-now ['bfba713ffc5bbd97', 'b0acf60c9e803188'] placements ['e8c4a619f4176c1f34226548c2ec9c41', 'f87f81dd7c251583b3d2076cae9cbbbf']
+ run 024d5610c2f18079/000001 outcome landed causes ['standing_occurrence'] cause->occ ok True exposed-rules [('selected', 'b0acf60c9e803188', 1), ('selected', 'bfba713ffc5bbd97', 1)] shared [] published-matches-disk True
+SPEND calls=3 usd=0.002573
+MODELS {('deepseek/deepseek-v4-flash', 'turn'): 4, ('qwen/qwen3.8-27b', ''): 2}
+exit=0

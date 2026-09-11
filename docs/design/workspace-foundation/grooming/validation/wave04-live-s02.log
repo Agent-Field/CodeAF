@@ -1,0 +1,31 @@
+
+== the person says 'keep an eye on the inbox folder' and writes the natural glob inbox/*
+
+== and a second item with the recursive-looking glob inbox/**/*.md
+a=32a1e72ad4e3e13e b=8e3c9e90337c704c
+$ aforge standing check
+2 checked
+exit=0
+
+== a nested client thread is edited in place (the common case: a reply appended)
+$ aforge standing check
+2 checked · 1 ran
+exit=0
+runs=0
+runs=1
+ - finished landed spec 1 attempt 1 usd 0.0009783381999999999 changes ['modified inbox/clients/acme/thread.md'] | published out/b.md | rules 0 None | text: report updated: out/b.md — ## inbox summary
+
+Two files sit under `inbox/`:
+
+### `inbox/readme.md`
+A top-level note (15 bytes): `top-level note` — a marker or pl
+a line: nothing has changed
+b line: the files you are watching changed
+
+== stop both before any further change
+stopped · Keep an eye on the inbox folder.
+it will not run again; its history stays in aforge standing show 32a1e72ad4e3e13e
+stopped · Keep an eye on everything under inbox.
+it will not run again; its history stays in aforge standing show 8e3c9e90337c704c
+SPEND calls=2 usd=0.000978
+exit=0
