@@ -138,6 +138,14 @@ type streamWatch struct {
 //
 // So: the ceiling acts. It hedges when it can afford to; when it cannot, and the
 // wire has said NOTHING AT ALL, it cuts and the next machine gets the question.
+//
+// AND THE CUT NEEDS NOTHING NEW TO CARRY IT. It is an ordinary [StreamCut], so
+// it leaves through the ordinary door: client.go stamps it with the machine the
+// stream named and the ledger's strike sets [StreamCut.Rerouted], which the
+// attempt loop already reads as a no-backoff move that vetoes the served
+// endpoint (`TestABlindCutIsFiledAgainstTheMachineWeAskedFor` is that shape, and
+// a cut that named nobody falls back to the machine the request asked for). So
+// the free move IS a move to another machine and not merely an early ending.
 
 type streamWatchContextKey struct{}
 
@@ -224,13 +232,13 @@ func (w *streamWatch) takeFreeMove() {
 		return
 	}
 	w.mu.Lock()
-	take, guard, served, waited := w.free, w.guard, w.served, w.silence
+	take, guard, waited := w.free, w.guard, w.silence
 	w.free = false
 	w.mu.Unlock()
 	if !take || guard == nil {
 		return
 	}
-	guard.cutIdle(served, waited)
+	guard.cutIdle(waited)
 }
 
 // after records what the controller said, names the fault where there is one,

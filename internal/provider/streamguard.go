@@ -1103,19 +1103,23 @@ func (w *stallWatch) verdict() context.CancelFunc {
 // byte had reached this stream. It is the free half of armwatch.go's THE CEILING
 // PICKS ONE OR THE OTHER, NEVER NEITHER.
 //
-// IT IS THE SAME CUT EVERY OTHER REASON MAKES. [CutSilent] is already "this
-// request produced nothing", which is exactly true here; what differs is only
-// which clock decided, and the row records that separately
-// ([streamWatch.applied]). Naming the served machine is the whole point of
-// cutting rather than waiting — it is what lets the ledger strike the endpoint
-// so the next encode routes around it — and it is empty here far more often
-// than not, because a stream that has said nothing has usually not named anybody
-// either.
+// IT IS THE SAME CUT EVERY OTHER REASON MAKES, and that is the whole of why it
+// is enough. [CutSilent] is already "this request produced nothing", which is
+// exactly true here; what differs is only which clock decided, and the row
+// records that separately ([streamWatch.applied]). Because it is an ordinary
+// cut it leaves through the ordinary door — the decode loop's cut path in
+// client.go stamps it with the machine the stream named ([Client.stampCut]) and
+// asks the ledger to strike that machine, which is what sets [StreamCut.
+// Rerouted] — so the attempt loop reads it as a no-backoff move that vetoes the
+// served endpoint, and the next send goes somewhere else. NOTHING HERE SETS
+// `Provider` OR `Rerouted`: a cut that stamped itself would be a second answer
+// to "who was serving", and a cut that claimed a reroute the ledger had not
+// made would be a lie the turn loop counts endpoint diversity from.
 //
 // The cancel runs outside the lock, for [stallWatch.fire]'s reason, and a watch
 // that has already tripped keeps its first verdict: a bound that fired is the
 // bound that ended the stream.
-func (w *stallWatch) cutIdle(served string, waited time.Duration) {
+func (w *stallWatch) cutIdle(waited time.Duration) {
 	if w == nil {
 		return
 	}
@@ -1127,12 +1131,7 @@ func (w *stallWatch) cutIdle(served string, waited time.Duration) {
 	if waited <= 0 {
 		waited = w.clock().Sub(w.quietSince)
 	}
-	w.tripped = &StreamCut{
-		Reason:   CutSilent,
-		Waited:   waited,
-		Provider: served,
-		Ran:      w.clock().Sub(w.born),
-	}
+	w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	cut, cancel := w.tripped, w.cancel
 	w.mu.Unlock()
 	w.arm.boundApplied(cut)
