@@ -868,58 +868,12 @@ func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	world, known := a.readWorldKnown()
-	a.home = homeView{
-		why:    a.homeWhyEmpty(),
-		world:  world,
-		known:  known,
-		far:    a.hosted(),
-		seen:   session.LastLook(a.looksRoot()),
-		bucket: homeBucketOf(a.file),
-		here:   homeSessionDirOf(a.file),
-		launch: a.workspace,
-		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
-		// Raising home builds a fresh [homeView], and a claim that survived
-		// somebody walking to another page and back must survive with it —
-		// otherwise the row goes quiet the moment they return to look at it
-		// (takeovervoice.go).
-		claim:     a.takeover.file,
-		tier:      a.homeTierNow(),
-		cols:      a.homeColsNow(),
-		gridWidth: a.homeGridWidthNow(),
-		tilde:     a.tilde,
-		hover:     -1,
-		last:      map[string]session.Summary{},
-		news:      map[string]homeNewsCache{},
-		expanded:  map[string]bool{},
-		itemsOpen: map[string]bool{},
-		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
-		// screen, so opening home again finds every one that was still going —
-		// with its row, its tail and its pane exactly as they were left
-		// (homeexchange.go).
-		exchanges: a.exchanges,
-		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
-		// person rather than to the screen (attach.go), so a picture attached in
-		// the conversation is a picture home's box is holding the moment it opens
-		// — and it is the reason this screen can be "typed into" with nothing
-		// typed at all ([homeView.carrying]).
-		carrying: len(a.chips) > 0,
-	}
-	a.readStandBands()
-	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
-	// beat (place_home.go's [app.readSwitchLedger]).
-	a.readSwitchLedger()
-	a.readPlaceSummaries()
-	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
-	a.readHomeSpend()
-	// AND THE FILES CONVERSATIONS HAVE MADE, as ONE reading for the whole screen
-	// rather than one per card (homeband_deliverables.go). It is taken here, with
-	// the other readings, because that index is a file and a card is a draw.
-	a.readHomeArtifacts()
-	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
-	// bands, because a project home knows only through a watch is one of the
-	// projects this has to answer for ([homeView.readGone]).
-	a.home.readGone()
-	a.home.build()
+	// THE SAME VIEW THE GREETING BUILDS, BY THE SAME CONSTRUCTOR, AND THE SAME
+	// READINGS: [app.newHomeView] and [app.furnishHome] are the one list of each,
+	// and this road adds only what a door has that a greeting does not — the
+	// cursor's memory of where this window was before.
+	a.home = a.newHomeView(world, known)
+	a.furnishHome()
 	a.home.openAt(a.file)
 	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
 	// window has one (homegrid.go's [app.homePreselect]).
@@ -1021,11 +975,15 @@ func (a *app) landHome() {
 	// AND THE ROUTER IS TOLD WHERE THIS WINDOW IS STANDING. This is the one door
 	// that does not go through [app.showPage], because it runs inside [newApp]
 	// before bubbletea exists and the room it is raising is already furnished by
-	// the four lines below ([app.raisePlace] states the whole exception).
+	// the two lines below ([app.raisePlace] states the whole exception).
 	a.raisePlace(pageHome)
-	a.readStandBands()
-	a.home.readGone()
-	a.home.build()
+	// AND EVERY READING THE DOOR TAKES, TAKEN HERE TOO ([app.furnishHome]). The
+	// greeting used to take two of them — the bands and the folders — and the
+	// first frame drew the spend panel empty and the head with no money until the
+	// beat three seconds later took the rest. The whole list is some forty
+	// milliseconds on a fortnight's ledger, and a person launching this program
+	// is owed the same screen the door would have shown them.
+	a.furnishHome()
 	// AND THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS HOLDING, which is
 	// the greeting's own law said one way further ([homeView.openAt]): the
 	// selection is on screen from the first frame, and esc still means what it
@@ -1231,6 +1189,7 @@ func (a *app) dropHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
+		why:   a.homeWhyEmpty(),
 		world: world,
 		known: known,
 		far:   a.hosted(),
@@ -1238,9 +1197,16 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
 		// whether a row's door can open at all; the session is the one row that
 		// wears `here` instead of an age (place_home.go).
-		bucket:    homeBucketOf(a.file),
-		here:      homeSessionDirOf(a.file),
-		launch:    a.workspace,
+		bucket: homeBucketOf(a.file),
+		here:   homeSessionDirOf(a.file),
+		launch: a.workspace,
+		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
+		// Raising home builds a fresh [homeView], and a claim that survived
+		// somebody walking to another page and back must survive with it —
+		// otherwise the row goes quiet the moment they return to look at it
+		// (takeovervoice.go). A launch has asked for nothing yet, so the greeting
+		// reads it as empty, which is the same field saying the same thing.
+		claim:     a.takeover.file,
 		tier:      a.homeTierNow(),
 		cols:      a.homeColsNow(),
 		gridWidth: a.homeGridWidthNow(),
@@ -1255,7 +1221,67 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// with its row, its tail and its pane exactly as they were left
 		// (homeexchange.go).
 		exchanges: a.exchanges,
+		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
+		// person rather than to the screen (attach.go), so a picture attached in
+		// the conversation is a picture home's box is holding the moment it opens
+		// — and it is the reason this screen can be "typed into" with nothing
+		// typed at all ([homeView.carrying]).
+		carrying: len(a.chips) > 0,
 	}
+}
+
+// furnishHome takes EVERY reading the screen is drawn from, over the world the
+// view already holds, and builds the lines. It is one function because there
+// are three roads onto this screen — the greeting ([app.landHome]), the door
+// ([app.raiseHome]) and the beat ([app.refreshHome]) — and each used to carry
+// its own list of readings.
+//
+// THREE LISTS DRIFT, AND THEY DID. The greeting's list had the bands and the
+// folders and nothing else, so the very first home a person saw drew the spend
+// panel as its placeholder line and the head with no money at all, and both
+// filled in three seconds later when the beat took the readings the greeting
+// had not. Nothing was slow: the ledger is a twenty-millisecond read, and it
+// was simply not asked for on that road. So there is one list, and a reading
+// added to it is a reading every road takes.
+//
+// Order matters in two places and nowhere else: the bands come first because
+// the machine's counts are taken over them, and the folders are statted after
+// the bands because a project home knows only through a watch is one of the
+// projects this has to answer for ([homeView.readGone]).
+func (a *app) furnishHome() {
+	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
+	// the conversation rows above it are one triage order, and two readings taken
+	// a beat apart would sort a firing item against a world that had not heard of
+	// it yet.
+	a.readStandBands()
+	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
+	// beat (place_home.go's [app.readSwitchLedger]).
+	a.readSwitchLedger()
+	// AND WHAT EACH PLACE HOLDS, because the typed drop-up offers places beside
+	// conversations and a row built while somebody is typing may not go to a
+	// seam for its own margin (homeplaces.go).
+	a.readPlaceSummaries()
+	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
+	a.readHomeSpend()
+	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
+	// has been written and re-reads the file only when something has
+	// (homeband_deliverables.go). It is taken here, with the other readings,
+	// because that index is a file and a card is a draw.
+	a.readHomeArtifacts()
+	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO: the
+	// pulse line's money and counts are derived from these bands, and a reading
+	// taken on its own clock would be a top line describing a machine the column
+	// below it had already moved past (homemachine.go's [app.readMachine]).
+	// Home's own line leaves the counts out; the next frame out of home draws
+	// them, and draws these.
+	a.readMachine(a.now(), a.home.world.Sessions(), a.home.items)
+	// AND THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY. A
+	// repository deleted in another terminal while home is up shows up here on
+	// the next beat, and never sooner and never oftener ([homeView.gone]).
+	a.home.readGone()
+	// [homeView.build] is the one that keeps the cursor on its conversation, so
+	// on the beat this is a rescan and a rebuild and nothing else.
+	a.home.build()
 }
 
 // placesRoot is where the projects live. The field is the test's door and
@@ -1343,36 +1369,10 @@ func (a *app) refreshHome() {
 		return
 	}
 	a.home.world, a.home.known = a.readWorldKnown()
-	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
-	// the conversation rows above it are one triage order, and two readings taken
-	// a beat apart would sort a firing item against a world that had not heard of
-	// it yet.
-	a.readStandBands()
-	a.readSwitchLedger()
-	a.readHomeSpend()
-	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
-	// has been written and re-reads the file only when something has
-	// (homeband_deliverables.go). A resting screen used to re-parse the whole
-	// index every three seconds, per row it had ever drawn a card for.
-	a.readHomeArtifacts()
-	// AND WHAT EACH PLACE HOLDS, on the same beat, because the typed drop-up
-	// offers places beside conversations and a row built while somebody is
-	// typing may not go to a seam for its own margin (homeplaces.go).
-	a.readPlaceSummaries()
-	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO, for the
-	// reason above it: the pulse line's counts are derived from these bands, and
-	// a reading taken on its own clock would be a top line describing a machine
-	// the column below it had already moved past (homemachine.go's
-	// [app.readMachine]). Home's own line leaves the counts out; the next frame
-	// out of home draws them, and draws these.
-	a.readMachine(a.now(), a.home.world.Sessions(), a.home.items)
-	// AND THE FOLDERS ARE RE-STATTED ON THIS BEAT AND ONLY ON IT. A repository
-	// deleted in another terminal while home is up shows up here, three seconds
-	// later, and never sooner and never oftener ([homeView.gone]).
-	a.home.readGone()
-	// [homeView.build] is the one that keeps the cursor on its conversation, so
-	// this is a rescan and a rebuild and nothing else.
-	a.home.build()
+	// AND EVERY READING THE SCREEN IS DRAWN FROM, the same list the door and the
+	// greeting take ([app.furnishHome]); on the beat it is a rescan and a
+	// rebuild and nothing else.
+	a.furnishHome()
 	a.touch()
 }
 

@@ -180,7 +180,15 @@ func (l *homeLab) app(standing string) *app {
 // the one line this skips.
 func (l *homeLab) launch(standing string, landing bool) *app {
 	l.t.Helper()
+	return l.launchAt(standing, landing, 100, 24)
+}
+
+// launchAt is [homeLab.launch] in a terminal of a named size, for a test whose
+// subject is a panel the small default cannot seat.
+func (l *homeLab) launchAt(standing string, landing bool, width, height int) *app {
+	l.t.Helper()
 	a := l.app(standing)
+	a.width, a.height = width, height
 	a.landing = landing
 	a.entries = nil
 	a.welcome = welcome{}
@@ -1782,6 +1790,40 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	// [homeView.openAt]). One ↑ off the top of the list reaches the tab bar.
 	if got := homeName(a.home.focused()); got != "The One the Door Picked" {
 		t.Fatalf("a greeted launch opened on %q, want the door's own conversation", got)
+	}
+}
+
+// THE GREETING'S FIRST FRAME CARRIES THE MONEY. The greeting builds home before
+// bubbletea exists ([app.landHome]) and it used to take two readings where the
+// door takes seven, so the spend panel drew its placeholder line and the head
+// drew no figure until the first beat, three seconds later, took the rest.
+// Nothing was slow; the readings were not asked for. Now every road takes the
+// one list ([app.furnishHome]), and this pins the greeting to it: the panel,
+// the day's money on the machine, and the frame itself.
+func TestTheGreetingsFirstFrameCarriesTheSpend(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
+	writeUsageLines(t, filepath.Join(lab.root, session.UsageLedgerName), []session.UsageLine{
+		{At: now.Add(-time.Hour), USD: 1.25, Calls: 1, Model: "anthropic/claude-opus-5"},
+		{At: now.AddDate(0, 0, -3), USD: 2.00, Calls: 1, Model: "anthropic/claude-opus-5"},
+	})
+
+	a := lab.launchAt(mine, true, 160, 50)
+	if !a.at(pageHome) {
+		t.Fatal("a bare launch did not open on home")
+	}
+	if a.home.spend.today != 1.25 || a.home.spend.total != 3.25 {
+		t.Fatalf("the greeting read today %v and the fortnight %v, want 1.25 and 3.25 before the first beat",
+			a.home.spend.today, a.home.spend.total)
+	}
+	if a.machine.spent != 1.25 {
+		t.Fatalf("the greeting read the machine's day as %v, want 1.25 before the first beat", a.machine.spent)
+	}
+	frame, _, _ := a.frame()
+	if plain := ansi.Strip(frame); !strings.Contains(plain, spendTodayWord+" "+dollars(1.25)) {
+		t.Fatalf("the first frame has no money on it:\n%s", plain)
 	}
 }
 

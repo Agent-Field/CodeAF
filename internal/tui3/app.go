@@ -2876,6 +2876,13 @@ func (a *app) Init() tea.Cmd {
 	// beside the standing lanes rather than folded into the wake above.
 	if a.at(pageHome) {
 		standing = append(standing, homeTick(a.homeGen))
+		// AND THE CARD'S OWN READINGS ARE ASKED FOR AT THE LAUNCH, exactly as the
+		// door asks for them on the way in ([app.raiseHome]): the repository
+		// behind each project row is a command, so it is asked for rather than
+		// waited on and comes back as a message (homecardread.go). The greeting
+		// used to leave these to the first beat, so a branch name arrived three
+		// seconds after the row it belongs to.
+		standing = append(standing, a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 		// A landing that greets over running work starts with its spinner
 		// already turning — the paint clock's ninth reason ([app.paint]).
 		if a.homeAnimating() {
