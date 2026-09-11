@@ -174,10 +174,17 @@ type taskRecord struct {
 	// Request's reason and for one more: a task the PERSON wrote themselves names
 	// no deliverable separately, and a heading over nothing is not written
 	// (task_person.go).
-	Deliverable string   `json:"deliverable,omitempty"`
-	Where       string   `json:"where,omitempty"`
-	Acceptance  string   `json:"acceptance"`
-	DependsOn   []uint64 `json:"depends_on,omitempty"`
+	Deliverable string `json:"deliverable,omitempty"`
+	Where       string `json:"where,omitempty"`
+	// Acceptance is DONE WHEN — what somebody who was not there checks the work
+	// against. It is written for every node that has one and it is EMPTY on a
+	// quick node, where that is the design and not a loss: nothing checks a quick
+	// task, so an acceptance clause there would be a promise with no reader, and
+	// the builder leaves it out on purpose (task_quick.go's [Agent.newQuickSpec]).
+	// [acceptanceHolds] is that rule, asked of the KIND rather than of this
+	// field alone; it stays a refusal for ordinary work.
+	Acceptance string   `json:"acceptance"`
+	DependsOn  []uint64 `json:"depends_on,omitempty"`
 
 	// Ground is the repository or folder the work IS ABOUT and Mode is how the
 	// node stands on it ([TaskMode]). Where says which directory the worker typed
@@ -1142,6 +1149,15 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 // a dependency on a LATER id is a cycle the frontier would wait on forever,
 // because ids are minted in admission order and an edge can only ever point
 // backwards.
+//
+// AND EVERY RULE HERE IS ASKED OF THE KIND THE RECORD SAYS IT IS. The acceptance
+// rule is the one that has an exception, and it is a real one rather than a
+// loosening: a quick task is admitted with no acceptance BY DESIGN
+// ([kindWithoutAcceptance]), so asking it for one refused the whole document —
+// and a conversation that had ever run a quick task reopened with no task graph
+// at all, its finished rows, its running work and its whole family gone. Measured
+// on a real checkpoint, 2026-09-11. The rule stays strict for ordinary work,
+// which is where it was earning its keep.
 func decodeTasks(content []byte) (taskDocument, error) {
 	var document taskDocument
 	if err := json.Unmarshal(content, &document); err != nil {
@@ -1165,7 +1181,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d has no title", record.ID)
 		case strings.TrimSpace(record.Brief) == "":
 			return taskDocument{}, fmt.Errorf("node %d has no brief", record.ID)
-		case strings.TrimSpace(record.Acceptance) == "":
+		case !acceptanceHolds(record.Kind, record.Acceptance):
 			return taskDocument{}, fmt.Errorf("node %d has no acceptance", record.ID)
 		case !validTaskState(record.State):
 			return taskDocument{}, fmt.Errorf("node %d is in state %q", record.ID, record.State)
@@ -1517,6 +1533,27 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 	}
 }
 
+// nothingIsComingBackForIt is which restored records [interrupt] has to settle:
+// the work whose state on the record is a state nothing is in.
+//
+// A RUNNING NODE IS THE WHOLE OF IT, ALMOST. Its worker stopped existing the
+// moment the process did, and what it left is on disk under a branch nobody is
+// going to come back for unless somebody says its name.
+//
+// The exception is a QUICK node that was still WAITING ITS TURN. It never
+// started, so nothing about it was interrupted in the ordinary sense; what puts
+// it here is that it cannot be started either. What tells [Agent.runTaskNode] to
+// hand a node to the quick body rather than to a worker is [taskSpec.quick], and
+// that is the list the `items` tool ticks while the node runs — it is not on the
+// record, and nothing here could rebuild it. So a queued quick node put back on
+// the frontier is a node the next session hands to an ORDINARY worker: a copy of
+// the folder, a branch and a check, spending real money on work whose whole
+// promise was that it had none of those.
+func nothingIsComingBackForIt(record taskRecord) bool {
+	return record.State == TaskRunning ||
+		(record.Kind == TaskKindQuick && record.State == TaskQueued)
+}
+
 // rehydrate rebuilds the graph from a checkpoint and reconciles it with the
 // disk. It is the pure half of recovery: no provider, no scheduling, nothing
 // that cannot be done with a file and a repository.
@@ -1526,11 +1563,12 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 // failed, a queued node never started — but a RUNNING node names work that
 // stopped existing the moment the process did, and what it left is on disk under
 // a branch nobody is going to come back for unless somebody says its name.
+// [nothingIsComingBackForIt] is the whole of which records those are.
 func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle TaskSettle) taskRecovery {
 	var recovery taskRecovery
 	records := make([]taskRecord, 0, len(document.Nodes))
 	for _, record := range document.Nodes {
-		if record.State == TaskRunning {
+		if nothingIsComingBackForIt(record) {
 			var kept string
 			harness := record.Kind == TaskKindHarness
 			running := record.Kind == TaskKindSubharness
@@ -1926,11 +1964,22 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// ORDINARY WORKER — a copy of the folder, a branch and a check, for work
 		// whose whole promise was that it had none of those.
 		//
+		// AND EVEN WITH THE LIST IN HAND IT WOULD NOT BE RE-RUN, which is worth
+		// saying because the day the record carries one this line must not quietly
+		// change meaning: it was working in the PERSON'S OWN FOLDER, so a second
+		// worker walking a half-done list would be writing over the first one's
+		// edits rather than resuming them.
+		//
 		// It settles instead, saying the one thing that is true of it: it did not
 		// finish, and because it was working in the person's own folder rather
-		// than a copy, whatever it managed is already in front of them.
+		// than a copy, whatever it managed is already in front of them — or, for
+		// the one that never got its turn, that it never started at all
+		// ([quickReportOnClose] picks between the two).
+		//
+		// THE REPORT IS READ OFF THE STATE THE RECORD ARRIVED IN, so it is taken
+		// before the state is overwritten a line below.
+		record.Report = quickReportOnClose(record)
 		record.State = TaskFailed
-		record.Report = quickInterruptedReport
 		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}

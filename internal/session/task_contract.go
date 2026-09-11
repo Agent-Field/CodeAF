@@ -111,6 +111,48 @@ const TaskKindJob TaskKind = "job"
 // enums would be two answers.
 const TaskKindAdaptive TaskKind = "adaptive"
 
+// kindsWithoutAcceptance DECLARES which kinds of work are admitted with NO
+// ACCEPTANCE AT ALL. It is a property OF THE KIND, so it is declared here beside
+// the kinds and read from there by everything that has to know — never restated
+// as a comparison at a call site, which is how two spellings of one rule come to
+// disagree.
+//
+// A quick task is the one row today. Nothing checks a quick task — its last
+// message is its answer — so its builder leaves deliverable and acceptance EMPTY
+// rather than inventing a "DONE WHEN" no reader will ever read
+// ([Agent.newQuickSpec], and docs/design/quick-task/DESIGN.md §the judge). Every
+// other kind fills one: a design promises a page the person approves
+// (harness_task.go), a run promises the answer its program declares
+// (subharness_run.go), and ordinary work is groomed into one before it is ever
+// proposed. A kind added later answers this question by adding a row here or by
+// filling the field, and [TestEveryKindsAcceptanceMatchesWhatItDeclares] walks
+// the builders and fails the one that does neither.
+var kindsWithoutAcceptance = map[TaskKind]bool{
+	TaskKindQuick: true,
+}
+
+// kindWithoutAcceptance reads that declaration.
+func kindWithoutAcceptance(kind TaskKind) bool { return kindsWithoutAcceptance[kind] }
+
+// acceptanceHolds is THE RULE, asked wherever a piece of work and its DONE WHEN
+// are met together: the spec at admission, and the record on the way back off
+// disk ([decodeTasks]).
+//
+// Ordinary work owes an acceptance. A node without one is a node no check can
+// judge and no reader can hold the work to, so a checkpoint carrying one was not
+// written by this code — which is why the store refuses the file whole rather
+// than scheduling half a graph. A kind that DECLARES it carries none owes
+// nothing, and the blank is the answer rather than the absence of one.
+//
+// Asking both the same question was the defect this function exists to end: one
+// quick task anywhere in a conversation's history refused the whole checkpoint,
+// and the conversation reopened with no task graph at all — every finished row,
+// every piece of running work and the whole family gone. Measured on a real
+// checkpoint, 2026-09-11.
+func acceptanceHolds(kind TaskKind, acceptance string) bool {
+	return strings.TrimSpace(acceptance) != "" || kindWithoutAcceptance(kind)
+}
+
 // TaskKindWord is what a person reads where the code holds a [TaskKind], and it
 // is the ONE place that translation is made — [taskStateWord]'s law applied to
 // the other half of a row.
