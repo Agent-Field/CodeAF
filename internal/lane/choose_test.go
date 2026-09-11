@@ -214,16 +214,15 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 		lanes[lane.name] = belief
 	}
 
+	// AND THE TOOL FLAG IS NO LONGER ONE OF THEM. It is a prior now, not a gate
+	// (frontier.go's THREE OF THE SHEET'S CLAIMS ARE PRIORS RATHER THAN GATES):
+	// every one of these lanes is still a candidate, and what the flag decides is
+	// where it is RANKED — which the sheet-doubt test below asserts.
 	tools := talk()
 	tools.Tools = true
-	for _, lane := range []string{"Parasail", "Cloudflare", "Baidu", "Alibaba"} {
-		if capable(lanes[lane], tools, opts) {
-			t.Errorf("%s took a tool call it does not honour", lane)
-		}
-	}
-	for _, lane := range []string{"CoreWeave", "DeepInfra", "DigitalOcean"} {
+	for _, lane := range []string{"Parasail", "Cloudflare", "Baidu", "Alibaba", "CoreWeave", "DeepInfra", "DigitalOcean"} {
 		if !capable(lanes[lane], tools, opts) {
-			t.Errorf("%s honours tool calls and was dropped anyway", lane)
+			t.Errorf("%s left the candidate set over a sheet flag, which is a prior and not a gate", lane)
 		}
 	}
 
@@ -243,31 +242,80 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 		t.Error("a four-bit lane stayed out after being allowed in")
 	}
 
-	half := lanes["Baidu"]
-	half.Facts.Uptime5m = 90
-	if capable(half, talk(), opts) {
-		t.Error("a lane answering nine minutes in ten was treated as available")
-	}
-
 	poor := lanes["Baidu"]
 	poor.Quality = Beta{A: 8, B: 4}
 	if capable(poor, talk(), opts) {
 		t.Error("quality was weighed rather than gated")
 	}
 
-	// AND THE ROUTER'S OWN VERDICT IS A GATE. A non-zero `status` on the sheet
-	// is the operator of the router saying it has derated this endpoint, which
-	// is evidence about the machine that nothing we can measure produces. The
-	// gate ignored the column until wave 2b, which is one of the two reasons the
-	// reference simulator and the shipped build did not admit the same lanes.
+	// AND NEITHER UPTIME NOR THE ROUTER'S OWN STATUS WORD ENDS THE ARGUMENT ANY
+	// MORE. Both were gates, and the argument for the second was a good one — it
+	// is evidence about the machine that nothing here can produce — but it is an
+	// opinion published minutes ago about a fleet that moves, and a wrong one
+	// removed GMICloud from every tool request of a task it had just served three
+	// times (docs/design/recovery/DESIGN.md §1). They demote instead.
+	half := lanes["Baidu"]
+	half.Facts.Uptime5m = 90
+	if !capable(half, talk(), opts) {
+		t.Error("a lane answering nine minutes in ten left the candidate set rather than being demoted")
+	}
 	derated := lanes["Baidu"]
 	derated.Facts.Status = -2
-	if capable(derated, talk(), opts) {
-		t.Error("a lane the router itself marked down was still routed to")
+	if !capable(derated, talk(), opts) {
+		t.Error("a lane the router marked down left the candidate set rather than being demoted")
+	}
+	if !doubted(derated, talk()) {
+		t.Error("a lane the router marked down was not even doubted")
 	}
 	derated.Facts.Status = 0
-	if !capable(derated, talk(), opts) {
-		t.Error("a healthy lane was refused on a status of zero")
+	if doubted(derated, talk()) {
+		t.Error("a healthy lane was doubted on a status of zero")
+	}
+}
+
+// TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt is the other half of the
+// law the gates above gave up: what the sheet says is acted on, it is simply
+// acted on as a RANKING. The measured case is GMICloud, flagged `Tools: false`
+// while serving three tool calls of one task in six seconds each.
+func TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt(t *testing.T) {
+	at := noon.Add(-time.Minute)
+	lanes := map[ID]Belief{}
+	var order []Scored
+	for _, lane := range []struct {
+		name  string
+		tools bool
+		ttft  float64
+	}{{"GMICloud", false, 400}, {"Fireworks", true, 900}} {
+		id := ID{Model: testModel, Lane: lane.name}
+		lanes[id] = Belief{ID: id, At: at, Facts: Facts{Tools: lane.tools, Quant: "fp8", Uptime5m: 100}}
+		order = append(order, Scored{ID: id, TTFT: lane.ttft})
+	}
+	req := Request{Model: testModel, Tools: true, QualityNeed: 0.9}
+
+	// The doubted lane is the FASTER of the two, so it led the order on the
+	// numbers and is asked second all the same — and it is still there.
+	ranked := sheetDoubtsLast(order, req, lanes, 1)
+	if len(ranked) != 2 || ranked[0].ID.Lane != "Fireworks" || ranked[1].ID.Lane != "GMICloud" {
+		t.Fatalf("the doubted lane was ranked %+v, want it behind the lane nothing is doubted about", ranked)
+	}
+
+	// One draw in probeInEvery asks it first anyway, which is the only way a
+	// published flag can ever be disproved.
+	probed := sheetDoubtsLast(order, req, lanes, 0)
+	if len(probed) != 2 || probed[0].ID.Lane != "GMICloud" {
+		t.Fatalf("the probe drew %+v, want the doubted lane asked first", probed)
+	}
+
+	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this lane actually served are
+	// a measurement of the thing the sheet was guessing at.
+	served := lanes[ID{Model: testModel, Lane: "GMICloud"}]
+	served.Quality = Beta{A: 12, B: 1}
+	lanes[served.ID] = served
+	if doubted(served, req) {
+		t.Fatal("a lane whose own answers came back usable is still doubted by a sheet flag")
+	}
+	if proven := sheetDoubtsLast(order, req, lanes, 1); proven[0].ID.Lane != "GMICloud" {
+		t.Fatalf("a lane that proved itself is still ranked last: %+v", proven)
 	}
 }
 

@@ -324,6 +324,73 @@ func TestAPacedRefusalCarriesTheRoutersNamedPool(t *testing.T) {
 	}
 }
 
+// ── THE LEDGER IS KEYED ON WHO SERVED, NEVER ON WHO WE CHOSE ────────────────
+//
+// THE MEASURED FAILURE (docs/design/recovery/census-20260910.md §8, finding 4).
+// 3,728 of 10,107 finished attempts have a serving machine that is not the lane
+// this process chose, and on 358 of the errors that name a provider the `(via
+// X)` contradicts the lane outright — `lane: Fireworks` / `via DeepInfra` 104
+// times. A ledger keyed on the choice rather than on the answer paces the
+// innocent machine and leaves the saturated one in the order.
+func TestARefusalIsPacedAgainstTheMachineThatServedIt(t *testing.T) {
+	ledger, clock := testLedger()
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}, velocity: ledger}
+	const model = "vendor/split-model"
+	// Both machines are known, so the ledger has an opinion it could get wrong.
+	ledger.observe(model, "Fireworks", 100*time.Millisecond, 64, time.Second, 0)
+	ledger.observe(model, "DeepInfra", 100*time.Millisecond, 64, time.Second, 0)
+
+	// The choice named Fireworks; the wire says DeepInfra answered and its queue
+	// is full.
+	refusal := client.laneRefusalFor(model, "Fireworks",
+		apiError(http.StatusTooManyRequests, []byte(
+			`{"error":{"message":"Provider returned error","metadata":{"provider_name":"DeepInfra"}}}`)))
+	if refusal.Lane != "DeepInfra" {
+		t.Fatalf("the refusal was filed against %q, want the machine that served it", refusal.Lane)
+	}
+	client.refuseLane(model, refusal, 0)
+
+	_, ignore := ledger.preferences(model)
+	if len(ignore) != 1 || ignore[0] != "DeepInfra" {
+		t.Fatalf("ignore = %v, want only the machine that refused", ignore)
+	}
+	clock.advance(time.Second)
+
+	// AND A POOL THAT NAMED NOBODY IS THE MACHINE WE DEMANDED, when the request
+	// permitted exactly one. There is no other machine the queue could have been.
+	alone := client.laneRefusalFor(model, "Fireworks",
+		apiError(http.StatusTooManyRequests, []byte(`{"error":{"message":"slow down"}}`)))
+	if alone.Lane != "Fireworks" {
+		t.Fatalf("a 429 under a demand of one machine was filed against %q, want Fireworks", alone.Lane)
+	}
+	// With nothing demanded there is nobody to blame and nothing is written.
+	anonymous := client.laneRefusalFor(model, "",
+		apiError(http.StatusTooManyRequests, []byte(`{"error":{"message":"slow down"}}`)))
+	if anonymous.Lane != "" {
+		t.Fatalf("an account-wide pacing was filed against %q, want nobody", anonymous.Lane)
+	}
+}
+
+// AND A LEDGER THAT CONFIGURATION USED TO SWITCH OFF IS A LEDGER THAT CANNOT
+// TELL THE NEXT ATTEMPT WHERE NOT TO GO. Three gates stood on this door
+// (docs/design/recovery/DESIGN.md §2, problem 9); what is configured now is only
+// what is EMITTED, which [TestRoutingOffSendsNoPreferencesAndMeasuresNothing]
+// still holds to.
+func TestTheLedgerRecordsWithRoutingOff(t *testing.T) {
+	ledger, _ := testLedger()
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1",
+		Routing: StaticRouting(RoutingOff)}, velocity: ledger}
+	const model = "vendor/unsteered-model"
+
+	client.refuseLane(model, laneRefusal{Kind: refusalPaced, Lane: "Sundial"}, 0)
+	if _, ignore := ledger.preferences(model); len(ignore) != 1 || ignore[0] != "Sundial" {
+		t.Fatalf("a session with routing off learned nothing: ignore = %v", ignore)
+	}
+	if prefs := client.providerPreferences(model, callKnobs{}, &ai.Request{Model: model}); prefs != nil {
+		t.Fatalf("a session with routing off sent a preference anyway: %+v", prefs)
+	}
+}
+
 // A rate computed over a twelve-token answer measures the handshake, so short
 // answers are judged on their first token only.
 func TestVelocityDoesNotRateAnswersBelowTheFloor(t *testing.T) {
@@ -472,8 +539,15 @@ func TestRequestSortsOnPriceWhenAsked(t *testing.T) {
 	}
 }
 
-// Off is a real answer and it is total: no preference object, and no ledger.
-func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
+// Off is a real answer and it is about the WIRE: no preference object, ever.
+//
+// IT USED TO BE ABOUT THE LEDGER TOO and is not any more. "A session that asked
+// for no routing asked for no ledger" was the old sentence here, and it left the
+// one thing that could tell a failed attempt where not to go switched off while
+// every other controller on the path went on acting
+// (docs/design/recovery/DESIGN.md §2, problem 9). The reading is kept; only the
+// steering is refused, which is what the person actually asked for.
+func TestRoutingOffSendsNoPreferencesAndStillMeasures(t *testing.T) {
 	client, recorded := routedClient(t, RoutingOff, answered(plainAnswer))
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
 		t.Fatal(err)
@@ -483,8 +557,8 @@ func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
 			t.Fatalf("provider = %v with routing off, want the field absent entirely", raw["provider"])
 		}
 	}
-	if sighting, ok := client.velocity.lastServed("vendor/fast-model"); ok {
-		t.Fatalf("measured %+v with routing off — a session that asked for no routing asked for no ledger", sighting)
+	if _, ok := client.velocity.lastServed("vendor/fast-model"); !ok {
+		t.Fatal("a session with routing off measured nothing at all, so nothing it learns can ever be walked back")
 	}
 }
 
