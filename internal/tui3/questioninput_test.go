@@ -231,7 +231,7 @@ func TestPairsComeBackInTheWinningSidesOwnWords(t *testing.T) {
 func TestTheDialSaysWhatTheSettingDoes(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionDial())
 	drawn := pageText(a)
-	if !strings.Contains(drawn, "[tell me, then act]") {
+	if !strings.Contains(drawn, tokens.GlyphPointer+" tell me, then act") {
 		t.Errorf("the dial should mark where it sits:\n%s", drawn)
 	}
 	// THE ROW UNDER IT IS THE ASKER'S OWN WORDS AND NOTHING ELSE. It used to
@@ -245,7 +245,7 @@ func TestTheDialSaysWhatTheSettingDoes(t *testing.T) {
 		t.Errorf("the dial built a sentence around the asker's label:\n%s", drawn)
 	}
 	tapNamed(t, a, tea.KeyRight, 0)
-	if drawn := pageText(a); !strings.Contains(drawn, "[just do it]") {
+	if drawn := pageText(a); !strings.Contains(drawn, tokens.GlyphPointer+" just do it") {
 		t.Errorf("→ should move the dial:\n%s", drawn)
 	}
 	tapNamed(t, a, tea.KeyRight, 0)
@@ -264,7 +264,7 @@ func TestTheReaderTierGetsANumberRatherThanADial(t *testing.T) {
 	if !strings.Contains(drawn, "2 of 3") {
 		t.Errorf("the reader tier should get a number:\n%s", drawn)
 	}
-	if strings.Contains(drawn, "[tell me, then act]") {
+	if strings.Contains(drawn, tokens.GlyphPointer+" tell me, then act") {
 		t.Errorf("the reader tier should not get the picture:\n%s", drawn)
 	}
 }

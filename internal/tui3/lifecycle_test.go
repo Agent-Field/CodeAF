@@ -347,10 +347,15 @@ func TestTheEditPreviewAppearsOnAnnouncementAndCollapsesIntoTheStat(t *testing.T
 	if strings.Contains(plain(toolRowText(t, a)), "+1") {
 		t.Fatalf("a queued edit drew its stat: %q", plain(toolRowText(t, a)))
 	}
-	// The header is the question hue's dimmer half, never plain dim ink.
+	// The header is DIM, like every other word about a call that has not run
+	// yet. It wore the question hue until the questions wave took the amber back
+	// to the marks (owner ruling 2026-09-11, colour pick C): the `?` in the
+	// gutter is what says a person is being waited on, and a second colour on a
+	// word meaning "not yet" was the hue spent on something that is not a
+	// question at all.
 	for _, r := range rows(a) {
-		if strings.Contains(plain(r.text), "pending") && !strings.Contains(r.text, a.pal.ask("pending")) {
-			t.Fatalf("the pending header is not in the question hue: %q", r.text)
+		if strings.Contains(plain(r.text), "pending") && !strings.Contains(r.text, a.pal.dim("pending")) {
+			t.Fatalf("the pending header is not dim: %q", r.text)
 		}
 	}
 

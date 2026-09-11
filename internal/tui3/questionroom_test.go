@@ -986,8 +986,12 @@ func TestAnAnswersLabelBodyAndAsidesAreThreeDifferentInks(t *testing.T) {
 	if head == "" || body == "" || aside == "" {
 		t.Fatalf("the open answer should draw a heading, a body and an aside:\n%s", pageText(a))
 	}
-	if !strings.Contains(head, a.pal.askBold("1 postgres")) {
-		t.Errorf("the label should be bold in the question hue: %q", head)
+	// THE KEY IS THE PAYLOAD HUE AND THE WORD IS BOLD INK, which is the panel's
+	// own grammar for an answer (owner ruling 2026-09-11, colour pick C: the
+	// amber stays on the marks).
+	if !strings.Contains(head, a.pal.data("1")) ||
+		!strings.Contains(head, a.pal.bold(a.pal.ink("postgres"))) {
+		t.Errorf("the label is not the key in the payload hue and the word in bold ink: %q", head)
 	}
 	if !strings.Contains(body, a.pal.ink("Rows already carry a foreign key into it and the migration is one file.")) {
 		t.Errorf("the body should be the prose ink: %q", body)

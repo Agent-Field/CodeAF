@@ -557,7 +557,7 @@ func (a *app) questionHeadRows(width int) []string {
 		return nil
 	}
 	out := make([]string, 0, 4)
-	mark := a.pal.ask(a.icon(tokens.GNeedsHuman))
+	mark := a.pal.warnBold(a.icon(tokens.GNeedsHuman))
 	head := strings.TrimSpace(room.head.question.Head)
 	lines := wrap(head, max(1, width-2))
 	for i, line := range lines {
@@ -661,12 +661,14 @@ func (a *app) questionOptionHead(i int, opt session.AnswerOption, width int) str
 	if key == "" {
 		key = strconv.Itoa(i + 1)
 	}
-	// THE LABEL IS THIS SECTION'S HEADING AND IS DRAWN AS ONE: the question hue
-	// and the weight together, which is exactly how the card already spells an
-	// answer's word. It was the body's own ink, so a heading and the paragraph
-	// under it were one column of identical grey and the page had no hierarchy
-	// at all (the owner, 2026-09-10).
-	row := lead + a.pal.askBold(key+" "+strings.TrimSpace(opt.Label))
+	// THE LABEL IS THIS SECTION'S HEADING AND IS DRAWN AS ONE: the key steps up
+	// to the payload hue and the word is ink with the weight on it, which is
+	// exactly how the panel above the box spells an answer. It was the body's
+	// own ink, so a heading and the paragraph under it were one column of
+	// identical grey and the page had no hierarchy at all (the owner,
+	// 2026-09-10); it was then the question hue, which is the amber the marks
+	// keep (owner ruling 2026-09-11, colour pick C).
+	row := lead + a.pal.data(key) + " " + a.pal.bold(a.pal.ink(strings.TrimSpace(opt.Label)))
 	// The pick's badge is right-aligned, dim, and cut before the word is: a page
 	// too narrow to say `my pick · fairly sure` still has to say which answers
 	// there are.
@@ -833,7 +835,7 @@ func (a *app) questionNoteRows(part string, indent, width int) []string {
 	}
 	if ask := room.asks[part]; ask != nil {
 		for i, line := range wrap(strings.TrimSpace(ask.asked), inner) {
-			lead := a.pal.ask(a.icon(tokens.GNeedsHuman) + " ")
+			lead := a.pal.warnBold(a.icon(tokens.GNeedsHuman)) + " "
 			if i > 0 {
 				lead = "  "
 			}
@@ -942,19 +944,19 @@ func (a *app) questionFootRows(width int) []string {
 	}
 	if room.deciding {
 		return []string{
-			a.pal.ask(fit(a.questionDecideLine(), width)),
+			a.pal.ink(fit(a.questionDecideLine(), width)),
 			a.pal.dim(fit(questionDecideAgain, width)),
 		}
 	}
 	if room.decidingKind {
 		return []string{
-			a.pal.ask(fit(a.questionDecideKindLine(), width)),
+			a.pal.ink(fit(a.questionDecideKindLine(), width)),
 			a.pal.dim(fit(questionDecideKindAgain, width)),
 		}
 	}
 	if prompt := a.questionPromptWord(); prompt != "" {
 		return []string{
-			a.pal.ask(fit(prompt, width)),
+			a.pal.ink(fit(prompt, width)),
 			a.pal.dim(fit(a.questionSaying(), width)),
 		}
 	}
@@ -1018,7 +1020,7 @@ func (a *app) questionComposeRow(width int) string {
 	if len(room.picked) == 0 {
 		return a.pal.dim(fit(line, width))
 	}
-	return a.pal.ask(fit(line, width))
+	return a.pal.ink(fit(line, width))
 }
 
 // questionPickedWord is what was chosen, in keys and words: `1 postgres`, or

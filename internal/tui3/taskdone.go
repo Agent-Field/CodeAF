@@ -606,7 +606,7 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 	// box (tasksettle.go); what stands here is what is being asked.
 	if card.status.Tier == session.TaskTierYourCall {
 		if reason := strings.TrimSpace(card.status.Ask.Reason); reason != "" {
-			return a.pal.ask("  " + fit(reason, width-4))
+			return a.pal.dim("  " + fit(reason, width-4))
 		}
 		return ""
 	}
