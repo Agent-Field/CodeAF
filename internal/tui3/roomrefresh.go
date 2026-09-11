@@ -27,8 +27,15 @@ func (r *taskRoom) keepSteerEcho(words string, e entry) {
 	r.pendingSteers = append(r.pendingSteers, roomSteerEcho{words, r.lastSteerAt, n, e})
 }
 
-func (a *app) refreshRoomRecord(journal []byte) {
+func (a *app) refreshRoomRecord(journal []byte, beatPath string) {
 	r := a.room
+	// THE PULSE IS READ FIRST AND ALWAYS, because a call can open and close
+	// inside one refresh without the transcript growing a single byte — a
+	// request in flight journals nothing until it lands, which is the whole
+	// defect #837 names. The early return below used to sit above this line,
+	// so the one reading that changed said nothing changed and the live
+	// segment never drew.
+	r.beat, r.beatRead = session.ReadTaskBeat(beatPath)
 	if bytes.Equal(r.journal, journal) {
 		return
 	}
@@ -83,6 +90,11 @@ func (a *app) refreshRoomRecord(journal []byte) {
 	r.entries, r.turn = entries, turn
 	r.journal = bytes.Clone(journal)
 	r.takeRequests(record.Requests)
+	// THE PULSE IS CARRIED, AND NEVER OPENED HERE: the reading above has it,
+	// and a second open of the same file would be the same fact paid for twice
+	// on one tick. The path is the record's own name for the sidecar, kept for
+	// the tick that follows this one.
+	r.beatPath = beatPath
 }
 
 // takeRequests feeds a page with no lane its live token column, from the one

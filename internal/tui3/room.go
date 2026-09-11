@@ -386,13 +386,25 @@ type taskRoom struct {
 	// no other time — and, unlike the conversation's, on the HEIGHT too, because
 	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
 	// and a taller view is a different row list.
-	rows          []row
-	width         int
-	height        int
-	dirty         bool
-	loading       bool
-	readFailed    bool
-	journal       []byte
+	rows       []row
+	width      int
+	height     int
+	dirty      bool
+	loading    bool
+	readFailed bool
+	journal    []byte
+	// beatPath is where this node's pulse lives, AS THE RECORD ITSELF NAMED IT
+	// (session.TaskRecord.Beat, from the checkpoint row's own field), and "" for a
+	// node that is not writing one. IT IS CARRIED AND NEVER BUILT: a page that
+	// recomputed it from the id would be a second spelling of where the pulse
+	// lives, which is the exact bargain the record's field exists to end.
+	beatPath string
+	// beat is the LAST READING of the pulse, taken on the refresh tick itself so
+	// the display keeps moving and never freezes on one take — and false for a
+	// node with no pulse, which renders nothing, the same emptiness as any other
+	// unknown ([roomFactsOf]'s live segment is the consumer).
+	beat          session.TaskBeatRow
+	beatRead      bool
 	lastSteerAt   time.Time
 	pendingSteers []roomSteerEcho
 }
@@ -855,7 +867,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	a.room.loading = false
 	a.room.readFailed = msg.err != nil
 	if msg.err == nil {
-		a.refreshRoomRecord(msg.record.Journal)
+		a.refreshRoomRecord(msg.record.Journal, msg.record.Beat)
 	}
 	// A GUEST PAGE TAKES ONE THING FROM THE READING AND ONE ONLY: whether the
 	// conversation it joined is still the conversation it joined. What the WORK is
@@ -2726,6 +2738,17 @@ func (a *app) roomLiveWord(node *taskNode, work roomWork) string {
 	if node.state != session.TaskRunning {
 		return ""
 	}
+	// THE OPEN CALL'S OWN SENTENCE, WHEN THE PULSE SAYS ONE IS IN FLIGHT. The
+	// pulse is the one source that knows a request went out and has not come
+	// back — the page's own rows cannot, because a model call that is still
+	// streaming has written no entry yet, which is the exact defect #837 was
+	// filed over: one call ran twelve minutes with the header saying nothing
+	// about it but the task's own age and a tool count. While a call is open the
+	// live segment is THE CALL'S clock and its rate, and when it comes back the
+	// segment falls through to the ladder below — reverted, not replaced.
+	if open := a.roomOpenCallWord(node); open != "" {
+		return open
+	}
 	word := work.running
 	if word == "" && !work.last.IsZero() && a.now().Sub(work.last) >= stillWorking {
 		word = strings.TrimPrefix(stillWorkingWord, " · ")
@@ -2734,6 +2757,42 @@ func (a *app) roomLiveWord(node *taskNode, work roomWork) string {
 		return ""
 	}
 	return word
+}
+
+// roomOpenCallWord is the in-flight call's own sentence, in the exact words the
+// chat foot spells the live rate — or "" when no call is open.
+//
+// IT IS THE FOOT'S VOCABULARY AND NEVER A SECOND ONE. The rate is the same
+// [PhaseNews.Rate] the status row's right edge draws ([app.liveRiderAt]), spelled
+// by the same " tok/s" that line builds, so the two rows can never disagree on
+// what "how fast" looks like. The clock is the call's own elapsed in the live
+// spelling every moving figure on this surface already uses ([countUpWord]), and
+// it needs no wakeup of its own: the frame already repaints on the tick while a
+// room is open, so a ten-minute call ticks.
+//
+// THE PREDICATE IS THE PULSE'S AND NOT A GUESS. [session.TaskBeatRow.Working] is
+// "the last start has not been answered by a finish", and a node with no pulse
+// at all — an unknown id, a landed node whose pulse was taken away with the
+// landing, a build that cannot read the file — answers false and draws nothing,
+// which is the emptiness law and not a failure to draw.
+func (a *app) roomOpenCallWord(node *taskNode) string {
+	if node.state != session.TaskRunning {
+		return ""
+	}
+	if !a.room.beatRead || !a.room.beat.Working() {
+		return ""
+	}
+	var fields []rowField
+	if clock := countUpWord(a.now().Sub(a.room.beat.RequestStarted)); clock != "" {
+		fields = append(fields, rowSay(clock))
+	}
+	if news, ok := a.roomPhase(); ok && a.windowWorking() && news.Rate > 0 {
+		// The rate rides only while it is being measured, which is the foot's own
+		// law ([app.liveRiderAt]): a rate nobody is producing is nothing, never
+		// `0 tok/s`.
+		fields = append(fields, rowSay(tokenWord(int(news.Rate))+" tok/s"))
+	}
+	return rowLed(fields, rowUnbounded)
 }
 
 // roomWork is what the page's own rows say about the work: how many calls have

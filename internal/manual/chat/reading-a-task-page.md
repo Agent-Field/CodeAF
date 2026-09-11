@@ -197,8 +197,10 @@ you are standing on and does nothing.
 
 The task's name first — that never gets cut while there is room for it — then what it is
 doing, how long it has been going, what it has cost, how many calls it has made, and what
-is running right now. A stretch where nothing has arrived for ten seconds says `still
-working`, which is the truest thing the page can say about a silence.
+is running right now. While a request is out and has not come back, that last fact is
+**that call's own clock, and its rate while there is one to measure** — see *A call has
+been open for ages* below. A stretch where nothing has arrived for ten seconds and no call
+is open says `still working`, which is the truest thing the page can say about a silence.
 
 **Anything nobody has published is simply absent.** A task that has cost nothing shows no
 cost, one that has called nothing shows no count, and a queued one has no clock — a figure
@@ -207,6 +209,34 @@ from the end, in that order, and never cuts the name.
 
 The first of those facts — the word for what the work is doing — has a fixed vocabulary,
 and the next section lists every word it can be.
+
+## A call has been open for ages — the page says nothing, is it stuck, how long has this request been running
+
+**It says how long, now.** While a request is out and has not come back, the last fact on
+the header is that call's own clock, counting up, with its rate beside it while there is a
+rate to measure:
+
+```
+⠙ main ▸ Port the loader · working · 12m 4s · $0.42 · 14 tool calls · 11m 38s · 47 tok/s
+```
+
+The two clocks are different things and both are worth having. The first is the whole
+task's age. The last is **this request's** age — the one that has not answered yet.
+
+This used to be invisible, and that was the worst silence on the page. A model call that
+is still streaming has written no row yet, so nothing the page could see knew about it,
+and a call that ran twelve minutes looked exactly like a task doing nothing at all. The
+page reads the work's pulse for it now, which is the one place that knows a request went
+out and has not returned.
+
+**When the call comes back the clock goes away** and the line returns to naming whatever
+is running. A task that is not running, a call that has answered, and work whose pulse has
+been taken away with its landing all draw nothing there — a figure nobody is measuring is
+a figure this surface does not print.
+
+The rate is the same one the status line at the bottom of the screen draws, in the same
+words, so the two can never tell you different things about how fast the same call is
+going.
 
 ## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
 
