@@ -509,7 +509,7 @@ func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model stri
 	// could not see the narrowest filter this process sends. A pinned request
 	// therefore had no first rung at all and climbed straight to "removed
 	// reasoning", still pinned to the machine that had refused it (issue #266).
-	prefs := c.wirePreferences(model, knobs, request)
+	prefs := c.wirePreferences(model, knobs)
 	if prefs.membershipNarrowing() {
 		plan = append(plan, rung(relaxEndpointFilter))
 	}
@@ -1004,7 +1004,7 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	// the field most likely to have emptied the endpoint set on a request that
 	// reached this sentence, and a list that left it out was describing a
 	// different request from the one that failed.
-	if prefs := c.wirePreferences(model, knobs, request); prefs != nil {
+	if prefs := c.wirePreferences(model, knobs); prefs != nil {
 		if prefs.RequireParameters != nil {
 			params = append(params, "provider.require_parameters")
 		}

@@ -72,6 +72,33 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
+## The machines one message may go to are decided once — why a retry walks the same set, and why something learned mid-answer waits for your next message
+
+Before the first byte of a request leaves, aforge decides which machines that
+request may go to: the ranked few it asks for by name, and the ones it asks the
+router to skip. **That decision is made once and it lasts the whole request.**
+
+It matters because one message is often sent more than once without you seeing
+it. A machine answers with a fault, a pool turns out to be full, the shape has to
+be widened and tried again: each of those is the same request going out afresh.
+What changes between them is only what this request has learned about itself —
+the machines that have already refused *it*, which are left off the next one.
+What does not change is the ranking.
+
+So something measured while your message is in flight — the provider list
+finishing a refresh a second late, another conversation discovering that a
+machine has got quick — is spent on your **next** message and not this one. That
+is deliberate. The line that tells you what is happening (`trying another
+machine · 2 of 3`), the clock that decides when to stop waiting on a machine, and
+the names on the request itself all have to be about one set of machines. A
+ranking that appeared on the third try would be a set nothing else had heard of,
+and you would be told about a walk through machines that were never asked for.
+
+If a request starts on a model aforge has measured nothing about, it has nothing
+to rank and asks for nothing by name — the router chooses — and it stays that way
+for the whole of that request even if the provider list lands halfway through.
+Your next message is routed.
+
 ## When the provider list says a machine cannot take tool calls, or is half down — why aforge tries it anyway
 
 The public sheet carries three claims about each machine that aforge used to

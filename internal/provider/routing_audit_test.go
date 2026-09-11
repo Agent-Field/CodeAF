@@ -143,7 +143,7 @@ func TestBorrowableUserPreferenceLeadsBothWarmAndDifferentCacheEndpoints(t *test
 			request := &ai.Request{Messages: userMessages("continue")}
 			ctx := client.withLaneChoice(lineage("warm"), request)
 			choice, _ := laneChoiceFromContext(ctx)
-			prefs := client.wirePreferences(model, knobsFrom(ctx), request)
+			prefs := client.wirePreferences(model, knobsFrom(ctx))
 			if lanes.HeadOf(choice) != "brass" || prefs == nil || len(prefs.Order) == 0 || prefs.Order[0] != "brass" {
 				t.Fatalf("cache displaced the person's choice: choice=%+v prefs=%+v", choice, prefs)
 			}

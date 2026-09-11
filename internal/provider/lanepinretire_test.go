@@ -148,7 +148,7 @@ func TestARefusedPinIsRetiredForThatModelAndSaidOnce(t *testing.T) {
 	//    row wholesale would be this build answering a question the wire never
 	//    asked.
 	other := "openrouter/another-model"
-	choice, made := rig.client.laneChoiceFor(callKnobs{}, other,
+	choice, made := rig.client.drawLaneChoice(callKnobs{}, other,
 		&ai.Request{Model: other, Messages: userMessages("hello")})
 	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
 		t.Fatalf("a request for another model went out on %+v, want the pin the person wrote", choice)
@@ -169,7 +169,7 @@ func TestARefusedPinIsRetiredForThatModelAndSaidOnce(t *testing.T) {
 	//    machine is them stating the instruction afresh, and the demand goes
 	//    back out.
 	RepinLane(LanePin{Lane: "Ghost"})
-	choice, made = rig.client.laneChoiceFor(callKnobs{}, rig.model,
+	choice, made = rig.client.drawLaneChoice(callKnobs{}, rig.model,
 		&ai.Request{Model: rig.model, Messages: userMessages("hello")})
 	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
 		t.Fatalf("after pinning again the request goes out on %+v, want the pin demanded again", choice)

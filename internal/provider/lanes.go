@@ -327,16 +327,34 @@ func tokensOf(bytes int) int { return bytes / charsPerToken }
 // a warm one in the cost autopsy, which is more than any lane's tariff differs
 // from another's, so the pin keeps its place until the belief is proven against
 // it.
-func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callKnobs, request *ai.Request, pinned string) {
+func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callKnobs, pinned string) {
 	// A DECISION SITE (#433): whether the belief's ranking reaches the wire is
 	// what this base answered about carrying a preference, never its hostname.
-	if prefs == nil || request == nil || !c.carriesPreferences() {
+	if prefs == nil || !c.carriesPreferences() {
 		return
 	}
-	choice, made := c.laneChoiceFor(knobs, model, request)
-	if !made {
+	// AND THE CHOICE IS THE CALL'S OWN, READ HERE AND DRAWN NOWHERE NEAR HERE.
+	//
+	// THE ENCODER MAY NOT ASK THE CHOOSER, and that is the law
+	// [Client.withLaneChoice] exists to keep (`lane_law_test.go`). The choice is
+	// a SAMPLED decision — [lane.seedFor] mixes the moment it is asked at into
+	// the seed, so two asks a microsecond apart are two different answers — and
+	// one call encodes its request many times: once per attempt, once more for
+	// every rung of the relaxation ladder, once again for the object the refusal
+	// door re-derives. Drawn here, each of those was a different request going
+	// to a different set of machines, and nothing above could name the set: the
+	// plan's `Lane` and `Alts` come from [requestSet], which reads this same
+	// choice, so a choice the encoder kept to itself left the move generator
+	// walking a set the wire had never carried.
+	//
+	// A NIL CHOICE IS A REAL ANSWER and it is this file's opening law said once
+	// more: the call decided there was nothing to prefer — no belief, no pin,
+	// routing off — and the request goes out shaped exactly as it was before this
+	// package existed.
+	if knobs.laneChoice == nil {
 		return
 	}
+	choice := *knobs.laneChoice
 	// A DEMAND IS NOT A RANKING, so it replaces the object rather than joining
 	// it. `Only` is what a pin sends (lanepin.go): the request goes to exactly
 	// that machine or it does not go, which is the sentence the picker and the
@@ -427,19 +445,17 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	}
 }
 
-// laneChoiceFor is the preference this request goes out on: the one the call
-// already decided, or a fresh one for a call that decided none.
+// drawLaneChoice DECIDES what one call will ask the router for, and it is THE
+// ONE DRAW IN THIS PACKAGE: [Client.withLaneChoice] is its only caller and a law
+// test fails the build on a second one.
 //
-// A STREAMED CALL DECIDES ONCE, IN client.go, BEFORE ANYTHING IS SENT — because
-// the watch that may hedge it and the encoder that writes `provider.order` have
-// to agree about which lane was asked for, and the choice is a sampled decision
-// that answers differently every time it is asked. A non-streamed call has no
-// watch to agree with, so it decides here, which is the last moment the model
-// and the shaped request are both known.
-func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Request) (lanes.Choice, bool) {
-	if knobs.laneChoice != nil {
-		return *knobs.laneChoice, true
-	}
+// IT IS A SAMPLE AND NOT A LOOKUP. `internal/lane`'s chooser is a Thompson draw
+// seeded with the moment it is asked at, so asking it twice about one request
+// gives two different answers — which is exactly what a call must not have. The
+// watch that may hedge it, the plan that decides what to do when it fails, and
+// the encoder that writes `provider.order` all have to be looking at one set of
+// machines, and they are looking at this one.
+func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Request) (lanes.Choice, bool) {
 	// WHAT A PERSON SAID IS READ BEFORE THE BELIEF IS ASKED (lanepin.go), and
 	// two of the three rows never reach the chooser at all.
 	//
@@ -514,8 +530,24 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 }
 
 // withLaneChoice decides this call's lane preference and carries it on the
-// context, so that the watch and the wire are looking at the same choice. See
-// [Client.laneChoiceFor] for why it is decided once rather than per encode.
+// context, so that the watch, the plan and the wire are looking at the same
+// choice. See [Client.drawLaneChoice] for why it is a decision and not a lookup.
+//
+// ── ONE CHOICE PER CALL, ON EVERY DOOR ──────────────────────────────────────
+//
+// IT IS IDEMPOTENT AND IT IS CALLED TWICE ON PURPOSE. The streamed door asks it
+// before anything is sent (client.go), because the watch that decides whether to
+// hedge has to be told which lane was asked for before the first byte leaves;
+// [Client.sendShaped] asks it again on the one door every send passes through,
+// which is where a call that reached the wire by any OTHER road gets its one
+// choice. A call that already has one is handed its own back.
+//
+// AND THE CHOICE IS WHAT THE WIRE WILL CARRY, not what the chooser wished for.
+// The ranking is folded through [Client.wirePreferences] — the person's pin in
+// front of it, the ladder's rungs, the machines the strike ledger has struck —
+// and the finished object's three lists are written back onto the choice before
+// it is stamped. That is what makes the plan's set ([requestSet]) and the body's
+// set one fact rather than two that agree on a good day.
 func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) context.Context {
 	if request == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return ctx
@@ -531,7 +563,7 @@ func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) contex
 	// watch must be looking at the choice the request really carried, so the
 	// two are gated on the same answer.
 	knobs, model := knobsFrom(ctx), c.modelFor(request)
-	choice, made := c.laneChoiceFor(knobs, model, request)
+	choice, made := c.drawLaneChoice(knobs, model, request)
 	if !made {
 		return ctx
 	}
@@ -539,7 +571,7 @@ func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) contex
 	// that actual first choice, or it can rescue a healthy cached endpoint by
 	// comparing its wait with a different endpoint's clock.
 	knobs.laneChoice = &choice
-	prefs := c.wirePreferences(model, knobs, request)
+	prefs := c.wirePreferences(model, knobs)
 	if prefs == nil {
 		return ctx
 	}

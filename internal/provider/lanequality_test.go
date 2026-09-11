@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE QUALITY LOOP CLOSES ─────────────────────────────────────────────────
@@ -213,7 +212,7 @@ func TestRoutingOffStillTeachesTheBelief(t *testing.T) {
 	if outcomes := ledger.judged(); len(outcomes) != 1 || outcomes[0].Accepted {
 		t.Fatalf("a session with routing off wrote %+v, want the one refused answer written down", outcomes)
 	}
-	if prefs := client.providerPreferences("openrouter/quality-model", callKnobs{}, &ai.Request{}); prefs != nil {
+	if prefs := client.providerPreferences("openrouter/quality-model", callKnobs{}); prefs != nil {
 		t.Fatalf("a session with routing off still asked the wire for something: %+v", prefs)
 	}
 }

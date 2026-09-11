@@ -392,7 +392,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// this line writes ([Client.relaxationPlan]). It read only the ledger's half
 	// of it for a while, could not see the demand a rescue adds, and offered a
 	// pinned request no first rung at all (issue #266).
-	wire.Provider = c.wirePreferences(model, knobs, &scrubbed)
+	wire.Provider = c.wirePreferences(model, knobs)
 	// AND WHETHER THE ASK WAS REALLY MADE IS RECORDED WHERE IT IS REALLY
 	// WRITTEN. A base answers the #433 question with what comes back from a
 	// request that carried a preference, and the widened retry that follows a

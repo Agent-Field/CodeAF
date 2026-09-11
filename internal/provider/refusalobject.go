@@ -269,7 +269,7 @@ func (c *Client) refusalObject(request *ai.Request, knobs callKnobs, err error) 
 		return laneRefusal{}
 	}
 	model := c.modelFor(request)
-	return c.laneRefusalFor(model, c.onlyLane(model, knobs, request), err)
+	return c.laneRefusalFor(model, c.onlyLane(model, knobs), err)
 }
 
 // laneRefusalFor is the same classification asked by a caller that already
@@ -382,16 +382,17 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 // Nothing in this build sends more than one today; this is what it means if
 // something ever does.
 //
-// AND RE-DERIVING THE OBJECT IS SAFE FOR THIS ONE FIELD, which is worth saying
-// because the chooser underneath it is a SAMPLED decision and two draws are two
-// different answers (lanes.go's [Client.laneChoiceFor]). A streamed call
-// carries the choice it was decided on and re-derives nothing; an unstreamed
-// one draws again, and the ranking it draws may differ — but `only` is never
-// the ranking. It is set from a strict pin or from a rescue's own demand, both
-// of which are facts rather than draws, so the machine named here is the
-// machine that was named on the wire.
-func (c *Client) onlyLane(model string, knobs callKnobs, request *ai.Request) string {
-	prefs := c.wirePreferences(model, knobs, request)
+// AND RE-DERIVING THE OBJECT IS EXACT, which it was not always. The chooser
+// underneath it is a SAMPLED decision and two draws are two different answers
+// (lanes.go's [Client.drawLaneChoice]), so while the encoder was free to draw
+// one of its own this line re-derived a ranking that could differ from the one
+// the wire had carried. `only` happened to survive that — it comes from a strict
+// pin or a rescue's own demand, both facts rather than draws — but the safety
+// was an accident of which field was being read. Every call now carries the ONE
+// choice it was decided on ([Client.withLaneChoice]) and this composes the same
+// object the body did, field for field.
+func (c *Client) onlyLane(model string, knobs callKnobs) string {
+	prefs := c.wirePreferences(model, knobs)
 	// ONE NAME OR NO NAME, because a strike has to name the machine it takes
 	// away. A demand listing two machines and refused as a whole says only that
 	// the pair could not serve the model between them, and striking either on
