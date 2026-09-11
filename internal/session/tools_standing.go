@@ -267,9 +267,9 @@ var standDescription = "Set up something that keeps working after this window is
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"folder_scope":{"type":"object","description":"Explicit folder scope for a hold only; replaces altitude. Use existing collection IDs, never infer from shortcuts. Requires a person's answer to the proposal.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when the person includes subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
-	`"placement":{"type":"string","description":"Work that runs (does.kind task) only: the id of an existing folder to place it in, so that folder's rules reach every run. Send it only when they named a folder. Omitted, the work is placed where this conversation is placed, or in no folder."},` +
+	`"placement":{"type":"string","description":"Work that runs (does.kind task) only: the id of an existing folder to place it in, so that folder's rules reach every run; on an edit, the folder it moves to. Send it only when they named a folder. Omitted, the work is placed where this conversation is placed, or in no folder."},` +
 	`"op":{"type":"string","enum":["propose","list","edit","pause","resume","stop"],"description":"propose a new one, list what stands here, or edit, pause, resume or stop one that does."},` +
-	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it. On pause, resume and stop it names an item instead of its id."},` +
+	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
 	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once at a moment, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against the person's words. hold: NEVER WAKES and so can never spend — the kind for a rule, a convention or a preference, a sentence with no moment, rhythm or condition in it; it rides automatically into the world of every conversation and task it reaches, which is how it is kept."},` +
 	`"at":{"type":"string","description":"The one moment of an at, a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). Work it out from the Now line in your instructions; NEVER shell out to read a clock. A moment ALREADY PASSED is refused, and the refusal says the time now — recompute from that, not from the Now line you already used. For a relative moment send in."},` +
@@ -283,7 +283,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"args":{"type":"object","description":"That tool's arguments."}` +
 	`},"additionalProperties":false},` +
 	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Defaults to how often anything is checked."},` +
-	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
+	`"hint":{"type":"string","description":"file or probe only: what a yes looks like, for the cheap judgment that reads the probe's output or what a watched file changed: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
 	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs its instructions in a session of its own, unattended, with a cost row."},` +
@@ -305,7 +305,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
 	`"grant":{"type":"string","description":"One sentence, in their words, for what acting on this may do without asking — \"open a pull request but never merge it\". Send it only when they said something like it; with none, it may only tell them things."},` +
-	`"id":{"type":"string","description":"Which item edit, pause, resume and stop are about. Their own words work too."}` +
+	`"id":{"type":"string","description":"Which item edit, pause, resume and stop are about."}` +
 	`},"required":["op"],"additionalProperties":false}`
 
 // standArguments is the wire form.
@@ -592,7 +592,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// this tool answers with all read [standing.When.Words], which is the
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
-		WhenWords: item.When.Words,
+		WhenWords: item.When.CardWords(),
 		CostWords: a.standingCostWords(item, limits),
 		Guessed:   parsed.Guessed,
 		Terms:     a.standingTerms(ctx, item, place, found),
@@ -1735,7 +1735,7 @@ func (a *Agent) standingHere() ([]standing.Item, error) {
 // things this build does not know as though it did.
 func standingRow(item standing.Item) string {
 	parts := []string{item.Glyph(false), item.Words}
-	if when := strings.TrimSpace(item.When.Words); when != "" {
+	if when := item.When.CardWords(); when != "" {
 		parts = append(parts, when)
 	}
 	if item.Status != standing.StatusActive {

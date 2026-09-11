@@ -262,6 +262,12 @@ about is not raised again every five minutes. When the answer is neither a clear
 yes nor a clear no, aforge treats it as a no and the log says
 `there was no clear answer, so nothing was said`.
 
+**The card shows the line before you say yes**, because it is all you will ever
+receive: `says · CI on main is red: [what the check found]` — the part in brackets
+is where the finding will stand (`[which files changed]` on a file watch). Its `when ·`
+line says a file watch's condition too: `whenever a file changes inside inbox/clients/,
+only when: …`.
+
 ## How long do I have to answer the card — the card does not time out
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no

@@ -56,6 +56,7 @@ const (
 	standingWhenTag   = "when · "
 	standingCostsTag  = "costs · "
 	standingDoesTag   = "does · "
+	standingSaysTag   = "says · "
 	standingReportTag = "report · "
 	standingFolderTag = "folder · "
 	standingRuleTag   = "rule · "
@@ -230,9 +231,14 @@ const standingPlacementLaw = "placing work in a folder needs the person's answer
 
 // standingTerms is the card's lines about work that runs: what one run does,
 // the report and who writes it, the folder, and the rules that reach it now.
-// A line to say and a rule carry none (the card's own bands say all of them).
-// found is what the report path holds that aforge did not put there.
+// A line to say carries the line itself, as [standing.Item.SayWords] shows it
+// before the yes, since it is all the person will ever receive (ruling R8); a
+// rule carries none (the card's own bands say all of it). found is what the
+// report path holds that aforge did not put there.
 func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place standingPlacement, found standingReportFile) []string {
+	if item.Does.Kind == standing.ActionSay {
+		return []string{standingSaysTag + clip(item.SayWords(), standingCardClip)}
+	}
 	if item.Does.Kind != standing.ActionTask {
 		return nil
 	}

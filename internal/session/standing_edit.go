@@ -116,7 +116,7 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	shownBefore, shownAfter := standingShownChange(current, draft)
 	notice := StandingNotice{
 		Item:      draft,
-		WhenWords: standingChange(current.When.Words, draft.When.Words),
+		WhenWords: standingChange(current.When.CardWords(), draft.When.CardWords()),
 		CostWords: standingChange(a.standingCostWords(current, standingKnownLimits(current, standingLimits{})),
 			a.standingCostWords(draft, standingKnownLimits(draft, limits))),
 		Guessed: parsed.Guessed,
@@ -366,7 +366,9 @@ func (a *Agent) standingEditChecks(current, draft standing.Item) (standingReport
 	if err := draft.Validate(); err != nil {
 		return standingReportFile{}, "Invalid arguments: " + err.Error()
 	}
-	if !reflect.DeepEqual(current.When, draft.When) {
+	// Asked when [standing.Store.Revise] asks it, a new waking or a new line,
+	// so a yes is never refused for what the card could have said.
+	if !reflect.DeepEqual(current.When, draft.When) || current.Does.Say != draft.Does.Say {
 		if err := draft.CheckWatch(); err != nil {
 			return standingReportFile{}, err.Error()
 		}
@@ -399,16 +401,13 @@ func standingChange(before, after string) string {
 	return before + " → " + after
 }
 
-// standingWorkTerms is an item's card lines for an edit: the terms of work that
-// runs, or for a line to say and a rule, the one line of what they say.
+// standingWorkTerms is an item's card lines for an edit: its card's terms, or
+// for a rule, the one line of what it says.
 func (a *Agent) standingWorkTerms(ctx context.Context, item standing.Item, place standingPlacement, found standingReportFile) []string {
 	if terms := a.standingTerms(ctx, item, place, found); len(terms) > 0 {
 		return terms
 	}
-	if item.When.Kind == standing.WhenHold {
-		return []string{standingRuleTag + clip(oneLine(item.Prompt()), standingCardClip)}
-	}
-	return []string{"says · " + clip(oneLine(item.Does.Say), standingCardClip)}
+	return []string{standingRuleTag + clip(oneLine(item.Prompt()), standingCardClip)}
 }
 
 // standingChangeContext is how many unchanged words an edit card keeps before
