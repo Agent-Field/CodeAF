@@ -250,22 +250,29 @@ func laneNewsFor(key string) (LaneNews, bool) {
 	return news, ok
 }
 
-// laneStoryFor is the whole of what the desk holds for a window, asked by names
-// in order: the first name with anything filed under it answers, which is the
-// order [app.talkKeys] states for the conversation and the single name a room
-// has.
-func laneStoryFor(keys ...string) laneStory {
+// laneStoryFor is the whole of what the desk holds for one name: the single
+// name a room has, or one of the conversation's two ([app.talkLaneStory]).
+func laneStoryFor(key string) (laneStory, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return laneStory{}, false
+	}
 	desk.mu.RLock()
 	defer desk.mu.RUnlock()
-	for _, key := range keys {
-		key = strings.TrimSpace(key)
-		seen, hasSeen := desk.latest[key]
-		rescue, hasRescue := desk.rescue[key]
-		if hasSeen || hasRescue {
-			return laneStory{seen: seen, rescue: rescue, hasSeen: hasSeen, hasRescue: hasRescue}
-		}
+	seen, hasSeen := desk.latest[key]
+	rescue, hasRescue := desk.rescue[key]
+	return laneStory{seen: seen, rescue: rescue, hasSeen: hasSeen, hasRescue: hasRescue}, hasSeen || hasRescue
+}
+
+// talkLaneStory is the conversation's story, asked in [app.talkKeys]' order:
+// the first of its names with anything filed under it answers.
+func (a *app) talkLaneStory() laneStory {
+	conversation, model := a.talkKeys()
+	if story, ok := laneStoryFor(conversation); ok {
+		return story
 	}
-	return laneStory{}
+	story, _ := laneStoryFor(model)
+	return story
 }
 
 // laneSpark is our own last few first-token waits on one lane, oldest first, in
@@ -1291,7 +1298,7 @@ func (a *app) openPickerFromChip() {
 // a machine the address already names is not said twice. The seam asks
 // [app.talkLaneRider] instead, which never suppresses.
 func (a *app) laneRider(timed bool) string {
-	return a.laneRiderFor(laneStoryFor(a.talkKeys()...), a.model, "", timed, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, "", timed, a.state == stateWorking)
 }
 
 // talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with
@@ -1309,7 +1316,7 @@ func (a *app) talkLaneRider() string {
 	if news, ok := a.livePhase(); ok {
 		live = news.Lane
 	}
-	return a.laneRiderFor(laneStoryFor(a.talkKeys()...), "", live, false, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), "", live, false, a.state == stateWorking)
 }
 
 // roomLaneRider is that rider for THE OPEN ROOM'S NODE: which machine answered
@@ -1338,7 +1345,8 @@ func (a *app) roomLaneRider() string {
 		return ""
 	}
 	news, working := a.roomPhase()
-	return a.laneRiderFor(laneStoryFor(subject), "", news.Lane, false, working)
+	story, _ := laneStoryFor(subject)
+	return a.laneRiderFor(story, "", news.Lane, false, working)
 }
 
 // laneRiderFor is that rider for one window's story: the piece of work the

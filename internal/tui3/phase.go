@@ -294,15 +294,26 @@ func forgetPhases() {
 //
 // It is a method so that the two desks ask the same question in the same
 // words, and so that the one place the conversation's key is decided is the one
-// place a reader has to look.
-func (a *app) talkKeys() []string {
-	return newsDeskKeys("", a.taskSheetSelfID(), a.model)
+// place a reader has to look. IT RETURNS TWO STRINGS AND NOT A SLICE because it
+// is asked several times on every frame, and PERF.md's scroll law counts the
+// allocations a frame costs; either name may be empty, which is a name not
+// asked.
+func (a *app) talkKeys() (conversation, model string) {
+	conversation = strings.TrimSpace(a.taskSheetSelfID())
+	if model = strings.TrimSpace(a.model); model == conversation {
+		model = ""
+	}
+	return conversation, model
 }
 
 // talkPhase is the newest phase filed under the conversation's own names, asked
 // in [app.talkKeys]' order: the first name with anything on it answers.
 func (a *app) talkPhase() (PhaseNews, bool) {
-	for _, key := range a.talkKeys() {
+	conversation, model := a.talkKeys()
+	for _, key := range [2]string{conversation, model} {
+		if key == "" {
+			continue
+		}
 		if news, ok := phaseNewsFor(key); ok {
 			return news, true
 		}
