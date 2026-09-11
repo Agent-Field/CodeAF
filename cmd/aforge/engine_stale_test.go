@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
@@ -246,6 +247,58 @@ func TestASameProtocolHostOfAnotherBuildIsRetired(t *testing.T) {
 				t.Fatal("stale same-protocol host still answers")
 			}
 		})
+	}
+}
+
+// A HOST THIS BINARY'S OWN SOURCE BUILT IS THIS BINARY'S ENGINE, whatever minute
+// the two were linked in. A rebuild of unchanged source must splice onto the
+// host already holding the conversation without asking it to retire.
+func TestAHostBuiltFromTheSameSourceAnotherMinuteIsSplicedOnto(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	source := "c85e10a19"
+	engine := buildinfo.Info{Revision: source, BuiltAt: time.Date(2026, 9, 9, 21, 9, 1, 0, time.UTC)}
+	window := buildinfo.Info{Revision: source, BuiltAt: engine.BuiltAt.Add(13 * time.Second)}
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: engine.Identity(), Busy: true}, false)
+
+	note, err := clearStaleEngineHostFor(workspace, window.Identity())
+	if err != nil {
+		t.Fatalf("a host built from the same source was not attached to: %v", err)
+	}
+	if note != "" {
+		t.Fatalf("a host built from the same source owed a sentence: %q", note)
+	}
+	if conn, err := enginehost.Dial(workspace); err != nil {
+		t.Fatalf("the matching host was asked to retire: %v", err)
+	} else {
+		_ = conn.Close()
+	}
+}
+
+// AND THE CONTROL: another source is still another build. Nothing about the new
+// yardstick softens the case it was written for — a host built from a different
+// commit, holding work, is joined and told about, and nobody's turn ends for it.
+func TestABusyHostBuiltFromAnotherSourceStillSaysSoAndAnswers(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	engine := buildinfo.Info{Revision: "first-revision", BuiltAt: time.Date(2026, 9, 9, 21, 9, 1, 0, time.UTC)}
+	window := buildinfo.Info{Revision: "second-revision", BuiltAt: engine.BuiltAt}
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: engine.Identity(), Busy: true}, false)
+
+	note, err := clearStaleEngineHostFor(workspace, window.Identity())
+	if err != nil {
+		t.Fatalf("a busy host on this wire was refused: %v", err)
+	}
+	if !strings.Contains(note, "older aforge") {
+		t.Fatalf("the notice did not say the engine is an older build: %q", note)
+	}
+	if !strings.Contains(note, "goes quiet") {
+		t.Fatalf("the notice did not say when it picks up this build: %q", note)
+	}
+	if conn, err := enginehost.Dial(workspace); err != nil {
+		t.Fatalf("the busy host was asked to retire: %v", err)
+	} else {
+		_ = conn.Close()
 	}
 }
 
