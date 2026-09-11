@@ -1088,7 +1088,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	// pointer grammar home already keeps (THE POINTER PREVIEWS AND THE CURSOR
 	// SELECTS, pages.go's [app.placeBodyHover]). Where there is no pane there is
 	// nothing for a first click to show, so one click opens as it always did.
-	was, moved := a.taskSheet.cursor, a.taskSheet.cursor != hits[y].index
+	moved := a.taskSheet.cursor != hits[y].index
 	a.taskSheet.cursor = hits[y].index
 	r := a.tasksFiltered()
 	lines := r.lay(taskPaneList(width))
@@ -1103,7 +1103,6 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 			}
 		}
 	}
-	_ = was
 	if moved && taskPaneOpen(width) {
 		return a.taskPaneFollow()
 	}
