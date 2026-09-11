@@ -1267,9 +1267,24 @@ type scriptedBrain struct {
 	// comes back with the answer, and the second reading passes. It is the
 	// common case and the one the panel read as a doubted deliverable.
 	revisionCloses bool
+	// thinksPastTheWallOn names the planning stages where this model is the one
+	// from issue #927: it thinks out loud on the stream and never stops until
+	// its call is cut, and it answers only the answer ask that carries its
+	// thought back to it. Keyed by the stage names stageOf reads off the
+	// request itself (do_wall_test.go).
+	thinksPastTheWallOn map[string]bool
+	// plansAPipeline makes the planner draw a real two-stage plan, so the
+	// passes after the compile — ground, spine, fan-out, size, bind, contracts
+	// — all run and can be answered for.
+	plansAPipeline bool
+	// reasoning is what the endpoint published about the model's thinking
+	// pass. Nil is nothing published, which is every run not about thinking.
+	reasoning func(string) (provider.ReasoningProfile, bool)
 
 	mu     sync.Mutex
 	counts map[string]int
+	// asked is every request body, by the stage it belongs to, in order.
+	asked map[string][]string
 }
 
 func newScriptedBrain(t *testing.T) *scriptedBrain {
@@ -1311,7 +1326,7 @@ func (s *scriptedBrain) tally(name string) int {
 // every count this test reads.
 func (s *scriptedBrain) client(settings config.Config, model string) (*liveClient, error) {
 	panel, err := router.New(router.Panel{Models: []router.Spec{{Slug: model, Price: 0.01}}},
-		provider.Config{APIKey: "test-key", BaseURL: s.server.URL}, s.dir)
+		provider.Config{APIKey: "test-key", BaseURL: s.server.URL, ReasoningProfile: s.reasoning}, s.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -1358,6 +1373,21 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 			http.StatusNotFound)
 		return
 	}
+	if stage := stageOf(body); stage != "" {
+		s.mu.Lock()
+		if s.asked == nil {
+			s.asked = map[string][]string{}
+		}
+		s.asked[stage] = append(s.asked[stage], body)
+		s.mu.Unlock()
+		// The answer ask carries the thought back, and that is how the stub
+		// tells it from the call it is answering for — never by call order,
+		// which would make the stub agree with the wall by construction.
+		if s.thinksPastTheWallOn[stage] && !strings.Contains(body, scriptedThought) {
+			s.thinkUntilCut(writer, request)
+			return
+		}
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(writer, s.reply(body))
 }
@@ -1387,6 +1417,14 @@ func (s *scriptedBrain) reply(body string) string {
 				`{"label":"yes, stand this up","value":"ratify"},` +
 				`{"label":"once, not standing","value":"once"}],` +
 				`"trial_of":0,"charter":` + scriptedCharter + `}`)
+		}
+		if s.plansAPipeline {
+			// Project scale: the planner runs, so every pass after the compile
+			// — ground, spine, fan-out, size, bind, contracts — is really made.
+			return s.say(`{"structure":"stratifies",` +
+				`"goal":"Write the release note for the parser work, including the migration steps.",` +
+				`"title":"Release note and migration",` +
+				`"scale":"project","parts":[],"builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
 		}
 		// Task scale: one worker end to end, which is the shape that still
 		// earns a written working method and still faces the gate.
@@ -1427,6 +1465,44 @@ func (s *scriptedBrain) reply(body string) string {
 	case strings.Contains(body, "You name jobs for a narrow task list"):
 		s.tally("title")
 		return s.say("Release note and migration")
+
+	case s.plansAPipeline && strings.Contains(body, "You break a goal into its ordered stages"):
+		s.tally("spine")
+		return s.say(`{"stages":[` +
+			`{"title":"Draft the release note","summary":"Write the note from the parser changelog.","needs":[]},` +
+			`{"title":"List the migration steps","summary":"Write the steps a reader has to take.","needs":[1]}]}`)
+
+	case s.plansAPipeline && strings.Contains(body, "You settle what a goal leaves unsaid"):
+		s.tally("ground")
+		return s.say(`{"settled":[{"variable":"release","values":["the parser work"]}],"open":[],"evidence":"the changelog"}`)
+
+	case s.plansAPipeline && strings.Contains(body, "You check whether each node can actually be completed"):
+		s.tally("audit")
+		var checks []string
+		for _, node := range nodesAskedAbout(body) {
+			checks = append(checks, fmt.Sprintf(`{"node":%d,"ok":true,"missing":[]}`, node))
+		}
+		return s.say(`{"checks":[` + strings.Join(checks, ",") + `]}`)
+
+	case s.plansAPipeline && strings.Contains(body, "You list the parts of one stage"):
+		s.tally("fanout")
+		return s.say(`{"parts":[{"title":"The whole stage","summary":"One worker does this stage end to end.","sources":[]}]}`)
+
+	case s.plansAPipeline && strings.Contains(body, "You judge whether each node is the right size"):
+		s.tally("size")
+		var sizes []string
+		for _, node := range nodesAskedAbout(body) {
+			sizes = append(sizes, fmt.Sprintf(`{"node":%d,"size":"atomic","split_into":[]}`, node))
+		}
+		return s.say(`{"sizes":[` + strings.Join(sizes, ",") + `]}`)
+
+	case s.plansAPipeline && strings.Contains(body, "You decide what each node must wait for"):
+		s.tally("bind")
+		var bindings []string
+		for _, node := range nodesAskedAbout(body) {
+			bindings = append(bindings, fmt.Sprintf(`{"node":%d,"needs":[]}`, node))
+		}
+		return s.say(`{"bindings":[` + strings.Join(bindings, ",") + `],"duplicates":[]}`)
 
 	case strings.Contains(body, "You break a goal into its ordered stages"),
 		strings.Contains(body, "settled points"):

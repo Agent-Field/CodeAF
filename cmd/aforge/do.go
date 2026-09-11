@@ -331,6 +331,9 @@ type doRequest struct {
 	residentWait time.Duration
 	// newClient scripts the provider. Nil is the real one.
 	newClient func(config.Config, string) (*liveClient, error)
+	// callWall is the structuring slots' wall on one completion. Zero is
+	// pool.DefaultCallWall; a test names one it can reach (brainOptions.callWall).
+	callWall time.Duration
 }
 
 func (r doRequest) residentWaitOrDefault() time.Duration {
@@ -714,6 +717,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 		model:           request.model, planModel: request.planModel,
 		seats:   &seats,
 		consent: consent, newClient: request.newClient,
+		callWall: request.callWall,
 		produced: produced,
 		// THE WALL THE WATCHER IS WATCHING IS THE WALL THE WORK RUNS UNDER.
 		// Until this line the errand's timeout reached the settlement watcher

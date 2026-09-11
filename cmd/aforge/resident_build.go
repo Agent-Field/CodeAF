@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -191,7 +192,7 @@ func acceptanceChecklist(ctx context.Context, settings config.Config, planClient
 	points, usage, err := plan.Acceptance(settings.Context(ctx, "compile"), structuring, request)
 	journalPlanSpend(graph, plans, planClient, "", usage)
 	if err != nil {
-		log.Printf("note: could not read what the request asks for: %v", err)
+		log.Printf("note: could not read what the request asks for: %s", pool.CauseInWords(err))
 		return nil
 	}
 	return points

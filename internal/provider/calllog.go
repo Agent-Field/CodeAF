@@ -672,6 +672,14 @@ func (c *Client) recordedEffort(model string, knobs callKnobs) string {
 	}
 	effort := c.resolveEffort(model, knobs.effort)
 	if budget := c.resolveReasoningBudget(model, knobs.effort); budget > 0 {
+		// A BUDGET THE WALL DERIVED IS NAMED BY THE WALL, never by its count.
+		// This string is also the key the thinking-duration belief is filed
+		// under (waitplan.go's Think, client.go's NoteThought), and a count
+		// read off a rate that moves with every answer would file each walled
+		// thought under a rung nobody will ever ask about again.
+		if asked := c.effortAsked(knobs.effort); budget != asked.budget {
+			return fmt.Sprintf("%s within %s", effort, asked.wall)
+		}
 		return fmt.Sprintf("%s %d tokens", effort, budget)
 	}
 	if effort == EffortNone {
