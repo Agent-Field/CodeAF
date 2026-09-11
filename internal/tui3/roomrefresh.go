@@ -27,7 +27,7 @@ func (r *taskRoom) keepSteerEcho(words string, e entry) {
 	r.pendingSteers = append(r.pendingSteers, roomSteerEcho{words, r.lastSteerAt, n, e})
 }
 
-func (a *app) refreshRoomRecord(journal []byte) {
+func (a *app) refreshRoomRecord(journal []byte, beatPath string) {
 	r := a.room
 	if bytes.Equal(r.journal, journal) {
 		return
@@ -83,6 +83,16 @@ func (a *app) refreshRoomRecord(journal []byte) {
 	r.entries, r.turn = entries, turn
 	r.journal = bytes.Clone(journal)
 	r.takeRequests(record.Requests)
+	// THE PULSE IS READ ON EVERY TICK THIS READING CAME FROM, and never once at
+	// room entry: the sidecar is the one source that knows whether a request is
+	// in flight right now, and a reading cached at the door would leave the
+	// header saying one thing for the whole life of a call — the exact defect
+	// the field exists to end. The path is the record's own name for the file
+	// and is never built here; a record that names none, a file that has been
+	// taken away with the landing, or one this build cannot read all answer
+	// nothing, and nothing is what the live segment draws for an unknown.
+	r.beatPath = beatPath
+	r.beat, r.beatRead = session.ReadTaskBeat(beatPath)
 }
 
 // takeRequests feeds a page with no lane its live token column, from the one

@@ -393,6 +393,18 @@ type taskRoom struct {
 	loading       bool
 	readFailed    bool
 	journal       []byte
+	// beatPath is where this node's pulse lives, AS THE RECORD ITSELF NAMED IT
+	// (session.TaskRecord.Beat, from the checkpoint row's own field), and "" for a
+	// node that is not writing one. IT IS CARRIED AND NEVER BUILT: a page that
+	// recomputed it from the id would be a second spelling of where the pulse
+	// lives, which is the exact bargain the record's field exists to end.
+	beatPath      string
+	// beat is the LAST READING of the pulse, taken on the refresh tick itself so
+	// the display keeps moving and never freezes on one take — and false for a
+	// node with no pulse, which renders nothing, the same emptiness as any other
+	// unknown ([roomFactsOf]'s live segment is the consumer).
+	beat     session.TaskBeatRow
+	beatRead bool
 	lastSteerAt   time.Time
 	pendingSteers []roomSteerEcho
 }
@@ -855,7 +867,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	a.room.loading = false
 	a.room.readFailed = msg.err != nil
 	if msg.err == nil {
-		a.refreshRoomRecord(msg.record.Journal)
+		a.refreshRoomRecord(msg.record.Journal, msg.record.Beat)
 	}
 	// A GUEST PAGE TAKES ONE THING FROM THE READING AND ONE ONLY: whether the
 	// conversation it joined is still the conversation it joined. What the WORK is

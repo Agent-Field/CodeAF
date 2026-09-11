@@ -97,8 +97,8 @@ const (
 // directory — can never mistake a pulse for a transcript.
 const taskBeatSuffix = ".beat.json"
 
-// taskBeatRow is one running node's pulse as the file holds it.
-type taskBeatRow struct {
+// TaskBeatRow is one running node's pulse as the file holds it.
+type TaskBeatRow struct {
 	// Node is the node's id, and Title what a reader would call it.
 	Node  uint64 `json:"node"`
 	Title string `json:"title,omitempty"`
@@ -125,7 +125,7 @@ type taskBeatRow struct {
 
 // working reports whether a request is in flight: the last start is not answered
 // by a finish.
-func (r taskBeatRow) working() bool {
+func (r TaskBeatRow) Working() bool {
 	return !r.RequestStarted.IsZero() && r.RequestFinished.Before(r.RequestStarted)
 }
 
@@ -137,7 +137,7 @@ func (r taskBeatRow) working() bool {
 type taskBeat struct {
 	mu   sync.Mutex
 	path string
-	row  taskBeatRow
+	row  TaskBeatRow
 }
 
 // newTaskBeat builds a node's pulse. It writes nothing: the first row goes down
@@ -149,7 +149,7 @@ func newTaskBeat(path string, id uint64, title string, started time.Time) *taskB
 	if started.IsZero() {
 		started = time.Now()
 	}
-	return &taskBeat{path: path, row: taskBeatRow{
+	return &taskBeat{path: path, row: TaskBeatRow{
 		Node:    id,
 		Title:   title,
 		Phase:   taskBeatWorking,
@@ -253,7 +253,7 @@ func (b *taskBeat) write() {
 	}
 }
 
-// readTaskBeat reads one node's pulse back. It is the whole read side, and it is
+// ReadTaskBeat reads one node's pulse back. It is the whole read side, and it is
 // here rather than in a reader's own package so that the file's shape has one
 // definition — the same argument [runRowRecord] and [runRowNotice] are neighbours
 // for.
@@ -261,17 +261,17 @@ func (b *taskBeat) write() {
 // A missing file is the ordinary answer for a node that is not running, and it is
 // a false rather than an error: a reader asking whether work is alive is not
 // asking a question that can fail.
-func readTaskBeat(path string) (taskBeatRow, bool) {
+func ReadTaskBeat(path string) (TaskBeatRow, bool) {
 	if strings.TrimSpace(path) == "" {
-		return taskBeatRow{}, false
+		return TaskBeatRow{}, false
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return taskBeatRow{}, false
+		return TaskBeatRow{}, false
 	}
-	var row taskBeatRow
+	var row TaskBeatRow
 	if err := json.Unmarshal(content, &row); err != nil {
-		return taskBeatRow{}, false
+		return TaskBeatRow{}, false
 	}
 	return row, true
 }
