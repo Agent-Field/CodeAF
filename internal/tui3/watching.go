@@ -225,6 +225,15 @@ type Following struct {
 // that wait parked on the old one, so a turn started in the conversation this
 // window walked away from would arrive here and be adopted into the conversation
 // now on screen — somebody else's reply, drawn under the wrong name.
+//
+// IT IS THE CONNECTION'S GENERATION AND NOT THE TURN'S ([app.convGen]). This
+// wait used to carry [app.gen], which every turn bumps on its way in
+// ([app.takeStream], [app.startFollow]) — so the first turn this window ran
+// itself made the next wake read as a turn from a connection it had walked away
+// from: discarded, and the wait never armed again. On a hosted conversation every
+// turn the engine started on its own after that was invisible: the task card
+// said done, the model's sentence about it went to the journal, and the screen
+// showed nothing until the conversation was reopened.
 type followingMsg struct {
 	turn Following
 	gen  int
@@ -241,7 +250,7 @@ func (a *app) watchFollowing() tea.Cmd {
 	if follow == nil {
 		return nil
 	}
-	gen := a.gen
+	gen := a.convGen
 	return func() tea.Msg {
 		turn, ok := <-follow()
 		if !ok {
@@ -258,8 +267,9 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 	// A TURN FROM THE CONNECTION THIS WINDOW HAS SINCE WALKED AWAY FROM IS
 	// DISCARDED, AND THE WAIT IS NOT RE-ARMED. The conversation it belongs to has
 	// its own wait, armed when it came forward; re-arming here would leave two of
-	// them on one channel.
-	if msg.gen != a.gen {
+	// them on one channel. It is the CONNECTION's generation that decides, never
+	// the turn's ([followingMsg] states the drop that reading the turn's caused).
+	if msg.gen != a.convGen {
 		return nil
 	}
 	next := a.watchFollowing()
@@ -308,7 +318,7 @@ func (a *app) watchDriving() tea.Cmd {
 	if changed == nil {
 		return nil
 	}
-	gen := a.gen
+	gen := a.convGen
 	return func() tea.Msg {
 		<-changed()
 		return drivingMsg{gen: gen, lane: true}
@@ -323,9 +333,10 @@ func (a *app) drivingMoved(msg drivingMsg) tea.Cmd {
 		a.note(msg.said)
 	}
 	// A HAND-OVER ON A CONNECTION THIS WINDOW HAS WALKED AWAY FROM MOVES NOTHING
-	// AND RE-ARMS NOTHING ([followingMsg] states why). The conversation it is
-	// about armed its own wait when it came forward.
-	if msg.lane && msg.gen != a.gen {
+	// AND RE-ARMS NOTHING ([followingMsg] states why, and why it is the
+	// connection's generation and not the turn's). The conversation it is about
+	// armed its own wait when it came forward.
+	if msg.lane && msg.gen != a.convGen {
 		return said
 	}
 	return tea.Batch(said, a.wake(), a.watchDriving())

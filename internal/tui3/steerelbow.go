@@ -673,10 +673,10 @@ func (a *app) holdSteer(ch <-chan session.Event) tea.Cmd {
 		return nil
 	}
 	// THE LANE IS STAMPED WITH THE CONVERSATION AND NOT WITH THE TURN
-	// (app.go's [app.steerGen]). A steer's news comes back after the turn it was
+	// (app.go's [app.convGen]). A steer's news comes back after the turn it was
 	// typed into has ended — that is what a fall-through IS — so a stamp that
 	// moved with every turn was guaranteed to be stale exactly when it mattered.
-	return waitSteerLane(ch, a.steerGen)
+	return waitSteerLane(ch, a.convGen)
 }
 
 // waitSteerLane reads one steer's own stream until that steer's story is over,
@@ -746,10 +746,10 @@ func waitSteerLane(ch <-chan session.Event, gen int) tea.Cmd {
 // who typed two corrections into one answer had the second one's whole turn
 // thrown away here: the engine ran it, wrote it into the transcript and answered
 // it, and the screen drew neither the question nor a word of the reply.
-// [app.steerGen] moves only when the conversation is replaced, which is the
+// [app.convGen] moves only when the conversation is replaced, which is the
 // question this line means to ask.
 func (a *app) steerFell(msg steerFellMsg) tea.Cmd {
-	if msg.ch == nil || msg.gen != a.steerGen || a.windingDown() || a.state == stateInterrupted {
+	if msg.ch == nil || msg.gen != a.convGen || a.windingDown() || a.state == stateInterrupted {
 		if msg.ch != nil {
 			go func() {
 				for range msg.ch { //nolint:revive // draining is the whole body

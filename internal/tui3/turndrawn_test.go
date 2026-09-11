@@ -106,7 +106,7 @@ func TestAHoppedTurnDrawsTheCallsItMadeAfterTheHop(t *testing.T) {
 // The lane used to be stamped with [app.gen], which counts TURNS. So the stamp
 // was stale exactly when it mattered, the channel was drained and thrown away,
 // and a whole turn the engine ran, paid for and wrote into the transcript drew
-// nothing at all: no question row, no reply, nothing. [app.steerGen] moves only
+// nothing at all: no question row, no reply, nothing. [app.convGen] moves only
 // when the conversation is replaced, which is the question the check means to
 // ask.
 //
@@ -159,17 +159,17 @@ func TestTheSteerLaneStampMovesWithTheConversationAndNotWithTheTurn(t *testing.T
 		{text(session.EventTextDelta, "two"), {Kind: session.EventTurnDone}},
 	}}
 	a := newTestApp(agent)
-	stamp, turnGen := a.steerGen, a.gen
+	stamp, turnGen := a.convGen, a.gen
 	runTurn(t, a, agent, "first")
 	runTurn(t, a, agent, "second")
 	if a.gen == turnGen {
 		t.Fatal("two turns did not move the turn generation, so this proves nothing")
 	}
-	if a.steerGen != stamp {
-		t.Fatalf("an ordinary turn moved the steer lane's stamp: %d → %d", stamp, a.steerGen)
+	if a.convGen != stamp {
+		t.Fatalf("an ordinary turn moved the steer lane's stamp: %d → %d", stamp, a.convGen)
 	}
 	a.detachConversation()
-	if a.steerGen == stamp {
+	if a.convGen == stamp {
 		t.Fatal("a replaced conversation left the steer lane's stamp standing")
 	}
 }
