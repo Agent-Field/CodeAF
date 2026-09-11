@@ -2304,10 +2304,17 @@ to another machine) and an **18 s** give-up. The two used to be the same instant
 build was ever rescued off a slow machine. Measured 2026-09-11: 16 recalls, mean
 4.3 s, max 10.7 s, DekaLLM p50 5.5 s and Io Net 4.3 s against DeepInfra's 1.7 s.
 
-`RoleJudge` patience is **1.5** (**15 s** ceiling, **135 s** give-up) for the same
-reason: every caller of that role bounds itself at 30 s or less, so a 60 s ceiling
-could never fire, and the same census has four mark readings dying at
-30,001–30,002 ms having decided nothing.
+`RoleJudge` patience is **1** (**10 s** ceiling, **90 s** give-up) for the same
+reason: a 60 s ceiling was outside every caller's window and could never fire, and
+the same census has four mark readings dying at 30,001–30,002 ms having decided
+nothing. The quantity is the same one recall's is, read against a caller's window
+rather than a machine's median — late enough that a healthy machine is never
+abandoned (above the 8.4 s p90 first token) and early enough that a second machine
+can still answer inside the tightest window that constrains it (the pre-turn route
+read's 20 s, less the same 8.4 s). The interval is (8.4 s, 11.6 s); ten seconds is
+in it and is `lane.VisiblePatience` itself. The guardian's 10 s does not constrain
+it: when that gate goes quiet the fall-through is to ask the person, which is
+better than a second machine's guess.
 
 The mark's reading (`checkpointSketchWindow`, 30 s) is started at the boundary that
 crosses a mark and settled at the next one — or, when the round that crossed the
@@ -2335,7 +2342,11 @@ stages a listener as slow as every other auxiliary and asserts the same two
 figures; `TestAListenerIsAlwaysToldFromADesk` is the structural half.
 
 The two end-of-turn readers are raced against each other rather than taken in
-series, and both now carry a window: `askRouteJudge` at `routeRaceWindow` (20 s)
+series, and the judge **decides where it used to act**: `Agent.readRouteJudge`
+answers a `judgeRuling` and starts nothing, and `Agent.applyRouteJudge` — called by
+the turn, after the re-open reader has ruled out both of its roads — is the only
+thing in it with an effect. A reading whose effect fires inside its own `ask` is
+the mechanism used in name and broken in fact. Both legs now carry a window: `askRouteJudge` at `routeRaceWindow` (20 s)
 and `confirmRouteWork` at `routeRaceConfirmWindow` (30 s). They inherited the low
 and mastermind tier patience — 2 minutes and **10 minutes** — with the person's
 answer already on the screen.

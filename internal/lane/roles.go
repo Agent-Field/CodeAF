@@ -305,14 +305,25 @@ const Hysteresis = 250 * time.Millisecond
 //     its low end — the soonest this can act without acting on a machine that is
 //     working. The give-up that scales with it is eighteen seconds, and the
 //     caller now reads THAT as its window so the rescue has somewhere to land.
-//   - JUDGE, 6 → 1.5. Every caller of this role bounds itself at thirty seconds
-//     or less — the mark's sketch, the two route confirms, the guardian's ten —
-//     and sixty seconds was outside all of them, so the same thing was true:
-//     nothing was ever moved off a silent judge machine, and the 2026-09-11
-//     census has four mark readings dying at 30,001–30,002 ms having done
-//     nothing. Fifteen seconds acts at half the sketch's window with half of it
-//     left for a second machine, and the give-up that scales with it is a hundred
-//     and thirty-five seconds, still well above every caller's own bound.
+//   - JUDGE, 6 → 1. Sixty seconds was outside every window its callers set, so
+//     the same thing was true: nothing was ever moved off a silent judge machine,
+//     and the 2026-09-11 census has four mark readings dying at 30,001–30,002 ms
+//     having decided nothing.
+//     THE QUANTITY IS THE SAME ONE RECALL'S IS, read against a caller's window
+//     rather than a machine's median: the ceiling must be LATE ENOUGH that a
+//     healthy machine is never abandoned mid-answer — above the measured first
+//     token, 8.4s at the ninetieth — and EARLY ENOUGH that a second machine can
+//     still answer one inside the window the caller allows: that window less the
+//     same 8.4s. The tightest window that constrains it is the pre-turn route
+//     read's twenty seconds, so the interval is (8.4s, 11.6s), and ten seconds is
+//     in it and is [VisiblePatience] itself, so the ceiling needs no figure of its
+//     own. The give-up that scales with it is ninety seconds, above every
+//     caller's own bound, which is what a give-up is for.
+//     THE GUARDIAN'S TEN SECONDS IS NOT ONE OF THOSE WINDOWS, and the reason is
+//     the reason it is the one named exception everywhere else in this wave: when
+//     it goes quiet the fall-through is to ASK THE PERSON, which is a better
+//     answer than a second machine's guess and costs nothing. There is nothing a
+//     rescue could buy inside that window, so it does not bound this column.
 var roles = map[Role]RoleFacts{
 	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
@@ -321,7 +332,7 @@ var roles = map[Role]RoleFacts{
 	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 0.2},
 	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
-	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1.5},
+	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
 	RoleDesign:         {Interactive: false, Critical: true, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
 	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 0.5},
 	// A hand's question: somebody IS waiting (the tool row is open in front of

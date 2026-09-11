@@ -335,14 +335,42 @@ or
          shown to them beside the work, so write it as you would say it:
          "research across every package", "a sweep over forty files".`
 
-// routeJudge is this file's whole place in a turn, called once from
-// [Agent.runTurn] when the model has answered without a tool call.
+// judgeRuling is what the post-turn judge DECIDED, carried back to the turn so
+// that the TURN is what acts on it.
 //
-// It reports nothing. Every branch out of it is either a task that started and
-// one line saying so, or silence, and the turn that called it ends the same way
-// either way — which is what lets the hook in the loop be one line with no
-// result to read.
-func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage, usedTools bool, answer string) {
+// IT IS A DECISION AND NOT AN EFFECT, and that is the whole of why this type
+// exists. The reading used to start the work itself, from inside its own
+// goroutine — which meant the effect landed whenever the two calls happened to
+// return rather than at the moment the turn could still spend it, and a turn the
+// re-open reader was about to re-open could have a task appear over the top of
+// it. That is loop.go's law used in name and broken in fact: TAKE is where an
+// answer can still be SPENT, and an answer that has already spent itself is not
+// one (sidecar.go).
+type judgeRuling struct {
+	// start is the only question the turn asks of this. Everything else here is
+	// what starting needs.
+	start   bool
+	verdict routeVerdict
+	// turn is the turn number the gap is spent at, read when the ruling was made
+	// so that applying it cannot read a number that has since moved.
+	turn uint64
+	// ahead is the name being made beside the confirm, held for the start that
+	// this ruling asks for. A ruling nobody applies lets it go ([judgeRuling.release]).
+	ahead *nameAhead
+}
+
+// release lets go of what a ruling was holding for a start that will not happen.
+// It is safe on a ruling that decided nothing and on one that has already been
+// applied, because [nameAhead.release] is (taskname.go).
+func (r judgeRuling) release() { r.ahead.release() }
+
+// readRouteJudge is this file's whole READING of a finished turn, made once from
+// [Agent.judgeAhead] when the model has answered without a tool call.
+//
+// IT STARTS NOTHING. What it does is decide, and [Agent.applyRouteJudge] is the
+// other half — called by the turn, at the one moment the turn knows it is really
+// over.
+func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools bool, answer string) judgeRuling {
 	// THE COUNTER IS READ HERE AND MOVED NOWHERE. It is stepped once per turn, at
 	// the front, by [Agent.routeAhead] — which every turn passes through before
 	// its first request — so what this reads is THIS turn's number and the two
@@ -353,13 +381,13 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	model, closed := a.model, a.closed
 	a.mu.Unlock()
 	if closed || usedTools {
-		return
+		return judgeRuling{}
 	}
 	// THE GATES ARE THE START'S GATES, in the order they are cheapest to fail.
 	// Work started in a session nobody is watching is a model call spent on a
 	// surprise nobody will see, and a node has no surface at all.
 	if !a.config.AskConsent || a.config.InTask {
-		return
+		return judgeRuling{}
 	}
 	// WHAT THE JUDGE IS SHOWN AS THE ASK, and this is the one gate the goal owner
 	// changes (principal.go).
@@ -386,7 +414,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	if user.empty() || user.wake || user.authored {
 		steward := a.steward()
 		if steward == nil {
-			return
+			return judgeRuling{}
 		}
 		asked = steward.Ask()
 	}
@@ -394,13 +422,13 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// an undo, a one-line edit or a single read is answered here; paying a
 	// judge to be told it is work is how F26's commit became a task.
 	if trivialAsk(asked) {
-		return
+		return judgeRuling{}
 	}
 	if !routeSubstantial(asked) {
-		return
+		return judgeRuling{}
 	}
 	if offered > 0 && turn-offered < routeJudgeGap {
-		return
+		return judgeRuling{}
 	}
 	// The judge is a ROLE, so an install with no tiers configured resolves it to
 	// the conversation's own model rather than refusing — and an install with
@@ -408,7 +436,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// than broken.
 	verdict, ok := a.askRouteJudge(ctx, model, asked, answer)
 	if !ok || !verdict.Work {
-		return
+		return judgeRuling{}
 	}
 	// THE NAME IS ASKED FOR THE MOMENT THE JUDGE SAYS WORK, beside the confirm
 	// rather than after the node exists (taskname.go's [nameAhead]): the
@@ -416,20 +444,46 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// carries the name wherever the name is in hand. A confirm that declines
 	// lets the call go.
 	ahead := a.nameAhead(asked)
-	defer ahead.release()
+	// AND IT IS LET GO OF ON EVERY ROAD THAT DOES NOT ASK FOR A START, which is
+	// every road but the last line. A ruling that DOES ask hands the name on to
+	// the turn, and a ruling the turn never applies releases it there
+	// ([judgeRace.end]).
+	started := false
+	defer func() {
+		if !started {
+			ahead.release()
+		}
+	}()
 	// THE CONFIRM, and it is asked HERE — after the yes and before anything is
 	// admitted — because that is the only place it costs anything at all.
 	confirmed, ok := a.confirmRouteWork(ctx, model, asked, answer)
 	if !ok {
-		return
+		return judgeRuling{}
 	}
 	// AND ITS READING OF BREADTH JOINS THE SCREEN'S. Both models answered the
 	// same contract about the same request; [routeWidth] says why either yes is
 	// enough and why the mastermind's no is not.
 	verdict.Wide = routeWidth(verdict, confirmed)
 
+	started = true
+	return judgeRuling{start: true, verdict: verdict, turn: turn, ahead: ahead}
+}
+
+// applyRouteJudge is the other half of [Agent.readRouteJudge]: the decision,
+// spent. The TURN calls it, and it calls it at the one moment it knows the turn
+// is really over — after the reader that may re-open the turn has said it will
+// not (loop.go). A ruling that decided nothing costs one field test.
+//
+// EVERYTHING WITH AN EFFECT IS HERE AND NOTHING WITH AN EFFECT IS ABOVE, which
+// is the property that makes the handle a sidecar rather than a goroutine
+// wearing one: a turn that re-opens lets the ruling go and NOTHING HAS HAPPENED.
+func (a *Agent) applyRouteJudge(hub *eventHub, ruling judgeRuling) {
+	if !ruling.start {
+		ruling.release()
+		return
+	}
 	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE, which is why this line
-	// stands below the confirm rather than above it. The gap is a person's
+	// stands here rather than beside the confirm. The gap is a person's
 	// patience: it exists because work appearing over the top of a conversation
 	// is an interruption, and three turns of quiet afterwards is what stops the
 	// second one from being a nuisance ([routeJudgeGap]). A confirmed no started
@@ -443,7 +497,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// the rare half of the rare case, and the alternative is a conversation
 	// going deaf for three turns because a cheap model was wrong once.
 	a.mu.Lock()
-	a.routeOffered = turn
+	a.routeOffered = ruling.turn
 	a.mu.Unlock()
 	// THE TITLE COMES OFF THE GOAL ON THIS ROAD, which it may because the goal was
 	// written BY A JUDGE, to a contract, in one shot, out of the person's own
@@ -452,7 +506,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
 	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
 	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
-	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{}, ahead, nil)
+	a.launchRouteTask(hub, ruling.verdict, ruling.verdict.Goal, drawnDivision{}, ruling.ahead, nil)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -557,40 +611,50 @@ func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered str
 // re-open — so the turn spends this last, after that reader has said the turn is
 // really over, and lets it go where it has not ([judgeRace.end]).
 type judgeRace struct {
-	reading *sidecar[struct{}]
+	reading *sidecar[judgeRuling]
 }
 
-// judgeAhead launches the post-turn cascade. Everything gated — a node, a
-// session nobody is watching, a trivial ask, a turn that used tools — returns a
-// nil handle, which settles instantly and costs the turn nothing.
-func (a *Agent) judgeAhead(ctx context.Context, hub *eventHub, user userMessage, usedTools bool, answer string) *judgeRace {
+// judgeAhead starts the post-turn READING. Everything gated — a node, a session
+// nobody is watching, a trivial ask, a turn that used tools — returns a nil
+// handle, which answers nothing and costs the turn nothing.
+//
+// NOTHING UNDER HERE HAS AN EFFECT. What comes back is a [judgeRuling], and the
+// turn is what spends it ([Agent.applyRouteJudge]).
+func (a *Agent) judgeAhead(ctx context.Context, user userMessage, usedTools bool, answer string) *judgeRace {
 	if usedTools || !a.config.AskConsent || a.config.InTask {
 		return nil
 	}
-	return &judgeRace{reading: readBeside(ctx, func(judgeCtx context.Context) struct{} {
-		a.routeJudge(judgeCtx, hub, user, usedTools, answer)
-		return struct{}{}
+	return &judgeRace{reading: readBeside(ctx, func(judgeCtx context.Context) judgeRuling {
+		return a.readRouteJudge(judgeCtx, user, usedTools, answer)
 	}, nil)}
 }
 
-// settle waits for the cascade to finish, which is where the work it may start
-// lands. It is bounded by the two windows the calls under it carry and by the
-// turn's own context, so it is not a wait that can outlast either.
-func (r *judgeRace) settle() {
+// takeAtTheEnd waits for the ruling. It is bounded by the two windows the calls
+// under it carry and by the turn's own context, so it is not a wait that can
+// outlast either — and it is a WAIT, which is only honest because the turn that
+// calls it has already been told it is over (sidecar.go's own warning).
+func (r *judgeRace) takeAtTheEnd() (judgeRuling, bool) {
 	if r == nil {
-		return
+		return judgeRuling{}, false
 	}
-	r.reading.settle()
+	return r.reading.takeAtTheEnd()
 }
 
-// end lets the cascade go without waiting for it, for [routeRace.end]'s reason.
+// end lets the reading go without waiting for it, for [routeRace.end]'s reason.
 // It is what a re-opened turn does with a question about an answer that no
 // longer exists.
+//
+// AND A RULING THAT LANDED AND WILL NEVER BE APPLIED IS LET GO OF HERE, because
+// it may be holding a name that is still being made for a task nobody is going
+// to start ([judgeRuling.release]).
 func (r *judgeRace) end() {
 	if r == nil {
 		return
 	}
 	r.reading.end()
+	if ruling, ok := r.reading.take(); ok {
+		ruling.release()
+	}
 }
 
 // routeWidth is what TWO READINGS OF ONE REQUEST come to on breadth: armed if

@@ -37,6 +37,14 @@ package session
 //   - A decision that cannot be applied after the fact must be made cheap enough
 //     to precede: at most [lanes.SpokenWithin], and skipped for this step past it.
 //
+// AND A READING DECIDES WHERE IT USED TO ACT. A reading whose EFFECT fires from
+// inside its own goroutine is this mechanism used in name and broken in fact:
+// the effect lands whenever the calls under it happen to return rather than at
+// the moment the turn could still spend it, and a turn about to be re-opened has
+// already had work started over the top of it. So every reading answers a value
+// and the turn is what acts on it (route_judge.go's [judgeRuling] is the one
+// that had to be taken apart to say so).
+//
 // THERE IS EXACTLY ONE EXCEPTION AND IT IS NAMED. The guardian — "is this one
 // tool call plainly safe to run without asking" (consent.go) — decides whether a
 // tool RUNS, so there is nothing to run beside it and nothing it can be applied
@@ -719,14 +727,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// answer — and it is let go of on every way out, including the ones that end
 	// the turn mid-round, so no reading outlives the turn that bought it.
 	marked := &markAside{}
-	// AND A DRAWING THE TURN RAN OUT OF STEPS TO SPEND IS STILL WRITTEN DOWN. A
-	// reading rides beside the work and is spent at the next boundary, which is
-	// the right rule for every boundary but the LAST one: a mark crossed by the
-	// round that ends a turn — a re-open is a round — has no next boundary to be
-	// spent at, and a drawing dropped there is a drawing whose ledger never
-	// learns, which is the half of this file's law that is easy to lose.
 	defer func() {
-		a.closeMarkAside(marked)
+		// IT IS SPENT HERE AND NOT LOST. A reading rides beside the work and is
+		// spent at the next boundary, which is the right rule for every boundary
+		// but the LAST one: a mark crossed by the round that ends a turn — a
+		// re-open is a round — has no next boundary, and a mastermind call paid
+		// for and thrown away is a ledger line nobody can ever count.
+		//
+		// AND THIS IS ONE OF THE TWO PLACES THIS ENGINE WAITS ON A READING, for
+		// the reason the CEILING's own drawing is still read in line and the
+		// reason the guardian blocks: the turn is over, so there is nothing left
+		// to run beside. A deferred body runs when everything has already been
+		// decided, which is what makes the wait honest here and nowhere else
+		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
+		// What it costs is bounded twice — by [checkpointSketchWindow] and by the
+		// drawing having started a whole round earlier.
+		if landed, ok := marked.takeAtTheEnd(); ok {
+			a.journalMarkRead(landed.read, landed.mark, landed.rounds, landed.read.sketch.carryOnDecision())
+		}
 		marked.end()
 	}()
 
@@ -1051,8 +1069,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			//
 			// THE JUDGE IS STARTED FIRST AND SPENT LAST, which is the order its own
 			// effect demands: what it does is START WORK, and work must not be
-			// started on top of a turn the reader below is about to re-open.
-			judge := a.judgeAhead(ctx, hub, user, usedTools, response.Text())
+			// started on top of a turn the reader below is about to re-open. SO IT
+			// DECIDES AND DOES NOT ACT — the reading answers a [judgeRuling] and
+			// [Agent.applyRouteJudge] below is the only thing with an effect in it
+			// (route_judge.go). A reading that starts work from inside its own
+			// goroutine is this mechanism used in name and broken in fact.
+			judge := a.judgeAhead(ctx, user, usedTools, response.Text())
 			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
 			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response, marked)
 			a.endPhase()
@@ -1077,8 +1099,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// and it is asked before the turn is sealed so that the work it starts is
 			// on the rail by the time the person reads the answer.
 			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
-			judge.settle()
+			ruling, _ := judge.takeAtTheEnd()
 			a.endPhase()
+			// AND THE TURN IS WHAT SPENDS IT, here, past the two roads above that
+			// would have made it wrong: this turn answered in words, nothing is
+			// re-opening it and nothing is moving it, so work started now is work
+			// started on a turn that is really over.
+			a.applyRouteJudge(hub, ruling)
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has

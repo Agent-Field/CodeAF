@@ -32,11 +32,13 @@ package session
 //	       cancelled context would have moved the wait to the other end of the
 //	       turn — and the reading is bounded by its own window either way.
 //
-// [sidecar.settle] is the fourth verb and it is the exception rather than the
-// rule: it WAITS. It exists for the one moment a reading has nothing to run
-// beside — the end of a turn, after the model has stopped writing — and every
-// use of it is a place where the law above has been thought about and does not
-// apply. There is exactly one other reading in this package that must precede
+// [sidecar.takeAtTheEnd] is the fourth verb and it is the exception rather than
+// the rule: it WAITS. It exists for the one moment a reading has nothing to run
+// beside — the end of a turn, after the model has stopped writing — and IT IS
+// NAMED FOR THE ONLY CONDITION UNDER WHICH IT IS HONEST so that the law can
+// find it: sidecar_law_test.go holds every call to it to the same ending-road
+// property it holds an awaited reading to, and nothing else in this package is
+// spelled that way. There is exactly one other reading in this package that must precede
 // the work rather than ride beside it, and it is named in loop.go's header and
 // in guardian.go: the safety gate, which decides whether a tool RUNS and so has
 // nothing to be applied to afterwards.
@@ -83,9 +85,22 @@ type sidecar[T any] struct {
 // ask is the reading. It is given the sidecar's context and must respect it.
 //
 // act is OPTIONAL and is the reading's one power over the work: it is called on
-// this goroutine the instant the answer lands, before anybody can take it, and
-// it is where an interruption is raised. It must be as cheap as a stream
-// observer. Nil is the ordinary case — most readings simply wait to be taken.
+// this goroutine the instant the answer lands and it is where an interruption is
+// raised. It must be as cheap as a stream observer. Nil is the ordinary case —
+// most readings simply wait to be taken.
+//
+// IT RUNS BEFORE THE ANSWER CAN BE TAKEN, and the order is load-bearing rather
+// than incidental: what `act` does is bring the moment the answer can be spent
+// FORWARD — cutting the request in flight so the next boundary arrives at once —
+// and an answer a taker could see before that had happened would be an answer
+// spent against a step the interruption was still about to cut. So the settle
+// closes after it, which costs a taker exactly as long as `act` is documented to
+// be short.
+//
+// AND A READING THAT HAS BEEN LET GO OF INTERRUPTS NOTHING. [sidecar.end] cancels
+// this context, and a cancelled reading that answers anyway — because `ask` was
+// already on its way back — must not reach into a turn that has stopped waiting
+// for it: a cut raised there would land on whatever generation came NEXT.
 func readBeside[T any](ctx context.Context, ask func(context.Context) T, act func(T)) *sidecar[T] {
 	if ask == nil {
 		return nil
@@ -96,10 +111,10 @@ func readBeside[T any](ctx context.Context, ask func(context.Context) T, act fun
 	go func() {
 		answer := ask(readCtx)
 		side.answer = answer
-		close(side.settled)
-		if act != nil {
+		if act != nil && readCtx.Err() == nil {
 			act(answer)
 		}
+		close(side.settled)
 	}()
 	return side
 }
@@ -132,7 +147,11 @@ func (s *sidecar[T]) take() (T, bool) {
 // where there is genuinely nothing left to run beside, and where the reading is
 // bounded by a window of its own; the work's context bounds it too, so a stopped
 // turn does not wait here.
-func (s *sidecar[T]) settle() (T, bool) {
+//
+// THE NAME IS THE LAW. It may be called where the turn is ENDING and nowhere
+// else, and it is spelled that way because a comment saying so is a comment
+// (sidecar_law_test.go is the law).
+func (s *sidecar[T]) takeAtTheEnd() (T, bool) {
 	var none T
 	if s == nil || s.taken {
 		return none, false

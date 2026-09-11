@@ -156,8 +156,14 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// model being asked a question the person can neither see nor answer. A wait
 	// that is real is reported (docs/design/waiting/DESIGN.md), and this one is as
 	// real as any. It comes off on every way out, which is what the defer is for.
-	a.tellPhase(provider.PhaseChecking, guardianPhaseWho, time.Now())
-	defer a.endPhase()
+	//
+	// AND IT IS SAID OVER THE TOP OF THE BATCH'S OWN WORD RATHER THAN INSTEAD OF
+	// IT. This gate is asked once per call INSIDE a tool batch that has already
+	// said `running <tool>`, and the phase is one slot — so ending this one
+	// plainly would take the batch's word down with it and leave the line blank
+	// for however long the batch had left ([Agent.interruptPhase], phasenews.go).
+	restorePhase := a.interruptPhase(provider.PhaseChecking, guardianPhaseWho, time.Now())
+	defer restorePhase()
 
 	// WithoutStream for the reason the title and the compaction summary use it:
 	// this is bookkeeping about the conversation, not something anybody said, and

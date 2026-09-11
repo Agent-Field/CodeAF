@@ -437,6 +437,37 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
 }
 
+// interruptPhase says a phase over the top of whatever the turn was already
+// saying, and hands back the way to put the old one back.
+//
+// THE SLOT IS ONE SLOT, which is right for a turn: a turn does one thing at a
+// time and the line says which. The one shape that has to NEST is a gate that
+// runs inside a stage — the safety gate asked once per call inside a tool batch
+// (guardian.go, consent.go) — because the batch is still running when the gate
+// answers. Ending the gate's word with [Agent.endPhase] took the batch's own
+// `running <tool>` word down with it and left the line blank for however long
+// the batch had left, which on a `go test` is minutes.
+//
+// A restore onto an empty slot is an end, which is what it means.
+func (a *Agent) interruptPhase(phase provider.Phase, detail string, since time.Time) (restore func()) {
+	if a == nil {
+		return func() {}
+	}
+	a.phase.mu.Lock()
+	held := a.phase.held
+	a.phase.mu.Unlock()
+	a.tellPhase(phase, detail, since)
+	return func() {
+		if held.Phase == "" {
+			a.endPhase()
+			return
+		}
+		// THE OLD STAGE KEEPS ITS OWN START, so its clock counts the whole stage
+		// rather than restarting at the moment the gate let go of the line.
+		a.tellPhaseThen(held.Phase, held.Detail, held.Then, held.Since)
+	}
+}
+
 // endPhase says the turn has stopped doing whatever it was doing, so a surface
 // stops drawing a clock for work that is over. A stale phase left on the screen
 // is exactly the defect the phase clock exists for, and it stops the beat in the

@@ -2255,6 +2255,17 @@ func (a *Agent) Close() error {
 	// read (chatlog.go).
 	a.chatlog.close()
 
+	// AND THE DEFERRED WRITES ARE SETTLED A SECOND TIME, because the first one
+	// above could only settle what was owed BEFORE the close — and the close is
+	// itself a writer: a node stopped, a follow-up dropped, a place referred on
+	// the way out each owe one, and every one of those happened in the rounds
+	// between here and there. A write still owed when the process stops is the
+	// whole risk a deferred write carries ([Agent.SettleWrites], placemeta.go).
+	//
+	// IT IS SAFE HERE AND ONLY HERE: `a.mu` was released above, and everything
+	// this waits on takes that lock.
+	a.SettleWrites()
+
 	if file == nil {
 		return nil
 	}
