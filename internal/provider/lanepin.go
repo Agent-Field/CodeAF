@@ -313,7 +313,7 @@ func pinRetired(lane, model string) bool {
 // questions, a pin that moved between them let one request go out demanding the
 // machine the person had just stopped asking for — the row read under the first
 // lock and the retirement under the second belonging to two different rows. The
-// pair is one fact about one moment (lanes.go's [Client.laneChoiceFor]).
+// pair is one fact about one moment (lanes.go's [Client.drawLaneChoice]).
 func lanePinFor(model string) (LanePin, bool) {
 	// THE MODEL IS FOLDED BEFORE THE LOCK IS TAKEN and the lane half of the key
 	// is read under it, which is what makes this one read rather than two:

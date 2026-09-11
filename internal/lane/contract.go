@@ -196,9 +196,11 @@ type Scored struct {
 
 // Choice is what one request should ask the router for.
 //
-// Order is a preference and Only is a demand: a pin sends Only, and everything
-// else sends Order with fallbacks left on, because a slow answer beats no
-// answer. Ignore names the lanes we are SURE about rather than the ones we are
+// Order is a preference and Only is a demand. Both are sent: the machines that
+// survived the gate and the prune are DEMANDED (`provider.only` with fallbacks
+// off) and ranked inside that set by Order, because the machines outside it are
+// ones this process has measured and rejected rather than ones it never heard
+// of. Ignore names the lanes we are SURE about rather than the ones we are
 // merely unlucky with, and it expires with the belief rather than on a timer.
 //
 // A zero Choice is "no opinion", which is a real answer and the right one when
@@ -208,6 +210,19 @@ type Choice struct {
 	Order  []string
 	Only   []string
 	Ignore []string
+	// PINNED IS A PERSON'S OWN WORD AND IT IS NOT THE SAME FACT AS A DEMAND.
+	// A demand is OURS — the set this process admitted, which it may relax the
+	// moment the set stops working — and a pin is THEIRS: one machine, named
+	// by hand, which nothing may quietly route around. The two looked alike for
+	// exactly as long as `Only` held nothing but a pin, and the day the chooser
+	// began demanding its own set, counting `Only` would have called every
+	// ordinary call pinned: the rescue road turns into a question
+	// ([control.Plan.Pinned] takes the `Ask` road), and the person is offered
+	// `switch to auto?` about a machine they never asked for. So the fact is
+	// carried rather than inferred, written in the one place that knows whether
+	// a person spoke (`internal/provider`'s lanepin.go and drawLaneChoice), and
+	// read in the one place the plan is built.
+	Pinned bool
 	// IT SAYS NOTHING ABOUT TIME, and the absence is the law. Routing and
 	// waiting are two questions and they must never share one nil: this answers
 	// WHICH LANE, and [control.Plan] — built for every token-generating call,

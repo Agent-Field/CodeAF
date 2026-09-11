@@ -58,6 +58,16 @@ func (l *movingLedger) warmUp() {
 	l.warm = true
 }
 
+// warmed is the same field read the same way it is written. A scenario asks it
+// after the call has ended, but the transport that warmed it ran on another
+// goroutine, so an unguarded read here is a data race the detector is right
+// about however settled the value looks.
+func (l *movingLedger) warmed() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.warm
+}
+
 func (l *movingLedger) held() []lanes.Belief {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -159,6 +169,15 @@ func (w warmingTransport) RoundTrip(request *http.Request) (*http.Response, erro
 
 // namesTheSameMachines reports whether every body of one call asked for the same
 // set of machines. It is the whole assertion of this file, said once.
+//
+// IT IS ABOUT THE BODIES THE PRIMARY SENDS, and both scenarios here have only a
+// primary: a cold choice names no alternative, and the warm one cannot walk
+// because nothing serves this model on a sheet the rig never publishes. A RESCUE
+// ARM IS A DELIBERATE EXCEPTION to "one call, one set" — [hedgePreference]
+// rewrites an arm's body to `Only=[its own lane]`, because an arm IS the machine
+// it demanded — so if an arm ever fired here this would fail for a correct
+// reason. The single arm is staged by omission rather than by construction, and
+// saying so is cheaper than a scenario that guarantees it.
 func namesTheSameMachines(t *testing.T, asks []lanestub.Ask) {
 	t.Helper()
 	if len(asks) < 2 {
@@ -202,7 +221,7 @@ func TestOneCallAsksForOneSetOfMachinesHoweverOftenItIsEncoded(t *testing.T) {
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err == nil {
 		t.Fatal("three machines answering 500 produced an answer")
 	}
-	if !ledger.warm {
+	if !ledger.warmed() {
 		t.Fatal("the belief never warmed, so this scenario staged nothing")
 	}
 	namesTheSameMachines(t, server.Asks())
@@ -250,7 +269,7 @@ func TestTheRawStreamDoorAlsoDecidesItsLaneOnce(t *testing.T) {
 			}
 		}
 	}
-	if !ledger.warm {
+	if !ledger.warmed() {
 		t.Fatal("the belief never warmed, so this scenario staged nothing")
 	}
 	namesTheSameMachines(t, server.Asks())

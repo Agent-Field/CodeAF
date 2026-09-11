@@ -46,14 +46,22 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	plan := lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: model, Lane: lanes.HeadOf(choice)}, now), RoleFrom(ctx), now)
 	// ── and then the four things only the transport knows
 	//
-	// A STRICT PIN IS WHAT `Only` MEANS: the person named the machine, so the
-	// act is a question rather than a rescue (offer.go). How long the answer will
-	// be is the caller's own hint, and it is what makes the commitment half of the
-	// inequality computable. And how long this model deliberates is a fact about
-	// the model and the rung it was asked at, which is a knob only this layer
-	// resolves. THE PURSE IS NOT AMONG THEM ANY MORE: it is the plan's own budget
-	// and `lane.PlanFor` fills it in, which is why nothing here names money.
-	plan.Pinned = len(choice.Only) > 0
+	// A PIN IS WHAT THE CHOICE SAYS IT IS, AND NEVER THE LENGTH OF `Only`: the
+	// person named the machine, so the act is a question rather than a rescue
+	// (offer.go). This line counted `Only` until 2026-09-11, which was the same
+	// sentence for exactly as long as a demand and a pin were the same field.
+	// Once the chooser began demanding the set it admitted ([lane.demandOf]),
+	// counting would have called ordinary traffic pinned — the hazard's `Ask`
+	// road instead of a hedge, `switch to auto?` about a machine nobody chose,
+	// and no rescue sent at all. A pin is a person's word and a demand is our
+	// own admitted set; [lane.Choice.Pinned] carries the first and `Only` the
+	// second. How long the answer will be is the caller's own hint, and it is
+	// what makes the commitment half of the inequality computable. And how long
+	// this model deliberates is a fact about the model and the rung it was asked
+	// at, which is a knob only this layer resolves. THE PURSE IS NOT AMONG THEM
+	// ANY MORE: it is the plan's own budget and `lane.PlanFor` fills it in,
+	// which is why nothing here names money.
+	plan.Pinned = choice.Pinned
 	plan.Expected = expected
 	// AND A PERSON MAY TURN RESCUING OFF OUTRIGHT (lanepin.go's [SetLaneGuard]).
 	// It is the one thing about a plan that is neither a belief nor a role, so it

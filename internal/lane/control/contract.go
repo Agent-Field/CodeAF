@@ -432,6 +432,13 @@ type Plan struct {
 	Alts []Alternative
 	// Pinned says a person named this lane themselves. It changes the ACT and
 	// never the arithmetic: where an unpinned call hedges, a pinned one asks.
+	//
+	// IT IS NOT "THE REQUEST NAMED MACHINES". Nearly every request names
+	// machines — the chooser demands the set it admitted — and a set this
+	// process admitted is this process's to leave the moment it stops working.
+	// Only a person's own word turns a rescue into a question, which is why
+	// what fills this is carried from the one place that knows one was spoken
+	// (`internal/lane`'s Choice.Pinned) and never counted off a list of names.
 	Pinned bool
 	// Purse is the spend rail, nil when nothing bounds it.
 	Purse Purse
