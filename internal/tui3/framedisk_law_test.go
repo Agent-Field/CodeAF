@@ -16,10 +16,25 @@ package tui3
 // directory or touches the network.
 //
 // WHAT IT WALKS. The roots are the frame's own doors — [app.View] and everything
-// it composes. The edges are three:
+// it composes. The edges are four:
 //
 //   - a call on the SURFACE ITSELF — `a.legend(width)` inside another [app]
 //     method — resolved to that method on that receiver type;
+//   - a call on the SURFACE HANDED IN AS A PARAMETER — the `a` of
+//     `placeFrameWithBar(a *app, …)` — which is the same edge, resolved the same
+//     way. It was the biggest hole this law had until #898: the walk made a
+//     surface edge out of `x.method()` only where `x` was spelled the same as the
+//     enclosing method's own receiver, so the body of `placeFrameWithBar(a, …)`
+//     was walked — it is a package function — while every `a.…` call INSIDE it
+//     was read as a call on some other value and dropped. The reviewer of #875
+//     traced the live one: `app.View → app.placeDraw → placeFrameWithBar(a, …)`
+//     ⊘ `a.composerRows → a.composerWhereLine → a.composerWhere →
+//     a.composerOpensAt → a.errandPlace → errandHomeDir → os.Getwd`, a call in
+//     this file's own forbidden set that this file could not see. [surfaceNames]
+//     gives a body's receiver and its `*app` parameters as ONE list, THE TYPE
+//     DECIDES which names are on it, and
+//     [TestTheLawSeesEveryShapeOfIndirectionItClaims] plants the shape so that
+//     deleting the branch turns it red;
 //   - a call on no receiver at all — `renderPicture(…)`, `fit(…)` — resolved to
 //     the package function of that name;
 //   - a func-typed FIELD, through whatever function this package assigns to it.
@@ -30,21 +45,32 @@ package tui3
 // WHAT IT DOES NOT WALK, SAID OUT LOUD, because a law whose reach a reader
 // cannot predict is a law that lies by omission:
 //
-//   - A PACKAGE FUNCTION THAT TAKES THE SURFACE AS A PARAMETER — SEEN NOW, and
-//     it was the biggest hole in this law until #898. The walk used to make a
-//     surface edge out of `x.method()` only where `x` was spelled the same as
-//     the enclosing method's own receiver, so the body of `placeFrameWithBar(a,
-//     …)` was walked — it is a package function — while every `a.…` call INSIDE
-//     it was read as a call on some other value and dropped. The reviewer of #875
-//     traced the live one that made this a defect: `app.View → app.placeDraw →
-//     placeFrameWithBar(a, …)` ⊘ `a.composerRows → a.composerWhereLine →
-//     a.composerWhere → a.composerOpensAt → a.errandPlace → errandHomeDir →
-//     os.Getwd`, a call in this file's own forbidden set that this file could
-//     not see. [surfaceNames] is the fix: every parameter typed `*app` is a
-//     second spelling of the surface, and a call on any of those names is the
-//     same edge as a call on the receiver,
-//     [TestTheLawSeesEveryShapeOfIndirectionItClaims] plants the shape so
-//     deleting the branch turns it red.
+//   - A CLOSURE THE PAINT FILES FOR A PRESS. The frame is walked INTO the
+//     literals it builds, because a paint runs what it builds — but a literal
+//     that ANSWERS A `tea.Cmd` is not one of them. Nothing in a paint can run a
+//     command: [app.View] returns a string, and a row that files `verb{do:
+//     func() tea.Cmd{…}}` ([verb], and homephone's `do func(a *app) tea.Cmd`) is
+//     handing the LOOP something to run when a key is pressed. Walking those
+//     made the frame's graph the whole surface's, and #898's wider reach is what
+//     showed it: `a.homeCrossChord` asks a running row for its verbs in order to
+//     NAME them on the hint line, the stop verb's closure calls `a.closeHome`,
+//     and from there the walk reached navigation, `app.stowDrafts` and a draft
+//     record read off the disk — a call no paint has ever made. A fictional call
+//     chain is worse than a missing one (the local rule below says the same of
+//     names), and the press is not missed by this file: it runs on the loop,
+//     where [TestTheUpdateLoopStartsNoProcessOfItsOwn] walks it, and the planted
+//     package asserts both halves.
+//   - A VARIADIC SURFACE — `func f(as ...*app)`. [appPointer] reads `*app` and
+//     not `...*app`, and reading it would buy nothing: a call inside such a body
+//     is spelled `as[0].draw()` or on a range variable, and neither is a name
+//     the walk could resolve back to the parameter. Nothing in this package is
+//     written that way.
+//   - A `*app` PARAMETER ON A FUNC LITERAL THE SEAM READER FILED. Such a literal
+//     is filed with its body and no signature at all, because there is nothing
+//     to know about it but what it does; [surfaceNames] returns early rather
+//     than pretend otherwise. A literal walked INLINE is walked with the names
+//     the body around it spells the surface by, which is the truth about a
+//     closure.
 //   - A METHOD ON SOME OTHER VALUE the frame happens to hold — `p.rows()`,
 //     `e.word()`, `r.ref()`. Following those by name alone drags in every
 //     same-named method in an eleven-thousand-line package and turns this law
@@ -73,13 +99,28 @@ package tui3
 //     is what would see it, and this law is deliberately not one.
 //   - `go a.method()` is walked as though it were on the loop, while
 //     `go func(){ a.method() }()` is not. That is strict rather than loose, so it
-//     costs a false positive and never a miss.
+//     costs a false positive and never a miss. A PARAMETER SHADOWED INSIDE ITS
+//     OWN BODY — `for _, a := range …` written in a `func f(a *app)` — is the
+//     same trade: the walk reads `a.x()` as the surface's, which is a false
+//     positive and not a hole, and it is the trade the receiver name has always
+//     made.
 //
 // THE ALLOWLIST IS THE INTERESTING PART OF THIS FILE. Every name on it is a
 // MEMOISED DOOR: it reads the disk once per file per epoch and the frame reads
 // its memo on every frame after, with `open`, the pulse beat or the write that
 // changed the bytes refreshing it. Adding a name here is a claim that the read
 // happens once and not per frame, and the claim is written down beside the name.
+//
+// AND A LAW THAT GROWS ITS ALLOWLIST IN THE SAME CHANGE THAT GROWS ITS REACH
+// TEACHES NOBODY ANYTHING. #898 widened the walk; the wider walk found two
+// things, and both were answered in the code rather than here — the home
+// directory an errand opens at is read once at `open` and held
+// ([app.errandHome]), and the press closure that made a draft record look like a
+// paint's read is not the paint's at all. A name that goes on this map has to be
+// keyed at the door whose own contract is the once-per-epoch one, never at the
+// leaf it happens to call: [readDraftKeep] is a bare os.ReadFile with six
+// callers and only one memo among them, so exempting it would have exempted the
+// five and every caller written after.
 
 import (
 	"go/ast"
@@ -96,7 +137,6 @@ import (
 // disk, and the one line saying why it is not a per-frame read.
 var frameDiskDoors = map[string]string{
 	".renderPicture": "the decode itself — the WORK the frame is drawing, not a fact it is fetching, and [app.previews] pays it once per file per shape",
-	".readDraftKeep": "one draft record read for one purpose that is not a frame's: [app.readKeptElsewhere] takes it once per draft file per epoch behind the `keptFrom` memo, and the only other reachable reading is [app.atOwnedComposer]'s, once per send stowed — a record on the way to the disk, never a fact a paint fetches",
 }
 
 // updateProcessDoors is the same allowlist for the update loop: a name the loop
@@ -454,11 +494,52 @@ func (g *surfaceGraph) readSeams(file *ast.File) {
 	})
 }
 
+// answersCommand is whether one literal hands back a `tea.Cmd` — the one fact
+// that settles whether A PAINT COULD HAVE RUN IT, and it is settled by the
+// literal's own declared result and never by the field it is filed in or the
+// name it is given.
+//
+// A COMMAND IS THE LOOP'S GRAMMAR AND THE PAINT HAS NO VERB FOR IT. [app.View]
+// answers a string; a command is a thing bubbletea runs and delivers a message
+// for, so a literal typed to answer one is by construction something this body
+// FILED rather than something it ran — `verb{do: func() tea.Cmd{…}}` is the
+// shape, and the head of this file says what walking it cost.
+func answersCommand(lit *ast.FuncLit) bool {
+	if lit.Type == nil || lit.Type.Results == nil {
+		return false
+	}
+	for _, result := range lit.Type.Results.List {
+		sel, ok := result.Type.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "tea" && sel.Sel.Name == "Cmd" {
+			return true
+		}
+	}
+	return false
+}
+
+// runsInThisBody is whether one literal written inside a body is RUN by that
+// body, which is the whole of what decides whether its calls are that body's.
+//
+// THE TWO WALKS ASK IT FROM OPPOSITE SIDES. The paint runs everything it builds
+// — a `draw := func(…)` local is the paint — and the one thing it cannot run is
+// a command ([answersCommand]). The loop is the other way round: it runs what it
+// builds EXCEPT what it hands somebody else to run ([handedOff]) — a tea.Cmd it
+// returns, a closure given to guard.Go — because that is how this surface gets
+// work off the loop at all.
+func runsInThisBody(lit *ast.FuncLit, paint bool, off map[*ast.FuncLit]bool) bool {
+	if paint {
+		return !answersCommand(lit)
+	}
+	return !off[lit]
+}
+
 // callsIn is every name one body reaches, and every forbidden call it makes
-// itself. intoClosures says whether EVERY function literal counts as part of
-// this body — it does for the frame, which runs everything it builds — and when
-// it is false the only literals skipped are the ones handed off to be run
-// elsewhere ([handedOff]).
+// itself. intoClosures says whether this is THE PAINT — which runs everything it
+// builds but a command — and when it is false the only literals skipped are the
+// ones handed off to be run elsewhere ([runsInThisBody] holds both rules).
 func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string]bool,
 	intoClosures bool) (names []string, bad []string) {
 	// A PACKAGE FUNCTION MAY TAKE THE SURFACE RATHER THAN BE ONE. [surfaceNames]
@@ -472,7 +553,7 @@ func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string
 	walk = func(node ast.Node) {
 		ast.Inspect(node, func(n ast.Node) bool {
 			if lit, ok := n.(*ast.FuncLit); ok {
-				if intoClosures || !off[lit] {
+				if runsInThisBody(lit, intoClosures, off) {
 					walk(lit.Body)
 				}
 				return false
@@ -621,10 +702,18 @@ import (
 	"os"
 	"os/exec"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 type app struct{ probe func(); door func() }
+
+// A row's verb: a word the paint DRAWS and a closure the loop RUNS on a press.
+type verb struct{ do func() tea.Cmd }
+
+func pressTarget()     { os.Stat("pressed") }
+func loopPressTarget() { exec.Command("pressloop").Run() }
 
 // A field assigned a function: a.gitProbe = gitHead.
 func fieldTarget() { os.Stat("field") }
@@ -653,6 +742,8 @@ func (a *app) View() {
 	inlineLiteral()
 	a.other()
 	planted(a)
+	// The paint FILES this and presses nothing.
+	_ = verb{do: func() tea.Cmd { pressTarget(); return nil }}
 }
 
 // The constructor that installs the door, as newApp installs every Options seam.
@@ -668,6 +759,9 @@ func (a *app) Update() {
 	guard.Go("x", func() { exec.Command("elsewhere").Run() })
 	run := func() { exec.Command("inline").Run() }
 	run()
+	// AND THE PRESS THE PAINT FILED IS THE LOOP'S: the same shape the frame may
+	// skip is walked here, because this is where it is pressed.
+	_ = verb{do: func() tea.Cmd { loopPressTarget(); return nil }}
 }
 `
 	g := newSurfaceGraph()
@@ -700,6 +794,13 @@ func (a *app) Update() {
 	if _, fictional := frame[".unrelated"]; fictional {
 		t.Error("a local closure lent its body to another function's local of the same name")
 	}
+	// AND THE PRESS IS NOT THE PAINT'S. A closure typed to answer a tea.Cmd is
+	// filed by the draw and run by the loop, so counting it as the frame's makes
+	// every verb's whole action a per-frame call — which is how a draft record on
+	// disk came to look like a read a paint took (this file's head).
+	if _, pressed := frame[".pressTarget"]; pressed {
+		t.Error("the frame walked a closure the paint files for a press, as though a draw ran it")
+	}
 	for node, sins := range frame {
 		for _, sin := range sins {
 			if strings.Contains(sin, "fictional") || strings.Contains(node, "unrelated") {
@@ -720,11 +821,12 @@ func (a *app) Update() {
 		return ""
 	}
 	loop := g.reach([]string{"app.Update"}, processForbidden, nil, false)
-	inline, elsewhere := false, false
+	inline, elsewhere, press := false, false, false
 	for _, sins := range loop {
 		for _, sin := range sins {
 			inline = inline || strings.Contains(sin, lineOf(`"inline"`))
 			elsewhere = elsewhere || strings.Contains(sin, lineOf(`"elsewhere"`))
+			press = press || strings.Contains(sin, lineOf(`"pressloop"`))
 		}
 	}
 	if !inline {
@@ -732,5 +834,11 @@ func (a *app) Update() {
 	}
 	if elsewhere {
 		t.Error("the update law walked a closure handed to guard.Go, which runs elsewhere")
+	}
+	// THE PRESS THE FRAME MAY SKIP IS THE LOOP'S, and this is the half that makes
+	// that skip honest rather than a hole: the same `func() tea.Cmd` the paint
+	// only filed is walked here, where it is pressed.
+	if !press {
+		t.Errorf("the update law skipped a press closure, which the loop is where it runs: %v", loop)
 	}
 }
