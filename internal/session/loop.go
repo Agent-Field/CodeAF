@@ -1470,6 +1470,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// than done quietly, because the rest of this reply arrives in a
 			// different voice and the person is watching it happen.
 			hopped = append(hopped, next)
+			// AND THE STATUS LINE SAYS SO WHILE IT HAPPENS, by the one word that
+			// means a person's answer is changing hands
+			// ([provider.PhaseSwitchingModel]). That word used to be posted by the
+			// adapter's own model hop, which is deleted — this is the only model
+			// change in the build now, so it is the only thing that can say it, and
+			// a hop that sent only a feed event left the status line drawing the old
+			// model's clock.
+			a.tellPhaseThen(provider.PhaseSwitchingModel, "", next, time.Now())
 			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, next),
 				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, next)})
 			model = next
