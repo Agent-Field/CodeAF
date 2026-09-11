@@ -44,7 +44,7 @@ const askBlockSchemaJSON = `{"type":"object","properties":{"kind":{"type":"strin
 // `"Turn waits"`, `"Certainty"` on a low/medium/high enum — plus the tail of the
 // two long ones. A field whose name and enum already say what it is gets no
 // description at all, which is the honest amount rather than a missing one.
-const askSchemaTemplate = `{"type":"object","properties":{"head":{"type":"string","description":"Decision in one sentence"},"kind":{"type":"string","enum":ASKKINDS,"description":"assumption options stand unless struck; ratify waits on nothing"},"form":{"type":"string","enum":FORMS,"description":"Smallest form evidence needs"},"reason":{"type":"string","description":"Why ask now after cheaper rungs"},"subject":{"type":"object","description":"Existing subject","properties":{"kind":{"type":"string","enum":SUBJECTS},"id":{"type":"integer","description":"Task id"},"callId":{"type":"string"},"ref":{"type":"string","description":"String id"},"name":{"type":"string"}}},"options":{"type":"array","description":"Answers, or assumptions that stand","items":{"type":"object","properties":{"key":{"type":"string","description":"A single digit, 1 upward. Anything else is renumbered and given back as you wrote it"},"label":{"type":"string","description":"Short label"},"body":{"type":"string","description":"Meaning"},"consequence":{"type":"string","description":"What happens"},"safe":{"type":"boolean","description":"Changes nothing"},"widening":{"type":"boolean","description":"Grants more"},"blocks":{"type":"array","description":"Evidence","items":BLOCK},"dimensions":{"type":"object","description":"Value per axis","additionalProperties":{"type":"string"}}},"required":["key","label"]}},"input":{"type":"object","description":"checklist and pairs use the options; blanks and dial carry their shape here","properties":{"kind":{"type":"string","enum":INPUTS},"blanks":{"type":"array","description":"Named fields, kind blanks","items":{"type":"object","properties":{"label":{"type":"string"},"kind":{"type":"string","enum":BLANKS},"default":{"type":"string","description":"Prefilled"},"choices":{"type":"array","description":"kind choice","items":{"type":"string"}}},"required":["label"]}},"dial":{"type":"object","description":"Number on a range, kind dial","properties":{"min":{"type":"number"},"max":{"type":"number"},"default":{"type":"number"},"labels":{"type":"array","description":"Words for the ends","items":{"type":"string"}}},"required":["min","max"]},"prompt":{"type":"string","description":"One line over the box"},"secret":{"type":"boolean","description":"A credential, never drawn back"}}},"pick":{"type":"object","description":"Recommended answer","properties":{"key":{"type":"string","description":"Option key"},"reason":{"type":"string"},"confidence":{"type":"string","enum":CONFIDENCE},"wouldChange":{"type":"string","description":"What would change it"}},"required":["key"]},"stakes":{"type":"string","enum":STAKES,"description":"Cost if wrong"},"blocking":{"type":"object","description":"What waits","properties":{"turn":{"type":"boolean"},"tasks":{"type":"array","description":"Task names","items":{"type":"string"}}}},"scope":{"type":"array","description":"Allowed lifetimes","items":{"type":"string","enum":SCOPES}},"attach":{"type":"array","description":"Evidence before answers","items":BLOCK}},"required":["head","kind","reason","stakes"],"additionalProperties":false}`
+const askSchemaTemplate = `{"type":"object","properties":{"head":{"type":"string","description":"Decision in one sentence"},"kind":{"type":"string","enum":ASKKINDS,"description":"assumption options stand unless struck; ratify waits on nothing"},"form":{"type":"string","enum":FORMS,"description":"Smallest form evidence needs"},"reason":{"type":"string","description":"Why ask now after cheaper rungs"},"subject":{"type":"object","description":"Existing subject","properties":{"kind":{"type":"string","enum":SUBJECTS},"id":{"type":"integer","description":"Task id"},"callId":{"type":"string"},"ref":{"type":"string","description":"String id"},"name":{"type":"string"}}},"options":{"type":"array","description":"Answers, or assumptions that stand","items":{"type":"object","properties":{"key":{"type":"string","description":"A single digit, 1 upward. Anything else is renumbered and given back as you wrote it"},"label":{"type":"string","description":"Short label"},"body":{"type":"string","description":"Meaning"},"consequence":{"type":"string","description":"What happens"},"safe":{"type":"boolean","description":"Changes nothing"},"widening":{"type":"boolean","description":"Grants more"},"blocks":{"type":"array","description":"Evidence","items":BLOCK},"dimensions":{"type":"object","description":"Value per axis","additionalProperties":{"type":"string"}}},"required":["key","label"]}},"input":{"type":"object","description":"checklist and pairs use the options; blanks and dial carry their shape here","properties":{"kind":{"type":"string","enum":INPUTS},"blanks":{"type":"array","description":"Named fields, kind blanks","items":{"type":"object","properties":{"label":{"type":"string"},"kind":{"type":"string","enum":BLANKS},"default":{"type":"string","description":"Prefilled"},"choices":{"type":"array","description":"kind choice","items":{"type":"string"}}},"required":["label"]}},"dial":{"type":"object","description":"Number on a range, kind dial","properties":{"min":{"type":"number"},"max":{"type":"number"},"default":{"type":"number"},"labels":{"type":"array","description":"Words for the ends","items":{"type":"string"}}},"required":["min","max"]},"prompt":{"type":"string","description":"One line over the box"},"secret":{"type":"boolean","description":"A credential, never drawn back"}}},"pick":{"type":"object","description":"Recommended answer","properties":{"key":{"type":"string","description":"Option key"},"reason":{"type":"string"},"confidence":{"type":"string","enum":CONFIDENCE},"wouldChange":{"type":"string","description":"What would change it"}},"required":["key"]},"stakes":{"type":"string","enum":STAKES,"description":"Cost if wrong"},"blocking":{"type":"object","description":"What waits","properties":{"turn":{"type":"boolean","description":"Default true stops your turn until they answer. false returns at once, keep working, their answer arrives as a message"},"tasks":{"type":"array","description":"Task names","items":{"type":"string"}}}},"scope":{"type":"array","description":"Allowed lifetimes","items":{"type":"string","enum":SCOPES}},"attach":{"type":"array","description":"Evidence before answers","items":BLOCK}},"required":["head","kind","reason","stakes"],"additionalProperties":false}`
 
 // askSchemaJSON is the wire schema: the template with the block written out in
 // full at both places it stands, and EVERY ENUM WRITTEN FROM THE CONSTANTS THE
@@ -89,10 +89,31 @@ type askArguments struct {
 	Input    InputShape     `json:"input"`
 	Pick     *Pick          `json:"pick"`
 	Stakes   Stakes         `json:"stakes"`
-	Blocking Blocking       `json:"blocking"`
+	Blocking askBlocking    `json:"blocking"`
 	Scope    []AnswerScope  `json:"scope"`
 	Attach   []Block        `json:"attach"`
 }
+
+// askBlocking is [Blocking] as the ASKER may write it, and the one difference is
+// the pointer: it is how this decoder tells `turn: false` from a `blocking` the
+// model did not write at all.
+//
+// THE ZERO VALUE WAITS, exactly as [Policy]'s does and for the same reason: a
+// model that says nothing gets the behaviour every `ask` has always had, and
+// carrying on while somebody decides is a thing the asker has to CLAIM it can
+// do.
+type askBlocking struct {
+	Turn  *bool    `json:"turn"`
+	Tasks []string `json:"tasks"`
+}
+
+// waits reads that field: true where the asker asked to wait or said nothing.
+//
+// IT IS THE ASKER'S WORD AND NOTHING ELSE. Whether the KIND waits is
+// [AskKind.Waits]'s answer and is asked beside this one, so neither reading has
+// to know the other's business: a ratify waits on nobody whatever the model
+// writes here, and everything else waits unless the model says otherwise.
+func (b askBlocking) waits() bool { return b.Turn == nil || *b.Turn }
 
 // askRefusedLead opens every refusal `ask` hands back. IT SAYS THAT NOTHING WAS
 // SHOWN, because a model reading a bare refusal has told the person "the form
@@ -121,30 +142,32 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	}
 	id := a.askSeq.Add(1)
 	theirs := askDigitKeys(in.Options, in.Pick)
-	q := Question{ID: id, Kind: QuestionAsk, Ask: in.Kind, Form: in.Form, Asker: Asker{Kind: AskerModel}, Head: in.Head, Reason: in.Reason, Subject: in.Subject, Options: in.Options, Input: in.Input, Pick: in.Pick, Stakes: in.Stakes, Blocking: in.Blocking, Scope: in.Scope, Attach: in.Attach,
+	// AND WHETHER THE ASKER IS WAITING FOR IT AT ALL. Two things decide it, and
+	// both are the asker's: the KIND, because a ratify names something this turn
+	// already did and nothing waits on one ([AskKind.Waits]), and the asker's own
+	// `blocking.turn`, which is how a model says it has work in hand that does
+	// not depend on the answer. Either of them is enough to let the call carry on.
+	waits := in.Kind.Waits() && in.Blocking.waits()
+	q := Question{ID: id, Kind: QuestionAsk, Ask: in.Kind, Form: in.Form, Asker: Asker{Kind: AskerModel}, Head: in.Head, Reason: in.Reason, Subject: in.Subject, Options: in.Options, Input: in.Input, Pick: in.Pick, Stakes: in.Stakes, Scope: in.Scope, Attach: in.Attach,
 		// AND WHICH STEP ASKED IT. A model may call `ask` three times in one
 		// batch, and those three questions are one moment to a person
 		// (question.go's [Question.Batch]).
 		Batch: a.stepToken()}
-	// AND WHETHER THE ASKER IS WAITING FOR IT AT ALL. A model that says nothing
-	// is blocked on the turn has said it will read the answer whenever it comes,
-	// which is the one thing that lets a question stand after the turn that
-	// raised it ends ([questionOutlivesTurn]). The [AskKind.Waits] term keeps a
-	// ratify out of it: a ratify names something this turn already did, and one
-	// still on screen after the turn is a question about work nobody is doing.
-	q.Later = q.Ask.Waits() && !in.Blocking.Turn
+	// WHAT MAY OUTLIVE THE TURN IS THE ASKER'S OWN WORD, kept once
+	// ([questionOutlivesTurn] reads it). The [AskKind.Waits] term keeps a ratify
+	// out of it: a ratify names something this turn already did, and one still on
+	// screen after the turn is a question about work nobody is doing.
+	q.Later = q.Ask.Waits() && !in.Blocking.waits()
 	// AND `blocking.turn` IS DERIVED AND NEVER THE MODEL'S CLAIM. What stops the
-	// turn is whether this call actually parks, which is the kind and nothing
-	// else ([AskKind.Waits]) — so a model that writes `blocking: {turn: true}`
-	// on a ratify cannot put a row on the waiting desk about a turn that is
-	// carrying on, and a model that writes nothing at all cannot make home draw
-	// `idle` over work that has stopped. The model's own word about waiting is
-	// kept, once, in [Question.Later] above; nothing downstream may read this
-	// field as an argument the asker supplied.
+	// turn is whether this call actually parks — the two terms above — so a model
+	// that writes `blocking: {turn: true}` on a ratify cannot put a row on the
+	// waiting desk about a turn that is carrying on, and a model that writes
+	// nothing at all cannot make home draw `idle` over work that has stopped.
+	// Nothing downstream may read this field as an argument the asker supplied.
 	//
 	// The tasks half is the asker's, because only the asker knows what work of
 	// its own is waiting and this engine cannot derive that from anything.
-	q.Blocking = Blocking{Turn: q.Ask.Waits(), Tasks: in.Blocking.Tasks}
+	q.Blocking = Blocking{Turn: waits, Tasks: in.Blocking.Tasks}
 	q.Policy = a.autonomyFor(q.Ask)
 	if q.Stakes == StakesIrreversible {
 		q.Policy = Policy{Kind: PolicyAsk}
@@ -165,6 +188,9 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		answer := defaultAnswer(q, "")
 		answer.From = headlessAnswerLine(q, answer)
 		a.recordDecision(decisionRecordOf(q, answer))
+		// Nothing was asked, so there is nothing in the book and nothing to
+		// deliver: the answer is this call's own result, rendered the one way
+		// every answer is rendered ([askAnswerText]).
 		// AND THE LINE LEAVES THE ENGINE. docs/design/questions/DESIGN.md's
 		// HEADLESS law is that the policy applies AND IS PRINTED — a run that
 		// took a default silently is a run whose decision nobody can find
@@ -174,7 +200,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		// a surface hearing this about a question it never drew does nothing
 		// with it, which is what [app.foldOthersAnswer] already does.
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
-		return marshalAnswer(askInTheirKeys(answer, q, theirs))
+		return askAnswerText(q, answer, theirs, nil), false, nil
 	}
 	open := &askOpen{q: q, theirs: theirs}
 	a.mu.Lock()
@@ -190,18 +216,23 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	a.mu.Lock()
 	open.letGo = letGo
 	a.mu.Unlock()
+	// THE CLOCK STARTS ONCE THE QUESTION IS ON SCREEN, and it belongs to the lane
+	// rather than to this call ([Agent.startAskClock]): it has to go on running
+	// for a question this call is not waiting for, which is the shape that had no
+	// clock at all while the timer lived in the select below.
+	a.startAskClock(open)
 	if wait == nil {
+		if !in.Blocking.waits() {
+			// THE ASKER SAID ITS TURN DOES NOT WAIT. The question stays up, the
+			// turn carries on around it, and the answer arrives as a message
+			// ([Agent.deliverAskAnswer]).
+			return askedText(q), false, nil
+		}
 		// NOTHING WAITS ON A RATIFY ([AskKind.Waits]), so the call comes straight
 		// back and the question stands on its own. The turn goes on; if the
 		// person strikes what was done, the answer reaches this conversation as a
 		// message ([Agent.answerAsk]).
 		return askShownLead + strings.TrimSpace(q.Head), false, nil
-	}
-	var clock <-chan time.Time
-	if q.Policy.Kind == PolicyRecommendThenAuto {
-		timer := time.NewTimer(q.Policy.After)
-		defer timer.Stop()
-		clock = timer.C
 	}
 	select {
 	case answer, answered := <-wait:
@@ -229,18 +260,43 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 			return askedBackResult(q, answer)
 		}
 		letGo()
-		return marshalAnswer(askInTheirKeys(answer, q, theirs))
-	case <-clock:
-		answer := defaultAnswer(q, "")
-		_ = a.ResolveQuestion(answer)
-		letGo()
-		return marshalAnswer(askInTheirKeys(answer, q, theirs))
+		// THE ONE RENDERING, so a model that waited reads exactly what a model
+		// that carried on reads ([askAnswerText], asklane.go). There is no clock
+		// case here any more: the clock belongs to the lane, because a question
+		// nobody is parked on needs one too and this select is only reached when
+		// somebody is.
+		return askAnswerText(q, answer, theirs, nil), false, nil
 	case <-ctx.Done():
-		a.mu.Lock()
-		a.asked.letGoLocked(id)
-		a.mu.Unlock()
+		a.askLetGo(open, wait)
 		letGo()
 		return "", false, ctx.Err()
+	}
+}
+
+// askLetGo is this call leaving a question it was parked on — the turn was
+// interrupted, or it moved on without it.
+//
+// AN ANSWER THAT ARRIVED IN THE SAME INSTANT IS STILL AN ANSWER. It was recorded
+// and announced by the door that took it, so throwing it away here would leave a
+// decision in the record that the model was never told about; it becomes a
+// message instead, which is what an answer with nobody parked already is. The
+// answering road claimed the wait before it sent (askwait.go), so a settled
+// entry here means the value is in the buffer and this is the only road left
+// that can read it.
+func (a *Agent) askLetGo(open *askOpen, wait <-chan Answer) {
+	a.mu.Lock()
+	settled := open.settled
+	if settled == nil {
+		a.asked.letGoLocked(open.q.ID)
+	}
+	a.mu.Unlock()
+	if settled == nil {
+		return
+	}
+	select {
+	case answer := <-wait:
+		a.deliverAskAnswer(answer, askAnswerText(open.q, answer, open.theirs, nil))
+	default:
 	}
 }
 
@@ -290,21 +346,33 @@ func (a *Agent) answerAsk(answer Answer) error {
 		a.enqueueSteering(askBackNote(open.q, answer))
 		return nil
 	}
-	// The delivery cannot block and the entry is the ownership, so this is one
-	// call under one lock rather than the read-unlock-send it was (askwait.go).
-	// An answer to an ask that has already ended finds nothing parked and is
-	// nothing to do (answers.go's second law: a late answer is ignored and
-	// nothing says so).
+	// THE SETTLE AND THE HANDOVER ARE ONE LOCKED STEP (askwait.go's
+	// [askedOfThePerson.answerLocked]): the wait is claimed there before anything
+	// is put on it, so a call letting go in the same instant and this road cannot
+	// interleave into an answer that was recorded, announced, and handed to a
+	// channel nobody will ever read.
 	a.mu.Lock()
-	open, said := a.asked.answerLocked(answer.ID, answer)
+	prior := priorAnswerLocked(a.asked.atLocked(answer.ID), answer)
+	open, wait, err := a.asked.answerLocked(answer.ID, answer)
 	a.mu.Unlock()
-	if !said {
+	if err != nil {
+		return err
+	}
+	if wait != nil {
+		// The lane read it, and the lane owns the rest: it lets go of the
+		// question and renders the answer to the model itself.
 		return nil
 	}
-	if open.wait != nil {
-		// The lane read it, and the lane owns the rest: it lets go of the
-		// question and returns the answer to the model itself.
-		return nil
+	text := askAnswerText(open.q, answer, open.theirs, prior)
+	if !a.deliverAskAnswer(answer, text) {
+		// THE CONVERSATION IS CLOSED AND NOBODY WILL EVER READ THIS. Undoing the
+		// settle is what makes the refusal true: the question is still a
+		// question, and the error stops [Agent.ResolveQuestion] recording a
+		// decision whose answer the model was never told.
+		a.mu.Lock()
+		open.settled = prior
+		a.mu.Unlock()
+		return errAnswerClosed
 	}
 	if open.letGo != nil {
 		// THE QUESTION OUTLIVED ITS CALL. The words were claimed by the answer
@@ -312,32 +380,21 @@ func (a *Agent) answerAsk(answer Answer) error {
 		// nothing else — the withdrawal it would otherwise send finds the
 		// question already answered.
 		open.letGo()
+		a.mu.Lock()
+		open.letGo = nil
+		a.mu.Unlock()
 	}
-	a.tellAskAnswer(open, answer)
 	return nil
 }
 
-// tellAskAnswer puts the answer to a question that outlived its call in front of
-// the model, in the same JSON the tool call would have returned.
-//
-// IT IS OWED A TURN WHEN IT ASKS FOR SOMETHING. A person who struck an
-// assumption, picked against what stands or typed a sentence has said something
-// the model has to act on, so the note wakes the conversation the way a landed
-// task's report does. An answer that changes nothing — the safe answer on a
-// ratify, or a bare acknowledgement — is context for the next request and
-// nothing more, so it rides the ambient lane and starts no turn: waking a model
-// to be told that what it already did is fine is the session talking to itself.
-func (a *Agent) tellAskAnswer(open *askOpen, answer Answer) {
-	body, _, err := marshalAnswer(askInTheirKeys(answer, open.q, open.theirs))
-	if err != nil {
-		return
+// priorAnswerLocked is what this question was answered with BEFORE, for a
+// revision that has to say what it replaced. It is nil for a first answer and
+// for a change to something this book is not holding.
+func priorAnswerLocked(open *askOpen, answer Answer) *Answer {
+	if open == nil || !answer.Revises {
+		return nil
 	}
-	note := askAnsweredLead + strings.TrimSpace(open.q.Head) + "\n" + body
-	if answerChangesNothing(open.q, answer) {
-		a.enqueueAmbientNote(note)
-		return
-	}
-	a.enqueueSteering(note)
+	return open.settled
 }
 
 // answerChangesNothing reports whether an answer asks for nothing to be done:
@@ -369,9 +426,6 @@ const (
 	askShownLead = "shown, and nothing waits on it — carry on. If they strike it you will be told: "
 	// askedBackLead opens the result of a question the person asked back on.
 	askedBackLead = "they asked you this before answering, and the question is still open on their screen — answer them in your reply and do not ask it again; their answer will arrive as a message: "
-	// askAnsweredLead opens the message carrying an answer to a question that
-	// outlived the call that asked it.
-	askAnsweredLead = "The person answered the question you left open — "
 	// askBackNoteLead opens the message carrying words said about a question that
 	// is still standing.
 	askBackNoteLead = "The person said this about the question still open — "

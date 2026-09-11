@@ -45,10 +45,19 @@ const questionDoor = "raiseQuestion"
 // ([Agent.putBackQuestion]).
 const questionPutBack = "putBackQuestion"
 
+// questionRestate is the other road that is not a raise: a question ALREADY
+// standing, said again because a fact ON it changed — its clock stopped under
+// somebody's hand ([Agent.restateQuestion], asklane.go). It may not go through
+// the door: raising it again would put `no longer needed` on the screen of the
+// person reading it and hand it a fresh settle guard and a fresh reading clock
+// mid-decision. It banks the same question under the same token and says it
+// once more, which every surface upserts.
+const questionRestate = "restateQuestion"
+
 func TestEveryQuestionIsRaisedThroughTheOneDoor(t *testing.T) {
 	for _, call := range []string{"emitQuestion", "rememberQuestion"} {
 		for _, site := range callSitesIn(t, ".", call) {
-			if site.fn == questionDoor || site.fn == questionPutBack {
+			if site.fn == questionDoor || site.fn == questionPutBack || site.fn == questionRestate {
 				continue
 			}
 			if call == "emitQuestion" && !site.raises {
