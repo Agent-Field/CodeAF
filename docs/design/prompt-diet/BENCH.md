@@ -102,9 +102,26 @@ historical row in `bench/conversation` and `bench/e2e` was measured on, and
 endpoints this account allows. Nothing failed that way again.
 
 That aforge turns an endpoint exclusion into a dead turn with no hop, while the
-failover ladder exists and works for other causes, looks like a defect worth its
-own issue. It is not this lane's to file blind: it needs the `--host`/lane owner
-to say whether the one-endpoint pin is deliberate here.
+failover ladder exists and works for other causes, looked like a defect worth its
+own issue, and it was held back for the lane that owns routing to say whether the
+one-endpoint pin was deliberate.
+
+**It was read, and the reading moved (2026-09-10).** #835 landed on `dev` between
+that run and this line: an account exclusion is learned once for every model and
+persisted, a pin on an excluded machine is retired before it is sent on any other
+model, and a bare routing refusal is typed as transport rather than as this
+build's own bad request. So the ordinary case now hops ENDPOINT inside the
+provider and the turn lands, and the paragraph above describes a build that no
+longer exists. The pin is not the defect.
+
+What is left is narrower and is **#848**: when the provider's own ladder runs out
+— every rung paid, the endpoint filter relaxed, its two fallback models paid —
+the `*RefusalError` it hands up classifies as `Work`, so a CONVERSATION turn
+ends, while a task node given the identical error re-runs once on the next model
+(`task_run.go`'s `terminalProviderFailure`). One error, two roads out, and the one
+the person is watching is the one with no road. The account exclusion is only how
+this wave met it; the deterministic replication is `internal/lane/lanestub` with
+every lane of the pinned model refusing.
 
 ## 1a. dev → diet, measured
 
@@ -641,40 +658,133 @@ report. `bench/conversation` bills at its own guard, which is the same
 measurement for every model, and never at an account-level credit delta on a
 shared key.
 
-## 4a. The lean cell — planned, and blocked on lane G
+## 4a. The lean cell — run
 
 DESIGN.md §3's verdict on the lean profile is explicit: it "exists only if
-`prefixbudget_test` weighs it and a local-model bench cell runs it". This is
-that cell. Lane G has landed `internal/session/promptprofile.go`, so the switch
-now exists: `AFORGE_PROMPT_PROFILE`, taking `full` or `lean`. The cell has not
-been run — it is next after the two candidate regressions in §1a are settled,
-because a lean profile measured against an unsettled baseline proves nothing.
+`prefixbudget_test` weighs it and a local-model bench cell runs it". This is that
+cell, and it has now been run.
 
 ```sh
 ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
   AFORGE_PROMPT_PROFILE=lean CONV_PASS_ENV=AFORGE_PROMPT_PROFILE \
-    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet-lean \
-      --layers a,c,d'
-ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet diet-lean --out-root ~/bench-diet-out'
+    ~/bench-diet/rig/bench/prompt-diet/run.sh post-diet/owed lean-owed2 --layers a,c,d'
+ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet-k lean-owed2 --out-root ~/bench-diet-out'
 ```
 
-`CONV_PASS_ENV` is not optional: `bench/conversation` hands a harness only the
-variables it is told to carry, so a profile set in the caller's shell and not
-named there reaches nothing and the cell silently measures the full profile
-instead — which would read as a lean profile that saved nothing.
+`post-diet/owed` at `071d75f2f`, the pin `deepseek/deepseek-v4-flash-0731`, layers
+A, C and D, 19 minutes and about two cents. The full-profile comparator is
+`diet-k` — the same cells, the same rig, the same pin, the diet's own tip — and
+not `dev`, because the question this cell answers is about the PROFILE and not
+about the diet. `dev` is below as a second column, for scale.
 
-**It is recorded separately and never averaged with the full-profile rows.** The
-two are different products with different belts, and one number over both would
-describe no run that ever happened. The comparison to make is `diet` against
-`diet-lean` on the same branch and the same cells, not `dev` against
-`diet-lean`: the question the lean profile has to answer is whether it keeps
-parity while paying Pi-sized, and that is a claim about the profile, not about
-the diet.
+### The first attempt measured the full profile, and the rig was why
 
-The open-weight pin is already this bench's default
-(`deepseek/deepseek-v4-flash-0731`), so no `--model` is needed; a genuinely
-small local model is the harder follow-up and needs a window that
-`ContextWindowFor` actually reads as small.
+`lean-owed`, the run before this one, was thrown away. Its conversation cells
+went out with 25 tools including `propose_task` and no `ask` — the FULL belt —
+while its e2e cells went out lean, because `bench/e2e/run.sh` inherits the whole
+environment and `bench/conversation` filters it. §4a's own warning about
+`CONV_PASS_ENV` was right about the failure and wrong about the cause: the
+recipe above did name the variable, and `run.sh` then assigned
+`CONV_PASS_ENV="AFORGE_CALL_LOG AFORGE_CALL_LOG_BODIES"` flat over the top of it.
+It appends now (`071d75f2f`), and the re-run's call log carries 18 tools with
+`ask` armed and `propose_task` absent, which is what a lean belt looks like.
+
+**The lesson is the one this bench keeps relearning: check the wire, not the
+recipe.** A half-lean run reads as a lean arm that saved nothing, and nothing in
+the summary would have said so — the number that gave it away was `median tool
+block bytes`, identical to the full arm's to the byte.
+
+### The prefix (layer A)
+
+| piece | diet-k | lean-owed2 | Δ | |
+| --- | ---: | ---: | ---: | ---: |
+| page | 18,807 | 18,807 | +0 | +0.0% |
+| tool block | 19,935 | 13,745 | −6,190 | −31.1% |
+| **total** | **38,742** | **32,552** | **−6,190** | **−16.0%** |
+
+Layer A weighs the WIDEST page on both sides, which is why the page column does
+not move: the lean arm's own page is 16,825 and `TestTheLeanPrefixStaysUnderIts
+Budget` is the number that says so (30,573 total, page 16,825 plus tool block
+13,748). Both numbers are honest and they answer different questions; this table
+is the one where the two arms differ only in the belt.
+
+30,573 is still two and a half times DESIGN.md §6's 12,000-byte target for this
+arm, which is worth saying plainly rather than rounding away.
+
+### Outcomes (layer C)
+
+| cell | diet-k | lean-owed2 | | dev |
+| --- | --- | --- | --- | --- |
+| `conversation/research-brief` | pass | pass | same | pass |
+| `conversation/code-fix` | pass | pass | same | pass |
+| `conversation/followup-while-working` | fail | fail | same | timeout |
+| `conversation/work-result-recalled` | pass | pass | same | timeout |
+| `e2e/lookup` | fail | fail | same | fail |
+| `e2e/bundle3` | fail | fail | same | incomplete |
+
+**Every outcome is equal on the profile comparison, and equal or better against
+`dev`.** The three that fail fail identically on both arms and on `dev` where
+`dev` reached them at all: `followup-while-working` is §1a's assertion failure,
+`lookup` is the missing journal §7 owes, and `bundle3` exits 2 on a package it
+could not build. None of them is the profile's.
+
+### Tokens per turn (layer D)
+
+| | diet-k | lean-owed2 | Δ | | dev |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| turn requests | 19 | 35 | +16 | +84.2% | 69 |
+| **median prompt tokens** | **13,723** | **12,733** | **−990** | **−7.2%** | 17,815 |
+| median cached tokens | 9,836 | 9,984 | +149 | +1.5% | 16,212 |
+| median completion tokens | 95 | 142 | +48 | +50.3% | 132 |
+| median request bytes | 57,590 | 53,350 | −4,240 | −7.4% | 79,946 |
+| median tools on the belt | 26 | 19 | −7 | −26.9% | 26 |
+| median tool block bytes | 36,491 | 29,297 | −7,194 | −19.7% | 40,660 |
+| asides (no belt) | 19 | 27 | +8 | +42.1% | 26 |
+
+Against `dev` the same median is 17,815 → 12,733, −28.5%.
+
+Recorded and not ruled on, because wall clock and dollars move with the
+provider's weather: total spend $0.0093 → $0.0171, summed cell wall 212s → 547s,
+median call 6,739ms → 8,694ms.
+
+### The ruling
+
+**Parity: yes.** Every layer-C outcome is equal on the profile comparison and
+equal or better against `dev`. `compare.py` exits zero on both.
+
+**Efficiency, per request: yes.** Median prompt tokens per turn fall 7.2% against
+the full arm on the same branch and 28.5% against `dev`, and the tool block on
+the wire falls 19.7%. That is the thing the profile was built to do and it does
+it.
+
+**Efficiency, per task: NO, on this pin, and that is the finding.** The lean arm
+needed 35 turn requests where the full arm needed 19, wrote half again as many
+completion tokens, and cost 84% more in dollars and two and a half times the wall
+clock for the same four verdicts. Read the per-cell rows and it is one cell:
+`followup-while-working` went from 7 turn calls to 21 and from 96 seconds to 383.
+A smaller prompt bought more rounds of it.
+
+**And that is the right result, not a disappointment, because of what this pin
+is.** `deepseek-v4-flash-0731` has 128,000 tokens of room; the profile is pinned
+here rather than derived, precisely so the two arms can be compared. A model with
+that much room does not need sections taken off its page, and taking them off
+costs it rounds — which is the argument for the derivation being on the window
+and for `auto` being the default, stated as a measurement rather than as a
+preference. The claim the profile actually makes is about a model whose window
+the full prefix would eat, and this cell cannot make that claim: nothing here ran
+on a genuinely small window.
+
+**So the profile ships, and this is what it is signed off on.** It is correct, it
+costs a third less tool block, it changes no outcome, and it must not be turned
+on for a model that does not need it. `AFORGE_PROMPT_PROFILE=lean` on a
+128,000-token model is a measurement instrument. The `prompt profile` settings
+row (internal/config's `prompt.profile`, added in #844) is the person's way in
+and it defaults to `auto` for the reason above.
+
+**What is still owed here** is the run this cell stands in for: a genuinely small
+local model, a window `ContextWindowFor` reads as small, and the profile DERIVED
+rather than pinned. That is where the per-task column should turn round, and
+until it does the lean arm has been proven correct and not yet proven worth it.
 
 ## 5. The ablation — prepared, not run
 
@@ -782,11 +892,13 @@ as a pass nor as a regression.
 - **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
   largest law units — standing and accounts — cannot be ablated at all (§5).
 
-- **The lean cell in §4a has not been run.** `AFORGE_PROMPT_PROFILE` exists now
-  that lane G has landed, so nothing blocks it but time — and the order matters:
-  settle §1a's two candidate regressions first, because a lean profile measured
-  against an unsettled baseline proves nothing. DESIGN.md §3 says the profile
-  should not ship without this cell.
+- ~~**The lean cell in §4a has not been run.**~~ **Run (2026-09-10, `lean-owed2`
+  at `071d75f2f`), and §4a is the report.** Parity holds and the tool block falls
+  31%; the per-TASK bill went up, on a 128,000-token pin where the profile is not
+  supposed to be on. What it leaves owed is the run it stands in for: a genuinely
+  small local model, with the profile DERIVED from the window rather than pinned.
+  The first attempt was discarded because the rig clobbered `CONV_PASS_ENV` and
+  the conversation cells measured the full profile; §4a has the autopsy.
 
 - **The raw wire evidence** is on the Spark and needs no re-capture. This is
   what §1c was run against and what a re-run of `prefixdiff.py` reads.
@@ -815,7 +927,7 @@ as a pass nor as a regression.
   `compactLeaveVerbatim` bounds the RESULT rather than the RECLAIM and takes no
   account of the pointer's own length. `stub.go` has the law and the test to copy.
 
-- **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
-  an endpoint excluded by account policy ends a turn instead of hopping, while
-  the failover ladder handles other causes. It needs the lane that owns routing
-  to say whether that pin is deliberate before it is filed as a defect.
+- ~~**An issue about the one-endpoint pin.**~~ **Filed as #848, and re-aimed on
+  the way.** #835 fixed the case §1 described, so the issue is about what it left:
+  a conversation turn ends on a spent provider ladder where a task node hops
+  model. §1's note carries the reading.

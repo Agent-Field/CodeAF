@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // ── EVERY CANCEL SAYS WHICH DOOR IT CAME THROUGH ────────────────────────────
@@ -57,12 +58,22 @@ const (
 	// StopByRetired is a hosted session let go of for want of anybody attached
 	// to it (internal/remote).
 	StopByRetired StopDoor = "session retired"
+	// StopByEngineStopped is the host going away under a window that is still
+	// in the room: `aforge engine --stop`, a signal, a stale build retiring
+	// itself. It is not the unattended door — somebody was there.
+	StopByEngineStopped StopDoor = "engine stopped"
 )
 
 // turnStop is one door's cause. It is a type rather than a bare
 // [errors.New] per door so that a reader can ask which door it was without
 // comparing sentences.
-type turnStop struct{ door StopDoor }
+type turnStop struct {
+	door StopDoor
+	// name is the surface the door believed had gone, when it has one to
+	// name. It is a label, never an identity, and empty is a stop that
+	// does not know — the sentence then reads exactly as it did.
+	name string
+}
 
 // Error is the machine's account, and it is what the model-call row carries in
 // place of `context canceled`.
@@ -76,7 +87,24 @@ func (s *turnStop) Unwrap() error { return context.Canceled }
 
 // stopFor is the cause for one door. Every door goes through it so that a cause
 // is never built at a call site and therefore never built two ways.
-func stopFor(door StopDoor) error { return &turnStop{door: door} }
+func stopFor(door StopDoor) error { return stopAs(door, "") }
+
+// stopAs is [stopFor] with the window the door believed had gone, when it
+// has one to name. Empty is a stop that does not know, and the sentence
+// then reads exactly as [stopFor] always did.
+func stopAs(door StopDoor, name string) error {
+	return &turnStop{door: door, name: strings.TrimSpace(name)}
+}
+
+// stopName is the window a cause believed had gone, and empty when the
+// cause named none — including an error that is not one of ours.
+func stopName(err error) string {
+	var stop *turnStop
+	if errors.As(err, &stop) && stop != nil {
+		return stop.name
+	}
+	return ""
+}
 
 // StoppedBy reads back which door ended a turn. It answers false for an error
 // that is not one of this package's causes — including a plain
@@ -118,7 +146,12 @@ func stopCause(ctx context.Context) (StopDoor, bool) {
 
 // stopSentence is what a person reads when a turn ended with no answer. It is
 // empty for the one door that needs no sentence: their own stop.
-func stopSentence(door StopDoor) string {
+//
+// name is the window the door believed had gone, when it has one to name.
+// Empty is a stop that does not know, and every sentence then reads exactly
+// as it did before the name existed.
+func stopSentence(door StopDoor, name string) string {
+	name = strings.TrimSpace(name)
 	switch door {
 	case StopByPerson:
 		return ""
@@ -131,7 +164,12 @@ func stopSentence(door StopDoor) string {
 	case StopByWorkStopped:
 		return "everything running here was stopped, the reply with it"
 	case StopByRetired:
+		if name != "" {
+			return "nobody was left watching this conversation from " + name + ", so the reply stopped — ask again to pick it up"
+		}
 		return "nobody was left watching this conversation, so the reply stopped — ask again to pick it up"
+	case StopByEngineStopped:
+		return "the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up"
 	default:
 		return "the reply stopped before it arrived — ask again to pick it up"
 	}

@@ -53,9 +53,14 @@ func TestTheSame400GoesTwoWaysOnWhetherAnUpstreamWasNamed(t *testing.T) {
 
 // ── the transport ladder ────────────────────────────────────────────────────
 
-// N ATTEMPTS, DOUBLING, AND THEN THE REQUEST — NOT THE TIER — IS GIVEN UP ON.
+// THE WAIT DOUBLES, AND THE CALLER'S OWN DEADLINE — NOT A COUNT — IS WHAT ENDS
+// THE REQUEST. The count was `Limits.TransportAttempts` and it is deleted
+// (docs/design/recovery/DESIGN.md §4): the transport under every caller was
+// already bounded by the plan's deadline, so a second budget on the same axis
+// multiplied rather than bounded. `OutOfTime` is how the caller says it is gone,
+// and the thing given up on is still the REQUEST and never the tier.
 func TestTheTransportLadderIsWalkedAndThenTheRequestIsGivenUp(t *testing.T) {
-	limits := Limits{TransportAttempts: 4, TransportBackoff: time.Second}
+	limits := Limits{TransportBackoff: time.Second}
 	for attempt, want := range map[int]time.Duration{1: time.Second, 2: 2 * time.Second, 3: 4 * time.Second} {
 		verdict := Classify(Evidence{Status: 503, Attempt: attempt}, limits)
 		if !verdict.Retries() {
@@ -68,7 +73,7 @@ func TestTheTransportLadderIsWalkedAndThenTheRequestIsGivenUp(t *testing.T) {
 			t.Errorf("attempt %d was not asked to be served by somebody else", attempt)
 		}
 	}
-	spent := Classify(Evidence{Status: 503, Attempt: 4}, limits)
+	spent := Classify(Evidence{Status: 503, Attempt: 4, OutOfTime: true}, limits)
 	if spent.Action != ActionGiveUp {
 		t.Fatalf("the spent ladder did %q, want the request given up on", spent.Action)
 	}
@@ -88,8 +93,8 @@ func TestTheTransportLadderIsWalkedAndThenTheRequestIsGivenUp(t *testing.T) {
 // person had configured was never asked, because the only road to it was a cut
 // stream.
 func TestASpentLadderMovesToTheNextModelWhenTheCallerHasOne(t *testing.T) {
-	limits := Limits{TransportAttempts: 4}
-	spent := Evidence{Status: 429, Upstream: "Together", Attempt: 4}
+	limits := Limits{}
+	spent := Evidence{Status: 429, Upstream: "Together", Attempt: 4, OutOfTime: true}
 
 	alone := Classify(spent, limits)
 	if alone.Action != ActionGiveUp {
@@ -127,7 +132,7 @@ func TestASpentLadderMovesToTheNextModelWhenTheCallerHasOne(t *testing.T) {
 // spends a shorter allowance with no wait in front of it, and arrives at the
 // same three endings.
 func TestACutStreamSpendsItsOwnAllowanceAndEndsTheSameWay(t *testing.T) {
-	limits := Limits{TransportAttempts: 4, TransportBackoff: time.Second}
+	limits := Limits{TransportBackoff: time.Second}
 	for _, shape := range []struct {
 		name    string
 		cut     Evidence
@@ -316,8 +321,8 @@ func TestANilTallyIsSafeEverywhere(t *testing.T) {
 // are deliberately the behaviour this build already had.
 func TestUnsetLimitsFloorOntoWhatThisBuildAlreadyDid(t *testing.T) {
 	got := Limits{}.Floored()
-	if got.TransportAttempts != DefaultTransportAttempts {
-		t.Errorf("attempts = %d, want %d", got.TransportAttempts, DefaultTransportAttempts)
+	if got.Patience != DefaultPatience {
+		t.Errorf("patience = %v, want %v", got.Patience, DefaultPatience)
 	}
 	if got.TransportBackoff != DefaultTransportBackoff {
 		t.Errorf("backoff = %s, want %s", got.TransportBackoff, DefaultTransportBackoff)
@@ -364,7 +369,7 @@ func TestARoutingRefusalIsTransportAndAMalformedRequestIsWork(t *testing.T) {
 	if routing.EndsTurn() {
 		t.Fatal("a routing refusal ended the turn")
 	}
-	spent := Classify(Evidence{Status: 404, Routing: true, Attempt: limits.TransportAttempts, FallbackAvailable: true}, limits)
+	spent := Classify(Evidence{Status: 404, Routing: true, Attempt: 2, OutOfTime: true, FallbackAvailable: true}, limits)
 	if spent.Class != Transport || !spent.Hops() {
 		t.Fatalf("a routing refusal with the budget spent read as %s, want a hop to the next model", spent)
 	}

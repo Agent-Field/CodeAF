@@ -67,9 +67,19 @@ func TestRetryAfterIsSpentOnTheAttemptItWasIssuedFor(t *testing.T) {
 	if waits[0] != 30*time.Second {
 		t.Fatalf("the 429's own Retry-After should govern the next attempt, got %s", waits[0])
 	}
-	for index, delay := range waits[1:] {
-		if delay >= 30*time.Second {
-			t.Fatalf("wait %d = %s: a spent Retry-After is still setting the floor", index+1, delay)
+	// AND THE VERY NEXT WAIT IS THE ORDINARY DOUBLING. It is the second wait
+	// that proves the header was spent — the attempt it was issued for has
+	// happened, and what governs the one after it is the schedule and nothing
+	// else. The waits BEYOND it are not evidence either way: the doubling climbs
+	// to [maxProviderWait] on its own, and under one deadline a fault storm gets
+	// as many of them as ninety seconds will buy rather than the three a private
+	// budget used to allow.
+	if waits[1] >= 30*time.Second {
+		t.Fatalf("wait 1 = %s: a spent Retry-After is still setting the floor", waits[1])
+	}
+	for index, delay := range waits {
+		if delay > maxProviderWait {
+			t.Fatalf("wait %d = %s, longer than the one-minute cap on any single wait", index, delay)
 		}
 	}
 }

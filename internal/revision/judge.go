@@ -607,11 +607,11 @@ const GateLessonsHeading = "Lessons from EARLIER, UNRELATED work — " +
 // sentence can no longer move a model's ability rating. Everywhere the product
 // counts operational success — competence rates, reflex outcomes, the self
 // page — both already count, and they still do.
-func GateVerdict(judgment Judgment) provider.Verdict {
+func GateVerdict(judgment Judgment) provider.Reading {
 	if judgment.Exercised {
-		return provider.VerdictVerifiedSuccess
+		return provider.ReadingVerifiedSuccess
 	}
-	return provider.VerdictUnverifiedSuccess
+	return provider.ReadingUnverifiedSuccess
 }
 
 // Evidence is what the gate can hold a claim against: what the leaf
@@ -1667,7 +1667,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// run reaches the exit code. See Judgment.Fault and its one reader in
 		// cmd/aforge/chat.go.
 		if shaped.Unreadable(err) {
-			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			provider.Report(judgeCtx, provider.ReadingFormatFailure)
 			// AND THE MECHANICAL GATE STILL RUNS. A gate that produced no
 			// verdict has not settled anything, and a promised file that is not
 			// on disk is settled by the filesystem rather than by anybody's
@@ -1691,11 +1691,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// reached and what was done about it, the delivery path turns that into
 		// a gate row of its own kind, and the run leaves unchecked rather than
 		// ok. See GateUnreached and cmd/aforge/chat.go's seam.
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		provider.Report(judgeCtx, provider.ReadingProviderFailure)
 		return unjudged(node, gateNote(GateUnreached, asked), err)
 	}
 	if verdict.Pass {
-		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+		provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
 		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true,
@@ -1708,12 +1708,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		provider.Report(judgeCtx, provider.ReadingSemanticFailure)
 		// A fail that names nothing is not a fail and is not a pass either: the
 		// gate held an opinion it could not state. It ships, and it says so.
 		return unjudged(node, "the gate failed the work and named no gap", nil)
 	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 	// An ungrounded gap is still recorded as a gap: it is said out loud, it
 	// rides the delivery, and it is in the ledger. What it does not buy is
 	// paid work — neither the revision round nor the extension — and both of
@@ -2509,9 +2509,9 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		// That is the safe direction here and it is why this one does not fault
 		// the way the delivery gate does — nothing is being called whole.
 		if shaped.Unreadable(err) {
-			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			provider.Report(judgeCtx, provider.ReadingFormatFailure)
 		} else {
-			provider.Report(judgeCtx, provider.VerdictProviderFailure)
+			provider.Report(judgeCtx, provider.ReadingProviderFailure)
 		}
 		return Remainder{}
 	}
@@ -2520,10 +2520,10 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		// A "not done" that cannot name the gap is the exact failure the old
 		// path had: a remainder assumed rather than found. Unchecked, so the
 		// replan proceeds on the partial alone.
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		provider.Report(judgeCtx, provider.ReadingSemanticFailure)
 		return Remainder{}
 	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true}
 }
 

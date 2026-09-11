@@ -45,6 +45,20 @@ them are one lane, OpenInference on `deepseek-v4-flash-0731`. Add the 715
 `context canceled` rows that are hedge losers and the 111 walls, and the
 provider is the minority cause of what we record as failure.
 
+> **Corrected 2026-09-11 (#853, and `make census`'s `caller deadline` family).**
+> Those 869 rows are **not the stream wall and not `internal/provider` at all**.
+> `clientFor` already gives a streamed request `Timeout: 0` and `attemptContext`
+> gives it a cancel rather than a deadline; every guard bound surfaces as a typed
+> `*StreamCut` with its own prose, never as a context error, and the log counts
+> those separately (47 `ran past` + 18 `went quiet` + 45 machinery = the 111 this
+> table calls walls). The 60 s and 90 s rows are `messages: 2`, carry no tools, no
+> tag and no node, and record `deadline_ms: 30000` — **the CALLER's deadline**, an
+> outside harness wrapping the call at two and three times a role's ceiling. The
+> reading that survives is the one that mattered: most of what this build records
+> as failure is this build's own doing. The remedy was not a removal but a record —
+> `waitFacts.applied` beside `armed`, so a row says which bound really ended it —
+> and the census now separates the family rather than filing it under the wall.
+
 **Second, a retry today means "again", not "differently".** The Fireworks chains
 that eventually answered did so on the one attempt that finally moved to
 DeepInfra — after 7, 10, 13 and 14 identical sends. The ladder works; it engages
@@ -130,6 +144,20 @@ Each is well-written and tested in isolation. The problems are all between them.
     tokens; `lane` ≠ `served` on a third of rows; `cost_s` reaches 1e146 and the
     belief file has been refusing to compact on `NaN` for days
     (`the belief file could not be compacted: json: unsupported value: NaN`).
+13. **The hazard's only act was a purse-gated hedge, so a refused purse meant no
+    act at all.** `armwatch.go` fired the ceiling, asked the budget for a second
+    arm, was told no — and then did nothing, while the stream it had just judged
+    hopeless went on being waited for. **2,186 attempts in ten days** reached that
+    state; 648 of them ran past six times the silence that had just been refused,
+    to a p99 of 272 s and a worst case of 938 s. Four quick tasks on the evening
+    of 2026-09-10 waited 260 s, 370 s, 375 s and 428 s for a first token, every
+    one of them past a ceiling that had already fired. A blunt cut would have been
+    wrong — 75 % of the 2,186 ended cleanly — and the discriminator was already
+    computed: `drift` ends cleanly 92 % of the time and `ceiling` 75 %, while
+    **`no heartbeat` ends cleanly 31 %** against first tokens whose p99 is 505 s.
+    Fixed by #853: the ceiling picks an act and may not pick neither — hedge when
+    the purse allows, and cut when it refuses *and* not one byte has reached the
+    stream, so the layer above asks another machine.
 
 ## 3. The rule
 
@@ -277,13 +305,103 @@ Five waves, each landing green on `dev` and each reducing a number in §1. The
 first is measurement, because two of the twelve problems are that we cannot see.
 Every wave runs its suites on the Spark, never on the laptop.
 
-| wave | lands | number it moves |
-| --- | --- | --- |
-| **R0 see** | `scripts/callcensus` committed and run nightly on Spark against `~/.aforge/logs/calls.jsonl` (a `bench/` target); rows record `served` on every finish, cost and tokens on failures, `retry_after`, and an honest `deadline_ms`; `cost_s` NaN/Inf fixed at the source and the belief file compacts again | the table in §1 becomes a nightly metric |
-| **R1 never repeat** | body encoded per move; refusing machine excluded on the next; `Retry-After` honoured only when alone; ledger keyed on `served`; `Tools`/`Uptime`/`Status` demoted to priors with a probe | same-lane chain share 53 % → < 5 %; max identical sends 17 → 2 |
-| **R2 one classifier** | one `Evidence` for the three 404 rules; `isRetryable` regex deleted; `provider/verdict.go` renamed out of the way; `canWalk` → `walk` as a commitment, `exhausted()` deleted | the three-classifier bug class cannot recur; law test: one `Classify` call site per package |
-| **R3 one budget** | `Plan` shared by hazard and dispatcher; `retry.go`'s loop, the hedge race and the relaxation ladder become `next()`; `fallbackChain` model hop removed from the adapter; task node and errand call the dispatcher | attempts × arms × rungs → one deadline; task never dies on the wire |
-| **R4 every wait spoken, no self-cuts** | limiter, empty-200, abandon grace, connectivity on `notePhase`; the three configuration gates on the door removed; duration deadlines removed in favour of rate-relative silence; hedge losers logged as `exhaust`, not failure | self-inflicted share 57 % → < 15 %; zero silent waits (law test) |
+| wave | state | lands | number it moves |
+| --- | --- | --- | --- |
+| **R0 see** | **landed #852** | `scripts/callcensus` committed and run nightly on Spark against `~/.aforge/logs/calls.jsonl` (a `bench/` target); rows record `served` on every finish, cost and tokens on failures, `retry_after`, and an honest `deadline_ms`; `cost_s` NaN/Inf fixed at the source and the belief file compacts again | the table in §1 becomes a nightly metric |
+| **R1 never repeat** | **landed #850** | body encoded per move; refusing machine excluded on the next; `Retry-After` honoured only when alone; ledger keyed on `served`; `Tools`/`Uptime`/`Status` demoted to priors with a probe | same-lane chain share 53 % → < 5 %; max identical sends 17 → 2 |
+| **R2 one classifier** | **landed #854** | one `Evidence` for the three 404 rules; `isRetryable` regex deleted; `provider/verdict.go` renamed out of the way; `canWalk` → `walk` as a commitment, `exhausted()` deleted | the three-classifier bug class cannot recur; law test: one `Classify` call site per package |
+| **R3 one budget** | **landed #858**, finished by **R3b, this change** | `Plan` shared by hazard and dispatcher; `retry.go`'s loop, the hedge race and the relaxation ladder become `next()`; `fallbackChain` model hop removed from the adapter; task node and errand call the dispatcher | attempts × arms × rungs → one deadline; task never dies on the wire |
+| **R4 every wait spoken, no self-cuts** | **landed #853** | limiter, empty-200, abandon grace, connectivity on `notePhase`; the three configuration gates on the door removed; duration deadlines removed in favour of rate-relative silence; hedge losers logged as `exhaust`, not failure | self-inflicted share 57 % → < 15 %; zero silent waits (law test) |
+
+### What R3 landed, and what R3b finished
+
+**R3 (#858).** `control.Plan` is the call's one budget — `Deadline`, `SpendUSD`,
+`Moves`, `Model`, `Role`, `Comeback`, `Shapes` — built in the one place a plan is
+built (`lane.PlanFor`) and stamped on the context at `sendShaped`, so a repaired
+400, a retired pin and every rung of the ladder share one deadline instead of
+each restarting it; a race stamps its own and every arm inherits that deadline
+and that move log. `control.Next` is the pure move generator, table-tested, in
+the rule's order. `retry.go` is `dispatch.go` and **six budgets are deleted**:
+`maxAttempts`, `rateLimitAttempts`, `patientAttempts`, `watchedPacingBudget`,
+`patientPacingBudget`, `freeMoves`, with `outOfPatience` and `patienceOf`. The
+deadline is `lane.Role.GiveUp` — `lane.TurnGiveUp` scaled by the same patience
+column the ceiling is scaled by. The turn loop takes the same deadline and tells
+the boundary a spent one as a spent ladder, so one classifier still answers
+hop-or-end. A 4xx the router **relayed** walks inside the call instead of ending
+it. `errandWalksOn` reads the evidence and `taxonomy`'s `seamsOwed` is empty.
+
+**R3b (this change) closes the four rows R3 left open.**
+
+- **The ladder asks `Next` for its rung.** `endpoints.go`'s loop over
+  `relaxationPlan` is gone; `recoverFromRefusal` is the dispatcher's and walks
+  nothing — it asks `control.Next`, records the `MoveShape` on the plan's own move
+  log, and stops at the plan's deadline. `relaxationPlan` stays as the DATA
+  (`Plan.Shapes`), because which fields a body actually carries is the encoder's
+  fact. `Plan.ShapeRefused` is the one thing the generator could not work out for
+  itself: "no endpoints found that can handle the requested parameters" answers
+  for every machine the router can see, and such a request's serving set is
+  usually OPEN, which has another machine in it forever. The law now forbids a
+  loop over `relaxationPlan` or a plan's `Shapes` outside the dispatcher.
+- **The race reads the plan's move log.** `hedgeRace.tried` is deleted; the
+  claim, the release and the "where could an arm go now" read all go through
+  `Plan.Moves`, and the machine the primary is about to ask is written on it when
+  the race is built. `MoveLog.Release` is what a shared log needed that a private
+  map had for free — a race claims a machine before it prices it, and a purse
+  that says no must not leave a machine reading as tried that nothing was sent
+  to. It is also what keeps a move honest about WHERE THE BYTES WENT: `provider.
+  order` is advisory once `allow_fallbacks` is on (R1, #850), so the dispatcher
+  gives its claim back the moment a refusal names a different pool and writes the
+  pool that really refused in its place — otherwise a call that demanded one
+  machine and was fanned past it would read as having tried the machine it never
+  reached. **`maxArms` and `ladderArms` are KEPT deliberately**, with the sentence
+  saying why in the code: they bound how many copies of one question are in
+  flight AT ONCE, which is money and concurrency (Dean & Barroso), never how many
+  times it may be asked again.
+- **`response.attempts` scales the deadline.** `taxonomy.Limits.TransportAttempts`
+  and `DefaultTransportAttempts` are deleted; `Limits.Patience` is a multiplier on
+  `lane.Role.GiveUp`, default 1.0, published process-wide through the one door
+  `lane.UsePatience` from where the profile is resolved. `transportBudget` keeps
+  an allowance only for a cut stream — which counts a shape of reply that came
+  apart, not a length of patience — and a caller with no time left says so as
+  `Evidence.OutOfTime`, which is deliberately not `Evidence.Spent`: the reason a
+  person reads stays the shape that failed.
+- **The session's ladders read the same bound, and the law reaches
+  `internal/session`.** The turn loop, the empty-200 re-ask, the errand's rungs
+  (`errandTriesPerRung` deleted — one request per rung, bounded by the errand's own
+  patience) and the naming ladder (`titleAttempts` deleted — bounded by the window
+  it already had). `TestNoAttemptCountingLoopInTheSession` and
+  `TestNoConstantInTheSessionBoundsAnAttemptCount` are the law, and the allowlist
+  beside them is the deliverable as much as the code: five functions and seven
+  constants, each with the line that says what it counts instead of tries.
+
+**Two things the fold needed and did not have**, both stated in the code:
+
+- A failure that asks for NO wait still pays one after the first. An empty 200 and
+  a mangled tool call are not strain and rotation mends them at once — that
+  argument is kept for the first one — but a ladder bounded by a deadline that
+  pays nothing between two requests sends as fast as an endpoint can fail.
+- Whether there is time to ask again is part of the READING. A ladder that paid
+  its wait and came back to find the give-up gone would give up silently with a
+  chain the person configured unasked (#794's failure), so the wait is worked out
+  before the classification line is written, and a ladder with no time left reads
+  as one and answers hop-or-end.
+
+**Left standing, with the reason.**
+
+- **The task worker's retarget (`task_run.go`) is untouched.** It is a
+  whole-worker ladder above the turn loop — one wire rerun and one model move per
+  node, both flags rather than counts — and the loop under it is deadline-bounded
+  now, so the multiplication it used to sit on top of is gone without editing it.
+- **The judge and shaper re-parse pairs, and the brief and design rounds, keep
+  their counts** and are on the allowlist. A repair round is not a retry: it sends
+  a DIFFERENT request — the model's own malformed answer, handed back with a note
+  saying what was wrong with it — so "one draft and one repair" counts drafts, and
+  a deadline in its place would buy the same full-price call over and over for an
+  answer that was never going to parse.
+- **The cut allowances (`SilentCutAttempts` 3, `DegenerateCutAttempts` 2,
+  `BlindCutAttempts` 2) stay in `internal/taxonomy`.** They count a SHAPE OF REPLY
+  that came apart rather than a length of patience, and each has its own measured
+  argument in `transportBudget`.
 
 Acceptance is end-to-end first, in `lanestub`, which #835 taught to stage a
 paced pool, an account exclusion and a full pool. Each of the top ten error
@@ -295,10 +413,15 @@ seconds with a `2 of N` line on screen and no `API error` string anywhere.
 
 ## 8. The census
 
-`scripts/callcensus` reads `calls.jsonl` and prints §1's table. It groups by a
-normalised error signature (model, lane, numbers and ids stripped), reconstructs
-chains as (tag, node, model, rising attempt, ≤ 15 min gap), and reports lane
-health as clean-200 rate and median latency per (model, served) for the last
-three days. It is the instrument; without it every one of these waves is an
-argument about anecdotes. The first run's full output is beside this file as
-`census-20260910.md`.
+`cmd/aforge-census` (`make census LOG=…`, #852) reads `calls.jsonl` and prints
+§1's table. It groups by a normalised error signature (model, lane, numbers and
+ids stripped), reconstructs chains as (tag, node, model, rising attempt,
+≤ 15 min gap), and reports lane health as clean-200 rate and median latency per
+(model, served) for the last three days. It is the instrument; without it every
+one of these waves is an argument about anecdotes. The first run's full output is
+beside this file as `census-20260910.md`.
+
+**Finding 1 in that file is misattributed and the box in §1 says how.** The 60 s
+and 90 s `context deadline exceeded` rows are the CALLER's deadlines, not the
+stream wall, and the census now reports them as their own `caller deadline`
+family rather than folding them into the wall's count.

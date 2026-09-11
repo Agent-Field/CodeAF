@@ -1406,6 +1406,15 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// somebody's own replies, and a repository has no business turning off a
 	// visitor's protection against a model that has stopped writing language.
 	cfg.ReplyGuardOff = !config.ReplyGuardEnabledAt(profileDir)
+	// How much aforge puts in front of the model before the person has typed.
+	// The engine settles this from the model's window and this row is the
+	// person overruling that (internal/session's promptprofile.go); `auto`, the
+	// default, hands over the word that decides nothing and leaves the window
+	// to answer exactly as it did before the row existed. PROFILE-ONLY, for the
+	// reply-guard reason above: a repository that could set it would decide, by
+	// being cloned, that a visitor's conversation loses its saved memories and
+	// half its tool list.
+	cfg.PromptProfile = config.PromptProfileAt(profileDir)
 	// And who decides when that check comes back with nothing. PROFILE-ONLY for
 	// the reason the audit row above it is: a repository that could set this
 	// would be deciding, by being cloned, that a visitor's work gets accepted by

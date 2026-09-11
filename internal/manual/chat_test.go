@@ -105,6 +105,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		{"the engine did not answer in time", "questions"},
+		{"the answer I pressed was refused", "questions"},
 		// The hole on a CARD rather than on a page, which is where the task
 		// proposal's model shortlist went. People ask about the arrows and about
 		// whether moving one is an answer.
@@ -205,6 +207,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"when does aforge use the lean profile", "models-and-cost"},
 		{"is deepseek given a shorter page than claude", "models-and-cost"},
 		{"does an open weight model get the lean prompt", "models-and-cost"},
+		// And the row that chooses it by hand, asked the way somebody who has
+		// just seen it in /settings would ask, and the way somebody who wants
+		// the effect but not the word would.
+		{"what is the prompt profile setting", "models-and-cost"},
+		{"how do I make aforge send a shorter prompt", "models-and-cost"},
+		{"can I turn the lean profile on myself", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
@@ -438,6 +446,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
 		{"do the token arrows show inside a task room", "screen"},
+		// The owner's own words for the gap, 2026-09-10: "at some times I don't see
+		// infra provider and tok/sec … maybe when I have follow up".
+		{"provider missing", "screen"},
+		{"tok/s not showing", "screen"},
+		{"no rate after a follow-up", "screen"},
+		{"sometimes I don't see the infra provider and tok/sec", "screen"},
+		{"why is via missing next to the model", "screen"},
+		{"no tok/s when I set a reasoning level", "screen"},
+		{"it says the engine is an older aforge so the provider and tok/s are not shown", "screen"},
+		// And the questions the 2026-09-10 column answers: ↑ became the size of
+		// the request instead of the summed bill, the side that moved lights
+		// up, a jump leaves a receipt, and a hosted task's page draws it too.
+		{"is it still working or is it stuck", "screen"},
+		{"the tokens are not moving", "screen"},
+		{"why did the number on the right light up", "screen"},
+		{"what is the +3.4k next to the up arrow", "screen"},
+		{"no token count inside a task", "screen"},
+		{"is the up arrow what I am billed for", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},
@@ -2590,6 +2616,9 @@ func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
 		{"do I have to type my question again after moving a conversation here", "models-and-cost", "asks your question again by itself"},
 		{"the reply stopped when this conversation moved", "models-and-cost", "asking again"},
 		{"why did the answer start again on its own when I moved the conversation", "home", "asks your question again for you"},
+		{"it said nobody was left watching but I was sitting right here", "models-and-cost", "still watching"},
+		{"which window did it think had gone", "models-and-cost", "names the window"},
+		{"the engine holding this conversation was stopped", "models-and-cost", "engine holding this conversation was stopped"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

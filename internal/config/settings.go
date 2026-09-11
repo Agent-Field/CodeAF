@@ -155,8 +155,22 @@ const (
 	// is counting it down. 0 turns the clock off and the question waits from
 	// the start, which is what a person who reads every prompt wants.
 	KeyConsentTimeout = "approval.timeout_seconds"
-	KeyTierLowModel   = "models.tiers.low"
-	KeyTierHighModel  = "models.tiers.high"
+
+	// KeyPromptProfile is how much aforge puts in front of the model before a
+	// person has typed: the whole page and the whole tool list, or the lean
+	// pair a small window can afford (internal/session's promptprofile.go).
+	//
+	// IT IS A ROW BECAUSE THE DERIVATION CAN BE WRONG. The profile is settled
+	// from the model's context window and that is right almost every time, but
+	// an endpoint that reports a window its loaded model does not really have
+	// leaves the person with no way to say so, and a derived state with no row
+	// anywhere is a state nobody can read off a screen. `auto` is the default
+	// and keeps the derivation; the other two words are the person overruling
+	// it, in the same words [EnvPromptProfile] takes.
+	KeyPromptProfile = "prompt.profile"
+
+	KeyTierLowModel  = "models.tiers.low"
+	KeyTierHighModel = "models.tiers.high"
 	// KeyTierWorkerModel is the seat that does the work — the worker of every
 	// task, the parts it hands out, the nodes of an adaptive run
 	// ([roles.TierWorker]). It reads from the PROFILE ALONE, unlike the two rows
@@ -654,6 +668,34 @@ var MemoryModes = []string{MemoryOn, MemoryOff}
 // DefaultMemory is on.
 const DefaultMemory = MemoryOn
 
+// The prompt profile's three answers, and they are three rather than two
+// because the honest default is not a size at all: it is "work it out". A row
+// offering only `lean` and `full` would force everybody to hold an opinion
+// about a figure the catalog already knows.
+const (
+	// PromptProfileAuto derives the profile from the model's context window,
+	// which is what every session did before this row existed.
+	PromptProfileAuto = "auto"
+	// PromptProfileLean is the shorter page and the shorter tool list, whatever
+	// window the model reports.
+	PromptProfileLean = "lean"
+	// PromptProfileFull is every law on the page and every ordinary verb in the
+	// tool block, whatever window the model reports.
+	PromptProfileFull = "full"
+)
+
+// PromptProfileModes lists them, auto first, which is the default.
+var PromptProfileModes = []string{PromptProfileAuto, PromptProfileLean, PromptProfileFull}
+
+// DefaultPromptProfile is auto.
+const DefaultPromptProfile = PromptProfileAuto
+
+// EnvPromptProfile pins the profile for one launch, in the same three words the
+// row takes. It is spelled here and read from here by internal/session's
+// promptprofile.go, because a pin the sheet renders read-only and a pin the
+// engine obeys must be one string or they drift.
+const EnvPromptProfile = "AFORGE_PROMPT_PROFILE"
+
 // The background-checks row's two answers.
 const (
 	BackgroundOff = "off"
@@ -1031,13 +1073,12 @@ var OperatorEnvPins = []string{
 	// give the page real questions. A row offering to persist it would be
 	// offering to open a fixture over somebody's conversation every launch.
 	"AFORGE_QUESTION_DEMO",
-	// AFORGE_PROMPT_PROFILE pins the prompt profile (internal/session's
-	// promptprofile.go) to `lean` or `full` for one launch: a bench or a test
-	// measuring one arm against the other. The profile is DERIVED from the
-	// model's window in ordinary use, so this is an operator's pin and not a
-	// preference; the row a person would choose lean with is owed and is not
-	// this variable.
-	"AFORGE_PROMPT_PROFILE",
+	// AFORGE_PROMPT_PROFILE used to sit here, on the reasoning that the profile
+	// is derived and the pin belongs to a bench measuring one arm against the
+	// other. It is a settings row's pin now ([KeyPromptProfile]), because the
+	// derivation can be wrong about an endpoint that misreports its window and
+	// a person needs somewhere to say so. The sheet renders that row read-only
+	// while the variable is set, which is what the entry here could never do.
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
@@ -1895,6 +1936,24 @@ func (s *Settings) build() []Setting {
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
+		},
+		// AND THIS ROW IS THE OTHER HALF OF THE SAME QUESTION. Routing says
+		// which machine answers; this says how much is put in front of it
+		// before you have typed. It sits with the models because that is what a
+		// person is thinking about when they touch it: this model is small, and
+		// aforge is spending its room on instructions.
+		Setting{
+			Key: KeyPromptProfile, Category: CategoryModels, Kind: SettingChoice,
+			Label: "prompt profile", Env: EnvPromptProfile, Choices: PromptProfileModes,
+			Hint: "how much aforge tells the model before you type. auto decides from the " +
+				"model's context window and is right almost always: under 32,000 tokens it " +
+				"goes lean. lean takes one section off the page, leaves seven verbs one " +
+				"load_capability call away, puts ask straight in the list, turns saved " +
+				"memories off and cuts the project's own instructions to 2KiB. full sends " +
+				"everything. Choose one of those two when the endpoint reports a window its " +
+				"model does not really have. A change lands the next time aforge starts.",
+			read:  func() string { return PromptProfileAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyPromptProfile, raw, PromptProfileModes) },
 		},
 		// AND THE ROW UNDER IT NAMES A MACHINE. Routing says what a request
 		// prefers; this says which endpoint requests from this home actually go
@@ -3474,6 +3533,33 @@ func MemoryAt(profileDir string) string {
 	return DefaultMemory
 }
 
+// PromptProfileAt resolves the prompt-profile row to its word: the environment
+// pin, then the persisted row, then `auto`.
+//
+// AN UNRECOGNISED PIN IS NOT A PIN, and that is where this differs from the
+// bool rows above, which read a malformed pin as their default. The engine
+// already rules it that way (internal/session's promptprofile.go says so at
+// length, after internal/splitgate's Mode): a stale or mistyped word in
+// somebody's shell must not quietly move a conversation onto the other arm, and
+// it must not quietly cancel the row they did choose either. So a word this
+// list does not have falls through to the row, exactly as an unset variable
+// does.
+func PromptProfileAt(profileDir string) string {
+	if raw := strings.ToLower(strings.TrimSpace(os.Getenv(EnvPromptProfile))); raw != "" {
+		for _, mode := range PromptProfileModes {
+			if mode == raw {
+				return mode
+			}
+		}
+	}
+	if value, ok := persistedString(profileDir, KeyPromptProfile); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultPromptProfile
+}
+
 // MemoryEnabledAt is [MemoryAt] as the bool the v3 door reads before it opens a
 // brain at all: memory off is a session handed no store, which is what makes
 // "no block and no calls" a property of the wiring rather than a branch every
@@ -3681,26 +3767,43 @@ const (
 // the count.
 func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 	return taxonomy.Limits{
-		TransportAttempts: ResponseAttemptsAt(profileDir),
-		TransportBackoff:  taxonomy.DefaultTransportBackoff,
-		SemanticFailures:  ResponseLiftAfterAt(profileDir),
-		TierCapUSD:        ResponseLiftCapAt(profileDir),
+		Patience:         ResponseAttemptsAt(profileDir),
+		TransportBackoff: taxonomy.DefaultTransportBackoff,
+		SemanticFailures: ResponseLiftAfterAt(profileDir),
+		TierCapUSD:       ResponseLiftCapAt(profileDir),
 	}
 }
 
 // ResponseAttemptsAt resolves N. A pin below one is nonsense — a request that is
 // never sent — and reads as the default rather than as an instruction.
-func ResponseAttemptsAt(profileDir string) int {
+//
+// ── WHAT N MEANS CHANGED, AND THE ROW DID NOT ───────────────────────────────
+//
+// It was a count of sends and it is a MULTIPLIER ON THE DEADLINE
+// (docs/design/recovery/DESIGN.md §4, [taxonomy.Limits.Patience]): `3` is three
+// times the role's own give-up — four and a half minutes on a conversation's
+// turn rather than ninety seconds — and never three identical requests. The key
+// keeps its name because the QUESTION a person is answering when they turn it is
+// unchanged: how hard should this try before it tells me it could not. What it
+// no longer buys is the one thing that never helped, which is the same bytes
+// sent again to the machine that has just refused them.
+//
+// The default is one, where it was three: three was the count this build shipped
+// with, and one is the measured give-up with nothing multiplied on top. A person
+// who had written `3` into their profile when three was the default is asking
+// for three times the patience now — which is a reading of their row this change
+// cannot avoid and says so in its change entry.
+func ResponseAttemptsAt(profileDir string) float64 {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_ATTEMPTS")); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 1 {
 			return value
 		}
-		return taxonomy.DefaultTransportAttempts
+		return taxonomy.DefaultPatience
 	}
-	if value, ok := persistedInt(profileDir, KeyResponseAttempts); ok && value >= 1 {
+	if value, ok := persistedFloat(profileDir, KeyResponseAttempts); ok && value >= 1 {
 		return value
 	}
-	return taxonomy.DefaultTransportAttempts
+	return taxonomy.DefaultPatience
 }
 
 // ResponseLiftAfterAt resolves K, the same way.

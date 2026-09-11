@@ -24,6 +24,10 @@ covers the work behind it. Anything you steered into it, drawn where you said it
 at the end. And pinned above all of it, one line saying what it is doing, how long it has
 been going, what it has cost and how many calls it has made.
 
+While the task works, its live work carries the same `↑`/`↓` token column the conversation
+does — `↑` the task's newest request, `↓` what it has written — on a task running through
+this machine's engine too (see "No token count inside a task" on the screen page).
+
 Nothing here is thrown away — what is folded is one keypress from open.
 
 ## When did this task start — the task page says nothing where the time should be, or `started` is blank on a finished task
@@ -227,6 +231,10 @@ At the right edge: the task's live rate while its model is writing — `38 tok/s
 task's own phase words while it is in a stage that is producing nothing, exactly as the
 conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
 retry in 6s`.
+
+**The machine is named whoever served it** — `task glm-5.2 · via z-ai` when the vendor
+serves its own model — and while the task's first answer is still being written, as soon
+as the machine writing it has named itself.
 
 **It does not go quiet because your conversation is idle.** That is the ordinary state
 while a task runs: you hand the work out, your turn ends, and the task works for minutes

@@ -393,13 +393,18 @@ a task".
 Yes. All of it crosses the connection, and it is the same row you read locally.
 
 - **The live rate at the right edge** — `38 tok/s` — while the answer is being written.
-- **`via <machine>`** beside the model on the line above the message box, once an answer
-  has come back: the lane that actually served it, and `via parasail · rescued` when a
-  second machine finished what the first one started.
+- **`via <machine>`** beside the model on the line above the message box, as soon as the
+  machine writing the answer has named itself and then for the answer that came back:
+  the lane that actually served it, and `via parasail · rescued` when a second machine
+  finished what the first one started.
 - **The phase words** on the row while a request is in flight: `connecting · 1.2s`,
   `first word · 3.1s → parasail at 4.4s`, `thinking · 12s · friendli 38 t/s`,
   `writing · 4s · friendli 61 t/s`, `paced · retry in 6s`, `trying again · 2 of 6`.
 - **The `served` row in `/status`** — the endpoint the last answer came from.
+
+**An engine too old to send them says so**, once, after an answer: `this conversation's
+engine is an older aforge, so the provider and tok/s are not shown — they come back once it
+picks up this build`. Nothing else changes; update aforge on that machine and reconnect.
 
 **Nothing is measured on this machine.** Every one of those figures is taken where the
 request is made, which is the machine running the conversation, and pushed down to you

@@ -186,7 +186,7 @@ func TestOnlyOneJournalShapeIsAskedAgain(t *testing.T) {
 func TestOnlyTheTakeoverAsksTheQuestionAgain(t *testing.T) {
 	for _, door := range []StopDoor{
 		StopByPerson, StopByLeaving, StopByClosing,
-		StopByAbandoned, StopByWorkStopped, StopByRetired,
+		StopByAbandoned, StopByWorkStopped, StopByRetired, StopByEngineStopped,
 	} {
 		if resumesUnanswered(door) {
 			t.Errorf("%q asks the question again in a window nobody is sitting in front of", door)

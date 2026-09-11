@@ -69,12 +69,13 @@ type floatField struct {
 // measured is every float a record carries. It is a table rather than
 // reflection because it is read only on the rare row JSON has already refused,
 // and a table is the version somebody can check against the struct by eye.
-func measured(record *Record) [4]floatField {
-	return [4]floatField{
+func measured(record *Record) [5]floatField {
+	return [5]floatField{
 		{"waste_usd", &record.WasteUSD},
 		{"wait_s", &record.WaitS},
 		{"cost_s", &record.CostS},
 		{"cost", &record.Cost},
+		{"retry_after", &record.RetryAfterS},
 	}
 }
 

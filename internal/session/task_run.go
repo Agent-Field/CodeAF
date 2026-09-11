@@ -806,7 +806,7 @@ type TaskNode struct {
 	//
 	// repairs is how many times the work was handed back before that answer —
 	// the repair rounds the gate spent (task_audit.go's [Agent.auditWithRepair]).
-	checked provider.Verdict
+	checked provider.Reading
 	repairs int
 	// blockedBy names the task whose working copy refused this node's writes
 	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
@@ -2288,7 +2288,12 @@ func taskCopyFor(tree taskTree) taskCopy {
 		// It is empty for a borrowed session, which keeps no work/ at all, and
 		// for the legacy layout, whose tree carries the zero Place — both of
 		// which are the same document this composed before.
-		return newTaskCopy(tree.ground, tree.dir, tree.place.Work())
+		//
+		// THE FOURTH IS WHERE ITS COPIES LIVE, from the same [Place.Trees] the
+		// copy was cut from, so a contract that names an earlier tree of this
+		// conversation is bound to this one rather than left pointing at
+		// somebody else's (#839).
+		return newTaskCopyOf(tree.ground, tree.dir, tree.place.Work(), tree.place.Trees())
 	}
 	return taskCopy{}
 }
@@ -3343,11 +3348,14 @@ func (n *TaskNode) notice() TaskNotice {
 	// The spend is read BEFORE the graph lock is taken, and it has to be: it
 	// asks the room for the child agent and the child agent for its own usage,
 	// each of which is a lock of its own. Taking them under the graph's would be
-	// a second lock order in a package that has one.
-	cost := n.spend()
+	// a second lock order in a package that has one. The tokens are read the
+	// same way for the same reason.
+	cost, tokens := n.spend(), n.burned()
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.noticeLocked(cost)
+	notice := n.noticeLocked(cost)
+	notice.Tokens = tokens
+	return notice
 }
 
 // resultOf is ONE LANDING, WHOLE: the notice a surface draws, the attempt it
@@ -3532,6 +3540,24 @@ func (n *TaskNode) spend() float64 {
 	// remembers who is still owed for until the fold happens.
 	if child := room.billed(); child != nil {
 		return frozen + child.Usage().CostUSD
+	}
+	return frozen
+}
+
+// burned is [TaskNode.spend] in tokens — input plus output, the frozen folds
+// plus the worker still in the room (or still owed for) — read by the same
+// road and under the same lock order, for the same reason.
+func (n *TaskNode) burned() int {
+	n.graph.mu.Lock()
+	room, frozen := n.room, n.input+n.output
+	n.graph.mu.Unlock()
+	child := room.speaker()
+	if child == nil {
+		child = room.billed()
+	}
+	if child != nil {
+		used := child.Usage()
+		return frozen + used.Input + used.Output
 	}
 	return frozen
 }
@@ -8650,7 +8676,11 @@ func terminalProviderFailure(err error) bool {
 	if _, isCut := provider.CutFrom(err); isCut {
 		return false
 	}
-	if isContextOverflow(err.Error()) {
+	// A CONTEXT OVERFLOW IS A FACT ON THE EVIDENCE NOW, not a regex over the
+	// sentence: the transport decides it from the request-too-large status and
+	// the error envelope's own code (internal/provider's [overflowRefusal]), and
+	// the answer to it is a shorter conversation the turn loop already asks for.
+	if provider.Evidence(err).Overflow {
 		return false
 	}
 	var refusal *provider.RefusalError

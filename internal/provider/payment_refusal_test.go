@@ -11,21 +11,18 @@ import (
 
 func TestAPayment429IsTerminalAndAPlain429StillPaces(t *testing.T) {
 	tests := []struct {
-		name         string
-		body         string
-		wantRequests int64
-		wantWaits    int
-		wantPayment  bool
+		name        string
+		body        string
+		wantPayment bool
 	}{
 		{
-			name:         "authenticated account cannot pay",
-			body:         `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`,
-			wantRequests: 1, wantPayment: true,
+			name:        "authenticated account cannot pay",
+			body:        `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`,
+			wantPayment: true,
 		},
 		{
-			name:         "plain pacing",
-			body:         `{"message":"too many requests"}`,
-			wantRequests: rateLimitAttempts, wantWaits: rateLimitAttempts - 1,
+			name: "plain pacing",
+			body: `{"message":"too many requests"}`,
 		},
 	}
 	for _, testCase := range tests {
@@ -56,8 +53,12 @@ func TestAPayment429IsTerminalAndAPlain429StillPaces(t *testing.T) {
 			if err == nil || response != nil {
 				t.Fatalf("refusal became an answer: response=%v error=%v", response, err)
 			}
-			if requests.Load() != testCase.wantRequests || len(waits) != testCase.wantWaits {
-				t.Fatalf("requests=%d waits=%d, want %d/%d", requests.Load(), len(waits), testCase.wantRequests, testCase.wantWaits)
+			if testCase.wantPayment {
+				if requests.Load() != 1 || len(waits) != 0 {
+					t.Fatalf("payment refusal made requests=%d waits=%d, want 1/0", requests.Load(), len(waits))
+				}
+			} else if requests.Load() < 2 || requests.Load() > 16 || int64(len(waits)) != requests.Load()-1 {
+				t.Fatalf("ordinary pacing made requests=%d waits=%d inside one deadline", requests.Load(), len(waits))
 			}
 			refusal, ok := RefusalFrom(err)
 			if !ok || refusal.AccountCannotPay() != testCase.wantPayment {

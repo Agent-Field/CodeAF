@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -50,6 +51,13 @@ import (
 func (a *Agent) failureLimits() taxonomy.Limits {
 	a.limitsOnce.Do(func() {
 		a.limits = config.ResponseLimitsAt(a.config.ProfileDir).Floored()
+		// AND RESOLVING THEM PUBLISHES THE PERSON'S PATIENCE, because this is the
+		// one place in the build that reads `response.attempts` and the two
+		// places that build a deadline cannot read a profile at all (lane's
+		// [lane.UsePatience], and internal/provider's dispatcher under it). It is
+		// stated here rather than hidden inside the resolver so that "who told
+		// the deadline how patient to be" has one answer and one line.
+		lanes.UsePatience(a.limits.Patience)
 	})
 	return a.limits
 }
@@ -104,35 +112,38 @@ func (a *Agent) classify(evidence taxonomy.Evidence, model, role string) taxonom
 
 // ── the wire ────────────────────────────────────────────────────────────────
 
-// wireEvidence reads one failed request into [taxonomy.Evidence] using the
-// helpers this package already has, and nothing else.
+// wireEvidence reads one failed request into [taxonomy.Evidence]: the
+// transport's own facts, plus the three things only this package can see.
 //
-// NO PATTERN LIST LIVES HERE. [provider.RefusalFrom] already knows whether a 4xx
-// named an upstream, [provider.CutFrom] already knows a guard cut, and
-// [isRetryable] is already the harness's one answer to "is this shape worth
-// asking again". A second reading of the same sentence in this file would be a
-// second answer, and the first thing to drift.
+// NO CLASSIFICATION LIVES HERE, and that is the change this wave made. Every
+// structural reading of a refusal — the status, who refused, whether a list
+// emptied the set and whose, whether the model is still carried, whether the
+// request fitted, whether the account could be served — is taken ONCE at the
+// refusal door and handed over whole ([provider.Evidence]). What this adds is
+// what the adapter cannot know: that a stream guard cut, that a deadline fired,
+// and that a tool call's arguments did not survive.
+//
+// NO PATTERN LIST DECIDES ANYTHING. [isRetryable] is still asked, and it is
+// still the harness's one list of what a bare socket failure looks like — but it
+// sets a FACT ([taxonomy.Evidence.Wire]) rather than an outcome, which is the
+// whole difference from the `isContextOverflow(errMsg) || !isRetryable(errMsg)`
+// that used to return out of the turn loop forty lines after the verdict had
+// been computed.
 func wireEvidence(err error, attempt int) taxonomy.Evidence {
-	evidence := taxonomy.Evidence{Attempt: attempt}
 	if err == nil {
-		return evidence
+		return taxonomy.Evidence{Attempt: attempt}
 	}
+	evidence := provider.Evidence(err)
+	evidence.Attempt = attempt
 	message := err.Error()
 	evidence.Message = clip(message, errorRowMessage)
 	if refusal, ok := provider.RefusalFrom(err); ok {
-		evidence.Status = refusal.Status
-		evidence.Upstream = refusal.Provider
 		// THE UPSTREAM'S OWN WORDS ARE WHERE THE SHAPE IS. "Provider returned
 		// error" is the router's sentence and says nothing; the raw body is
 		// where `function.arguments must be valid JSON` and `unterminated
 		// string` actually appear, which is the difference between a model that
 		// cannot hold a tool and one endpoint in a pool mangling the stream.
 		evidence.Malformed = malformedArguments(refusal.Raw) || malformedArguments(refusal.Message)
-		// AND WHETHER THE ROUTER EMPTIED ITS OWN SET is the transport's answer,
-		// read here and never re-derived: a 404 naming nobody is our own bytes
-		// OR a list and a setting that left the router nothing to ask, and only
-		// the refusal door could tell those apart ([provider.RoutingRefusal]).
-		evidence.Routing = provider.RoutingRefusal(err)
 	}
 	if _, ok := provider.CutFrom(err); ok {
 		evidence.Cut = true
@@ -145,7 +156,7 @@ func wireEvidence(err error, attempt int) taxonomy.Evidence {
 	// up, a name that would not resolve — is still the wire, and [isRetryable] is
 	// where this build has always kept that list.
 	if evidence.Status == 0 && !evidence.Cut && !evidence.Timeout &&
-		!isContextOverflow(message) && isRetryable(message) {
+		!evidence.Overflow && isRetryable(message) {
 		evidence.Wire = true
 	}
 	return evidence
@@ -201,6 +212,12 @@ type transportLadder struct {
 	// fallback says the caller has a next model to ask. It is the whole
 	// difference between moving on and giving up, and it is the caller's fact.
 	fallback bool
+	// outOfTime says the caller's own deadline is gone — the plan's give-up, in
+	// the person's time — which is the whole of what bounds a failing request
+	// (docs/design/recovery/DESIGN.md §4). It is the caller's fact for the same
+	// reason `fallback` is: this package knows the clock it started, and the
+	// boundary decides what running out of it MEANS.
+	outOfTime bool
 }
 
 // mark writes the ladder onto the evidence the wire already answered for.
@@ -210,6 +227,7 @@ func (l transportLadder) mark(evidence *taxonomy.Evidence) {
 	evidence.Degenerate = l.degenerate
 	evidence.Rerouted = l.rerouted
 	evidence.FallbackAvailable = l.fallback
+	evidence.OutOfTime = l.outOfTime
 }
 
 // readCallFailure is what the errand ladder and every caller with one model asks
@@ -232,6 +250,43 @@ func (a *Agent) readLadderFailure(err error, model, role string, ladder transpor
 	evidence := wireEvidence(err, ladder.attempt)
 	ladder.mark(&evidence)
 	return a.readWireEvidence(evidence, model, role)
+}
+
+// weighLadder is the classification WITHOUT the record: one failure read into a
+// verdict, and nothing written down about it.
+//
+// IT EXISTS FOR ONE CALLER AND ONE REASON (loop.go). The turn's ladder cannot
+// know whether it has time for another request until it knows what the verdict
+// asks it to WAIT — and if it has not, the same failure has to be read again
+// with that fact on it. Two reads are one failure, so the line is written once,
+// afterwards, carrying the verdict that was actually acted on: a row per read
+// would make a ladder of three read as four, and the first row would name a
+// retry that never happened.
+func (a *Agent) weighLadder(err error, ladder transportLadder) (taxonomy.Verdict, taxonomy.Evidence) {
+	evidence := wireEvidence(err, ladder.attempt)
+	ladder.mark(&evidence)
+	return taxonomy.Classify(evidence, a.failureLimits()), evidence
+}
+
+// writeLadderVerdict is the other half of [Agent.weighLadder]: the journal line
+// and the wire failure against the piece of work, written once the verdict is
+// settled.
+func (a *Agent) writeLadderVerdict(verdict taxonomy.Verdict, evidence taxonomy.Evidence, model, role string) {
+	a.file.appendFailure(journalFailure{
+		Class:    string(verdict.Class),
+		Reason:   verdict.Reason,
+		Action:   string(verdict.Action),
+		Model:    strings.TrimSpace(model),
+		Role:     strings.TrimSpace(role),
+		Attempt:  evidence.Attempt,
+		Status:   evidence.Status,
+		Provider: strings.TrimSpace(evidence.Upstream),
+		Refuted:  evidence.Refuted,
+		SpentUSD: evidence.SpentUSD,
+	})
+	if verdict.Class == taxonomy.Transport {
+		a.config.failures.Wire()
+	}
 }
 
 // readWireEvidence is the last step both readings share: classify, journal, and
@@ -275,6 +330,16 @@ func transportWords(verdict taxonomy.Verdict) string {
 		return "the model would not take the request"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
+	case taxonomy.ReasonWithdrawn:
+		return "that model is not being served any more"
+	case taxonomy.ReasonUnauthorized:
+		return "your key was not accepted for this model"
+	case taxonomy.ReasonOverflow:
+		return "this conversation got too long for the model"
+	case taxonomy.ReasonTooBig:
+		return "this conversation is too long for the model even after shortening it"
+	case taxonomy.ReasonOurBytes:
+		return "the request could not be sent as it was"
 	}
 	return "the request did not get through"
 }
@@ -307,6 +372,14 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 		return "the model kept turning the request away"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
+	case taxonomy.ReasonWithdrawn:
+		return "that model is not being served any more"
+	case taxonomy.ReasonUnauthorized:
+		return "your key was not accepted for this model"
+	case taxonomy.ReasonOverflow, taxonomy.ReasonTooBig:
+		return "this conversation kept being too long for the model"
+	case taxonomy.ReasonOurBytes:
+		return "the request could not be sent as it was"
 	}
 	return "the request kept failing"
 }
@@ -319,12 +392,43 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 // run ended the entire thing eighteen minutes in. An endpoint that answered
 // nothing is an endpoint that did not answer, and the answer to that is to ask
 // again.
-func (a *Agent) readEmptyReply(model string, attempt int) taxonomy.Verdict {
-	verdict := a.classify(taxonomy.Evidence{Empty: true, Attempt: attempt}, model, "")
+// AND IT IS BOUNDED BY THE CALLER'S CLOCK, NOT BY A COUNT OF EMPTY ANSWERS.
+// `outOfTime` is the turn's own give-up, spent on going nowhere; the count that
+// used to bound this was the person's `response.attempts` walked a second time,
+// under a transport already bounded by the same deadline
+// (docs/design/recovery/DESIGN.md §4).
+func (a *Agent) readEmptyReply(model string, attempt int, outOfTime bool) taxonomy.Verdict {
+	verdict := a.classify(taxonomy.Evidence{Empty: true, Attempt: attempt, OutOfTime: outOfTime}, model, "")
 	if verdict.Class == taxonomy.Transport {
 		a.config.failures.Wire()
 	}
 	return verdict
+}
+
+// readOverflow is what the turn loop asks about a request the provider said did
+// not fit.
+//
+// IT IS A MOVE AND NOT AN ENDING, which is the whole of why it goes through the
+// boundary at all. A transcript longer than the window says nothing about the
+// wire, the model or the job — it is the REQUEST, and the answer is the same
+// question in fewer words ([taxonomy.Shape], [taxonomy.ActionCompact]).
+//
+// `compacted` is whether this turn has already paid for that once, and it is the
+// caller's fact because only the turn knows. The policy is what decides what to
+// do with it: a second overflow after a compaction is a request that is not
+// going to fit, and it comes back as work rather than as another round of the
+// same move.
+func (a *Agent) readOverflow(err error, model string, compacted bool) taxonomy.Verdict {
+	evidence := wireEvidence(err, 1)
+	if !evidence.Overflow {
+		// NOT THIS SHAPE, AND NOT JOURNALED AS ANY OTHER. The caller asks this of
+		// every failed request, so an ordinary refusal reaching here must leave no
+		// row: the ladder below classifies and journals the same failure a few
+		// lines later, and two rows for one failure is a ladder nobody can count.
+		return taxonomy.Verdict{}
+	}
+	evidence.Compacted = compacted
+	return a.classify(evidence, model, "")
 }
 
 // ── the node's model ────────────────────────────────────────────────────────
@@ -344,8 +448,13 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 	if !terminalProviderFailure(runErr) {
 		return false
 	}
-	verdict := a.classify(wireEvidence(runErr, a.failureLimits().TransportAttempts),
-		node.runModel(), "")
+	// THE WORKER UNDER THIS HAS ALREADY SPENT WHATEVER IT HAD, which is what the
+	// boundary is being told: a run that ended on the wire ended because its own
+	// deadline did, so the reading is of a failure with nothing left rather than
+	// of the first attempt of a ladder nobody is going to walk.
+	evidence := wireEvidence(runErr, 1)
+	evidence.OutOfTime = true
+	verdict := a.classify(evidence, node.runModel(), "")
 	if verdict.Class == taxonomy.Transport {
 		// The wire failures are ALREADY on the node's tally: the worker that just
 		// died carried the same pointer and recorded every one of them as it went
@@ -383,33 +492,32 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 // about this work, and the work is still undone: they keep [TaskEndingError] and
 // go on being named as left.
 //
-// SO THE STATUS IS READ OFF THE TYPED ERROR and never off its prose, and anything
-// this does not recognise is the WORK — the safe side, because an unfamiliar
-// failure keeps the meaning it has always had.
+// SO IT IS THE VERDICT THAT ANSWERS, AND NOT A LIST OF STATUSES. It used to be
+// `api.Status >= 500 || 404 || 429 || 401 || 403` written out here — the third
+// of the three rules that each decided for themselves what a 404 meant
+// (docs/design/recovery/DESIGN.md §2.6), and the one whose list drifted furthest
+// from the other two. [taxonomy.Classify] already answers "was this the wire or
+// was it an answer", from evidence the transport stamped once, so this asks it:
+// the class the boundary gives a failure IS the distinction this function was
+// written to draw.
+//
+// Anything the boundary does not recognise is the WORK — the safe side, because
+// an unfamiliar failure keeps the meaning it has always had.
 func providerCouldNotServe(err error) bool {
 	if err == nil {
 		return false
 	}
-	// A REFUSAL IS AN ANSWER: the chain reached a model, the model read the
-	// request and would not do it.
-	var refusal *provider.RefusalError
-	if errors.As(err, &refusal) {
+	// A SPENT LADDER IS AN ANSWER, AND IT IS A TYPE RATHER THAN A STATUS. The
+	// chain relaxed the request, dropped the ceiling and walked the models, and
+	// what it hands back is a diagnosis for a person ([provider.RefusalError]) —
+	// which is the same rule [provider.RoutingRefusal] states for the same
+	// reason, and the one reading the class underneath it cannot carry, because
+	// the refusal it wraps is a perfectly ordinary routing 404.
+	var spent *provider.RefusalError
+	if errors.As(err, &spent) {
 		return false
 	}
-	var api *provider.APIError
-	if !errors.As(err, &api) {
-		return false
-	}
-	switch {
-	case api.Status >= 500:
-		// The service itself could not answer.
-		return true
-	case api.Status == 404, api.Status == 429, api.Status == 401, api.Status == 403:
-		// No route left to serve it, a limit still refusing after the retries,
-		// and an account that could not be served. Each is about who was asked.
-		return true
-	}
-	return false
+	return taxonomy.Classify(wireEvidence(err, 1), taxonomy.Limits{}.Floored()).Class == taxonomy.Transport
 }
 
 func diedOnTheWire(err error) bool {
@@ -419,8 +527,11 @@ func diedOnTheWire(err error) bool {
 	if _, cut := provider.CutFrom(err); cut {
 		return true
 	}
-	message := err.Error()
-	return !isContextOverflow(message) && isRetryable(message)
+	// THE WIRE IS A FACT ON THE EVIDENCE AND NO LONGER A TEST HERE. Overflow is
+	// the transport's structural answer ([provider.Evidence]) rather than a
+	// regex over the sentence, and [isRetryable] is asked once, inside
+	// [wireEvidence], where it sets [taxonomy.Evidence.Wire].
+	return wireEvidence(err, 1).Wire
 }
 
 // escalateNodeModel is the only caller of [Agent.nextNodeModel] in this package,

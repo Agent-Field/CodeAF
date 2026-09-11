@@ -1933,6 +1933,18 @@ type Config struct {
 	// when the reading reaches a turn; tests replace only the reading itself.
 	newerBuild func() string
 
+	// PromptProfile is the person's own answer to which prefix this session
+	// sends, in the three words the settings row takes: `auto`, `lean`, `full`
+	// (internal/config's [config.PromptProfileModes]). It is what the door read
+	// off the sheet, not what was settled from it.
+	//
+	// `auto` and the empty string are the same answer — WORK IT OUT — which is
+	// what every door that has not been taught this row hands over and what
+	// every session did before the row existed. The word `lean` or `full` is the
+	// person overruling the window, and it loses only to the environment pin
+	// (promptprofile.go's [resolvePromptProfile] is the whole ladder).
+	PromptProfile string
+
 	// profile is which of the two fixed prefixes this session sends, SETTLED
 	// ONCE by newAgent before anything is built from it (promptprofile.go).
 	//

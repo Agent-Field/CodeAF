@@ -1419,6 +1419,9 @@ func TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer(t *testing.T) 
 	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
 		t.Fatalf("the door was handed %+v", lab.answer)
 	}
+	if notes := failureNotes(lab.a.entries); len(notes) != 1 || notes[0] != "the engine did not answer in time" {
+		t.Fatalf("the door's refusal was not said: %q", notes)
+	}
 	// AND THE LANE BRINGS THAT VERY ANSWER BACK.
 	settled, q := lab.answer[0], ask
 	lab.a.questionFold(session.Event{
@@ -1456,6 +1459,9 @@ func TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName(t *testing.T) {
 	lab.rows()
 	if !lab.press("1") {
 		t.Fatal("the settled question did not take its own key")
+	}
+	if notes := failureNotes(lab.a.entries); len(notes) != 1 || notes[0] != "that question has already been decided" {
+		t.Fatalf("the door's refusal was not said: %q", notes)
 	}
 	q := ask
 	other := session.Answer{

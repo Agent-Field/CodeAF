@@ -122,6 +122,26 @@ opening. Nothing is broken by it: the addresses this window minted go on working
 link is back, and a file already fetched opens from the copy on this machine without
 asking that machine anything (*Opening files from that machine*).
 
+## It said the engine did not answer in time — is the connection gone
+
+No. That sentence is one call that this window did not hear back from, on a
+link that is still up:
+
+```
+the engine did not answer in time
+```
+
+or `devbox did not answer in time` when the machine has a name. A keystroke —
+answering a question, taking the keyboard — is not queued behind a listing on
+that machine, and a call that has waited too long does not take the rest of the
+conversation down with it. The connection itself says `the connection to
+<machine> is gone` only when the link has actually dropped, in the sentence
+above.
+
+If the engine had already taken the answer, the receipt still closes as yours
+when the news arrives. See *The answer I pressed was refused* on the questions
+page.
+
 ## How do I know it is reconnecting — the segment on the status line
 
 The status line says so, in one segment at its right-hand end, beside what the session is

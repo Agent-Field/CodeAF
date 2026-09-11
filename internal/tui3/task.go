@@ -246,12 +246,14 @@ type taskNode struct {
 	// figure is a number from eleven minutes ago, and a bill that stands still
 	// for eleven minutes is a bill nobody believes. Read it through [taskNode.spent].
 	liveCost float64
-	// tokens is what this node has burned, input plus output, summed over the
-	// turns the pilot has seen. Zero means NOBODY COUNTED — no notice carries a
-	// token figure, so a node this surface met after it landed has none and
-	// never will — and it is not the claim that a node thought for free: a
-	// surface draws nothing at all for it, the way it draws nothing for an
-	// unpublished price (session's task_contract.go on CostUSD).
+	// tokens is what this node has burned, input plus output: the larger of
+	// the turns the pilot has seen and the engine's own count on its notices
+	// (session's TaskNotice.Tokens), which is the only count a window with no
+	// lane to the worker gets. Zero means NOBODY COUNTED — a node this surface
+	// met after it landed from a row that carried no figure — and it is not the
+	// claim that a node thought for free: a surface draws nothing at all for it,
+	// the way it draws nothing for an unpublished price (session's
+	// task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
 	// produced is WHAT THE WORK MADE, kept apart from the report above because
@@ -5737,6 +5739,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// take a figure off the focus header that was true (room.go).
 	if notice.CostUSD > 0 {
 		node.cost = notice.CostUSD
+	}
+	// AND THE TOKENS, the same burn counted from the engine's side, which is the
+	// only side a window with no lane to the worker has (session's
+	// TaskNotice.Tokens). The larger of the two readings wins, as the price's
+	// does ([taskNode.spent]): this lane and the pilot's count the same thing.
+	if notice.Tokens > node.tokens {
+		node.tokens = notice.Tokens
 	}
 	// THE LIVE LINES ARE COPIED WHOLE, INCLUDING THEIR ABSENCE, and they are the
 	// fields on this node that are deliberately not kept when an update stops

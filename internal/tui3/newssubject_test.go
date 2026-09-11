@@ -17,7 +17,7 @@ package tui3
 // What a person saw inside a task room, with the node writing: no provider, no
 // tok/s, and a stale `running ask · 4m 55s` left over from the conversation.
 //
-// The fix is a SUBJECT on the news and one key function ([newsDeskKey]) — never
+// The fix is a SUBJECT on the news and one key function ([newsDeskKeys]) — never
 // a heuristic about rooms being open, which would put two tasks on one model
 // back on each other's row under a new name.
 

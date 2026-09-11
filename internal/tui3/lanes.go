@@ -97,12 +97,19 @@ type LaneNews struct {
 	// Subject is WHAT THIS SIGHTING IS ABOUT — the conversation, or one task
 	// node of it — and it is [provider.PhaseNews.Subject]'s twin, spelled the
 	// same way for the same reason: a window draws its own subject's news, and
-	// the two desks in this package must not key differently ([newsDeskKey]).
+	// the two desks in this package must not key differently ([newsDeskKeys]).
 	//
 	// EMPTY MEANS THE CONVERSATION, which is what every producer that predates
-	// the field and every older peer across a connection sends — so a sighting
-	// with no subject is filed under its model exactly as it always was.
+	// the field and every older peer across a connection sends.
 	Subject string
+
+	// Session is WHOSE sighting this is — the conversation it belongs to, in the
+	// engine's own spelling ([provider.PhaseNews.Session]'s twin). A
+	// conversation's own sighting is filed under it first and under its model
+	// beside it ([newsDeskKeys]), so a model that moved between the engine and
+	// this window cannot file the machine under a name nobody is reading. Empty
+	// is an older peer, and files under the model alone, as it always did.
+	Session string
 
 	// Role is who the answer was for (internal/lane's roles.go), carried from
 	// the seam that already knows it (internal/session's lanenews.go).
@@ -118,6 +125,12 @@ type LaneNews struct {
 
 	At time.Time
 }
+
+// rescueNews reports whether this post is about a RESCUE rather than about an
+// answer that finished: one in flight, or the retraction of one, or a pin the
+// wire has retired. Those are kept in a slot of their own beside the last
+// sighting ([laneDesk]) rather than in its place.
+func (n LaneNews) rescueNews() bool { return n.Trying || n.Failed }
 
 // rescued reports whether this answer was finished somewhere other than where
 // it started. It is the only reading of "rescued" the surface has, and it is
@@ -148,28 +161,56 @@ const laneSightings = 8
 //
 // THE TWO HALVES ARE KEYED BY DIFFERENT THINGS ON PURPOSE. The latest news is a
 // claim about one piece of WORK — this conversation, or this node — so it is
-// filed under its subject (phase.go's [newsDeskKey] and the law above it): a
+// filed under its subject (phase.go's [newsDeskKeys] and the law above it): a
 // desk keyed by model let two nodes on one model id overwrite each other. The
 // ring is a claim about one MACHINE serving one model, which is what the
 // sparkline is drawn from and what the ledger's own belief is about, so it
 // stays keyed by the pair it measures. A subject in that key would split one
 // machine's history across every node that ever used it.
+//
+// AND A RESCUE HAS A SLOT OF ITS OWN BESIDE THE SIGHTING, rather than
+// overwriting it. There used to be one entry per subject, so the news that a
+// rescue had gone out REPLACED the news of which machine last answered — and
+// when that rescue then failed without being refused, the rider had nothing
+// left to say and `via` went blank. Nothing put it back: the next sighting is
+// posted only when an answer finishes, and an interrupted or errored step never
+// finishes one. So the rescue goes in `rescue`, the sighting stays in `latest`,
+// and the next sighting clears the rescue, because a finished answer is the end
+// of every rescue that was about it.
 type laneDesk struct {
 	mu     sync.RWMutex
 	latest map[string]LaneNews
+	rescue map[string]LaneNews
 	rings  map[string][]int
 }
 
-var desk = laneDesk{latest: map[string]LaneNews{}, rings: map[string][]int{}}
+var desk = laneDesk{latest: map[string]LaneNews{}, rescue: map[string]LaneNews{}, rings: map[string][]int{}}
+
+// laneStory is what one subject's desk entry holds: the last answer's sighting,
+// and a rescue posted since it, each with whether there is one at all.
+type laneStory struct {
+	seen, rescue       LaneNews
+	hasSeen, hasRescue bool
+}
 
 // PostLaneNews is how the layer that sent an answer tells the surface what the
 // lanes did. It is safe from any goroutine, it never blocks on a draw, and it
 // keeps nothing about an answer that could not say which lane served it: a
 // sighting credited to nobody is a fact about a machine that was not involved.
+//
+// A ROLE NOBODY IS READING NEVER REACHES THE STATUS LINE'S HALF, which is the
+// phase desk's own door said again ([PostPhaseNews]). The errands beside a talk
+// turn — a title, a memory reflex — share the conversation's subject and finish
+// on some lane of their own; filed here, the last of them to finish REPLACED the
+// answer's sighting, and the rider, which draws only a visible role, then drew
+// nothing at all. That was one more way `via` vanished after an answer. Their
+// first-token waits still feed the ring below, because the ring is about the
+// machine, and a machine is exactly as fast for a title as for an answer.
 func PostLaneNews(news LaneNews) {
 	news.Model = strings.TrimSpace(news.Model)
 	news.Lane = strings.TrimSpace(news.Lane)
 	news.Subject = strings.TrimSpace(news.Subject)
+	news.Session = strings.TrimSpace(news.Session)
 	if news.Model == "" {
 		return
 	}
@@ -178,7 +219,16 @@ func PostLaneNews(news LaneNews) {
 	}
 	desk.mu.Lock()
 	defer desk.mu.Unlock()
-	desk.latest[newsDeskKey(news.Subject, news.Model)] = news
+	if news.Role.Visible() {
+		for _, key := range newsDeskKeys(news.Subject, news.Session, news.Model) {
+			if news.rescueNews() {
+				desk.rescue[key] = news
+				continue
+			}
+			desk.latest[key] = news
+			delete(desk.rescue, key)
+		}
+	}
 	if news.Lane == "" || news.TTFT <= 0 {
 		return
 	}
@@ -190,14 +240,39 @@ func PostLaneNews(news LaneNews) {
 	desk.rings[key] = ring
 }
 
-// laneNewsFor is the latest news about one subject, false when none has
-// arrived. The key is phase.go's [newsDeskKey], so this desk and the phase desk
-// cannot come to two ideas of what a piece of news is called.
+// laneNewsFor is the last answer's sighting for one subject, false when none
+// has arrived. The key is one of phase.go's [newsDeskKeys], so this desk and the
+// phase desk cannot come to two ideas of what a piece of news is called.
 func laneNewsFor(key string) (LaneNews, bool) {
 	desk.mu.RLock()
 	defer desk.mu.RUnlock()
 	news, ok := desk.latest[strings.TrimSpace(key)]
 	return news, ok
+}
+
+// laneStoryFor is the whole of what the desk holds for one name: the single
+// name a room has, or one of the conversation's two ([app.talkLaneStory]).
+func laneStoryFor(key string) (laneStory, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return laneStory{}, false
+	}
+	desk.mu.RLock()
+	defer desk.mu.RUnlock()
+	seen, hasSeen := desk.latest[key]
+	rescue, hasRescue := desk.rescue[key]
+	return laneStory{seen: seen, rescue: rescue, hasSeen: hasSeen, hasRescue: hasRescue}, hasSeen || hasRescue
+}
+
+// talkLaneStory is the conversation's story, asked in [app.talkKeys]' order:
+// the first of its names with anything filed under it answers.
+func (a *app) talkLaneStory() laneStory {
+	conversation, model := a.talkKeys()
+	if story, ok := laneStoryFor(conversation); ok {
+		return story
+	}
+	story, _ := laneStoryFor(model)
+	return story
 }
 
 // laneSpark is our own last few first-token waits on one lane, oldest first, in
@@ -218,6 +293,7 @@ func forgetLanes() {
 	desk.mu.Lock()
 	defer desk.mu.Unlock()
 	desk.latest = map[string]LaneNews{}
+	desk.rescue = map[string]LaneNews{}
 	desk.rings = map[string][]int{}
 }
 
@@ -315,11 +391,33 @@ func laneViews(model string, now time.Time) []laneView {
 		view.TTFT = ttft.Mean() / 1000
 		view.Rate = rate.Mean()
 		view.Wait = ttft.Quantile(laneWaitZ) / 1000
-		view.Tail, view.Vague = laneTail(ttft.Quantile(laneTailZ)/1000, view.TTFT)
+		view.Tail, view.Vague = laneTailOf(ttft, view.TTFT)
 		views = append(views, view)
 	}
 	sortLanes(views)
 	return views
+}
+
+// laneTailOf is [laneTail] asked of a belief rather than of a figure, and it is
+// the door [laneViews] uses.
+//
+// A BELIEF THAT HAS WIDENED AS FAR AS IT IS ALLOWED TO SAYS NOTHING ABOUT ITS
+// WORST CASE, and the spread is the only place that fact still shows. Ageing
+// doubles the spread every half-life ([lane.Posterior.Predict]) and
+// [lane.MaxSpread] is where that doubling stops — a floor under the arithmetic
+// and not a judgement, put there so the one unbounded expression in that package
+// cannot reach a number no reader of it can hold. The row used to read the
+// overflow itself: before the clamp a lane nobody had heard from since yesterday
+// arrived with a p99 of +Inf, which [laneTail] caught. Now it arrives at exactly
+// the ceiling, where σ ≈ 2.4 makes the p99 a couple of hundred times the median —
+// a perfectly finite figure that is still arithmetic and not a measurement. So
+// the emptiness law is applied to the BELIEF, where the doubt lives, rather than
+// to the one symptom of it that a later clamp took away.
+func laneTailOf(ttft lane.Posterior, median float64) (tail float64, vague bool) {
+	if ttft.P >= lane.MaxSpread {
+		return 0, true
+	}
+	return laneTail(ttft.Quantile(laneTailZ)/1000, median)
 }
 
 // laneTail is the p99 first token in seconds when it is worth a word on a row,
@@ -327,11 +425,8 @@ func laneViews(model string, now time.Time) []laneView {
 // about its worst case at all.
 //
 // A TAIL IS ONLY A TAIL WHEN IT IS FAR ENOUGH PAST THE MEDIAN to be a different
-// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. The
-// ageing widens a belief's spread by half-lives ([lane.Posterior.Predict]), so a
-// lane nobody has heard from since yesterday has a p99 of exp(something huge):
-// +Inf, which the row printed as `tail 9223372036854775807s`. A figure that is
-// not finite, or longer than any request is allowed to stay open
+// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. A
+// figure that is not finite, or longer than any request is allowed to stay open
 // ([provider.WallCeiling]), is arithmetic and not a measurement, and the
 // emptiness law draws it as nothing — including not as `no tail`, which is a
 // claim about the worst case too.
@@ -1122,7 +1217,19 @@ func (a *app) pinnedNow() string {
 //
 // On `auto` and `openrouter` it adds nothing — the emptiness law: a choice left
 // to the router is the unremarkable state and says no word.
-func (a *app) modelWord() string {
+func (a *app) modelWord() string { return a.modelWordAt("") }
+
+// modelWordAt is [app.modelWord] with a reasoning level spelled onto the id —
+// `deepseek-v4-flash:high@cloudflare` — which is how the phone deck's chip names
+// the conversation's model (statusdeck.go's [app.deckModelRow]). An empty level
+// is the word [app.modelWord] draws.
+//
+// THE LEVEL IS PASSED IN, NEVER LENT THROUGH [app.model]. It used to be spliced
+// onto that field for the length of the status row's draw (view.go's
+// [app.statusRow]), and every news desk asked inside that draw then asked for
+// the model by a name nothing is filed under — which is how a person who had set
+// a level lost the live rate from the right edge of the row.
+func (a *app) modelWordAt(level string) string {
 	model := modelBase(a.model)
 	if !a.sources.Empty() {
 		service, bare := a.sources.For(a.model)
@@ -1130,6 +1237,9 @@ func (a *app) modelWord() string {
 	}
 	if model == "" {
 		return ""
+	}
+	if level != "" {
+		model += ":" + level
 	}
 	if pin := a.pinnedNow(); pin != "" {
 		return model + laneAtSign + pin
@@ -1205,8 +1315,31 @@ func (a *app) openPickerFromChip() {
 // [app.liveRiderAt]) — one frame, two rates, and the one beside the model was
 // the LAST answer's average. Who served is attribution and belongs beside the
 // model; how fast is a claim about now and has one place on the frame.
+//
+// IT IS THE SHEET'S READING, AND THE SHEET KEEPS THE OLD SUPPRESSION: the row
+// above `served` there is the model's whole routing address, vendor and all, so
+// a machine the address already names is not said twice. The seam asks
+// [app.talkLaneRider] instead, which never suppresses.
 func (a *app) laneRider(timed bool) string {
-	return a.laneRiderFor(a.talkSubject(), a.model, timed, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, "", timed, a.state == stateWorking)
+}
+
+// talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with
+// no figures, and WHOEVER SERVED.
+//
+// live is the machine the request in flight has named ([PhaseNews.Lane]), and
+// it is asked for here because the sighting is only posted when a whole step
+// has FINISHED. So the first answer in a conversation, and a follow-up sent
+// after the last sighting had aged out ([servedWindow]), drew no `via` at all
+// for as long as the answer was being written — while the phase clock already
+// knew exactly who was writing it. The owner's ruling is that `via` is always on
+// the seam; a sighting that is not posted yet is not a reason to break it.
+func (a *app) talkLaneRider() string {
+	live := ""
+	if news, ok := a.livePhase(); ok {
+		live = news.Lane
+	}
+	return a.laneRiderFor(a.talkLaneStory(), "", live, false, a.state == stateWorking)
 }
 
 // roomLaneRider is that rider for THE OPEN ROOM'S NODE: which machine answered
@@ -1222,55 +1355,115 @@ func (a *app) laneRider(timed bool) string {
 // landed last — the conversation's, most often — and a node's room drawing the
 // conversation's machine is exactly the lie [app.roomModelWord] refused to
 // tell by drawing nothing at all.
+//
+// AND IT IS DRAWN WHOEVER SERVED, for the seam's reason ([app.modelRiderAt]): the
+// room's chip spells the node's model as its basename after a `task` lead, so
+// the vendor half of the id is not on the screen, and a rider that vanished
+// whenever the vendor served its own model read as the sighting having been
+// lost. The node's live phase names the machine while its first answer is still
+// being written, exactly as the conversation's does.
 func (a *app) roomLaneRider() string {
 	subject := a.roomSubject()
-	if subject == "" {
+	if subject == "" || a.roomNode() == nil {
 		return ""
 	}
-	node := a.roomNode()
-	if node == nil {
-		return ""
-	}
-	return a.laneRiderFor(subject, strings.TrimSpace(node.model), false, false)
+	news, working := a.roomPhase()
+	story, _ := laneStoryFor(subject)
+	return a.laneRiderFor(story, "", news.Lane, false, working)
 }
 
-// laneRiderFor is that rider for one SUBJECT: the piece of work the window
-// asking is a window onto (phase.go's law and [newsDeskKey]).
+// laneRiderFor is that rider for one window's story: the piece of work the
+// window asking is a window onto (phase.go's law and [newsDeskKeys]).
 //
-// model is the id the row beside it already NAMES, and it is a parameter rather
-// than `a.model` because the two windows name two different models: out here it
-// is the conversation's, and in a room it is the node's. It is read for one
-// thing only — the rule that a lane the id already carries is not said twice —
-// and reading the conversation's model beside a node's name would suppress a
-// machine the row had never mentioned.
+// named is the id the row beside it spells IN FULL, read for one thing only —
+// the rule that a machine the id already carries is not said twice. Only the
+// sheet passes one ([app.laneRider]); the seam and a room spell a basename, so
+// the vendor is not on the screen and they pass nothing (the owner's ruling of
+// 2026-09-09: `via` always on the seam).
+//
+// live is the machine the request in flight has named, or "" — see
+// [app.talkLaneRider] for why it outranks the last answer's sighting.
 //
 // working says whether the work this rider is about is RUNNING, because that is
-// what decides whether the rate may ride along. It is the caller's answer and
-// not `a.state`: the session's state is the conversation's liveness, and a
-// window onto a node must not go quiet because the conversation it was launched
-// from is idle.
-func (a *app) laneRiderFor(subject, model string, timed, working bool) string {
+// what decides whether the rate may ride along and whether a rescue may still
+// be promised. It is the caller's answer and not `a.state`: the session's state
+// is the conversation's liveness, and a window onto a node must not go quiet
+// because the conversation it was launched from is idle.
+func (a *app) laneRiderFor(story laneStory, named, live string, timed, working bool) string {
 	// A DIRECTLY CONNECTED SERVICE HAS ONE ROAD, so there is no machine to name
 	// and the lane desk holds none for it. The sighting this would otherwise
-	// find is the DEFAULT service's, matched on a model id that looks alike —
-	// which is how an ollama row came to say `via akashml`. The emptiness law
-	// asks for nothing here, never a borrowed word.
-	if a.modelIsDirect(model) {
+	// find is the DEFAULT service's, matched on the full model id the sheet row
+	// names — which is how an ollama row came to say `via akashml`. The seam and
+	// task room pass no full id, so the default service's rescue rider remains
+	// available there.
+	if a.modelIsDirect(named) {
 		return ""
 	}
-	news, ok := laneNewsFor(subject)
-	if !ok || a.now().Sub(news.At) > servedWindow {
+	now := a.now()
+	if story.hasRescue && now.Sub(story.rescue.At) <= servedWindow {
+		if line := rescueRider(story.rescue, working); line != "" {
+			return line
+		}
+	}
+	// WHO IS WRITING NOW OUTRANKS WHO WROTE LAST, which is the tense law the
+	// served rider has always kept ([app.servedRider]): a phase is this request,
+	// a sighting is the last one.
+	if live = strings.ToLower(strings.TrimSpace(live)); live != "" {
+		if named == "" || !strings.Contains(strings.ToLower(named), live) {
+			return " · via " + live
+		}
+	}
+	news := story.seen
+	if !story.hasSeen || now.Sub(news.At) > servedWindow {
 		return ""
 	}
-	// A ROLE NOBODY IS READING DOES NOT MOVE THIS LINE. See [LaneNews.Role]:
-	// the errands that run beside a talk turn each finish on some lane, and the
-	// last of them to finish is not the one the person is waiting on. They share
-	// the CONVERSATION's subject, so the subject key cannot tell them apart and
-	// this test is still the only thing that does.
-	if !news.Role.Visible() {
+	if news.rescued() {
+		return " · via " + strings.ToLower(news.Winner) + " · rescued"
+	}
+	if news.Lane == "" {
 		return ""
 	}
+	// AND WHERE THE ROW SPELLS THE WHOLE ID, A LANE IT ALREADY NAMES IS NOT SAID
+	// TWICE — "openai/gpt-4.1 · via openai" spends a cell a frame on a word the
+	// reader already has. That is the sheet alone now (see named above). A
+	// rescue is exempt above, because THAT is news whoever the vendor is.
+	served := strings.ToLower(news.Lane)
+	if named != "" && strings.Contains(strings.ToLower(named), served) {
+		return ""
+	}
+	rider := " · via " + served
+	if !timed {
+		return rider
+	}
+	if word := laneSecondsWord(news.TTFT.Seconds()); word != "" {
+		rider += " · " + word
+	}
+	// THE RATE RIDES ONLY WHILE THE WORK IS RUNNING, exactly as it does on the
+	// rider this one extends ([app.servedRider]): who served is attribution and
+	// stays; how fast they were writing is a claim about now.
+	if word := laneRateWord(news.Rate); word != "" && working {
+		rider += " · " + word
+	}
+	return rider
+}
+
+// rescueRider is what a rescue's own news says, or "" when it has nothing to
+// say and the sighting underneath should speak instead.
+//
+// A PROMISE IS KEPT ONLY WHILE THE WORK IS RUNNING. `trying coreweave…` is a
+// claim about the present tense, and a turn that was interrupted or errored
+// while the rescue was out never posts the answer that would have cleared it —
+// so without this the line stood saying `slow · trying coreweave…` over an idle
+// conversation until the ten-minute window aged it out.
+//
+// AND A RESCUE THAT FAILED WITHOUT BEING REFUSED SAYS NOTHING, which hands the
+// row back to the last sighting rather than blanking it: the machine that
+// answered last is still the machine that answered last.
+func rescueRider(news LaneNews, working bool) string {
 	if news.Trying && news.Alt != "" {
+		if !working {
+			return ""
+		}
 		// BOTH SENTENCES ARE WRITTEN OUT. Composing them from a word would save
 		// a line and cost the gate that keeps this surface's vocabulary honest:
 		// internal/e2e's tuiwords table reads these sources back for the exact
@@ -1293,42 +1486,12 @@ func (a *app) laneRiderFor(subject, model string, timed, working bool) string {
 	if news.Reason == provider.RescueRetired && news.Alt != "" {
 		return " · " + provider.RetiredPinLine(news.Alt)
 	}
-	// THE RETRACTION. The machine this line was promising has failed, so the
-	// promise comes off and the only thing left worth saying is what it did.
-	if news.Failed && news.Alt != "" {
-		if news.Reason == provider.RescueRefused {
-			return " · " + strings.ToLower(news.Alt) + " refused"
-		}
-		return ""
+	// THE RETRACTION. The machine this line was promising has been refused, so
+	// the promise comes off and the only thing left worth saying is what it did.
+	if news.Failed && news.Alt != "" && news.Reason == provider.RescueRefused {
+		return " · " + strings.ToLower(news.Alt) + " refused"
 	}
-	if news.rescued() {
-		return " · via " + strings.ToLower(news.Winner) + " · rescued"
-	}
-	if news.Lane == "" {
-		return ""
-	}
-	// AND A LANE THE MODEL ID ALREADY NAMES IS NOT SAID TWICE, which is the
-	// rule the rider this one extends has always kept: "gpt-4.1 · via openai"
-	// spends a cell a frame on a word the reader already has. A rescue is
-	// exempt above, because THAT is news whoever the vendor is.
-	served := strings.ToLower(news.Lane)
-	if strings.Contains(strings.ToLower(model), served) {
-		return ""
-	}
-	rider := " · via " + served
-	if !timed {
-		return rider
-	}
-	if word := laneSecondsWord(news.TTFT.Seconds()); word != "" {
-		rider += " · " + word
-	}
-	// THE RATE RIDES ONLY WHILE THE WORK IS RUNNING, exactly as it does on the
-	// rider this one extends ([app.servedRider]): who served is attribution and
-	// stays; how fast they were writing is a claim about now.
-	if word := laneRateWord(news.Rate); word != "" && working {
-		rider += " · " + word
-	}
-	return rider
+	return ""
 }
 
 // ── THE KEYSTROKE ───────────────────────────────────────────────────────────

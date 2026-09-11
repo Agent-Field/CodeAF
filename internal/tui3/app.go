@@ -1047,12 +1047,6 @@ type app struct {
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
 	turnOutStart int
-	// turnInStart is [app.inputTokens] at the same instant, and it is the other
-	// half of the live token column's subtraction: what this turn has SENT is
-	// the session's input total less this mark, exactly as what it has written
-	// is the output total less the one above (tokencol.go). It is cleared with
-	// the pair beside it, because a turn that has settled sends nothing.
-	turnInStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
 	// is (timestamps.go). It is kept beside the burn window's pair because it is
@@ -1688,6 +1682,21 @@ type app struct {
 	// replaced must not start a turn in the one that replaced it.
 	wakeLane <-chan (<-chan session.Event)
 	wakeGen  int
+	// convGen is THE CONVERSATION'S generation, and it is its own counter beside
+	// [app.gen] because that one counts TURNS — it is bumped by every submit,
+	// every adopted stream and every drained follow-up — while three lanes ask a
+	// different question: is the session these words were said into still the
+	// one on screen. The steer lane asks it of a correction that fell through
+	// into a turn of its own, answered long after the turn generation moved on
+	// (steerelbow.go's [app.steerFell]); the connection lanes ask it of who holds
+	// the keyboard and of every turn another window or the engine itself started
+	// (watching.go's [followingMsg]). Each of the three checked [app.gen] once,
+	// and each discarded a turn the engine had answered — a fallen-through
+	// correction, or every wake after the first typed turn — for having the wrong
+	// turn number on it. THIS ONE MOVES ONLY WHEN THE CONVERSATION IS REPLACED
+	// (detach.go), and it is ONE number for the three lanes because two counters
+	// bumped in the same place is the drift the one-source-of-truth law names.
+	convGen int
 
 	// THE TASK SIDE (task.go). task is the proposal that owns the answer lane,
 	// or nil; tasks and taskOrder are the rail's nodes, keyed by id and kept in
@@ -1708,6 +1717,10 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when the ambient side is off.
 	link LinkSeam
+	// newsSilenceSaid is whether this window has already said that its engine
+	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
+	// once per window, because it is a fact about a machine and not about a turn.
+	newsSilenceSaid bool
 	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
 	// door home is reached from a register with no box on the frame
 	// (watching.go's [app.watchKey]). It is zero everywhere else.
@@ -2310,6 +2323,18 @@ type app struct {
 	// reasoninglevel.go's reason exactly — the agent's answer is a lock at home
 	// and a round trip away — and one ask at a time is all a clock can need.
 	usageAsking bool
+	// usageOwed asks the beat on the NEXT frame rather than at its own tenth: a
+	// tool has just ended, the step's usage is already in the books and its
+	// result is about to join what the next request weighs, and the live token
+	// column's ↑ is that weight (tokencol.go). A third of a second is the whole
+	// of what it saves, and it is the third of a second right after something
+	// happened — the one a person is looking at.
+	usageOwed bool
+	// ctxSeq counts the conversation's weight readings taken ON the loop
+	// ([app.measureContext]), so the beat's answer — started before one of them
+	// and landing after it — can tell it is the older photograph and leave the
+	// weight alone ([app.usageBack]).
+	ctxSeq int
 
 	// rfiles is everything this surface knows about the OTHER machine's disk —
 	// which words are real files there, the door that turns them into things
@@ -4500,6 +4525,16 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
+	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
+	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
+	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
+	// for a column that is drawn only then, and a frame after the settle that
+	// asked anyway would be a wakeup spent on a figure nobody will see.
+	if a.usageOwed && !a.dueEvery(usageEvery) &&
+		(a.state == stateWorking || (a.room != nil && a.room.running())) {
+		kick = tea.Batch(kick, a.usageKick())
+	}
+	a.usageOwed = false
 	if a.dueEvery(usageEvery) {
 		// THE COST IS ASKED OFF THE LOOP AND NOT ON IT. Locally the agent answers
 		// under a lock; over a connection this is a round trip with a ten-second
@@ -4947,6 +4982,10 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// `go test` the person watched run: [app.lastDelta] would carry the
 		// call's whole runtime into the figure and open with "180s".
 		a.awaited = time.Now()
+		// AND WHAT THE NEXT REQUEST WEIGHS HAS JUST MOVED: the step's usage is in
+		// the books and its results are joining the conversation, which is the
+		// live token column's ↑ (tokencol.go). The beat asks on the next frame.
+		a.usageOwed = true
 	}
 
 	// WHAT THIS EVENT DOES TO THE TRANSCRIPT HAPPENS HERE, UNCONDITIONALLY, AND
@@ -5279,6 +5318,10 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	// AND AN ENGINE THAT SENT NO NEWS FOR A WHOLE ANSWER IS NAMED, once
+	// (hostlink.go's [app.sayNewsSilence]), so a status line with no provider
+	// and no rate on it is explained rather than left to look broken.
+	a.sayNewsSilence()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()
@@ -5360,7 +5403,7 @@ func (a *app) settle() tea.Cmd {
 	// AND THE RECEIPT IS FROZEN HERE, before the clock it is measured from is
 	// cleared: what the turn took, what it called, what it cost (timestamps.go).
 	a.stampTurn()
-	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.col.open()
 	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
@@ -5515,6 +5558,19 @@ func (a *app) refreshUsage() {
 type usageMsg struct {
 	agent Agent
 	usage session.Usage
+	// weight is what the conversation weighed at the same moment, when weighed
+	// says it was asked — a message built without it is a reading of the books
+	// alone, and must not zero the meter. ctxSeq is [app.ctxSeq] when the ask
+	// left, so an answer overtaken by a reading on the loop is dropped.
+	weight  int
+	weighed bool
+	ctxSeq  int
+	// roomWeight is the open task room's node weight, asked beside the rest
+	// where the room is on this machine ([taskWeightDoor]), for the room its
+	// id and generation name.
+	roomWeight int
+	roomID     uint64
+	roomGen    int
 }
 
 // usageKick asks the session what it has spent, off the update loop. See the
@@ -5524,17 +5580,53 @@ func (a *app) usageKick() tea.Cmd {
 		return nil
 	}
 	a.usageAsking = true
-	agent := a.agent
-	return func() tea.Msg { return usageMsg{agent: agent, usage: agent.Usage()} }
+	agent, seq := a.agent, a.ctxSeq
+	// AND THE WEIGHTS ARE ASKED ON THE SAME TRIP, for the same reason the cost
+	// is: locally the agent answers under a lock, and over a connection the
+	// answer is the replica the engine keeps current (internal/remote's facts),
+	// and neither belongs on the update loop. The open room's node is asked too
+	// where its worker is on this machine.
+	var roomID uint64
+	var roomGen int
+	var weighRoom func() int
+	if room := a.room; room != nil && room.lane != nil {
+		if door, ok := a.agent.(taskWeightDoor); ok {
+			id := room.id
+			roomID, roomGen = id, room.gen
+			weighRoom = func() int { return door.TaskContextTokens(id) }
+		}
+	}
+	return func() tea.Msg {
+		msg := usageMsg{agent: agent, usage: agent.Usage(),
+			weight: agent.ContextTokens(), weighed: true, ctxSeq: seq,
+			roomID: roomID, roomGen: roomGen}
+		if weighRoom != nil {
+			msg.roomWeight = weighRoom()
+		}
+		return msg
+	}
 }
 
-// usageBack folds one reading into the status line's figures.
+// usageBack folds one reading into the status line's figures, and the weights
+// that were asked beside it into the conversation's meter and the open room's
+// column.
 func (a *app) usageBack(msg usageMsg) {
 	a.usageAsking = false
 	if msg.agent != a.agent {
 		return
 	}
 	a.take(msg.usage)
+	if msg.weighed && msg.ctxSeq == a.ctxSeq {
+		a.takeContext(msg.weight)
+	}
+	// A NODE'S WEIGHT IS ITS NEWEST REQUEST, and a reading of nothing is not
+	// that request shrinking to nothing: it is the worker between hands — its
+	// reading over, the check not yet started — and the request it last sent is
+	// still the latest one there was. So only an answer moves the figure.
+	if room := a.room; room != nil && msg.roomWeight > 0 && room.gen == msg.roomGen && room.id == msg.roomID {
+		room.col.weight = msg.roomWeight
+		room.dirty = true
+	}
 	a.touch()
 }
 
@@ -5570,11 +5662,15 @@ func (a *app) take(u session.Usage) {
 	// restored one without the other.
 	a.repriceCache()
 	// THE CONVERSATION'S COLUMN READS ITS BOOKS HERE, turn-scoped: what the
-	// session has been billed since this turn opened its clock ([app.startClock]
-	// takes both marks). A room's column is fed by its own lane instead
-	// (room.go's [app.roomEvent]); the drawing is the same (tokencol.go).
+	// session has been billed as OUTPUT since this turn opened its clock
+	// ([app.startClock] takes the mark), and how much of the turn's writing was
+	// on the page when it was — ↓ is those books plus what has arrived since
+	// (tokencol.go's [tokenCol.bill]). ↑ is not a bill at all and is not read
+	// here: it is the conversation's weight ([app.measureContext]). A room's
+	// column is fed from its own sources instead (room.go's [app.roomEvent],
+	// roomrefresh.go); the drawing is the same.
 	if !a.turnBegan.IsZero() {
-		a.col.up, a.col.down = a.inputTokens-a.turnInStart, a.outputTokens-a.turnOutStart
+		a.col.bill(a.outputTokens-a.turnOutStart, a.turnWritten(), a.turn)
 	}
 	// A JUMP WHILE THE TURN IS RUNNING IS WALKED, not popped. The first
 	// reading of a working turn pins the drawn figures where they were so
@@ -5793,7 +5889,6 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
-	a.turnInStart = a.inputTokens
 	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
 	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
 	a.col.open()
@@ -8076,7 +8171,7 @@ func (a *app) resetMeters() {
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.
 	a.ctxRing, a.ringTurn = nil, 0
-	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.col.open()
 	// The receipts go with the conversation they were written for: turn 1 of the
 	// session that replaced this one is not the turn 1 those figures describe
@@ -8088,14 +8183,39 @@ func (a *app) resetMeters() {
 }
 
 // measureContext asks the agent what the conversation now weighs. It is called
-// where the answer CHANGES — a turn ending, a session opening or being replaced
-// — and never on the frame clock: the agent takes its own lock to answer, and
-// doing that thirty times a second to move a figure that changes once a turn is
-// a lock taken for nothing.
+// where the answer CHANGES — a turn ending, a session opening or being replaced,
+// a compaction — and never on the frame clock: the agent takes its own lock to
+// answer, and doing that thirty times a second is a lock taken for nothing.
+//
+// THE WEIGHT ALSO MOVES INSIDE A TURN, and the live token column's ↑ is that
+// weight (tokencol.go): a step's usage lands and a tool result joins what the
+// next request sends, several times a minute. Those readings are NOT taken
+// here, on the update loop. They ride the usage beat ([app.usageKick]), which
+// already asks the agent off the loop three times a second and now asks this
+// too, and which a tool's end asks for on the very next frame ([app.usageOwed]).
 func (a *app) measureContext() {
 	if a.agent == nil {
 		return
 	}
+	// A reading taken ON the loop outranks one the beat started before it: the
+	// beat's answer may be a photograph from before a compaction, and landing it
+	// after this would put the old weight back ([app.usageBack]).
+	a.ctxSeq++
+	a.takeContext(a.agent.ContextTokens())
+	if a.ctxWindow <= 0 {
+		// The door may not have known the window at boot: a cold catalog
+		// resolves in the background AFTER this surface is already up, and it
+		// tells the agent directly (cmd/aforge's warmV3Models) where there is
+		// no seam back to here. Asking the model list again is that seam, and
+		// it cannot block — [app.modelList] falls through to the disk cache and
+		// then to the built-ins. Once it answers, it is never asked again.
+		a.ctxWindow = a.windowFor(a.model)
+	}
+}
+
+// takeContext folds one reading of the conversation's weight in, from either
+// door: the synchronous one above, or the beat's answer off the loop.
+func (a *app) takeContext(weight int) {
 	// AND A WEIGHT THAT MOVED WHILE THE TURN RUNS IS WALKED, from the reading
 	// that is on the screen right now. This is the only place the weight ever
 	// changes, so it is the only place that can arm the walk for it — and
@@ -8106,7 +8226,7 @@ func (a *app) measureContext() {
 	// turn is no longer running, so [app.armMeters] declines and the exact figure
 	// is drawn — which is the snap rule, not an exception to it.
 	was := a.ctxTokens
-	a.ctxTokens = a.agent.ContextTokens()
+	a.ctxTokens = weight
 	switch {
 	case a.ctxTokens > was:
 		// A WEIGHT THAT GREW IS TELEMETRY AND WALKS, from the reading that is on
@@ -8126,15 +8246,6 @@ func (a *app) measureContext() {
 		// a chase the usage started is holding the old figure and would go on
 		// drawing it.
 		a.shownCtx = a.ctxTokens
-	}
-	if a.ctxWindow <= 0 {
-		// The door may not have known the window at boot: a cold catalog
-		// resolves in the background AFTER this surface is already up, and it
-		// tells the agent directly (cmd/aforge's warmV3Models) where there is
-		// no seam back to here. Asking the model list again is that seam, and
-		// it cannot block — [app.modelList] falls through to the disk cache and
-		// then to the built-ins. Once it answers, it is never asked again.
-		a.ctxWindow = a.windowFor(a.model)
 	}
 }
 

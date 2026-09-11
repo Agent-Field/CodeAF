@@ -627,7 +627,7 @@ type TaskNotice struct {
 	// stands, one landed with the check switched off and one a person accepted
 	// are all done and none of them was judged (taskgrade.go's
 	// [TaskNode.checkSaid]).
-	Checked provider.Verdict
+	Checked provider.Reading
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that
@@ -641,6 +641,13 @@ type TaskNotice struct {
 	// model, or a node that has not started — and it is NOT the same claim as
 	// "it cost nothing", so a surface draws no figure at all for it.
 	CostUSD float64
+	// Tokens is what this node has burned, input plus output, read the same
+	// way as CostUSD: what its folded hands spent, plus the worker still in the
+	// room ([TaskNode.burned]). It is the one figure a surface with no lane to
+	// the worker — a window on another machine — can draw a node's tokens from.
+	// Zero is "nobody counted", and absent from rows that did not carry it (the
+	// roster replay, a row from a build before it existed).
+	Tokens int
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty

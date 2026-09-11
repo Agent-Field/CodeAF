@@ -390,6 +390,7 @@ func (a *app) clearConversation() {
 	// took this one's place — which is the law app.go's generation comment
 	// states and which /resume only ever kept for one of the eight.
 	a.gen++
+	a.convGen++
 	a.taskGen++
 	a.designGen++
 	a.titleGen++

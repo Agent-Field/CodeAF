@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -290,21 +291,83 @@ func refusedStep(status int, message, upstream string) step {
 	}
 }
 
-// impatient shortens the wait between rungs to nothing, and nothing else.
+// impatient runs the turn's ladder on a clock the test owns, so that a
+// ninety-second give-up is spent in microseconds.
 //
-// The ladder's SHAPE is what these tests are about — how many attempts, on which
-// model, in what order — and the schedule in front of it is 2s, 4s and 8s of
-// real time per model, which is a fixture that tests the clock. The count is
-// left at the product's own so the assertions below are about the budget a
-// person actually gets.
+// ── WHY IT IS A CLOCK AND NOT A COUNT ───────────────────────────────────────
+//
+// It used to hand the agent `Limits{TransportAttempts: n}` and a one-millisecond
+// wait: the ladder was bounded by a number, so shortening the schedule in front
+// of it was enough. The number is gone (docs/design/recovery/DESIGN.md §4) and
+// the bound is the deadline — so a wait that returns at once does not shorten
+// the ladder, it makes the deadline UNREACHABLE, which is the same fiction
+// internal/provider's own scenarios keep honestly (`owed` in dispatch.go).
+//
+// So the wait moves the clock instead of sleeping on it. The product's real
+// schedule — [retryBaseDelay] doubling — then spends the real give-up in real
+// arithmetic and no real time, and `attempts` is what the caller wants that to
+// come to: the first wait is sized so the deadline lands after exactly that many
+// requests.
+// turnLadderAttempts is how many requests these scenarios give one model before
+// its deadline is gone. THREE, which is exactly what the shipped build did when
+// the ladder was a count — so every assertion below still describes the budget a
+// person actually gets, and describes it as a length of time rather than as a
+// number of sends.
+const turnLadderAttempts = 3
+
 func impatient(t *testing.T, agent *Agent, attempts int) {
 	t.Helper()
-	agent.limitsOnce.Do(func() {
-		agent.limits = taxonomy.Limits{
-			TransportAttempts: attempts,
-			TransportBackoff:  time.Millisecond,
-		}.Floored()
-	})
+	if attempts < 2 {
+		attempts = 2
+	}
+	// The waits double — b, 2b, 4b … — so before the nth request the clock has
+	// moved b(2^(n−1) − 1). The caller wants `attempts` requests out of a ladder
+	// that pays a wait after every failure, which is b = give-up / (2^n − 1):
+	// three waits then come to exactly the give-up and the fourth request is
+	// never made.
+	//
+	// A LADDER WHOSE FIRST MOVE IS FREE GETS ONE MORE, and that is not a fudge —
+	// it is [nextMoveWait]'s rule showing through. An endpoint that answered
+	// instantly with nothing is answered by asking somebody else at once, so the
+	// first of those costs no time at all.
+	// The millisecond is what stops integer division landing the last wait one
+	// nanosecond short of the deadline and buying a request nobody asked for.
+	first := agent.giveUp()/time.Duration(int64(1)<<uint(attempts)-1) + time.Millisecond
+
+	onATestClock(t)
+	// AND THE LIMITS ARE SET RATHER THAN OFFERED. `limitsOnce` may already have
+	// been spent by anything that read a failure while the agent was being built,
+	// and a helper whose whole job is to shorten this ladder must not be the one
+	// that silently did not.
+	agent.limitsOnce.Do(func() {})
+	agent.limits = taxonomy.Limits{TransportBackoff: first}.Floored()
+}
+
+// onATestClock makes every wait this package takes between two attempts move a
+// clock instead of sleeping on one.
+//
+// It is the same fiction internal/provider's scenarios keep (`owed` in
+// dispatch.go) and it is kept for the same reason: the bound on every ladder in
+// this package is a DEADLINE now, so a wait that returns at once would make the
+// deadline unreachable rather than making the test fast. Here the wait is
+// charged in full and the ladder spends its real schedule in no real time.
+func onATestClock(t *testing.T) { onAClockFor(t, &turnBackoff) }
+
+// onATestTitleClock is the same fiction for the naming ladder, which has a wait
+// seam of its own because it runs beside a turn rather than inside one.
+func onATestTitleClock(t *testing.T) { onAClockFor(t, &titleBackoff) }
+
+func onAClockFor(t *testing.T, wait *func(context.Context, time.Duration) error) {
+	t.Helper()
+	base := time.Now()
+	var moved atomic.Int64
+	previousNow, previousWait := turnNow, *wait
+	turnNow = func() time.Time { return base.Add(time.Duration(moved.Load())) }
+	*wait = func(ctx context.Context, delay time.Duration) error {
+		moved.Add(int64(delay))
+		return ctx.Err()
+	}
+	t.Cleanup(func() { turnNow, *wait = previousNow, previousWait })
 }
 
 // retryNewsOf is the structured half of every retry this turn announced, with a
@@ -333,31 +396,42 @@ func retryNewsOf(t *testing.T, events []Event) []*RetryNews {
 // and the answer arrives on the fallback with every row naming who did what.
 func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	completer := chained([]string{"other/model"},
+	// THE STORM IS EXACTLY AS LONG AS THE BUDGET, and it is built from the
+	// budget rather than written out beside it. Four refusals were spelled here
+	// while the ladder's own count was four, so lowering the budget
+	// left one refusal over for the fallback to trip on and the test failed
+	// about a number it was not asking about. Every other assertion below
+	// already interpolates; this is the fixture catching up with them.
+	refusals := []step{
 		refusedStep(502, "Bad gateway", "Together"),
 		refusedStep(429, "rate limited", "DeepInfra"),
 		refusedStep(429, "rate limited", "Fireworks"),
 		refusedStep(429, "rate limited", "Novita"),
-		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
-			return textResponse("the whole answer"), nil
-		},
-	)
+	}
+	steps := make([]step, 0, turnLadderAttempts+1)
+	for i := 0; i < turnLadderAttempts; i++ {
+		steps = append(steps, refusals[i%len(refusals)])
+	}
+	steps = append(steps, func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+		return textResponse("the whole answer"), nil
+	})
+	completer := chained([]string{"other/model"}, steps...)
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
-	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	impatient(t, agent, turnLadderAttempts)
 	collected := collect(t, mustSubmit(t, agent, "go on"))
 
 	if failure, failed := firstOfKind(collected, EventError); failed {
 		t.Fatalf("the turn failed although a fallback answered: %v", failure.Err)
 	}
-	if got := completer.requests(); got != taxonomy.DefaultTransportAttempts+1 {
+	if got := completer.requests(); got != turnLadderAttempts+1 {
 		t.Fatalf("requests = %d, want the whole ladder and the answer on the fallback", got)
 	}
-	for index := 0; index < taxonomy.DefaultTransportAttempts; index++ {
+	for index := 0; index < turnLadderAttempts; index++ {
 		if got := completer.model(index); got != "test/model" {
 			t.Fatalf("attempt %d rode %q, want the model the turn started on", index+1, got)
 		}
 	}
-	if got := completer.model(taxonomy.DefaultTransportAttempts); got != "other/model" {
+	if got := completer.model(turnLadderAttempts); got != "other/model" {
 		t.Fatalf("the answering request rode %q, want other/model", got)
 	}
 
@@ -380,7 +454,7 @@ func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) 
 	if moved.Model != "test/model" {
 		t.Fatalf("the move blamed %q, want the model whose budget was spent", moved.Model)
 	}
-	if moved.Attempt != taxonomy.DefaultTransportAttempts || moved.Attempts != taxonomy.DefaultTransportAttempts {
+	if moved.Attempt != turnLadderAttempts || moved.Attempts != turnLadderAttempts {
 		t.Fatalf("the move was announced at %d of %d, want the whole budget spent",
 			moved.Attempt, moved.Attempts)
 	}
@@ -396,10 +470,11 @@ func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) 
 		}
 	}
 
-	// THE RECORD NAMES WHO FAILED AND WHO ANSWERED. Four classifications, all on
-	// the model that could not serve it, numbered the way a person counts.
+	// THE RECORD NAMES WHO FAILED AND WHO ANSWERED. One classification per spent
+	// attempt, all on the model that could not serve it, numbered the way a
+	// person counts.
 	rows := journaledFailures(t, path)
-	if len(rows) != taxonomy.DefaultTransportAttempts {
+	if len(rows) != turnLadderAttempts {
 		t.Fatalf("%d classification rows, want one per spent attempt: %+v", len(rows), rows)
 	}
 	for i, row := range rows {
@@ -437,13 +512,13 @@ func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) 
 // "A different model may answer" said to somebody who has just watched two of
 // them refuse is the surface not knowing what it did.
 func TestARefusalStormThatWalksTheWholeChainNamesEveryModelTried(t *testing.T) {
-	steps := make([]step, 0, 2*taxonomy.DefaultTransportAttempts)
-	for i := 0; i < 2*taxonomy.DefaultTransportAttempts; i++ {
+	steps := make([]step, 0, 2*turnLadderAttempts)
+	for i := 0; i < 2*turnLadderAttempts; i++ {
 		steps = append(steps, refusedStep(429, "rate limited", "Together"))
 	}
 	completer := chained([]string{"second/model"}, steps...)
 	agent, _ := newTestAgent(t, completer, nil)
-	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	impatient(t, agent, turnLadderAttempts)
 	collected := collect(t, mustSubmit(t, agent, "go on"))
 
 	failure, failed := firstOfKind(collected, EventError)
@@ -461,12 +536,12 @@ func TestARefusalStormThatWalksTheWholeChainNamesEveryModelTried(t *testing.T) {
 			t.Fatalf("the sentence %q leaks the machinery word %q", said, banned)
 		}
 	}
-	if got := completer.requests(); got != 2*taxonomy.DefaultTransportAttempts {
+	if got := completer.requests(); got != 2*turnLadderAttempts {
 		t.Fatalf("requests = %d, want a whole budget on each of two models", got)
 	}
 	// EACH MODEL GOT A BUDGET OF ITS OWN. A fallback that inherited a spent one
 	// would be given up on before it had answered once.
-	for index := taxonomy.DefaultTransportAttempts; index < 2*taxonomy.DefaultTransportAttempts; index++ {
+	for index := turnLadderAttempts; index < 2*turnLadderAttempts; index++ {
 		if got := completer.model(index); got != "second/model" {
 			t.Fatalf("request %d rode %q after the move, want second/model", index+1, got)
 		}
@@ -477,19 +552,19 @@ func TestARefusalStormThatWalksTheWholeChainNamesEveryModelTried(t *testing.T) {
 // rather than broken: the ladder is walked, the turn ends on the sentence it has
 // always ended on, and nothing is ever asked of another model.
 func TestUnderOneModelARefusalStormNeverMoves(t *testing.T) {
-	steps := make([]step, 0, taxonomy.DefaultTransportAttempts)
-	for i := 0; i < taxonomy.DefaultTransportAttempts; i++ {
+	steps := make([]step, 0, turnLadderAttempts)
+	for i := 0; i < turnLadderAttempts; i++ {
 		steps = append(steps, refusedStep(429, "rate limited", "Together"))
 	}
 	completer := chained([]string{"other/model"}, steps...)
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.OneModel = true })
-	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	impatient(t, agent, turnLadderAttempts)
 	collected := collect(t, mustSubmit(t, agent, "go on"))
 
 	if _, failed := firstOfKind(collected, EventError); !failed {
 		t.Fatalf("the spent ladder did not end the turn; events were %v", kinds(collected))
 	}
-	if got := completer.requests(); got != taxonomy.DefaultTransportAttempts {
+	if got := completer.requests(); got != turnLadderAttempts {
 		t.Fatalf("requests = %d, want one budget and no move", got)
 	}
 	for index := 0; index < completer.requests(); index++ {
@@ -516,7 +591,7 @@ func TestARefusalOfOurOwnRequestNeitherRetriesNorMoves(t *testing.T) {
 		},
 	)
 	agent, _ := newTestAgent(t, completer, nil)
-	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	impatient(t, agent, turnLadderAttempts)
 	collected := collect(t, mustSubmit(t, agent, "go on"))
 
 	if _, failed := firstOfKind(collected, EventError); !failed {

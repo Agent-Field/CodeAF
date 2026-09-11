@@ -22,7 +22,7 @@ import (
 func TestEveryMeasurementLandsInTheOneWorkersFile(t *testing.T) {
 	dir := t.TempDir()
 	settings := config.Config{ProfileDir: dir, Model: "worker/model"}
-	outcome := &exec.Outcome{Turns: 4, Verdict: provider.VerdictVerifiedSuccess}
+	outcome := &exec.Outcome{Turns: 4, Verdict: provider.ReadingVerifiedSuccess}
 	outcome.Usage.PromptTokens = 1000
 
 	ordinary := store.Node{ID: "a", Title: "read the file", Brief: "read it"}
