@@ -2137,7 +2137,14 @@ func (a *Agent) Close() error {
 	a.waitOrchestrations()
 	a.mu.Lock()
 	tasks = a.tasks
+	unread := a.unreadHandsLocked()
 	a.mu.Unlock()
+	// AND A HAND-OVER NO TURN WILL NOW READ GOES BACK. The queue goes with the
+	// session, so a ticket on it — a piece's landing waiting on a parked worker
+	// whose parent was stopped — is a question nobody will answer, and no other
+	// floor takes back a ticket nobody read. Given back after the turn was waited
+	// for, so a ticket that turn carried is its own floor's, and with no lock held.
+	a.giveBackHandOvers(unread)
 
 	// THE GRAPH STOPS BEFORE THE JOBS ROUND, and it is a stop of its own because
 	// a node is not reachable as a job until its goroutine has put it in the
@@ -2571,13 +2578,30 @@ func (a *Agent) turnIs(seq uint64) bool {
 // no next turn, with a.mu held, for [Agent.giveBackHandOvers] to hand back once
 // the lock is let go of. A turn end that did start one leaves the list for that
 // turn's first drain, which is the request that carries them.
+//
+// AND A TASK'S WORKER THAT IS OWED NEWS HAS A TURN COMING. It wakes nothing of its
+// own; its runner re-enters it for the reports this end drained ([Agent.postTaskNews]),
+// and that turn's first drain is the request that carries them. A runner that
+// stops instead closes the worker, and the close gives them back ([Agent.Close]).
 func (a *Agent) orphanedHandsLocked(started bool) []handOverTicket {
-	if started {
+	if started || (a.config.InTask && a.taskNotes > 0) {
 		return nil
 	}
 	orphaned := a.handsUnsent
 	a.handsUnsent = nil
 	return orphaned
+}
+
+// unreadHandsLocked takes every hand-over this agent holds that no request has
+// carried — parked for a next turn ([Agent.handsUnsent]) or still on the steering
+// queue, the only queue a ticket rides — with a.mu held, for a close.
+func (a *Agent) unreadHandsLocked() []handOverTicket {
+	hands := a.handsUnsent
+	a.handsUnsent = nil
+	for _, message := range a.steering {
+		hands = append(hands, message.handsOver...)
+	}
+	return hands
 }
 
 // drainQueuedLocked drains steering and, when includeAmbient says this is a
