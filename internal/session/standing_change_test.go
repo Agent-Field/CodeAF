@@ -548,3 +548,32 @@ func TestTheirLimitsWordsWithNoLimitAreRefused(t *testing.T) {
 		t.Fatalf("the cards drawn were %+v, want one saying at most 1 run a day", cards)
 	}
 }
+
+// TestACardSaysItsLineAndItsCondition is the merge of W5-B's card words into
+// the chat's card (rulings R4 and R8): a line to say is shown before the yes
+// with its evidence said as what will stand there, and a file watch's
+// condition is on its when line, as the terminal says it.
+func TestACardSaysItsLineAndItsCondition(t *testing.T) {
+	body, _ := json.Marshal(map[string]any{"op": "propose", "words": "tell me when a client asks for a quote",
+		"when": map[string]any{"kind": "file", "glob": "inbox/**/*.md", "hint": "yes when a client asks for a quote"},
+		"does": map[string]any{"kind": "say", "say": "a client asked: {{evidence}}"}})
+	agent := standingAgent(t, &scriptedCompleter{steps: []step{standCall("s1", string(body)), finalText("set up")}}, newFakeStanding(t), nil)
+	events, err := agent.Submit(context.Background(), "tell me when a client asks for a quote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var card *StandingNotice
+	drainAnsweringStanding(t, events, func(event Event) {
+		card = event.Standing
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if card == nil {
+		t.Fatal("no card was drawn")
+	}
+	if want := "whenever a file changes inside inbox/, only when: a client asks for a quote"; card.WhenWords != want {
+		t.Errorf("the when band reads %q, want %q", card.WhenWords, want)
+	}
+	if !slices.Contains(card.Terms, "says · a client asked: [which files changed]") {
+		t.Errorf("the card does not show the line it will say: %q", card.Terms)
+	}
+}
