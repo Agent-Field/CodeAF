@@ -132,32 +132,17 @@ func (a *app) jobView() *jobDraw {
 		view = &jobDraw{id: a.jobPage}
 		a.jobDraw = view
 	}
-	if view.gen == 0 {
-		// THE COLUMN'S ENTER ONLY RECORDS THE ID (jobsection.go, margin.go). The
-		// first paint has to have the tail or the page is a header over a blank,
-		// which is the emptiness law broken the same way the room used to break
-		// it. The beat that follows still wants [app.jobPageArm] returned from
-		// that enter; this is the one reading the layout cannot wait for.
-		a.jobPageSeed(view)
-	}
+	// AND IT READS NOTHING. This used to take the log's first reading right here
+	// — one os.Open, from inside the frame — on the reasoning that "the column's
+	// enter only records the id" and the first paint would otherwise be a header
+	// over a blank. THE REASONING OUTLIVED ITS DOOR: [app.showJobPage] has one
+	// caller, [app.openJobPage], and that caller has always followed it with
+	// [app.jobPageArm], which opens the same file off the loop and starts the beat
+	// that keeps it moving. So the reading here was the same bytes, a moment
+	// earlier, taken where `body` may not take them (learned.go's head states the
+	// law). A page whose first frame is a header over a blank for one thirtieth of
+	// a second is a page whose arm has not landed yet, and that is what an arm is.
 	return view
-}
-
-// jobPageSeed is the first bounded reading, taken once, so a page opened
-// without [app.jobPageArm] is still a page with its log on it.
-func (a *app) jobPageSeed(view *jobDraw) {
-	if view.gen != 0 {
-		return
-	}
-	job := a.jobPageJob()
-	if job == nil {
-		return
-	}
-	view.gen = 1
-	view.path = a.jobPagePath(job)
-	if view.path != "" {
-		view.log = readJobLogTail(view.path)
-	}
 }
 
 // openJobPage is the door the column takes: record the id and start the log's

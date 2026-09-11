@@ -219,6 +219,10 @@ func TestTheModelListFallsBackToTheCacheThenTheBuiltins(t *testing.T) {
 	if err := WriteModelCache(cached); err != nil {
 		t.Fatalf("WriteModelCache: %v", err)
 	}
+	// AND THE SURFACE IS TOLD. The frame reads a memo of this file and never the
+	// file (learned.go); a cache written behind a running window reaches it on
+	// the pulse's beat, which is what this stands in for.
+	a.refreshLearning()
 	if got := a.modelList(); len(got) != 2 || got[0].ID != "cached/one" || got[0].ContextLength != 32_000 {
 		t.Fatalf("the disk cache is not being read: %v", got)
 	}

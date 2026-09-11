@@ -842,6 +842,19 @@ type app struct {
 	// for. An open picture call is re-rendered on every frame, and decoding a
 	// megapixel png ten times a second is the one thing this surface must not do.
 	previews map[string]imagePreview
+	// pictures is where the mtime and the size in that key COME FROM, and it is
+	// the reason they no longer cost a syscall a frame: what `open`, a tick or the
+	// picture call's own arrival learned off the disk, read by the frame and never
+	// asked of the disk by it (learned.go, and ARCHITECTURE.md's fourth law).
+	pictures learned[pictureFact]
+	// modelLists is the same memo over the model caches on disk — the picker's
+	// second rung (models.go's [CachedModelsFor]), which a frame with no catalog
+	// behind it used to re-read, in full, on every paint.
+	modelLists learned[[]Model]
+	// learning is every memo above, so the two places that drive them —
+	// [app.catchUpLearning] once a message and [app.refreshLearning] on the beat
+	// — name none of them and a third memo is one line rather than three.
+	learning []memo
 
 	// feed is this conversation's transcript and the reducer that grows it
 	// (feed.go). It is EMBEDDED and not a field with a name, so that `a.entries`,
@@ -2605,6 +2618,16 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
+	// THE MEMOS ARE BUILT BEFORE ANYTHING ASKS THEM ANYTHING, because the frame's
+	// door onto each is a memo lookup and nothing else: a memo with no reader
+	// behind it answers "nobody has read that" forever (learned.go). They are
+	// named once, here, and driven by name nowhere afterwards.
+	a.pictures = newLearned(statPictureFile)
+	a.modelLists = newLearned(readModelCacheName)
+	a.learning = []memo{&a.pictures, &a.modelLists}
+	// AND THE MODEL CACHES ARE READ HERE, at `open`, before the shelf below asks
+	// the memo for any of them (models.go's [app.learnModelLists]).
+	a.learnModelLists()
 	a.prepareModelServices()
 	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
@@ -2874,6 +2897,13 @@ var _ tea.Model = (*app)(nil)
 // has no wakeups; a hosted one also owns hostlink.go's separate five-second
 // measurement clock.
 func (a *app) Init() tea.Cmd {
+	// EVERY PICTURE ALREADY ON SCREEN IS STAT'D HERE, before the first frame asks
+	// about any of them. This is `open`, which is one of the two loops the fourth
+	// law lets read the disk, and it is the only reason a RESUMED conversation
+	// draws its pictures on its first frame: replay builds those rows without
+	// replaying the events that made them, so no arrival ever fires for them
+	// (imagepreview.go's [app.learnShownPictures], learned.go).
+	a.learnShownPictures()
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
 	// a branch mid-turn is between two turns by the time it matters.
@@ -2973,6 +3003,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ruler.noteModeReport(mode)
 	}
 	model, cmd := a.update(msg)
+	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
+	// before the next frame draws (learned.go). `open` and `tick` may read the
+	// disk and `body` may not, so a frame that met a picture nobody had stat'd
+	// yet wrote the name down instead of taking the syscall, and this is the
+	// message that answers it.
+	if a.catchUpLearning() {
+		cmd = tea.Batch(cmd, a.wake())
+	}
 	// A TASK BRIEF BEING SHAPED IS THE SECOND THING ARMED HERE, and it is the
 	// colder start of the two. Both doors onto the forming block — `/task` typed
 	// into a still surface, and a yes on a proposal card — are answered while
@@ -4839,6 +4877,12 @@ func (a *app) feedHooks(l lens) feedHooks {
 		snap: func() bool { return a.linear },
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
+			// AND A PICTURE CALL THAT FINISHED IS A FILE ON DISK THIS FRAME IS
+			// ABOUT TO DRAW. The stat is taken HERE, at the arrival, because
+			// `body` may not take one — and one stat at the end of a tool call
+			// is nothing beside the tool call (imagepreview.go's
+			// [app.learnPictureOf], learned.go).
+			a.learnPictureOf(e)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
 			// OR THE SESSION DELTA: both are sums over finished calls, so this is
 			// the one place their cache has to be dropped (see [app.hudStats]).
@@ -5907,6 +5951,38 @@ func (a *app) now() time.Time {
 // them. Deltas deliberately do NOT call it — see [app.paint].
 func (a *app) touch() { a.dirty = true }
 
+// catchUpLearning reads whatever the last frame asked the disk about and could
+// not be told (learned.go). It runs ONCE A MESSAGE, on the loop, which is where
+// the fourth law puts a reading — and it is a backstop rather than the road: a
+// picture is learned when its call finishes and the model lists are learned at
+// `open`, so on nearly every message this finds nothing to do and costs one
+// length check per memo.
+// It answers whether anything was actually read, because a fact that arrived
+// after the frame that wanted it is a frame that has to be drawn again.
+func (a *app) catchUpLearning() bool {
+	learned := false
+	for _, m := range a.learning {
+		if m.catchUp() {
+			learned = true
+		}
+	}
+	if learned {
+		a.touch()
+	}
+	return learned
+}
+
+// refreshLearning reads every memo again. It is the TICK's door and it rides the
+// pulse's ten seconds (pulsebeat.go), because nothing on this machine tells a
+// terminal that a png was overwritten or that another window rewrote the model
+// cache — the only way to know is to ask again, on a beat slow enough that
+// asking is free.
+func (a *app) refreshLearning() {
+	for _, m := range a.learning {
+		m.refresh()
+	}
+}
+
 // wake starts the paint clock if it is not already running.
 func (a *app) wake() tea.Cmd {
 	if a.painting {
@@ -6651,11 +6727,20 @@ func (a *app) slash(line string) tea.Cmd {
 		a.workspace = resolved
 		a.owned = false
 		a.place = placeShown(resolved, false, a.host)
-		a.branch, a.branchDirty, _ = a.gitProbe(resolved)
+		// THE BRANCH IS ASKED FOR, NOT WAITED ON. This used to call the probe
+		// straight — two `git` processes under one four-hundred-millisecond
+		// ceiling, run on the update loop, so a person who typed `/workspace`
+		// into a large repository watched the whole surface stop for up to four
+		// tenths of a second before their own keystroke was drawn. It takes the
+		// road every other reading of the repository takes ([app.probeGit],
+		// armed at `open` and at every turn end): the command runs off the loop
+		// and the branch arrives as a gitMsg, which is exactly the same nothing
+		// the legend draws until a probe answers.
+		a.branch, a.branchDirty = "", false
 		a.anchorWorkspace = nil
 		a.note("workspace · " + a.hostedPath(resolved))
 		a.touch()
-		return nil
+		return a.probeGit()
 
 	case "folder":
 		// WHICH FOLDER DO YOU MEAN, asked at any moment. Bare, it is the picker

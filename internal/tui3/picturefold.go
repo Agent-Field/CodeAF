@@ -99,9 +99,16 @@ func (a *app) togglePictureAt(index, picture int) {
 		return
 	}
 	e := &es[index]
-	if picture < 0 || picture >= len(a.entryMedia(e)) {
+	items := a.entryMedia(e)
+	if picture < 0 || picture >= len(items) {
 		return
 	}
+	// ASKING TO SEE IT IS THE ARRIVAL. A collapsed picture is a name and nothing
+	// else — [app.entryMedia] says so, and it is why a long image-heavy
+	// conversation scrolls at the cost of text — so this press is the first
+	// moment anything has wanted the bytes under it, and the loop is where the
+	// stat for them is taken (learned.go, imagepreview.go's [app.learnPicture]).
+	a.learnPicture(items[picture].path, items[picture].here)
 	if e.kind == entryTool {
 		a.openTool(index)
 		return
