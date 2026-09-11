@@ -29,6 +29,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -223,13 +224,15 @@ func cleanCaption(raw string) string {
 	if line == "" || namesTheInstruction(line) {
 		return ""
 	}
-	return shortCaption(line)
+	return ShortCaption(line)
 }
 
-// shortCaption keeps ONE short sentence. Prefer a complete sentence under the
+// ShortCaption keeps ONE short sentence. Prefer a complete sentence under the
 // word budget; if a longer sentence must shrink, drop trailing dangling words
-// so the title does not end mid-clause ("… which are").
-func shortCaption(line string) string {
+// so the title does not end mid-clause ("… which are"). It is exported because
+// the surface draws step captions with the same rule the narrator uses; keeping
+// a copy in both packages is how the dot bug came to need fixing twice.
+func ShortCaption(line string) string {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return ""
@@ -254,6 +257,17 @@ func shortCaption(line string) string {
 	return pick
 }
 
+// captionSentences cuts a line into sentences, and A SENTENCE ENDS ONLY AT A
+// SENTENCE END: a `.`, `!` or `?` closes one only when what follows it — past
+// any closing quote or bracket — is a space, a tab, a newline, or the end of the
+// line.
+//
+// EVERY OTHER DOT BELONGS TO THE TOKEN IT SITS IN. `livesteps.go`, `config.json`,
+// `v1.2.3` and `~/.aforge` are what people actually narrate, and cutting inside
+// one of them does worse than shorten the caption: the fragment in front of the
+// dot is usually a word or two, [ShortCaption] passes over anything under three
+// words, and the caption a person reads then begins after the dot — in the middle
+// of a word.
 func captionSentences(line string) []string {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -264,12 +278,33 @@ func captionSentences(line string) []string {
 	for i, r := range line {
 		switch r {
 		case '.', '!', '?':
-			piece := strings.TrimSpace(line[start : i+1])
-			if piece != "" {
-				out = append(out, piece)
-			}
-			start = i + 1
+		default:
+			continue
 		}
+
+		_, size := utf8.DecodeRuneInString(line[i:])
+		end := i + size
+		for end < len(line) {
+			next, nextSize := utf8.DecodeRuneInString(line[end:])
+			switch next {
+			case '"', '\'', ')', ']', '}', '»', '”', '’':
+				end += nextSize
+				continue
+			}
+			break
+		}
+		if end < len(line) {
+			next, _ := utf8.DecodeRuneInString(line[end:])
+			if next != ' ' && next != '\t' && next != '\n' {
+				continue
+			}
+		}
+
+		piece := strings.TrimSpace(line[start:end])
+		if piece != "" {
+			out = append(out, piece)
+		}
+		start = end
 	}
 	if rest := strings.TrimSpace(line[start:]); rest != "" {
 		out = append(out, rest)
