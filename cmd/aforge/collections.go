@@ -94,8 +94,11 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	// store means no memberships; only create needs to initialize one.
 	if verb != "create" {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			if verb == "list" || verb == "find" {
+			if verb == "list" {
 				return writeCollectionsResult(output, verb, *asJSON, []workspace.Collection{})
+			}
+			if verb == "find" {
+				return writeCollectionsResult(output, verb, *asJSON, recordFolders{References: []workspace.Collection{}, Placed: []workspace.GoverningCollection{}})
 			}
 			return workspace.ErrNotFound
 		} else if err != nil {
@@ -118,7 +121,11 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		err = store.Rename(ctx, rest[1], rest[2])
 		result = workspace.Collection{ID: rest[1], Name: rest[2]}
 	case "show":
-		result, err = store.Members(ctx, rest[1])
+		contents := folderContents{}
+		if contents.References, err = store.Members(ctx, rest[1]); err == nil {
+			contents.Placed, err = store.Placed(ctx, rest[1])
+		}
+		result = contents
 	case "add":
 		err = store.Add(ctx, rest[1], ref)
 		result = ref
@@ -132,12 +139,36 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		err = store.RemovePlacement(ctx, rest[1], ref)
 		result = ref
 	case "find":
-		result, err = store.CollectionsFor(ctx, ref)
+		folders := recordFolders{}
+		if folders.References, err = store.CollectionsFor(ctx, ref); err == nil {
+			folders.Placed, err = store.GoverningCollections(ctx, ref)
+		}
+		result = folders
 	}
 	if err != nil {
 		return err
 	}
 	return writeCollectionsResult(output, verb, *asJSON, result)
+}
+
+// folderContents is `collections show`: what a folder references and what is
+// placed in it.
+//
+// A REFERENCE AND A PLACEMENT ARE TWO DIFFERENT BINDINGS, AND BOTH ARE SHOWN.
+// Show read references only, so work placed in a folder — the work its rules
+// reach — was invisible from the folder, which answered "no references yet"
+// (validator S27b). They stay under two labels because only one of them gives
+// the folder's rules any reach.
+type folderContents struct {
+	References []workspace.Ref `json:"references"`
+	Placed     []workspace.Ref `json:"placed"`
+}
+
+// recordFolders is `collections find`: the folders that reference a record,
+// and the folders whose rules reach it, nearest first.
+type recordFolders struct {
+	References []workspace.Collection          `json:"references"`
+	Placed     []workspace.GoverningCollection `json:"placed"`
 }
 
 func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result any) error {
@@ -150,14 +181,6 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 		_, err = fmt.Fprintf(output, "%s  %s\n", value.ID, value.Name)
 	case []workspace.Collection:
 		if len(value) == 0 {
-			// `find` coming back empty says this record is in no collection,
-			// which is a different fact from having no collections at all. The
-			// one shared sentence sent somebody off to create the first
-			// collection while their collections were sitting right there.
-			if verb == "find" {
-				_, err = fmt.Fprintln(output, "No collection references this record.")
-				return err
-			}
 			_, err = fmt.Fprintln(output, "No collections found. Create one with aforge collections create <name>.")
 			return err
 		}
@@ -166,13 +189,51 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 				return err
 			}
 		}
-	case []workspace.Ref:
-		if len(value) == 0 {
-			_, err = fmt.Fprintln(output, "This collection has no references yet.")
+	case folderContents:
+		if len(value.References) == 0 {
+			if _, err = fmt.Fprintln(output, "This collection has no references yet."); err != nil {
+				return err
+			}
+		}
+		for _, r := range value.References {
+			if err = writeCollectionRef(output, r); err != nil {
+				return err
+			}
+		}
+		if len(value.Placed) == 0 {
+			return nil
+		}
+		if _, err = fmt.Fprintln(output, "Placed here, so this folder's rules reach it:"); err != nil {
 			return err
 		}
-		for _, r := range value {
+		for _, r := range value.Placed {
 			if err = writeCollectionRef(output, r); err != nil {
+				return err
+			}
+		}
+	case recordFolders:
+		// `find` coming back empty says this record is in no collection,
+		// which is a different fact from having no collections at all. The
+		// one shared sentence sent somebody off to create the first
+		// collection while their collections were sitting right there.
+		if len(value.References) == 0 {
+			if _, err = fmt.Fprintln(output, "No collection references this record."); err != nil {
+				return err
+			}
+		}
+		for _, c := range value.References {
+			if _, err = fmt.Fprintf(output, "%s  %s\n", c.ID, c.Name); err != nil {
+				return err
+			}
+		}
+		if len(value.Placed) == 0 {
+			return nil
+		}
+		if _, err = fmt.Fprintln(output, "Placed in, so these folders' rules reach it:"); err != nil {
+			return err
+		}
+		for _, c := range value.Placed {
+			if _, err = fmt.Fprintf(output, "%s  %s (%s)\n", c.ID, c.Name, placementHow(c.Depth)); err != nil {
 				return err
 			}
 		}
@@ -197,6 +258,15 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 		}
 	}
 	return err
+}
+
+// placementHow says how a folder's rules reach work: placed in it directly,
+// or placed in a folder that sits that many folders below it.
+func placementHow(depth int) string {
+	if depth > 0 {
+		return fmt.Sprintf("placed %d folder(s) below", depth)
+	}
+	return "placed directly"
 }
 
 func writeCollectionRef(output io.Writer, ref workspace.Ref) error {

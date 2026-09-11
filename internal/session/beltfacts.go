@@ -45,6 +45,13 @@ const (
 	// working after the window closes is `stand`'s section from its heading down
 	// ([standingFacts]), so the token stands where the heading stood.
 	standingFactsToken = "STANDING_FACTS"
+	// AND THE LAST TWO ARE THE TOOL POLICY'S OWN, and they hand over because a
+	// belt with nobody to ask carries only what it is granted ([Config.grants]):
+	// the decision ladder's last rung is `ask`, and the hands that change a file
+	// or run a command are `edit`, `write` and `bash`. Every other shape reads
+	// the words it always read, byte for byte.
+	askFactsToken   = "ASK_FACTS"
+	handsFactsToken = "HANDS_FACTS"
 )
 
 // ── the predicates ──────────────────────────────────────────────────────────
@@ -78,6 +85,31 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
 func (c Config) mayWatch() bool { return !c.InTask }
+
+// grants says whether a tool belongs on this belt by the approval policy: in
+// work with nobody to ask ([Config.InTask]), only a tool some call of which the
+// policy lets run ([approval.Policy.Grants]). Everywhere else, and wherever
+// there is no policy, every tool does.
+//
+// AN UNGRANTED TOOL IS ABSENT, NOT REFUSED (the owner's ruling, wave 4). A
+// firing that called `commit` on its own working state, or `bash` to look
+// around, was refused "nobody to ask", and that refusal read as a question for
+// the person — so three of ten live runs on 2026-09-10 held a finished report
+// back for an answer nobody could give. A tool that can only be refused is a
+// verb the model should not have, which is the absence law this belt is built
+// on; what is still refused is a granted tool meeting a real boundary, and that
+// one is a true question.
+//
+// THE GUARDIAN KEEPS THE BELT WHOLE. A person who turned it on said, in
+// advance, that a small model may answer for them while they are away
+// ([Agent.guardianAllows]); a tool it might allow is then a tool that might
+// run, and its refusals stay what they were.
+func (c Config) grants(tool string) bool {
+	if !c.InTask || c.ApprovalPolicy == nil || c.Guardian {
+		return true
+	}
+	return c.ApprovalPolicy.Grants(tool)
+}
 
 // mayAsk is unconditional; only the conversation shelf changes whether the
 // schema is carried now or loaded on the next request.
@@ -223,7 +255,15 @@ var beltFacts = []beltFact{{
 	tools:   []string{"watch"},
 	holds:   Config.mayWatch,
 	present: "- Start ONE `watch` to follow something that changes.",
-	absent:  "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
+	// THE ABSENT CASE NAMES NO SHELL. A node waits on a foreground call, and
+	// the bash row below says how one waits; a firing may carry no shell at all
+	// ([Config.grants]), and a sentence sending it to one would be the lie this
+	// file exists to prevent.
+	absent: "- There is no `watch` here: nothing reports back after this turn ends, so wait on what you started before you answer.",
+}, {
+	tools:   []string{"bash"},
+	holds:   Config.carriesBareHands,
+	present: "- `bash` WAITS until a foreground call finishes or its armed bound keeps it running as a job. NEVER re-run work that is already running, and never kill a job for being quiet.",
 }, {
 	tools: []string{"use_service"},
 	holds: Config.hasConnect,
@@ -419,6 +459,48 @@ var revisionFacts = []beltFact{{
 	present: strings.TrimRight(revisePrompt, "\n"),
 }}
 
+// askFacts is the decision ladder's paragraph, whose last rung is `ask`. It is
+// a section of its own because it sits in the tool policy, apart from the
+// session facts, and because in work with nobody to answer the ladder has no
+// last rung: what is left is the rung before it, said as the instruction.
+var askFacts = []beltFact{{
+	tools: []string{"ask"},
+	holds: Config.mayAsk,
+	present: "- Before asking, climb the decision ladder: read the record; state a reasonable\n" +
+		"  assumption; for reversible work act and offer to unwind it; show concrete\n" +
+		"  outcomes; offer structured choices before free text. Use `ask` only as the\n" +
+		"  last rung, with why the decision is needed now, its stakes, and your pick.\n" +
+		"- WHEN YOU DO ASK, ASK THROUGH `ask` AND NEVER IN PROSE. A question typed out —\n" +
+		"  numbered options, \"which do you mean?\" — has no keys, leaves no record, and\n" +
+		"  nobody can answer it from another window or while they are away. The last\n" +
+		"  rung is the tool. And when the person asks you to ask them something, or to\n" +
+		"  offer them choices, that request IS the last rung: call `ask` at once.",
+	absent: "- NOBODY IS HERE TO ASK. Climb the decision ladder without its last rung: read\n" +
+		"  the record, state a reasonable assumption and go on where that is safe, and\n" +
+		"  say in your reply what you assumed and what needs the person.",
+}}
+
+// handsFacts is the tool policy's rows for the hands that change a file and
+// the one that runs a command. Work that was not granted them is told so, and
+// told where what they would have done goes instead: into its reply.
+var handsFacts = []beltFact{{
+	tools:   []string{"edit", "write"},
+	holds:   Config.carriesBareHands,
+	present: "- Surgical edits → `edit`. Create/overwrite → `write`, in parts for a very large file: a first write, then `append:true` for the rest.",
+	absent:  "- NOTHING HERE CHANGES A FILE: this work was not granted file changes, so say in your reply what should change, where, and why.",
+}, {
+	tools: []string{"bash"},
+	holds: Config.carriesBareHands,
+	present: "- `bash`: real binaries and short fact pipelines only; anything shadowing a specialized tool is blocked.\n" +
+		"- Bash litmus: one external-CLI call or short pipeline returning a count, frequency, set difference or checksum. For moving or paging fetchable bytes: tool.",
+	absent: "- THERE IS NO SHELL HERE: this work was not granted one, so work with the tools in your list and say in your reply what needed a command.",
+}}
+
+// carriesBareHands is the belt's own predicate for bare's hands — read, bash,
+// edit, write, grep, find, ls: every shape builds them (tools.go), so whether
+// one is carried is the grant's answer ([beltFact.shown]) and nothing else.
+func (c Config) carriesBareHands() bool { return true }
+
 // allBeltFacts is every row, for the tests that hold the whole table to the
 // law rather than one section of it.
 func allBeltFacts() []beltFact {
@@ -450,6 +532,25 @@ var promptSections = []promptSection{
 	{token: handoffFactsToken, facts: handoffFacts, join: "\n"},
 	{token: programFactsToken, facts: programFacts, join: "\n\n"},
 	{token: standingFactsToken, facts: standingFacts, join: "\n\n"},
+	{token: askFactsToken, facts: askFacts, join: "\n"},
+	{token: handsFactsToken, facts: handsFacts, join: "\n"},
+}
+
+// shown says whether a fact's present wording is true of a shape: its own
+// predicate holds AND every tool it names is granted there ([Config.grants]).
+// The grant is asked here, once, rather than folded into each predicate,
+// because it is about a tool's name and not about which seam built it — the
+// same reason the belt asks it once over the whole slice (tools.go).
+func (f beltFact) shown(config Config) bool {
+	if !f.holds(config) {
+		return false
+	}
+	for _, tool := range f.tools {
+		if !config.grants(tool) {
+			return false
+		}
+	}
+	return true
 }
 
 // renderBeltFacts composes the section for one shape.
@@ -459,7 +560,7 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 	lines := make([]string, 0, len(facts))
 	for _, fact := range facts {
 		text := fact.absent
-		if fact.holds(config) {
+		if fact.shown(config) {
 			text = fact.present
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES.
 			// A worker or a task node carries these tools directly, so telling

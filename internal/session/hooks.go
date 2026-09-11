@@ -61,6 +61,7 @@ package session
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -241,6 +242,11 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// refused with a sentence about where it was aimed, because the git guard's
 	// sentences are about the task's own copy and are false about anywhere else.
 	plane.register(taskGroundGuard{agent: a})
+	// AND WHERE A FIRING MAY READ (readroot.go), registered only where there is
+	// a root to read in: every other agent reads the machine as it always has.
+	if root := strings.TrimSpace(a.config.readRoot); root != "" {
+		plane.register(readRootGuard{root: root})
+	}
 	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
 	// and about a different kind of reach: not which files this agent may touch,
 	// but whose work it may pull into its own copy (taskgit.go). It is registered

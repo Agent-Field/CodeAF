@@ -224,20 +224,20 @@ func (a *Agent) standingRulesIfPlaced(ctx context.Context, item standing.Item, f
 	if reader == nil {
 		return nil, errNoGoverningReader
 	}
-	collections := map[string]int{}
+	var places []workspace.GoverningCollection
 	if len(folders) > 0 {
 		store, err := a.config.Organization.open(false)
 		if err != nil {
 			return nil, err
 		}
-		places, err := store.GoverningIfPlaced(ctx, folders)
+		found, err := store.GoverningIfPlaced(ctx, folders)
 		store.Close()
 		if err != nil {
 			return nil, err
 		}
-		nearestDepths(collections, places)
+		places = nearestPlaces(nil, found)
 	}
-	items, err := reader.ApplicableScope(item.Workspace, item.Origin.SessionID, collections)
+	items, err := reader.ApplicableScope(item.Workspace, item.Origin.SessionID, placementDepths(places))
 	if err != nil {
 		return nil, err
 	}

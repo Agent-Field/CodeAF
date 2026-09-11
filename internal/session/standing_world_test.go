@@ -52,7 +52,7 @@ func freshNodeWorld(t *testing.T, agent *Agent, node *TaskNode) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if block := renderStandingWorld(items, standingWorldReport); block != "" {
+	if block := renderStandingWorld(items, nil, standingWorldReport); block != "" {
 		return brief + "\n\n" + block
 	}
 	return brief
@@ -293,7 +293,7 @@ func TestTheStandingSectionIsBoundedLongestStandingFirst(t *testing.T) {
 			Created: time.Date(2026, 1, 1+at, 9, 0, 0, 0, time.UTC),
 		})
 	}
-	section := renderStandingWorld(made, standingWorldReport)
+	section := renderStandingWorld(made, nil, standingWorldReport)
 
 	lines := make([]string, 0, standingWorldMost)
 	for _, line := range strings.Split(section, "\n") {
@@ -316,14 +316,14 @@ func TestTheStandingSectionIsBoundedLongestStandingFirst(t *testing.T) {
 	compiled := renderStandingWorld([]standing.Item{{
 		Words: "keep main green",
 		Brief: standing.Brief{Prompt: "before you say a change is done,\n  run the tests"},
-	}}, "")
+	}}, nil, "")
 	if !strings.Contains(compiled, "- before you say a change is done, run the tests\n") {
 		t.Fatalf("the compiled brief did not ride as one line:\n%s", compiled)
 	}
 	if strings.Contains(compiled, "keep main green") {
 		t.Fatalf("the words were used where a compiled brief exists:\n%s", compiled)
 	}
-	if renderStandingWorld(nil, standingWorldReport) != "" {
+	if renderStandingWorld(nil, nil, standingWorldReport) != "" {
 		t.Fatal("an empty set rendered a section")
 	}
 }
@@ -348,7 +348,7 @@ func TestAHoldRidesUnderTheWordsThatBindAndAReminderDoesNot(t *testing.T) {
 		Created: time.Date(2026, 1, 2, 9, 0, 0, 0, time.UTC),
 	}
 
-	held := renderStandingWorld([]standing.Item{rule}, standingWorldReport)
+	held := renderStandingWorld([]standing.Item{rule}, nil, standingWorldReport)
 	if !strings.Contains(held, standingWorldHolding) {
 		t.Fatalf("a rule was not given the words that bind:\n%s", held)
 	}
@@ -356,7 +356,7 @@ func TestAHoldRidesUnderTheWordsThatBindAndAReminderDoesNot(t *testing.T) {
 		t.Fatalf("a rule was softened into something waiting on a moment:\n%s", held)
 	}
 
-	due := renderStandingWorld([]standing.Item{reminder}, standingWorldReport)
+	due := renderStandingWorld([]standing.Item{reminder}, nil, standingWorldReport)
 	if !strings.Contains(due, standingWorldWaiting) {
 		t.Fatalf("a reminder was not stated as what the person has standing:\n%s", due)
 	}
@@ -369,7 +369,7 @@ func TestAHoldRidesUnderTheWordsThatBindAndAReminderDoesNot(t *testing.T) {
 	for _, kind := range []standing.WhenKind{
 		standing.WhenAt, standing.WhenEvery, standing.WhenFile, standing.WhenIdle, standing.WhenProbe,
 	} {
-		one := renderStandingWorld([]standing.Item{{Words: "something", When: standing.When{Kind: kind}}}, "")
+		one := renderStandingWorld([]standing.Item{{Words: "something", When: standing.When{Kind: kind}}}, nil, "")
 		if strings.Contains(one, standingWorldHolding) {
 			t.Errorf("a %q order rode as a house rule:\n%s", kind, one)
 		}
@@ -386,7 +386,7 @@ func TestASectionCarryingBothKindsLeadsWithWhatBinds(t *testing.T) {
 			Created: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)},
 		{Words: "always use tabs here", When: standing.When{Kind: standing.WhenHold},
 			Created: time.Date(2026, 2, 1, 9, 0, 0, 0, time.UTC)},
-	}, standingWorldReport)
+	}, nil, standingWorldReport)
 
 	if strings.Count(section, standingWorldHeading) != 1 {
 		t.Fatalf("the two kinds were given two sections:\n%s", section)
@@ -411,7 +411,7 @@ func TestASectionCarryingBothKindsLeadsWithWhatBinds(t *testing.T) {
 			Created: time.Date(2026, 1, 1+at, 9, 0, 0, 0, time.UTC),
 		})
 	}
-	clipped := renderStandingWorld(crowd, "")
+	clipped := renderStandingWorld(crowd, nil, "")
 	if !strings.Contains(clipped, "- always use tabs here") {
 		t.Fatalf("the newest rule was clipped away by older reminders:\n%s", clipped)
 	}
@@ -430,7 +430,7 @@ func TestTheTieringCostsNothingWhereNoOrdersApply(t *testing.T) {
 	}
 	one := renderStandingWorld([]standing.Item{{
 		Words: "always use tabs here", When: standing.When{Kind: standing.WhenHold},
-	}}, standingWorldReport)
+	}}, nil, standingWorldReport)
 	want := standingWorldHeading + ":\n\n" + standingWorldHolding + "\n\n- always use tabs here\n\n" + standingWorldReport + "\n"
 	if one != want {
 		t.Fatalf("one kind rendered\n%q\nwant\n%q", one, want)

@@ -686,16 +686,19 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// and report ([firingEnd.closeTurn]), never on its own.
 				cutAtLimit = event.Truncated
 			case EventToolFailed:
-				// A REFUSED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
-				// THE PERSON. aforge publishes that one path itself, so there is
-				// nothing a person could allow. It is recorded, not asked: the
-				// call stays refused, and whether the run still published is
-				// the decision's to say ([firingEnd.withheld]).
+				// A FAILED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
+				// THE PERSON, however it failed. aforge publishes that one path
+				// itself, so there is nothing a person could allow — and where
+				// the writers are not granted at all ([Config.grants]) the call
+				// is answered as a tool this run does not have, which is the
+				// same attempt to publish on its own authority. It is recorded,
+				// not asked: whether the run still published is the decision's
+				// to say ([firingEnd.withheld]).
 				line := standingRefusal(event)
 				switch {
-				case line == "":
 				case writesTheReport(event, item.Workspace, report):
 					end.ownReportWrite = true
+				case line == "":
 				case end.needs == "":
 					end.needs = line
 				}
@@ -964,9 +967,9 @@ const heldReportFile = "held-report.md"
 // checkAgainstRules reads the run's final report against the rules that reached
 // the run (standing_rules.go) and answers the report to publish with "", or
 // the line the run waits on the person with when it may not be published. On a
-// finding the run is sent back ONCE through redo, in the same session, and the
-// report becomes what it answered. The check is written into the occurrence
-// record, found or not.
+// finding the run is sent back ONCE through redo, in the same session, with
+// every rule it does not keep, and the report becomes what it answered. The
+// check is written into the occurrence record, found or not, rule by rule.
 func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, runDir, draft string, redo func(string) (string, error), item standing.Item) (string, string) {
 	rules := agent.standingRules()
 	if len(rules) == 0 {
@@ -978,7 +981,7 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 	}
 	verdict := agent.checkStandingReport(ctx, rules, draft)
 	overRail := item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD
-	if verdict.answered && !verdict.kept && !overRail && ctx.Err() == nil {
+	if verdict.answered && len(verdict.broken()) > 0 && !overRail && ctx.Err() == nil {
 		check.First = verdict.finding()
 		check.Rewrote = true
 		corrected, err := redo(standingCorrection(verdict))
@@ -992,16 +995,16 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 			verdict = agent.checkStandingReport(ctx, rules, draft)
 		}
 	}
+	check.Verdict, check.Verdicts = verdict.summary(), verdict.recorded()
 	held := ""
 	switch {
-	case verdict.answered && verdict.kept:
-		check.Verdict = "kept"
-	case verdict.answered:
-		check.Verdict, check.Rule, check.Quote, check.Why = "broken", verdict.rule, verdict.quote, verdict.why
-		held = "it breaks a rule placed on this work — " + verdict.finding()
-	default:
-		check.Verdict, check.Why = "no answer", verdict.trouble
+	case !verdict.answered:
+		check.Why = verdict.trouble
 		held = "its check against the rules placed on this work gave no answer: " + verdict.trouble
+	case len(verdict.broken()) > 0:
+		first := verdict.broken()[0]
+		check.Rule, check.Quote, check.Why = first.rule.Prompt(), first.quote, first.why
+		held = "it does not keep a rule placed on this work — " + verdict.finding()
 	}
 	if held != "" {
 		path := filepath.Join(runDir, heldReportFile)
@@ -1184,14 +1187,7 @@ func reportTarget(workspace, report string) (root, target string, err error) {
 		return "", "", err
 	}
 	target = filepath.Join(root, filepath.Clean(report))
-	existing := filepath.Dir(target)
-	for {
-		if _, err := os.Lstat(existing); err == nil || existing == root || filepath.Dir(existing) == existing {
-			break
-		}
-		existing = filepath.Dir(existing)
-	}
-	if err := insideProject(root, existing); err != nil {
+	if err := insideProject(root, deepestExisting(filepath.Dir(target))); err != nil {
 		return "", "", err
 	}
 	return root, target, nil
@@ -1278,6 +1274,10 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	// pile of one-run conversations and no way to say that they were all the same
 	// promise, kept every morning for a month (usage_ledger.go).
 	cfg.standingItemID = item.ID
+	// AND WHAT IT MAY READ IS ITS PROJECT (readroot.go): nobody handed it this
+	// run and nobody reads along, so aforge's own home, other conversations and
+	// the rest of the machine are not its to go looking through.
+	cfg.readRoot = item.Workspace
 	cfg.OrganizationRef = workspace.Ref{Kind: workspace.StandingKind, ID: item.ID}
 	if parent.Governing != nil {
 		g := *parent.Governing

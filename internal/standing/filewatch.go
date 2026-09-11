@@ -1,0 +1,191 @@
+package standing
+
+// filewatch.go is what a file watch reads: which paths its pattern reaches, and
+// how a file is compared with the last reading of it.
+//
+// `**` IS A WHOLE SEGMENT THAT REACHES DOWN. `filepath.Glob` reads `**` as `*`,
+// so `inbox/**/*.md` reached exactly one folder down and an edit two folders
+// down woke nothing (validator S02). A pattern with a `**` segment is read by
+// walking the folder above its first wildcard, and `**` matches any number of
+// folders there, none included. A pattern without one is still read by
+// `filepath.Glob`, exactly as before.
+//
+// A WATCH IS BOUNDED WHEN IT IS SET UP. Every pass reads every entry a watch
+// reaches, so a watch whose folders hold more than [WatchLimit] entries is
+// refused with one line saying so ([WatchTooLarge]), rather than walking a
+// whole disk every five minutes. One that grows past the limit later stops at
+// it and says so on its check line; it never reads a partial world as the
+// truth.
+//
+// AN IDENTICAL REWRITE IS NOT A CHANGE. Size and modification time are the
+// first comparison, and they are free. Only a file seen for the first time, or
+// one whose size or time moved, is read and hashed; a file whose time moved and
+// whose contents did not is the same file ([fileEntry.differs]). A file larger
+// than [HashLimit] is never read and is compared by size and time alone, and so
+// is a folder the pattern matches.
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// WatchLimit is the most files and folders one watch may read on a pass.
+// It is the same figure the stores aim every folder at, and for the same
+// reason: a pass reads all of them.
+const WatchLimit = 10000
+
+// HashLimit is the largest file whose contents a watch compares. Past it a
+// file is compared by size and modification time only.
+const HashLimit = 4 << 20
+
+// recursiveSegment is the one pattern segment that reaches down.
+const recursiveSegment = "**"
+
+// errWatchTooLarge stops a walk the moment it passes [WatchLimit].
+var errWatchTooLarge = errors.New("watch too large")
+
+// WatchTooLarge is the watch limit's refusal, which a person reads at setup
+// and on a check line.
+type WatchTooLarge struct{ Glob string }
+
+func (w WatchTooLarge) Error() string {
+	return fmt.Sprintf("%s reaches more than %d files and folders, and a watch reads every one of them on every pass; watch a narrower pattern", w.Glob, WatchLimit)
+}
+
+// CheckWatch refuses a file watch whose pattern cannot be read or reaches more
+// than [WatchLimit] entries. It is checked where an item is set up or its
+// waking changes ([Store.Create], [Store.Revise]), and by whoever asks a person
+// first, so the refusal is heard before a yes that could only fail.
+func (it Item) CheckWatch() error {
+	if it.When.Kind != WhenFile {
+		return nil
+	}
+	_, err := watched(it.Workspace, it.When.Glob)
+	return err
+}
+
+// watched answers every path the pattern reaches, absolute, or the one line
+// saying why it cannot.
+func watched(workspace, glob string) ([]string, error) {
+	pattern := glob
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(workspace, pattern)
+	}
+	segments := strings.Split(filepath.ToSlash(pattern), "/")
+	for _, segment := range segments {
+		if _, err := filepath.Match(segment, ""); err != nil {
+			return nil, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		}
+	}
+	fixed := 0
+	for fixed < len(segments) && segments[fixed] != recursiveSegment && !hasMeta(segments[fixed]) {
+		fixed++
+	}
+	if !recursive(segments[fixed:]) {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		}
+		if len(matches) > WatchLimit {
+			return nil, WatchTooLarge{Glob: glob}
+		}
+		return matches, nil
+	}
+	root := filepath.FromSlash(strings.Join(segments[:fixed], "/"))
+	if root == "" {
+		root = string(filepath.Separator)
+	}
+	rest := segments[fixed:]
+	var matches []string
+	read := 0
+	err := filepath.WalkDir(root, func(path string, _ fs.DirEntry, err error) error {
+		if err != nil || path == root {
+			// An unreadable or missing folder holds nothing to watch, the way
+			// `filepath.Glob` reads one.
+			return nil
+		}
+		read++
+		if read > WatchLimit {
+			return errWatchTooLarge
+		}
+		relative, relErr := filepath.Rel(root, path)
+		if relErr == nil && matchSegments(rest, strings.Split(filepath.ToSlash(relative), "/")) {
+			matches = append(matches, path)
+		}
+		return nil
+	})
+	if errors.Is(err, errWatchTooLarge) {
+		return nil, WatchTooLarge{Glob: glob}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+	}
+	return matches, nil
+}
+
+// watchMatches answers whether a pattern reaches name, both relative to the
+// same place, by the same reading [watched] walks with.
+func watchMatches(pattern, name string) bool {
+	return matchSegments(strings.Split(filepath.ToSlash(pattern), "/"), strings.Split(filepath.ToSlash(name), "/"))
+}
+
+// matchSegments matches a path segment by segment, `**` standing for any
+// number of whole segments, none included.
+func matchSegments(pattern, path []string) bool {
+	if len(pattern) == 0 {
+		return len(path) == 0
+	}
+	if pattern[0] == recursiveSegment {
+		for skip := 0; skip <= len(path); skip++ {
+			if matchSegments(pattern[1:], path[skip:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(path) == 0 {
+		return false
+	}
+	matched, _ := filepath.Match(pattern[0], path[0])
+	return matched && matchSegments(pattern[1:], path[1:])
+}
+
+func recursive(segments []string) bool {
+	for _, segment := range segments {
+		if segment == recursiveSegment {
+			return true
+		}
+	}
+	return false
+}
+
+func hasMeta(segment string) bool { return strings.ContainsAny(segment, `*?[\`) }
+
+// contentHash is a file's hash for this reading: the last reading's while its
+// size and time have not moved, a fresh one when they have or it is new, and
+// none for a folder, a file past [HashLimit] or one that cannot be read.
+func contentHash(path string, info fs.FileInfo, last fileEntry) string {
+	if !info.Mode().IsRegular() || info.Size() > HashLimit {
+		return ""
+	}
+	if last.Hash != "" && last.Size == info.Size() && last.MTime == info.ModTime().UnixNano() {
+		return last.Hash
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, io.LimitReader(file, HashLimit+1)); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}

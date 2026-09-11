@@ -8,11 +8,13 @@ package session
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // standingWorldHeading titles the section on BOTH sides of this seam. It is ONE
@@ -73,9 +75,21 @@ const standingWorldMost = 8
 const governingHoldLimit = 64
 const governingPromptBytes = 64 * 1024
 
-// renderStandingWorld is the section itself: the heading, the orders that hold
-// under the sentence that binds, the orders that are waiting under the sentence
-// that does not, and the caller's closing line.
+// standingWorldPlaced opens the section for work that is placed in folders: it
+// names them, and says what a folder beside a condition means. It exists because
+// a run told only "the person's own conditions over this place" re-judged, from
+// a rule's wording, whether the rule was about its work — validator S11 on
+// 2026-09-10 dropped the Travel folder's rule with "Travel one … not
+// applicable", from work placed in Travel. Which rules apply is the owner's
+// decision ([standing.Store.ApplicableScope]), already made; the run is told the
+// placements so it does not make that decision a second time.
+const standingWorldPlaced = "This work is placed in %s. A condition marked with a folder reaches this work through that placement and applies to all of it, whatever the work is about: never decide from its wording whether it applies."
+
+// renderStandingWorld is the section itself: the heading, the folders the work
+// is placed in when it is placed in any, the orders that hold under the
+// sentence that binds — each marked with the folder it reaches the work
+// through — the orders that are waiting under the sentence that does not, and
+// the caller's closing line.
 //
 // THE EMPTINESS LAW. No orders is NO SECTION — not an empty heading, not "none"
 // — because a brief that says nothing stands over it has spent tokens saying
@@ -103,7 +117,7 @@ const governingPromptBytes = 64 * 1024
 // ONE ORDER IS ONE LINE. A compiled prompt may be written across several lines,
 // and a list whose rows are paragraphs is a list nothing can count, so the
 // whitespace inside an order is folded before it is written.
-func renderStandingWorld(items []standing.Item, closing string) string {
+func renderStandingWorld(items []standing.Item, places []workspace.GoverningCollection, closing string) string {
 	kept := append([]standing.Item(nil), items...)
 	sort.SliceStable(kept, func(a, b int) bool { return kept[a].Created.Before(kept[b].Created) })
 	var holding, waiting []string
@@ -113,6 +127,9 @@ func renderStandingWorld(items []standing.Item, closing string) string {
 			continue
 		}
 		if item.When.Kind == standing.WhenHold {
+			if through := reachedThrough(item, places); through != "" {
+				folded = "[" + through + "] " + folded
+			}
 			holding = append(holding, folded)
 			continue
 		}
@@ -135,6 +152,11 @@ func renderStandingWorld(items []standing.Item, closing string) string {
 
 	var out strings.Builder
 	out.WriteString(standingWorldHeading + ":\n\n")
+	// The placement sentence rides only over conditions it explains: a section
+	// of reminders alone has no folder to mark.
+	if placed := placedIn(places); placed != "" && len(holding) > 0 {
+		out.WriteString(fmt.Sprintf(standingWorldPlaced, placed) + "\n\n")
+	}
 	written := false
 	for _, tier := range []struct {
 		intro string
@@ -161,6 +183,53 @@ func renderStandingWorld(items []standing.Item, closing string) string {
 		out.WriteString("\n" + closing + "\n")
 	}
 	return out.String()
+}
+
+// placedIn names the folders work is placed in, directly placed first and the
+// folders those sit in after them, or "" for work placed nowhere (the emptiness
+// law: no placement, no sentence).
+func placedIn(places []workspace.GoverningCollection) string {
+	var direct, above []string
+	for _, place := range places {
+		name := strings.TrimSpace(place.Name)
+		if name == "" {
+			continue
+		}
+		if place.Depth == 0 {
+			direct = append(direct, name)
+		} else {
+			above = append(above, name)
+		}
+	}
+	if len(direct) == 0 {
+		return ""
+	}
+	text := "the folder"
+	if len(direct) > 1 {
+		text += "s"
+	}
+	text += " " + strings.Join(direct, ", ")
+	if len(above) > 0 {
+		text += " (inside " + strings.Join(above, ", ") + ")"
+	}
+	return text
+}
+
+// reachedThrough names the folders of this work's placements a condition is
+// scoped to, or "" for a condition that reaches the work some other way (its
+// project, this conversation) and so has no folder to name. It names and never
+// decides: the condition is here because the owner already found it applies.
+func reachedThrough(item standing.Item, places []workspace.GoverningCollection) string {
+	if item.Scope == nil {
+		return ""
+	}
+	var names []string
+	for _, place := range places {
+		if slices.Contains(item.Scope.CollectionIDs, place.ID) && strings.TrimSpace(place.Name) != "" {
+			names = append(names, strings.TrimSpace(place.Name))
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // ── a task node, at the moment it starts ────────────────────────────────────
@@ -196,7 +265,7 @@ func (g *TaskGraph) standingWorld() string {
 	if err != nil {
 		return ""
 	}
-	return renderStandingWorld(items, standingWorldReport)
+	return renderStandingWorld(items, nil, standingWorldReport)
 }
 
 // ── a conversation, at the start of every turn ──────────────────────────────
@@ -232,7 +301,7 @@ func (a *Agent) refreshStandingLocked() {
 // has learned to read fenced blocks in its instructions should not have to learn
 // a fourth grammar for the fourth.
 func (a *Agent) standingBlockLocked() string {
-	a.governingCollections = nil
+	a.governingPlaces = nil
 	items, err := a.governingItemsLocked()
 	a.governingRecords = nil
 	a.governingReadError = ""
@@ -248,7 +317,7 @@ func (a *Agent) standingBlockLocked() string {
 		a.governingRecords = nil
 		return ""
 	}
-	section := renderStandingWorld(items, "")
+	section := renderStandingWorld(items, a.governingPlaces, "")
 	if len(section) > governingPromptBytes {
 		a.governingReadError = fmt.Sprintf("governing input exceeds %d bytes; narrow the governing scope before continuing", governingPromptBytes)
 		a.governingRecords = nil

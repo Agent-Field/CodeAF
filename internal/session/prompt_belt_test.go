@@ -163,7 +163,20 @@ var beltShapes = []beltShape{{
 		config.AskConsent = false
 		config.Standing = nil
 	},
+}, {
+	// A firing's own session (standing_run.go's standingRunConfig) under the
+	// shipped approval floor: nobody to ask, so only what the policy grants is
+	// carried ([Config.grants]) — the looks and the named bookkeeping, and not
+	// the shell, the writes, `commit` or `ask`.
+	name: "a standing firing under the shipped floor",
+	build: func(t *testing.T, config *Config) {
+		config.InTask = true
+		config.AskConsent = false
+		config.Standing = nil
+		config.ApprovalPolicy = shippedFloorForTest()
+	},
 }}
+
 
 // systemTextOf is what an agent's message[0] is rebuilt from
 // ([Agent.refreshSystemLocked]), read under the lock that guards it.
@@ -275,7 +288,7 @@ func TestEveryToolThePromptNamesIsOnThatShapesBelt(t *testing.T) {
 		// `watch` here"), so they come out before the page is read for names.
 		residue := page
 		for _, fact := range allBeltFacts() {
-			if !fact.holds(agentConfigFor(t, shape)) && fact.absent != "" {
+			if !fact.shown(agentConfigFor(t, shape)) && fact.absent != "" {
 				residue = strings.Replace(residue, fact.absent, "", 1)
 			}
 		}
@@ -360,6 +373,14 @@ func TestEveryConditionalToolThePageNamesHasAFragment(t *testing.T) {
 			if !carried[name] {
 				off[name] = true
 			}
+		}
+		// A HAND'S TAIL IS COMPOSED FROM ITS OWN BELT, name by name
+		// ([handToolTail]), so every tool it spells is the belt's word and not the
+		// page's; TestAHandIsOfferedItsNineAndCanCallNothingElse holds it to
+		// that. What a hand reads beyond its tail is its caller's page, which is
+		// another shape here and is walked as that shape.
+		if minted.inherited != "" {
+			page = minted.inherited
 		}
 		for name := range namesIn(page) {
 			named[name] = true
