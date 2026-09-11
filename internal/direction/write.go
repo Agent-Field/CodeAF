@@ -165,12 +165,14 @@ func placesOf(r Revision) []placeKey {
 	return places
 }
 
+// rejectedText asks the partial index of rejected wording.
+var rejectedText = named("rejected-text", "SELECT EXISTS(SELECT 1 FROM direction_revisions WHERE text_sha256=? AND state=?)")
+
 // rejectedBefore reports whether the person rejected this exact wording.
 func (w *writeTx) rejectedBefore(text string) (bool, error) {
 	sum := sha256.Sum256([]byte(text))
 	var rejected bool
-	err := w.tx.QueryRowContext(w.ctx, "SELECT EXISTS(SELECT 1 FROM direction_revisions WHERE text_sha256=? AND state=?)",
-		hex.EncodeToString(sum[:]), Rejected).Scan(&rejected)
+	err := w.tx.QueryRowContext(w.ctx, rejectedText, hex.EncodeToString(sum[:]), Rejected).Scan(&rejected)
 	return rejected, err
 }
 

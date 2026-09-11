@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -41,16 +42,28 @@ var (
 )
 
 // GoverningTooLargeError names the bound that was crossed and the target
-// whose records contribute most, so the person knows where to narrow.
+// that contributes most, so the person knows where to narrow.
+//
+// "Contributes" counts each record once per target that reaches the subject,
+// however many of the subject's refs it reaches through. Over the record bound
+// the heaviest target is the one with the most records, and Bytes and
+// HeaviestBytes are zero: the resolve stops before reading more than the bound
+// of bodies. Over the byte bound the heaviest target is the one whose records'
+// title and text are largest, and both counts are given.
 type GoverningTooLargeError struct {
-	Records, Bytes int
-	Heaviest       Target
-	HeaviestCount  int
+	Records, Bytes  int
+	Heaviest        Target
+	HeaviestRecords int
+	HeaviestBytes   int
 }
 
 func (e *GoverningTooLargeError) Error() string {
-	return fmt.Sprintf("%v: %d records, %d bytes; %s %s contributes %d", ErrGoverningTooLarge, e.Records, e.Bytes,
-		e.Heaviest.Kind, e.Heaviest.Ref, e.HeaviestCount)
+	if e.Bytes == 0 {
+		return fmt.Sprintf("%v: %d records; %s %s contributes %d of them", ErrGoverningTooLarge, e.Records,
+			e.Heaviest.Kind, e.Heaviest.Ref, e.HeaviestRecords)
+	}
+	return fmt.Sprintf("%v: %d records, %d bytes; %s %s contributes %d records, %d bytes", ErrGoverningTooLarge,
+		e.Records, e.Bytes, e.Heaviest.Kind, e.Heaviest.Ref, e.HeaviestRecords, e.HeaviestBytes)
 }
 
 func (e *GoverningTooLargeError) Unwrap() error { return ErrGoverningTooLarge }
@@ -95,8 +108,12 @@ type LegacyRef struct {
 }
 
 // Applied is one record delivered to the subject, with its provenance. Rev is
-// the revision's body; Via names every place that reached the subject and
-// Blocked the paths an exclusion removed — shown, never silently dropped.
+// the revision's body. Via holds REPRESENTATIVE paths, not every path: for a
+// folder target, one shortest surviving chain per subject ref, and for any
+// other target the target itself. Blocked holds one chain per excluded folder
+// that lies on a way to the target — shown, never silently dropped. Whether a
+// record applies is decided exactly; only the listing is bounded, because the
+// number of paths in a multi-parent graph grows exponentially.
 type Applied struct {
 	Rev          Revision   `json:"rev"`
 	Via          []Path     `json:"via"`
@@ -212,6 +229,13 @@ func (subj Subject) normalize() (Subject, error) {
 // the big table and probe the list (L10). Their plans are checked in under
 // testdata/explain and a law refuses a SCAN of any table that grows.
 
+// named prefixes a statement with its name, so a statement the resolver sent
+// can be matched to its checked-in plan by what it says it is.
+func named(name, query string) string { return "/* " + name + " */ " + query }
+
+// snapshotQuery is the newest revision the store holds, for the snapshot id.
+var snapshotQuery = named("snapshot", "SELECT max(seq) FROM direction_revisions")
+
 func valuesCTE(name string, columns string, rows, width int) string {
 	row := "(" + strings.TrimSuffix(strings.Repeat("?,", width), ",") + ")"
 	return name + "(" + columns + ") AS (VALUES " + strings.TrimSuffix(strings.Repeat(row+",", rows), ",") + ")"
@@ -221,53 +245,62 @@ func valuesCTE(name string, columns string, rows, width int) string {
 // UNION over edges terminates on any DAG and never enumerates diamond paths;
 // the LIMIT stops the walk one edge past the bound.
 func closureQuery(refs int) string {
-	return "WITH RECURSIVE " + valuesCTE("q", "kind,ref,sess", refs, 3) + `,
+	return named("closure", "WITH RECURSIVE "+valuesCTE("q", "kind,ref,sess", refs, 3)+`,
 up(child_kind,child,child_sess,parent) AS (
  SELECT q.kind,q.ref,q.sess,p.collection_id FROM q CROSS JOIN placements p
   ON p.kind=q.kind AND p.ref_id=q.ref AND p.session_id=q.sess
  UNION
  SELECT 'collection',u.parent,'',p.collection_id FROM up u CROSS JOIN placements p
   ON p.kind='collection' AND p.ref_id=u.parent AND p.session_id=''
- LIMIT ` + strconv.Itoa(MaxClosureEdges+1) + `
-) SELECT child_kind,child,child_sess,parent FROM up`
+ LIMIT `+strconv.Itoa(MaxClosureEdges+1)+`
+) SELECT child_kind,child,child_sess,parent FROM up`)
 }
 
 // candidateQuery finds the governing and pending live rows at the probed places.
 func candidateQuery(keys int) string {
-	return "WITH " + valuesCTE("q", "k,r,s", keys, 3) + `
+	return named("candidates", "WITH "+valuesCTE("q", "k,r,s", keys, 3)+`
 SELECT l.target_kind,l.ref_id,l.session_id,l.lane,l.record_id,l.revision,l.reach,l.has_exclusions,l.has_links,l.written_at
  FROM q CROSS JOIN direction_live l ON l.target_kind=q.k AND l.ref_id=q.r AND l.session_id=q.s
- WHERE l.lane IN ('governing','pending') AND (l.lane='governing' OR l.written_at>=?)`
+ WHERE l.lane IN ('governing','pending') AND (l.lane='governing' OR l.written_at>=?)`)
 }
 
 // revisionsCTE is the list of (record, revision) pairs the follow-up reads key on.
 func revisionsCTE(pairs int) string { return valuesCTE("c", "id,rev", pairs, 2) }
 
 func exclusionQuery(pairs int) string {
-	return "WITH " + revisionsCTE(pairs) + `
+	return named("exclusions", "WITH "+revisionsCTE(pairs)+`
 SELECT e.record_id,e.target_kind,e.ref_id,e.session_id FROM c CROSS JOIN direction_exclusions e
- ON e.record_id=c.id AND e.revision=c.rev`
+ ON e.record_id=c.id AND e.revision=c.rev`)
 }
 
 func linkQuery(pairs int) string {
-	return "WITH " + revisionsCTE(pairs) + `
+	return named("links", "WITH "+revisionsCTE(pairs)+`
 SELECT k.record_id,k.link_kind,k.to_ref FROM c CROSS JOIN direction_links k
- ON k.record_id=c.id AND k.revision=c.rev WHERE k.link_kind IN (` + resolvedLinkKinds() + `)`
+ ON k.record_id=c.id AND k.revision=c.rev WHERE k.link_kind IN (`+resolvedLinkKinds()+`)`)
 }
 
+// bodyQuery reads the bodies of the revisions the live index named, and only
+// while each is still its record's current revision: a live row the records
+// no longer say returns no body, which the resolver reports as drift.
 func bodyQuery(pairs int) string {
-	return "WITH " + revisionsCTE(pairs) + `
-SELECT ` + revisionColumns("r") + ` FROM c CROSS JOIN direction_revisions r ON r.record_id=c.id AND r.revision=c.rev`
+	return named("bodies", "WITH "+revisionsCTE(pairs)+`
+SELECT `+revisionColumns("r")+` FROM c CROSS JOIN direction_records d ON d.id=c.id AND d.revision=c.rev
+ CROSS JOIN direction_revisions r ON r.record_id=c.id AND r.revision=c.rev`)
 }
 
+// legacyQuery reads each record's newest legacy name: a backwards seek of
+// (record_id, revision) for the newest mapping's rowid, then that row by
+// rowid. Two seeks per record, however often it was re-imported.
 func legacyQuery(records int) string {
-	return "WITH " + valuesCTE("c", "id", records, 1) + `
-SELECT g.record_id,g.source_store,g.source_id,g.source_version,g.revision FROM c CROSS JOIN direction_legacy g
- ON g.record_id=c.id`
+	return named("legacy", "WITH "+valuesCTE("c", "id", records, 1)+`
+SELECT c.id,g.source_store,g.source_id,g.source_version FROM c CROSS JOIN direction_legacy g
+ ON g.rowid=(SELECT n.rowid FROM direction_legacy n WHERE n.record_id=c.id ORDER BY n.revision DESC LIMIT 1)`)
 }
 
-// informationalQuery finds the findings at the subject's own places and at the
-// folders it is a member of, one hop.
+// informationalQuery pages the findings at the subject's own places, at the
+// folders it is a member of (one hop) and at everywhere or its legacy
+// workspace. The page is cut in SQL — newest first, then by id — so only the
+// page crosses into Go, each finding once with the places that matched it.
 func informationalQuery(refs, extra int) string {
 	cte := "WITH " + valuesCTE("q", "k,r,s", refs, 3)
 	keys := `, keys(k,r,s) AS (
@@ -279,9 +312,10 @@ func informationalQuery(refs, extra int) string {
 		keys += `
  UNION SELECT k,r,s FROM x`
 	}
-	return cte + keys + `)
-SELECT l.target_kind,l.ref_id,l.session_id,l.record_id,l.revision,l.written_at
- FROM keys CROSS JOIN direction_live l ON l.target_kind=keys.k AND l.ref_id=keys.r AND l.session_id=keys.s AND l.lane='informational'`
+	return named("informational", cte+keys+`)
+SELECT l.record_id,l.revision,l.written_at,json_group_array(json_array(l.target_kind,l.ref_id,l.session_id))
+ FROM keys CROSS JOIN direction_live l ON l.target_kind=keys.k AND l.ref_id=keys.r AND l.session_id=keys.s AND l.lane='informational'
+ GROUP BY l.record_id ORDER BY l.written_at DESC, l.record_id LIMIT ? OFFSET ?`)
 }
 
 // ── the walk ────────────────────────────────────────────────────────────────
@@ -427,7 +461,7 @@ func resolveIn(ctx context.Context, q querier, subj Subject, now time.Time) (Eff
 		return Effective{}, err
 	}
 	var maxSeq sql.NullInt64
-	if err := q.QueryRowContext(ctx, "SELECT max(seq) FROM direction_revisions").Scan(&maxSeq); err != nil {
+	if err := q.QueryRowContext(ctx, snapshotQuery).Scan(&maxSeq); err != nil {
 		return Effective{}, err
 	}
 	sum := sha256.Sum256([]byte(strings.Join(c.edges, "\n") + "\n" + strconv.FormatInt(maxSeq.Int64, 10)))
@@ -454,7 +488,7 @@ func resolveIn(ctx context.Context, q querier, subj Subject, now time.Time) (Eff
 		}
 	}
 	if len(governing) > MaxGoverning {
-		return Effective{}, tooLarge(governing, 0)
+		return Effective{}, tooLarge(governing, nil)
 	}
 	links, err := readLinks(ctx, q, governing)
 	if err != nil {
@@ -475,7 +509,7 @@ func resolveIn(ctx context.Context, q querier, subj Subject, now time.Time) (Eff
 		bytes += len(body.Title) + len(body.Text)
 	}
 	if bytes > MaxGoverningBytes {
-		return Effective{}, tooLarge(governing, bytes)
+		return Effective{}, tooLarge(governing, bodies)
 	}
 	legacy, err := readLegacy(ctx, q, bodies)
 	if err != nil {
@@ -722,30 +756,55 @@ func sortedKeys(m map[string]bool) []string {
 	return keys
 }
 
-// tooLarge names the target whose governing records contribute most.
-func tooLarge(governing []applied, bytes int) error {
-	counts := map[placeKey]int{}
-	targets := map[placeKey]Target{}
+// tooLarge names the target that contributes most (see
+// GoverningTooLargeError): by records when bodies were not read, by bytes
+// when they were. A record counts once per target, never once per path.
+func tooLarge(governing []applied, bodies map[string]Revision) error {
+	type weight struct {
+		target         Target
+		records, bytes int
+	}
+	per := map[placeKey]*weight{}
+	e := &GoverningTooLargeError{Records: len(governing)}
 	for _, a := range governing {
+		size := 0
+		if bodies != nil {
+			size = len(bodies[a.id].Title) + len(bodies[a.id].Text)
+			e.Bytes += size
+		}
+		counted := map[placeKey]bool{}
 		for _, p := range a.via {
 			k := placeKey{p.Target.Kind, p.Target.Ref, p.Target.Session}
-			counts[k]++
-			targets[k] = p.Target
+			if counted[k] {
+				continue
+			}
+			counted[k] = true
+			if per[k] == nil {
+				per[k] = &weight{target: p.Target}
+			}
+			per[k].records++
+			per[k].bytes += size
 		}
 	}
-	e := &GoverningTooLargeError{Records: len(governing), Bytes: bytes}
-	keys := make([]placeKey, 0, len(counts))
-	for k := range counts {
+	keys := make([]placeKey, 0, len(per))
+	for k := range per {
 		keys = append(keys, k)
 	}
+	measure := func(w *weight) int {
+		if bodies != nil {
+			return w.bytes
+		}
+		return w.records
+	}
 	sort.Slice(keys, func(i, j int) bool {
-		if counts[keys[i]] != counts[keys[j]] {
-			return counts[keys[i]] > counts[keys[j]]
+		if a, b := measure(per[keys[i]]), measure(per[keys[j]]); a != b {
+			return a > b
 		}
 		return fmt.Sprint(keys[i]) < fmt.Sprint(keys[j])
 	})
 	if len(keys) > 0 {
-		e.Heaviest, e.HeaviestCount = targets[keys[0]], counts[keys[0]]
+		w := per[keys[0]]
+		e.Heaviest, e.HeaviestRecords, e.HeaviestBytes = w.target, w.records, w.bytes
 	}
 	return e
 }
@@ -767,6 +826,12 @@ func readLinks(ctx context.Context, q querier, governing []applied) ([]struct{ f
 		})
 }
 
+// readBodies loads the bodies of what will be delivered. THE LIVE INDEX IS
+// CHECKED AGAINST THE RECORDS FOR EVERYTHING IT DELIVERS: a row naming a
+// revision that is not its record's current one, or a lane that revision is
+// not in, is drift, and the resolve stops rather than hand out authority the
+// records do not grant. The check is the body read itself, so it costs one
+// seek per delivered record and nothing per record the store holds.
 func readBodies(ctx context.Context, q querier, all []applied) (map[string]Revision, error) {
 	out := make(map[string]Revision, len(all))
 	if len(all) == 0 {
@@ -778,6 +843,15 @@ func readBodies(ctx context.Context, q querier, all []applied) (map[string]Revis
 	}
 	for _, r := range revs {
 		out[r.ID] = r
+	}
+	for _, a := range all {
+		r, ok := out[a.id]
+		if !ok {
+			return nil, fmt.Errorf("%w: the live index names %s revision %d, which is not its current revision; rebuild it", ErrDrift, a.id, a.revision)
+		}
+		if r.Lane() != a.lane {
+			return nil, fmt.Errorf("%w: the live index puts %s in the %s lane; its revision %d is %s", ErrDrift, a.id, a.lane, a.revision, r.Lane())
+		}
 	}
 	return out, nil
 }
@@ -794,22 +868,17 @@ func readLegacy(ctx context.Context, q querier, bodies map[string]Revision) (map
 	type row struct {
 		id  string
 		ref LegacyRef
-		rev int
 	}
 	rows, err := collect(ctx, q, legacyQuery(len(ids)), ids, func(r scanner) (row, error) {
 		var x row
-		return x, r.Scan(&x.id, &x.ref.Store, &x.ref.ID, &x.ref.Version, &x.rev)
+		return x, r.Scan(&x.id, &x.ref.Store, &x.ref.ID, &x.ref.Version)
 	})
 	if err != nil {
 		return nil, err
 	}
-	newest := map[string]int{}
 	for _, r := range rows {
-		if prev, ok := newest[r.id]; !ok || r.rev > prev {
-			newest[r.id] = r.rev
-			ref := r.ref
-			out[r.id] = &ref
-		}
+		ref := r.ref
+		out[r.id] = &ref
 	}
 	return out, nil
 }
@@ -848,33 +917,53 @@ func deliver(list []applied, bodies map[string]Revision, legacy map[string]*Lega
 // An overrides link annotates both records and both are delivered (R4); a
 // conflicts_with pair is a Conflict unless the person also said which one
 // governs here with an overrides link between them (R8).
+//
+// MUTUAL OVERRIDES RESOLVE NOTHING. A overrides B and B overrides A says
+// nothing about which governs, so neither is annotated, the pair is an
+// unresolved Conflict, and it never hides a conflicts_with the person wrote.
+// Overrides are pairwise annotations and the delivery is a union, so a longer
+// cycle (A over B over C over A) leaves every pair with one direction and
+// needs no rule of its own.
 func annotate(governing []Applied, links []struct{ from, kind, to string }) []Conflict {
 	index := make(map[string]int, len(governing))
 	for i, a := range governing {
 		index[a.Rev.ID] = i
 	}
-	overridden := map[[2]string]bool{}
-	for _, l := range links {
-		i, ok := index[l.from]
-		j, ok2 := index[l.to]
-		if !ok || !ok2 || LinkKind(l.kind) != Overrides {
-			continue
-		}
-		governing[i].Overrides = append(governing[i].Overrides, l.to)
-		governing[j].OverriddenBy = append(governing[j].OverriddenBy, l.from)
-		overridden[pairOf(l.from, l.to)] = true
-	}
-	seen := map[[2]string]bool{}
-	var conflicts []Conflict
-	for _, l := range links {
+	both := func(l struct{ from, kind, to string }) bool {
 		_, ok := index[l.from]
 		_, ok2 := index[l.to]
-		p := pairOf(l.from, l.to)
-		if !ok || !ok2 || LinkKind(l.kind) != ConflictsWith || overridden[p] || seen[p] {
+		return ok && ok2 && l.from != l.to
+	}
+	directed := map[[2]string]bool{}
+	for _, l := range links {
+		if both(l) && LinkKind(l.kind) == Overrides {
+			directed[[2]string{l.from, l.to}] = true
+		}
+	}
+	resolved, seen := map[[2]string]bool{}, map[[2]string]bool{}
+	var conflicts []Conflict
+	unresolved := func(p [2]string) {
+		if !seen[p] {
+			seen[p] = true
+			conflicts = append(conflicts, Conflict{A: p[0], B: p[1]})
+		}
+	}
+	for _, l := range links {
+		if !both(l) || LinkKind(l.kind) != Overrides {
 			continue
 		}
-		seen[p] = true
-		conflicts = append(conflicts, Conflict{A: p[0], B: p[1]})
+		if directed[[2]string{l.to, l.from}] {
+			unresolved(pairOf(l.from, l.to))
+			continue
+		}
+		governing[index[l.from]].Overrides = append(governing[index[l.from]].Overrides, l.to)
+		governing[index[l.to]].OverriddenBy = append(governing[index[l.to]].OverriddenBy, l.from)
+		resolved[pairOf(l.from, l.to)] = true
+	}
+	for _, l := range links {
+		if both(l) && LinkKind(l.kind) == ConflictsWith && !resolved[pairOf(l.from, l.to)] {
+			unresolved(pairOf(l.from, l.to))
+		}
 	}
 	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].A+conflicts[i].B < conflicts[j].A+conflicts[j].B })
 	return conflicts
@@ -887,9 +976,10 @@ func pairOf(a, b string) [2]string {
 	return [2]string{a, b}
 }
 
-// informational reads one page of the findings lane.
+// informational reads one page of the findings lane. The store cuts the page;
+// Go reads only its bodies.
 func informational(ctx context.Context, q querier, subj Subject, offset, limit int) (Page, error) {
-	args := make([]any, 0, len(subj.Refs)*3+6)
+	args := make([]any, 0, len(subj.Refs)*3+8)
 	for _, r := range subj.Refs {
 		args = append(args, string(r.Kind), r.ID, r.SessionID)
 	}
@@ -897,35 +987,27 @@ func informational(ctx context.Context, q querier, subj Subject, offset, limit i
 	if subj.Workspace != "" {
 		extra = append(extra, placeKey{TargetLegacyWorkspace, subj.Workspace, ""})
 	}
-	args = append(args, keyArgs(extra)...)
-	type row struct {
-		t Target
-		candidate
-	}
-	rows, err := collect(ctx, q, informationalQuery(len(subj.Refs), len(extra)), args, func(r scanner) (row, error) {
-		var x row
-		return x, r.Scan(&x.t.Kind, &x.t.Ref, &x.t.Session, &x.id, &x.revision, &x.writtenAt)
+	args = append(append(args, keyArgs(extra)...), limit+1, offset)
+	list, err := collect(ctx, q, informationalQuery(len(subj.Refs), len(extra)), args, func(r scanner) (applied, error) {
+		a := applied{candidate: candidate{lane: LaneInformational}}
+		var matched string
+		if err := r.Scan(&a.id, &a.revision, &a.writtenAt, &matched); err != nil {
+			return a, err
+		}
+		var places [][3]string
+		if err := json.Unmarshal([]byte(matched), &places); err != nil {
+			return a, err
+		}
+		for _, p := range places {
+			t := Target{Kind: TargetKind(p[0]), Ref: p[1], Session: p[2]}
+			a.via = append(a.via, Path{Target: t, From: fromFor(t, subj)})
+		}
+		return a, nil
 	})
 	if err != nil {
 		return Page{}, err
 	}
-	byID := map[string]int{}
-	var list []applied
-	for _, r := range rows {
-		i, ok := byID[r.id]
-		if !ok {
-			i = len(list)
-			byID[r.id] = i
-			list = append(list, applied{candidate: r.candidate})
-		}
-		list[i].via = append(list[i].via, Path{Target: r.t, From: fromFor(r.t, subj)})
-	}
-	sortApplied(list)
-	page := Page{Items: make([]Applied, 0)}
-	if offset >= len(list) {
-		return page, nil
-	}
-	list = list[offset:]
+	page := Page{Items: make([]Applied, 0, len(list))}
 	if len(list) > limit {
 		page.More = true
 		list = list[:limit]

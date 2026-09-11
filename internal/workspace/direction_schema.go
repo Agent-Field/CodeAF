@@ -18,6 +18,11 @@ import (
 // rebuildable from the revisions at any time. It is the only table the
 // resolver range-scans, which is what keeps a resolve independent of the
 // lifetime number of records (L6).
+//
+// One index departs from the design's sketch: direction_legacy_record is on
+// (record_id, revision), not record_id alone, so a record's newest legacy
+// name is one backwards seek however often it was re-imported (review of
+// dc9251859, blocker 6). Version 4 had shipped in no build when it changed.
 const directionSchema = `
 CREATE TABLE direction_records (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +72,7 @@ CREATE TABLE direction_legacy (
  record_id TEXT NOT NULL, revision INTEGER NOT NULL, import_run TEXT NOT NULL,
  PRIMARY KEY(source_store, source_id, source_sha256)
 );
-CREATE INDEX direction_legacy_record ON direction_legacy(record_id);
+CREATE INDEX direction_legacy_record ON direction_legacy(record_id, revision);
 CREATE TABLE direction_import_runs (
  id TEXT PRIMARY KEY, mode TEXT NOT NULL, binary TEXT NOT NULL, report_sha256 TEXT NOT NULL,
  started_at TEXT NOT NULL, finished_at TEXT, counts TEXT NOT NULL DEFAULT '{}'

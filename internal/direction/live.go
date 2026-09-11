@@ -65,10 +65,13 @@ func sourceOf(r Revision) liveSource {
 	return src
 }
 
+// liveRefresh drops a record's live rows by the direction_live_record index.
+var liveRefresh = named("live-refresh", "DELETE FROM direction_live WHERE record_id=?")
+
 // refreshLive replaces the record's rows with those of the revision that is
 // now current, inside the transaction that moved the pointer.
 func (w *writeTx) refreshLive(r Revision) error {
-	if _, err := w.tx.ExecContext(w.ctx, "DELETE FROM direction_live WHERE record_id=?", r.ID); err != nil {
+	if _, err := w.tx.ExecContext(w.ctx, liveRefresh, r.ID); err != nil {
 		return err
 	}
 	return insertLive(w.ctx, w.tx, liveRows(sourceOf(r)))

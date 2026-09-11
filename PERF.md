@@ -2328,30 +2328,42 @@ that is stopped with `ErrClosureTooLarge`. It then seeks the derived `direction_
 index once per probed place and reads bodies only for what it returns: at most
 **64** governing records and **64 KiB** of their wording (`MaxGoverning`,
 `MaxGoverningBytes`; past either, `ErrGoverningTooLarge` names the heaviest target),
-**20** proposals (`MaxPending`) and a page of **50** findings (`MaxInformational`).
+**20** proposals (`MaxPending`) and a page of **50** findings (`MaxInformational`),
+cut in SQL. A delivered record's newest legacy name is one backwards seek of
+`direction_legacy_record (record_id, revision)`, however often it was re-imported.
 
 The gate counts work, not time:
 
 - **At most 10 statements per resolve** (`maxResolveStatements`), over the whole
   load model. `TestResolvingTheLoadModelSendsABoundedNumberOfStatements` enforces it.
-- **No plan scans a table that grows.** Every statement a resolve sends, and the
-  write path's hot lookups, is planned against the load model and against an empty
-  store without statistics. The plans are checked in under
-  `internal/direction/testdata/explain`.
-  `TestTheResolversPlansSeekAndNeverScanAGrowingTable` enforces both. After a
+- **No plan scans a table that grows.** The statements are the ones a resolve of the
+  load model actually sends, captured by name (each carries a `/* name */` prefix),
+  plus the write path's hot lookups spelled by the variables the write path uses.
+  Each is planned against the load model and against an empty store without
+  statistics. The plans are checked in under `internal/direction/testdata/explain`,
+  and a checked-in plan no statement sends any more fails too.
+  `TestTheResolversPlansSeekAndNeverScanAGrowingTable` enforces all of it. After a
   reviewed plan change, regenerate the goldens with `-args -update-explain`.
 
 The load model is 50,000 records (10,000 live), a 2,000-folder DAG with two
-parents per folder, 100,000 placements and 20,000 chats. The wall-clock number is
-measured, never gated:
+parents per folder, 100,000 placements and 20,000 chats. Every live governing rule
+was imported and re-imported 20 times (65,000 legacy mappings in all), so
+provenance is read against real import history. Its clock is fixed, so the pending
+window selects the same proposals on any day. The wall-clock number is measured,
+never gated:
 
 ```sh
 AFORGE_DIRECTION_MEASURE=1 go test -run TestMeasureResolveLatency -v ./internal/direction/
 ```
 
-On Spark (2026-09-10, three runs), each of 1,000 random subjects paid its own store
-open, resolve and close:
-- **p99 was 7.8–8.1 ms** and p50 4.0–4.3 ms;
-- the resolve alone had a p99 of 6.2–6.3 ms.
+On Spark (2026-09-10, three runs, with the import history), each of 1,000 random
+subjects paid its own store open, resolve and close:
+- **p99 was 9.8–10.4 ms** and p50 5.2–5.3 ms;
+- the resolve alone had a p99 of 8.0–8.5 ms.
+
+A full `Verify` of the same store takes about 1.1 s, because it reads every current
+record. That is why it is not run on every open; each resolve instead checks what
+it delivers against the records (a live row that is not its record's current
+revision is `ErrDrift`), at one seek per delivered record.
 
 The design's budget is 50 ms at p99, and its hard requirement is sub-second.

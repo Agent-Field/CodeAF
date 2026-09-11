@@ -1,4 +1,5 @@
 CO-ROUTINE c
-  SCAN 2 CONSTANT ROWS
+  SCAN n CONSTANT ROWS
 SCAN c
+SEARCH d USING INDEX sqlite_autoindex_direction_records_1 (id=?)
 SEARCH r USING INDEX sqlite_autoindex_direction_revisions_1 (record_id=? AND revision=?)

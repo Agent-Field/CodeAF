@@ -2,14 +2,16 @@ CO-ROUTINE keys
   COMPOUND QUERY
     LEFT-MOST SUBQUERY
       MATERIALIZE q
-        SCAN 2 CONSTANT ROWS
+        SCAN n CONSTANT ROWS
       SCAN q
     UNION USING TEMP B-TREE
       SCAN q
       SEARCH m USING INDEX memberships_reference (kind=? AND ref_id=? AND session_id=?)
     UNION USING TEMP B-TREE
       CO-ROUTINE x
-        SCAN CONSTANT ROW
+        SCAN n CONSTANT ROWS
       SCAN x
 SCAN keys
 SEARCH l USING PRIMARY KEY (target_kind=? AND ref_id=? AND session_id=? AND lane=?)
+USE TEMP B-TREE FOR GROUP BY
+USE TEMP B-TREE FOR ORDER BY
