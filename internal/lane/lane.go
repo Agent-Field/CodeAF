@@ -302,6 +302,13 @@ type Outcome struct {
 	Accepted bool
 	Reason   string
 	At       time.Time
+	// Refused says the lane did not answer at all — a 429 naming its pool, a
+	// dead path, an upstream 4xx — as opposed to answering badly. It is the
+	// AVAILABILITY axis rather than the quality one, and the two are kept apart
+	// because they forget at different speeds: a pool that is full now is
+	// usually fine in five minutes, while a lane that writes broken tool calls
+	// is not. Accepted is false whenever Refused is true.
+	Refused bool
 }
 
 // ── WHAT A WAIT COSTS A PERSON ──────────────────────────────────────────────

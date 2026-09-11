@@ -642,7 +642,7 @@ func TestTheValueOfASecondIsATableAndNotADial(t *testing.T) {
 	if got := Lambda(false, true, 0, time.Minute, 0); got != TaskWallValue {
 		t.Fatalf("a call on the critical path is worth %v, want %v", got, TaskWallValue)
 	}
-	if got := Lambda(false, false, 10*time.Minute, time.Minute, 0); got != 0 {
+	if got := Lambda(false, false, 10*time.Minute, time.Minute, 0); got != UnattendedValue {
 		t.Fatalf("a node with slack to spare is worth %v, want price to win outright", got)
 	}
 	tight := Lambda(false, false, 0, time.Minute, 0)

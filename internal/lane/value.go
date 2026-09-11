@@ -59,6 +59,22 @@ const (
 	// the arithmetic stops describing a trade and starts describing a panic,
 	// and a router that pays any price is a router with no opinion at all.
 	DeadlineUrgencyCap = 4.0
+
+	// UnattendedValue is the floor under λ for a call nobody is sitting in front
+	// of: a quarter of a person's attention. ZERO WAS THE OLD ANSWER AND IT WAS
+	// MEASURED WRONG. At λ = 0 the score is dollars alone and the frontier keeps
+	// only lanes within 1.25× the cheapest, so on 2026-09-10 every task node for
+	// deepseek-v4.1-flash went to the two cheapest lanes — one answering 17% of
+	// the time at 22 tok/s, the other 14% — while the lane at 234 tok/s cost six
+	// hundredths of a cent more per thousand tokens and was never a candidate.
+	// The replay of that day (docs/design/routing/ASSESSMENT-20260911.md) put
+	// the router's mean regret at 31.9 s against 0.4 s with λ held above zero. A
+	// task the person is not watching still ends when its slowest call ends,
+	// and its calls still pay for every refusal, so its seconds are not free;
+	// they are worth less than watched ones, and this is how much less. The
+	// routing row's `price` word still means exactly zero, because that is a
+	// person saying so (internal/provider's laneValueOfTime).
+	UnattendedValue = AttentionValue / 4
 )
 
 // Lambda is λ for one request, in seconds per dollar.
@@ -104,6 +120,9 @@ func Lambda(interactive bool, onCriticalPath bool, slack, expected, deadline tim
 		if pressed := TaskWallValue * urgency; pressed > value {
 			value = pressed
 		}
+	}
+	if value < UnattendedValue {
+		value = UnattendedValue
 	}
 	return value
 }

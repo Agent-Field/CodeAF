@@ -59,6 +59,12 @@ func countingRouter(t *testing.T, status int, refusal string, accept func(map[st
 // by one test is not read by the next.
 func classClient(t *testing.T, handler http.Handler, config Config) *Client {
 	t.Helper()
+	// AND A FRESH LANE REGISTRY. The strike ledger and the pins below are this
+	// client's own, but the belief is process-wide, and a belief another test
+	// left behind for `sim/model` — two lanes, one judged — turns a refusal's
+	// recovery into a walk to the other lane before the ladder's first rung,
+	// which is a different call shape than the one these tests are counting.
+	forgetLanes(t)
 	config.APIKey = "test-key"
 	if config.BaseURL == "" {
 		config.BaseURL = "https://openrouter.ai/api/v1"

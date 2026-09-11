@@ -296,7 +296,35 @@ type Belief struct {
 	// [HalfLife] and each needs to know how long it personally has been sitting
 	// still. Zero is "nothing to forget", never "since 1970".
 	QualityAt time.Time
+	// Availability is the believed share of requests this lane ANSWERS, fed by
+	// [Outcome.Refused] and by every answer, and forgotten over
+	// [AvailabilityHalfLife]. It is not a gate; it multiplies the expected wait,
+	// because a lane that refuses four requests in five costs five sends for
+	// one answer. Before this axis existed a 429 taught the belief nothing, and
+	// the next request for the same model asked the same pool two seconds later
+	// (825 of 1,010 in the three days to 2026-09-10).
+	Availability   Beta
+	AvailabilityAt time.Time
 }
+
+// Serving is the expected share of requests this lane answers: one when nothing
+// has been refused, and the availability posterior's mean once something has.
+// The zero belief serves everything, which is what makes it safe to divide by.
+func (b Belief) Serving() float64 {
+	if !b.Availability.Known() {
+		return 1
+	}
+	mean := b.Availability.Mean()
+	if mean <= 0 {
+		return servingFloor
+	}
+	return mean
+}
+
+// servingFloor keeps a lane that has refused everything it was ever asked from
+// dividing a wait by zero; at one in twenty its expected wait is twenty sends,
+// which is already last in any order it could be in.
+const servingFloor = 0.05
 
 // Known reports whether the belief carries any timing at all. A lane with facts
 // and no timing is a lane the gate can judge and the score cannot, and the
