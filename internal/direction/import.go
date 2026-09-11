@@ -231,10 +231,15 @@ func (w *writeTx) importNew(item ImportItem, author Author) (string, int, error)
 // importNewer takes a changed version of a document already imported.
 func (w *writeTx) importNewer(item ImportItem, version []int, last imported, author Author) (ImportResult, error) {
 	result := ImportResult{Record: last.record, Revision: last.revision}
-	if compareVersions(version, last.version) <= 0 {
+	if order := compareVersions(version, last.version); order <= 0 {
 		result.Outcome = Stale
 		result.Reason = fmt.Sprintf("version %s is not newer than version %s, already imported at revision %d",
 			item.Legacy.Version, last.spelled, last.revision)
+		if order == 0 {
+			// The old store changed a document without moving its version: an
+			// anomaly for the report, and still nothing to write.
+			result.Reason += "; it carries other content under the same version"
+		}
 		return result, nil
 	}
 	if item.ID != "" && item.ID != last.record {

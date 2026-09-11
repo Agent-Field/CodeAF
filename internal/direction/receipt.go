@@ -83,7 +83,8 @@ type Actor struct {
 }
 
 // As names a writer that is not a person: a model, the memory extractor, an
-// unattended run, a voice or a delegated principal. It can propose and note.
+// unattended run, a voice or a delegated principal. It writes what its row of
+// §4.1 allows (section41 in authority.go), which is never authority.
 func As(class AuthorClass, ref string) Actor {
 	return Actor{author: Author{Class: class, Ref: ref}}
 }
