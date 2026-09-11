@@ -373,6 +373,10 @@ type taskNode struct {
 	phaseRound   int
 	phaseRounds  int
 	phaseFinding string
+	// phaseCall is the request the phase is waiting on, while it is out — the
+	// reading that sizes the work, thinking for minutes — and nil otherwise. It
+	// rides the same event and is copied whole with the rest ([app.taskPhaseMoved]).
+	phaseCall *session.TaskCall
 	// froze is the clock this node's row is drawn against while somebody is
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
@@ -5782,6 +5786,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// be this column reporting a present that has passed (taskphase.go).
 	if notice.State != session.TaskRunning && notice.State != session.TaskQueued {
 		node.phase, node.phaseRound, node.phaseRounds, node.phaseFinding = "", 0, 0, ""
+		node.phaseCall = nil
 	}
 	// The kind is a FACT and is kept the way the branch and the price above are:
 	// an update that says nothing about it has not changed it.

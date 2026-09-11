@@ -1172,8 +1172,9 @@ func (a *Agent) carefulModel(fallback string) string {
 // asked, one of them did not answer in time, and — when none of them did — the
 // parts are going out as they were drawn.
 type sizingLine struct {
-	agent *Agent
-	node  *TaskNode
+	// trail is where the line is said, beside the request it is about
+	// (task_calltrail.go), so the sentence and the live request are one row.
+	trail *callTrail
 	// owed is what to say about the rung that just failed, held until the next
 	// rung is asked so that the two halves are said as one line. It is dropped
 	// rather than said on its own when the ladder ends: what a person needs then
@@ -1204,17 +1205,25 @@ type sizingLine struct {
 // that is already at work now (task_divide_sketch.go), and a phase word over that
 // worker's own calls would be the row explaining a wait nobody is in.
 //
+// AND THE REQUEST ITSELF RIDES THE SAME ROW. The ladder's line names a model;
+// the request under it — thinking, the count, how long it has been out, the
+// machine answering — is watched on the node's behalf ([sizingLine.watching]),
+// with the pulse and the journal written at its two ends (task_calltrail.go):
+// the 219-second reading of 2026-09-11 drew nothing but the model's id.
+//
 // IT IS SETTLED ON THE LINE THAT ENDS THE READING, and never deferred to the end
 // of the division: what follows is admission, which takes no time a person can
 // see, and the sizing word left standing over it would be the row explaining a
-// moment that had passed.
+// moment that had passed. The request's trail is closed before the phase is, so
+// the last word on the row about the request is said while the phase still
+// stands ([sizingLine.ended]).
 func (a *Agent) sizingWait(ctx context.Context, node *TaskNode, asker divisionAsker) (context.Context, func(divisionRefusal)) {
 	if !asker.waits {
 		return ctx, func(divisionRefusal) {}
 	}
 	sizing := a.sizingSaid(node)
 	settle := a.enterPhase(node, taskBeatSizing, 0, 0, "")
-	return withErrandWatch(ctx, sizing.tell), func(refusal divisionRefusal) {
+	return sizing.watching(withErrandWatch(ctx, sizing.tell)), func(refusal divisionRefusal) {
 		sizing.ended(refusal)
 		settle()
 	}
@@ -1223,7 +1232,15 @@ func (a *Agent) sizingWait(ctx context.Context, node *TaskNode, asker divisionAs
 // sizingSaid is the teller for one node's reading. It is a value and not a
 // package function because the two halves of a sentence have to meet somewhere.
 func (a *Agent) sizingSaid(node *TaskNode) *sizingLine {
-	return &sizingLine{agent: a, node: node}
+	return &sizingLine{trail: a.trailCalls(node, TaskPhaseNotice{Phase: taskBeatSizing}, roles.RoleDivision)}
+}
+
+// watching is ctx with the reading's requests watched on the node's behalf.
+func (s *sizingLine) watching(ctx context.Context) context.Context {
+	if s == nil {
+		return ctx
+	}
+	return s.trail.watching(ctx)
 }
 
 // tell is the errand watch ([withErrandWatch]): one moment of the ladder, turned
@@ -1263,7 +1280,11 @@ func (s *sizingLine) tell(news errandNews) {
 // person waiting on their work actually needs: the other reading of a row that
 // only names a failure is that the work stopped, and it did not.
 func (s *sizingLine) ended(refusal divisionRefusal) {
-	if s == nil || refusal.refused() || refusal.why == "" {
+	if s == nil {
+		return
+	}
+	defer s.trail.end()
+	if refusal.refused() || refusal.why == "" {
 		return
 	}
 	s.owed = ""
@@ -1273,16 +1294,13 @@ func (s *sizingLine) ended(refusal divisionRefusal) {
 // sizingNobodyAnswered is spelled once here because the manual quotes it.
 const sizingNobodyAnswered = "nobody answered · going with the parts as drawn"
 
-// say puts one line on the node's phase event, from the conversation the node
-// belongs to ([TaskNode.phaseTeller]) rather than from whoever noticed — a
-// division is read by the node's own worker, whose only lanes are its room's.
+// say puts one line on the node's phase event, through the trail that carries
+// the request it is about ([callTrail.say]).
 func (s *sizingLine) say(text string) {
-	if s == nil || s.node == nil {
+	if s == nil {
 		return
 	}
-	s.node.phaseTeller(s.agent).emitTaskPhase(TaskPhaseNotice{
-		ID: s.node.id, Phase: taskBeatSizing, Text: text,
-	})
+	s.trail.say(text)
 }
 
 // ── the plan, read once by the tier that thinks ─────────────────────────────

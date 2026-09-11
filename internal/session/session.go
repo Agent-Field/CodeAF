@@ -1136,14 +1136,19 @@ type Config struct {
 	// it.
 	auditWindow time.Duration
 
-	// auditClock is what the checking window is measured against, and it is
-	// UNEXPORTED AND FOR TESTS ONLY ([Agent.auditNow]). The product's answer is
-	// [time.Now]; this exists because the ladder reads that clock several times
-	// on the way to a second call — once with the first checker closed and once
-	// more with the fresh one built — and the window can close between two of
-	// those readings. A real clock reproduces that gap only under load, and a
-	// test that cannot move the clock can only wait for it and hope.
-	auditClock func() time.Time
+	// clock is THE AGENT'S ONE READING OF THE WORLD'S TIME, and it is UNEXPORTED
+	// AND FOR TESTS ONLY ([Agent.now]). The product's answer is [time.Now].
+	//
+	// It exists because the checking ladder reads the clock several times on the
+	// way to a second call — once with the first checker closed and once more
+	// with the fresh one built — and the window can close between two of those
+	// readings. A real clock reproduces that gap only under load, and a test that
+	// cannot move the clock can only wait for it and hope. It is one field rather
+	// than one per caller for the reason every other "one door" here is: a second
+	// movable clock is a test that pins one of them and is surprised by the
+	// other. The other caller today is the trail that records a request's own
+	// length (task_calltrail.go).
+	clock func() time.Time
 
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].

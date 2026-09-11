@@ -797,8 +797,10 @@ type auditPace struct {
 	until time.Time
 }
 
-// auditNow is the clock every sentence about the checking window is measured
-// against, and it is ONE DOOR so that a test can move it ([Config.auditClock]).
+// now is the clock this package measures the world with, and it is ONE DOOR so
+// that a test can move it ([Config.clock]). Every sentence about the checking
+// window is measured against it, and so is the length of a request the node made
+// (task_calltrail.go).
 //
 // The window is read four times on the way to a second call — when the node's
 // window opens, when a call starts, when a stalled call is cut, and again before
@@ -808,9 +810,9 @@ type auditPace struct {
 // one, and asks again with the clock in hand, and a window that closes in
 // between is a retry nobody made. On a real clock that gap is microseconds wide
 // and opens only when the box is loaded, which is no way to prove anything.
-func (a *Agent) auditNow() time.Time {
-	if a.config.auditClock != nil {
-		return a.config.auditClock()
+func (a *Agent) now() time.Time {
+	if a.config.clock != nil {
+		return a.config.clock()
 	}
 	return time.Now()
 }
@@ -1046,7 +1048,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
-	pace := newAuditPace(a.auditWindowFor(door), a.auditNow())
+	pace := newAuditPace(a.auditWindowFor(door), a.now())
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
@@ -1071,7 +1073,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// what the first attempt found is the only account there is of where the time
 	// went: a retry that answered `nobody could check it` in its place would tell
 	// a person nobody was asked, when somebody was asked and abandoned.
-	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
+	if _, worthAsking := pace.bound(a.now()); !worthAsking {
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
@@ -1167,7 +1169,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// call that ran, or the landing claims two asks when only one happened (#803).
 	// The bound is read again after the build for the timeout itself, so a call
 	// that does go out is still measured against the time it actually has.
-	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
+	if _, worthAsking := pace.bound(a.now()); !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
 
@@ -1193,7 +1195,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// something to run gets the time a run takes, one whose only remaining move is
 	// a refused command gets the time reading takes ([auditDoor.window]) — and
 	// what is decided here is only how much of it one call may hold.
-	bound, worthAsking := pace.bound(a.auditNow())
+	bound, worthAsking := pace.bound(a.now())
 	if !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
@@ -1238,7 +1240,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
 		// the case it is true of: no call stalled, and the window simply ran out.
 		stalled := noVerdict(checkerStalled(bound), said)
-		if pace.left(a.auditNow()) > 0 {
+		if pace.left(a.now()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
 			return stalled, true
 		}

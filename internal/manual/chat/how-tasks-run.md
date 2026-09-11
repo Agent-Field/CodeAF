@@ -1818,9 +1818,15 @@ While a task says `sizing the work`, the **second row of its block says what is 
 the reading**, and it changes as the reading goes:
 
 ```
-▏ sizing the work
+▏ sizing the work · thinking 41s · ↓ 4,465 · deepinfra
 ▏ asking z-ai/glm-5.3 · 1 of 2
 ```
+
+**The first row says what the model is doing while it reads.** `first word 3.1s` while
+nothing has come back, `thinking 41s` while it thinks, `writing` once the answer arrives —
+the clock is how long that request has been out. `↓ 4,465` is everything it has sent back
+so far, thought included, and the last word is the machine answering. A figure nobody has
+yet is not drawn, and a narrow column drops the machine first and the clock last.
 
 `1 of 2` is which model of how many are lined up to be asked. When only one is lined up
 there is nothing to count and the row just says `asking <model>`.

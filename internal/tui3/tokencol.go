@@ -629,13 +629,19 @@ func (a *app) stepTokenWord(c caption, d deck) string {
 	if !a.tokenColumnOn(d) || !c.ended.IsZero() {
 		return ""
 	}
-	written := session.EstimateTokens(stepWritten(c, d.entries))
-	if written <= 0 {
+	return a.tokenDownWord(session.EstimateTokens(stepWritten(c, d.entries)))
+}
+
+// tokenDownWord is ↓ and its figure, plain, for a row that lists its facts and
+// paints them at once — a step's caption, and a node's live request on the rail
+// (taskphase.go). It is "" for nothing received, which is the emptiness law.
+func (a *app) tokenDownWord(n int) string {
+	if n <= 0 {
 		return ""
 	}
 	mark := tokenDownGlyph
 	if a.pal.ascii || a.linear {
 		mark = tokenDownPlain
 	}
-	return mark + " " + tokenColWord(written)
+	return mark + " " + tokenColWord(n)
 }
