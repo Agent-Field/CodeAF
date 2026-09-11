@@ -130,7 +130,7 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		FilesChanged: 3})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].tag != "3 files" {
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "3 files · 30m" {
 		t.Fatalf("the task's call is not a one-line row of needs you: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNone {

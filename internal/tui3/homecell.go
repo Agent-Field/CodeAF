@@ -211,7 +211,7 @@ func homeSparkCells(values []float64) []string {
 // group is a sorting of rows INSIDE one panel, and a second thing on the column
 // wearing heading ink would read as a second panel.
 func homeCellGroup(cell *homeCell, width int, pal palette) string {
-	return homeCellLeadBlank + switcherSides(max(1, width-homeGridLead), cell.title, cell.right, pal.dim, pal.dim)
+	return switcherSides(max(1, width), cell.title, cell.right, pal.dim, pal.dim)
 }
 
 // homeCellQuiet is a whisper or a fold: dim words under the rows' own lead.

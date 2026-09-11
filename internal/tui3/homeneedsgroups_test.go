@@ -191,3 +191,31 @@ func TestThePulseCountsBothGroupsOfNeedsYou(t *testing.T) {
 		t.Fatalf("the pulse says %d want you over %d rows", a.machine.wants, len(panelRows(a, panelNeeds)))
 	}
 }
+
+// SAID ONCE INSIDE THE PANEL TOO. A live conversation waiting on nothing but its
+// own landing writes `waiting on you · your call on <title>` with no question
+// object ([session.Agent.waitingOnPerson] reads a pending decision last), and
+// drawing it as a question put the same piece of work on two rows of one panel.
+// The landing's row is the one that survives — it has the work's own name, its
+// files and its two answers.
+func TestAConversationWaitingOnItsOwnLandingIsOnlyTheLandingsRow(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
+		Reason: "your call on fix the flaky sieve"})
+	l.landed("4", "fix the flaky sieve", 30*time.Minute)
+	a := l.open()
+	rows := panelRows(a, panelNeeds)
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" {
+		t.Fatalf("the landing is on the panel twice, or not at all: %+v", rows)
+	}
+	// AND A CONVERSATION WITH A QUESTION OF ITS OWN KEEPS ITS ROW, landing or no
+	// landing: the question is a different thing, and it blocks.
+	l2 := newLiveLab(t)
+	l2.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(7, "needs your ok to run bash", l2.now.Add(-time.Minute))})
+	l2.landed("4", "fix the flaky sieve", 30*time.Minute)
+	b := l2.open()
+	if rows := panelRows(b, panelNeeds); len(rows) != 2 {
+		t.Fatalf("a conversation with a question of its own lost its row: %+v", rows)
+	}
+}

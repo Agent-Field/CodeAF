@@ -118,10 +118,20 @@ func needsAged(asked, now time.Time) bool {
 
 // needsAsked is the conversations and watches the switcher already ranks as
 // waiting on somebody.
+//
+// A CONVERSATION WAITING ONLY ON ITS OWN LANDING IS NOT ONE OF THEM — THE
+// LANDING IS. [session.Agent.waitingOnPerson] reads a pending decision LAST and
+// has no question object to write for it, so such a session's presence says
+// `waiting on you · your call on <title>` with [session.PresenceQuestion] left
+// zero. Drawn as a question, that is the same piece of work twice on one panel:
+// once under the CONVERSATION's name with a bare `enter`, and once under the
+// TASK's name with its files and its two answers. The second row is the better
+// one and this drops the first (the spec of record's "said once", applied inside
+// the panel as well as across the columns).
 func needsAsked(in *homeGridInput) []needsItem {
 	var items []needsItem
 	for _, row := range in.rows {
-		if !row.needs {
+		if !row.needs || needsOnlyItsOwnLanding(in, row) {
 			continue
 		}
 		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, subRight: needsOpenWord}
@@ -141,6 +151,26 @@ func needsAsked(in *homeGridInput) []needsItem {
 		items = append(items, item)
 	}
 	return items
+}
+
+// needsOnlyItsOwnLanding reports that this row is a conversation whose presence
+// offers NO question of its own and that has a landing in the `to check` group,
+// which together mean the only thing it is waiting on is that landing.
+//
+// BOTH HALVES MATTER. A conversation with a question on its desk always writes
+// the question object, so a missing one is the engine saying "nothing is being
+// asked here"; and without a landing of its own on the screen there would be
+// nothing left to say it, so the row stays.
+func needsOnlyItsOwnLanding(in *homeGridInput, row switcherRow) bool {
+	if row.kind != switcherConversation || row.session.Presence.Question.Kind != "" {
+		return false
+	}
+	for _, call := range in.calls {
+		if call.line.task != nil && call.line.task.SessionID == row.session.ID {
+			return true
+		}
+	}
+	return false
 }
 
 // needsCalls is every task the project's record marks as the person's call —
@@ -209,8 +239,8 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// and will not move until somebody answers it; a landing has already
 	// finished, and a column of question marks over work that is DONE was the
 	// screen saying the opposite of what was true.
-	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
-		tag: needsFilesWord(entry), key: needsCallKey + entry.ID,
+	cell := &homeCell{panel: panelNeeds, title: title, right: needsCallFacts(entry, asked, now),
+		key:   needsCallKey + entry.ID,
 		grows: true, sub: needsCallSub(status), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
@@ -227,13 +257,24 @@ func needsCallSub(status session.TaskStatus) string {
 	return status.Word
 }
 
-// needsFilesWord is how many files a landing wrote, and NOTHING for a landing
-// that wrote none — the emptiness law: `0 files` is a fact drawn as a hole.
-func needsFilesWord(entry session.TaskIndexEntry) string {
+// needsCallFacts is a landing's right margin: how many files it wrote and how
+// long ago, as ONE clause — `3 files · 1d`.
+//
+// IT IS ONE CLAUSE AND NOT TWO FACTS SIDE BY SIDE because they are read as one
+// sentence about the same piece of work, and because a row cut between them
+// would leave `3 files` with no age beside a column of rows that all have one.
+// A landing that wrote no files says NOTHING where the count would be, never
+// `0 files` (the emptiness law).
+func needsCallFacts(entry session.TaskIndexEntry, asked, now time.Time) string {
+	age := sinceAt(asked, now)
 	if entry.FilesChanged <= 0 {
-		return ""
+		return age
 	}
-	return itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
+	files := itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
+	if age == "" {
+		return files
+	}
+	return files + rowSep + age
 }
 
 // needsCallAnswers is the two answers a landing offers, IN THE TASK'S OWN WORDS
