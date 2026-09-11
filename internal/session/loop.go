@@ -1573,12 +1573,16 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	return turn
 }
 
-// completeWithRetry sends one provider request, retrying on retryable errors
-// with pi's exact schedule: 2s, 4s, 8s, max 3 retries. The transcript is
-// append-only and the failing response was never appended, so a retry re-sends
-// exactly the same messages (pi's _prepareRetry pop is a no-op in this shape —
-// see internal/exec/bare/loop.go). The model is the turn's, latched once by
-// runTurn.
+// completeWithRetry sends one provider request and asks again while the
+// boundary's verdict says asking again is the move and this model still has
+// give-up left ([Agent.weighLadder]). The counted schedule this comment used to
+// name — 2s, 4s, 8s, max 3 retries — describes budgets that were deleted before
+// the recovery wave; there is one deadline now and it is stated on the loop
+// below. The transcript is append-only and the failing response was never
+// appended, so asking again re-sends exactly the same messages (pi's
+// _prepareRetry pop is a no-op in this shape — see internal/exec/bare/loop.go).
+// The model is the person's, latched by runTurn and re-read at the request
+// boundary (steer.go's THE PERSON'S WORD WINS).
 //
 // The reasoning level is stamped HERE, on the request path and nowhere else, so
 // it reaches every step and every retry of the turn and reaches nothing else:
@@ -1683,6 +1687,24 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		cuts, rerouted = 0, false
 		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
 	}
+	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
+	// only thing that differs between the two roads into it — which is a fact
+	// about the MOVE and never about who made it.
+	//
+	// A model a person named is the ROOT OF A NEW CHAIN: the fallbacks that come
+	// after it are read off it, and nothing the step walked before them is held
+	// against it. A rescue's hop is a STEP ALONG the chain the step is already on,
+	// so it is added to what has been tried and the chain keeps its own origin.
+	// Reading fallbacks off a rescue target instead is how a bounded chain of two
+	// becomes an unbounded walk ([Agent.nextFallback] states that half).
+	takeTheModel := func(next string, root bool) {
+		if root {
+			origin, hopped = next, nil
+		} else {
+			hopped = append(hopped, next)
+		}
+		freshModel(next)
+	}
 	attempt := 0
 	for ; ; attempt++ {
 		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
@@ -1702,8 +1724,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// are read off, and a chain still walking away from the model they just
 		// moved off would spend their turn on the choice they had rejected.
 		if next, said := a.takeModelWord(); said && next != model {
-			origin, hopped = next, nil
-			freshModel(next)
+			takeTheModel(next, true)
 			attempt = 0
 		}
 		// Each attempt streams the reply from the beginning, so the buffer
@@ -1872,10 +1893,31 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
 		next, haveFallback := a.nextFallback(ctx, origin, hopped)
+		// AND A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO. This reading
+		// is what the boundary is told about whether the step can move at all, and
+		// a step with an empty chain used to end the turn on "there is nowhere else
+		// to try" with the model they had just chosen sitting unasked. It PEEKS —
+		// this line runs on every failure, including the ones that go on to ask the
+		// same model again, and a word taken by a move that never happened would be
+		// a word the person never got (steer.go's [Agent.modelWordStanding]).
+		haveFallback = haveFallback || a.modelWordStanding()
 		// The hop, bound to THIS attempt's facts — which model comes next, and
 		// whether the thing that failed was a cut. See the declaration above.
 		moveOn = func(verdict taxonomy.Verdict) {
-			hopped = append(hopped, next)
+			// ── THE PERSON'S WORD IS THE HEAD OF EVERY CHAIN ─────────────────
+			//
+			// The chain is this build's guess at where a failing step should go
+			// next. A model the person named while the step was failing is not a
+			// guess, so it is where the step goes and the ladder is not consulted
+			// at all — and the word is taken HERE, where the move is really being
+			// made, rather than a moment later at the boundary, because the
+			// sentence below names where the reply went and a hop that announced
+			// the ladder's next rung and was then overruled would have named a
+			// model the reply never reached.
+			to, theirs := next, false
+			if word, said := a.takeModelWord(); said {
+				to, theirs = word, true
+			}
 			// AND THE STATUS LINE SAYS SO WHILE IT HAPPENS, by the one word that
 			// means a person's answer is changing hands
 			// ([provider.PhaseSwitchingModel]). That word used to be posted by the
@@ -1883,15 +1925,16 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// change in the build now, so it is the only thing that can say it, and
 			// a hop that sent only a feed event left the status line drawing the old
 			// model's clock.
-			a.tellPhaseThen(provider.PhaseSwitchingModel, "", next, time.Now())
-			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, next),
-				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, next)})
+			a.tellPhaseThen(provider.PhaseSwitchingModel, "", to, time.Now())
+			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, to),
+				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, to)})
 			// A NEW MODEL GETS A WHOLE BUDGET OF ITS OWN — both kinds of it, and
 			// its own give-up. What the last one did says nothing about this one,
 			// and a fallback that inherited a spent budget would be given up on
-			// before it had answered once. It is [freshModel] above, which the
-			// person's own word at the boundary reaches through the same call.
-			freshModel(next)
+			// before it had answered once. It is [takeTheModel] above, the one
+			// place this step changes model, which the request boundary reaches
+			// through the same call.
+			takeTheModel(to, theirs)
 			// The attempt counter is put one BEHIND its first rung, because the
 			// loop's own post-statement is what advances it.
 			attempt = -1

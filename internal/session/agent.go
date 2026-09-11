@@ -808,13 +808,21 @@ func (a *Agent) ReasoningFor(model string) string {
 }
 
 // SetReasoning sets the level for the model now in use, for subsequent turns.
-// A turn in flight keeps the level it started with, exactly as it keeps the
-// model it started on: runTurn latches both once (loop.go), so a change made
-// while the agent is working lands at the next Submit. The one thing that moves
-// either mid-turn moves BOTH — a step that hops to a fallback model re-reads the
-// level held for that model, because a level is a choice about a model and
-// carrying one across would be asking the new model for something nobody set on
-// it (see [Agent.SetModel]).
+// A turn in flight keeps the level it started with: runTurn latches it once
+// (loop.go), so a change made while the agent is working lands at the next
+// Submit.
+//
+// AND THAT IS NO LONGER THE MODEL'S RULE. A model a person names reaches the
+// work at the next REQUEST, cutting the one in flight when it has produced
+// nothing they could use ([Agent.SetModel], steer.go's THE PERSON'S WORD WINS).
+// The two rules differ because the two acts do: a person changing models is
+// redirecting work they are watching go the wrong way, and a person turning the
+// thinking up is setting a level for the next thing they ask.
+//
+// WHAT MOVES THE MODEL STILL MOVES THIS. Whenever the step's model changes — a
+// rescue's hop, or the person's own word — the level is re-read for the model
+// now in hand, because a level is a choice about a model and carrying one across
+// would be asking the new model for something nobody set on it.
 //
 // An unrecognized level is ignored rather than cleared. The two callers are a
 // picker that can only produce the four it draws and a flag the door has

@@ -423,15 +423,38 @@ func (a *Agent) latchTheModel() string {
 	return a.model
 }
 
-// takeModelWord is the request boundary asking whether the person has named a
-// model since the last one went out. It is the ONE read site of the word, and it
-// takes it: a word taken twice would restart a budget the step is spending.
+// takeModelWord is the step asking whether the person has named a model since
+// the last request went out, and TAKING it: a word taken twice would restart a
+// budget the step is already spending on it.
+//
+// TWO ROADS TAKE IT AND THEY ARE THE SAME DOOR. The request boundary takes it
+// when the step is simply making its next request; the rescue chain takes it
+// when a failure has decided the step must move, because a hop that announced
+// the ladder's next rung and was then overruled at the boundary would have named
+// a model the reply never went to — and a sentence a person reads has to name
+// where their answer actually went. Only one of the two can win, because the
+// first to take it leaves nothing behind.
 func (a *Agent) takeModelWord() (string, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	word := a.spokenModel
 	a.spokenModel = ""
 	return word, word != ""
+}
+
+// modelWordStanding is the same question WITHOUT taking the answer, and it has
+// exactly one caller: the reading of whether this step has anywhere left to go
+// (loop.go). That reading happens on every failure, including the ones that go
+// on to ask the same model again — so it may not consume, or a word said during
+// a retry would be swallowed by a move that never happened.
+//
+// A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO. A step with an empty
+// chain used to end the turn on "there is nowhere else to try" while the model
+// they had just chosen sat unasked.
+func (a *Agent) modelWordStanding() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.spokenModel != ""
 }
 
 // turnSteer is one steer as the AGENT holds it while it waits: the note the

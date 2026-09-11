@@ -98,12 +98,19 @@ and can run for twenty minutes, so "the next turn" would mean your pick did noth
 The room tells you which of the two you got — `switching now`, or `the next request takes
 it`. See "Changing the model for one task while it is running" on the tasks page.
 
+**If it was already moving, it moves to yours.** When a model stops answering, aforge
+moves the work to another one on its own — a rescue, not a preference. A model you name
+while that is happening is the head of that chain: the move goes to yours, the line you
+read names yours, and everything after it is read off yours. This holds even when aforge
+has nowhere of its own left to go; naming a model is itself somewhere to go, so the turn
+moves instead of ending on "there is nowhere else to try".
+
 **What it does not do.** It does not stop the turn, and it does not throw away anything
 already in the conversation: a partial reply that had arrived stays where it is. It does
 not reach work that has already finished — a task being checked, or one that has landed,
-saves the pick for the next run instead. And a step that was moving down its own rescue
-chain starts that chain again from the model you named, so it never carries on walking
-away from your choice.
+saves the pick for the next run instead. And it is not the same rule as the thinking
+level: a level you change lands on the next thing you ask, because setting a level is not
+redirecting work you are watching.
 
 ## Does aforge remember the model I picked, or does it go back to the default?
 

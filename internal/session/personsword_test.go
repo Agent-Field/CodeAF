@@ -192,3 +192,98 @@ func transcriptHas(a *Agent, text string) bool {
 	}
 	return false
 }
+
+// THE PERSON'S WORD IS THE HEAD OF EVERY CHAIN.
+//
+// A step whose model is refusing walks a fallback ladder — this build's guess at
+// where to go next. A model the person named while that was happening is not a
+// guess, and a hop that walked past it would spend their turn on the choice they
+// had just rejected. The word is taken where the move is really made, so the
+// sentence they read names the model their reply actually went to.
+//
+// The word arrives here while the answer HAD begun, which is the case with no
+// cut in it: nothing is let go of, and the move is the only thing left that can
+// carry the pick.
+func TestAFailingStepMovesToThePersonsPickAndNotTheLadder(t *testing.T) {
+	var agent *Agent
+	steps := make([]step, 0, turnLadderAttempts+1)
+	for i := 0; i < turnLadderAttempts; i++ {
+		if i == turnLadderAttempts-1 {
+			steps = append(steps, func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				provider.Emit(ctx, provider.StreamDelta, "a word had already arrived")
+				agent.SetModel("theirs/pick")
+				return nil, refusalOf(429, "rate limited", "Novita", "")
+			})
+			continue
+		}
+		steps = append(steps, refusedStep(429, "rate limited", "Novita"))
+	}
+	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("answered where they asked"), nil
+	})
+
+	completer := chained([]string{"ladder/next"}, steps...)
+	agent, _ = newTestAgent(t, completer, nil)
+	impatient(t, agent, turnLadderAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	if failure, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("the turn failed although the person had named a model: %v", failure.Err)
+	}
+	if got := completer.model(turnLadderAttempts); got != "theirs/pick" {
+		t.Fatalf("the request after the ladder rode %q, want the model the person named "+
+			"— a hop that walks past their pick spends their turn on the choice they rejected", got)
+	}
+	// AND THE SENTENCE NAMES WHERE THE REPLY WENT. A move announced as the
+	// ladder's next rung and then overruled would have named a model the reply
+	// never reached, which is the one thing a person-facing line may not do.
+	var announced string
+	for _, event := range collected {
+		if event.Kind == EventRetrying && event.Retry != nil && event.Retry.Next != "" {
+			announced = event.Retry.Next
+		}
+	}
+	if announced != "theirs/pick" {
+		t.Fatalf("the move was announced as %q, want theirs/pick", announced)
+	}
+}
+
+// AND A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO.
+//
+// A completer with no chain to offer makes the hop ABSENT — the turn ends on the
+// sentence it has always ended on. That is right when this build has run out of
+// guesses, and wrong the moment a person has named a model themselves: the turn
+// used to end on "there is nowhere else to try" with their choice sitting
+// unasked. The reading of whether the step can move at all is what this pins.
+func TestATurnWithNoChainStillMovesToAModelThePersonNamed(t *testing.T) {
+	var agent *Agent
+	steps := make([]step, 0, turnLadderAttempts+1)
+	for i := 0; i < turnLadderAttempts; i++ {
+		if i == turnLadderAttempts-1 {
+			steps = append(steps, func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				provider.Emit(ctx, provider.StreamDelta, "a word had already arrived")
+				agent.SetModel("theirs/pick")
+				return nil, refusalOf(429, "rate limited", "Novita", "")
+			})
+			continue
+		}
+		steps = append(steps, refusedStep(429, "rate limited", "Novita"))
+	}
+	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("answered where they asked"), nil
+	})
+
+	// A plain scripted completer offers no [modelChain] at all, which is the
+	// build with nowhere of its own to go.
+	completer := &scriptedCompleter{steps: steps}
+	agent, _ = newTestAgent(t, completer, nil)
+	impatient(t, agent, turnLadderAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	if failure, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("the turn ended although the person had named a model: %v", failure.Err)
+	}
+	if got := completer.model(turnLadderAttempts); got != "theirs/pick" {
+		t.Fatalf("the request after the ladder rode %q, want the model the person named", got)
+	}
+}
