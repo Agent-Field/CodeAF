@@ -12,6 +12,13 @@ A task family is one node that handed work out and the parts under it.
 a division a groom already named. Both mint into the same graph and, since #240,
 through the same door.
 
+*Since 2026-09-11 (the task-start wave, `docs/design/task-start/DESIGN.md`):
+`divideOnce` is two steps, `weighDivision` and `admitDivision`, because the
+harness's road now weighs its drawing BESIDE the node's first worker
+(`sizeBeside`, which replaced `divideFromSketch`) and admits the parts only while
+that worker is still reading. The door is still one door; the names below are
+the ones this page was written against.*
+
 The six lanes under #228 were one redesign of how those parts share a world, a
 ledger and a brief. All six are on `dev`. Two more defects the same audit turned
 up — a folder landing writing over the person's own edits (#258) and the prompt

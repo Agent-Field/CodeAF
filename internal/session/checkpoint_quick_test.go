@@ -76,7 +76,7 @@ func TestAWriteFreeTurnWithPartsIsTakenByAQuickTask(t *testing.T) {
 	}
 	// AND THE DRAWING IS NOT ALSO CARRIED AS A DIVISION. The items ARE the parts;
 	// a spec holding both would hand the same work out twice
-	// (task_divide_sketch.go's [Agent.divideFromSketch]).
+	// (task_divide_sketch.go's [Agent.sizeBeside]).
 	if node.spec.drawn.proposes() {
 		t.Error("the quick node also carries the drawing as a division to hand out")
 	}

@@ -99,7 +99,7 @@ import "strings"
 // the frontier, which starts it — so a freeze taken after the first admission is
 // a freeze the first part may already have raced past, and a freeze taken
 // without the parts carrying it is a fact nobody reads. Both halves are here, in
-// this order, and [Agent.divideOnce] holds none of it.
+// this order, and [Agent.admitDivision] holds none of it.
 //
 // It answers the ids and titles admitted, or the one sentence to hand the worker
 // when the family's world could not be frozen and nothing was handed out.
@@ -131,7 +131,7 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 	// conversation model and the store is the person's rather than this session's
 	// — a division whose third part resolved differently from its first because
 	// something moved underneath it would be a family nobody could account for
-	// afterwards. [Agent.divideOnce]'s own notes say why each of them is read.
+	// afterwards. [Agent.weighDivision]'s own notes say why each of them is read.
 	model := a.resolveTaskModel("").model
 	careful := a.carefulModel(model)
 	grades := graph.grades.reader(model)

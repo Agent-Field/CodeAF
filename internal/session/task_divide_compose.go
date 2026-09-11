@@ -26,8 +26,8 @@ package session
 // without a reading was admitted without context too.
 //
 // SO THE CONTEXT IS COMPOSED, ONCE, BY THIS FILE, AND BOTH ROADS COME THROUGH IT
-// ([Agent.divideOnce] is the single call site, and the sketch road reaches it by
-// putting its drawing to that same door). A worker writes a scope; the harness
+// ([Agent.admitDivision] is the single call site, and the sketch road reaches it
+// by putting its drawing to that same door). A worker writes a scope; the harness
 // writes everything around it. Nothing is left to a model remembering to repeat
 // itself, which is the same law the person's own words are carried under
 // (task_brief.go): what the code already holds is never asked of a model.

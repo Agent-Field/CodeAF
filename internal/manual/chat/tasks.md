@@ -918,16 +918,18 @@ long answer saying "everything is done" is that model marking its own work at th
 has a reason to. So if the second reader still sees work left, the move happens anyway — on
 your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
 
-**When the second reader names parts, the task starts already divided.** The sketch is not
-only a paragraph at the top of the brief — it is put to the task's own splitting road before
-the worker is asked anything, so each part named in the sketch becomes a worker of its own
-with its own copy of your folder, and the task they came out of stays open to gather their
-reports into one answer. Nothing about that road is skipped: the parts are read together by a
-second model that can sharpen their instructions, merge two that overlap, or say this is one
-job after all — and if it says that, or if there is no free lane to run them in, the task
-simply runs as **one worker**, which is what it would have done anyway. Where the sketch drew
-a final step behind the parts — `(A | B | C) > D` — the parts are handed out and `D` stays
-with the task itself, to do once their reports are in.
+**When the second reader names parts, the task is split up
+while its worker is already at work.** The sketch is not only a paragraph at the top of
+the brief: it is put to the task's own splitting road beside the worker, which starts on
+the whole brief at once, and each part named in the sketch becomes a worker of its own
+with its own copy of your folder, taken as the task's copy stands when they are handed out.
+The task they came out of stays open to gather their reports into one answer. Nothing about
+that road is skipped: the parts are read together by a second model that can sharpen their
+instructions, merge two that overlap, or say this is one job after all — and if it says
+that, or if there is no free lane to run them in, the task simply goes on as **one
+worker**, which is what it was already doing. Where the sketch drew a final step behind the
+parts — `(A | B | C) > D` — the parts are handed out and `D` stays with the task itself,
+to do once their reports are in.
 
 **Whether the sketch is read as parts.** What counts is what could be started **now**.
 `A | B | C` is three. `A > B > C` is one job in three steps. `A > (B | C)` is one job too —
@@ -3852,11 +3854,13 @@ task says so in one line.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
-before the new task's worker is asked anything — so the task starts already divided rather
-than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same tests, the same reading by the mastermind, the same refusals.
-The receipt reads the same too, and the worker is told the parts are already running so it
-does not do them again. *An answer that runs long is read and moved* is where that happens.
+beside the new task's worker, which starts at once rather than waiting for the reading — so
+the parts somebody already named are handed out without the worker having to find them
+again. Everything below applies to it without exception: the same tests, the same reading
+by the mastermind, the same refusals. The receipt reads the same too, and reaches the worker
+while it works, telling it the parts are now somebody else's so it does not do them again;
+an answer that arrives after the worker has finished is dropped. *An answer that runs long is
+read and moved* is where that happens.
 
 ## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 

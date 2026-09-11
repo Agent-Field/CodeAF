@@ -850,7 +850,7 @@ func TestASketchRoadDivisionWritesNoCommit(t *testing.T) {
 	family.graph.run = func(*TaskNode) {}
 	before := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD"))
 
-	said, person := family.worker.divideFromSketch(context.Background())
+	said, person, _ := weighBeside(t, family.worker)
 	if person != "" {
 		t.Fatalf("the sketch road came back with a person's own job: %q", person)
 	}

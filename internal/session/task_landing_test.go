@@ -562,10 +562,10 @@ func TestTheReceiptsAreTheWorkersOwnToolResultsAndAreBounded(t *testing.T) {
 	}
 }
 
-// AND WORK ONLY A PERSON CAN DO LANDS NEEDING THEIR LOOK, WITH NOTHING SPENT ON
-// IT. It is the unverified landing reached by a fourth road (task_divide_sketch.go):
-// the reader that was going to weigh a division said the remainder is not work
-// for any worker, and the node stops there rather than starting one.
+// AND WORK ONLY A PERSON CAN DO LANDS NEEDING THEIR LOOK. It is the unverified
+// landing reached by a fourth road (task_divide_sketch.go): the reader weighing a
+// division beside the worker said the remainder is not work for any worker, the
+// worker was stopped, and the node lands on the person with what it had said.
 //
 // UNVERIFIED RATHER THAN FAILED IS THE STATE THAT MATCHES THE SENTENCE. Nothing
 // went wrong, nobody made a finding against the work, and there is nothing to try
@@ -585,7 +585,8 @@ func TestWorkOnlyAPersonCanDoLandsNeedingTheirLook(t *testing.T) {
 
 	tree := taskTree{dir: filepath.Join(repo, "tree"), root: repo, branch: "task/get-the-two-pull-requests-merged"}
 	why := "an approving review GitHub will only accept from a human who isn't the author"
-	state := agent.landNeedsPerson(node, tree, why, io.Discard)
+	worker := "read both pull requests; neither can be approved from here"
+	state := agent.landNeedsPerson(node, tree, why, nil, worker, io.Discard)
 
 	if state != TaskUnverified {
 		t.Fatalf("work only a person can do landed %q, want it waiting on them", state)
@@ -601,6 +602,11 @@ func TestWorkOnlyAPersonCanDoLandsNeedingTheirLook(t *testing.T) {
 	}
 	if !strings.Contains(report, why) {
 		t.Fatalf("the report does not say what only a person can do:\n%s", report)
+	}
+	// AND WHAT THE WORKER HAD SAID STANDS UNDER IT, because it is the person's
+	// only account of what is already on the kept branch.
+	if !strings.Contains(report, worker) || strings.Index(report, worker) < strings.Index(report, why) {
+		t.Fatalf("the worker's own account is missing or leads the reason:\n%s", report)
 	}
 	// AND NOT ONE WORD OF MACHINERY. The card is read by a person.
 	for _, banned := range []string{"auditor", "verdict", "verified", "refuted", "division", "reviewer"} {
