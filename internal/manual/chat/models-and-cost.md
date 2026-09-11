@@ -2615,6 +2615,12 @@ lane's **answers** rather than its speed forgets more slowly — about an hour �
 requests are minutes apart and a belief that forgot faster than the evidence arrived would
 never be worth anything.
 
+Forgetting has an end, and a lane nobody has heard from in hours reaches it. Such a row
+says **nothing at all about its worst answers** — no `tail 12s`, and no `no tail` either,
+because that is a claim about the worst case too. The speed and throughput figures stay:
+they are still the best guess there is. Ask that lane one question and the row has a tail
+again, or has honestly none.
+
 The dim line under the cursor says both halves out loud:
 
 ```
