@@ -319,15 +319,37 @@ ordinary work.
 
 **What is true now.** `taskNoteReaders` asks three readers in order: the parent's
 worker, then **the parent itself** (`landingFold`, `task_latefold.go`), then the
-conversation. The fold takes the piece's news into the parent's own report, so the
-landing already on its way carries it — one account of what this node's work came to,
-in the family it belongs to. The report is composed from two halves under the graph's
-lock (`TaskNode.composeReportLocked`): what the landing wrote (`landed`) and every piece
-folded since (`late`). Either half may move without erasing the other, so a landing
-cannot overwrite a folded piece and a fold cannot rewrite a landing. The fold refuses on
-exactly the fact the seat refuses on — the node has settled — so **only a parent that
-has already landed** sends its pieces to the person, which is the fallback as designed.
-A folded piece is marked reported like any other, so nothing is delivered twice.
+conversation. The fold takes the news into the parent's own report, so the landing
+already on its way carries it — one account of what this node's work came to, in the
+family it belongs to. The fold refuses on exactly the fact the seat refuses on — the node
+has settled — so **only a parent that has already landed** sends its pieces to the
+person, which is the fallback as designed. Routing stays one ordered question
+(`deliverTo`); nothing branches on which road a message came by.
+
+Three properties make the fold a delivery rather than a string append, and each has a
+test (`task_latefold_test.go`):
+
+- **The words are the sender's.** A landing note is written for a model — it opens by
+  telling its reader which word to say back (`landingNoteLead`) and may close on how to
+  settle — and a report a person reads must carry neither, nor may the next model be
+  handed an order about somebody else's word. So a delivery carries, beside its note, the
+  same message **as a record keeps it** (`delivery.record`): `deliverTaskNote` composes it
+  as the landing's head line, report and changed files (`landingRecord`, which shares
+  `taskNoteHead` with `taskNote` so the two cannot spell the head two ways), and a
+  message that says only what happened — `bubbleUnverifiedChildren`'s re-addressed
+  sentence — is its own record. The fold writes no sentence of its own.
+- **The fold is the acknowledgement.** A delivery is written down as announced only when
+  the recipient's record holds it (`durableDelivery`). For a fold the record is the
+  parent's report, checkpointed by `foldLatePart` before the receipt returns, so
+  `postTaskMessage` makes the mark and settles every durable delivery at once. Without
+  that, a restart restored the folded piece as unannounced and told its landing again —
+  to the person, once the parent had settled.
+- **The report has two halves and one author.** `TaskNode.report` is composed under the
+  graph's lock (`composeReportLocked`) from what the landing wrote (`landed`, written by
+  every road through `landLocked`) and every folded message (`late`). Both halves are on
+  the checkpoint (`taskRecord.Late`, and `taskRecord.Landed` beside them when there is a
+  folded half), so a restored node composes from the halves a live one does, and a second
+  fold after a restore adds its piece and nothing else.
 
 **What the fold does not do, stated rather than hidden.** It is not a turn: the worker's
 reading is over by definition, and starting a second one for a node whose check is
@@ -345,16 +367,24 @@ piece's own check already answered for the piece. The manual says the same sente
   that a document does not: to be true in whichever copy it is run in. Anything that
   later has to run something declared in one world inside another world can use it.
 - **What was deleted.** `auditDoorFor`'s bare `ground string` parameter (a directory
-  with no account of what it was a copy of) and `taskCopyFor`'s own copy of the mode
-  switch. `TaskNode.report` stopped being a field two writers could overwrite: it is
-  now composed, in one function, from the halves that own it.
+  with no account of what it was a copy of), `taskCopyFor`'s own copy of the mode
+  switch, and `taskNote`'s private spelling of its head line (now `taskNoteHead`, shared
+  with the record). `TaskNode.report` stopped being a field any road could overwrite:
+  every writer goes through `landLocked`, and the field is composed in one function
+  from the halves that own it.
 - **The law tests.** `TestADeclaredCheckIsBoundToTheTaskOwnCopy` (the door's check
   answers green on what would ship, red on the base, and the command as written still
   fails — the defect itself), `TestChecksBindOnlyWhatTheGroundHolds` (outside the
   ground, relative, sibling tree, and the identity for a checker standing on the
   ground), `TestAGroundCheckThatNamesItsOwnScriptOpensTheDoor`,
-  `TestAChildLandingAfterItsParentStoppedReadingIsFoldedIntoItsReport` and
-  `TestAChildLandingAfterItsParentSettledReachesTheConversation`.
+  `TestAChildLandingAfterItsParentStoppedReadingIsFoldedIntoItsReport`,
+  `TestAChildLandingAfterItsParentSettledReachesTheConversation`,
+  `TestAFoldedPieceIsNotToldAgainAfterARestart`, `TestTwoFoldsAcrossARestoreKeepOneOfEach`
+  and `TestTheFoldKeepsTheSendersRecordAndNothingElse`. The structural law is
+  `TestEveryCheckDoorIsBuiltFromAMap` (`go/ast`, on the laws gate): every call to
+  `auditDoorFor` or `runnableChecks` is handed `checkCopy(...)`, `standingOn(...)` or
+  the map its own caller was handed, and a copy's fields are spelled only in
+  `task_brief.go`.
 - **What a reviewer might call a band-aid.** Spelling the copy as `.`. It is not a
   trick for one call site: it is the only spelling of "the copy this is being run in"
   that is true in all four places a task's check is run, and it is produced by the same

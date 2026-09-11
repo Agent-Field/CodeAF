@@ -523,12 +523,14 @@ type TaskNode struct {
 	// ([Agent.ContinueTask]).
 	report  string
 	changed []string
-	// landed is the report THE LANDING ITSELF WROTE, and late is every piece of
-	// this node's own work that came home after its worker had stopped reading
-	// (task_latefold.go). They are two fields rather than one because the report
-	// above is composed out of both and is recomposed whenever either moves:
-	// a landing that overwrote the report would otherwise erase a part's result,
-	// and a fold that appended to it would be a second author of one sentence.
+	// landed is the report THE LANDING ITSELF WROTE, and late is every message
+	// about this node's own pieces that came home after its worker had stopped
+	// reading (task_latefold.go). They are two fields rather than one because the
+	// report above is composed out of both and is recomposed whenever either
+	// moves: a landing that overwrote the report would otherwise erase a piece's
+	// result, and a fold that appended to it would be a second author of one
+	// sentence. Both are on the checkpoint ([taskRecord.Late]), so a restored node
+	// composes from the same halves a live one does.
 	landed string
 	late   []string
 	// wrote is every path this node has written SO FAR, in the order it first
@@ -1292,7 +1294,8 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	}
 	refused := g.quitting
 	if refused {
-		node.state, node.stopped, node.report = TaskFailed, true, taskStoppedQueuedWord
+		node.state, node.stopped = TaskFailed, true
+		node.landLocked(taskStoppedQueuedWord)
 		close(node.done)
 	}
 	g.nodes[id] = node
@@ -1446,7 +1449,7 @@ func (g *TaskGraph) runFrontier() {
 		if blocked != "" {
 			node.state = TaskFailed
 			node.ended = time.Now()
-			node.report = blocked
+			node.landLocked(blocked)
 			node.held = ""
 			failing = append(failing, node)
 			continue
@@ -2640,8 +2643,7 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	// and the composer puts the two together ([TaskNode.composeReportLocked]), so
 	// a part that landed while this node was being checked is not erased by the
 	// sentence that lands it.
-	n.landed = strings.TrimSpace(report)
-	n.composeReportLocked()
+	n.landLocked(report)
 	n.changed = changed
 	n.branch = branch
 	n.merge = merge
@@ -3611,7 +3613,8 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	note := landingNoteLead(notice) + taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
+	transcript := taskURI(node.journalPath())
+	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -3643,7 +3646,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		}
 		node.releaseNote(claim)
 	} else {
-		a.deliverTaskNote(node, attempt, tag, note)
+		a.deliverTaskNote(node, attempt, tag, note, landingRecord(notice, transcript))
 	}
 }
 
@@ -3657,7 +3660,10 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // no agent left to read anything, and news with nowhere to go belongs in front
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
-func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string) {
+//
+// THE RECORD RIDES BESIDE THE NOTE, composed from the same snapshot, for the one
+// reader that keeps the news rather than acting on it ([delivery.record]).
+func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note, record string) {
 	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
 	// the state ([noteClaim]), so a repeated announcement of one landing buys no
 	// second model turn, a node that ends somewhere else later is news again, and
@@ -3672,7 +3678,7 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, n
 	// the acknowledgement, and until then this landing stays owed, so a session
 	// that closed with the note unread re-tells it on resume rather than losing
 	// it (task_store.go).
-	got := a.postTaskMessage(node, tag, note, []durableDelivery{node.settlesNote(claim)},
+	got := a.postTaskMessage(node, tag, note, record, []durableDelivery{node.settlesNote(claim)},
 		func() { node.noteQueued(claim) })
 	if !got.accepted() {
 		// Nobody is left to read it, so the claim goes back and no mark is made.
@@ -3717,7 +3723,7 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, durable []durableDelivery, mark func()) deliveryReceipt {
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
 	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
 	// This delivery happens after a claim is won and a reader is found, and a
@@ -3725,19 +3731,27 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, d
 	// hand the OLD result the NEW target (wakecause.go's [TaskNode.resultOf]).
 	message.replyTags = []TaskReplyTag{tag}
 	message.delivered = durable
-	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)
+	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message, record: record}, a.taskNoteReaders(node)...)
 	if !got.accepted() {
 		return got
 	}
-	// AND A FOLD HAS NO QUEUE AND NOBODY TO WAKE. The two writes a queued
-	// delivery owes are the mark and the release of whoever is parked on it; a
-	// note taken into the parent's own report ([landingFold]) has already been
-	// read by the only reader it will ever have, so what is left is the mark —
-	// made here, in the same order, so that a child taken this way is as reported
-	// as one taken onto a worker's queue.
+	// AND A FOLD HAS NO QUEUE AND NOBODY TO WAKE. The writes a queued delivery
+	// owes are the mark, the release of whoever is parked on it, and — later, when
+	// the recipient records it — the settlement. A note taken into the parent's own
+	// report ([landingFold]) has already been read by the only reader it will ever
+	// have, and THE FOLD IS THE RECIPIENT'S RECORD: the report holding it is on the
+	// checkpoint before the receipt comes back ([TaskNode.foldLatePart]). So the
+	// mark is made here, in the same order, and every durable delivery is settled
+	// at once — which is what writes the landing down as announced, so that a
+	// restart does not tell a folded piece a second time.
 	if got.reader == nil {
 		if mark != nil {
 			mark()
+		}
+		for _, owed := range durable {
+			if owed.settled != nil {
+				owed.settled()
+			}
 		}
 		return got
 	}
@@ -4006,22 +4020,8 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	// head below writes that question once, and what is left under it is the
 	// sentence the checker or the merge wrote. The prefix is taken off with the
 	// reading's own reason rather than with a copy of it, so the two cannot drift.
-	report := strings.TrimSpace(notice.Report)
-	fmt.Fprintf(&note, "task %d", notice.ID)
-	if status.Word != "" {
-		note.WriteString(" " + status.Word)
-	}
-	note.WriteString(": " + notice.Title)
-	// AND THE REASON RIDES THE HEAD, because for half of these landings it is the
-	// whole news: `incomplete` on its own sends somebody looking for a fault, and
-	// `your call` on its own does not say what they are being asked.
-	if status.Reason != "" {
-		note.WriteString(" · " + status.Reason)
-		report = strings.TrimPrefix(report, status.Reason+yourCallDash)
-	}
-	if transcript != "" {
-		note.WriteString(" · transcript " + transcript)
-	}
+	head, report := taskNoteHead(status, notice, transcript)
+	note.WriteString(head)
 	if report != "" {
 		note.WriteString("\n" + report)
 	}
@@ -4072,6 +4072,46 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	note.WriteString(taskMergeNote(notice))
 	note.WriteString(taskBranchFollowup(notice))
 	return note.String()
+}
+
+// taskNoteHead is the line every account of one landing opens with — the task,
+// its tier's word, its title, the reason where there is one, the transcript —
+// and the report under it with the reason taken off its front. It is lifted out
+// of [taskNote] so that the note a model reads and the record a report keeps
+// ([landingRecord]) open on one line and cannot come to spell it two ways.
+//
+// AND THE REASON RIDES THE HEAD, because for half of these landings it is the
+// whole news: `incomplete` on its own sends somebody looking for a fault, and
+// `your call` on its own does not say what they are being asked.
+func taskNoteHead(status TaskStatus, notice TaskNotice, transcript string) (head, report string) {
+	report = strings.TrimSpace(notice.Report)
+	head = "task " + strconv.FormatUint(notice.ID, 10)
+	if status.Word != "" {
+		head += " " + status.Word
+	}
+	head += ": " + notice.Title
+	if status.Reason != "" {
+		head += " · " + status.Reason
+		report = strings.TrimPrefix(report, status.Reason+yourCallDash)
+	}
+	if transcript != "" {
+		head += " · transcript " + transcript
+	}
+	return head, report
+}
+
+// landingRecord is one landing AS A RECORD KEEPS IT ([delivery.record]): the
+// head line, the report, and what changed — the facts of [taskNote] with none
+// of its instructions. It carries no answer block either; the transcript on the
+// head is where the whole of it is, and a report that pasted a piece's entire
+// answer into its parent's would stop being three lines anybody reads.
+func landingRecord(notice TaskNotice, transcript string) string {
+	head, report := taskNoteHead(ProjectTask(notice.StatusFacts()), notice, transcript)
+	record := withReport(head, report)
+	if len(notice.Changed) > 0 {
+		record += "\nchanged: " + strings.Join(notice.Changed, ", ")
+	}
+	return record
 }
 
 // A saved artifact does not expand the request. The native repository trial
@@ -4699,7 +4739,9 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	}
 	// It is not this node's landing being announced — that has already been said
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
-	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), nil, nil)
+	// The sentence says only what happened and whose decision it now is, so it
+	// is its own record ([delivery.record]).
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), "", nil, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed

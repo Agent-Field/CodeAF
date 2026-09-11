@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,13 +95,17 @@ func TestAQuickChildsDoneNoteReachesTheParentWorkerAndBuysItARound(t *testing.T)
 
 	done := runLandingParent(t, nest)
 
-	// The parent's first turn ends with the child still out. Nothing ends here.
+	// The parent's first turn ends with the child still out. Nothing ends here:
+	// the runner PARKS on the piece ([childRun.park]), and a parked runner is in
+	// a select that only a report or a cut context releases — so once it is seen
+	// parked, a run that had ended would already have closed `done`.
 	waitRequests(t, completer, 2)
 	waitQuiet(t, nest.node)
+	waitFor(t, "the parent to park on its quick child", nest.parent.waitingOnItsPieces)
 	select {
 	case <-done:
 		t.Fatal("the parent ended while its quick child was still running")
-	case <-time.After(200 * time.Millisecond):
+	default:
 	}
 
 	close(release)
@@ -222,11 +227,20 @@ func TestAChildLandingAfterItsParentStoppedReadingIsFoldedIntoItsReport(t *testi
 	waitFor(t, "the piece's result to reach its parent's report", func() bool {
 		return strings.Contains(nest.parent.notice().Report, "the law is in section four")
 	})
+	// THE REPORT KEEPS THE PIECE AS A RECORD KEEPS IT: the parent's own account,
+	// then the piece's own head line — its number and its name — and its report
+	// ([landingRecord]). It never keeps the sentence a landing note opens with
+	// for a model, which tells its reader which word to say back
+	// ([landingNoteLead]) and would be an order about somebody else's word to
+	// whoever reads this report next.
 	report := nest.parent.notice().Report
-	for _, want := range []string{"the whole job is done", lateFoldLead} {
+	for _, want := range []string{"the whole job is done", "task " + strconv.FormatUint(kid.id, 10) + " ", kid.title()} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("the parent's report does not say %q:\n%s", want, report)
 		}
+	}
+	if strings.Contains(report, "say that word back") {
+		t.Fatalf("the parent's report carries a model's instruction:\n%s", report)
 	}
 	if steeringContains(nest.session, "the law is in section four") {
 		t.Fatal("the person's conversation was told about a piece its own task handed out")
@@ -277,6 +291,7 @@ func TestAChildsNoteQueuesOnTheParentWorkerWithoutStartingATurn(t *testing.T) {
 	nest := newNest(t, completer, nil)
 	nest.handOut(t, "read the law")
 	kid := nest.graph.children(nest.parent.id)[0]
+	before := turnsStarted(nest.node)
 
 	kid.finish("the law is in section four", nil, "", "")
 	nest.graph.complete(kid, TaskDone)
@@ -285,13 +300,20 @@ func TestAChildsNoteQueuesOnTheParentWorkerWithoutStartingATurn(t *testing.T) {
 		return steeringContains(nest.node, "the law is in section four")
 	})
 	// The fact the parked runner reads: a note owed, so the fold will take a
-	// round for it ([Agent.taskNewsStanding]).
-	if owed := nest.node.taskNewsOwed(); owed != 1 {
+	// round for it. [Agent.taskNewsStanding] takes the handover lock the whole
+	// delivery's last writes — the mark, the count and the wake — are made under
+	// ([Agent.handOverTaskNews]), so once it answers, the wake has already been
+	// asked and has already declined or not. Nothing has to be waited out.
+	if owed, _ := nest.node.taskNewsStanding(); owed != 1 {
 		t.Fatalf("the parent is owed %d reports, want the one that just landed", owed)
 	}
-	time.Sleep(100 * time.Millisecond)
+	// A turn is numbered the instant it starts, under the agent's own lock
+	// ([Agent.startTurnLocked]), so an unmoved number is a turn never started.
+	if got := turnsStarted(nest.node); got != before {
+		t.Fatalf("the parent worker started %d turns of its own", got-before)
+	}
 	if got := completer.requests(); got != 0 {
-		t.Fatalf("the parent worker started %d turns of its own", got)
+		t.Fatalf("the parent worker asked its model %d times", got)
 	}
 }
 
@@ -324,4 +346,11 @@ func TestTheChildsWorkIsHomeBeforeItsNoteIsDelivered(t *testing.T) {
 	if notice := kid.notice(); notice.Merge != mergeMerged {
 		t.Fatalf("the node settled with merge %q, want it home before the note", notice.Merge)
 	}
+}
+
+// turnsStarted is how many turns this agent has begun, read under its own lock.
+func turnsStarted(agent *Agent) uint64 {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	return uint64(agent.turnSeq)
 }

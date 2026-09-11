@@ -47,6 +47,22 @@ package session
 // promise here is exactly: the result is in the parent's report and in the
 // landing note the parent's reader gets. The manual says the same sentence.
 //
+// THE WORDS ARE THE SENDER'S. The fold writes no sentence of its own: it keeps
+// the message AS THE SENDER SAID A RECORD SHOULD KEEP IT ([delivery.record]) — a
+// piece's landing as its own head line and report ([landingRecord]), a settled
+// node's re-addressed decisions as the sentence that already says what they are
+// ([readdressedLead]) — so a fold can never put one message under a heading
+// that is true only of another, and never copies a model's instructions into
+// something a person reads. Which road the news came by is not this reader's
+// question.
+//
+// AND THE FOLD IS THE ACKNOWLEDGEMENT. A delivery is not written down as
+// announced until the recipient's own record holds it ([durableDelivery]); for
+// a fold the recipient's record IS the parent's report, written to the
+// checkpoint by [TaskNode.foldLatePart] before the sender settles, so the sender
+// settles at once ([Agent.postTaskMessage]). A piece folded and then restarted
+// over is therefore announced on the checkpoint, and is not told a second time.
+//
 // ONLY A SETTLED PARENT SENDS ITS PIECES TO THE PERSON. That is the one case
 // where the fallback is the honest answer and it is unchanged: the node has
 // landed, its report is told, and news with nowhere to go belongs in front of
@@ -54,19 +70,14 @@ package session
 
 import "strings"
 
-// lateFoldLead is the one sentence the fold writes of its own, and it says the
-// only thing the report cannot say for itself: this arrived after the work above
-// it was over. The words are the ones a person already reads about pieces —
-// nothing here is the machinery's own vocabulary.
-const lateFoldLead = "A piece this task handed out came home after its own work was over:"
-
 // landingFold is the parent node as a reader of its own pieces' news, for the
 // window between its worker's last reading and its landing.
 //
 // IT IS A MAILBOX AND NOT A BRANCH IN THE DELIVERY, because "who reads this" is
 // one ordered question with one answer ([deliverTo]), and a road that asked it
 // twice — once through the seat, once through an `if` somewhere else — is two
-// policies free to disagree about the same piece.
+// policies free to disagree about the same piece. And it is a PURE mailbox: it
+// takes the message as the sender wrote it and says nothing of its own.
 type landingFold struct {
 	at   conversationID
 	node *TaskNode
@@ -74,26 +85,32 @@ type landingFold struct {
 
 func (f landingFold) address() conversationID { return f.at }
 
-// accept folds the piece's news into the parent's report, or refuses.
+// accept folds the message into the parent's report, or refuses.
 //
 // THE REFUSAL IS THE SAME FACT THE SEAT REFUSES ON, read from the node's side:
 // a settled parent has landed and said everything it is going to say. Nobody is
 // woken, and there is no queue — the report IS the delivery — so the receipt
-// carries no reader and [Agent.postTaskMessage] makes the mark itself.
+// carries no reader and [Agent.postTaskMessage] makes the mark and settles the
+// delivery itself.
 func (f landingFold) accept(message delivery) deliveryReceipt {
-	if !f.node.foldLatePart(message.note.text()) {
+	if !f.node.foldLatePart(message.recorded()) {
 		return deliveryReceipt{to: f.at, state: deliveryNobody}
 	}
 	return deliveryReceipt{to: f.at, state: deliveryAccepted}
 }
 
-// foldLatePart takes one piece's news into this node's report and answers
-// whether it was taken.
+// foldLatePart takes one message into this node's report and answers whether it
+// was taken.
 //
 // THE LOCK IS THE JOIN POINT. The landing writes its own account under the same
-// hold ([TaskNode.finish]), so a piece arriving beside a landing is either in
-// the report the landing composes or is refused because the node has settled —
-// never appended to a string nobody will read again.
+// hold ([TaskNode.landLocked]), so a message arriving beside a landing is either
+// in the report the landing composes or is refused because the node has settled
+// — never appended to a string nobody will read again.
+//
+// AND THE CHECKPOINT IS WRITTEN BEFORE THIS ANSWERS, outside the lock, exactly
+// as a landing writes it ([TaskNode.finish]). It is the recipient's record the
+// sender's acknowledgement rests on: the sender settles only after an accepted
+// receipt, and by then the report that holds its message is on disk.
 func (n *TaskNode) foldLatePart(news string) bool {
 	news = strings.TrimSpace(news)
 	if n == nil || n.graph == nil || news == "" {
@@ -104,45 +121,48 @@ func (n *TaskNode) foldLatePart(news string) bool {
 		n.graph.mu.Unlock()
 		return false
 	}
-	// A NODE RESTORED FROM A CHECKPOINT HAS ITS REPORT AND NOT THE HALVES IT WAS
-	// MADE OF: the record keeps what a person reads (task_store.go) and nothing
-	// else, which is right — the halves are this file's bookkeeping and not a
-	// fact about the work. Adopting what is there as the landing's own half is
-	// what makes a fold after a restart an addition rather than a replacement.
-	if n.landed == "" {
-		n.landed = n.report
-	}
 	n.late = append(n.late, news)
 	n.composeReportLocked()
 	n.graph.mu.Unlock()
-	// AND THE DISK IS TOLD, outside the lock, exactly as a landing tells it
-	// ([TaskNode.finish]): a piece folded into a report nobody wrote down is a
-	// piece lost to the next life of the session.
 	n.graph.checkpoint()
 	return true
 }
 
-// composeReportLocked is THE ONE PLACE a node's report is put together out of
-// its two halves: what its landing wrote, and every piece that came home after
-// its worker stopped reading. Both writers call it under the graph's lock, so
-// the field always holds the whole of what this node has to say and neither half
-// can overwrite the other.
-//
-// A NODE THAT NEVER RAN A WORKER HAS NEITHER HALF. The two roads that write a
-// report for one — a task stopped while it was still queued, and one blocked by
-// its dependency (both in [TaskGraph.admit]'s neighbourhood) — set the field
-// directly, and they are honest: a node that was never started handed nothing
-// out, so there is no piece of it to come home late.
-func (n *TaskNode) composeReportLocked() {
-	n.report = withReport(n.landed, n.lateBlockLocked())
+// landLocked is how every road writes the node's OWN account of itself — a
+// landing ([TaskNode.finish]), a node stopped while it was still queued, a node
+// its dependency blocked — and it is the reason the report has one author. The
+// caller holds the graph's lock.
+func (n *TaskNode) landLocked(report string) {
+	n.landed = strings.TrimSpace(report)
+	n.composeReportLocked()
 }
 
-// lateBlockLocked is every folded piece under the one sentence that says what
-// they are. Nothing folded draws nothing at all — the emptiness law, applied to
-// a report.
-func (n *TaskNode) lateBlockLocked() string {
+// composeReportLocked is THE ONE PLACE a node's report is put together out of
+// its two halves: what its landing wrote, and every message that came home after
+// its worker stopped reading. Both writers call it under the graph's lock, so
+// the field always holds the whole of what this node has to say and neither
+// half can overwrite the other.
+func (n *TaskNode) composeReportLocked() {
+	n.report = withReport(n.landed, strings.Join(n.late, "\n\n"))
+}
+
+// foldedLandedLocked is the landing's own half AS THE RECORD KEEPS IT, which is
+// only when there is a folded half beside it. Everywhere else the report is the
+// landing's account entire, so writing it twice would be the same words stored
+// under two names for nothing ([taskRecord.Landed]).
+func (n *TaskNode) foldedLandedLocked() string {
 	if len(n.late) == 0 {
 		return ""
 	}
-	return withReport(lateFoldLead, strings.Join(n.late, "\n\n"))
+	return n.landed
+}
+
+// landedHalf is the landing's own account read back off a record: the half the
+// record kept beside a folded one, or the whole report when nothing was folded —
+// which is every record written before this field existed.
+func (r taskRecord) landedHalf() string {
+	if len(r.Late) == 0 {
+		return r.Report
+	}
+	return r.Landed
 }

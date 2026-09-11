@@ -278,6 +278,16 @@ type taskRecord struct {
 
 	State  TaskState `json:"state"`
 	Report string    `json:"report,omitempty"`
+	// Late is every message about this node's own pieces that came home after
+	// its worker had stopped reading, folded into Report above
+	// (task_latefold.go), and Landed is the landing's own account beside them.
+	// Landed is written only when Late is not empty: everywhere else Report IS
+	// the landing's account, and a second copy of it would be the same words
+	// under two names ([taskRecord.landedHalf]). They are here because a person
+	// reads them, and because a restored node that composed its report from
+	// anything but these halves would add a second fold on top of the first.
+	Late   []string `json:"late,omitempty"`
+	Landed string   `json:"landed,omitempty"`
 	// Ending is why a failed node stopped where it did (task_contract.go's
 	// [TaskEnding]), and absent on every node that finished and on every
 	// checkpoint written before the field existed — which a surface draws as it
@@ -1075,6 +1085,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Depth:          n.depth,
 		State:          n.state,
 		Report:         n.report,
+		Late:           append([]string(nil), n.late...),
+		Landed:         n.foldedLandedLocked(),
 		Ending:         n.endingLocked(),
 		Claim:          n.claim,
 		Result:         resultRecordOf(n.produced),
@@ -1776,6 +1788,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		FamilyWas:      record.FamilyWas,
 		state:          record.State,
 		report:         record.Report,
+		landed:         record.landedHalf(),
+		late:           append([]string(nil), record.Late...),
 		ending:         record.Ending,
 		kind:           record.Kind,
 		claim:          record.Claim,

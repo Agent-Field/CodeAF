@@ -1023,12 +1023,13 @@ where the branch went:
 report.** A task that hands pieces out is held open while they run and reads each one's
 result as it lands. That reading ends when the last piece it was waiting for is in — and the
 task itself is not over then: its check, its repair round and its landing are still ahead,
-which on a checked task is minutes. A piece landing in that window is added to the task's
-report, under the line *A piece this task handed out came home after its own work was over:*,
-so it reaches you inside that task's landing rather than as a separate answer about work you
-never asked for directly. The check does not see it: the checker is given the work's own
-account of itself, written before that piece came home, and it is not asked a second time.
-Only a piece that lands after its task has already landed is announced on its own.
+which on a checked task is minutes. A piece landing in that window is added to the end of the
+task's report as the piece's own landing line — `task 9 done: <title> · transcript …` — its
+report, and what it changed, so it reaches you inside that task's landing rather than as a
+separate answer about work you never asked for directly. A restart does not tell it a second
+time. The check does not see it: the checker is given the work's own account of itself,
+written before that piece came home, and it is not asked a second time. Only a piece that
+lands after its task has already landed is announced on its own.
 
 The task's own tool rows never enter the chat. They go to its journal and its room only.
 
