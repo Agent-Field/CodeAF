@@ -327,9 +327,9 @@ type standArguments struct {
 		// empty are two different answers: omitted, a file the person named
 		// is asked about ([standingNamedReport]); empty, it is only read.
 		Report     *string `json:"report"`
-		Acceptance   string `json:"acceptance"`
-		Model        string `json:"model"`
-		MaxSteps     int    `json:"max_steps"`
+		Acceptance string  `json:"acceptance"`
+		Model      string  `json:"model"`
+		MaxSteps   int     `json:"max_steps"`
 		// Retired holds the one old spelling of instructions, read ONLY so a
 		// call that still sends it is refused by name rather than having its
 		// work silently dropped (see [standingRetiredBrief]).
