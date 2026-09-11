@@ -120,3 +120,33 @@ GROUP BY c.id,c.name,c.seq ORDER BY MIN(g.depth),c.seq`, ref.Kind, ref.ID, ref.S
 	}
 	return result, rows.Err()
 }
+
+// Placed lists what is placed directly in a collection — the work its rules
+// reach without passing through another folder — in key order. It reads the
+// placements key's own prefix, so it costs what it returns.
+func (s *Store) Placed(ctx context.Context, collectionID string) ([]Ref, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM collections WHERE id=?)", collectionID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrNotFound
+	}
+	rows, err := s.db.QueryContext(ctx, placedQuery, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]Ref, 0)
+	for rows.Next() {
+		var ref Ref
+		if err := rows.Scan(&ref.Kind, &ref.ID, &ref.SessionID); err != nil {
+			return nil, err
+		}
+		result = append(result, ref)
+	}
+	return result, rows.Err()
+}
+
+// placedQuery is [Store.Placed]'s one read, named so its plan can be pinned.
+const placedQuery = "SELECT kind,ref_id,session_id FROM placements WHERE collection_id=? ORDER BY kind,ref_id,session_id"

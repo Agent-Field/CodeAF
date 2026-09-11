@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -317,19 +318,26 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found = sighting{state: stateReady, line: "it was the time you asked for"}
 
 	case WhenFile:
-		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob)
+		previous := item.Fingerprint
+		last, _ := t.Store.reading(item.ID, previous)
+		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last)
 		if err != nil {
 			return sighting{}, err
 		}
-		previous := item.Fingerprint
 		first := previous == ""
 		changed := !first && digest != previous
+		if changed && last != nil && len(changesBetween(last, files)) == 0 {
+			// A NEW DIGEST OVER THE SAME FILES IS A NEW WAY OF READING THEM. A
+			// reading kept before contents were hashed digests times where this
+			// one digests contents; nothing on disk changed, so nothing runs.
+			changed = false
+		}
 		item.Fingerprint = digest
 		since := previous
 		if item.Does.Kind == ActionTask {
 			since = t.Store.unreportedSince(item.ID, previous)
 		}
-		t.Store.keepReading(item.ID, digest, files, previous, since)
+		t.Store.keepReading(item.ID, digest, files, !maps.Equal(last, files), previous, since)
 		switch {
 		case first:
 			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
@@ -572,7 +580,8 @@ func (t *Ticker) admit(before, item Item, now time.Time, found sighting, key, ru
 		PreviousRun: before.LastRun, PreviousFired: before.LastFired,
 		Admitted: now, PID: os.Getpid(),
 		Attempt: attempts + 1, Supersedes: supersedes,
-		Phase: PhaseAdmitted,
+		Phase:     PhaseAdmitted,
+		PerRunUSD: item.Rails.PerRunUSD,
 	}
 	switch item.When.Kind {
 	case WhenEvery:
@@ -718,18 +727,18 @@ func expiryOf(item Item) (time.Time, bool) {
 	return deadline, true
 }
 
-// fingerprint is a WhenFile's reading of the world: the names, sizes and
-// modification times of everything the glob matches, hashed. The listing beside
-// it is what the firing is told, since a hash is evidence of nothing to a model
-// or to a person.
-func fingerprint(workspace, glob string) (string, string, map[string]fileEntry, error) {
-	pattern := glob
-	if !filepath.IsAbs(pattern) {
-		pattern = filepath.Join(workspace, pattern)
-	}
-	matches, err := filepath.Glob(pattern)
+// fingerprint is a WhenFile's reading of the world: every path the pattern
+// reaches ([watched]) with its size, modification time and — where it can be
+// compared — the hash of its contents ([contentHash]), digested. last is the
+// previous reading, whose hashes are carried for every file whose size and
+// time have not moved. The digest names contents where a file has a hash and
+// times where it has none, so a file touched without being changed leaves it
+// the same. The listing beside it is what the firing is told, since a hash is
+// evidence of nothing to a model or to a person.
+func fingerprint(workspace, glob string, last map[string]fileEntry) (string, string, map[string]fileEntry, error) {
+	matches, err := watched(workspace, glob)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		return "", "", nil, err
 	}
 	sort.Strings(matches)
 	digest := sha256.New()
@@ -746,8 +755,14 @@ func fingerprint(workspace, glob string) (string, string, map[string]fileEntry, 
 		if relative, err := filepath.Rel(workspace, match); err == nil {
 			name = relative
 		}
-		fmt.Fprintf(digest, "%s|%d|%d\n", name, info.Size(), info.ModTime().UnixNano())
-		files[name] = fileEntry{Size: info.Size(), MTime: info.ModTime().UnixNano()}
+		entry := fileEntry{Size: info.Size(), MTime: info.ModTime().UnixNano()}
+		entry.Hash = contentHash(match, info, last[name])
+		if entry.Hash != "" {
+			fmt.Fprintf(digest, "%s|%d|%s\n", name, entry.Size, entry.Hash)
+		} else {
+			fmt.Fprintf(digest, "%s|%d|%d\n", name, entry.Size, entry.MTime)
+		}
+		files[name] = entry
 		if listing.Len() < ProbeClip {
 			fmt.Fprintf(listing, "%s  %d bytes  %s\n", name, info.Size(), info.ModTime().Format(time.RFC3339))
 		}

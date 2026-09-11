@@ -36,6 +36,9 @@ func (s *Store) Create(item Item) (Item, error) {
 	if err := item.Validate(); err != nil {
 		return Item{}, err
 	}
+	if err := item.CheckWatch(); err != nil {
+		return Item{}, err
+	}
 	now := s.now()
 	if strings.TrimSpace(item.ID) == "" {
 		item.ID = newID()

@@ -2,6 +2,7 @@ package approval
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -20,17 +21,47 @@ import (
 // same line the allow-pattern law refuses to vouch for, and this floor uses
 // that reading.
 func ReadOnly(tool string, args json.RawMessage) bool {
-	tool = strings.TrimSpace(tool)
-	switch tool {
-	case "read", "ls", "grep", "find":
-		return true
-	case "tasks":
-		return readOnlyTasks(args)
-	case ToolBash:
+	look := readOnlyCalls[strings.TrimSpace(tool)]
+	return look != nil && look(args)
+}
+
+// readOnlyCalls is every tool some of whose calls can change nothing, with the
+// reading that tells one of those calls from the rest. It is the ONE table of
+// looks: [ReadOnly] asks it of a call, and [Policy.Grants] asks whether a tool
+// is in it at all.
+//
+// THE FOLDER VERBS ARE LOOKS TOO. `collections` list/show/find/governing and
+// `shared_context` list/read/history read the organization store and change
+// nothing, and they are how work is meant to learn which folders and which
+// shared context apply to it. Left out of this table they asked in a
+// conversation and were refused in an unattended run — which sent the run of
+// 2026-09-10 (validator S25a) reading aforge's own state files with `read`
+// instead, the one road that skips the applicability law.
+var readOnlyCalls = map[string]func(json.RawMessage) bool{
+	"read": alwaysReads, "ls": alwaysReads, "grep": alwaysReads, "find": alwaysReads,
+	"tasks":          readOnlyTasks,
+	"collections":    readOnlyAction("list", "show", "find", "governing"),
+	"shared_context": readOnlyAction("list", "read", "history"),
+	ToolBash: func(args json.RawMessage) bool {
 		command, ok := bashCommand(args)
 		return ok && readOnlyBash(command)
-	default:
-		return false
+	},
+}
+
+func alwaysReads(json.RawMessage) bool { return true }
+
+// readOnlyAction is a look for a tool whose verb is its `action` argument: the
+// named actions read, and every other action — or one that cannot be read — is
+// a question, for [readOnlyTasks]'s reason.
+func readOnlyAction(actions ...string) func(json.RawMessage) bool {
+	return func(args json.RawMessage) bool {
+		var fields struct {
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(args, &fields); err != nil {
+			return false
+		}
+		return slices.Contains(actions, strings.TrimSpace(fields.Action))
 	}
 }
 

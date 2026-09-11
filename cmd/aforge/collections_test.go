@@ -72,17 +72,15 @@ func TestCollectionsCommandOrganizesExistingRecordsWithoutMovingWork(t *testing.
 	collectionCommand(t, db, "add", marketing.ID, "task", "1", "--session", "other-chat")
 	collectionCommand(t, db, "rename", product.ID, "Engineering")
 	collectionCommand(t, db, "remove", marketing.ID, "task", "1", "--session", place.ID())
-	var parents []workspace.Collection
-	if err := json.Unmarshal([]byte(collectionCommand(t, db, "find", "conversation", place.ID())), &parents); err != nil {
+	var found recordFolders
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "find", "conversation", place.ID())), &found); err != nil {
 		t.Fatal(err)
 	}
+	parents := found.References
 	if len(parents) != 2 || parents[0].ID != product.ID || parents[0].Name != "Engineering" {
 		t.Fatalf("parents %+v", parents)
 	}
-	var members []workspace.Ref
-	if err := json.Unmarshal([]byte(collectionCommand(t, db, "show", marketing.ID)), &members); err != nil {
-		t.Fatal(err)
-	}
+	members := collectionShown(t, db, marketing.ID).References
 	if len(members) != 3 || members[2].SessionID != "other-chat" {
 		t.Fatalf("task owners %+v", members)
 	}
@@ -138,7 +136,7 @@ func TestCollectionsDefaultStorageIsIndependentOfMemory(t *testing.T) {
 	if err := runCollectionsTo([]string{"show", c.ID, "--json"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.String() != "[]\n" {
+	if out.String() != `{"references":[],"placed":[]}`+"\n" {
 		t.Fatal(out.String())
 	}
 }
@@ -212,11 +210,7 @@ func TestCollectionsRefuseUnknownCollectionsAndRepeatHarmlessly(t *testing.T) {
 	}
 	collectionCommand(t, db, "add", real.ID, "conversation", "chat-a")
 	collectionCommand(t, db, "add", real.ID, "conversation", "chat-a")
-	var members []workspace.Ref
-	if err := json.Unmarshal([]byte(collectionCommand(t, db, "show", real.ID)), &members); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.ConversationKind, ID: "chat-a"}}) {
+	if members := collectionShown(t, db, real.ID).References; !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.ConversationKind, ID: "chat-a"}}) {
 		t.Fatalf("repeat added %+v", members)
 	}
 }
@@ -238,8 +232,9 @@ func TestCollectionsColdReadsAndMissingEditsDoNotInitializeStorage(t *testing.T)
 			db := filepath.Join(root, "collections.db")
 			var out bytes.Buffer
 			err := runCollectionsTo(append(args, "--json", "--db", db), &out)
-			if args[0] == "list" || args[0] == "find" {
-				if err != nil || out.String() != "[]\n" {
+			empty := map[string]string{"list": "[]\n", "find": `{"references":[],"placed":[]}` + "\n"}
+			if want, read := empty[args[0]]; read {
+				if err != nil || out.String() != want {
 					t.Fatalf("read %q: %v", out.String(), err)
 				}
 			} else if !errors.Is(err, workspace.ErrNotFound) {
@@ -260,11 +255,45 @@ func TestCollectionsNestedMembershipRoundTrip(t *testing.T) {
 	if err := runCollectionsTo([]string{"add", b.ID, "collection", a.ID, "--db", db}, &out); !errors.Is(err, workspace.ErrCycle) {
 		t.Fatal(err)
 	}
-	var members []workspace.Ref
-	if err := json.Unmarshal([]byte(collectionCommand(t, db, "show", a.ID)), &members); err != nil {
+	if members := collectionShown(t, db, a.ID).References; !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.CollectionKind, ID: b.ID}}) {
+		t.Fatal(members)
+	}
+}
+
+// collectionShown is `collections show --json`.
+func collectionShown(t *testing.T, db, id string) folderContents {
+	t.Helper()
+	var shown folderContents
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "show", id)), &shown); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.CollectionKind, ID: b.ID}}) {
-		t.Fatal(members)
+	return shown
+}
+
+// WORK PLACED IN A FOLDER IS SEEN FROM THE FOLDER (validator S27b). Placed in
+// Alpha and referenced in Beta, it appears under Alpha as placed and under
+// Beta as a reference, and find names both — each under its own label, since
+// only the placement gives a folder's rules any reach.
+func TestPlacedWorkIsShownInItsFolderUnderItsOwnLabel(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	alpha, beta := collectionCreate(t, db, "Alpha"), collectionCreate(t, db, "Beta")
+	top := collectionCreate(t, db, "Company")
+	collectionCommand(t, db, "place", alpha.ID, "standing", "f15796736d0826e5")
+	collectionCommand(t, db, "add", beta.ID, "standing", "f15796736d0826e5")
+	collectionCommand(t, db, "place", top.ID, "collection", alpha.ID)
+
+	if got, want := collectionPlain(t, db, "show", alpha.ID), "This collection has no references yet.\nPlaced here, so this folder's rules reach it:\nstanding  f15796736d0826e5\n"; got != want {
+		t.Fatalf("show Alpha:\n%s\nwant:\n%s", got, want)
+	}
+	if got, want := collectionPlain(t, db, "show", beta.ID), "standing  f15796736d0826e5\n"; got != want {
+		t.Fatalf("show Beta:\n%s", got)
+	}
+	want := beta.ID + "  Beta\nPlaced in, so these folders' rules reach it:\n" + alpha.ID + "  Alpha (placed directly)\n" + top.ID + "  Company (placed 1 folder(s) below)\n"
+	if got := collectionPlain(t, db, "find", "standing", "f15796736d0826e5"); got != want {
+		t.Fatalf("find:\n%s\nwant:\n%s", got, want)
+	}
+	shown := collectionShown(t, db, alpha.ID)
+	if len(shown.References) != 0 || !reflect.DeepEqual(shown.Placed, []workspace.Ref{{Kind: workspace.StandingKind, ID: "f15796736d0826e5"}}) {
+		t.Fatalf("show --json %+v", shown)
 	}
 }

@@ -32,6 +32,15 @@ invalidates:
   - "Standing run folders were numbered from the highest folder on disk plus one and read newest-first by string order, so a reaped newest run's number was reissued and past run 9999 recovery read the wrong records. Numbers now come from a recorded per-item counter (`last-run`), new folders are six digits, and runs are ordered by number; older four-digit folders read unchanged."
   - "A session's and a project's inbox, and a session's answers file, were deleted the moment they were read, and a staged `*.draining` file left by a crash was never read again. Inbox notes now carry an id and are removed only once the conversation's journal records the fold; answers are removed after they are applied; staged files are re-read at the next open."
   - "A torn last line in a conversation's journal swallowed the next line written after it, and the journal was synced only on close. A torn tail is now moved to `transcript.jsonl.torn` on open, and the journal is synced at each turn's end and before a delivery settles. Standing documents, receipts and the run counter are written with a file and folder sync."
+  - "An unattended standing run carried every tool and was refused the ones the approval rules did not allow, and any such refusal (`refused in a task: default — nobody to ask`) turned a finished report into a question no door answers. A run that fires with nobody watching now carries only the tools the rules grant without asking — no `write`, `edit` or `bash` under the default rules — and its prompt says so; a call to an absent tool answers `Unknown tool`."
+  - "An unattended standing run's `read`, `ls`, `grep`, `find`, `read_document` and `view_image` reached the whole machine, including aforge's own home and other conversations' transcripts. They now reach only the item's workspace (symlinks resolved), refusing anything else with `… is outside this work's project (…)` while the run goes on."
+  - "The read-only `collections` (list, show, find, governing) and `shared_context` (list, read, history) actions asked for approval and were refused in a task. They are now looks, allowed without asking wherever reads are."
+  - "The rules check asked only whether a report broke a rule, so an omitted obligation had nothing to quote and was recorded `kept`. It now answers each rule by kind — an obligation is kept only with a quote showing it, a prohibition broken only with a quote — or `not-checkable`; `ruleCheck.verdicts` records each by rule id (`obligation`/`prohibition`, `kept`/`broken`/`not-checkable`), `ruleCheck.verdict` sums them, and `standing show` prints one line per rule. Older records stay valid."
+  - "A standing run was told the conditions over its place but not which folders its work was placed in, and re-judged from a rule's wording whether it applied. The run is now told its placements, and each rule reaching it through a folder is marked with that folder."
+  - "A standing run that spent past its per-run limit recorded only its cost. `occurrence.json` now keeps the limit (`perRunUsd`) and `standing show` says by how much the run went over it."
+  - "`**` in a file watch behaved as `*`, so nested edits never woke it. A whole `**` segment now reaches every folder below, and a watch reaching more than 10000 files and folders is refused at setup and edit."
+  - "A file touched or rewritten with identical contents woke a paid run. When a file's size or time moves its contents are hashed and compared with the last reading (files up to 4 MiB); the same contents are not a change. Readings kept before hashes existed are read quietly."
+  - "`aforge collections show --json` printed an array of references and `find --json` an array of collections. Both now print `{\"references\": [...], \"placed\": [...]}`, and the text output lists work placed in a folder (show) and the folders whose rules reach a record (find) under their own labels."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -139,6 +148,12 @@ against the last receipt, so a person's edit is never written over. The same rou
 applied the scale audit's consume-after-commit law to the inbox and answers drains,
 repaired a journal's torn tail on open, and numbered run folders from a recorded
 counter.
+The fourth wave closes the live validation's failures (S02, S09c, S11, S12b, S17b,
+S25a, S27b): the belt of an unattended run is what its rules grant, its reads are
+confined to its project, the rules check answers per rule and names its placements,
+a watch reads nested folders within a declared limit and ignores identical rewrites,
+and a folder shows the work placed in it. `docs/design/workspace-foundation/grooming/BUILD-WAVE-04.md`
+has each change with its regression, the old-logic proof and the live tables.
 `make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No
