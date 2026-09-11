@@ -154,6 +154,12 @@ var lawRegistry = []lawUnit{
 	// ── the working laws that other tests pin by substring, registered here so
 	// that a second copy of one is caught at the same moment as a first edit.
 	{id: "batch.one-breath", class: lawCore, key: "ASK FOR EVERYTHING YOU NEED IN ONE BREATH"},
+	// THE GOAL OF HANDING WORK OUT, which is the page's picture paragraph
+	// (beltfacts.go's [handoffFacts]) and nowhere else: that is the one text
+	// every agent that can fan out reads, the conversation included. It was
+	// first written onto the fan-out page, which only a task node reads, so the
+	// agent whose fan-out is uncapped never saw it.
+	{id: "handoff.wall-time-goal", class: lawCore, key: "THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB"},
 	{id: "verify.depth-of-checking", class: lawCore, key: "DEPTH OF CHECKING FOLLOWS THE SIZE OF WHAT YOUR ANSWER CHANGES"},
 	{id: "handoff.asked-again", class: lawCore, key: "THE QUESTION IS ASKED AGAIN WHILE YOU WORK"},
 	{id: "handoff.dowry", class: lawCore, key: "The brief is the dowry"},
@@ -226,6 +232,21 @@ func TestEveryLawIsStatedOnceAndInItsOwnPlace(t *testing.T) {
 	}
 
 	places := []lawPlace{{name: "prompts/system.md (the widest page)", text: widestPage()}}
+	// AND THE PAGES ONLY A TASK NODE IS HANDED. A node's page is the widest page
+	// with these laid under it (prompt.go's [renderSystemAt]), so a law restated
+	// on one of them is said twice to every worker that reads it — and a law
+	// moved onto one of them is a law the conversation no longer hears. Neither
+	// shows up in the conversation's own page, which is why they are searched
+	// here by name.
+	for _, page := range []lawPlace{
+		{name: "prompts/worker.md", text: workerPrompt},
+		{name: "prompts/revise.md", text: revisePrompt},
+		{name: "prompts/fanout.md", text: fanoutPrompt},
+		{name: "prompts/divide.md", text: dividePrompt},
+		{name: "prompts/quick.md", text: quickPrompt},
+	} {
+		places = append(places, page)
+	}
 	carried := make(map[string]bool, len(definitions))
 	for _, definition := range definitions {
 		encoded, err := json.Marshal(definition)

@@ -1088,7 +1088,7 @@ Both tools are absent inside a running task, along with `watch`. A task node
 works in a copy of its own with nobody watching it, and a permanent change to your
 machine that no transcript ever showed you is the one thing this pair must not be
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
-pieces of its own work out, two levels deep at most, and `tasks` shows it those
+pieces of its own work out, tasks nesting 3 deep at most, and `tasks` shows it those
 pieces and nothing else.
 
 ## Why did it say "loaded" before making a picture — load_capability, and the tools it does not carry
