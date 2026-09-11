@@ -487,8 +487,17 @@ func TestASteerFallsThroughWhenTheTurnIsInterrupted(t *testing.T) {
 	turn := mustSubmit(t, agent, "start the long thing")
 	held.wait(t)
 	steered := mustSteer(t, agent, "actually stop at the parser")
-	close(held.release)
+	// THE STOP IS ORDERED BEFORE THE STEP IS LET GO OF, and the two lines were
+	// the other way round until 2026-09-11. The steer has already cut the
+	// GENERATION, so releasing first left the step returning [errSteerCut] at
+	// once and the loop racing [Agent.Interrupt] to its own boundary: whichever
+	// won decided whether this steer was consumed or fell through, and the test
+	// asserted one of them. Measured on a clean `dev` at 400 runs, it lost that
+	// race about one time in a hundred. Interrupting while the step is still
+	// held makes the turn context dead BEFORE there is a boundary to reach, which
+	// is the situation this test is about.
 	agent.Interrupt()
+	close(held.release)
 
 	collect(t, turn)
 	fromSteer := collect(t, steered)
