@@ -122,13 +122,27 @@ const (
 	CallEndCancelled CallEnd = "cancelled"
 )
 
-// callProgressBeat is the fastest this seam will speak, and it is a statement
-// about the READER rather than about the stream. A fast lane delivers sixty
-// deltas a second; no surface in this build redraws faster than ten times a
-// second, so nine of every ten reports would be a function call, a struct copy
-// and a redraw nobody ever sees. The moments that are NEWS — the first token,
-// the phase turning over, the ending — are exempt, because each of them happens
-// once and is the whole reason anybody attached a watcher.
+// callProgressBeat is the fastest this seam will speak, and IT IS NOT A NUMBER
+// THIS FILE CHOSE. It is the rule this build already states, one layer up, in
+// the same words: internal/session's `formingInterval` (toolhint.go) holds a
+// forming tool call to ten reports a second because "ten frames a second is
+// already faster than a person reads a growing byte count, and the two things
+// that are NOT time-based bypass it entirely, because those are the moments the
+// row actually changes what it says".
+//
+// The quantity both approximate is the same one, and it is a fact about the
+// READER rather than about the stream: a count climbing faster than a surface
+// paints is drawn identically whether it was reported once or sixty times, so
+// every report past the paint is a struct copy and a redraw nobody sees. The
+// moments that are NEWS — the first token, the phase turning over, the machine
+// naming itself, the ending — are exempt for the same reason they are there:
+// each happens once, and each changes what the row says.
+//
+// SO THE NUMBER BELONGS DOWN HERE AND THE COPY UP THERE IS THE ONE TO DELETE.
+// This package is beneath internal/session, so the throttle a forming call
+// applies to its own fragments can read this; the reverse cannot. That fold is
+// a one-line change in a file this wave does not own, and it is written down in
+// the lane report rather than reached for here.
 const callProgressBeat = 100 * time.Millisecond
 
 // CallWatcher receives one call's progress synchronously and in order. It is a
@@ -166,6 +180,22 @@ func callProgressFrom(ctx context.Context) CallWatcher {
 	return watcher
 }
 
+// endingWords is the log's own closing vocabulary (calllog.go) read into this
+// seam's, and it is a TABLE rather than a chain of cases because that is what it
+// is: four words the log already spells, each with one answer to "what does a
+// surface do about this". A reader adding a fifth closing word adds a row here
+// and nothing else.
+//
+// A hop and an abandonment are both CUT because they are the same thing to
+// draw: this request is over and its answer is not coming, while the question it
+// belonged to is still alive and will report again under a new [CallProgress.Started].
+var endingWords = map[string]CallEnd{
+	endedCancelled: CallEndCancelled,
+	endedDeadline:  CallEndCancelled,
+	endedHopped:    CallEndCut,
+	endedAbandoned: CallEndCut,
+}
+
 // callEndOf reads the ending off the row the model-call log is about to write,
 // because that row is where every path in this package has already said what
 // happened (calllog.go).
@@ -175,11 +205,8 @@ func callProgressFrom(ctx context.Context) CallWatcher {
 // canceled`, and only the closing word tells them apart — which is the whole
 // reason [calllog.Record.Ended] exists.
 func callEndOf(facts recordFacts) CallEnd {
-	switch facts.ended {
-	case endedCancelled, endedDeadline:
-		return CallEndCancelled
-	case endedHopped, endedAbandoned:
-		return CallEndCut
+	if end, closed := endingWords[facts.ended]; closed {
+		return end
 	}
 	if facts.err == nil {
 		return CallEndAnswered
