@@ -569,9 +569,9 @@ func (a *app) connectPanelKey(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// connectEntryKey drives the typed-answer box open over the list. enter connects, an
-// empty box is not an answer at all, and esc puts the person back on the row
-// they pressed it from — which is the difference between this box and the
+// connectEntryKey drives the answer open over the list. enter connects, an empty
+// typed box is not an answer at all, and esc puts the person back on the row
+// they pressed it from — which is the difference between this answer and the
 // offer's: nothing is waiting on it, so backing out of it declines nothing.
 func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 	p := &a.connPanel
@@ -581,7 +581,7 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		p.entry = nil
 
 	case "enter":
-		answer := strings.TrimSpace(entry.box.String())
+		answer := entry.value()
 		p.entry = nil
 		if answer == "" {
 			break
@@ -596,7 +596,42 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.beginConnect(entry.id, entry.name, answer)
 
+	case "up", "ctrl+p":
+		if entry.choosing() {
+			entry.walk(-1)
+			break
+		}
+		entry.typeInto(msg)
+
+	case "down", "ctrl+n":
+		if entry.choosing() {
+			entry.walk(1)
+			break
+		}
+		entry.typeInto(msg)
+
+	case "pgup":
+		if entry.choosing() {
+			entry.walk(-connectRowsMax)
+			break
+		}
+		entry.typeInto(msg)
+
+	case "pgdown":
+		if entry.choosing() {
+			entry.walk(connectRowsMax)
+			break
+		}
+		entry.typeInto(msg)
+
 	default:
+		if entry.choosing() {
+			// A CLOSED CHOICE HAS NOTHING TO TYPE INTO. A letter may move its
+			// cursor, and every other key is swallowed rather than reaching the
+			// editor that exists only for the next, open answer.
+			entry.jumpTo(msg)
+			break
+		}
 		entry.typeInto(msg)
 	}
 	a.touch()

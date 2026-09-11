@@ -1571,7 +1571,15 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// surface gives every box that has taken the keyboard.
 	if a.connPanel.open {
 		if entry := a.connPanel.entry; entry != nil {
-			return keyBoxLines(entry, a.pal, width, 0, rows)
+			lines, caretX, caretRow := keyBoxLines(entry, a.pal, width, 0, rows)
+			if caretRow < 0 {
+				// A CHOICE HAS NO BOX, so there is nowhere for the caret to live and
+				// it is hidden rather than parked on the first name — the same law
+				// home-at-rest and the job page follow (pages.go, view.go).
+				a.caret = false
+				return lines, 0, 0
+			}
+			return lines, caretX, caretRow
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")

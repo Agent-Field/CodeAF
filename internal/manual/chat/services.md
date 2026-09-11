@@ -16,12 +16,17 @@ service in that order; with only the default service, the picker remains ungroup
 
 ## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen or MiniMax directly
 
-Open `/connect`, choose the vendor in the `models` group, and enter the key. Z.ai asks
-for a region before its key and is the direct service for GLM; Moonshot asks for a
-region before its key and is the direct service for Kimi. MiniMax and Alibaba Qwen
-have their own rows. MiniMax, Ollama and **Something else** are single-door services.
-MiniMax makes no plan claim because its plan and metered traffic currently have no
-wire-level difference aforge can use to prove which balance answered.
+Open `/connect` and choose the vendor in the `models` group. DeepSeek and MiniMax open
+`your key` directly. Z.ai, Moonshot and Alibaba Qwen first open `your region` as a
+choice with `International` under the cursor and `China` below it; a region is never
+typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A letter jumps to a
+region whose name starts with it, enter takes the row under the cursor and opens
+`your key`, and esc returns to the service row with nothing saved. The same choice
+opens when reconnecting one of these services from its Providers row in `/settings`.
+Z.ai is the direct service for GLM and Moonshot is the direct service for Kimi.
+MiniMax, Ollama and **Something else** are single-door services. MiniMax makes no plan
+claim because its plan and metered traffic currently have no wire-level difference
+aforge can use to prove which balance answered.
 
 A service name cannot be confused with the author part of a model already on the default
 service. For example, `deepseek` collides, so aforge says
@@ -30,10 +35,14 @@ models then read `deepseek-direct/<model id>`.
 
 ## Connect a service — what is asked for, and what aforge checks before it saves anything
 
-Open `/connect` and choose a row in `models`. DeepSeek asks for a key. Z.ai and Moonshot
-ask for a region and then a key. Ollama asks for nothing. **Something else** asks for a
-base URL and a key. A key may also be the name of an environment variable, such as
-`$DEEPSEEK_API_KEY`.
+Open `/connect` and choose a row in `models`. DeepSeek asks for `your key`. Z.ai,
+Moonshot and Alibaba Qwen ask `your region` with one row per region: `International`
+is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
+`ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
+enter takes the row under the cursor and then opens `your key`; esc backs out with
+nothing saved. The region is a choice and cannot be typed. Ollama asks for nothing.
+**Something else** asks for `your base url` and then `your key`. A key may also be the
+name of an environment variable, such as `$DEEPSEEK_API_KEY`.
 
 A key with the wrong shape is stopped before any call:
 `that is not the shape of a deepseek key — they start with sk-`. A refusal carries the

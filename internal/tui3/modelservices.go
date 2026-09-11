@@ -223,7 +223,7 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	switch {
 	case len(source.Regions) > 0:
 		draft.step = modelConnectRegion
-		a.showModelEntry(newModelEntry(row.ID, source.Name, "region", regionAnswers(source), false), fromSheet)
+		a.showModelEntry(newModelChoiceEntry(row.ID, source.Name, "region", regionChoices(source)), fromSheet)
 		return nil
 	case source.ID == "custom":
 		draft.step = modelConnectAddress
@@ -242,12 +242,16 @@ func newModelEntry(id, name, blank string, answers []string, secret bool) *keyEn
 	return &keyEntry{id: id, name: strings.ToLower(name), blank: blank, answers: answers, secret: secret}
 }
 
-func regionAnswers(source modelsource.Source) []string {
-	answers := make([]string, 0, len(source.Regions))
+func newModelChoiceEntry(id, name, blank string, choices []entryChoice) *keyEntry {
+	return &keyEntry{id: id, name: strings.ToLower(name), blank: blank, choices: choices}
+}
+
+func regionChoices(source modelsource.Source) []entryChoice {
+	choices := make([]entryChoice, 0, len(source.Regions))
 	for _, region := range source.Regions {
-		answers = append(answers, region.Name)
+		choices = append(choices, entryChoice{ID: region.ID, Name: region.Name})
 	}
-	return answers
+	return choices
 }
 
 func (a *app) showModelEntry(entry *keyEntry, inSheet bool) {
@@ -283,19 +287,9 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 	}
 	switch draft.step {
 	case modelConnectRegion:
-		region := ""
-		for _, candidate := range draft.source.Regions {
-			if strings.EqualFold(answer, candidate.ID) || strings.EqualFold(answer, candidate.Name) {
-				region = candidate.ID
-				break
-			}
-		}
-		if region == "" {
-			a.modelServiceMessage("pick one of: " + strings.Join(regionAnswers(draft.source), ", "))
-			a.showModelEntry(entry, draft.sheet)
-			return nil
-		}
-		draft.row.Region = region
+		// The answer is picked from this source's own region list, so there is
+		// nothing left to validate or refuse here.
+		draft.row.Region = answer
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
