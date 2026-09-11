@@ -845,20 +845,16 @@ to version 2: instructions`, the card's lines, and `the next run uses it; a run 
 under way keeps what it started with`. The item's log keeps `revised in the chat to
 version 2: instructions — "<your words>"`, and your first sentence stays its name.
 
-What it will not do, each naming the road that does:
+**Moving work to another folder is an edit too.** "Move it to my Work folder instead of
+Personal" draws `changes · folder` and `folder · Personal, … → Work — …`; the yes
+places it in Work and takes it out of Personal (what `collections place` and `unplace`
+write) and answers `moved <id> to Work`.
 
-- `nothing to change: send only what is different`
-- `nothing was changed: it was changed elsewhere after the card was drawn — read it
-  again with op list and send the edit again` — a yes on a card someone else's edit
-  overtook.
-- `an edit does not move work — collections place and unplace do`, naming the folders
-  it is in now (`It is placed in Personal (…)`), since a move is both. How far a rule
-  reaches, and whether it is a rule, a line to say or work that runs, are kept: stop it
-  and propose the other.
-- A stopped order is set up afresh; there is no edit of it.
-
-There is no op called `change`: `no op called "change" — propose, list, edit, pause,
-resume or stop`.
+Refused: `nothing to change: send only what is different`; a yes on a card another edit
+overtook (`nothing was changed: it was changed elsewhere after the card was drawn`);
+a change of how far a rule reaches or of what kind of thing it is (stop it and propose
+the other); a stopped order (set it up afresh); and an op called `change` (`no op called
+"change" — propose, list, edit, pause, resume or stop`).
 
 ## A file already at the report path — the card says so, and the chat never writes it
 

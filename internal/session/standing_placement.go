@@ -176,12 +176,7 @@ func (a *Agent) standingPlacementFor(ctx context.Context, parsed standArguments,
 		if err != nil {
 			return standingPlacement{}, "folders could not be read: " + err.Error()
 		}
-		for _, folder := range folders {
-			if folder.ID == named {
-				return standingPlacement{folders: []workspace.Collection{folder}}, ""
-			}
-		}
-		return standingPlacement{}, "folder not found: " + named
+		return standingNamedFolder(folders, named)
 	}
 	source := a.organizationSource()
 	if source.Kind == "" {
@@ -205,6 +200,28 @@ func (a *Agent) standingPlacementFor(ctx context.Context, parsed standArguments,
 		return standingPlacement{}, standingPlacementLaw + " — this conversation is placed in " + place.names()
 	}
 	return place, ""
+}
+
+// standingNamedFolder is the folder a placement names: by id, else by the one
+// folder with that name — "move it to my Work folder" is sent as "Work" as
+// often as by the id collections find answers.
+func standingNamedFolder(folders []workspace.Collection, named string) (standingPlacement, string) {
+	var byName []workspace.Collection
+	for _, folder := range folders {
+		if folder.ID == named {
+			return standingPlacement{folders: []workspace.Collection{folder}}, ""
+		}
+		if strings.EqualFold(folder.Name, named) {
+			byName = append(byName, folder)
+		}
+	}
+	switch len(byName) {
+	case 0:
+		return standingPlacement{}, "folder not found: " + named
+	case 1:
+		return standingPlacement{folders: byName}, ""
+	}
+	return standingPlacement{}, "Invalid arguments: more than one folder is called " + strconv.Quote(named) + " — send placement as its id"
 }
 
 // standingPlacementLaw is the refusal of a placement nobody may write here, the
@@ -355,19 +372,34 @@ func (a *Agent) standingUnplace(ctx context.Context, id string, place standingPl
 	if len(place.folders) == 0 || a.config.Organization == nil {
 		return
 	}
+	_ = a.unplaceFromFolders(ctx, id, place)
+}
+
+// unplaceFromFolders takes work out of folders, the relation `collections
+// unplace` removes.
+func (a *Agent) unplaceFromFolders(ctx context.Context, id string, place standingPlacement) error {
+	if len(place.folders) == 0 {
+		return nil
+	}
 	store, err := a.config.Organization.open(false)
 	if err != nil {
-		return
+		return err
 	}
 	defer store.Close()
 	for _, folder := range place.ids() {
-		_ = store.RemovePlacement(ctx, folder, workspace.Ref{Kind: workspace.StandingKind, ID: id})
+		if err := store.RemovePlacement(ctx, folder, workspace.Ref{Kind: workspace.StandingKind, ID: id}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // placeInFolders is the governing placement itself, the relation
 // `aforge standing add --place` and `collections place` write.
 func (a *Agent) placeInFolders(ctx context.Context, id string, place standingPlacement) error {
+	if len(place.folders) == 0 {
+		return nil
+	}
 	store, err := a.config.Organization.open(false)
 	if err != nil {
 		return err
