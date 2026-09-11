@@ -244,14 +244,22 @@ func TestTheAnswersRowIsWhereTheBlockSaysItIsWithAReceiptAboveIt(t *testing.T) {
 	if len(rows) < 2 {
 		t.Fatalf("the block drew %d rows", len(rows))
 	}
+	// THE ANSWERS ARE FOUND BY THE WORD A PERSON PRESSES, not by the frame's
+	// chrome. An earlier draft looked for the later key in brackets, which tied
+	// this law to one spelling of the bottom edge and broke the day the edge was
+	// respelled; the option's own label is the thing the row exists to draw.
+	if len(second.Options) == 0 {
+		t.Fatal("the fixture raised a question with no answers to draw")
+	}
+	answer := plain(second.Options[0].Label)
 	drawn := -1
 	for at, row := range rows {
-		if strings.Contains(row, "["+questionLaterKey+"]") {
+		if strings.Contains(row, answer) {
 			drawn = at
 		}
 	}
 	if drawn < 0 {
-		t.Fatalf("no row of the block offers its keys:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("no row of the block draws %q:\n%s", answer, strings.Join(rows, "\n"))
 	}
 	if lab.a.questionSpanRow != drawn {
 		t.Fatalf("the block says its answers are on row %d and they are drawn on row %d — every receipt above them is an off-by-one on the pointer and the click",
