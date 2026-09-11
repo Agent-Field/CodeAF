@@ -41,7 +41,7 @@ func TestAPassCancelledBeforeTheFenceWasMadePublishesNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	runner := standingChildRunner(t, root, &scriptedCompleter{})
-	receipt, held, err := publishStandingReport(runner.fenceFor(ctx, item), workspace, item.Does.Report, "# Report\n- after the cancellation", "")
+	receipt, held, err := publishStandingReport(runner.fenceFor(ctx, item), workspace, item.Does.Report, "# Report\n- after the cancellation")
 	if _, statErr := os.Stat(filepath.Join(workspace, "reports", "r.md")); !os.IsNotExist(statErr) || receipt != nil {
 		t.Fatalf("a pass cancelled before its fence was made published (held %d, err %v)", held, err)
 	}
@@ -57,11 +57,12 @@ func TestAPassCancelledBeforeTheFenceWasMadePublishesNothing(t *testing.T) {
 // has cancelled the pass and then answers exactly what aforge last published.
 func TestACancellationWhileTheFileIsComparedHoldsTheRename(t *testing.T) {
 	root, workspace := t.TempDir(), t.TempDir()
-	_, item := storedReporting(t, root, workspace)
+	store, item := storedReporting(t, root, workspace)
 	if err := os.MkdirAll(filepath.Join(workspace, "reports"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(workspace, "reports", "r.md")
+	receiptAt(t, store, target, lastGoodReport)
 	if err := syscall.Mkfifo(target, 0o644); err != nil {
 		t.Skipf("no named pipes here: %v", err)
 	}
@@ -80,12 +81,23 @@ func TestACancellationWhileTheFileIsComparedHoldsTheRename(t *testing.T) {
 		_ = pipe.Close()
 	}()
 	runner := standingChildRunner(t, root, &scriptedCompleter{})
-	receipt, held, err := publishStandingReport(runner.fenceFor(ctx, item), workspace, item.Does.Report, "# Report\n- after the cancellation", sha256Hex(lastGoodReport))
+	receipt, held, err := publishStandingReport(runner.fenceFor(ctx, item), workspace, item.Does.Report, "# Report\n- after the cancellation")
 	if receipt != nil || held.code() != "cut-off" {
 		t.Fatalf("a pass cancelled during the comparison was renamed over the file: receipt %+v, held %q, err %v", receipt, held.code(), err)
 	}
 	if info, statErr := os.Lstat(target); statErr != nil || info.Mode()&os.ModeNamedPipe == 0 {
 		t.Fatalf("the file at the report path was replaced (%v)", statErr)
+	}
+}
+
+// receiptAt records, as the report path's own receipt, that aforge last put
+// body at target.
+func receiptAt(t *testing.T, store *standing.Store, target, body string) {
+	t.Helper()
+	if err := store.AtReport(target, "", "", func(*standing.Receipt) (*standing.Receipt, error) {
+		return &standing.Receipt{Class: standing.ReceiptPublished, SHA256: sha256Hex(body), Bytes: len(body)}, nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -102,7 +114,7 @@ func TestAnItemLockThatCannotBeTakenWithholdsThePublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := standingChildRunner(t, root, &scriptedCompleter{})
-	receipt, held, _ := publishStandingReport(runner.fenceFor(context.Background(), item), workspace, item.Does.Report, "# Report\n- unfenced", "")
+	receipt, held, _ := publishStandingReport(runner.fenceFor(context.Background(), item), workspace, item.Does.Report, "# Report\n- unfenced")
 	if _, err := os.Stat(filepath.Join(workspace, "reports", "r.md")); !os.IsNotExist(err) || receipt != nil {
 		t.Fatalf("a publication whose stop could not be read went ahead (held %q)", held.code())
 	}
@@ -121,7 +133,7 @@ func TestAStoreThatCannotBeOpenedWithholdsThePublication(t *testing.T) {
 	}
 	item := reporting(workspace)
 	runner := standingChildRunner(t, root, &scriptedCompleter{})
-	receipt, held, _ := publishStandingReport(runner.fenceFor(context.Background(), item), workspace, item.Does.Report, "# Report\n- unfenced", "")
+	receipt, held, _ := publishStandingReport(runner.fenceFor(context.Background(), item), workspace, item.Does.Report, "# Report\n- unfenced")
 	if _, err := os.Stat(filepath.Join(workspace, "reports", "r.md")); !os.IsNotExist(err) || receipt != nil {
 		t.Fatalf("a publication with no readable store went ahead (held %q)", held.code())
 	}
@@ -250,7 +262,7 @@ func TestAFileThatAppearsBeforeTheFirstPlacementIsNotWrittenOver(t *testing.T) {
 	runner := standingChildRunner(t, "", &scriptedCompleter{})
 	fence := runner.fenceFor(ctx, reporting(workspace))
 	armed = true
-	receipt, held, err := publishStandingReport(fence, workspace, "reports/r.md", "# Report\n- the first page", "")
+	receipt, held, err := publishStandingReport(fence, workspace, "reports/r.md", "# Report\n- the first page")
 	raw, _ := os.ReadFile(target)
 	if string(raw) != theirs || receipt != nil {
 		t.Fatalf("a file that appeared before the first placement was written over: %q (held %q, err %v)", raw, held.code(), err)
@@ -318,7 +330,7 @@ func TestAFirstPublicationAndARacingCreateNeverBothSucceed(t *testing.T) {
 				}
 			}
 		}()
-		receipt, _, err := publishStandingReport(runner.fenceFor(context.Background(), reporting(workspace)), workspace, "reports/r.md", "ours", "")
+		receipt, _, err := publishStandingReport(runner.fenceFor(context.Background(), reporting(workspace)), workspace, "reports/r.md", "ours")
 		close(done)
 		theirs := <-created
 		if theirs && receipt != nil {

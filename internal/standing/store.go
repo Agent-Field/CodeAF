@@ -536,7 +536,19 @@ func (s *Store) writeUnlocked(item Item) error {
 // a tick that are both about to finish in microseconds, and a refusal there
 // would lose an edit for no reason a person could understand.
 func (s *Store) underItemLock(id string, write func() error) error {
-	lock, err := os.OpenFile(s.itemLockPath(id), os.O_CREATE|os.O_RDWR, 0o600)
+	return underLock(s.itemLockPath(id), write)
+}
+
+// underLock holds the flock on the file at path, made if it is missing, for the
+// length of act, and blocks until it can. It is the one way this package takes
+// a lock on a record — an item's document or a report path's receipt.
+//
+// A PATH'S LOCK IS TAKEN BEFORE AN ITEM'S AND NEVER AFTER ONE. A publication
+// holds its report path's lock and asks the item's stop inside it
+// ([Store.AtReport], [Store.UnlessStopped]); nothing holding an item's lock
+// reaches for a path's, so the two orders can never meet.
+func underLock(path string, act func() error) error {
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
@@ -545,7 +557,7 @@ func (s *Store) underItemLock(id string, write func() error) error {
 		return err
 	}
 	defer func() { _ = filelock.Unlock(lock) }()
-	return write()
+	return act()
 }
 
 // itemLockPath deliberately does NOT end in .json, so List never meets it.
