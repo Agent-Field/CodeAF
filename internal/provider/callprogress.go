@@ -175,14 +175,15 @@ type callProgressKey struct{}
 // thinking, writing, and how it ended.
 //
 // WHAT REPORTS IS EVERY STREAMED CALL THAT RUNS UNDER A WAITING CONTROLLER, and
-// that is the honest bound rather than "every call". The watcher is picked up in
-// [withStreamWatch], which is reached from one site — hedge.go's startArm — under
-// [Client.raceFor]'s gate, so a build with no controller installed
-// (`internal/lane`'s seam, which a shipped binary always fills) hears nothing,
-// and so does anything that never reaches [Client.completeWithMessagesStreaming].
-// A watcher attached to a call that cannot report is silent rather than wrong;
-// if that ever becomes a real door rather than a test's empty state, the fix is
-// to give the bare stream loop a watch, not to feed this from somewhere else.
+// that is the honest bound rather than "every call". The report is opened at
+// [Client.completeWithMessagesStreaming], so anything that never reaches that
+// door says nothing; and what fills it comes through a [streamWatch], which is
+// installed from one site — hedge.go's startArm, under [Client.raceFor]'s gate —
+// so a build with no controller installed (`internal/lane`'s seam, which a
+// shipped binary always fills) reports nothing either. A watcher attached to a
+// call that cannot report is SILENT rather than wrong; if that empty state ever
+// becomes a real door rather than a test's, the fix is to give the bare stream
+// loop a watch, not to feed this from somewhere else.
 //
 // IT IS CALLED SYNCHRONOUSLY FROM THE READ LOOP AND MUST DO NO WORK. See the
 // type's own doc; the same law [WithPacingNotice] states in patience.go.
