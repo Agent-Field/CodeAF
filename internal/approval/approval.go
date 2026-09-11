@@ -219,6 +219,40 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	return p.checkBash(command, base)
 }
 
+// Grants answers whether this policy lets ANY call of a tool run with nobody
+// there to ask — the question a belt for unattended work is built from, since a
+// tool none of whose calls can run there is a tool that can only be refused.
+//
+// A TOOL IS GRANTED BY WHAT SOMEBODY WROTE, OR BY BEING A LOOK. Its own rule or
+// the blanket default saying allow grants it (the floor under a blanket allow
+// still stands: [ActsInThePersonsName] tools are not granted by the default).
+// For bash, an allow pattern the person wrote grants it too, for the commands
+// that pattern names. And under the shipped prompt default a tool whose calls
+// can be pure looks ([readOnlyCalls]) is granted for those looks.
+//
+// BASH'S OWN LOOK IS NOT A GRANT OF THE SHELL. The default lifts exactly one
+// command line off the question — `git status` — as a courtesy in a room
+// somebody is sitting in. A shell carried on the strength of that one line is a
+// shell every other command of which is refused, and in work nobody is
+// watching that refusal is a finished run turned into a question for nobody
+// (the live runs of 2026-09-10, run08 and validator S09c).
+func (p Policy) Grants(tool string) bool {
+	tool = strings.TrimSpace(tool)
+	if p.base(tool, nil).Action == ActionAllow {
+		return true
+	}
+	if tool == ToolBash {
+		for _, rule := range p.BashPatterns {
+			if rule.Action == ActionAllow {
+				return true
+			}
+		}
+		return false
+	}
+	_, looks := readOnlyCalls[tool]
+	return looks && p.liftsReadOnly(tool)
+}
+
 // CheckBash judges a command line directly, for callers that already have the
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.

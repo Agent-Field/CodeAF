@@ -1,0 +1,35 @@
+$ aforge standing add --hold --scope a3d8d19eea41e3579bd1c5b10e320128 --workspace /tmp/opus-w4/live/s11-O13-two-placements/project --words Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+set up 5dd76ee00ce3cee5: Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+a rule: applies in Travel (directly placed work only)
+$ aforge standing add --hold --scope 87db66f78b4c819e538c670552e45b17 --workspace /tmp/opus-w4/live/s11-O13-two-placements/project --words Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+set up d942e0f0b4fffb34: Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+a rule: applies in Launch (directly placed work only)
+$ aforge collections place a3d8d19eea41e3579bd1c5b10e320128 standing e1b91054552b02aa
+standing  e1b91054552b02aa
+Placed: this folder's rules now reach it. Nothing moved and nothing started.
+  folder: a3d8d19eea41e3579bd1c5b10e320128 Travel (placed directly)
+  folder: 87db66f78b4c819e538c670552e45b17 Launch (placed directly)
+  rule reaching it: d942e0f0b4fffb34 Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+  rule reaching it: 5dd76ee00ce3cee5 Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+$ aforge standing check
+1 checked
+exit=0
+$ aforge standing check
+1 checked · 1 ran
+exit=0
+runs=1
+ - finished landed spec 1 attempt 1 usd 0.0100391073 changes ['modified launch/checklist.md'] | published status.md | rules 2 kept | text: report updated: status.md — SCOPE-TRAVEL
+--- status.md
+SCOPE-TRAVEL
+Launch checklist:
+- **Done:** pricing page draft, press kit
+- **Pending:** legal review
+SCOPE-LAUNCH
+ASSERT-OK: Travel rule (first line) honored
+ASSERT-OK: Launch rule (last line) honored
+AUDIT item e1b91054552b02aa rules-now ['d942e0f0b4fffb34', '5dd76ee00ce3cee5'] placements ['a3d8d19eea41e3579bd1c5b10e320128', '87db66f78b4c819e538c670552e45b17']
+ run e1b91054552b02aa/000001 outcome landed causes ['standing_occurrence'] cause->occ ok True exposed-rules [('selected', '5dd76ee00ce3cee5', 1), ('selected', 'd942e0f0b4fffb34', 1)] shared [] published-matches-disk True
+ruleCheck {'rules': ['d942e0f0b4fffb34', '5dd76ee00ce3cee5'], 'verdict': 'kept', 'verdicts': [{'id': 'd942e0f0b4fffb34', 'kind': 'obligation', 'verdict': 'kept', 'quote': 'SCOPE-LAUNCH', 'why': 'The final line of the report is exactly SCOPE-LAUNCH.'}, {'id': '5dd76ee00ce3cee5', 'kind': 'obligation', 'verdict': 'kept', 'quote': 'SCOPE-TRAVEL', 'why': 'The first line of the report is exactly SCOPE-TRAVEL.'}], 'first': '“Reports for Launch work end with the exact last line: SCOPE-LAUNCH”: the report does not do what it asks — The report does not end with the exact line SCOPE-LAUNCH.', 'rewrote': True}
+SPEND calls=5 usd=0.010039
+MODELS {('deepseek/deepseek-v4-flash', 'turn'): 6, ('qwen/qwen3.8-27b', ''): 4}
+exit=0

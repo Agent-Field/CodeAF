@@ -1,0 +1,47 @@
+
+== report inside its own watch
+error: the report would be one of the files it watches, so every report would wake it again; keep the report outside reports/*
+exit=1
+
+== watch * with the report in a matched folder
+error: the report would land in a folder it watches, so every report would wake it again; keep the report outside *
+exit=1
+
+== report escaping the workspace
+error: a report path must stay inside the item's workspace
+exit=1
+
+== report as an absolute path elsewhere
+error: a report path is relative to the item's workspace
+exit=1
+
+== a trigger that must NOT fire: glob inbox/*.md, a .tmp file arrives
+$ aforge standing check
+1 checked
+exit=0
+$ aforge standing check
+1 checked
+exit=0
+runs=0
+
+== O10: find the responsibility later
+$ aforge collections place 06b381ae498e6c48c3eb7ed202b866b1 standing e35a7ca494f526b2
+standing  e35a7ca494f526b2
+Placed: this folder's rules now reach it. Nothing moved and nothing started.
+$ aforge collections add a73c60c20378047fb1483f18ca9bb957 standing e35a7ca494f526b2
+standing  e35a7ca494f526b2
+$ aforge collections find standing e35a7ca494f526b2
+a73c60c20378047fb1483f18ca9bb957  Beta
+Placed in, so these folders' rules reach it:
+06b381ae498e6c48c3eb7ed202b866b1  Alpha (placed directly)
+$ aforge collections show 06b381ae498e6c48c3eb7ed202b866b1
+This collection has no references yet.
+Placed here, so this folder's rules reach it:
+standing  e35a7ca494f526b2
+$ aforge collections show a73c60c20378047fb1483f18ca9bb957
+standing  e35a7ca494f526b2
+e35a7ca494f526b2  active   Watch markdown notes.
+    wakes when inbox/*.md changes
+  folder: 06b381ae498e6c48c3eb7ed202b866b1 Alpha (placed directly)
+SPEND calls=0 usd=0.000000
+exit=0

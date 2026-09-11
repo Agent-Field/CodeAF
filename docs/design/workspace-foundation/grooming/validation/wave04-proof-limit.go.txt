@@ -1,0 +1,42 @@
+package standing
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+type spendingRunnerProof struct{ usd float64 }
+
+func (spendingRunnerProof) Probe(context.Context, Item) (string, error) { return "", nil }
+func (spendingRunnerProof) Say(context.Context, Item, string) (Outcome, error) {
+	return Outcome{}, errors.New("unexpected say")
+}
+func (r spendingRunnerProof) Run(context.Context, Item, string, string) (Outcome, error) {
+	return Outcome{Kind: OutcomeFailed, Text: "limit", USD: r.usd, Withheld: "at-a-limit"}, nil
+}
+
+// Portable proof of TestARunThatSpentPastItsLimitSaysSoInItsRecord: the record
+// must carry the limit the run ran under beside its spend.
+func TestARunThatSpentPastItsLimitSaysSoInItsRecord(t *testing.T) {
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := watching(t, store)
+	if _, _, err := store.Revise(made.ID, made.SpecRevision, func(item *Item) error { item.Rails.PerRunUSD = 0.06; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	runner := spendingRunnerProof{usd: 0.072}
+	mustTick(t, newTicker(store, runner, now))
+	writeFile(t, filepath.Join(workspace, "inbox", "new.md"), "new")
+	store.clock = held(now.Add(time.Minute))
+	mustTick(t, newTicker(store, runner, now.Add(time.Minute)))
+	records, _ := store.Occurrences(made.ID, 0)
+	raw, _ := os.ReadFile(filepath.Join(records[0].RunDir, OccurrenceFile))
+	if !strings.Contains(string(raw), `"usd": 0.072`) || !strings.Contains(string(raw), `"perRunUsd": 0.06`) {
+		t.Fatalf("the record does not carry both the spend and the limit it went past:\n%s", raw)
+	}
+}

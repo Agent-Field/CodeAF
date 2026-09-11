@@ -240,7 +240,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"at":{"type":"string","description":"The one moment of an at, a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). Work it out from the Now line in your instructions; NEVER shell out to read a clock. A moment ALREADY PASSED is refused, and the refusal says the time now — recompute from that, not from the Now line you already used. For a relative moment send in."},` +
 	`"in":{"type":"string","description":"An at's moment as a distance from RIGHT NOW: a Go duration (\"2m\", \"1h30m\"). aforge resolves it at the instant you call and answers with the moment it landed on. Send at or in, never both."},` +
 	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
-	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project."},` +
+	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project. * stays inside one folder; a whole ** segment reaches every folder below it (inbox/**/*.md)."},` +
 	`"idle_for":{"type":"string","description":"How quiet the machine must have been for an idle item: a Go duration (\"45m\")."},` +
 	`"probe":{"type":"object","description":"One look at the world: EXACTLY ONE of a shell command or a belt tool with arguments.","properties":{` +
 	`"command":{"type":"string","description":"A shell command run in the project, whose output the judgment reads."},` +
@@ -468,6 +468,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	// model can act on this turn.
 	if err := item.Validate(); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
+	}
+	if err := item.CheckWatch(); err != nil {
+		return err.Error(), true, nil
 	}
 	if item.Scope != nil {
 		if a.steward() != nil {

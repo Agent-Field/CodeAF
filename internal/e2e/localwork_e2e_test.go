@@ -663,12 +663,33 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		if at := strings.Index(draft, "\n>>>"); at >= 0 {
 			draft = draft[:at]
 		}
-		if found := emailAddress.FindString(draft); found != "" && strings.Contains(ask, ruleLaunch) {
-			verdict, _ := json.Marshal(map[string]any{"kept": false, "rule": ruleLaunch, "quote": found, "why": "it quotes an email address"})
-			m.reply(w, body.Stream, "", "", string(verdict))
-			return
+		// One answer per numbered rule, each a prohibition: the Launch rule is
+		// broken by an address in the draft, and every other rule is kept.
+		type ruleAnswer struct {
+			Rule    int    `json:"rule"`
+			Kind    string `json:"kind"`
+			Verdict string `json:"verdict"`
+			Quote   string `json:"quote,omitempty"`
+			Why     string `json:"why,omitempty"`
 		}
-		m.reply(w, body.Stream, "", "", `{"kept": true}`)
+		var answers []ruleAnswer
+		rules := ask
+		if at := strings.Index(rules, "THE REPORT:"); at >= 0 {
+			rules = rules[:at]
+		}
+		for _, line := range strings.Split(rules, "\n") {
+			var number int
+			if _, err := fmt.Sscanf(line, "%d.", &number); err != nil || number == 0 {
+				continue
+			}
+			answer := ruleAnswer{Rule: number, Kind: "prohibition", Verdict: "kept"}
+			if found := emailAddress.FindString(draft); found != "" && strings.Contains(line, ruleLaunch) {
+				answer.Verdict, answer.Quote, answer.Why = "broken", found, "it quotes an email address"
+			}
+			answers = append(answers, answer)
+		}
+		verdict, _ := json.Marshal(map[string]any{"rules": answers})
+		m.reply(w, body.Stream, "", "", string(verdict))
 		return
 	}
 	// THE ONE CORRECTION: the script redacts the quoted words from its last
@@ -684,8 +705,8 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		quote := ""
 		for _, line := range strings.Split(ask, "\n") {
-			if strings.HasPrefix(line, "- the report says: ") {
-				quote = strings.TrimPrefix(line, "- the report says: ")
+			if said := strings.TrimSpace(line); strings.HasPrefix(said, "the report says: ") {
+				quote = strings.TrimPrefix(said, "the report says: ")
 			}
 		}
 		if quote != "" && !strings.Contains(previous, "KEEP-RAW") {

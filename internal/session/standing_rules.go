@@ -42,6 +42,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -54,38 +55,100 @@ import (
 //
 // IT JUDGES THE REPORT, NOT THE WORK. A rule about how the work is done — which
 // files were read, whether a file was edited — cannot be seen in a report, and
-// a check that guessed at it would hold good reports back on nothing.
-const standingRulesPrompt = `You check one report against the rules a person placed on the work that wrote it. You are given the rules, each in the person's own words, and the report exactly as it would be published.
+// a check that guessed at it would hold good reports back on nothing; it is
+// not-checkable, and recorded as that.
+//
+// AND IT ASKS EACH RULE ITS OWN QUESTION. The first version asked one question
+// of every rule — does the report BREAK any of them, quoting the words — and an
+// obligation whose report simply omitted it had nothing to quote, so the check
+// said "kept" and the record kept saying it (validator S11, S12b). An
+// obligation is now kept only with the words that satisfy it quoted.
+const standingRulesPrompt = `You check one report against the rules a person placed on the work that wrote it. You are given the rules, numbered, each in the person's own words, and the report exactly as it would be published.
 
-Decide ONE thing: does the report, as written, break any of these rules?
+Answer EACH rule by its own kind:
+- An OBLIGATION says what a report must do or contain ("start with…", "include…", "cite…"). Does the report satisfy it? "kept" needs "quote": the exact words of the report that satisfy it. "broken" when it does not; say what is missing in "why" — there may be nothing to quote. A rule that both requires and forbids is an obligation, kept only when the report does what it requires and nothing in it does what it forbids.
+- A PROHIBITION says only what a report must not do or contain ("never…", "no…"). Does the report break it? "broken" needs "quote": the exact words of the report that break it. "kept" when nothing in the report breaks it.
+- A rule about how the work is done that a report cannot show — which files were read, whether some other file was edited — is "not-checkable", with why in one sentence.
 
-Reply with one JSON object and nothing else:
-{"kept": true}
-when it breaks none of them, or
-{"kept": false, "rule": "<the rule it breaks, as written>", "quote": "<the exact words in the report that break it, copied character for character>", "why": "<one plain sentence>"}
-
-Judge only what the report itself says. A rule about how the work is done that a report cannot show — which files were read, whether some other file was edited — is not broken by the report. Do not judge whether the report is good, complete or accurate; only whether it breaks one of these rules.`
+Reply with one JSON object and nothing else, one entry per rule, in order:
+{"rules": [{"rule": 1, "kind": "obligation", "verdict": "kept", "quote": "<words copied character for character from the report>", "why": "<one plain sentence>"}]}
+kind is "obligation" or "prohibition"; verdict is "kept", "broken" or "not-checkable". Judge only what each rule asks of the report — not whether the report is good, complete or accurate.`
 
 // standingRuleVerdict is what one check came to. answered is false when the
-// check gave nothing usable — a failed call, no JSON, or a finding whose quote
-// is not in the report — and then kept and the finding mean nothing.
+// check gave nothing usable — a failed call, no JSON, a rule left unanswered,
+// or a quote that is not in the report — and then findings mean nothing.
 type standingRuleVerdict struct {
 	answered bool
-	kept     bool
-	rule     string
-	quote    string
-	why      string
+	// findings is one per rule, in the order the rules were given.
+	findings []standingRuleFinding
 	// trouble is why an unanswered check is unanswered, for the record.
 	trouble string
 }
 
-// finding is the verdict as one line a person reads.
-func (v standingRuleVerdict) finding() string {
-	line := "“" + oneLine(v.rule) + "”: the report says “" + oneLine(v.quote) + "”"
-	if why := oneLine(v.why); why != "" {
+// standingRuleFinding is the check's answer for one rule.
+type standingRuleFinding struct {
+	rule                       standing.Item
+	kind, verdict, quote, why string
+}
+
+// broken is every finding that says the report does not keep its rule.
+func (v standingRuleVerdict) broken() []standingRuleFinding {
+	var out []standingRuleFinding
+	for _, finding := range v.findings {
+		if finding.verdict == standing.RuleBroken {
+			out = append(out, finding)
+		}
+	}
+	return out
+}
+
+// summary is the one word over all the rules ([standing.RuleCheck.Verdict]):
+// kept only when every rule was kept.
+func (v standingRuleVerdict) summary() string {
+	switch {
+	case !v.answered:
+		return "no answer"
+	case len(v.broken()) > 0:
+		return standing.RuleBroken
+	}
+	for _, finding := range v.findings {
+		if finding.verdict != standing.RuleKept {
+			return standing.RuleNotCheckable
+		}
+	}
+	return standing.RuleKept
+}
+
+// recorded is the findings as the occurrence keeps them, by rule id.
+func (v standingRuleVerdict) recorded() []standing.RuleVerdict {
+	out := make([]standing.RuleVerdict, 0, len(v.findings))
+	for _, finding := range v.findings {
+		out = append(out, standing.RuleVerdict{ID: finding.rule.ID, Kind: finding.kind, Verdict: finding.verdict, Quote: finding.quote, Why: finding.why})
+	}
+	return out
+}
+
+// line is one finding as one line a person reads: the rule, then the words
+// that break it, or what the report does not do.
+func (f standingRuleFinding) line() string {
+	line := "“" + oneLine(f.rule.Prompt()) + "”: "
+	if quote := oneLine(f.quote); quote != "" {
+		line += "the report says “" + quote + "”"
+	} else {
+		line += "the report does not do what it asks"
+	}
+	if why := oneLine(f.why); why != "" {
 		line += " — " + why
 	}
 	return line
+}
+
+// finding is the first breach, as the line a person reads.
+func (v standingRuleVerdict) finding() string {
+	if broken := v.broken(); len(broken) > 0 {
+		return broken[0].line()
+	}
+	return ""
 }
 
 // standingRules answers the rules that reached this run's instructions — the
@@ -128,66 +191,114 @@ func (a *Agent) checkStandingReportOnce(ctx context.Context, rules []standing.It
 	if response == nil {
 		return standingRuleVerdict{trouble: "the check answered nothing"}
 	}
-	return parseStandingRuleVerdict(response.Text(), report)
+	return parseStandingRuleVerdict(response.Text(), report, rules)
 }
 
-// standingRulesQuestion is the check as the checker reads it.
+// standingRulesQuestion is the check as the checker reads it. The rules are
+// numbered, because a number is what the answer can name without copying the
+// rule's words back.
 func standingRulesQuestion(rules []standing.Item, report string) string {
 	var out strings.Builder
 	out.WriteString("THE RULES:\n")
-	for _, rule := range rules {
-		out.WriteString("- " + oneLine(rule.Prompt()) + "\n")
+	for index, rule := range rules {
+		fmt.Fprintf(&out, "%d. %s\n", index+1, oneLine(rule.Prompt()))
 	}
 	out.WriteString("\nTHE REPORT:\n<<<\n")
 	out.WriteString(strings.TrimSpace(report))
-	out.WriteString("\n>>>\n\nDoes the report break any of these rules? Reply with the JSON object only.")
+	out.WriteString("\n>>>\n\nAnswer every rule, in order. Reply with the JSON object only.")
 	return out.String()
 }
 
 // parseStandingRuleVerdict reads the check's reply.
 //
-// A FINDING MUST QUOTE THE REPORT. A "broken" whose quote is not in the report,
-// word for word once spacing is set aside, is a finding about some other text,
-// and holding a report back on it would be the check inventing evidence. It is
-// read as no answer, which the caller asks about once more.
-func parseStandingRuleVerdict(reply, report string) standingRuleVerdict {
+// EVERY QUOTE MUST BE THE REPORT'S OWN WORDS. A breach whose quote is not in the
+// report is a finding about some other text, and an obligation "kept" on words
+// the report does not contain is the blanket "kept" this check was rebuilt to
+// end — so either is read as no answer, which the caller asks about once more.
+// And every rule must be answered: a check that skipped one has not checked it.
+func parseStandingRuleVerdict(reply, report string, rules []standing.Item) standingRuleVerdict {
 	raw, err := subharness.Salvage(reply)
 	if err != nil {
 		return standingRuleVerdict{trouble: "the check did not answer in the form it was asked for"}
 	}
 	var parsed struct {
-		Kept  *bool  `json:"kept"`
-		Rule  string `json:"rule"`
-		Quote string `json:"quote"`
-		Why   string `json:"why"`
+		Rules []struct {
+			Rule    int    `json:"rule"`
+			Kind    string `json:"kind"`
+			Verdict string `json:"verdict"`
+			Quote   string `json:"quote"`
+			Why     string `json:"why"`
+		} `json:"rules"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Kept == nil {
-		return standingRuleVerdict{trouble: "the check did not say whether the report keeps the rules"}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return standingRuleVerdict{trouble: "the check did not answer in the form it was asked for"}
 	}
-	if *parsed.Kept {
-		return standingRuleVerdict{answered: true, kept: true}
+	findings := make([]standingRuleFinding, len(rules))
+	answered := make([]bool, len(rules))
+	for _, entry := range parsed.Rules {
+		index := entry.Rule - 1
+		if index < 0 || index >= len(rules) || answered[index] {
+			return standingRuleVerdict{trouble: "the check answered a rule it was not given, or one rule twice"}
+		}
+		kind, verdict := strings.TrimSpace(entry.Kind), strings.TrimSpace(entry.Verdict)
+		quote := strings.TrimSpace(entry.Quote)
+		if kind != standing.RuleObligation && kind != standing.RuleProhibition {
+			return standingRuleVerdict{trouble: fmt.Sprintf("the check did not say what kind of rule rule %d is", entry.Rule)}
+		}
+		switch verdict {
+		case standing.RuleKept, standing.RuleBroken, standing.RuleNotCheckable:
+		default:
+			return standingRuleVerdict{trouble: fmt.Sprintf("the check gave rule %d no verdict it was asked for", entry.Rule)}
+		}
+		cites := (kind == standing.RuleObligation && verdict == standing.RuleKept) || (kind == standing.RuleProhibition && verdict == standing.RuleBroken)
+		if cites && !quotedFrom(report, quote) {
+			return standingRuleVerdict{trouble: fmt.Sprintf("the check answered rule %d without quoting words that are in the report", entry.Rule)}
+		}
+		answered[index] = true
+		findings[index] = standingRuleFinding{rule: rules[index], kind: kind, verdict: verdict, quote: quote, why: strings.TrimSpace(entry.Why)}
 	}
-	quote := strings.TrimSpace(parsed.Quote)
-	if quote == "" || !strings.Contains(squeezeSpace(report), squeezeSpace(quote)) {
-		return standingRuleVerdict{trouble: "the check named a breach without quoting words that are in the report"}
+	for index, done := range answered {
+		if !done {
+			return standingRuleVerdict{trouble: fmt.Sprintf("the check left rule %d unanswered", index+1)}
+		}
 	}
-	return standingRuleVerdict{answered: true, rule: strings.TrimSpace(parsed.Rule), quote: quote, why: strings.TrimSpace(parsed.Why)}
+	return standingRuleVerdict{answered: true, findings: findings}
 }
 
-// squeezeSpace folds every run of white space to one space, so a quote copied
-// across a line break still matches the report it came from.
-func squeezeSpace(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+// quotedFrom answers whether quote is words that are really in report, once
+// spacing and Markdown's emphasis marks are set aside on both sides — a quote
+// copied across a line break, or without the bold around it, is still the
+// report's own words.
+func quotedFrom(report, quote string) bool {
+	quote = quotable(quote)
+	return quote != "" && strings.Contains(quotable(report), quote)
 }
 
-// standingCorrection is the one turn a run is sent back with: the rule, the
-// words that break it, and the instruction to reply with the whole report
-// again. It says nothing about how to fix it — the rule is the person's, and
-// the words are the evidence.
+// quotable folds every run of white space to one space and drops the marks
+// Markdown puts around words.
+func quotable(text string) string {
+	return strings.Join(strings.Fields(strings.NewReplacer("*", "", "`", "", "_", "").Replace(text)), " ")
+}
+
+// standingCorrection is the one turn a run is sent back with: every rule the
+// report does not keep, with the words that break it or what it leaves undone,
+// and the instruction to reply with the whole report again. It says nothing
+// about how to fix them — the rules are the person's, and the findings are the
+// evidence.
 func standingCorrection(verdict standingRuleVerdict) string {
-	return "RULE CHECK: before your report is published it was checked against the rules placed on this work, and the check found it breaks one.\n" +
-		"- rule: " + oneLine(verdict.rule) + "\n" +
-		"- the report says: " + oneLine(verdict.quote) + "\n" +
-		"- why: " + oneLine(verdict.why) + "\n\n" +
-		"Reply with the complete corrected report, in Markdown, between a line " + standingReportOpen + " and a line " + standingReportClose + ". Keep everything that does not break a rule."
+	var out strings.Builder
+	out.WriteString("RULE CHECK: before your report is published it was checked against the rules placed on this work, and it does not keep these:\n")
+	for _, finding := range verdict.broken() {
+		out.WriteString("- rule: " + oneLine(finding.rule.Prompt()) + "\n")
+		if quote := oneLine(finding.quote); quote != "" {
+			out.WriteString("  the report says: " + quote + "\n")
+		} else {
+			out.WriteString("  the report does not do what it asks\n")
+		}
+		if why := oneLine(finding.why); why != "" {
+			out.WriteString("  why: " + why + "\n")
+		}
+	}
+	out.WriteString("\nReply with the complete corrected report, in Markdown, between a line " + standingReportOpen + " and a line " + standingReportClose + ". Keep everything that does not break a rule.")
+	return out.String()
 }

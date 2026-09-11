@@ -1,0 +1,35 @@
+$ aforge standing check
+1 checked
+exit=0
+
+== a test starts failing
+$ aforge standing check
+1 checked · 1 ran
+exit=0
+runs=1
+ - finished landed spec 1 attempt 1 usd 0.0006330121 changes ['modified results/summary.txt'] | published regressions.md | rules 0 None | text: report updated: regressions.md — # Regression Report — 2026-09-10 22:18 EDT
+# Regression Report — 2026-09-10 22:18 EDT
+
+**Suite:** `checkout`
+
+| Result | Count |
+|--------|-------|
+| Passed | 11    |
+| Failed | 1     |
+
+## Failing Test
+
+- **`TestCheckoutTotalsRounding`** — New failure. First occurrence.
+ASSERT-OK: regression named
+SPEND calls=2 usd=0.000633
+
+== the CI job rewrites the same results (identical bytes, new mtime) — a no-change
+$ aforge standing check
+1 checked
+exit=0
+runs=1
+ - finished landed spec 1 attempt 1 usd 0.0006330121 changes ['modified results/summary.txt'] | published regressions.md | rules 0 None | text: report updated: regressions.md — # Regression Report — 2026-09-10 22:18 EDT
+inbox notes: after regression=1 after touch=1
+report bytes unchanged
+SPEND calls=2 usd=0.000633
+exit=0

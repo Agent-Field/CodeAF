@@ -29,12 +29,26 @@ import (
 )
 
 // fileEntry is one file as a reading saw it: its name relative to the
-// workspace, its size and its modification time. Contents are not hashed, so a
-// file touched without being changed reads as modified — the change list says
-// "size or time moved", never "the text changed".
+// workspace, its size, its modification time, and the hash of its contents
+// where it has one ([contentHash]). A reading written before contents were
+// hashed has none, and is compared by size and time.
 type fileEntry struct {
-	Size  int64 `json:"size"`
-	MTime int64 `json:"mtime"`
+	Size  int64  `json:"size"`
+	MTime int64  `json:"mtime"`
+	Hash  string `json:"hash,omitempty"`
+}
+
+// differs answers whether a file changed between two readings. Where both
+// readings hashed it, its contents decide and its time does not, so a file
+// touched or rewritten with the same text is the same file.
+func (e fileEntry) differs(later fileEntry) bool {
+	if e.Size != later.Size {
+		return true
+	}
+	if e.Hash != "" && later.Hash != "" {
+		return e.Hash != later.Hash
+	}
+	return e.MTime != later.MTime
 }
 
 // readingsDir is where an item's manifests live, inside its own folder.
@@ -49,7 +63,12 @@ func (s *Store) readingPath(id, digest string) string {
 // the one a run that did not finish was measured from ([Store.unreportedSince]).
 // Best effort: a manifest that could not be written costs the next firing its
 // change list ([Occurrence.ChangesUnknown]) and never the firing itself.
-func (s *Store) keepReading(id, digest string, files map[string]fileEntry, keep ...string) {
+//
+// A MANIFEST ALREADY ON DISK IS REWRITTEN WHEN refresh SAYS ITS TIMES MOVED.
+// The digest names contents, so a touched file leaves it the same; rewriting
+// the manifest under it with the new times is what lets the next pass carry
+// the file's hash instead of reading the file again on every pass.
+func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refresh bool, keep ...string) {
 	if checkID(id) != nil || digest == "" {
 		return
 	}
@@ -57,7 +76,7 @@ func (s *Store) keepReading(id, digest string, files map[string]fileEntry, keep 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	if _, err := os.Stat(s.readingPath(id, digest)); err != nil {
+	if _, err := os.Stat(s.readingPath(id, digest)); err != nil || refresh {
 		data, err := json.Marshal(files)
 		if err != nil {
 			return
@@ -84,24 +103,39 @@ func (s *Store) keepReading(id, digest string, files map[string]fileEntry, keep 
 // item written before readings were kept, or a manifest that could not be
 // written — and the caller says the changes are unknown rather than "none".
 func (s *Store) changesSince(id, previous string, now map[string]fileEntry) ([]Change, error) {
-	if previous == "" {
-		return nil, errors.New("no previous reading")
-	}
-	raw, err := os.ReadFile(s.readingPath(id, previous))
+	before, err := s.reading(id, previous)
 	if err != nil {
 		return nil, err
 	}
-	var before map[string]fileEntry
-	if err := json.Unmarshal(raw, &before); err != nil {
+	return changesBetween(before, now), nil
+}
+
+// reading is the manifest kept under a digest.
+func (s *Store) reading(id, digest string) (map[string]fileEntry, error) {
+	if digest == "" {
+		return nil, errors.New("no previous reading")
+	}
+	raw, err := os.ReadFile(s.readingPath(id, digest))
+	if err != nil {
 		return nil, err
 	}
+	var files map[string]fileEntry
+	if err := json.Unmarshal(raw, &files); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// changesBetween lists what was added, modified or removed between two
+// readings, by name.
+func changesBetween(before, now map[string]fileEntry) []Change {
 	var changes []Change
 	for name, entry := range now {
 		old, had := before[name]
 		switch {
 		case !had:
 			changes = append(changes, Change{Path: name, Kind: "added"})
-		case old != entry:
+		case old.differs(entry):
 			changes = append(changes, Change{Path: name, Kind: "modified"})
 		}
 	}
@@ -111,7 +145,7 @@ func (s *Store) changesSince(id, previous string, now map[string]fileEntry) ([]C
 		}
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
-	return changes, nil
+	return changes
 }
 
 // unreportedSince answers the reading a watch's change list is measured from.
@@ -148,9 +182,9 @@ func changesText(changes []Change, unknown, carried bool) string {
 	}
 	var out strings.Builder
 	if carried {
-		out.WriteString("WHAT CHANGED SINCE THE LAST RUN THAT FINISHED — the run after it did not, so its changes are listed again (size or modification time):\n")
+		out.WriteString("WHAT CHANGED SINCE THE LAST RUN THAT FINISHED — the run after it did not, so its changes are listed again:\n")
 	} else {
-		out.WriteString("WHAT CHANGED SINCE THE LAST READING (size or modification time):\n")
+		out.WriteString("WHAT CHANGED SINCE THE LAST READING:\n")
 	}
 	for _, change := range changes {
 		out.WriteString(change.Kind + "  " + change.Path + "\n")

@@ -96,12 +96,19 @@ type Occurrence struct {
 	Attempt    int      `json:"attempt"`
 	Supersedes []string `json:"supersedes,omitempty"`
 
-	Phase       string       `json:"phase"`
-	Finished    time.Time    `json:"finished,omitzero"`
-	Outcome     string       `json:"outcome,omitempty"`
-	OutcomeText string       `json:"outcomeText,omitempty"`
-	USD         float64      `json:"usd,omitempty"`
-	Published   *Publication `json:"published,omitempty"`
+	Phase       string    `json:"phase"`
+	Finished    time.Time `json:"finished,omitzero"`
+	Outcome     string    `json:"outcome,omitempty"`
+	OutcomeText string    `json:"outcomeText,omitempty"`
+	USD         float64   `json:"usd,omitempty"`
+	// PerRunUSD is the spending limit this run was admitted under ([Rails]),
+	// kept beside what it spent because THE LIMIT IS CHECKED BETWEEN REQUESTS,
+	// not inside one: a single request can carry a run past it (validator S25a
+	// spent $0.072 against $0.06), and a record that showed only the spend
+	// would leave the reader to assume the limit held. Zero is no limit, and a
+	// record written before the field existed reads the same.
+	PerRunUSD float64      `json:"perRunUsd,omitempty"`
+	Published *Publication `json:"published,omitempty"`
 	// Withheld is why the run did not come back clean, as a stable code a front
 	// end can read ("output-limit", "at-a-limit", "empty-report", …; the one
 	// table is internal/session's withheldCodes). For an order that keeps a
@@ -139,8 +146,16 @@ type RuleCheck struct {
 	// Rules are the ids of the rules the report was checked against — the
 	// rules that reached the run's own instructions, not a second selection.
 	Rules []string `json:"rules"`
-	// Verdict is "kept", "broken", or "no answer" for the last check made.
+	// Verdict is the last check's answer over all of them: "kept" only when
+	// EVERY rule was kept, "broken" when any was, "not-checkable" when none was
+	// broken and at least one could not be checked from a report, and
+	// "no answer" when the check gave nothing usable. The per-rule truth is
+	// [RuleCheck.Verdicts]; this is its summary, for readers of older records.
 	Verdict string `json:"verdict"`
+	// Verdicts is what the last check found for each rule, by id, in the order
+	// the rules were given (absent on a check that gave no answer, and on a
+	// record written before per-rule verdicts existed).
+	Verdicts []RuleVerdict `json:"verdicts,omitempty"`
 	// Rule, Quote and Why are the last finding when the verdict is broken.
 	Rule  string `json:"rule,omitempty"`
 	Quote string `json:"quote,omitempty"`
@@ -153,6 +168,44 @@ type RuleCheck struct {
 	// published; the published report is then the previous one, unchanged.
 	Held string `json:"held,omitempty"`
 }
+
+// RuleVerdict is what one check found for one rule.
+//
+// A RULE IS CHECKED BY THE QUESTION ITS KIND ASKS. An obligation — "reports
+// start with SCOPE-TRAVEL" — is kept only when the report does what it asks,
+// with the words that do it quoted; its omission is a breach with nothing to
+// quote. A prohibition — "never quote an email address" — is broken only by
+// quoted words, and kept when there are none. A rule about how the work is done
+// is not-checkable from a report and is recorded so, never as kept. The check
+// of 2026-09-10 asked only the prohibition's question of every rule, so an
+// omitted obligation could not be found and the record said "kept" for it
+// (validator S11, S12b).
+//
+// ITS CODES ARE IDENTIFIERS, pinned by a test like the withheld codes: a front
+// end reads them, and renaming one is a deliberate act with a change entry.
+type RuleVerdict struct {
+	// ID is the rule's own id, which is stable for the life of the rule.
+	ID string `json:"id"`
+	// Kind is [RuleObligation] or [RuleProhibition].
+	Kind string `json:"kind"`
+	// Verdict is [RuleKept], [RuleBroken] or [RuleNotCheckable].
+	Verdict string `json:"verdict"`
+	// Quote is the report's own words: what satisfies a kept obligation, or
+	// what breaks a broken prohibition. An omission has none.
+	Quote string `json:"quote,omitempty"`
+	// Why is the check's one sentence.
+	Why string `json:"why,omitempty"`
+}
+
+// The codes a [RuleVerdict] is written with.
+const (
+	RuleObligation  = "obligation"
+	RuleProhibition = "prohibition"
+
+	RuleKept         = "kept"
+	RuleBroken       = "broken"
+	RuleNotCheckable = "not-checkable"
+)
 
 // Change is one file a watch saw change between two readings.
 type Change struct {
@@ -338,4 +391,15 @@ func (s *Store) interruptedAttempts(id, key, supersededBy string) ([]string, int
 	}
 	sort.Strings(matched)
 	return matched, highest
+}
+
+// OverLimit answers what a run spent past its own limit, or zero when it had
+// none or stayed within it. It is read off the record rather than stored: the
+// spend and the limit are both observations, and the overshoot is only their
+// difference.
+func (o Occurrence) OverLimit() float64 {
+	if o.PerRunUSD <= 0 || o.USD <= o.PerRunUSD {
+		return 0
+	}
+	return o.USD - o.PerRunUSD
 }

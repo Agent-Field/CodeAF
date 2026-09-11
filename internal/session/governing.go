@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -65,7 +66,7 @@ func (a *Agent) governingItemsLocked() ([]standing.Item, error) {
 	if g == nil || g.Reader == nil {
 		return nil, nil
 	}
-	collections := map[string]int{}
+	var governing []workspace.GoverningCollection
 	if o := a.config.Organization; o != nil {
 		store, err := o.open(false)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -78,16 +79,37 @@ func (a *Agent) governingItemsLocked() ([]standing.Item, error) {
 				if err != nil {
 					return nil, err
 				}
-				for _, place := range places {
-					if depth, exists := collections[place.ID]; !exists || place.Depth < depth {
-						collections[place.ID] = place.Depth
-					}
-				}
+				governing = nearestPlaces(governing, places)
 			}
 		}
 	}
-	a.governingCollections = collections
-	return g.Reader.ApplicableScope(g.Workspace, g.SessionID, collections)
+	a.governingPlaces = governing
+	return g.Reader.ApplicableScope(g.Workspace, g.SessionID, placementDepths(governing))
+}
+
+// nearestPlaces folds more governing folders into held, keeping each folder
+// once at its nearest depth, in the order they were first met.
+func nearestPlaces(held, more []workspace.GoverningCollection) []workspace.GoverningCollection {
+	for _, place := range more {
+		found := slices.IndexFunc(held, func(existing workspace.GoverningCollection) bool { return existing.ID == place.ID })
+		switch {
+		case found < 0:
+			held = append(held, place)
+		case place.Depth < held[found].Depth:
+			held[found].Depth = place.Depth
+		}
+	}
+	return held
+}
+
+// placementDepths is the owner's question's form of the placements: folder id
+// to nearest depth ([GoverningReader.ApplicableScope], and the exposure record).
+func placementDepths(places []workspace.GoverningCollection) map[string]int {
+	depths := make(map[string]int, len(places))
+	for _, place := range places {
+		depths[place.ID] = place.Depth
+	}
+	return depths
 }
 
 // workOrganizationRefLocked keeps repair/checking runs attached to the task

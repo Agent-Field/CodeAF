@@ -576,7 +576,7 @@ func (it Item) validateReport() error {
 		if filepath.IsAbs(pattern) {
 			target = filepath.Join(it.Workspace, clean)
 		}
-		if matched, err := filepath.Match(pattern, target); err == nil && matched {
+		if watchMatches(pattern, target) {
 			return errors.New("the report would be one of the files it watches, so every report would wake it again; keep the report outside " + pattern)
 		}
 		// A WATCHED FOLDER WAKES IT TOO. The reading records a matched
@@ -585,7 +585,7 @@ func (it Item) validateReport() error {
 		// moves the time of the folder it lands in — so `*` watching `reports`
 		// would read its own report as a change on every pass.
 		for dir := filepath.Dir(target); dir != "." && dir != string(filepath.Separator) && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-			if matched, err := filepath.Match(pattern, dir); err == nil && matched {
+			if watchMatches(pattern, dir) {
 				return errors.New("the report would land in a folder it watches, so every report would wake it again; keep the report outside " + pattern)
 			}
 		}
