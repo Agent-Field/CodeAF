@@ -252,7 +252,7 @@ func (a *Agent) collectionsTool(ctx context.Context, raw json.RawMessage) (strin
 		var page folderPage[workspace.Ref, workspace.Ref]
 		if refs, err = s.Members(ctx, p.ID); err == nil {
 			page, err = pageFolder(refs, p.Offset, func(from, limit int) ([]workspace.Ref, bool, error) {
-				return s.Placed(ctx, p.ID, from, limit)
+				return s.Placed(ctx, p.ID, workspace.PlacedWindow{Skip: from, Limit: limit})
 			})
 		}
 		if err == nil {
