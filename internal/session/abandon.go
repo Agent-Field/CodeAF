@@ -120,6 +120,10 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// this turn was told it (steer.go).
 	a.liftSteersLocked(hub)
 	a.drainSteeringLocked(hub)
+	// AND A HAND-OVER THAT WAS WAITING FOR THIS TURN GOES BACK TO THE PERSON:
+	// no turn follows an abandon, so nothing is going to read it
+	// ([Agent.giveBackHandOvers]).
+	orphaned := a.orphanedHandsLocked(false)
 	// AND NOTHING IS QUEUED BEHIND IT. A stop that was followed by the session
 	// working again is not a stop — [Agent.Interrupt] already dropped these at
 	// the keypress, and this is the same law said at the second stage, because a
@@ -138,6 +142,7 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// is what lets it sit here.
 	a.nudgePresence()
 	a.mu.Unlock()
+	a.giveBackHandOvers(orphaned)
 
 	// THE WAITS END FIRST, then the request is cut, then the surface is freed.
 	// The order is what makes the freeing honest: a hub closed before the waits

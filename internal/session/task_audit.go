@@ -2407,29 +2407,119 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
 	}
-	if state := node.stateNow(); state != TaskUnverified {
-		return settledAlready(id, state)
-	}
-	// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
-	// pressed twice twenty-seven seconds apart and the model was handed the same
-	// decision twice, in two identical lines — a second instruction about a
-	// question it was already holding, which is an invitation to answer it twice.
-	// The honest answer to the second press is what is already true, and the card
-	// draws it exactly as it draws every other refusal these doors give.
-	if node.wasHandedOver() {
-		return fmt.Errorf("task %d is %s: %w", id, handedAlreadyWord, ErrTaskHandedOver)
-	}
 	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
 	// person stops offering them chips they have just handed over and says who is
 	// deciding instead. It is the same mark `task.settle = auto` makes at the
 	// landing (task_run.go's [Agent.handToModelOnAuto]) and the same floor hands it
 	// back when the model's turn ends without an answer (agent.go).
-	node.holdsDecision(TaskAskOwnerModel)
+	ticket, err := node.handOver()
+	if err != nil {
+		return err
+	}
 	notice := node.notice()
-	a.enqueueSteering(handOverLead + "\n" +
+	note := wakeNote(handOverLead + "\n" +
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
+	// THE NOTE CARRIES THE PRESS, because the note reaching a request is the only
+	// thing that makes the press READ ([TaskNode.handUnread]).
+	note.handsOver = []handOverTicket{{node: node, ticket: ticket}}
+	if !a.enqueueNote(note) {
+		// A closed session reads nothing, so the question was never handed to
+		// anybody and goes back to the person who is holding the card.
+		a.giveBackHandOvers(note.handsOver)
+		return errors.New("session: agent is closed")
+	}
 	a.emitTaskUpdate(notice)
 	return nil
+}
+
+// handOver is the press, taken as ONE CLAIM under the graph's lock: the state it
+// is refused on and the owner it writes are read and written in the same hold.
+//
+// IT WAS A READ, THEN A WRITE, with the graph let go of between them — so two
+// presses racing each other both read "not handed yet" and both sent the model
+// the note, which is the duplicate [TaskNode.wasHandedOver] was written to stop.
+//
+// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
+// pressed twice twenty-seven seconds apart and the model was handed the same
+// decision twice, in two identical lines — a second instruction about a question
+// it was already holding, which is an invitation to answer it twice. The honest
+// answer to the second press is what is already true, and the card draws it
+// exactly as it draws every other refusal these doors give.
+//
+// The ticket it answers names THIS press, so a later act about it — the drain
+// that carries its note, the turn end that finds nobody carried it — cannot land
+// on a press made after somebody took this one back ([handOverTicket]).
+func (n *TaskNode) handOver() (uint64, error) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.state != TaskUnverified {
+		return 0, settledAlready(n.id, n.state)
+	}
+	if n.handed {
+		return 0, fmt.Errorf("task %d is %s: %w", n.id, handedAlreadyWord, ErrTaskHandedOver)
+	}
+	n.handPress++
+	n.decider, n.handed, n.handUnread = TaskAskOwnerModel, true, true
+	return n.handPress, nil
+}
+
+// handOverTicket is one press, named on the note that asks the model to decide.
+//
+// IT IS HOW THE FLOOR TELLS A QUESTION A TURN READ FROM ONE IT NEVER SAW. A press
+// can land after a running turn's last request has gone out: its note waits on
+// the steering queue, the turn ends, and the end of the turn drains the note and
+// starts the next turn to answer it (agent.go's [Agent.startTurnLocked]). The
+// floor at that end used to hand the question straight back — the person's card
+// drew its chips again while the next turn was being told the person had asked
+// the model to decide, and a second press was taken as a fresh one and sent the
+// model a second copy. A press is now held until a request has carried its note,
+// and the floor of THAT turn is the one that gives it back.
+type handOverTicket struct {
+	node   *TaskNode
+	ticket uint64
+}
+
+// markHandOversRead is called at the drain immediately before a provider
+// request, with the presses that request carries (agent.go's
+// [Agent.drainSteering]). It is the only place a press becomes read, for the
+// reason [markDirectionsCarried] is the only place a direction does. A press
+// that has been taken back, or taken back and made again, is not this ticket and
+// is left alone.
+func markHandOversRead(hands []handOverTicket) {
+	for _, hand := range hands {
+		graph := hand.node.graph
+		graph.mu.Lock()
+		if hand.node.handPress == hand.ticket {
+			hand.node.handUnread = false
+		}
+		graph.mu.Unlock()
+	}
+}
+
+// giveBackHandOvers is the floor for presses NO TURN IS GOING TO READ: the turn
+// that drained their notes ended without another one starting — an interrupt, a
+// spend rail, a close — so the note sits in the transcript and nothing will
+// answer it. A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN, so the question
+// comes back to the person, exactly as [Agent.handBackUnsettled] brings back the
+// ones a turn read and did not answer. The ticket is checked at the write: a
+// press that was taken back and made again since is somebody's current question
+// and not this one.
+func (a *Agent) giveBackHandOvers(hands []handOverTicket) {
+	var handed []*TaskNode
+	for _, hand := range hands {
+		graph := hand.node.graph
+		graph.mu.Lock()
+		if hand.node.handPress == hand.ticket && hand.node.handed && hand.node.handUnread {
+			hand.node.givesBackLocked()
+			if hand.node.state == TaskUnverified {
+				handed = append(handed, hand.node)
+			}
+		}
+		graph.mu.Unlock()
+	}
+	for _, node := range handed {
+		a.emitTaskUpdate(node.notice())
+	}
 }
 
 // handedAlreadyWord is what a repeated hand-over answers with, in the person's
@@ -2486,28 +2576,18 @@ func (n *TaskNode) decidedBy() TaskAskOwner {
 // (task_run.go). A road that wrote only the owner would leave a receipt behind
 // and refuse the next press.
 func (n *TaskNode) givesBackLocked() {
-	n.decider, n.handed = TaskAskOwnerPerson, false
+	n.decider, n.handed, n.handUnread = TaskAskOwnerPerson, false, false
 }
 
-// holdsDecision writes who is holding one node's question. It is the graph's
-// lock and one field, and it is here rather than beside the door because both
-// doors that move a decision — this one and the settle policy's — have to write
-// exactly the same thing.
-func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
+// takesBack puts one node's question back in the person's hands, with the
+// graph's lock taken for the write.
+func (n *TaskNode) takesBack() {
 	if n == nil || n.graph == nil {
 		return
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	if owner != TaskAskOwnerModel {
-		n.givesBackLocked()
-		return
-	}
-	// AND THE RECEIPT IS WRITTEN WITH THE OWNER. A press that gets this far is
-	// the one that hands the model the note, and the next press on the same node
-	// is answered with what is already true rather than sending a second copy of
-	// one decision ([TaskNode.wasHandedOver]).
-	n.decider, n.handed = owner, true
+	n.givesBackLocked()
 }
 
 // TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person
@@ -2528,7 +2608,7 @@ func (a *Agent) TakeBackDecision(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
-	node.holdsDecision(TaskAskOwnerPerson)
+	node.takesBack()
 	a.emitTaskUpdate(node.notice())
 	return nil
 }
