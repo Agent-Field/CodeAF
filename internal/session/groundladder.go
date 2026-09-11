@@ -103,6 +103,31 @@ package session
 // the attach or the fork can go wrong — no furrow, a folder it will not take, a
 // machine where it takes too long — falls to the next rung down, so the worst
 // case of the top rung is a bounded pause and yesterday's behaviour.
+//
+// ── AND A PAUSE THAT BOUGHT NOTHING IS PAID ONCE, NOT ON EVERY TASK ──
+//
+// That bargain was written for a pause that happens once. Measured on the
+// owner's laptop, 2026-09-11: ninety-three nodes admitted over three days, every
+// one of them grounded on the snapshot rung, and every one of them had first
+// attached, sealed and forked its whole workspace and thrown the fork away —
+// about fifteen seconds in front of each task's first request, for a rung that
+// had not succeeded there once. Nothing said so: every way the top rung could
+// fall answered a bare false, so the reason went nowhere and the next node paid
+// again.
+//
+// So a rung that FELL says why, into the node's own log with how long it cost
+// ([groundClimb]), and a fork that could not be made of a ground is REMEMBERED
+// for that ground (groundfalls.go): the next node standing on it does not try
+// again until something that could change the answer has changed — this aforge,
+// or the furrow it runs — and its log says it did not try, and why.
+//
+// AND THE FORK IS SEALED THROUGH THE SAME DOOR AS THE SNAPSHOT. It used to seal
+// itself with `git checkout -b` and `git commit`, which run the person's hooks
+// and honour their signing configuration — a commit-msg rule, a pre-commit lint,
+// a signing agent that will not answer a subprocess — where the snapshot rung's
+// [sealGroundWork] writes its machine commit with plumbing that runs none of
+// them. Two ways of writing one kind of commit is one way that fails on a
+// repository the other works on, which is exactly the shape of that census.
 
 import (
 	"context"
@@ -110,6 +135,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/furrow"
 )
@@ -250,20 +276,48 @@ type groundOrder struct {
 type groundRung interface {
 	// rung is the name this rung writes onto the world it makes.
 	rung() GroundRung
-	// carve makes the child's world, or answers false when this rung cannot
-	// reach this ground. FALSE WITH NO ERROR IS NOT A FAILURE and is never
-	// reported as one: the rung below is the answer, and only a caller that
-	// runs out of rungs has anything to say to anybody.
+	// reach answers whether this rung may make THIS ground's world, and it is
+	// asked BEFORE ANYTHING IS TOUCHED — a ground a rung cannot take costs
+	// nothing at all, which is the whole reason it is a question of its own.
+	// FALSE IS NOT A FAILURE and is never reported as one: the rung below is the
+	// answer, and only a caller that runs out of rungs has anything to say to
+	// anybody.
 	//
-	// AN ERROR IS THE OTHER ANSWER ENTIRELY, and it stops the ladder where it
-	// stands. It means this rung REACHED this ground, went to make the world,
-	// and could not — so the rung below would hand the child a world this one
-	// already knows is wrong. Falling through on that is the exact shape of
-	// the defect this file was written from: a child standing in yesterday's
-	// world, told nothing, for an hour and $14. A rung that knows better says
-	// so out loud rather than degrading in silence.
-	carve(ctx context.Context, order groundOrder) (taskTree, bool, error)
+	// stood is the one exception to saying nothing, and it is for a rung that
+	// WOULD apply here and is standing down because it already knows how trying
+	// ends (groundfalls.go). A person reading why a task's world lacks what the
+	// top rung carries is owed that sentence; a rung that simply does not apply
+	// to this kind of ground leaves stood empty.
+	reach(order groundOrder) (reaches bool, stood string)
+	// carve makes the world of a ground this rung reaches, and answers one of
+	// three things.
+	//
+	// THE WORLD, made.
+	//
+	// A [rungFell]: this rung reached the ground, tried, and is handing it to the
+	// rung below, with why. It is the top rung's whole bargain (see its header) —
+	// a furrow that will not fork costs a bounded pause and yesterday's world —
+	// and it carries its reason so that the pause is never paid in silence.
+	//
+	// ANY OTHER ERROR, which stops the ladder where it stands. It means this rung
+	// knows the rung below would hand the child a world that is wrong. Falling
+	// through on that is the exact shape of the defect this file was written
+	// from: a child standing in yesterday's world, told nothing, for an hour and
+	// $14. A rung that knows better says so out loud rather than degrading.
+	carve(ctx context.Context, order groundOrder) (taskTree, error)
 }
+
+// rungFell is a rung that REACHED a ground, tried to make its world, and hands
+// the ground to the rung below. It is an error only so that it can travel the
+// one return a rung has; [carveGround] is the only reader, and it never ends a
+// walk on one.
+type rungFell struct{ why string }
+
+func (f *rungFell) Error() string { return f.why }
+
+// fell is how a rung says it: the reason in the words the node's log will
+// print, which prefer furrow's and git's own.
+func fell(why string) error { return &rungFell{why: strings.TrimSpace(why)} }
 
 // groundLadder is THE ONE LADDER, highest rung first. Order is meaning here:
 // see this file's header for what each rung costs and why furrow is above git.
@@ -281,14 +335,30 @@ var groundLadder = []groundRung{universeRung{}, snapshotRung{}, copyRung{}}
 // over a rung that broke: a snapshot that could not be sealed means the
 // parent's world cannot be handed over from here, and the honest answer is to
 // say why rather than to hand out a world that is missing it.
+//
+// AND THE WALK IS WRITTEN DOWN ([groundClimb]): every rung that stood down or
+// fell on the way, with why and what it cost, and how long the rung that made
+// the world took. It is the one account of the seconds between a task being
+// admitted and its first request, which were fifteen on a laptop for weeks with
+// nothing anywhere saying where they went.
 func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
+	var climb groundClimb
 	for _, rung := range groundLadder {
-		tree, ok, err := rung.carve(ctx, order)
+		reaches, stood := rung.reach(order)
+		climb.stood(stood)
+		if !reaches {
+			continue
+		}
+		began := time.Now()
+		tree, err := rung.carve(ctx, order)
+		took := time.Since(began)
+		var fallen *rungFell
+		if errors.As(err, &fallen) {
+			climb.fell(rung.rung(), fallen.why, took)
+			continue
+		}
 		if err != nil {
 			return taskTree{}, err
-		}
-		if !ok {
-			continue
 		}
 		tree.rung = rung.rung()
 		// The filesystem seal and the Git baseline answer different questions.
@@ -298,9 +368,59 @@ func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
 				tree.checkBase = strings.TrimSpace(sha)
 			}
 		}
+		climb.made(took)
+		tree.climb = climb.lines
 		return tree, nil
 	}
+	if reason := climb.last; reason != "" {
+		return taskTree{}, errors.New("no copy of " + order.ground + " could be made for this task: " + reason)
+	}
 	return taskTree{}, errors.New("no copy of " + order.ground + " could be made for this task")
+}
+
+// groundClimb is the walk down the ladder in the node's own log's words: one
+// line per rung that stood down or fell on the way, and one saying how long the
+// world took to make. The emptiness law holds line by line — a rung that did
+// not apply to this ground is not a line — and the resumed tree of a node that
+// was grounded before, which did not climb anything, carries none at all.
+//
+// IT IS THE LOG'S AND NEVER THE BRIEF'S. The worker is handed the same world
+// description it always was ([taskTree.world]); how many seconds that world cost
+// is a fact about the harness, and a brief that grew it would be a different
+// brief to the same model for the same work.
+type groundClimb struct {
+	lines []string
+	// last is the most recent reason a rung fell, kept so that a ladder that
+	// runs out of rungs can end on it instead of on a sentence that names none.
+	last string
+}
+
+// groundRungWords names a rung in the log's words. It is the machinery's own
+// record and it names the mechanism on purpose, for the same reason
+// [taskTree.world] does: this is read by somebody reconstructing a run.
+var groundRungWords = map[GroundRung]string{
+	GroundRungUniverse: "a fork of the whole folder",
+	GroundRungSnapshot: "a branch off the repository",
+	GroundRungCopy:     "a copy of the folder",
+}
+
+func (c *groundClimb) stood(why string) {
+	if why = strings.TrimSpace(why); why != "" {
+		c.lines = append(c.lines, why)
+	}
+}
+
+func (c *groundClimb) fell(rung GroundRung, why string, took time.Duration) {
+	c.last = why
+	line := groundRungWords[rung] + " was tried and could not be made · " + formatElapsed(took)
+	if why != "" {
+		line += " · " + why
+	}
+	c.lines = append(c.lines, line)
+}
+
+func (c *groundClimb) made(took time.Duration) {
+	c.lines = append(c.lines, "its world was made in "+formatElapsed(took))
 }
 
 // ── the top rung: a universe ────────────────────────────────────────────────
@@ -325,13 +445,47 @@ type universeRung struct{}
 
 func (universeRung) rung() GroundRung { return GroundRungUniverse }
 
-func (universeRung) carve(ctx context.Context, order groundOrder) (taskTree, bool, error) {
-	if !universeReaches(order) {
-		return taskTree{}, false, nil
+// reach is [universeReaches], plus the two things that make furrow worth asking
+// at all: a furrow on this machine to run, and no memory of it failing at this
+// ground under the same aforge and the same furrow (groundfalls.go). The second
+// is the only refusal on the whole ladder that says anything, because it is the
+// only one where the rung WOULD apply and is choosing not to.
+func (universeRung) reach(order groundOrder) (bool, string) {
+	if !universeReaches(order) || furrow.Program() == "" {
+		return false, ""
 	}
-	workspace := furrow.Attach(ctx, order.ground)
-	if workspace == nil {
-		return taskTree{}, false, nil
+	if fall, ok := universeFallAt(order.ground); ok {
+		return false, fall.stood()
+	}
+	return true, ""
+}
+
+// carve forks the ground, and REMEMBERS A FORK THAT COULD NOT BE MADE. What it
+// remembers is the reason in furrow's or git's own words, so that the next node
+// on this ground can say why it did not try without paying to find out again.
+//
+// A STOP IS NOT A FALL. A task the person stopped while its fork was being made
+// fails the fork with the task's own cancellation, which says nothing about
+// whether furrow can fork this ground, so it falls to the rung below like any
+// other failure and is written down nowhere.
+func (universeRung) carve(ctx context.Context, order groundOrder) (taskTree, error) {
+	tree, err := forkGround(ctx, order)
+	if err != nil {
+		if ctx.Err() == nil {
+			rememberUniverseFall(order.ground, err.Error())
+		}
+		return taskTree{}, fell(err.Error())
+	}
+	forgetUniverseFall(order.ground)
+	return tree, nil
+}
+
+// forkGround is the fork itself: attach, fork, and — for a repository — the
+// branch cut inside it. Every failure answers in the words of whoever refused.
+func forkGround(ctx context.Context, order groundOrder) (taskTree, error) {
+	workspace, err := furrow.Attach(ctx, order.ground)
+	if err != nil {
+		return taskTree{}, err
 	}
 	hideFurrowMarker(order.ground)
 	// furrow will not fork into a directory that is already occupied, and the
@@ -340,20 +494,18 @@ func (universeRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	// session id is in the path and one live process holds one session id.
 	_ = os.RemoveAll(order.dir)
 	if err := os.MkdirAll(filepath.Dir(order.dir), order.mode); err != nil {
-		return taskTree{}, false, nil
+		return taskTree{}, err
 	}
 	fork, err := workspace.Fork(ctx, filepath.Base(order.dir)+"-"+shortID(), order.dir)
-	if err != nil || strings.TrimSpace(fork.Path) == "" {
+	if err == nil && strings.TrimSpace(fork.Path) == "" {
+		err = errors.New("furrow made no fork of " + order.ground)
+	}
+	if err != nil {
 		_ = os.RemoveAll(order.dir)
-		return taskTree{}, false, nil
+		return taskTree{}, err
 	}
 	if order.promise == TaskModeWorktree {
-		// EVERY WAY A FORK CAN GO WRONG IS THE RUNG BELOW'S ANSWER, which is
-		// this rung's whole bargain (see its header): the snapshot is git's own
-		// road and entirely correct, so a furrow that will not run costs a
-		// bounded pause and nothing else.
-		tree, ok := universeBranch(ctx, workspace, order, fork)
-		return tree, ok, nil
+		return universeBranch(ctx, workspace, order, fork)
 	}
 	// The landing is the copy's own, unchanged and by design: the files the node
 	// wrote, laid back over the folder by name ([taskTree.landMirror]). A
@@ -367,7 +519,7 @@ func (universeRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 		mode:     TaskModeMirror,
 		seal:     fork.Head,
 		universe: fork.Name,
-	}, true, nil
+	}, nil
 }
 
 // universeReaches answers whether this rung may make THIS ground's world, and
@@ -408,17 +560,29 @@ func universeReaches(order groundOrder) bool {
 // THE CHILD WAKES UP IN A CLEAN TREE, exactly as it does on the snapshot rung
 // and for the same reason: an inheritance it cannot tell from its own work is an
 // inheritance it will commit, and what comes home has to be what the node's own
-// hands wrote. The seal is an ordinary commit here rather than [sealGroundWork]'s
-// index-of-its-own gymnastics, because there is nobody to leave alone — the fork
-// is the harness's, made a moment ago, and the person's checkout is untouched by
-// construction.
-func universeBranch(ctx context.Context, workspace *furrow.Workspace, order groundOrder, fork furrow.Fork) (taskTree, bool) {
-	drop := func() {
-		// The fork is being abandoned before anything was written in it, so a
-		// record furrow will not let go of is the same one line in a listing a
+// hands wrote.
+//
+// THE SEAL IS [sealGroundWork], THE SNAPSHOT RUNG'S OWN, and it used to be an
+// ordinary `git checkout -b` and `git commit` on the argument that the fork is
+// the harness's and there is nobody to leave alone. The argument was right about
+// the checkout and wrong about the commit: `git commit` runs the repository's
+// commit hooks and honours its signing configuration, both of which came across
+// in the fork's `.git`, and a machine commit is not a person's commit — a
+// commit-msg rule that wants a ticket number, a pre-commit lint over files nobody
+// has finished, a signing agent that will not answer a subprocess each refused
+// it here and not on the rung below, whose seal runs none of them. One machine
+// commit, one way of writing it; the fork's only difference is where its branch
+// is cut ([standOnSeal]).
+//
+// Every failure answers why, and drops the fork first: it was abandoned before
+// anything was written in it.
+func universeBranch(ctx context.Context, workspace *furrow.Workspace, order groundOrder, fork furrow.Fork) (taskTree, error) {
+	drop := func(err error) (taskTree, error) {
+		// A record furrow will not let go of is the same one line in a listing a
 		// landing's is: there is nothing here to report it to.
 		_ = workspace.DropFork(ctx, fork.Name)
 		_ = os.RemoveAll(order.dir)
+		return taskTree{}, err
 	}
 	// AND THE FORK IS ASKED WHOSE `.git` IT IS BEFORE ANYTHING IS WRITTEN IN IT.
 	// [universeReaches] already refused the ground this can happen with; this is
@@ -426,9 +590,11 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 	// commit landing in somebody else's repository and it is cheaper to be sure
 	// twice than to be sorry once.
 	gitDir, err := git(fork.Path, "rev-parse", "--absolute-git-dir")
-	if err != nil || !withinDir(canonicalPath(fork.Path), canonicalPath(strings.TrimSpace(gitDir))) {
-		drop()
-		return taskTree{}, false
+	if err != nil {
+		return drop(errors.New("the fork is not a repository: " + familyTreeProblem(gitDir, err)))
+	}
+	if !withinDir(canonicalPath(fork.Path), canonicalPath(strings.TrimSpace(gitDir))) {
+		return drop(errors.New("the fork's repository is " + strings.TrimSpace(gitDir) + ", which is not inside the fork"))
 	}
 	home := currentBranch(order.root)
 	homeSha := branchCommit(order.root, home)
@@ -438,9 +604,8 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 	// already holds and opening it costs one checkout. The seal is not a second
 	// way of doing that; it is the answer for a child that has no freeze.
 	if frozen := strings.TrimSpace(order.frozen); frozen != "" {
-		if !openForkAt(fork.Path, order.branch, frozen) {
-			drop()
-			return taskTree{}, false
+		if err := openForkAt(fork.Path, order.branch, frozen); err != nil {
+			return drop(err)
 		}
 		// THERE IS NO BASE, and that is the freeze's own law rather than an
 		// omission here: [taskTree.replayOwnWork] lifts a machine commit out of a
@@ -458,12 +623,14 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 			mode:     TaskModeWorktree,
 			seal:     frozen,
 			universe: fork.Name,
-		}, true
+		}, nil
 	}
-	base, ok := sealForkWorld(fork.Path, order.branch, order.title)
-	if !ok {
-		drop()
-		return taskTree{}, false
+	base, err := sealGroundWork(fork.Path, order.title)
+	if err != nil {
+		return drop(err)
+	}
+	if err := standOnSeal(fork.Path, order.branch, base); err != nil {
+		return drop(err)
 	}
 	return taskTree{
 		dir:      fork.Path,
@@ -477,7 +644,7 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 		seal:     fork.Head,
 		universe: fork.Name,
 		base:     base,
-	}, true
+	}, nil
 }
 
 // openForkAt cuts the part's branch inside a forked repository AT THE WORLD ITS
@@ -507,57 +674,50 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 // are the ones that belong to machinery rather than to anybody's world: a task's
 // private metadata, and furrow's own bookkeeping, which the fork needs to be a
 // fork at all.
-func openForkAt(dir, branch, frozen string) bool {
-	if _, err := git(dir, "checkout", "-b", branch, frozen); err != nil {
-		return false
+func openForkAt(dir, branch, frozen string) error {
+	if out, err := git(dir, "checkout", "-b", branch, frozen); err != nil {
+		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
-	if _, err := git(dir, "clean", "-fd", "-e", aforgeDroppings, "-e", furrowMarkerDir); err != nil {
-		return false
+	if out, err := git(dir, "clean", "-fd", "-e", aforgeDroppings, "-e", furrowMarkerDir); err != nil {
+		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
-	return true
+	return nil
 }
 
-// sealForkWorld cuts the task's branch inside a forked repository and commits
-// the world it was forked from onto it, answering the commit it wrote — or the
-// empty string when the parent had nothing uncommitted, which is the ordinary
-// case and costs nothing.
+// standOnSeal cuts the task's branch inside a forked repository AT THE SEAL and
+// stands the fork's checkout on it, leaving the working copy exactly as it is.
 //
-// WHAT IT COMMITS IS WHAT GIT CAN SEE, and that is not a limitation here the way
-// it is on the rung below: the `.env` and the installed dependencies are in the
-// fork's working copy whether or not any commit mentions them, which is the
-// whole point of the rung. They stay ignored, so they are never staged, never
-// merged, and never reported as something the node left behind.
-func sealForkWorld(dir, branch, title string) (string, bool) {
-	if _, err := git(dir, "checkout", "-b", branch); err != nil {
-		return "", false
+// IT IS PLUMBING ON PURPOSE, for [universeBranch]'s reason: a checkout runs the
+// repository's post-checkout hook, and a machine commit's branch is not a
+// person's checkout. And it CANNOT be a checkout for a second reason. The seal
+// was written from the working copy, so the working copy already holds the
+// seal's files — but the fork's index still holds HEAD's, and git refuses to
+// switch a path whose working copy differs from its index even when the switch
+// would write the very bytes that are already there.
+//
+// So the branch is made where the seal is (HEAD itself, for a parent with
+// nothing uncommitted), HEAD is pointed at it, and the index is rebuilt from it
+// with a mixed reset that never touches a file. The child wakes up on its own
+// branch with nothing to commit, which is what [universeBranch] promises.
+func standOnSeal(dir, branch, base string) error {
+	from := base
+	if from == "" {
+		from = "HEAD"
 	}
-	// The harness's own corner is not part of anybody's world (task_run.go's
-	// [aforgeDroppings]), exactly as [sealGroundWork] excludes it — and it is
-	// taken back out with a reset rather than named as an `:(exclude)` pathspec,
-	// for the reason given there: a person whose `.gitignore` lists the corner
-	// would otherwise have git refuse the whole add as an attempt to stage an
-	// ignored path. [stageTaskWork] stages the same way.
-	if _, err := git(dir, "add", "-A", "--", "."); err != nil {
-		return "", false
+	if out, err := git(dir, "branch", "--no-track", branch, from); err != nil {
+		return errors.New("the task's branch could not be cut in the fork: " + familyTreeProblem(out, err))
 	}
-	if _, err := git(dir, "reset", "-q", "--", aforgeDroppings); err != nil {
-		return "", false
+	if out, err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
+		return errors.New("the task's branch could not be cut in the fork: " + familyTreeProblem(out, err))
 	}
-	if _, err := git(dir, "diff", "--cached", "--quiet"); err == nil {
-		// Nothing staged, so the parent had nothing uncommitted and HEAD already
-		// is its world. The rung is still the universe rung: what makes it one is
-		// the files git never sees, and they came across regardless.
-		return "", true
+	if base == "" {
+		// Nothing was sealed, so the index already holds this branch's tree.
+		return nil
 	}
-	if _, err := git(dir, append(aforgeGitIdentity(),
-		"commit", "-m", groundCommitMessage(title))...); err != nil {
-		return "", false
+	if out, err := git(dir, "reset", "-q"); err != nil {
+		return errors.New("the task's branch could not be cut in the fork: " + familyTreeProblem(out, err))
 	}
-	head, err := git(dir, "rev-parse", "HEAD")
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(head), true
+	return nil
 }
 
 // hideFurrowMarker keeps furrow's own bookkeeping out of the person's `git
@@ -638,10 +798,11 @@ type snapshotRung struct{}
 
 func (snapshotRung) rung() GroundRung { return GroundRungSnapshot }
 
-func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, bool, error) {
-	if order.promise != TaskModeWorktree || strings.TrimSpace(order.root) == "" || !hasCommit(order.root) {
-		return taskTree{}, false, nil
-	}
+func (snapshotRung) reach(order groundOrder) (bool, string) {
+	return order.promise == TaskModeWorktree && strings.TrimSpace(order.root) != "" && hasCommit(order.root), ""
+}
+
+func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, error) {
 	// A FAMILY THAT FROZE ITS WORLD IS NOT SEALED A SECOND TIME. The parent
 	// committed its work-so-far onto the family branch before any part was cut
 	// (task_divide_wip.go), so this world is already written down and shared.
@@ -662,10 +823,10 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 			// git's own words. No rung below takes a repository promise anyway, so
 			// what this changes is not whether the task fails but whether anybody
 			// is told why.
-			return taskTree{}, false, err
+			return taskTree{}, err
 		}
 		tree.ground, tree.seal = order.ground, frozen
-		return tree, true, nil
+		return tree, nil
 	}
 	// THE COMMIT IS MADE FIRST AND THE WORKTREE CARVED FROM IT. Doing it the
 	// other way — cut at HEAD, then bring the parent's work across — is the
@@ -680,7 +841,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 		// from HEAD and told nobody: the child stood in the family's baseline
 		// believing it stood in its parent's world, which is the whole defect
 		// this file was written from, arriving through the back door.
-		return taskTree{}, false, err
+		return taskTree{}, err
 	}
 	from := base
 	if from == "" {
@@ -692,7 +853,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	}
 	tree, err := cutWorktreeFrom(order.place, order.root, order.dir, order.branch, order.mode, from)
 	if err != nil {
-		return taskTree{}, false, err
+		return taskTree{}, err
 	}
 	tree.ground, tree.base = order.ground, base
 	if base != "" {
@@ -700,7 +861,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	} else if head, err := git(order.root, "rev-parse", "HEAD"); err == nil {
 		tree.seal = strings.TrimSpace(head)
 	}
-	return tree, true, nil
+	return tree, nil
 }
 
 // sealGroundWork commits a working tree AS IT STANDS onto whatever branch the
@@ -855,22 +1016,23 @@ type copyRung struct{}
 
 func (copyRung) rung() GroundRung { return GroundRungCopy }
 
-func (copyRung) carve(ctx context.Context, order groundOrder) (taskTree, bool, error) {
-	if order.promise != TaskModeMirror {
-		return taskTree{}, false, nil
-	}
+func (copyRung) reach(order groundOrder) (bool, string) {
+	return order.promise == TaskModeMirror, ""
+}
+
+func (copyRung) carve(ctx context.Context, order groundOrder) (taskTree, error) {
 	if err := os.MkdirAll(order.dir, order.mode); err != nil {
-		return taskTree{}, false, nil
+		return taskTree{}, fell(err.Error())
 	}
 	if problem := mirrorGround(order.ground, order.dir); problem != "" {
-		return taskTree{}, false, nil
+		return taskTree{}, fell(problem)
 	}
 	return taskTree{
 		dir:    order.dir,
 		merge:  mergeInPlace,
 		ground: order.ground,
 		mode:   TaskModeMirror,
-	}, true, nil
+	}, nil
 }
 
 // ── what the landing owes the ladder ────────────────────────────────────────

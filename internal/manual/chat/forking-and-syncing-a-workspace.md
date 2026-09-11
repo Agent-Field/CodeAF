@@ -36,8 +36,10 @@ Set `AFORGE_FURROW` to the full path of a binary to make aforge use that one
 instead — your own build, or a newer furrow than this aforge is pinned to. A
 value that names nothing is an error rather than a quiet fall back.
 
-Nothing about furrow is switched on for you, nothing is uploaded anywhere, and
-aforge never runs `furrow watch` on a folder by itself.
+Nothing is uploaded anywhere, and no watcher is left running. aforge attaches a
+folder by itself in exactly one case: a task about to be handed a whole copy of it
+(the tasks guide, *Does my task see my .env*). It attaches without a background
+watcher, and that attachment alone does not put the four tools above on your belt.
 
 ## Where is the furrow that aforge carries
 

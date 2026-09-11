@@ -57,6 +57,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -225,9 +226,9 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // ── the pre-turn block ──────────────────────────────────────────────────────
 
 // memoryBlock is THE ONE SEAM every caller uses: the conversation before a
-// turn, and a task node when its context is assembled (task_run.go). cue is
-// what the block is chosen against — the message just typed, or the brief the
-// node is about to work from.
+// turn, and a task node's reading beside its work ([nodeMemory]). cue is what
+// the block is chosen against — the message just typed, or the brief the node
+// is working from.
 //
 // It returns "" for everything that could go wrong, and that is the contract:
 // no store, an empty index, a cue with nothing in it to route against, a
@@ -241,15 +242,185 @@ func (a *Agent) memoryBlock(ctx context.Context, cue string) string {
 	return a.routedMemory(ctx, cue, nil, false)
 }
 
+// ── what a task node is handed ──────────────────────────────────────────────
+
+// nodeMemory is the block one task node's brief was routed to, read ONCE per
+// node run and BESIDE the work rather than in front of it (task_beside.go).
+//
+// IT USED TO BE A CONSTRUCTOR ARGUMENT, and that is the shape this replaces. The
+// router was asked inside [Agent.newTaskAgentOn], so every worker a node built
+// waited on one reflex call before it existed — six seconds on the measured node,
+// serially, between the working copy and everything else — and a node that built
+// a second worker, a repair round and a merge resolver asked the same question of
+// the same brief four times. The cue is the node's assembled brief, which is
+// settled at admission and does not move while the node runs, so one answer is
+// the answer for every worker the node builds.
+//
+// MEMORY IS AN AID, NOT A CONTRACT, and that is what lets it arrive late. A worker
+// whose first request goes out before the router has answered opens without the
+// block, and the block rides the next request that worker makes: a task worker
+// never clears what it was handed ([Agent.remembers] is false on a node) and the
+// drain before every request lands it at the tail (agent.go's
+// [Agent.landVolatileLocked]). That drain IS the join point — whatever has
+// arrived by the time a request is assembled goes with it, and nothing waits.
+//
+// It fails open exactly as [Agent.memoryBlock] does: no store, no reflex, no
+// answer, and every worker opens with the prompt it always did.
+type nodeMemory struct {
+	// id is the node this reading was routed for. A context carrying it may reach
+	// a constructor building a DIFFERENT node's worker, and a part must never be
+	// handed its parent's memories under its own brief.
+	id uint64
+	// start routes the brief the first time any worker asks for it, and the
+	// runner may ask for it earlier to overlap the working copy being made.
+	start  sync.Once
+	route  func(context.Context) string
+	ctx    context.Context
+	reader *besideWork
+
+	mu      sync.Mutex
+	settled bool
+	block   string
+	// waiting is every worker built before the answer came back. They are handed
+	// it when it does, and a worker closed by then takes nothing
+	// ([Agent.takeMemory]).
+	waiting []*Agent
+}
+
+type nodeMemoryKey struct{}
+
+// withNodeMemory puts one node's memory reading on the node's context, for every
+// worker the node goes on to build. It starts nothing: a node whose body never
+// builds a worker (a saved program's run) makes no reflex call, which is what it
+// made before this existed. The second answer is the one join point, and the
+// node's runner defers it.
+func (a *Agent) withNodeMemory(ctx context.Context, node *TaskNode) (context.Context, func()) {
+	if a == nil || node == nil || !a.remembers() {
+		return ctx, func() {}
+	}
+	cue := node.assembledBrief()
+	memory := &nodeMemory{
+		id:    node.id,
+		ctx:   ctx,
+		route: func(ctx context.Context) string { return a.memoryBlock(ctx, cue) },
+	}
+	return context.WithValue(ctx, nodeMemoryKey{}, memory), memory.end
+}
+
+// nodeMemoryOn is the reading a node's context carries for that node, or nil.
+func nodeMemoryOn(ctx context.Context, node *TaskNode) *nodeMemory {
+	memory, _ := ctx.Value(nodeMemoryKey{}).(*nodeMemory)
+	if memory == nil || node == nil || memory.id != node.id {
+		return nil
+	}
+	return memory
+}
+
+// begin starts the routing if nobody has yet. It is idempotent, so the runner
+// can ask for it early and the constructor can ask for it again.
+func (m *nodeMemory) begin() {
+	if m == nil {
+		return
+	}
+	m.start.Do(func() {
+		m.reader = beside(m.ctx, func(ctx context.Context) {
+			m.settle(m.route(ctx))
+		})
+	})
+}
+
+// settle is the router's answer arriving: kept for every worker still to come,
+// and handed to every worker already waiting. The workers are handed it outside
+// this reading's lock, because [Agent.takeMemory] takes the worker's own.
+func (m *nodeMemory) settle(block string) {
+	for _, worker := range m.keep(block) {
+		worker.takeMemory(block)
+	}
+}
+
+// keep records the answer and gives up the list of workers waiting on it.
+func (m *nodeMemory) keep(block string) []*Agent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settled, m.block = true, block
+	waiting := m.waiting
+	m.waiting = nil
+	return waiting
+}
+
+// handTo gives one worker the node's block: at once when it has arrived, and the
+// moment it arrives otherwise.
+func (m *nodeMemory) handTo(worker *Agent) {
+	if m == nil || worker == nil {
+		return
+	}
+	m.begin()
+	if block, arrived := m.arrivedFor(worker); arrived {
+		worker.takeMemory(block)
+	}
+}
+
+// arrivedFor answers the block when it has come back, and otherwise puts the
+// worker on the list [nodeMemory.settle] hands it to.
+func (m *nodeMemory) arrivedFor(worker *Agent) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.settled {
+		m.waiting = append(m.waiting, worker)
+		return "", false
+	}
+	return m.block, true
+}
+
+// end is the join point [Agent.withNodeMemory] hands the runner.
+func (m *nodeMemory) end() {
+	if m == nil {
+		return
+	}
+	// A READING NOBODY STARTED IS SHUT HERE, so a worker built after the node's
+	// run is over cannot start one that would outlive it. The Once is also what
+	// makes the reader safe to read: it was written inside the same Once.
+	m.start.Do(func() {})
+	m.reader.end()
+}
+
+// takeMemory is a task worker receiving the block its node's brief was routed
+// to. It lands on the next request this worker assembles, and it replaces
+// nothing a person typed: a worker has no turn of its own to route against.
+func (a *Agent) takeMemory(block string) {
+	if block == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.memoryText = block
+}
+
 // refreshMemory is the conversation's own call: route this turn's message, hand
 // any memory COMMAND in it to the store, and put the resulting block in front of
-// the model before the first request goes out.
+// the model.
 //
-// It runs inside the turn goroutine and NOT under a.mu, because it makes a
-// provider call. The lock is taken once at the end, for the two assignments.
-func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
+// IT NO LONGER RUNS IN FRONT OF THE FIRST REQUEST, and that is the whole of what
+// changed here. It used to be one line of [Agent.runTurn], awaited, so the
+// person's own model was not asked until a reflex machine had answered: the call
+// census of 2026-09-11 measured sixteen of them at a mean of 4.3 seconds and a
+// maximum of 10.7, and every message paid it before its first token. It is
+// started at the front of the turn and READ AT THE WIRE instead ([recallAside]),
+// which is loop.go's stated law about auxiliary readings.
+//
+// IT REPORTS WHETHER THE BLOCK MOVED, because that is the one fact the aside has
+// to act on: a block that is byte-for-byte what the request already carried
+// changes nothing and is worth no re-ask, and on a conversation whose subject is
+// holding still that is every turn after the first.
+//
+// It runs on its own goroutine and NOT under a.mu, because it makes a provider
+// call. The lock is taken once at the end, for the two assignments.
+func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) bool {
 	if !a.remembers() {
-		return
+		return false
 	}
 	// The legacy file, once, before anything is routed — so a person whose
 	// standing preferences lived in memory.md is answered out of them on the
@@ -262,13 +433,17 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 		memoryNotice(hub, line)
 	}
 
-	// This lookup precedes the main model call. Keep its own phase visible so
-	// a provider that has not been asked yet is never blamed for the wait.
-	a.tellPhase(provider.PhasePreparing, "saved context", time.Time{})
+	// AND THERE IS NO PHASE WORD ON IT ANY MORE. `preparing saved context` was an
+	// honest sentence about a wait the person really was serving — and it is not a
+	// wait any more, so a status line that still said it would be this surface
+	// naming a call nobody is behind. THE PHASE CLOCK BELONGS TO THE THING A
+	// PERSON IS WAITING FOR (internal/lane's roles.go: only a visible role owns
+	// it), and what they are waiting for from the instant they press enter is the
+	// model's own first word.
 	block := a.routedMemory(ctx, cue, hub, true)
-	a.endPhase()
 
 	a.mu.Lock()
+	moved := a.memoryText != block
 	a.memoryText = block
 	// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately before
 	// the first request would land it anyway (loop.go), and it is landed here as
@@ -278,7 +453,152 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 	// conversation whose subject is holding still is every turn after the first.
 	a.landVolatileLocked()
 	a.mu.Unlock()
+	return moved
 }
+
+// ── THE RECALL RIDES BESIDE THE TURN ────────────────────────────────────────
+//
+// recallAside is the pre-turn recall as a HANDLE the turn carries, in the shape
+// [routeRace] already established for the work-or-words question (route_judge.go):
+// started at the front of the turn, never waited on, asked at the moments where
+// its answer can still be spent.
+//
+// WHAT IT IS FOR IS QUALITY AND NOT SPEED, which is the half that is easy to lose
+// when a wait is taken off a path. The routed block is what remembered lines this
+// request carries, so a recall that is merely DROPPED is a turn answered without
+// the person's own preferences in front of it, and a dropped route also leaves the
+// store's outcome ledger silent about lines it never got to offer — which is how
+// the ranking learns. So nothing here drops anything. Every answer is APPLIED:
+//
+//   - Back before the request is assembled — the ordinary case once the whole
+//     front of the turn overlaps it — and the first request carries it, exactly as
+//     it always did.
+//   - Back after the request went out but before the model's first token: the
+//     generation is cut and re-asked ONCE, with the block in
+//     ([Agent.cutGeneration], loop.go's errRecallCut). The person has read nothing
+//     yet, so nothing is taken off their screen, and the provider's own prefix
+//     cache makes the second send the cheap one.
+//   - Back after the first token: it is LATE, and late means the NEXT step of this
+//     same turn carries it — the block is already in the transcript by then — with
+//     the lateness written down rather than passed over in silence.
+//
+// IT IS A [sidecar] LIKE EVERY OTHER READING BESIDE THE WORK (sidecar.go), with
+// three facts of its own bolted on: whether the person has started reading, the
+// one re-ask this turn may buy, and whether the block ended up late. Those are
+// the recall's business and nothing else's, which is exactly why they are here
+// and the start/take/end law is not.
+type recallAside struct {
+	agent   *Agent
+	reading *sidecar[bool]
+	// token says the person has started reading the answer, so the request can no
+	// longer be re-asked without taking words off their screen. It is written by
+	// the turn's stream observer and read here, which is why it is an atomic and
+	// not a field under a.mu: the observer is called once per delta.
+	token atomic.Bool
+	// resent is the ONE re-ask this aside may buy. One, because a second would be
+	// a door that could cut generations forever, and because there is only ever
+	// one block to land.
+	resent atomic.Bool
+	// late says the block landed behind the first token and is riding the next
+	// step instead of this one. The turn's own decomposition row reads it.
+	late atomic.Bool
+}
+
+// startRecallLocked launches the recall beside the title, from the one place a
+// turn starts (agent.go's [Agent.startTurnLocked]).
+//
+// IT IS STARTED THERE AND NOT IN THE LOOP, and the difference is measured in the
+// only currency that matters here: how much of the turn's own preparation the
+// reflex call gets to hide behind. Everything between a person's keystroke and
+// the wire — the system prompt refresh, the acceptance, the baseline, the harness
+// route, the work-or-words race, what the other windows have landed, the
+// transcript snapshot — now runs WHILE it is in flight rather than after it.
+//
+// It takes no lock of its own: it is called with a.mu held, and the goroutine
+// below takes the lock when it needs it.
+func (a *Agent) startRecallLocked(ctx context.Context, hub *eventHub, cue string) {
+	a.recall = nil
+	// [Agent.remembers] takes no lock — it reads two pointers fixed at
+	// construction — so it is legal under a.mu and is the same gate the routing
+	// pass itself keeps.
+	if !a.remembers() || strings.TrimSpace(cue) == "" {
+		return
+	}
+	aside := &recallAside{agent: a}
+	aside.reading = readBeside(ctx,
+		func(readCtx context.Context) bool { return a.refreshMemory(readCtx, hub, cue) },
+		// AND THE ACT IS THE INTERRUPTION, which is the only power a reading beside
+		// the work has over it (sidecar.go). A block that moved and landed before
+		// the person read a word cuts the request so it can be sent again carrying
+		// it; everything else is recorded and spent later.
+		func(moved bool) {
+			if moved {
+				aside.applyOrDefer()
+			}
+		})
+	a.recall = aside
+}
+
+// takeRecall is the turn's handle on the recall its own Submit started. It is
+// taken rather than read so that a turn cannot be handed the last turn's aside.
+func (a *Agent) takeRecall() *recallAside {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	aside := a.recall
+	a.recall = nil
+	return aside
+}
+
+// sawToken records that the model has begun writing. Called from the turn's
+// stream observer on every delta, so it must stay this cheap.
+func (r *recallAside) sawToken() {
+	if r != nil {
+		r.token.Store(true)
+	}
+}
+
+// applyOrDefer is what the recall does with a block that moved: spend it on THIS
+// request if the person has read nothing yet, and on the next step if they have.
+func (r *recallAside) applyOrDefer() {
+	if r == nil {
+		return
+	}
+	if r.token.Load() {
+		r.late.Store(true)
+		return
+	}
+	if r.resent.Load() {
+		return
+	}
+	// A GENERATION THAT HAS NOT STARTED NEEDS NO CUTTING. The block is already in
+	// the transcript, so the request being assembled will carry it and this aside
+	// keeps its one re-ask for a turn that actually needs one.
+	if r.agent.cutGeneration(errRecallCut) {
+		r.resent.Store(true)
+	}
+}
+
+// wasLate reports that the block arrived behind the first token, for the turn's
+// decomposition row. It is the honest half of the emptiness law here: a recall
+// that could not be spent on the request it was routed for is news, and a build
+// that simply said nothing about it is how a dropped route looked like a turn
+// with no memories to offer.
+func (r *recallAside) wasLate() bool { return r != nil && r.late.Load() }
+
+// reasked reports that this turn spent its one cut-and-re-ask on the block.
+func (r *recallAside) reasked() bool { return r != nil && r.resent.Load() }
+
+// end discards the recall, whether or not it has answered — [sidecar.end].
+func (r *recallAside) end() {
+	if r == nil {
+		return
+	}
+	r.reading.end()
+}
+
+// everAsked reports whether this turn routed anything at all, for the
+// decomposition row loop.go writes.
+func (r *recallAside) everAsked() bool { return r != nil && r.reading.everAsked() }
 
 // routedMemory is the whole pre-turn pass. record says whether the ids it
 // injected are this session's to count.

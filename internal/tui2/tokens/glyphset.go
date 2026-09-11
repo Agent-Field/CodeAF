@@ -164,6 +164,13 @@ const (
 	GProseBullet
 	GProseQuote
 	GCodeGutter
+	// GFilter is the mark in front of a box that NARROWS WHAT IS ALREADY HERE,
+	// and it is deliberately not [GSearch] — which means a call that went out to
+	// the WORLD. The two draw the same shape because they are the same idea at
+	// two distances, and they part company at the ASCII tier: a screen reader
+	// hears `?` for a search, and `?` is already the mark for work waiting on a
+	// person, which is a row the filter box is very often sitting above.
+	GFilter
 	glyphIDCount
 )
 

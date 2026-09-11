@@ -43,7 +43,7 @@ func tasksParkedFixture() (session.World, session.UsageWindow, time.Time) {
 // the count in the foot, and the age beside it.
 func TestWorkParkedOnAPersonIsNotFiledUnderRunning(t *testing.T) {
 	world, win, now := tasksParkedFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	sections := map[string]tasksSection{}
 	items := map[string]tasksItem{}

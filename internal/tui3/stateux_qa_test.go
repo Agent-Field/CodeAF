@@ -25,7 +25,7 @@ func TestTaskListKeepsLiveDesignApprovalWhenTheIndexOnlySaysRunning(t *testing.T
 	a, _ := awaitingDesign(t)
 	a.file = "/tmp/status-qa/conversation/session.jsonl"
 	a.comp.tasks = []session.TaskIndexEntry{{ID: "4", SessionID: "conversation", Label: "harness · flake triage", Status: string(session.TaskRunning), Kind: session.TaskKindHarness}}
-	reading := readTasks(session.World{}, a.taskSheetMine(), session.LastDays(a.now(), 7), time.Time{}, a.now())
+	reading := readTasks(session.World{}, a.taskSheetMine(), session.LastDays(a.now(), 7), tasksSort{}, time.Time{}, a.now())
 	if len(reading.items) != 1 {
 		t.Fatalf("want one task, got %d", len(reading.items))
 	}
@@ -33,7 +33,7 @@ func TestTaskListKeepsLiveDesignApprovalWhenTheIndexOnlySaysRunning(t *testing.T
 		t.Fatalf("live design approval disappeared behind the index: %+v", item)
 	}
 	a.tasks[4].doing = "designing"
-	reading = readTasks(session.World{}, a.taskSheetMine(), session.LastDays(a.now(), 7), time.Time{}, a.now())
+	reading = readTasks(session.World{}, a.taskSheetMine(), session.LastDays(a.now(), 7), tasksSort{}, time.Time{}, a.now())
 	if reading.items[0].section != tasksRunning {
 		t.Fatal("resumed design still asks for approval")
 	}

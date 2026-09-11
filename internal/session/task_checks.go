@@ -293,6 +293,15 @@ func plainDoor(allowed []string) auditDoor {
 // command that names nothing under the auditor's feet is a refusal it will spend
 // a step on rather than a check it can make.
 //
+// AND A DECLARED CHECK IS RUN AGAINST THE TASK'S OWN COPY, which is what `own`
+// is for (#886). The contract is written in the folder the work is ABOUT, by a
+// parent standing in it; the checker stands in a copy, and an absolute argument
+// is not a cwd question — so every address at or under the ground is bound to
+// the copy the command will be run in ([taskCopy.bindCommand]) BEFORE the
+// question below is asked of it. That order is the other half of the fix: a
+// check naming the ground's own `run_tests.sh` by its absolute path was not
+// runnable where the checker stood, and was dropped from the door in silence.
+//
 // AND STALE CHECKS ARE WORSE THAN NO CHECKS. A command declared against one goal,
 // run against the next one and passed, is a verdict nobody earned — so a node
 // whose verification was written for an earlier revision of its assignment gets
@@ -302,7 +311,10 @@ func plainDoor(allowed []string) auditDoor {
 // in one hold of the graph's lock, because two readings could not be compared
 // honestly: a revision landing between them would show the old goal's commands
 // wearing the new goal's number.
-func auditDoorFor(node *TaskNode, ground string) auditDoor {
+func auditDoorFor(node *TaskNode, own taskCopy) auditDoor {
+	// WHERE THE CHECKER STANDS IS THE COPY'S OWN DIRECTORY, so there is one
+	// answer to it rather than a second parameter free to disagree with the map.
+	ground := own.dir
 	var checks []string
 	if node != nil {
 		// THE FAMILY'S DECLARED CHECKS COME THROUGH THE SAME DOOR AS THE NODE'S
@@ -312,8 +324,8 @@ func auditDoorFor(node *TaskNode, ground string) auditDoor {
 		// them. What was merely RECOGNISED in a part's prose is not here: lifting
 		// moves a permission and never mints one ([declaredAmong]).
 		if held := node.verification(); held.current() {
-			checks = appendChecks(checks, runnableChecks(held.checks, ground))
-			checks = appendChecks(checks, runnableChecks(held.family, ground))
+			checks = appendChecks(checks, runnableChecks(held.checks, own))
+			checks = appendChecks(checks, runnableChecks(held.family, own))
 		}
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
@@ -528,11 +540,24 @@ func appendChecks(checks, more []string) []string {
 // command whose first word is neither a program the shell would find nor a file
 // sitting under the auditor's own feet. A dead entry offered as a door is the
 // third measured failure at the top of this file.
-func runnableChecks(declared []string, ground string) []string {
+// AND THE ADDRESSES ARE THE COPY'S BEFORE EITHER QUESTION IS ANSWERED
+// ([taskCopy.bindCommand]). The shape is asked first, of the words the contract
+// wrote, because that is a fact about the contract. The binding is next, because
+// a check names the folder the work is ABOUT and is run in a copy of it. And
+// "could this run where the checker stands" is asked last, of the command the
+// checker would really type — which is the order that stopped a check naming the
+// ground's own script from being dropped for naming a file that was not under
+// the checker's feet. A caller standing on the ground itself carries the
+// identity map, and its checks come through exactly as they were declared.
+func runnableChecks(declared []string, own taskCopy) []string {
 	out := make([]string, 0, len(declared))
 	for _, raw := range declared {
 		command, ok := commandLike(raw)
-		if !ok || !runnableHere(ground, command) {
+		if !ok {
+			continue
+		}
+		command = own.bindCommand(command)
+		if !runnableHere(own.dir, command) {
 			continue
 		}
 		out = append(out, command)

@@ -324,16 +324,26 @@ func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (Rout
 	// A deadline here lets the caller proceed without memory when a provider
 	// stalls instead of inheriting the transport's multi-minute safety bound.
 	//
-	// IT IS THE ROLE'S OWN CEILING AND NOT A SECOND COPY OF THE FIGURE UNDER IT.
-	// This call declares [lane.RoleRecall] four lines down, and a role is what
-	// decides how long a silence on its behalf may last ([lane.Role.Ceiling]);
-	// reading [lane.VisiblePatience] directly was the same number today and a
-	// bound that would not have followed the role's patience if it moved.
+	// IT IS THE ROLE'S OWN GIVE-UP AND NOT ITS CEILING, and the difference is the
+	// whole of what was wrong here. A role says two things about a silence: when
+	// to ACT on it ([lane.Role.Ceiling]) and when to STOP ([lane.Role.GiveUp]).
+	// This read the first as though it were the second, which made them the same
+	// instant — the hazard controller was told to move this call to another
+	// machine at exactly the moment the deadline killed it, so no recall in this
+	// build's history was ever rescued off a slow reflex endpoint. The 2026-09-11
+	// census measured what that produced: a mean of 4.3 seconds and a maximum of
+	// 10.7, with DekaLLM answering at a median of 5.5s beside DeepInfra's 1.7s.
+	//
+	// So the ceiling ACTS, two seconds in, and this is the bound it acts inside of.
 	//
 	// AND WHAT IT COSTS TO REACH IT IS A TURN WITHOUT ITS MEMORY, never a turn
 	// without its answer: the caller proceeds, which is why a flat bound is
-	// honest here and would not be on the reply itself.
-	ctx, cancel := context.WithTimeout(ctx, lane.RoleRecall.Ceiling())
+	// honest here and would not be on the reply itself. THE CALLER NO LONGER WAITS
+	// FOR IT AT ALL — internal/session runs this beside the turn and applies what
+	// it finds to whichever step is still ahead of it (loop.go's law) — so a
+	// window generous enough to let the rescue land is now the answer that costs
+	// the person nothing and keeps the most memories.
+	ctx, cancel := context.WithTimeout(ctx, lane.RoleRecall.GiveUp())
 	defer cancel()
 	known := make(map[string]bool, len(index))
 	for _, stub := range index {

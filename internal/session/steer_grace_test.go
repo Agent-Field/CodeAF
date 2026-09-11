@@ -48,7 +48,7 @@ func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	}}
 	// The adopted bash becomes a job, and a job is named on its own goroutine;
 	// this test indexes into the requests it scripted (steer_test.go).
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	// A live conversation arms the background clock, and the defect was the
 	// steer waiting for it. Twenty seconds stands in for livechat's thirty and
 	// is longer than anything this test does.
@@ -231,7 +231,7 @@ func TestASteerGraceOnlyActsForWhatItWasArmedFor(t *testing.T) {
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("changed course"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("and it finished"), nil },
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "run the suite")
 	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
@@ -334,7 +334,7 @@ func TestAReplacedSteerGraceIsInertInItsOwnTurn(t *testing.T) {
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("changed course"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("and it finished"), nil },
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "run the suite")
 	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })

@@ -2653,7 +2653,7 @@ func checkpointLastSaid(messages []ai.Message) string {
 // AND A MARK THAT SAYS CONTINUE COSTS THE TURN NOTHING BUT THE CALL. Nothing is
 // injected, nothing is said, the model is not told it was looked at, and the
 // meter simply walks on to the next mark.
-func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, calls []ai.ToolCall, taken *Decision) bool {
+func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, calls []ai.ToolCall, taken *Decision, aside *markAside) bool {
 	if !a.checkpoints(ctx, user) {
 		return false
 	}
@@ -2694,22 +2694,158 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// parts at the head of the brief the worker opens on, and a drawing with parts
 	// in it is the one reading that REFUSES a completion claim
 	// ([Agent.handOverRunningTurn]).
-	read := a.readMark(ctx)
 	rounds := meter.rounds
 	if mark < checkpointMarks {
-		if !read.sketch.split() {
-			a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-			return false
-		}
-		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
-		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, checkpointSeamMark, rounds, meter, meter.raced, read, taken).moved
+		// AND AT THE FIRST TWO IT IS STARTED RATHER THAN WAITED FOR, which is this
+		// file's whole share of loop.go's law. A mark's reading was eight seconds
+		// of a person's evening on the 2026-09-11 census — measured at 09:29:12,
+		// with the next step going out two milliseconds after it returned — and
+		// what it decided on that turn, and on the great majority of turns it is
+		// ever asked on, was NOTHING: [checkpointSketch.split] is false and the
+		// only thing that happens is a journal line (the branch below). A reading
+		// whose usual answer is "carry on" has no business being the reason the
+		// work stopped to wait.
+		//
+		// SO IT RIDES BESIDE THE NEXT STEP AND INTERRUPTS IT WHERE IT MUST. A
+		// carry-on costs the person nothing at all now; a drawing with independent
+		// parts in it cuts the step in flight through the same door a person's own
+		// steer uses (steer.go's [Agent.cutGeneration]) and is spent at the
+		// boundary that cut opens ([Agent.checkpointSettle]).
+		aside.start(ctx, a, mark, rounds)
+		return false
 	}
-	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
-	// did: it decided nothing, and the ceiling line written a moment later is
-	// where what happened to the turn is recorded.
+	// THE CEILING IS AN ENDING AND NOT A READING, so it is the one mark still read
+	// in line. There is no next step to run beside it: the decision to move this
+	// turn is already taken by the time this branch is reached, and starting one
+	// more request only to cut it a moment later would be a prefill bought to be
+	// thrown away.
+	//
+	// AND ITS OWN READ IS JOURNALED AS A CARRY-ON, because that is what it did: it
+	// decided nothing, and the ceiling line written a moment later is where what
+	// happened to the turn is recorded.
+	//
+	// A READING STILL IN FLIGHT FROM THE MARK BELOW IS LET GO OF HERE. Its answer
+	// could only ever say what this ceiling is already doing.
+	aside.end()
+	read := a.readMark(ctx)
 	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
 	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, taken)
+}
+
+// ── A MARK'S READING, BESIDE THE WORK ───────────────────────────────────────
+
+// markReading is one mark's answer with the two facts about WHEN it was asked,
+// which the drawing itself does not carry and the journal row needs.
+type markReading struct {
+	read   checkpointRead
+	mark   int
+	rounds int
+}
+
+// markAside is the turn's handle on a mark's reading. It is a [sidecar] like
+// every other reading beside the work (sidecar.go), with one rule of its own.
+//
+// THE TURN HOLDS ONE, NOT ONE PER MARK. A reading still in flight when the next
+// mark is crossed keeps its place — a second reader shown a transcript one step
+// longer would answer the same question twice and the turn would pay for both —
+// so [markAside.start] on a pending handle does nothing at all, and the mark it
+// declined is simply the reading the next boundary takes.
+type markAside struct {
+	reading *sidecar[markReading]
+	// asked is that this turn bought a reading at all. It outlives the handle
+	// being replaced, which is what the decomposition row needs, and it is touched
+	// only on the turn's own goroutine.
+	asked bool
+}
+
+// everAsked reports whether this turn bought a mark's reading at all, for the
+// decomposition row loop.go writes.
+func (m *markAside) everAsked() bool { return m != nil && m.asked }
+
+// start launches one mark's reading beside the work.
+//
+// A DRAWING WITH INDEPENDENT PARTS IN IT CUTS THE STEP IN FLIGHT. That is the
+// only thing this reading is allowed to do to the work, and it is the
+// interruption road a person's own steer already uses: the request stops,
+// whatever was written stays in the transcript, and the loop comes back to a
+// boundary where the drawing can be spent ([Agent.checkpointSettle]). A carry-on
+// cuts nothing and says nothing.
+func (m *markAside) start(ctx context.Context, a *Agent, mark, rounds int) {
+	if m == nil || m.reading.pending() {
+		return
+	}
+	m.asked = true
+	m.reading = readBeside(ctx,
+		func(readCtx context.Context) markReading {
+			return markReading{read: a.readMark(readCtx), mark: mark, rounds: rounds}
+		},
+		func(landed markReading) {
+			if landed.read.sketch.split() {
+				a.cutGeneration(errMarkCut)
+			}
+		})
+}
+
+// take answers the reading IF ONE HAS ALREADY LANDED, and never waits.
+func (m *markAside) take() (markReading, bool) {
+	if m == nil {
+		return markReading{}, false
+	}
+	return m.reading.take()
+}
+
+// takeAtTheEnd waits for a reading that has not answered yet. It is
+// [sidecar.takeAtTheEnd] and carries that method's whole warning in its name: it
+// is for an ENDING and nowhere else ([Agent.closeMarkAside] is the one caller).
+func (m *markAside) takeAtTheEnd() (markReading, bool) {
+	if m == nil {
+		return markReading{}, false
+	}
+	return m.reading.takeAtTheEnd()
+}
+
+// end discards the reading, whether or not it has answered — [sidecar.end].
+func (m *markAside) end() {
+	if m == nil {
+		return
+	}
+	m.reading.end()
+}
+
+// checkpointSettle is the other half of [Agent.checkpointRound]: the reading
+// started at an earlier boundary, spent at this one.
+//
+// It reports whether THE TURN IS OVER, exactly as the round does, and it is a
+// line of the loop rather than a hook for that reason (hooks.go's law: only
+// pre-action may stop something).
+//
+// A READING THAT HAS NOT ANSWERED YET COSTS THIS BOUNDARY NOTHING and is asked
+// again at the next one. A carry-on is a journal line and nothing else — the
+// model is not told it was looked at, and the meter walks on — which is what the
+// measured majority of these readings are.
+func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage,
+	started time.Time, model string, meter *checkpointMeter, aside *markAside, taken *Decision,
+) bool {
+	landed, ok := aside.take()
+	if !ok {
+		return false
+	}
+	read, mark, rounds := landed.read, landed.mark, landed.rounds
+	if !read.sketch.split() {
+		a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
+		return false
+	}
+	// AND A TURN THE PERSON HAS SINCE LET GO OF STARTS NOTHING. The reading was
+	// taken against a turn that was alive; between then and here the person may
+	// have pressed stop, and a handover on a dead turn would put work on the rail
+	// nobody asked for ([checkpointRead.ownerGone] says the same thing one road
+	// over).
+	if ctx.Err() != nil {
+		return false
+	}
+	a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
+	return a.handOverRunningTurn(ctx, hub, turn, started, model,
+		checkpointSplitNote, checkpointSeamMark, rounds, meter, meter.raced, read, taken).moved
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -2893,7 +3029,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 // along. Re-opening a broken turn buys a fourth identical failure; what a broken
 // turn needs is the error path, which is the one thing a re-open takes it away
 // from. So [turnBroke] is asked before anything is spent.
-func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, response *ai.Response) (again, over bool) {
+func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, response *ai.Response, aside *markAside) (again, over bool) {
 	if turnBroke(response) {
 		return false, false
 	}
@@ -3123,7 +3259,11 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// THE RE-OPEN CARRIES NO BATCH, and that is the honest reading: this road is
 	// reached by a turn that has STOPPED, so there is no round of looking to
 	// discount and the ladder is climbed exactly as it always was.
-	if a.checkpointRound(ctx, hub, user, meter, turn, started, model, nil, &decision) {
+	// THE TURN'S OWN MARK HANDLE TRAVELS WITH IT. A re-opened turn is the same
+	// turn on the same meter, so a rung crossed here starts a reading that the
+	// loop's next boundary settles — beside the continuation this road is about to
+	// write, never in front of it.
+	if a.checkpointRound(ctx, hub, user, meter, turn, started, model, nil, &decision, aside) {
 		return false, true
 	}
 	meter.carriedOn++
@@ -3801,15 +3941,6 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// discarding the reason it did not decline.
 		draft = reading.remainder()
 	}
-	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
-	// the road: the await, the drop and the steward's own two endings are all
-	// behind it. It used to be started above both model calls so the rail row was
-	// never drawn under the person's raw sentence, and it still has the writer's
-	// call below to land in — the longest stretch of the stage — so nothing is
-	// lost by asking a moment later. A completed request no longer pays a namer
-	// for a task nobody starts (taskname.go's [nameAhead]).
-	ahead := a.nameAhead(asked)
-	defer ahead.release()
 	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
 	// writes no brief because the drawing already is one (checkpoint_quick.go).
 	//
@@ -3818,10 +3949,27 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// at all and the kind of node it would have moved to changes none of that.
 	// Before, because the two calls below are the whole of what this road exists
 	// to skip: a worktree nobody opens and a ninety-second writer producing a
-	// paragraph the items say better.
+	// paragraph the items say better — AND THE NAME, which is asked for under
+	// this branch rather than over it. THE NAMING ERRAND BELONGS TO THE ROAD THAT
+	// NAMES: a quick node is never named ([Agent.newQuickSpec] admits it named, so
+	// [TaskGraph.nameNode] leaves it alone), and asking above this line meant every
+	// quick carry-on sent a real request to a real model and cancelled it
+	// microseconds later — a call paid for, and an answer nobody was ever going to
+	// read.
 	if quick := a.quickFromDrawing(read, asked); quick != nil {
-		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+		return a.handOverAsQuick(ctx, hub, turn, started, model, *quick)
 	}
+	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
+	// the road and the road itself is known: the await, the drop, the steward's own
+	// two endings and the quick node are all behind it. It used to be started above
+	// both model calls so the rail row was never drawn under the person's raw
+	// sentence, and it still has the writer's call below to land in — the longest
+	// stretch of the stage — so nothing is lost by asking a moment later. A
+	// completed request no longer pays a namer for a task nobody starts, and a
+	// quick carry-on no longer pays one for a row nothing renames (taskname.go's
+	// [nameAhead]).
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
 	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
@@ -4060,7 +4208,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

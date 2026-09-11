@@ -1,5 +1,72 @@
 package session
 
+// ── THE ONLY WAIT A PERSON EXPERIENCES IS THE MAIN MODEL GENERATING ─────────
+//
+// THAT IS A LAW OF THIS FILE, and it is stated here because it is the one rule
+// the turn loop cannot enforce with a type. Everything a turn asks that is not
+// the person's own model — the recall that picks which remembered lines this
+// message needs, the judge that asks whether a message was work, the reader that
+// sketches what is left of a long answer, a title, a caption, a name — is an
+// AUXILIARY READING. Every one of them runs BESIDE the work, and a reading may
+// only ever INTERRUPT the work; none of them may precede it.
+//
+// So the two moments this file owns are measured in milliseconds, and there is a
+// test that fails the build when they stop being (loop_speed_test.go):
+//
+//	message → the main request on the wire      ≤ 50 ms
+//	tool result → the next request on the wire  ≤ 50 ms
+//
+// WHAT THAT COST BEFORE IT WAS A LAW. The call census of 2026-09-11 measured the
+// pre-turn recall gate at a mean of 4.3 seconds and a maximum of 10.7 over
+// sixteen messages, with the person's own model not asked until a reflex machine
+// had answered — 1.7s, 2.3s, 3.0s and one of 20.4s at 09:30:45 — and the mark's
+// reader at 8.1 seconds between a tool result and the next step, with the next
+// request going out two milliseconds after it returned. Neither of those readings
+// decided anything on those turns. They were paid for anyway, by the person, in
+// front of every message.
+//
+// AND QUALITY IS KEPT BY APPLYING EVERY DECISION, NEVER BY AWAITING IT. That is
+// the half of this law that is easy to lose, so it is spelled as three rules:
+//
+//   - A decision that arrives before it is spent is applied to THIS step, exactly
+//     as it always was.
+//   - A decision that arrives late is applied to the NEXT step, or journaled as
+//     late with what it would have changed — never silently dropped, because a
+//     dropped reading is a reading whose ledger never learns (memory.go's
+//     [recallAside], checkpoint.go's [markAside]).
+//   - A decision that cannot be applied after the fact must be made cheap enough
+//     to precede: at most [lanes.SpokenWithin], and skipped for this step past it.
+//
+// AND A READING DECIDES WHERE IT USED TO ACT. A reading whose EFFECT fires from
+// inside its own goroutine is this mechanism used in name and broken in fact:
+// the effect lands whenever the calls under it happen to return rather than at
+// the moment the turn could still spend it, and a turn about to be re-opened has
+// already had work started over the top of it. So every reading answers a value
+// and the turn is what acts on it (route_judge.go's [judgeRuling] is the one
+// that had to be taken apart to say so).
+//
+// THERE IS EXACTLY ONE EXCEPTION AND IT IS NAMED. The guardian — "is this one
+// tool call plainly safe to run without asking" (consent.go) — decides whether a
+// tool RUNS, so there is nothing to run beside it and nothing it can be applied
+// to afterwards. It keeps its full ten-second window, and what it owes the person
+// instead is a phase word for the whole of it, because a wait that is real is
+// reported (docs/design/waiting/DESIGN.md).
+//
+// THE LAW IS ALSO TRUE READ FROM THE OTHER END: NOTHING THE TURN *TELLS* MAY
+// HOLD IT UP EITHER. A reading is something a turn asks for; a phase is
+// something it says, and for as long as saying one was a straight call into the
+// surface's reader, the last act of every model call waited out a whole Bubble
+// Tea draw on this goroutine — because internal/tui3 asks for its frame down an
+// unbuffered channel. News is left on a desk now and the teller walks away
+// (sidecar.go's [desk], phasenews.go, lanenews.go), which is the same law with
+// the producer and the consumer swapped.
+//
+// AND THE END OF A TURN IS A DIFFERENT WAIT FROM THIS ONE. Once the model has
+// stopped writing there is no work left to run beside, so the two readers that
+// decide whether the answer finished the ask and whether it should have been work
+// are RACED AGAINST EACH OTHER rather than taken in series, and the phase clock
+// says which of them is holding the turn open.
+
 import (
 	"bytes"
 	"context"
@@ -215,6 +282,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// (internal/provider's modelstried.go, [Agent.nextFallback]).
 	ctx = provider.WithModelsTried(ctx)
 	started := time.Now()
+	// AND THE TURN TIMES ITSELF AGAINST ITS OWN LAW, from the first instruction of
+	// the turn rather than from the wire ([turnPace]). What it measures is the two
+	// gaps this file promises to keep in milliseconds, and it is written down at
+	// the end so the next audit can read the decomposition instead of deriving it.
+	pace := &turnPace{began: started}
 	var turn Usage
 
 	// NOTHING MAY LEAVE A CLOCK RUNNING. This turn posts phases of its own
@@ -309,20 +381,35 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// enters that package by any road. The pieces of orchestrate.go that no chat
 	// door reaches any more say so where they stand.
 
-	// AND THE LAST THING BEFORE THE FIRST REQUEST: which of the things this
-	// person has had aforge remember bear on what they just said (memory.go).
-	// It is one small call on the reflex tier against an index of titles, it
-	// happens here rather than in [Agent.startTurnLocked] because that runs with
-	// a.mu held, and everything about it fails open — an empty block is a turn
-	// exactly as it would have been.
-	a.refreshMemory(ctx, hub, user.text())
+	// AND THE READING THAT USED TO BE THE LAST THING BEFORE THE FIRST REQUEST:
+	// which of the things this person has had aforge remember bear on what they
+	// just said (memory.go).
+	//
+	// IT IS NOT A LINE OF THIS FUNCTION ANY MORE. It is already in flight — it was
+	// started beside the title, at the one place a turn begins
+	// ([Agent.startRecallLocked]) — and what happens here is that the turn picks
+	// up the handle and carries it. This is the file's own law in the one place it
+	// was most expensively broken: the call census of 2026-09-11 measured the main
+	// model not being asked until a mistral-nemo call returned, on every single
+	// message.
+	//
+	// Everything about it still fails open — an empty block is a turn exactly as
+	// it would have been — and everything it finds is still applied: to this
+	// request if it is back before the first token, to the next step if it is not.
+	recall := a.takeRecall()
+	// AND THE RECALL DIES WITH THE TURN, for the route race's reason below: a
+	// block nobody can land any more must not go on paying for a reflex call.
+	defer recall.end()
 
-	// AND BESIDE IT, WHAT THE OTHER WINDOWS ON THIS PROJECT HAVE BEEN DOING
-	// (taskdelta.go). It sits here for the line above's reason — it reads a
-	// shared directory and [Agent.startTurnLocked] holds a.mu — and it fails
-	// open the same way: no folder, no index and no other window each answer an
-	// empty block, and a turn with an empty block is a turn as it always was.
-	a.refreshElsewhere()
+	// AND WHAT THE OTHER WINDOWS ON THIS PROJECT HAVE BEEN DOING (taskdelta.go),
+	// on its own goroutine for the same law. It makes no model call — it opens the
+	// project index and one small JSON per live window — but a shared directory on
+	// a cold disk is still a wait, and the only wait a person experiences here is
+	// the model generating. It fails open the same way: no folder, no index and no
+	// other window each answer an empty block, and a turn with an empty block is a
+	// turn as it always was; a read that lands after the first request rides the
+	// next step, which is the same bargain the recall takes.
+	go a.refreshElsewhere()
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
@@ -383,6 +470,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// window, which are the two figures the ledger row's ttft_ms and tps
 			// are made of (usage_ledger.go's [laneWitness]).
 			a.turnLane.token(time.Now())
+			// AND THE READINGS BESIDE THE TURN ARE TOLD THE PERSON HAS STARTED
+			// READING. Past this instant an auxiliary answer may no longer re-ask
+			// the request, because re-asking would take words off a screen
+			// somebody is looking at; it lands on the next step instead
+			// (memory.go's [recallAside]). One atomic store per delta.
+			recall.sawToken()
+			pace.word(time.Now())
 			partial.write(event.Delta)
 			hub.send(Event{Kind: EventTextDelta, Text: event.Delta})
 		case provider.StreamThinking:
@@ -393,6 +487,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// thing the first-token wait measures and the thing the person stops
 			// waiting on. internal/provider's own watch counts them the same way.
 			a.turnLane.token(time.Now())
+			recall.sawToken()
+			pace.word(time.Now())
 			// Reasoning is NOT written to partial: it is the model's working, not
 			// its answer. The sidecar is recorded only after the response completes.
 			reasoning.write(event)
@@ -626,6 +722,43 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// of a conversation on the strength of a conversation that already ended.
 	meter := &checkpointMeter{}
 
+	// AND THE MARK'S READING RIDES BESIDE THE WORK (checkpoint.go's [markAside]).
+	// It belongs to the turn for the meter's reason — it is a fact about ONE
+	// answer — and it is let go of on every way out, including the ones that end
+	// the turn mid-round, so no reading outlives the turn that bought it.
+	marked := &markAside{}
+	defer func() {
+		// IT IS SPENT HERE AND NOT LOST. A reading rides beside the work and is
+		// spent at the next boundary, which is the right rule for every boundary
+		// but the LAST one: a mark crossed by the round that ends a turn — a
+		// re-open is a round — has no next boundary, and a mastermind call paid
+		// for and thrown away is a ledger line nobody can ever count.
+		//
+		// AND THIS IS ONE OF THE TWO PLACES THIS ENGINE WAITS ON A READING, for
+		// the reason the CEILING's own drawing is still read in line and the
+		// reason the guardian blocks: the turn is over, so there is nothing left
+		// to run beside. A deferred body runs when everything has already been
+		// decided, which is what makes the wait honest here and nowhere else
+		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
+		// What it costs is bounded twice — by [checkpointSketchWindow] and by the
+		// drawing having started a whole round earlier.
+		if landed, ok := marked.takeAtTheEnd(); ok {
+			a.journalMarkRead(landed.read, landed.mark, landed.rounds, landed.read.sketch.carryOnDecision())
+		}
+		marked.end()
+	}()
+
+	// AND THE TURN WRITES DOWN WHAT IT SPENT ITS TIME ON, in one row, on every
+	// way out (see [Agent.journalTurnPace]). It is the evidence this file's law is
+	// held to — how long the person waited to be sent anywhere, how long they
+	// waited for a word, the worst gap between a tool result and the next request,
+	// and which readings were in flight beside the work rather than in front of
+	// it — and it is DEFERRED for the phase clock's reason: there are a dozen ways
+	// out of the loop below, a turn handed over or stopped is exactly the turn an
+	// audit wants the decomposition of, and a row written at each exit is one law
+	// copied at every one of them.
+	defer func() { a.journalTurnPace(pace, recall, marked) }()
+
 	// TOOL COMPACTION MAY ONLY TOUCH HISTORY THAT WAS FROZEN BEFORE THIS TURN'S
 	// FIRST REQUEST. Every result appended below will have appeared verbatim in
 	// one request before a later round could call it old; rewriting it then
@@ -641,6 +774,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		if ctx.Err() != nil {
 			a.endStoppedTurn(ctx, hub, partial, turn, started, model)
 			return false
+		}
+
+		// AND THE READING STARTED AT THE LAST BOUNDARY IS SPENT AT THIS ONE
+		// (checkpoint.go's [Agent.checkpointSettle]). It is the mark's half of the
+		// same non-blocking shape [Agent.routeTriage] keeps below: a reading still
+		// in flight costs this boundary one closed-channel test and is asked again
+		// at the next one, and a drawing with independent parts in it ends the turn
+		// here — which is the boundary its own cut opened a moment ago.
+		if a.checkpointSettle(ctx, hub, &turn, started, model, meter, marked, nil) {
+			return true
 		}
 
 		// A COMMAND THIS WORK IS STILL WAITING FOR IS NOT A QUESTION FOR THE MODEL
@@ -678,7 +821,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// this is the one place in this package where a request actually goes
 		// out, so it is the only place the wait a person feels can be timed from
 		// without timing this package's own preparation as well.
-		a.turnLane.sent(time.Now())
+		sentAt := time.Now()
+		a.turnLane.sent(sentAt)
+		// AND THE TURN'S OWN LAW IS TIMED ON THE SAME LINE, which is the only line
+		// where it can be: this is where a request actually leaves, so it is where
+		// the person's wait to be sent anywhere ends and where a tool-result gap
+		// closes.
+		pace.sending(sentAt)
 		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
@@ -695,7 +844,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// an interrupt: the turn context is alive, the partial assistant text
 			// stays immediately before the person's words, and the loop continues
 			// with a fresh request after the ordinary drain at its head.
-			if errors.Is(err, errSteerCut) {
+			// AND A MARK'S CUT TAKES THE SAME ROAD, for the same reason spelled the
+			// other way round: the turn context is alive, whatever the model wrote
+			// before the cut is work the person watched arrive and stays in the
+			// transcript, and the loop continues to the boundary at its head — where
+			// the drawing that cut it is spent ([Agent.checkpointSettle]). What
+			// differs from a steer is only who asked for the boundary.
+			if errors.Is(err, errSteerCut) || errors.Is(err, errMarkCut) {
 				turn.Turns++
 				// THE LANE IS READ BEFORE THE MONEY IS BANKED, because the row the
 				// money writes is this call's and the witness is what measured it.
@@ -703,7 +858,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				a.addUsage(&turn, response, model, served.Name(), facts)
 				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
-				a.keepSteeredPartial(partial, reasoning, droppedCall, hub)
+				a.keepSteeredPartial(partial, reasoning, droppedCall, hub, cutDroppedCallNote(err))
 				warm.reset()
 				forming.reset()
 				continue
@@ -901,12 +1056,37 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// nothing but a pulse, because the request the phase clock was
 			// following had finished and the ones underneath these lines are
 			// made without the turn's stream (checkpoint.go, route_judge.go).
+			// AND THE TWO READERS AT THE END OF A TURN RUN AGAINST EACH OTHER, not
+			// one after the other. They were serial, and they are the longest stretch
+			// of an ordinary tool-less message: a mastermind asked whether the answer
+			// finished the ask, and then — only once that had come back — a cheap
+			// screen and a second mastermind asked whether it should have been work,
+			// the last of them on ten minutes of patience with no window of its own.
+			// The end of a turn is the one place this file's law cannot help, because
+			// the model has stopped and there is no work left to run beside; what
+			// there is instead is another reading, so they read together and the turn
+			// waits max() rather than sum().
+			//
+			// THE JUDGE IS STARTED FIRST AND SPENT LAST, which is the order its own
+			// effect demands: what it does is START WORK, and work must not be
+			// started on top of a turn the reader below is about to re-open. SO IT
+			// DECIDES AND DOES NOT ACT — the reading answers a [judgeRuling] and
+			// [Agent.applyRouteJudge] below is the only thing with an effect in it
+			// (route_judge.go). A reading that starts work from inside its own
+			// goroutine is this mechanism used in name and broken in fact.
+			judge := a.judgeAhead(ctx, user, usedTools, response.Text())
 			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
-			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response)
+			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response, marked)
 			a.endPhase()
 			if over {
+				judge.end()
 				return true
 			} else if again {
+				// A RE-OPENED TURN IS NOT A TURN THAT ANSWERED IN WORDS ALONE, so the
+				// question the judge is holding is about an answer that no longer
+				// exists. It is let go of, and the turn is asked again when it really
+				// does end.
+				judge.end()
 				continue
 			}
 			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
@@ -919,8 +1099,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// and it is asked before the turn is sealed so that the work it starts is
 			// on the rail by the time the person reads the answer.
 			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
-			a.routeJudge(ctx, hub, user, usedTools, response.Text())
+			ruling, _ := judge.takeAtTheEnd()
 			a.endPhase()
+			// AND THE TURN IS WHAT SPENDS IT, here, past the two roads above that
+			// would have made it wrong: this turn answered in words, nothing is
+			// re-opening it and nothing is moving it, so work started now is work
+			// started on a turn that is really over.
+			a.applyRouteJudge(hub, ruling)
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
@@ -981,6 +1166,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
+		// the next request leaving is the turn's own work — recording the results,
+		// the fold, the readings that ride beside it — and the law says it is
+		// milliseconds.
+		pace.resultsIn(time.Now())
 		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
 		// NOTHING. [waitBatch] is the one wait in this loop that can return with
 		// its work still running, and everything below this line writes: the tool
@@ -1059,7 +1249,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// (hooks.go). It is the one seam left in this loop that can end a turn out
 		// of a judgement, and a false is the turn carrying on exactly as it would
 		// have.
-		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil) {
+		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil, marked) {
 			return true
 		}
 
@@ -1069,6 +1259,119 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
 		a.maybeCompact(ctx, hub)
 	}
+}
+
+// ── THE TURN'S OWN DECOMPOSITION ────────────────────────────────────────────
+
+// turnPace times the two moments this file's law is about, and nothing else.
+//
+// IT IS A SEPARATE CLOCK FROM [laneWitness] ON PURPOSE. That one is per REQUEST
+// — it is reset by every attempt, because its job is to time one lane's stream —
+// and the law here is about the TURN: the person pressed enter once, and what
+// they measured was how long it took for anything to leave and how long until a
+// word came back. A figure taken off the witness would have been the last
+// attempt's and would have read as a fast turn on a turn that was re-asked three
+// times.
+//
+// The mutex is the partial buffer's: the first word is stamped by whoever is
+// reading the provider connection, and the sends are stamped by the loop.
+type turnPace struct {
+	mu        sync.Mutex
+	began     time.Time
+	firstSend time.Time
+	firstWord time.Time
+	results   time.Time
+	worstGap  time.Duration
+	steps     int
+}
+
+// sending stamps a request leaving, and closes whichever gap it ends: the
+// person's wait to be sent anywhere on the first one, and a tool-result-to-wire
+// gap on every one after a batch.
+func (p *turnPace) sending(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.steps++
+	if p.firstSend.IsZero() {
+		p.firstSend = now
+	}
+	if !p.results.IsZero() {
+		if gap := now.Sub(p.results); gap > p.worstGap {
+			p.worstGap = gap
+		}
+		p.results = time.Time{}
+	}
+}
+
+// word stamps the first thing the person read. Called from the stream observer
+// on every delta, so it stays one lock and one zero test.
+func (p *turnPace) word(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.firstWord.IsZero() {
+		p.firstWord = now
+	}
+}
+
+// resultsIn stamps the instant a tool batch's results are in hand, which is the
+// moment the NEXT request becomes owed.
+func (p *turnPace) resultsIn(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.results = now
+}
+
+// row is the turn as the journal holds it, with the aside names the caller knows
+// and this clock does not.
+func (p *turnPace) row(aside []string) journalPace {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.firstSend.IsZero() {
+		// A TURN THAT NEVER REACHED THE WIRE HAS NO PACE. Negative is the "write
+		// nothing" the appender reads, rather than a zero that would claim an
+		// instant send.
+		return journalPace{SendMS: -1}
+	}
+	row := journalPace{
+		SendMS: p.firstSend.Sub(p.began).Milliseconds(),
+		Steps:  p.steps,
+		Aside:  aside,
+	}
+	if !p.firstWord.IsZero() {
+		row.FirstWordMS = p.firstWord.Sub(p.firstSend).Milliseconds()
+	}
+	row.StepGapMS = p.worstGap.Milliseconds()
+	return row
+}
+
+// journalTurnPace writes the decomposition down, naming which readings were in
+// flight beside the work.
+//
+// THE NAMES ARE WHAT MAKE THE ROW EVIDENCE rather than two numbers. A turn that
+// sent in four milliseconds because its recall had been deleted and a turn that
+// sent in four milliseconds with the recall, the work-or-words race and a mark's
+// drawing all running beside it are the same row without them.
+func (a *Agent) journalTurnPace(pace *turnPace, recall *recallAside, marked *markAside) {
+	var aside []string
+	if recall.everAsked() {
+		aside = append(aside, "recall")
+		if recall.reasked() {
+			// THE RE-ASK IS NAMED because it is the one move this law buys with a
+			// second request, and an audit that could not see it could not price it.
+			aside = append(aside, "recall:reasked")
+		}
+		if recall.wasLate() {
+			// AND SO IS THE LATENESS, which is the quality half: the block was
+			// routed, it could not be spent on the request it was routed for, and it
+			// rode the next step instead. Silence here is how a dropped reading
+			// looks exactly like a turn that had nothing to recall.
+			aside = append(aside, "recall:late")
+		}
+	}
+	if marked.everAsked() {
+		aside = append(aside, "mark")
+	}
+	a.file.appendPace(pace.row(aside))
 }
 
 // partialBuffer holds what the model has streamed for the current step. The
@@ -1174,12 +1477,27 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 }
 
+// cutDroppedCallNote is WHY a half-arrived tool call is not in the record, in
+// the transcript's own voice.
+//
+// It is a function rather than a constant because there are two doors into the
+// boundary a cut opens now — the person's steer and the mark's reading — and a
+// record that told the model it had been steered when a sidecar had read the turn
+// would be this build putting words in somebody's mouth. The model reads this
+// line on its next request, so it has to be true.
+func cutDroppedCallNote(err error) string {
+	if errors.Is(err, errMarkCut) {
+		return "[incomplete tool call dropped when this answer was read and handed over]"
+	}
+	return "[incomplete tool call dropped when you steered]"
+}
+
 // keepSteeredPartial records the legal assistant half of a cut generation.
 // Tool calls are deliberately absent: a call whose result can never follow is
 // a provider-invalid assistant message. When fragments had arrived, the text
 // says why that instruction is not in the record; otherwise only the text and
 // continuation metadata actually received are kept.
-func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool, hub *eventHub) {
+func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool, hub *eventHub, dropped string) {
 	text := partial.take()
 	// The same law as keepPartial: a steer that cut a stream mid-soup keeps
 	// none of it, and the person is told.
@@ -1190,7 +1508,7 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 		if strings.TrimSpace(text) != "" {
 			text += "\n\n"
 		}
-		text += "[incomplete tool call dropped when you steered]"
+		text += dropped
 	}
 	if strings.TrimSpace(text) == "" {
 		// A reasoning-only cut has no legal visible assistant message to anchor.
@@ -1402,8 +1720,31 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
 		}
+		// A CUT THAT LOST ITS RACE IS NOT A CUT. Any of the three doors can fire in
+		// the microsecond between a good answer arriving and this line reading the
+		// cause, and throwing that answer away would be the machine spending a
+		// person's money to obey itself. The steer above is the one exception and
+		// it is deliberate: a person typing into a turn has said they want the
+		// boundary whatever else happened.
 		if err == nil {
 			return response, model, nil
+		}
+		// AND THE MARK'S READING TRAVELS OUT, because what it wants is the
+		// BOUNDARY and not another request: the drawing it made is spent by
+		// [Agent.checkpointSettle] at the top of the turn's own loop, which is
+		// where the turn can actually be handed over (checkpoint.go).
+		if errors.Is(cause, errMarkCut) {
+			return response, model, errMarkCut
+		}
+		// AND THE RECALL'S RE-ASK IS TAKEN HERE, silently, because nothing failed.
+		// The block of remembered lines landed in the transcript while this request
+		// was in flight and before the person had read a word of it, so the request
+		// is simply assembled again with it in — one move, no backoff, no row and
+		// no sentence, since there is nothing a person could act on and nothing
+		// they saw. It happens at most once a turn ([recallAside]), and the
+		// provider's own prefix cache makes the second send the cheap one.
+		if errors.Is(cause, errRecallCut) {
+			continue
 		}
 		lastErr = err
 

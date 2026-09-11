@@ -200,8 +200,12 @@ func TestTheHistoryPageShowsAnotherWindowsRunningWork(t *testing.T) {
 	if !strings.Contains(row, taskAwayWord) {
 		t.Fatalf("the row does not say it belongs to another window:\n%s", row)
 	}
-	if !strings.Contains(row, "Fix the nil-map crash") {
-		t.Fatalf("the row does not say WHICH window:\n%s", row)
+	// WHICH WINDOW IS THE NOTE'S SECOND HALF, and it is said wherever there is
+	// room for it: the state column is twenty cells, so the row wears the words
+	// that correct its mark and the name goes on the cursor's own grown line and
+	// on the card `enter` opens ([tasksStateField] states the trade).
+	if note := tasksNote(awayItemWith(t, a, "Sweep the call sites")); !strings.Contains(note, "Fix the nil-map crash") {
+		t.Fatalf("the reading does not know WHICH window: %q", note)
 	}
 
 	// AND IT LEAVES WHEN THE WINDOW DOES. Nothing announces a window closing —
@@ -210,6 +214,19 @@ func TestTheHistoryPageShowsAnotherWindowsRunningWork(t *testing.T) {
 	if page := taskSheetText(a); strings.Contains(page, "Sweep the call sites") {
 		t.Fatalf("a window that closed is still drawn as running:\n%s", page)
 	}
+}
+
+// awayItemWith is the row of work one name is on, taken from the reading rather
+// than from the paint.
+func awayItemWith(t *testing.T, a *app, name string) tasksItem {
+	t.Helper()
+	for _, item := range a.tasksFiltered().items {
+		if tasksLabel(item.entry) == name {
+			return item
+		}
+	}
+	t.Fatalf("no row of the reading is called %q", name)
+	return tasksItem{}
 }
 
 // A WINDOW WITH NO NAME IS STILL A PLACE. The row says where the work is and

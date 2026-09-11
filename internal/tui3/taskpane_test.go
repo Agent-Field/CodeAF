@@ -84,6 +84,9 @@ func paneLandingLab(t *testing.T, width int) (*app, *roomQuestionFake) {
 // person's first `↓` lands.
 func paneCursorOnWork(t *testing.T, a *app) {
 	t.Helper()
+	// The work is behind its conversation's fold, which opens shut; a person
+	// reaches it with `→` and so does this ([openTaskFolds]).
+	openTaskFolds(a)
 	lines := a.tasksFiltered().lay(a.taskSheetListWidth())
 	for at := range lines {
 		if lines[at].kind == tasksLineTask {

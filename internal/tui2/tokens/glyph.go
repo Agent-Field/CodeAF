@@ -143,6 +143,7 @@ const (
 	GlyphThought = "✳" // the model's own words between calls
 	GlyphShell   = "$" // a shell call — the prompt a person types at
 	GlyphSearch  = "⌕" // a call that went out to the world
+	GlyphFilter  = "⌕" // narrowing what is already on the page
 	GlyphWrite   = "✎" // a call that wrote something down
 
 	// The action families (internal/tui3's step gutter). One still, monochrome
@@ -403,6 +404,7 @@ func Glyphs() []GlyphInfo {
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
+		{"Filter", GlyphFilter, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
 		{"ActionRead", GlyphActionRead, '▤', true},
 		{"ActionCreate", GlyphActionCreate, '+', false},

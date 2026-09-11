@@ -214,6 +214,16 @@ type tasksReading struct {
 	// the folder a person is already in tells one row from no other.
 	folder string
 	tilde  string
+	// query is what has been typed into the filter box, for the control row to
+	// draw. The FILTERING is done before the reading is handed over
+	// ([tasksPlace.filtered]); what is kept here is the text itself, because the
+	// box is a row of the list now and a row cannot ask the surface anything.
+	query string
+	// order is the column this page is sorted by and which way, handed in by the
+	// place the way the folds are ([tasksReading.open] states the same law): a
+	// snapshot is replaced whole every time a node lands, and an order that lived
+	// on the reading would reset itself under somebody who had just chosen one.
+	order tasksSort
 }
 
 // tasksKey is what identifies ONE piece of work across every authority: the
@@ -234,8 +244,8 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // means in one pass: the file, then this project's in-memory index and live
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
-func readTasks(world session.World, mine tasksMine, win session.UsageWindow, seen, now time.Time) tasksReading {
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde}
+func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -328,7 +338,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	// AND THE ORDER THE ROWS ARRIVE IN IS THE ORDER THE PAGE DRAWS THEM, settled
 	// once here so that every reader of [tasksReading.items] — the tally, the
 	// filter, the layout — walks one list in one order.
-	tree := tasksTreeOf(visible, now, r.chats...)
+	tree := tasksTreeOf(visible, now, by, r.chats...)
 	r.items = tree.order()
 	r.shape = &tree
 	// WHAT THE PLACE IS HOLDING IS COUNTED HERE, ONCE, off the rows before any
@@ -367,7 +377,7 @@ func tasksNewer(a, b tasksItem, now time.Time) bool {
 // is running opened `out of <the conversation you are sitting in>`, which is the
 // one sentence on that page a person would act on, and it named the wrong owner.
 // A row with nothing behind it is the emptiness law's own answer, and every
-// reader of this already drops an empty title ([tasksFacts],
+// reader of this already drops an empty title ([tasksChatRow],
 // [app.taskCardSourceLine]).
 func tasksRowFor(world session.World, mine tasksMine, entry session.TaskIndexEntry) session.SessionRow {
 	id := strings.TrimSpace(entry.SessionID)
@@ -467,6 +477,12 @@ const (
 	// tasksLineTail is the second line of a phone card — the same row continued
 	// (taskphone.go), never a row of its own.
 	tasksLineTail
+	// tasksLineControl is the one line under the head: the filter box on the left
+	// and the column labels on the right ([tasksControlRow]). It is a line of the
+	// LAYOUT rather than chrome around it, because its labels stand over the
+	// columns the rows under it draw — two answers to where the `cost` column is
+	// is a click that sorts by the wrong thing.
+	tasksLineControl
 	// tasksLineChat is a MAIN CONVERSATION standing over the work it asked for.
 	// It is deliberately its own kind and not a task line wearing a made-up
 	// entry: a conversation has no id in the record, nothing can stop it and
@@ -486,7 +502,7 @@ type tasksLine struct {
 	chat tasksChat
 	// under says THE CONVERSATION THIS ROW CAME OUT OF IS ALREADY NAMED ABOVE IT,
 	// by the chat row it hangs under or by the piece of work it was cut out of.
-	// The row then spends those cells on its own name instead ([tasksFacts]).
+	// The row then spends those cells on its own name instead ([tasksChatRow]).
 	under bool
 	// owner is the line index of the task this line belongs to, and -1 on prose
 	// and air. It is what the cursor stands on, what a press resolves to, and
@@ -513,6 +529,13 @@ type tasksLine struct {
 	// kids is how many pieces of work are under this root, which the row says
 	// out loud while the fold is shut. Zero everywhere else.
 	kids int
+	// rank is the row's answer to every sort key, FOLDED WITH EVERYTHING UNDER IT
+	// ([tasksRank.fold]). A row with work beneath it shows the family's total,
+	// because a shut fold stands in for what it is hiding and an open one is the
+	// sum of the rows under it — which is what `$0.49` over `$0.47` and `$0.02`
+	// reads as. It is carried on the LINE and not re-derived in the paint, for the
+	// same reason the fold mark is: it is a fact about the layout.
+	rank tasksRank
 }
 
 // tasksBareLead is the cell in front of every row of work: the place's one left
@@ -545,6 +568,13 @@ func (r tasksReading) lay(width int) []tasksLine {
 	}
 	add(tasksLineWord, r.headLine(width))
 	phone := layoutTier(width) == tierPhone
+	// THE CONTROL ROW IS THE FIRST ROW OF THE LIST AND NOT A SECOND HEAD. It
+	// stands where the rows stand, because its labels are the rows' own columns
+	// named — and it is absent on a phone, where there are no columns to label
+	// and the box at the foot is the way in to the filter (taskphone.go).
+	if !phone {
+		add(tasksLineControl, "")
+	}
 
 	// work draws one piece of work and, while its fold is open, everything under
 	// it — to whatever depth the record goes.
@@ -558,7 +588,8 @@ func (r tasksReading) lay(width int) []tasksLine {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
 		own := len(lines)
-		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested}
+		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested,
+			rank: tree.rank[key]}
 		mark := ""
 		switch {
 		case len(kids) > 0:
@@ -615,7 +646,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				line := tasksLine{
 					kind: tasksLineChat, chat: g.chat, owner: len(lines),
 					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
-					open: r.opens(g.chat.key),
+					open: r.opens(g.chat.key), rank: g.chat.rank,
 				}
 				mark := tasksKinPad
 				if line.folds {
@@ -811,14 +842,35 @@ type tasksChat struct {
 	row   session.SessionRow
 	title string
 	// kids is how many rows OPENING THIS ONE puts on the page, which is what the
-	// shut fold says out loud. Work nested under those is behind their own folds
-	// and is counted by the section's heading instead ([tasksSectionHead]).
+	// fold arithmetic is about: the rows immediately under it, each of which may
+	// be holding a family behind its own fold.
 	kids int
+	// whole is how many pieces of work are under it ALTOGETHER, at every depth,
+	// and it is what the row SAYS ([tasksChatStateField]).
+	//
+	// IT IS THE COUNT AND NOT THE KIDS BECAUSE IT IS A CLAIM ABOUT WHAT IS
+	// HIDDEN, not about what one key press reveals. A root over one task with
+	// four workers under it saying `1 done` beside a heading that says `5 folded
+	// away` is two numbers about the same rows, and the smaller one is the one a
+	// person reads as the size of the thing they are deciding whether to open.
+	whole int
 	// at is the newest thing in it THAT ANYBODY CAN DATE, and the zero time where
 	// nothing can be. It is deliberately not the stamp the conversation SORTS by:
 	// live work is dated `now` for ranking and says nothing at all about when
 	// ([tasksEntryAt] and [tasksEntryStamp] hold the two halves apart).
 	at time.Time
+	// rank is every sort key's answer for this conversation AT ONCE, folded from
+	// the work under it ([tasksRank.fold]): the newest age, the total spend, the
+	// total files, the most urgent state. It is what the row is ORDERED by and
+	// what its own key cell SAYS, which are one question.
+	rank tasksRank
+	// word is the state word the most urgent piece of work under it wears, and it
+	// is what the conversation's `state` cell says after the count: `5 your call`,
+	// `9 done`. A conversation has no state of its own and this is not one.
+	word string
+	// state is where that puts it, kept beside the word so the cell and the
+	// section cannot be worked out two ways.
+	state tasksSection
 }
 
 // tasksGroup is what one section holds: a conversation and the work under it,
@@ -847,18 +899,50 @@ type tasksTree struct {
 	up     map[tasksKey]tasksKey
 	at     map[tasksKey]tasksItem
 	filed  map[tasksKey]tasksSection
+	// rank is every row's answer to every sort key, folded with everything under
+	// it. It is computed once here because the comparison is asked at every level
+	// and a walk per comparison is a walk per log n.
+	rank map[tasksKey]tasksRank
+	// sort is the order this shape was BUILT in, and it is kept so the reading can
+	// tell a cached shape from one that has to be built again ([tasksReading.tree]).
+	// A tree is a sorted thing; two sorts are two trees.
+	sort tasksSort
+}
+
+// tasksSort is the whole of what a person has chosen about the order: which key,
+// and which way. It is one value so that the place, the reading and the tree
+// cannot hold two thirds of an answer between them.
+type tasksSort struct {
+	key  tasksSortKey
+	back bool
+}
+
+// on returns this sort with a key pressed: the same key again REVERSES, and a
+// different one starts that key the way round it is naturally read
+// ([tasksSortKey.ahead]).
+//
+// IT IS ONE RULE FOR THE KEYBOARD AND THE POINTER ALIKE. `s` cycles to the next
+// key and a click names one directly, and both land here, so a label clicked
+// twice and a key cycled round to itself behave the same way.
+func (s tasksSort) on(key tasksSortKey) tasksSort {
+	if s.key == key {
+		return tasksSort{key: key, back: !s.back}
+	}
+	return tasksSort{key: key}
 }
 
 // tasksTreeOf builds that shape, and it is the ONE place the page's structure is
 // decided — the layout and the section headings both read this rather than each
 // walking the rows their own way. The tally deliberately reads each piece of
 // work's own state instead ([tasksReading.tally]).
-func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) tasksTree {
+func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...session.SessionRow) tasksTree {
 	t := tasksTree{
 		kids:  map[tasksKey][]tasksItem{},
 		up:    make(map[tasksKey]tasksKey, len(items)),
 		at:    make(map[tasksKey]tasksItem, len(items)),
 		filed: make(map[tasksKey]tasksSection, len(items)),
+		rank:  make(map[tasksKey]tasksRank, len(items)),
+		sort:  order,
 	}
 	for _, item := range items {
 		t.at[tasksKeyOf(item.entry)] = item
@@ -917,8 +1001,34 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 		}
 		roots = append(roots, item)
 	}
+	// EVERY ROW'S RANK IS FOLDED BEFORE ANYTHING IS ORDERED, because a parent is
+	// compared by what is under it and a walk per comparison would be a walk per
+	// log n. The roots are done after the groups are formed, since a root's fold
+	// reaches every generation below it.
+	for _, item := range items {
+		key := tasksKeyOf(item.entry)
+		t.rank[key] = tasksRankOf(item, now)
+	}
+	var folded func(item tasksItem) tasksRank
+	folded = func(item tasksItem) tasksRank {
+		key := tasksKeyOf(item.entry)
+		rank := tasksRankOf(item, now)
+		for _, kid := range t.kids[key] {
+			rank = rank.fold(folded(kid))
+		}
+		t.rank[key] = rank
+		return rank
+	}
+	for _, root := range roots {
+		folded(root)
+	}
+	// AND THE ORDER IS THE CHOSEN ONE, AT EVERY LEVEL. The tree never flattens:
+	// what changes with the key is which of two SIBLINGS comes first, never
+	// whether a row is still under its parent.
 	for key, kids := range t.kids {
-		sort.SliceStable(kids, func(i, j int) bool { return tasksNewer(kids[i], kids[j], now) })
+		sort.SliceStable(kids, func(i, j int) bool {
+			return t.sort.key.less(t.rank[tasksKeyOf(kids[i].entry)], t.rank[tasksKeyOf(kids[j].entry)], t.sort.back)
+		})
 		t.kids[key] = kids
 	}
 
@@ -972,19 +1082,30 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 	for i := range t.groups {
 		g := &t.groups[i]
 		g.section = tasksSectionCount
+		g.chat.rank = tasksRankZero()
 		if g.named {
 			g.order, g.chat.at = g.chat.row.At, g.chat.row.At
+			g.chat.rank.name = g.chat.title
 			if g.chat.row.NeedsPerson() {
 				g.section = tasksNeeds
 			} else if g.chat.row.Live && g.chat.row.Presence.State == session.PresenceWorking {
 				g.section = tasksRunning
 			}
 		}
+		// urgent is the piece of work whose state the conversation's own cell says
+		// after its count. It is the SAME row that decides which section the whole
+		// conversation stands under, so the heading a person reads and the word on
+		// the row under it cannot disagree.
+		var urgent *tasksItem
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) {
 				g.held++
 				if item.section < g.section {
 					g.section = item.section
+				}
+				if urgent == nil || item.section < urgent.section {
+					held := item
+					urgent = &held
 				}
 				if stamp := tasksEntryAt(item.entry, now); stamp.After(g.order) {
 					g.order = stamp
@@ -994,23 +1115,38 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 				}
 			})
 		}
+		for _, root := range g.roots {
+			g.chat.rank = g.chat.rank.fold(t.rank[tasksKeyOf(root.entry)])
+		}
 		if g.section == tasksSectionCount {
 			g.section = tasksEarlier
 		}
-		sort.SliceStable(g.roots, func(a, b int) bool { return tasksNewer(g.roots[a], g.roots[b], now) })
-		g.chat.kids = len(g.roots)
+		g.chat.state = g.section
+		if urgent != nil {
+			g.chat.word = taskStateWord(urgent.entry, urgent.runs)
+			if urgent.live != nil {
+				g.chat.word = urgent.live.Word
+			}
+		}
+		sort.SliceStable(g.roots, func(a, b int) bool {
+			return t.sort.key.less(t.rank[tasksKeyOf(g.roots[a].entry)], t.rank[tasksKeyOf(g.roots[b].entry)], t.sort.back)
+		})
+		g.chat.kids, g.chat.whole = len(g.roots), g.held
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) { t.filed[tasksKeyOf(item.entry)] = g.section })
 		}
 	}
-	// THE MOST URGENT CONVERSATION IS AT THE TOP AND THE REST READ NEWEST FIRST,
-	// which is the same ranking the rows themselves have always had, applied one
-	// level up.
+	// THE MOST URGENT CONVERSATION IS AT THE TOP, AND INSIDE ONE SECTION THE
+	// CONVERSATIONS ARE ORDERED BY THE SAME KEY THEIR OWN ROWS ARE — by their
+	// AGGREGATE, which is the question a person sorting by cost is asking about a
+	// conversation. The section outranks the key because the sections are what the
+	// page is FOR: a heading a sort could reorder under would be a page whose own
+	// argument moved when somebody clicked a column.
 	sort.SliceStable(t.groups, func(a, b int) bool {
 		if t.groups[a].section != t.groups[b].section {
 			return t.groups[a].section < t.groups[b].section
 		}
-		return t.groups[a].order.After(t.groups[b].order)
+		return t.sort.key.less(t.groups[a].chat.rank, t.groups[b].chat.rank, t.sort.back)
 	})
 	return t
 }
@@ -1110,24 +1246,33 @@ func (t tasksTree) column() bool {
 // tree is the shape of THIS reading, built from the rows it is holding at this
 // instant — which is what makes a filtered page a tree of what survived rather
 // than a tree with holes in it.
+// AND A SHAPE BUILT IN ANOTHER ORDER IS NOT THIS READING'S SHAPE. A tree is a
+// sorted thing — the order decides which of two siblings comes first at every
+// level — so the cached one is used only while it was built the way this reading
+// is asking for. Pressing a sort key does not rebuild anything: it changes the
+// answer this comparison gives, and the next frame notices.
 func (r tasksReading) tree() tasksTree {
-	if r.shape != nil {
+	if r.shape != nil && r.shape.sort == r.order {
 		return *r.shape
 	}
-	return tasksTreeOf(r.items, r.now, r.chats...)
+	return tasksTreeOf(r.items, r.now, r.order, r.chats...)
 }
 
 // opens reports whether one foldable row is open: what a person set, and the
 // row's own default where they have set nothing.
 //
-// A CONVERSATION OPENS AND A FAMILY DOES NOT, and the two defaults are opposite
-// on purpose. The fold under a task exists to keep eight workers from burying
-// six other things this machine did, and it opens on demand; the fold under a
-// CONVERSATION is the page's own structure, and a page that opened with every
-// conversation shut would be a list of chat titles with the work — the thing
-// this place is for — hidden one keypress behind each of them.
+// EVERYTHING OPENS SHUT (owner, 2026-09-11). A conversation used to open showing
+// its work, on the argument that a page of chat titles hides the thing the place
+// is for. What that argument missed is the SIZE of a real record: a hundred
+// conversations with a hundred and ninety subtasks under them is a page nobody
+// can scan, and the work a person came for is behind the ninety conversations
+// they did not want. A shut root says what it is holding and how urgent the most
+// urgent of it is ([tasksChatStateField]), which is enough to decide whether to
+// open it — and `→` opens it.
 //
-// AND A QUERY OPENS EVERYTHING ([tasksReading.unfolded]).
+// AND A QUERY OPENS EVERYTHING ([tasksReading.unfolded]). A row that matched and
+// is sitting behind a shut fold is a row the query appears not to have found, and
+// the person's own folds come back when the query clears.
 func (r tasksReading) opens(key tasksKey) bool {
 	if r.unfolded {
 		return true
@@ -1135,7 +1280,7 @@ func (r tasksReading) opens(key tasksKey) bool {
 	if open, set := r.open[key]; set {
 		return open
 	}
-	return key.chat()
+	return false
 }
 
 // rows is the whole page painted with no cursor anywhere on it, which is what a
@@ -1163,6 +1308,8 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 	switch line.kind {
 	case tasksLineAir:
 		return ""
+	case tasksLineControl:
+		return tasksControlRow(r.query, r.order, width, pal)
 	case tasksLineWord:
 		if i == 0 {
 			// THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), drawn by the
@@ -1174,12 +1321,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
-		kin := pal.dim(line.kin)
-		room -= ansi.StringWidth(line.kin)
-		if room < 1 {
-			room = 1
-		}
-		return lead + kin + tasksChatRow(line, room, r.now, r.folder, r.tilde, pal, lit)
+		return tasksChatRow(line, width, r.now, r.folder, r.tilde, r.order, pal, lit)
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
 		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
@@ -1188,18 +1330,18 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
 	}
-	// THE FAMILY COLUMN IS PAINTED HERE AND CHOSEN IN THE LAYOUT. It is dim
+	// THE FAMILY COLUMN IS CHOSEN IN THE LAYOUT AND PAINTED BY THE ROW. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's
-	// words — and the room the row gets is what is left after it.
-	kin := pal.dim(line.kin)
-	room -= ansi.StringWidth(line.kin)
-	if room < 1 {
-		room = 1
-	}
+	// words. The TABLE spends it out of the name so its columns stand still
+	// ([tasksTableRow]); the phone card has no columns and takes what is left.
 	if layoutTier(width) == tierPhone {
-		return lead + kin + tasksCardHead(line.item, room, pal, lit)
+		card := room - ansi.StringWidth(line.kin)
+		if card < 1 {
+			card = 1
+		}
+		return lead + pal.dim(line.kin) + tasksCardHead(line.item, card, pal, lit)
 	}
-	return lead + kin + tasksRow(line, room, r.now, pal, lit)
+	return tasksRow(line, width, r.now, r.order, pal, lit)
 }
 
 // tasksUnderWord is what a shut fold says about the work it is holding.
@@ -1481,261 +1623,57 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 	return strings.TrimSpace(entry.Title)
 }
 
-// tasksChatRow is one MAIN CONVERSATION on the page: what it is called, and —
-// while its fold is shut — how much work is under it. It obeys the same law
-// every row here does: the name keeps every cell it asks for before a fact gets
-// one (rowfit.go, law 1).
+// tasksChatRow is one MAIN CONVERSATION on the page: what it is called, what
+// opening it would put on the page, and its aggregate under the sorted column.
 //
-// IT WEARS NO EXTRA GLYPH. The fold mark already identifies a conversation
-// root, while the section and its children describe the work's state.
+// IT WEARS NO MARK. The fold mark already identifies a conversation root, and its
+// name runs all the way to the state column because there is no state glyph in
+// front of it to make room for.
 //
-// AND IT NAMES ITS PROJECT ONCE. That fact used to be repeated on every row of
-// work the conversation ran, twenty-odd cells a row, on the rows whose names
-// were being cut to make room for it ([tasksFacts] drops it under here).
-func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string, pal palette, lit bool) string {
+// AND IT NAMES ITS PROJECT ONLY WHERE THAT IS NEWS ([chatProjectWord],
+// projecttag.go). The project used to be a fact at the right of this row, which
+// is where the sorted column now lives; on a table there is nowhere to put it
+// that is not a column, so it joins the NAME — the one thing on the row that
+// flexes, and the one thing the project was ever qualifying.
+func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string, by tasksSort, pal palette, lit bool) string {
 	chat := line.chat
-	facts := make([]rowField, 0, 3)
-	if !line.open && chat.kids > 0 {
-		// A MARK WITH NO COUNT is a mark a person has to open to find out whether
-		// it was worth opening — the same sentence a shut family says.
-		facts = append(facts, rowSay(tasksUnderWord(chat.kids)))
-	}
-	facts = append(facts, rowSay(sinceAt(chat.at, now)))
-	// AND IT IS THE ONE RULE ABOUT PROJECT TAGS THAT DECIDES ([chatProjectWord],
-	// projecttag.go). This row used to name any folder whose word was not the
-	// conversation's own title, which put a lone `~` at the right of every chat
-	// opened in a home directory and the same project word down every row of the
-	// folder the person was already sitting in — both retired by the
-	// mission-control ruling, and both drawn here until this change.
+	name := chat.title
 	folderOf := chatFolder{project: chat.row.Project, workspace: chat.row.Workspace, dir: chat.row.ProjectDir}
 	if project := chatProjectWord(folderOf, folder, tilde); project != "" && project != chat.title {
-		facts = append(facts, rowSay(project))
+		name += rowSep + project
 	}
-	plan := rowPlan{primary: chat.title, fields: facts}
-	label, tail := plan.fit(width)
-	if tail == "" {
-		return fit(placeSubject(label, lit, pal), width)
-	}
-	pad := width - ansi.StringWidth(label) - ansi.StringWidth(tail)
-	if pad < 1 {
-		pad = 1
-	}
-	return fit(placeSubject(label, lit, pal)+strings.Repeat(" ", pad)+placeFactInk(lit, pal)(tail), width)
+	// A ROOT HAS NO MARK and its name starts where the marks are, which is the
+	// rule (spec.md §2): a conversation is not a piece of work and has no state
+	// of its own to wear one for.
+	return tasksTableRow(tasksBareLead+pal.dim(line.kin), ansi.StringWidth(tasksBareLead+line.kin), name,
+		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
-// tasksRow is one piece of work on a wide frame, laid out by the law rowfit.go
-// holds and every other list on this surface already obeys.
+// tasksRow is one piece of work on a wide frame, and it is A ROW OF A TABLE: the
+// mark, the name in whatever the columns leave, then the two columns.
+// taskstable.go holds the arithmetic and says why this is a table at all.
 //
-// WHAT IT USED TO DO, AND WHY IT WAS THE LAW INVERTED. The facts were measured
-// first and the NAME was handed whatever remained, with a drop loop that only
-// fired once the facts had taken more than the row had — so the name was
-// guaranteed eight cells and the facts were guaranteed everything. At a hundred
-// and sixty columns, the most room anybody has, three rows in four still drew
-// `✓ Put the…` beside a ninety-character sentence of detail at its full width.
-// A list exists to let a person MATCH NAMES; a name they cannot match is a row
-// they have to open to read, and every scan of the page became a sequence of
-// opens.
+// IT TAKES THE LAID-OUT LINE AND NOT THE WORK ALONE, because three of the things
+// on the row are facts about where it SITS rather than about what it did — the
+// fold it is holding shut, the count behind that fold, and the aggregate it
+// stands for — and the layout is where all three were decided
+// ([tasksReading.lay]); the paint may not re-derive any of them.
 //
-// So: the name keeps every cell it asks for before a fact gets one (law 1), the
-// facts behind it are a RANKED PREFIX that degrades by spelling rather than
-// vanishing (laws 2 and 3), and they are joined by ` · ` — the separator every
-// other list here joins facts with, including this task's own page one keypress
-// away. `The Certificate Rotation incomplete now` was three facts a reader had
-// to re-parse into three.
-//
-// IT FITS AGAINST THE ROOM AND NOT THE FRAME, which is why it reaches
-// [rowPlan.fit] rather than [rowHalves]: the caller has already spent the
-// cursor's lead and the family column, and the two-line phone lane is
+// IT IS HANDED THE LIST'S WHOLE WIDTH AND SPENDS ITS OWN LEAD — the place's left
+// edge, the family column and the mark — out of the name, so the columns are
+// asked of one width for every row of the frame and the 90-cell floor means the
+// list is ninety cells wide ([tasksTableRow]). The two-line phone lane is
 // [tasksCardHead]'s ([tasksReading.paint] routes to it before this is called),
 // so the tier question is settled before we are here.
-//
-// It takes the LAID-OUT LINE and not the work alone, because two of the things
-// on the row are facts about where it sits rather than about what it did — the
-// fold it is holding shut, and the root above it that has already named their
-// conversation — and the layout is where both were decided
-// ([tasksReading.lay]); the paint may not re-derive either.
-func tasksRow(line tasksLine, width int, now time.Time, pal palette, lit bool) string {
+func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palette, lit bool) string {
 	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
-	lead := glyph + " "
-	facts := tasksFacts(line, now, pal)
-	room := width - ansi.StringWidth(lead)
-	// THE SPEND ONLY EVER FILLS SPACE THE OTHER FACTS DID NOT WANT.
-	//
-	// Being LAST in the rank is not enough, and this row is where that showed.
-	// The fitter degrades a fact before it drops it ([rowTail], law 2), so a
-	// hundred-and-twenty-column frame cut `Annual is the default and the monthly
-	// price stays visible beside it.` down to `2 files` — and then spent the cells
-	// that bought on `$0.27`. The person lost the sentence saying what the work
-	// came to and kept the one figure they did not open this page for, which is
-	// the same inversion the reorder was meant to end, arriving through the
-	// spelling ladder instead of through the order.
-	//
-	// So money is asked a question no other fact is asked: is every fact ahead of
-	// it being said WHOLE? If any of them had to be shortened, the row has already
-	// run out of room for what it is about, and the figure is not drawn at all.
-	if !tasksSpendEarnsCells(tasksLabel(item.entry), facts, room) {
-		facts = facts[:len(facts)-1]
-	}
-	plan := rowPlan{primary: tasksLabel(item.entry), fields: tasksFields(facts)}
-	label, tail := plan.fit(room)
-	left := glyphInk(glyph) + " " + placeSubject(label, lit, pal)
-	if tail == "" {
-		return fit(left, width)
-	}
-	pad := width - ansi.StringWidth(lead+label) - ansi.StringWidth(tail)
-	if pad < 1 {
-		pad = 1
-	}
-	return fit(left+strings.Repeat(" ", pad)+tasksPaintTail(tail, facts, placeFactInk(lit, pal), pal), width)
-}
-
-// tasksFact is one fact on a row: what it can say, in the spellings the fitter
-// chooses between, and the ink it is painted in when it survives.
-type tasksFact struct {
-	field rowField
-	// ink is nil for everything the surface draws dim, which is nearly all of
-	// it. A fact with an ink of its own has it because the ink is part of the
-	// fact — money is the only one on this row.
-	ink func(string) string
-}
-
-// tasksFacts is the ranked prefix: what a person scanning this list reads, in
-// the order they read it.
-//
-// THE ORDER IS THE ARGUMENT, AND THE TAIL IS SPENT FROM THE END, so this is also
-// what a narrow frame gives up and in which order.
-//
-// A SHUT FOLD'S COUNT comes first because it is not a fact about the work at all
-// — it is the row saying that three more rows are behind it, which is the
-// difference between a page a person believes they have read and one they have
-// not. The note is next because it is the only thing that can say the work is
-// happening SOMEWHERE ELSE, and a row whose mark and whose words disagree is
-// worse than a row missing a fact.
-//
-// THEN THE STATE, AND IT IS AHEAD OF THE AGE AND THE CONVERSATION BECAUSE IT IS
-// WHAT THE LIST IS READ FOR. A list of work answers one question before it
-// answers any other — does this need me — and the word that answers it is the
-// one thing on the row that must survive a narrow frame (tasktier.go's
-// [tierRowParts] states the same law for the column beside a conversation: it is
-// cut from the right and the verb is never what goes). It sat FIFTH for a while,
-// behind the age and the conversation, and the cost of that was exact: at
-// eighty-five columns a row nothing was running kept `The Skill Model Rebuild`
-// and dropped `incomplete`, so the page named the chat and hid the one fact a
-// person would have acted on.
-//
-// The age follows, because every section here is named by time and the age is
-// what a person scans down, and then WHERE THE WORK CAME FROM.
-//
-// AND MONEY IS LAST. It used to sit fourth, in front of the owner and the state,
-// and it was also the only fact on the row with an ink of its own — so `$3.10`
-// was the loudest thing on a row whose state word had been cut off to make room
-// for it. Nobody opens this page to find out what work cost; the spend has a
-// place of its own, and this row's job is to say what the work is and what it
-// needs.
-//
-// THE KIND IS GONE ENTIRELY. It spelled `adaptive` next to `18 of 40` on a
-// running row — an implementation word competing with the progress a person was
-// actually reading, describing a setting somebody chose before the work started
-// that changes nothing they can do now. A capability that changes no action is
-// not a fact worth a cell.
-func tasksFacts(line tasksLine, now time.Time, pal palette) []tasksFact {
-	item := line.item
-	entry := item.entry
-	source := strings.TrimSpace(item.row.Title)
-	if source == "" {
-		source = strings.TrimSpace(item.row.Project)
-	}
-	// A ROW DOES NOT REPEAT A CONVERSATION THAT IS ALREADY NAMED ABOVE IT. The
-	// page drew the same title four times down a family, and once per row down a
-	// whole conversation, spending twenty-odd cells a row to restate a fact the
-	// row above had already stated — on the rows whose names were being cut to
-	// make room for it. What is left saying it is a row this page could not place
-	// under any conversation, which is the one row where it is news.
-	if line.under {
-		source = ""
-	}
-	fold := rowSay()
-	if line.folds && !line.open && line.kids > 0 {
-		// A MARK WITH NO COUNT is a mark a person has to open to find out
-		// whether it was worth opening.
-		fold = rowSay(tasksUnderWord(line.kids))
-	}
-	money := rowSay()
-	if entry.Cost > 0 {
-		money = rowSay(dollars(entry.Cost))
-	}
-	return []tasksFact{
-		{field: fold},
-		{field: rowSay(tasksNote(item))},
-		{field: tasksMiddleField(item)},
-		{field: tasksAgeField(item, now)},
-		{field: rowSay(source)},
-		{field: money, ink: placeMoneyInk(pal)},
-	}
-}
-
-// tasksSpendEarnsCells reports whether the money fact ([tasksFacts] puts it
-// last) has earned the cells it would take: every fact ahead of it fits at its
-// LONGEST spelling in the room the name leaves behind.
-//
-// IT MEASURES AND DOES NOT DRAW. The answer is handed back to [tasksRow], which
-// drops the fact before fitting, so there is still exactly one fitter deciding
-// what a row says — this only decides what is offered to it.
-func tasksSpendEarnsCells(name string, facts []tasksFact, room int) bool {
-	if len(facts) == 0 {
-		return true
-	}
-	money := facts[len(facts)-1].field
-	if !money.known() {
-		// Nothing to weigh: a row that cost nothing says nothing about cost.
-		return true
-	}
-	plan := rowPlan{primary: name}
-	left := room - ansi.StringWidth(plan.label(room)) - rowGutter
-	if left <= 0 {
-		return false
-	}
-	whole := rowAll(tasksFields(facts[:len(facts)-1]))
-	return ansi.StringWidth(whole) <= left
-}
-
-// tasksFields is the facts as the fitter takes them.
-func tasksFields(facts []tasksFact) []rowField {
-	fields := make([]rowField, 0, len(facts))
-	for _, fact := range facts {
-		fields = append(fields, fact.field)
-	}
-	return fields
-}
-
-// tasksPaintTail paints a fitted tail fact by fact.
-//
-// IT PAINTS THE SEPARATORS ITSELF because a hue nested inside a hue ends at the
-// inner one's reset (room.go's [app.roomHeadWord] states the same rule), so a
-// tail carrying a money figure may not be painted whole. Anything the fitter
-// spelled that no fact answers to — the halves of a detail sentence that had a
-// ` · ` of its own inside it — is the dim every other fact wears.
-func tasksPaintTail(tail string, facts []tasksFact, rest func(string) string, pal palette) string {
-	if tail == "" {
-		return ""
-	}
-	ink := func(said string) string {
-		for _, fact := range facts {
-			if fact.ink == nil || said == "" {
-				continue
-			}
-			if said == fact.field.full || said == fact.field.short || said == fact.field.tiny {
-				return fact.ink(said)
-			}
-		}
-		return rest(said)
-	}
-	said := strings.Split(tail, rowSep)
-	for i := range said {
-		said[i] = ink(said[i])
-	}
-	return strings.Join(said, pal.dim(rowSep))
+	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
+	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
+	return tasksTableRow(lead, cells, tasksLabel(item.entry),
+		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
 // tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings
@@ -1782,50 +1720,6 @@ func tasksEntryStamp(item tasksItem, now time.Time) time.Time {
 		return time.Time{}
 	}
 	return item.entry.EndedAt
-}
-
-// tasksMiddleField is what came of the work, in up to three spellings: the
-// files and the whole state-and-reason, the state-and-reason alone, and the
-// state word by itself.
-//
-// LAW 2: A FACT DEGRADES BEFORE IT DISAPPEARS — AND WHAT IT DEGRADES TO IS THE
-// HALF THE ROW IS READ FOR. A list of work is scanned to find out whether
-// anything needs a person, so the reason gives way before the word and the word
-// gives way last of all; `2 files · your call · nobody could check it` is the
-// same fact at `your call` when the frame has eleven cells for it, and a row
-// cut the other way would have spent them saying how many files a task nobody
-// can act on touched.
-func tasksMiddleField(item tasksItem) rowField {
-	full := tasksMiddle(item)
-	if full == "" {
-		return rowSay()
-	}
-	// A LIVE ROW'S ACTIVITY IS A DIFFERENT FACT AND NOT A LONGER SPELLING OF THIS
-	// ONE. `18 of 40 steps` and `working` answer two questions, and a ladder that
-	// stepped from one to the other would be law 2 spent on something it does not
-	// mean — a fact degrades to a SHORTER SPELLING OF ITSELF, never to its
-	// neighbour ([tasksMiddle] returns the activity whole when there is one).
-	if strings.TrimSpace(item.entry.Activity) != "" {
-		return rowSay(full)
-	}
-	status := item.status()
-	word, whole := strings.TrimSpace(status.Word), strings.TrimSpace(status.RowWord())
-	// THE RUNGS ARE WHAT IS LEFT AFTER THE DUPLICATES GO, and they are built by
-	// adding rather than by a ladder of cases: a row with no files has no long
-	// spelling, a state with no reason has no middle one, and a row with neither
-	// is one rung. A rung equal to the one above it is not a rung — the fitter
-	// would spend a width on a spelling that saves no cells — and a row that
-	// offered only its longest either fits or GOES, which is how a `your call`
-	// that changed no files came to draw nothing at all beyond its age on an
-	// ordinary hundred-column frame (rowfit.go's law 4 and its one caveat).
-	rungs := []string{full}
-	for _, shorter := range []string{whole, word} {
-		if shorter == "" || shorter == rungs[len(rungs)-1] {
-			continue
-		}
-		rungs = append(rungs, shorter)
-	}
-	return rowSay(rungs...)
 }
 
 // tasksCardHead is the first line of a phone card: the state and the name, in

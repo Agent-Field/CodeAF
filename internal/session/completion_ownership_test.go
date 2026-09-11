@@ -46,7 +46,7 @@ const theAsk = "First run ./slow-build.sh here — it takes about a minute and I
 // steering, so [Agent.who] answers a [Person] and no steward reads any ending.
 func awaitingAgent(t *testing.T, completer Completer) *Agent {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.Divide = true

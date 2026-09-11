@@ -39,7 +39,12 @@ func (l *phaseLog) add(news PhaseNews) {
 	l.mu.Unlock()
 }
 
+// all is the log as it stands, AFTER THE DESK HAS FINISHED HANDING THE NEWS ON.
+// A phase is left on a desk rather than posted down the caller's own stack
+// (sidecar.go's [desk]), so a test that read the slice straight would be racing
+// the one thing that makes loop.go's law true.
 func (l *phaseLog) all() []PhaseNews {
+	phaseDesk.settled()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := make([]PhaseNews, len(l.news))

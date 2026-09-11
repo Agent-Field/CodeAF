@@ -371,7 +371,12 @@ func TestTaskProposalHoldSurvivesTheOldDeadline(t *testing.T) {
 	}
 	finished := make(chan result, 1)
 	go func() {
-		answer, err := agent.askTask(context.Background(), 41, taskSpec{title: "Hold this proposal"}, "")
+		wait, err := agent.openTask(context.Background(), 41, taskSpec{title: "Hold this proposal"}, "")
+		if err != nil {
+			finished <- result{err: err}
+			return
+		}
+		answer, err := wait.answer()
 		finished <- result{answer: answer, err: err}
 	}()
 
@@ -2080,10 +2085,14 @@ func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
 			t.Fatalf("git %v: %s", args, out)
 		}
 	}
-	var dirt string
+	watch := newTreeWatch(dir)
+	t.Cleanup(watch.close)
+	// A bound nothing on a test machine reaches: what is asserted is the answer,
+	// and the watch returns the moment git does.
+	const settle = time.Minute
 	// The first look is the baseline and moves the fingerprint off "".
-	worktreeMoved(dir, &dirt)
-	if worktreeMoved(dir, &dirt) {
+	watch.moved(settle)
+	if watch.moved(settle) {
 		t.Fatal("a step that touched nothing moved the fingerprint")
 	}
 
@@ -2094,7 +2103,7 @@ func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "marketing", name), []byte(name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if !worktreeMoved(dir, &dirt) {
+		if !watch.moved(settle) {
 			t.Fatalf("%s did not move the fingerprint", name)
 		}
 	}
@@ -2107,7 +2116,7 @@ func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, aforgeDroppings, "jobs", "1.log"), []byte("building"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if worktreeMoved(dir, &dirt) {
+	if watch.moved(settle) {
 		t.Fatal("a job log counted as the node's own work")
 	}
 }

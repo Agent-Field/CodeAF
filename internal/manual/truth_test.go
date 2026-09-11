@@ -617,30 +617,67 @@ func sourceNumber(t *testing.T, path, name string) int {
 // changed, and the day somebody "fixed" that by exempting the flag, every
 // figure declared that way would have gone invisible to this gate — silently,
 // which is the failure mode this whole file exists to prevent. `exec`'s two
-// walls and `logs --tail` are all declared that way now. A shape nobody
-// has taught it is still a hard failure, and that is deliberate.
+// walls and `logs --tail` are all declared that way now.
+//
+// AND A DEFAULT MAY BE A NAME RATHER THAN A NUMBER. A door that reads its
+// default from the constant that owns it is this repository's one-source-of-truth
+// rule working, so the name is resolved through [flagDefaultConstants] rather
+// than treated as a missing flag. A shape nobody has taught it is still a hard
+// failure, and that is deliberate.
 func flagNumber(t *testing.T, path, name string) int {
 	t.Helper()
 	quoted := regexp.QuoteMeta(name)
-	shapes := []string{
-		// flags.Int("max-turns", 200, …)
-		`Int\(\s*"` + quoted + `"\s*,\s*(\d+)`,
-		// newCountFlag(flags, "max-turns", 200, …)
-		`newCountFlag\([^,]+,\s*"` + quoted + `"\s*,\s*(\d+)`,
+	// A default is a literal or the NAME of one. The trailing group is the same
+	// group in every shape, so one loop reads them all and one reader decides
+	// afterwards which kind it got.
+	const number, named = `(\d+)`, `([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)`
+	var shapes []string
+	for _, default_ := range []string{number, named} {
+		shapes = append(shapes,
+			// flags.Int("max-turns", 200, …) — and Int(…, exec.DefaultLeafTokens, …)
+			`Int\(\s*"`+quoted+`"\s*,\s*`+default_,
+			// newCountFlag(flags, "max-turns", 200, …) — and the same, named
+			`newCountFlag\([^,]+,\s*"`+quoted+`"\s*,\s*`+default_,
+		)
 	}
 	for _, shape := range shapes {
-		if match := regexp.MustCompile(shape).FindStringSubmatch(sourceText(t, path)); match != nil {
-			value, err := strconv.Atoi(match[1])
-			if err != nil {
-				t.Fatalf("--%s's default = %q is not a number", name, match[1])
-			}
+		match := regexp.MustCompile(shape).FindStringSubmatch(sourceText(t, path))
+		if match == nil {
+			continue
+		}
+		if value, err := strconv.Atoi(match[1]); err == nil {
 			return value
 		}
+		value, ok := flagDefaultConstants[match[1]]
+		if !ok {
+			t.Fatalf("--%s's default is %s, which this gate cannot resolve to a number.\n"+
+				"Add it to flagDefaultConstants in this file, importing the package that owns it, "+
+				"so the figure the manual quotes goes on being checked against the door", name, match[1])
+		}
+		return value
 	}
 	t.Fatalf("%s no longer declares a --%s flag with a number for its default, in any shape this reads "+
-		"(flags.Int, newCountFlag) — teach it the new shape rather than dropping the flag, "+
-		"or the figure the manual quotes stops being checked at all", path, name)
+		"(flags.Int, newCountFlag, either with a literal or with a named constant) — teach it the new "+
+		"shape rather than dropping the flag, or the figure the manual quotes stops being checked at all",
+		path, name)
 	return 0
+}
+
+// flagDefaultConstants is every Go constant a door may name where a flag default
+// goes, spelled the way the door writes it.
+//
+// A DOOR THAT READS ITS DEFAULT FROM A CONSTANT IS THE REPOSITORY'S OWN RULE
+// WORKING, not a shape to exempt. `aforge exec --token-budget` used to spell
+// 150000 itself, and so did `aforge run` and the chat surface, so a
+// recalibration had to move four numbers together and a door could print a
+// figure the loop no longer used. They read [executor.DefaultLeafTokens] now.
+// That fix took the literal this gate was reading away, and the gate's own
+// failure said what to do about it: teach it the new shape. Resolving the name
+// HERE, against the constant this package links to, is what keeps the manual's
+// sentence answerable to the door — the alternative, reading the constant's own
+// file by regex, would go quiet the day somebody moved the declaration.
+var flagDefaultConstants = map[string]int{
+	"exec.DefaultLeafTokens": executor.DefaultLeafTokens,
 }
 
 // sourceString is one `name = "…" + "…"` string constant out of such a file,

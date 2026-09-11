@@ -12,7 +12,7 @@ func TestTasksIncludesMainChatsBeforeTheyDelegateWork(t *testing.T) {
 	now := time.Now()
 	row := session.SessionRow{ID: "main-chat", Title: "Investigate parser failures", Transcript: "/chat/main/transcript.jsonl", At: now}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 14), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 	line := tasksLineOf(t, r.lay(80), row.Title)
 	if line.kind != tasksLineChat || line.folds || len(r.items) != 0 {
 		t.Fatalf("a main chat with no children became a worker or a dead fold: %+v", line)
@@ -43,7 +43,7 @@ func TestTasksDeepAncestrySurvivesFilteringWithoutACutoff(t *testing.T) {
 	}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
 	a := tasksChatApp(t)
-	a.taskSheet.reading = readTasks(world, tasksMine{}, session.LastDays(now, 14), time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 	a.taskSheet.query.setText("130")
 	r := a.tasksFiltered()
 	if len(r.items) != 130 {
@@ -108,7 +108,7 @@ func TestAwayPresenceKeepsItsKnownChatAndAncestry(t *testing.T) {
 	world, win, now := tasksChatFixture()
 	mine := tasksMine{away: []session.ElsewhereTask{{SessionID: "room-a", Session: "another window",
 		Task: session.PresenceTask{ID: "4", Title: "port the token table", State: string(session.TaskRunning)}}}}
-	r := readTasks(world, mine, win, time.Time{}, now)
+	r := readTasks(world, mine, win, tasksSort{}, time.Time{}, now)
 	key := tasksKey{session: "room-a", id: "4"}
 	tree := r.tree()
 	if tree.up[key].id != "3" {

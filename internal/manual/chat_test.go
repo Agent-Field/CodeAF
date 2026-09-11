@@ -675,6 +675,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long does sizing the work take", "how-tasks-run"},
 		{"what does briefing a worker mean", "how-tasks-run"},
 		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
+		// And the request the reading is waiting on, now that it is drawn: asked
+		// by somebody looking at a figure beside the sizing word.
+		{"sizing the work says thinking and a down arrow number", "how-tasks-run"},
 		// The failure that happens BEFORE any of that: the folder itself would
 		// not freeze. It is asked with the sentence on screen, and the sentence
 		// belongs to the failure table rather than to the brief that did not
@@ -900,6 +903,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// they have never seen before. The header has a stage the page did not
 		// list until the sizing reading was drawn on it.
 		{"the task page header says sizing the work", "reading-a-task-page"},
+		{"my new task page shows asking a model thinking with a star", "reading-a-task-page"},
 		// WHAT A TASK'S PAGE SAYS ABOUT ITS OWN WORK, now that it says it: the
 		// figure at the end of a call's row, the line a cut attempt leaves
 		// behind, and the one dim line on the page that names a gate nobody
@@ -1805,6 +1809,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does taking stock mean", "screen"},
 		{"the status line went blank while it was still working", "screen"},
 		{"does a slow stage stop being shown", "screen"},
+		// AND WHAT RUNS BEFORE THE ANSWER, which is the question the pre-turn gate
+		// left a person no way to ask. `preparing saved context` used to be on the
+		// screen for a measured four seconds before the first token of every
+		// message; it is gone, the readings run beside the answer, and somebody who
+		// remembers the wait — or who is simply asking why a reply takes as long as
+		// it does to start — asks one of these.
+		{"what happens when I send a message", "screen"},
+		{"what runs before my answer", "screen"},
+		{"why is it slow before it starts answering", "screen"},
+		{"does anything run before the model is asked", "screen"},
+		{"what does checking whether this is safe to run mean", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply

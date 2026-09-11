@@ -165,10 +165,18 @@ done. Quick tasks that claim different paths — or claim nothing at all — run
 time.
 
 This is a promise made in advance, and naming nothing does not make a free-for-all: a
-quick task that named no files may write anywhere in your folder, but the first one to
-write a file owns that file until it finishes, and a second one aiming at the same path is
-refused with the holder named. What naming files up front buys is the *waiting* — the two
-never start together at all, so neither one has to find out halfway through.
+quick task that named no files may write anywhere in your folder, but **the first one to
+write a file owns that file until it finishes**. Anything else aiming at the same path — a
+second quick task, a task's worker, the conversation's own `edit` or `write` — is refused
+with the holder named:
+
+```
+notes.md is held by task 7 (draft the note), so nothing was written.
+```
+
+The hold is on files it has **written**, not on files it only named. What naming files up
+front buys is the *waiting* — the two never start together at all, so neither one has to
+find out halfway through.
 
 ## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
 
@@ -189,7 +197,7 @@ through.
 
 ## What a quick task cannot do — no check of its own, nothing to inspect, and it goes when the window goes
 
-Five limits, and they are the price of there being no ceremony:
+Six limits, and they are the price of there being no ceremony:
 
 - **Nothing checks the work.** No check reads what it did against what was asked. A quick
   task is never `your call` and never waits for your approval — what you get is what it
@@ -200,6 +208,9 @@ Five limits, and they are the price of there being no ceremony:
   closed is an ordinary task. Its **row** does come back — a quick task you ran last week
   is on the column with its answer when you reopen that conversation, see *A quick task
   after a restart* below — but the working stops when the window does.
+- **It cannot be continued.** `continue task 7` on a quick task is refused —
+  `task 7 is quick, not a run that can be continued` — because there is no copy to pick up
+  from and no brief a finding could join. Ask for it again; it starts at once.
 - **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
   one worker was never quick.
 - **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
@@ -222,13 +233,19 @@ What each one does depends on where it had got to:
   `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
   It is **not** started again, and that is deliberate: it was writing in your own folder
   rather than a copy, so a second worker walking a half-done checklist over the top of the
-  first one's edits would not be a resume. `git diff` is the account of what it managed.
+  first one's edits would not be a resume. Under that sentence its card lists the checklist
+  as it left it — `ticked 2 of 4: …` and `not ticked: …` — and the files it wrote are its
+  changed list; `git diff` has the rest.
 - **Still waiting its turn** — behind another quick task that claimed the same file, say —
-  it never started, and it does not start now. Its checklist is not written down anywhere,
-  so there is nothing to start it from, and starting it as an ordinary task would give work
-  that asked for none of it a copy of your folder, a branch and a check. The row says so:
+  it never started, and it does not start now: the turn that asked for it is over, and work
+  arriving on its own in a conversation that has moved on is not what anybody asked for.
+  The row says so:
   `the quick task never started before aforge closed, and it does not resume — ask for it again`.
   Asking again costs a sentence.
+
+The line you read on reopening counts them under their own clause —
+`recovered task graph: 3 done · 2 quick tasks did not finish` — never as `interrupted`,
+because nothing about them resumes.
 
 **If you remember a conversation reopening with an EMPTY column after quick tasks had run
 in it, that was a fault and it is fixed.** A quick task is checked by nobody, so it is
@@ -295,6 +312,16 @@ tasks of its own cuts them smaller still, because its own room is already spent.
 When a turn has independent pieces in front of it, aforge starts them in the same breath
 rather than in turn, keeps one piece for itself and gets on with it. You wait for the
 longest piece instead of the sum of them, and the rail shows every one of them running.
+That is the whole aim when work splits: the shortest wall time for the whole job, the way
+a team of workers would take it, so however many independent pieces there are, they all
+start together.
+
+**How many of them run at once is decided by memory, not by a number here.** Each piece
+that begins sets aside a footprint — one core's share of memory, or more where this
+session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
+memory above `task.min_free_mb` can hold and leaves the rest queued, each row reading
+`waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
+nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
 What it will *not* do is watch them. Each landing arrives on its own and wakes the
 conversation, so once nothing is left that is independent of the work it handed out, the
@@ -307,14 +334,16 @@ quick task's items instead, and they stay in order.
 **Yes, under exactly the bounds every task is under.** A quick task's worker carries
 `quick_task` and `propose_task` on the same terms as any other worker.
 
-**Depth is two levels.** The conversation starts work; that work may start more; the third
-level may not. A worker at the floor has neither tool on its belt — `quick_task` is
-withheld there the same way `propose_task` is — so a child saying it cannot hand work out
-is describing a limit and not a choice.
+**Depth is 3 levels.** The conversation starts work; that work may start more; what it
+started may start more once again; the level below that may not. A worker at the floor
+has neither tool on its belt — `quick_task` is withheld there the same way `propose_task`
+is — so a child saying it cannot hand work out is describing a limit and not a choice.
 
-**Fan-out is five pieces per parent**, counting quick tasks and ordinary tasks together. A
-worker asking for a sixth is told it has handed out as many as one task may, and to do the
-rest itself.
+**Fan-out is 20 pieces per parent**, counting quick tasks and ordinary tasks together.
+That number stops a runaway; it does not ration breadth. How many actually run at once is
+`task.parallel` and how busy this machine is. A worker asking for one more is told
+`no: you have already handed out 20 pieces of this work, which is as many as one task
+may.` and to do the rest in its own hands.
 
 And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
 tasks queue behind it with everything else.
@@ -918,16 +947,18 @@ long answer saying "everything is done" is that model marking its own work at th
 has a reason to. So if the second reader still sees work left, the move happens anyway — on
 your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
 
-**When the second reader names parts, the task starts already divided.** The sketch is not
-only a paragraph at the top of the brief — it is put to the task's own splitting road before
-the worker is asked anything, so each part named in the sketch becomes a worker of its own
-with its own copy of your folder, and the task they came out of stays open to gather their
-reports into one answer. Nothing about that road is skipped: the parts are read together by a
-second model that can sharpen their instructions, merge two that overlap, or say this is one
-job after all — and if it says that, or if there is no free lane to run them in, the task
-simply runs as **one worker**, which is what it would have done anyway. Where the sketch drew
-a final step behind the parts — `(A | B | C) > D` — the parts are handed out and `D` stays
-with the task itself, to do once their reports are in.
+**When the second reader names parts, the task is split up
+while its worker is already at work.** The sketch is not only a paragraph at the top of
+the brief: it is put to the task's own splitting road beside the worker, which starts on
+the whole brief at once, and each part named in the sketch becomes a worker of its own
+with its own copy of your folder, taken as the task's copy stands when they are handed out.
+The task they came out of stays open to gather their reports into one answer. Nothing about
+that road is skipped: the parts are read together by a second model that can sharpen their
+instructions, merge two that overlap, or say this is one job after all — and if it says
+that, or if there is no free lane to run them in, the task simply goes on as **one
+worker**, which is what it was already doing. Where the sketch drew a final step behind the
+parts — `(A | B | C) > D` — the parts are handed out and `D` stays with the task itself,
+to do once their reports are in.
 
 **Whether the sketch is read as parts.** What counts is what could be started **now**.
 `A | B | C` is three. `A > B > C` is one job in three steps. `A > (B | C)` is one job too —
@@ -1574,9 +1605,9 @@ nothing was written.
 **A quick task is in your folder and does not hold it.** It has no copy of its own, so it
 writes where you are — but the folder stays yours: keep editing, and the chat's `edit` and
 `write` go on working everywhere else in it. Its claim is **files, not the directory**: a
-file it named at the start, or one it has written, is held by it and refused with its name
-on it, the first case above. Two quick tasks that name one file never write it at once
-either — the second waits (*Why it said waits for task 5*).
+file it has written is held by it and refused with its name on it, the first case above. A
+file it only named at the start is not held against you; what naming does is make a second
+quick task that names the same file wait (*Why it said waits for task 5*).
 
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place
@@ -2549,8 +2580,9 @@ The place's name, its count and its window are what the line is for.
 
 **The count is a claim about the PLACE and never about what you have typed.** With a filter
 on, the sentence goes on counting every row the window holds — a word that matches nothing
-does not make the machine's history empty. What matched is said on the note line at the
-bottom instead: `filter · zzz · nothing matches`.
+does not make the machine's history empty. What matched is said on the line under the
+list instead: `nothing matches`. The words you typed are on the control row at the top of
+the list, where you typed them.
 
 **When the time window holds none of it, that line says `tasks · nothing since jul 29`** —
 in words, because a `0` there is the figure the emptiness law forbids, and with the date
@@ -2786,6 +2818,8 @@ recently landed in other windows:
   Added the guard and the regression test; the parser suite passes.
 running in another window now:
 - Sweep the call sites · window "docs pass" · internal/session/agent.go
+- Survey the config loaders · window "docs pass" · 3 quick parts running · internal/config/load.go
+- Compare the two lockfiles · quick · window "release"
 </elsewhere>
 ```
 
@@ -2794,7 +2828,9 @@ running in another window now:
   full. Each row names the task, how it ended, and the files it wrote.
 - **`running in another window now:`** is what those windows have out at this moment, with
   the files each run has already written. Written, not planned: nothing is reserved and
-  nothing is locked by it.
+  nothing is locked by it. **A task's parts ride on its row** (`3 quick parts running`,
+  with the family's files), and `quick` on a row means that window's quick task is writing
+  in its folder right now.
 - It is **facts, never instructions.** Nothing another window writes can tell this
   conversation what to do; the chat reads it to you or works around it, and that is all.
 - It is **silent when there is nothing to say** — no block at all, never a line saying
@@ -2873,23 +2909,21 @@ wisp · /Users/ada/code/wisp
 - Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
   itself and nothing wider.
 
-## Searching the task page: type to filter, find an old task by name, why does the tasks box say type to filter this list, my cursor jumped to another task while I was reading
+## Searching the task page: type to filter, find an old task by name, where the words I type appear, my cursor jumped to another task while I was reading
 
 **Just type.** On the task page every printable key — letters, the space, and digits
-everywhere they are not an answer — builds a filter, and both sections narrow against it as
+everywhere they are not an answer — builds a filter, and every section narrows against it as
 you go. The two exceptions are `1` and `2` over a row the record pane beside the list is
-drawing answers for, which answer it: see *Answer a task from the list*. The message box at the foot
-of this place says so itself: it rests on `type to filter this list` rather than the
-`say what you want done` every other place shows, because there is nothing to send from here
-and a box inviting an instruction over a slot that only filters was the one thing on the
-screen telling you the wrong story.
+drawing answers for, which answer it: see *Answer a task from the list*.
 
 ```
-filter · parser
+⌕ parser                                            state               age ↓
 ```
 
-is the dim line above the keys at the foot, so a list that has lost rows never loses them
-for a reason you cannot see.
+is the **control row**, the first line of the list, and your letters land there in the
+reading ink with the dim `type to filter` standing in the box until you type. It used to be
+an echo on a note line UNDER the rows your keystrokes had just changed; it is at the top of
+the list now, where the typing goes.
 
 - It matches a task's **title**, its **id** (typed exactly: `7` finds task 7 and nothing
   else), its **name** as the `@` list spells it, and its **outcome**. Letters in order are
@@ -2904,7 +2938,11 @@ for a reason you cannot see.
 - `backspace` deletes a character, `ctrl+w` a word, `ctrl+u` all of it.
 - **`esc` clears the filter first and closes the page on the second press** — the same
   layering the settings panel's search has. `ctrl+.` closes the page from anywhere.
-- With nothing matching, the foot reads `filter · zzz · nothing matches`.
+- With nothing matching, the line under the list reads `nothing matches`, and the page keeps
+  its own heading and count — there is work here and your words are hiding it.
+- **A filter opens every main chat it found something in**, because a row that matched and is
+  sitting behind a shut fold is a row the query appears to have missed. Clearing the filter
+  gives you your own folds back.
 - `↑`/`↓` and `enter` keep working over exactly the rows the filter left.
 
 ## A task I just started is not on the task page — the page while it is open
@@ -2935,6 +2973,9 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
 | `←` | fold that conversation or family back up |
+| `alt+s` | sort by the next column: age, name, state, files, cost |
+| `alt+shift+s` | turn the column you are sorted on round |
+| a press on a column label | sort by that column; press it again to turn it round |
 | any printable key | type into the filter — except `1` and `2` over a row the pane is offering those two answers for, which answer it |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -2970,6 +3011,12 @@ nothing. The row under the pointer takes the hover step. The wheel walks the cur
 The **main chat is the parent** of the work it requested. Tasks hang beneath their
 conversation; a task's children hang beneath that task, including deeper levels.
 Chats in the selected time window appear even before they delegate any work.
+
+**Everything opens shut**, so the page you arrive at is a page of main chats, each saying how
+much is under it and how urgent the most urgent of it is (`5 your call`, `9 done`). `→` opens
+one, `←` shuts it. A hundred conversations with a hundred and ninety subtasks under them is a
+page nobody can scan, and the work you came for would be behind the ninety conversations you
+did not want.
 
 ```
 your call
@@ -3872,11 +3919,13 @@ task says so in one line.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
-before the new task's worker is asked anything — so the task starts already divided rather
-than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same tests, the same reading by the mastermind, the same refusals.
-The receipt reads the same too, and the worker is told the parts are already running so it
-does not do them again. *An answer that runs long is read and moved* is where that happens.
+beside the new task's worker, which starts at once rather than waiting for the reading — so
+the parts somebody already named are handed out without the worker having to find them
+again. Everything below applies to it without exception: the same tests, the same reading
+by the mastermind, the same refusals. The receipt reads the same too, and reaches the worker
+while it works, telling it the parts are now somebody else's so it does not do them again;
+an answer that arrives after the worker has finished is dropped. *An answer that runs long is
+read and moved* is where that happens.
 
 ## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 
@@ -4138,25 +4187,28 @@ Two hard bounds, and they behave differently on purpose.
 **Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
 at the floor exactly as `propose_task` is.
 
-**Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
-piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
-`propose_task` creates children; `tasks` lets a task inspect and manage only its own
-children, not its parent, siblings, or unrelated tasks. Both tools share the depth gate.
-A child saying the `tasks` tool is unavailable is therefore describing a capability
-limit; it does not mean the model chose to avoid delegation.
+**Depth: 3 levels.** The conversation proposes a task; that task may propose pieces; a
+piece may propose pieces of its own share; a piece of a piece may not. Neither
+`propose_task` nor `tasks` is on a third-level task's belt. `propose_task` creates
+children; `tasks` lets a task inspect and manage only its own children, not its parent,
+siblings, or unrelated tasks. Both tools share the depth gate. A child saying the `tasks`
+tool is unavailable is therefore describing a capability limit; it does not mean the
+model chose to avoid delegation.
 
-**Fan-out: five pieces per task**, counting both ways a task hands work out — parts it saw in
-its brief and parts it found once it opened the material. A task that asks for a sixth gets
-its call answered with:
+**Fan-out: 20 pieces per task**, counting both ways a task hands work out — parts it saw in
+its brief and parts it found once it opened the material. A task that asks for one more
+gets its call answered with:
 
-> no: you have already handed out 5 pieces of this work, which is as many as one task may.
+> no: you have already handed out 20 pieces of this work, which is as many as one task may.
 > Do the rest in your own hands, or finish these and report what is left undone.
 
 It reads that as an instruction and does the rest itself.
 
-Neither bound is a setting. These are chosen limits on the cost of working copies,
-checks, and coordination. A three-level tree has not been benchmarked here; the depth
-cap is not evidence that deeper delegation cannot be useful.
+Neither bound is a setting, and neither decides how wide work goes. Twenty is there to stop
+a task that has lost the plot, not to ration breadth: when a job's parts are independent,
+the aim is the shortest wall time for the whole of it, so they are all handed out at once.
+Whether a task splits at all is its own reading of the material, and sequential work never
+splits.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
@@ -4178,7 +4230,9 @@ starts instead:
   core. At or above it, nothing new starts and a held task's row reads
   `waiting · machine busy`.
 - `task.min_free_mb` — a floor under available memory, default **1536** MiB. Below it,
-  nothing new starts.
+  nothing new starts — and each running piece sets aside a footprint of memory against
+  that floor until a reading shows it, so a wide hand-out runs what the memory can hold
+  and queues the rest on `machine busy` (how-tasks-run has the arithmetic).
 
 Both gate starts only. Nothing already running is ever touched; the pressure drains as
 running work finishes, and the check is re-asked every 5 seconds.
@@ -4907,12 +4961,32 @@ stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
 
-## The tasks place — grouped work, folds, filtering and time-window keys, my cursor jumped to another task while I was reading
+## The tasks place — the table, its two columns, folds, and the time-window keys
 
 The **tasks** place lists main chats and their nested work across projects, grouped by what you do
 next: `your call`, `running`, `waiting`, `finished today`, then `earlier` — where
 `waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
 is everything that ended today however it ended.
+
+**Every row is a row of a table, and the columns are in the same cells on every row.** Left
+to right: the fold, the mark, the name, then `state`, then the column the list is **sorted
+by**, right-aligned, then one cell of air. A main chat's row has no mark and its name runs
+to the state column. Only the name flexes — the two columns are fixed at 90 cells and over.
+Under 90 the `state` column goes and the sorted column stays, because a figure has nowhere
+else on the page to be. Under 60 the rows are phone cards, two lines each, unchanged.
+
+**The `state` column is never blank on a row of work.** It is the task-states word —
+`your call`, `running`, `waiting`, `done`, `incomplete`, `stopped` — and nothing else, except
+for three additions that belong in that cell:
+
+- work **running right now** adds where it has got to: `working · 18 of 40`. That figure is
+  the one thing on the row that changes while you watch it, and it is the first thing given
+  up when the cell runs out of room.
+- a **shut fold** adds what it is holding: `done · holds 3 more`.
+- a **main chat's** row says its **count** instead: `5 your call`, `9 done`, `2 running` —
+  how much work is under it altogether and how urgent the most urgent of it is, which is the
+  question a shut fold raises.
+- work **another window is running** says `another window` here instead.
 
 **A main chat's row names its folder only where that folder is news.** A conversation in the
 folder this window is already sitting in wears no tag — the tag would be the same word on
@@ -4920,27 +4994,23 @@ every row — and neither does one whose workspace is your home directory or a s
 at the top of `/tmp`. Another project's conversation keeps its name. The **projects** panel on
 home still lists all three, as the paths they are.
 
-**A row of work says its state once.** What a child row can carry is what it touched (`2
-files`), then its state and the reason behind it — `your call · nobody could check it`,
-`incomplete · lost the connection`, `stopped`, `done`, `working` — and last its measured
-cost. A row whose state needs no reason says the bare word; a row that stopped says
-`stopped` and not `stopped · stopped`, which is what it read while the page composed that
-pair itself instead of taking the engine's own spelling of it. The landing's own report
-sentence is **not** on the row: it is on the task's record, one keypress away through
-`enter`. The row's kind is not drawn. Zero or unknown cost is left
-blank, and so is an age whose older record never carried that landing time. A section with
-nothing in it is absent.
+**The reason is not on the row.** Why work ended as it did is on the task's record, one
+keypress away through `enter`, and in the pane beside the list where the frame is wide enough
+for one. On a frame under 110 cells there is no pane, so the row **under the cursor** grows
+one dim line of its own: `your call · nobody could check it`, and the first sentence of a
+landed task's report after it. One row said whole, rather than twenty rows each missing the
+same word. The row's kind is not drawn, and neither is its cost unless you are sorted by it.
 
-**Related work stays in a tree.** Folds keep a long run readable, and the list scrolls
-through everything the time window holds. The window's edge is named once in the page
-header or its arrow control.
+**Everything opens shut.** Every main chat and every family of work opens folded, so a fresh
+page is a page of main chats with a count on each. `→` opens the one under the cursor and
+`←` shuts it again; the section's own heading says how many rows are behind the folds
+(`your call · 4 folded away`), so the count on the row and the count on the heading are
+about the same rows. Nothing is capped: the list scrolls through everything the time window
+holds, and the window's edge is named once in the page header.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
-**The message box at the foot of this place says `type to filter this list`**, not `say what
-you want done` — on the tasks place there is no message to send and every printable key goes
-to the filter, so the box says what typing into it actually does. The one exception is `1` and
-`2` over a row the pane is offering those two answers for, which answer it. Every other place keeps the
-shared prompt. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
+The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
+those two answers for, which answer it. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
 and the section words. `enter` on a main chat opens that conversation. On a task it opens its **room** when this conversation
 is holding, and otherwise goes **inside** it — the record card. Rows another window is running
 take the cursor too, and what `enter` does with one is *Opening a task another window is
@@ -4973,8 +5043,8 @@ list stays exactly where it was.
 
 ```
  ▾ Clever Bet Prediction Model using Stochastic Processes          9h   │ Upgraded model v2: vector skills, BOCPD
-   ? Upgraded model v2: vector skills, BOC… your call               1d  │ ? your call · nobody could check it
-   ■ Fit and backtest OU skill model on Li… stopped                 1d  │
+   ? Upgraded model v2: vector skills, BOCPD change-point detec…    1d   │ ? your call · nobody could check it
+   ■ Fit and backtest OU skill model on Liverpool's season          1d   │
                                                                         │ 5 files · $0.47 · deepseek-v4-flash · 1d ago
                                                                         │ branch task/upgraded-model-v2 · in a worktree
                                                                         │
@@ -5015,9 +5085,15 @@ with the pane showing the same row.
 **On a conversation's own row the pane is the conversation**: its title, `3 pieces of work ·
 $9.30`, the first few rows under it in the order the page files them, and `enter open the chat`.
 
-**Under 110 columns there is no pane and no rule.** The place is the list alone, and each row
-carries what it always carried at the right of its own line. Under 60 columns the rows are
-two-line cards, as they have always been.
+**The list's own `state` column goes while the pane is up**, and that is the table's rule
+rather than a special case: the list is drawn in 72 of the frame's 122 cells, which is under
+the 90 the two fixed columns need, so the name keeps what it can and the column the list is
+sorted by stays. What the state column was saying is in the pane, said whole and with its
+reason.
+
+**Under 110 columns there is no pane and no rule.** The place is the list alone, and the row
+under the cursor grows one dim line of its own with `state · reason` on it. Under 60 columns
+the rows are two-line cards, as they have always been.
 
 ## Answer a task from the list — accept or reject a finished task with 1 and 2 without opening it
 
@@ -5039,6 +5115,56 @@ asking its question in *that* window, and this one cannot answer for it — so t
 `enter open` alone, and `1` and `2` are typed into the filter like any other character. That
 is also what happens on a frame too narrow for the pane: nothing on screen names the digits, so
 nothing takes them.
+## sort the tasks list — alt+s, clicking a column label, and what age, name, state, files and cost each order
+
+**The sort key is the column you see.** There are five keys and the second column always
+shows the one the list is ordered by:
+
+| key | what the column draws |
+| --- | --- |
+| `age` | how long ago — `7h`, `1d`, `now`. This is the default, newest first. |
+| `name` | the age, because the name is already the widest thing on the row. |
+| `state` | the age, because `state` is the column standing right beside it. |
+| `files` | what the work touched — `2 files`, `12 files`. |
+| `cost` | what it cost — `$1.50`, in the money's own ink. This is the **only** place money is drawn on this page. |
+
+**`alt+s` walks the keys** — age, name, state, files, cost, and round again — and
+**`alt+shift+s` turns the column you are on round**. It is a chord rather than a bare `s`
+because on this place every printable key goes into the filter: `s` alone would cost you
+`sweep`, `stop` and `site`.
+
+**Or click a label.** The two column labels are drawn at the right of the control row at the
+top of the list, over the columns they name, and pressing one sorts by it. Pressing the one
+already sorted turns it round. The sorted label wears the arrow: `cost ↓` newest or dearest
+first, `cost ↑` the other way. The foot names the chord (`alt+s sort`) and the label wears the
+column.
+
+**Sorting happens inside each level of the tree, and the tree never flattens.** The sections
+keep their order — a sort may not move `your call` below `finished today` — main chats order
+by their **aggregate** inside their section (their total cost, their newest row, their whole
+file count), and the work under one chat orders among itself. A blank cell is a true answer,
+not a missing one: a row nobody priced sinks to the bottom of its group whichever way the
+column points.
+
+## filter the tasks list — type to filter, what it matches, and esc to clear it
+
+**Type, and the list narrows as you type.** The first line of the list is the control row: a
+`⌕` mark, then what you have typed, and before you type anything the dim words `type to
+filter`. That is where your letters land — there is no message to send from this place, so
+every printable key goes to the filter. `backspace` takes one back, `ctrl+u` clears the box,
+`ctrl+w` takes a word.
+
+The query is matched against the task's name, the main chat's title, the state word and the
+file paths the work touched. Every section narrows at once, and a section the query empties
+is not drawn at all. A query that matches nothing keeps the page's own heading and count and
+says `nothing matches` under the list — there **is** work here, and your words are hiding it.
+
+**A filter opens every main chat with a match in it**, so a row that matched is never sitting
+behind a fold looking as though the query missed it. When you clear the filter your own folds
+come back exactly as you left them.
+
+**`esc` clears the filter first and closes the place second**, which is why the foot says
+`esc clear the filter` while one is on.
 
 ## The foot of the tasks place, and the one verb on its row strip
 
@@ -5047,7 +5173,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · alt+. map · tab next place
+enter open its room · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -5064,13 +5190,17 @@ changes with the cursor:
 - `enter about that window` over work this machine cannot reach at all, which opens the card
   naming where it is.
 - `→ verbs: stop it` **only while the row has that verb** — see below.
-- `esc clear the filter`, **only while a filter is on**, because that is the key whose
-  meaning just moved.
+- `→ what ran under it` or `← fold it back up` over a fold, whichever the fold is not.
 
-**The filter is not named on this line.** It used to be — `type to filter` sat here to
-correct the message box two rows below, which was saying `say what you want done` over a slot
-that could only ever narrow the list. The box says the true sentence itself now, so repeating
-it on the foot would be one screen naming one thing twice.
+The last two clauses are about the **page** rather than the row, and they are always there:
+
+- `alt+s sort` names the chord. A chord nobody can find is a chord that does not exist, and
+  every printable key here belongs to the filter, so sorting cannot be a bare letter. WHICH
+  column the list is on is on the control row's own label, wearing the arrow.
+- `type to filter`, because nothing else on the frame says that a letter goes into the box on
+  the control row rather than to the page's own keys. While a filter **is** on, that slot
+  says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
+  now means the filter and not the page.
 
 **`→` opens the row's verbs, and the tasks place has exactly one: `s stop it`.** It is
 offered over a task **this conversation is holding** that is still `queued` or `running` —

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,12 +15,28 @@ import (
 // hears registers a reader for the length of one test and hands back what it
 // collected. The seam is process-wide, so a test that left one registered would
 // be a test whose reader saw every later test's answers.
-func hears(t *testing.T) *[]LaneNews {
+// It hands back a FUNCTION rather than the slice, because the news is left on a
+// desk and handed on by the desk's own goroutine (sidecar.go's [desk]) so that a
+// slow surface never holds up the turn it is describing: reading the slice
+// straight would be racing the mechanism that makes loop.go's law true.
+func hears(t *testing.T) func() []LaneNews {
 	t.Helper()
+	var mu sync.Mutex
 	var heard []LaneNews
-	previous := OnLaneNews(func(news LaneNews) { heard = append(heard, news) })
+	previous := OnLaneNews(func(news LaneNews) {
+		mu.Lock()
+		heard = append(heard, news)
+		mu.Unlock()
+	})
 	t.Cleanup(func() { OnLaneNews(previous) })
-	return &heard
+	return func() []LaneNews {
+		laneNewsDesk.settled()
+		mu.Lock()
+		defer mu.Unlock()
+		out := make([]LaneNews, len(heard))
+		copy(out, heard)
+		return out
+	}
 }
 
 // AN ORDINARY ANSWER IS ONE POST: who served, how long the first token took,
@@ -31,10 +48,10 @@ func TestAnOrdinaryAnswerTellsTheSurfaceWhoServedIt(t *testing.T) {
 		Lane: "cloudflare", TTFT: 600 * time.Millisecond, Gen: 2 * time.Second, Output: 122,
 	}, &provider.HedgeReport{})
 
-	if len(*heard) != 1 {
-		t.Fatalf("%d posts for one answer, want one", len(*heard))
+	if len(heard()) != 1 {
+		t.Fatalf("%d posts for one answer, want one", len(heard()))
 	}
-	news := (*heard)[0]
+	news := (heard())[0]
 	if news.Lane != "cloudflare" || news.Hedged || news.Trying {
 		t.Fatalf("news = %+v, want a plain answer from cloudflare", news)
 	}
@@ -56,8 +73,8 @@ func TestAnAnonymousAnswerTellsTheSurfaceNothing(t *testing.T) {
 	heard := hears(t)
 	agent := &Agent{}
 	agent.tellLaneNews("openrouter/model", laneFacts{TTFT: time.Second}, &provider.HedgeReport{})
-	if len(*heard) != 0 {
-		t.Fatalf("an answer naming no lane posted %+v", *heard)
+	if len(heard()) != 0 {
+		t.Fatalf("an answer naming no lane posted %+v", heard())
 	}
 }
 
@@ -71,10 +88,10 @@ func TestARescueIsToldWhileItIsStillOutAndAgainWhenItLands(t *testing.T) {
 	agent.watchLaneRescue("openrouter/model", report)
 
 	agent.laneRescueStarted("openrouter/model")(provider.RescueNews{Alt: "coreweave", Reason: provider.RescueSlow})
-	if len(*heard) != 1 {
-		t.Fatalf("%d posts while the rescue was out, want one", len(*heard))
+	if len(heard()) != 1 {
+		t.Fatalf("%d posts while the rescue was out, want one", len(heard()))
 	}
-	if trying := (*heard)[0]; !trying.Trying || trying.Alt != "coreweave" {
+	if trying := (heard())[0]; !trying.Trying || trying.Alt != "coreweave" {
 		t.Fatalf("the in-flight post reads %+v, want a rescue out to coreweave", trying)
 	}
 }
@@ -90,10 +107,10 @@ func TestARescueCarriesTheWordTheWireSaid(t *testing.T) {
 	tell := agent.laneRescueStarted("openrouter/model")
 
 	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused})
-	if len(*heard) != 1 {
-		t.Fatalf("%d posts, want one", len(*heard))
+	if len(heard()) != 1 {
+		t.Fatalf("%d posts, want one", len(heard()))
 	}
-	if news := (*heard)[0]; news.Reason != provider.RescueRefused || !news.Trying || news.Failed {
+	if news := (heard())[0]; news.Reason != provider.RescueRefused || !news.Trying || news.Failed {
 		t.Fatalf("a refusal in flight reads %+v", news)
 	}
 }
@@ -108,10 +125,10 @@ func TestARescueThatFailsWithdrawsTheClaimItMade(t *testing.T) {
 
 	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused})
 	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused, Failed: true})
-	if len(*heard) != 2 {
-		t.Fatalf("%d posts, want the claim and its retraction", len(*heard))
+	if len(heard()) != 2 {
+		t.Fatalf("%d posts, want the claim and its retraction", len(heard()))
 	}
-	withdrawn := (*heard)[1]
+	withdrawn := (heard())[1]
 	if !withdrawn.Failed || withdrawn.Trying {
 		t.Fatalf("the retraction reads %+v, want a claim taken back rather than made again", withdrawn)
 	}

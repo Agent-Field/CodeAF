@@ -151,7 +151,8 @@ func runGraph(name string, args []string) error {
 	shorthandFlag(flags, "j", "parallel")
 	maxTurns := flags.Int("max-turns", 200, "runaway backstop on iterations per step (clamped to the executor's own backstop)")
 	renamedFlag(flags, "turns", "max-turns")
-	maxTokens := flags.Int("token-budget", 150000, "token budget per step — the limit that actually binds")
+	// The same one number every other door reads (exec.DefaultLeafTokens).
+	maxTokens := flags.Int("token-budget", exec.DefaultLeafTokens, "token budget per step — the limit that actually binds")
 	renamedFlag(flags, "budget", "token-budget")
 	runBudget := flags.Int("total-token-budget", 0, "token budget for the whole run; once passed, nothing new starts and steps in flight land (0 = per-step budgets only)")
 	renamedFlag(flags, "run-budget", "total-token-budget")

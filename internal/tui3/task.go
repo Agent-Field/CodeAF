@@ -373,6 +373,10 @@ type taskNode struct {
 	phaseRound   int
 	phaseRounds  int
 	phaseFinding string
+	// phaseCall is the request the phase is waiting on, while it is out — the
+	// reading that sizes the work, thinking for minutes — and nil otherwise. It
+	// rides the same event and is copied whole with the rest ([app.taskPhaseMoved]).
+	phaseCall *session.TaskCall
 	// froze is the clock this node's row is drawn against while somebody is
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
@@ -1154,6 +1158,21 @@ func (a *app) proposeTask(ev session.Event) {
 	// second time, raised the question a second time, and then wrote a second
 	// receipt when the engine's answer came back to a question that was open
 	// again. One proposal, two blocks, two receipts, all from one keystroke.
+	// A PROPOSAL TAKEN BACK SETTLES ITS CARD, and it outranks whatever this
+	// window's own clock has drawn there. The card went up while the reply that
+	// proposed it was still arriving, the reply did not go through, and the
+	// engine admitted nothing — so a card still counting, or one this window's
+	// clock already marked approved, would be a promise about work that is not
+	// going to start. One this window never drew leaves no card at all.
+	if notice.Withdrawn != "" {
+		if card := a.cardFor(notice.ID); card != nil {
+			card.verdict = taskWithdrawnWord
+			a.dropTaskQuestion(card.id, notice.Withdrawn)
+			a.markCardStale(card)
+			a.touch()
+		}
+		return
+	}
 	if card := a.cardFor(notice.ID); card != nil {
 		if card.settled() {
 			return
@@ -1353,6 +1372,10 @@ const (
 	taskDeclinedWord = "declined"
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
+	// taskWithdrawnWord is a card whose reply did not go through after the
+	// card went up (session's TaskNotice.Withdrawn). Nothing started, and a
+	// reply asked for again puts up a card of its own.
+	taskWithdrawnWord = "withdrawn · its reply did not go through"
 	// taskRedirectLane is what the empty box says while a proposal is open: the
 	// one thing the box is for at that moment.
 	//
@@ -4627,6 +4650,15 @@ func (a *app) railSaysMore(e railEntry) bool {
 	if e.node.Paused() {
 		return true
 	}
+	// A HELD ROW SAYS WHAT IS HOLDING IT WHEREVER IT SITS IN A FAMILY. The
+	// engine starts as much of a fan as this machine can carry and holds the
+	// rest (internal/session's task_pressure.go), so a family is routinely half
+	// running and half waiting — and a child row that drew nothing was the one
+	// shape a person could not tell apart from work that has simply not been
+	// reached yet.
+	if e.node.waiting != "" {
+		return true
+	}
 	if e.root || len(e.stems) > 0 {
 		return false
 	}
@@ -5773,6 +5805,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// be this column reporting a present that has passed (taskphase.go).
 	if notice.State != session.TaskRunning && notice.State != session.TaskQueued {
 		node.phase, node.phaseRound, node.phaseRounds, node.phaseFinding = "", 0, 0, ""
+		node.phaseCall = nil
 	}
 	// The kind is a FACT and is kept the way the branch and the price above are:
 	// an update that says nothing about it has not changed it.
