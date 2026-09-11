@@ -906,10 +906,23 @@ type sheet struct {
 	sessionModel string
 
 	// autonomy is what this project does with a question of each shape while
-	// nobody is there, read when the page opens (settingsautonomy.go). It is nil
-	// for a conversation with no project to keep rules in, and the section then
-	// draws nothing at all.
+	// nobody is there (settingsautonomy.go). It is the conversation's own
+	// reading, taken on the way up and refreshed after every write, and it is
+	// nil until that first answer lands.
 	autonomy map[session.AskKind]session.Policy
+
+	// autonomyDoor says this conversation HAS somewhere to keep question rules.
+	//
+	// IT IS A DIFFERENT QUESTION FROM `autonomy == nil` AND THE TWO WERE ONE
+	// FIELD ONCE, which is the bug this exists to prevent: nil meant both "no
+	// project to keep rules in" and "the rules have not come back yet", so a page
+	// opened in the instant before the first answer landed drew no rows — and a
+	// page that drew them anyway would have had to invent values. Whether the
+	// door exists is a type assertion on the agent, which is local and free; what
+	// it SAYS is a call to another process. So the rows are decided by this and
+	// the words by the map above, and a row whose value has not arrived draws an
+	// empty right-hand column rather than a guess.
+	autonomyDoor bool
 
 	// items is the current list — one tab's rows, or every tab's matches under
 	// their headings while a search is on. cursor indexes it and skips headings.
@@ -1165,12 +1178,15 @@ func (a *app) raiseSettings() {
 	a.sheet = sheet{
 		registry:   a.registry(),
 		profileDir: a.profileDir,
-		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, read
-		// once for the visit like every other live reading on this page: the rows
-		// are the engine's rather than the registry's (settingsautonomy.go), and
-		// a page that asked the engine per frame would be paying for an answer
-		// that changes only when somebody changes it.
-		autonomy:     a.autonomyReading(),
+		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE. The
+		// rows are the engine's rather than the registry's (settingsautonomy.go),
+		// and a page that asked the engine per frame would be paying for an
+		// answer that changes only when somebody changes it — so this is the
+		// conversation-wide reading taken on the way up and refreshed after every
+		// write ([app.readAutonomy]), not a door asked here. Opening a page is on
+		// the update loop, where a surface may not wait on a network.
+		autonomy:     a.autonomyRules,
+		autonomyDoor: a.hasAutonomyDoor(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
 		sources:      a.sources,
@@ -1935,8 +1951,7 @@ func (a *app) activate() tea.Cmd {
 	}
 	s.msg = ""
 	if item.autonomy != nil {
-		a.autonomyRowNext(item.autonomy)
-		return nil
+		return a.autonomyRowNext(item.autonomy)
 	}
 	if item.role != nil {
 		// A ROLE IS A MODEL CHOICE, so it opens the picker the class rows open

@@ -26,6 +26,10 @@ func autonomySettingsApp(t *testing.T) *app {
 	t.Helper()
 	a := newTestApp(&autonomyTestAgent{fakeAgent: &fakeAgent{}, rules: map[session.AskKind]session.Policy{}})
 	a.width, a.height = 120, 40
+	// THE RULES ARE READ THE WAY THE PROGRAM READS THEM: off the update loop, on
+	// the way up ([app.readAutonomy] is in [app.Init]'s standing list). A fixture
+	// that reached through the door here would be testing a road nothing takes.
+	spend(t, a, a.readAutonomy())
 	a.openSettings()
 	toSafety(t, a)
 	return a
@@ -73,20 +77,20 @@ func TestTheAutonomyRowCyclesThroughTheSameDoorAsTheCommand(t *testing.T) {
 	if row.word != autonomyAskWord {
 		t.Fatalf("a project with no rules written does not open on %q: %q", autonomyAskWord, row.word)
 	}
-	a.autonomyRowNext(row)
+	spend(t, a, a.autonomyRowNext(row))
 	if !strings.Contains(row.word, autonomyRecommendWord) {
 		t.Fatalf("the first press did not reach %q: %q", autonomyRecommendWord, row.word)
 	}
-	a.autonomyRowNext(row)
+	spend(t, a, a.autonomyRowNext(row))
 	if row.word != autonomyDecideWord {
 		t.Fatalf("the second press did not reach %q: %q", autonomyDecideWord, row.word)
 	}
 	// The command reads back what the row wrote, because there is one store.
-	a.slash("/autonomy")
+	spend(t, a, a.slash("/autonomy"))
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "choice") || !strings.Contains(got, autonomyDecideWord) {
 		t.Fatalf("the sheet did not read back what the row wrote:\n%s", got)
 	}
-	a.autonomyRowNext(row)
+	spend(t, a, a.autonomyRowNext(row))
 	if row.word != autonomyAskWord {
 		t.Fatalf("the third press did not come back round to %q: %q", autonomyAskWord, row.word)
 	}
@@ -106,7 +110,7 @@ func TestTheTwoFixedAutonomyRowsSayWhyAndDoNotMove(t *testing.T) {
 			t.Fatalf("%q does not state its law: %q", kind, row.word)
 		}
 		before := row.word
-		a.autonomyRowNext(row)
+		spend(t, a, a.autonomyRowNext(row))
 		if row.word != before {
 			t.Fatalf("%q moved: %q → %q", kind, before, row.word)
 		}

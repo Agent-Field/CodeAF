@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -51,29 +53,6 @@ const (
 		"kept for this project · /autonomy <kind> ask · recommend <duration> · decide"
 )
 
-// autonomyReading is the rules this project keeps, or nil where they could not
-// be read at all. It is the ONE read this page does — the command's own door
-// ([autonomyAgent]) — taken when the page opens.
-//
-// NIL AND EMPTY ARE TWO DIFFERENT ANSWERS AND THE PAGE MUST NOT CONFUSE THEM.
-// An EMPTY map is a real reading: a project that has written no rule yet, whose
-// every kind is therefore on `ask me`, and the page is exactly where somebody
-// comes to write the first one — so it draws all the rows. NIL is not a reading:
-// there is no door, or the engine refused the call because it is an older aforge
-// than this surface (remote/wire.go's version paragraph). A nil coerced into an
-// empty map would put `ask me` on every row of a page nobody could read, and
-// what the row claims is WHAT HAPPENS WITHOUT A PERSON — an engine quietly on
-// `decide` drawn as one that asks is the worst sentence this page could say. So
-// nil travels through and [sheet.autonomyItems] draws no rows at all, which is
-// the emptiness law: rules that cannot be read are not drawn as rules that are.
-func (a *app) autonomyReading() map[session.AskKind]session.Policy {
-	agent, ok := a.agent.(autonomyAgent)
-	if !ok {
-		return nil
-	}
-	return agent.Autonomy()
-}
-
 // autonomyRow is one question kind as the settings page holds it, hung off
 // [sheetItem] exactly as a role or an account is: the cursor walk, the scroll,
 // the pointer and the hover need to know nothing about it.
@@ -95,13 +74,23 @@ type autonomyRow struct {
 // over a setting that is stored per project: rules that cannot be kept are not
 // drawn as rules that are.
 func (s *sheet) autonomyItems(query string) []sheetItem {
-	rules := s.autonomy
-	if rules == nil {
+	if !s.autonomyDoor {
 		return nil
 	}
 	items := make([]sheetItem, 0, len(autonomyKinds))
 	for _, kind := range autonomyKinds {
-		row := &autonomyRow{kind: kind, word: autonomyPersonWord(rules[kind])}
+		// A ROW WHOSE VALUE HAS NOT ARRIVED SAYS NOTHING IN ITS VALUE COLUMN.
+		// The rules are a call to another process and the rows are not, so the
+		// section is here from the first frame and fills in a moment later —
+		// which is the emptiness law rather than a gap: `ask me` printed over a
+		// project that turns out to be on `decide` is the one sentence this page
+		// must never say, and it is what a nil read coerced to an empty map says
+		// on every row.
+		word := ""
+		if s.autonomy != nil {
+			word = autonomyPersonWord(s.autonomy[kind])
+		}
+		row := &autonomyRow{kind: kind, word: word}
 		switch kind {
 		case session.AskConfirmation:
 			row.word, row.fixed = autonomyAskWord+" · "+autonomyAlwaysWord, true
@@ -166,15 +155,15 @@ func (s *sheet) autonomyRowLines(row *autonomyRow, selected, hovered bool, width
 // and over a clarification, in its own words, and a key that walked the value and
 // then watched it snap back would be this page arguing with the engine in front
 // of somebody.
-func (a *app) autonomyRowNext(row *autonomyRow) {
+func (a *app) autonomyRowNext(row *autonomyRow) tea.Cmd {
 	if row.fixed {
 		a.sheet.msg = autonomyFixedWord
-		return
+		return nil
 	}
 	agent, ok := a.agent.(autonomyAgent)
 	if !ok {
 		a.sheet.msg = autonomyNoProjectWord
-		return
+		return nil
 	}
 	// WHAT IT IS NOW COMES FROM THE PAGE'S OWN READING, not from a second ask.
 	//
@@ -197,22 +186,48 @@ func (a *app) autonomyRowNext(row *autonomyRow) {
 	default:
 		next.Kind, next.After = session.PolicyRecommendThenAuto, autonomyRowStep
 	}
-	if err := agent.SetAutonomy(row.kind, next); err != nil {
-		// The engine's refusal is the person's to read, whole.
-		a.sheet.msg = err.Error()
-		return
-	}
-	a.autonomyChanged()
-	// AND THE PAGE'S READING MOVES WITH THE WRITE RATHER THAN BEING FETCHED
-	// AGAIN. The engine took this exact rule — it said so by not refusing — so
-	// re-asking would be a second round trip to be told what this line already
-	// knows. A refusal returns above without touching it.
+	// THE ROW MOVES ON THE KEYSTROKE AND THE WRITE GOES OFF THE LOOP. This is a
+	// call over a connection — on the ordinary launch the surface talks to its
+	// own engine process — and a row that sat unchanged for a round trip is a row
+	// somebody presses twice (offloop.go's law, and the whole account of why).
+	// So what a person sees is decided here, immediately, and the rare road — the
+	// engine refusing — puts it back with the engine's own sentence.
+	was, had := a.sheet.autonomy[row.kind]
+	wasWord := row.word
 	if a.sheet.autonomy == nil {
 		a.sheet.autonomy = map[session.AskKind]session.Policy{}
 	}
 	a.sheet.autonomy[row.kind] = next
 	row.word = autonomyPersonWord(next)
 	a.sheet.msg = string(row.kind) + " · " + row.word + " · for this project"
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.SetAutonomy(row.kind, next)
+		return func(here bool) tea.Cmd {
+			if !here || err == nil {
+				// AND THE PAGE'S READING MOVES WITH THE WRITE RATHER THAN BEING
+				// FETCHED AGAIN. The engine took this exact rule — it said so by
+				// not refusing — so re-asking would be a round trip to be told
+				// what this press already knows. The conversation-wide cache is
+				// a different reading and is refreshed, because a question raised
+				// after this must wear the rule that now exists.
+				if err == nil {
+					return a.autonomyChanged()
+				}
+				return nil
+			}
+			// The engine's refusal is the person's to read, whole — and the row
+			// goes back to what it was, because it never became what it said.
+			if had {
+				a.sheet.autonomy[row.kind] = was
+			} else {
+				delete(a.sheet.autonomy, row.kind)
+			}
+			row.word = wasWord
+			a.sheet.msg = err.Error()
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // autonomyFixedWord is what a fixed row says when somebody presses it. It names
@@ -223,3 +238,12 @@ const autonomyFixedWord = "this shape always asks you · " + autonomyAlwaysWord
 // `recommend then go`. It is the sheet's own default rather than a number chosen
 // here, and `/autonomy <kind> recommend <duration>` is how a person names another.
 const autonomyRowStep = 30 * time.Second
+
+// hasAutonomyDoor reports whether this conversation has somewhere to keep
+// question rules. It is a type assertion on the agent and nothing else — local,
+// free, and safe to ask on the update loop — which is exactly why it is a
+// separate question from what the rules SAY ([sheet.autonomyDoor]).
+func (a *app) hasAutonomyDoor() bool {
+	_, ok := a.agent.(autonomyAgent)
+	return ok
+}
