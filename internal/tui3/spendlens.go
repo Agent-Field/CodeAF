@@ -162,7 +162,8 @@ func (s spendSort) nextDay() spendSort {
 const (
 	spendLensKeysWord   = "[ ] lenses"
 	spendGroupKeyWord   = "g group"
-	spendSortKeyWord    = "c/t sort · enter on a head cell"
+	spendSortKeyWord    = "c/t sort"
+	spendSortHeadWord   = "c/t sort · enter on a head cell"
 	spendModelsLensWord = "what ran it"
 	spendDaysLensWord   = "by the day"
 	spendYearLensWord   = "this year"

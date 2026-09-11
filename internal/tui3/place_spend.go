@@ -892,7 +892,7 @@ func (placeSpend) hint(a *app) string {
 		// tab strip on the foot as well (docs/design/spend-lenses/DESIGN.md).
 		parts = append(parts, spendLensWord)
 		if a.spend.lens == spendLensModels {
-			parts = append(parts, spendGroupKeyWord, spendSortKeyWord)
+			parts = append(parts, spendGroupKeyWord, spendSortHeadWord)
 		}
 		if a.spend.lens == spendLensDays {
 			parts = append(parts, spendSortKeyWord)
