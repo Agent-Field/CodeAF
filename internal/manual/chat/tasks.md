@@ -3049,6 +3049,13 @@ Conversations start expanded. Families beneath a task start folded. `→` opens 
 name opens the chat or task. A shut row says `holds N more`. Open folds and the cursor
 stay attached to their conversation and task identities when the page refreshes.
 
+**A conversation that has said nothing yet is called `new conversation`** on this page —
+the same word the home column spells for a chat nothing has named — never the session's
+own id. A launch's first session exists before the title role has anything to name, and
+the row it gets is the word, with no age beside it because nothing has happened in it
+yet. Typing the word in the filter finds it; typing the id never did, because an id was
+never on the page to match.
+
 Search keeps the ancestors of a matching task and opens its path. Clearing the search
 restores your folds. Opening a record from Home also reveals its ancestor path in the
 list, so returning from the record lands on that task. A missing parent leaves its

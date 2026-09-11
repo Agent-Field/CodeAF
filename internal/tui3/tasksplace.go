@@ -1050,6 +1050,29 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		}
 	}
 	group := map[string]int{}
+	// THE TITLELESS ROW IS NAMED BY HOME'S OWN LADDER, never by the raw id its
+	// Title carries: the stem is the session's id, and an id is a machine's
+	// word in the one column whose whole job is matching names. Home solved this
+	// for its own lists with one spelling of the word ([listName]'s defect
+	// note), and this place draws the same row, so it reads the name from there
+	// rather than spelling it a second time here.
+	//
+	// THE TEST IS EQUALITY WITH THE ROW'S OWN ID, FOLDED, because a titleless
+	// row's Title is never empty — [tasksConversationRows] fills it with
+	// [homeName], whose title case has already raised the id's first letter, so
+	// the composer sees `De9ea39e6f4c18c3` where the id is `de9ea39e6f4c18c3` and
+	// a byte-exact check never fires. EqualFold is the one comparison that does.
+	//
+	// ONLY THE NAME CHANGES. The row keeps its place, its age stays empty
+	// (lastUserAt is the zero time and the emptiness law draws nothing), and
+	// [chatProjectWord] still sees the row, so a project that is not this name
+	// does not echo the word back as a project tag beside it.
+	tasksName := func(row session.SessionRow) string {
+		if trimmed := strings.TrimSpace(row.Title); trimmed != "" && !strings.EqualFold(trimmed, row.ID) {
+			return trimmed
+		}
+		return unnamedConversationWord
+	}
 	for _, root := range roots {
 		id := tasksChatOf(root)
 		row, named := names[id]
@@ -1064,7 +1087,7 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		group[id] = len(t.groups)
 		t.groups = append(t.groups, tasksGroup{
 			named: true,
-			chat:  tasksChat{key: tasksChatKey(id), row: row, title: strings.TrimSpace(row.Title)},
+			chat:  tasksChat{key: tasksChatKey(id), row: row, title: tasksName(row)},
 			roots: []tasksItem{root},
 		})
 	}
@@ -1076,7 +1099,7 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		}
 		group[row.ID] = len(t.groups)
 		t.groups = append(t.groups, tasksGroup{named: true,
-			chat: tasksChat{key: tasksChatKey(row.ID), row: row, title: row.Title}})
+			chat: tasksChat{key: tasksChatKey(row.ID), row: row, title: tasksName(row)}})
 	}
 
 	for i := range t.groups {
