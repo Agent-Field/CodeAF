@@ -45,12 +45,13 @@ under that pointer.
 | `days` | a calendar of days in the window | — |
 | `year` | the year as a heatmap, with streak / peak / favorite | — |
 
-`[` and `]` cycle the four, in that order, wrapping. **Under the rails sits a
-chip strip** — `rhythm · models · days · year` — the same padded-selected object
-the settings panel and the place tab bar already are. A press on a chip switches
-the reading; the keys stay for people who already know them. The window head
-names the window alone (never `rhythm ·` again); the foot still says
-`[ ] lenses · ] <next>` so the keyboard path is named beside the chips.
+`[` and `]` cycle the four, in that order, wrapping. **Under the place bar sits a
+second tab bar** — `rhythm · models · days · year` — the same padded-selected
+object settings uses for Session…Connections (and the place tab bar itself). A
+press on a chip switches the reading; the keys stay for people who already know
+them. The rails pointer and window head sit *under* that chrome, not above it.
+The foot still says `[ ] lenses · ] <next>` so the keyboard path is named beside
+the tabs.
 
 **Still a reading.** The Spending tab remains the only editor. Nothing on any lens
 writes a limit, a model binding, or a profile row.
@@ -174,12 +175,12 @@ printed into the conversation.
 ## Words
 
 - Lenses are named in the person's vocabulary: **rhythm**, **models**, **days**,
-  **year**. Lowercase on the chip strip and in `/spend` args; Title Case only if a
+  **year**. Lowercase on the second tab bar and in `/spend` args; Title Case only if a
   heading in the manual needs it for search.
 - Picker sections: **`used lately`**, **`all models`** — those spellings, nowhere else.
 - Chip: **`this fortnight $12 · 2.1M`** as the shape (figures vary; the words do not).
 - Order chips on the framed `/model` sheet: **`cheap`**, **`fast`**, **`used`**.
-- Keys: `[` `]` cycle lenses; a press on a lens chip switches; the existing spend time
+- Keys: `[` `]` cycle lenses; a press on a lens tab switches; the existing spend time
   keys stay on `rhythm` (and on any lens that still owns a window).
 - "limit" in person-facing money lines; never rail / ceiling / budget cap. No machinery
   words (`auditor`, `verdict`, `verified`, `refuted`).
@@ -196,9 +197,9 @@ printed into the conversation.
 
 ## Acceptance (tests the build must add)
 
-1. `[` `]` cycle `rhythm → models → days → year → rhythm` on the spend place; the chip
-   strip names every lens and a press switches; the Spending tab is never opened by
-   those keys or chips.
+1. `[` `]` cycle `rhythm → models → days → year → rhythm` on the spend place; a
+   second tab bar under the place bar names every lens and a press switches; the
+   Spending tab is never opened by those keys or chips.
 2. `enter` on a `days` row lands on `rhythm` for that day; `esc` returns to `days` on
    that row.
 3. Models lens sorts by each column; grouping by role then subject then none; unbound

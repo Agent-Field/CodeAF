@@ -19,10 +19,11 @@ import (
 // frame asks of it. The same split every other room keeps
 // (docs/design/home-rethink/ARCHITECTURE.md's three layers).
 //
-// IT IS THE ONE PLACE WITH A SECOND BAR INSIDE IT, and the two are not a
-// repetition: the upper one is the seven places and the lower one is this
-// place's own sections. The panel is where [placeTabBar] was lifted from, so
-// they are drawn by the same geometry and read as one object at two scales.
+// IT IS ONE OF TWO PLACES WITH A SECOND BAR INSIDE IT (spend's lenses are the
+// other). The two bars are not a repetition: the upper one is the seven places
+// and the lower one is this place's own sections. The panel is where
+// [placeTabBar] was lifted from, so they are drawn by the same geometry and
+// read as one object at two scales.
 
 // placeSettings is this place's handle on the registry (pages.go's [place]
 // states the contract and why the handle holds no state of its own).

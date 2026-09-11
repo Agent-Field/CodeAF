@@ -2039,9 +2039,9 @@ The spend place (`alt+3`, or `/spend`) is still a **reading** of what this machi
 cost. It still never edits a limit; the Spending tab is the only editor, and the place's
 first line still points there.
 
-What you are reading is one of four **lenses**. Under the rails pointer sits a chip
-strip naming all four — the active one filled — so you can see and press them without
-guessing keys:
+What you are reading is one of four **lenses**. Under the place bar (home · tasks ·
+spend · settings) sits a **second tab bar** naming all four — the active one filled —
+the same kind of strip settings uses for its sections. Press a tab to switch:
 
 | lens | what it shows |
 |---|---|
@@ -2050,7 +2050,7 @@ guessing keys:
 | `days` | the days in the window |
 | `year` | a year heatmap with streak, peak and favorite when those exist |
 
-Press a chip, or press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The
+Press a tab, or press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The
 foot still names `[ ] lenses · ] models` (the next lens) when it has the cells.
 
 **`enter` on a day** (the `days` lens) opens that day's `rhythm` window. `esc` returns

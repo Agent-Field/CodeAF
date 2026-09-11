@@ -278,29 +278,33 @@ func TestQuietDayStillDrills(t *testing.T) {
 	}
 }
 
-// THE CHIP STRIP NAMES EVERY LENS. The window head stays the window alone —
-// one source of truth for which reading is up. The foot still names `[ ] lenses`
-// and the next lens so the keys stay discoverable beside the chips.
-func TestSpendLensChipsNameEveryReading(t *testing.T) {
+// THE LENS TABS LEAD THE BODY — settings-style second nav under the place bar.
+// The window head stays the window alone. The foot still names `[ ] lenses`
+// and the next lens so the keys stay discoverable beside the tabs.
+func TestSpendLensTabsLeadTheBody(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	for _, lens := range []spendLens{spendLensRhythm, spendLensModels, spendLensDays, spendLensYear} {
 		a.setSpendLens(lens)
-		rows, stops := a.spend.reading.paintLens(lens, spendGroupModel, spendSortCost, 120, newPalette(tokens.NoColor, false), nil)
-		if len(rows) < 2 {
-			t.Fatalf("%s painted %d rows", lens.word(), len(rows))
+		rows := placeSpend{}.body(a, 120, 40)
+		if len(rows) < spendLensChromeRows+1 {
+			t.Fatalf("%s body has %d rows, want chrome + content", lens.word(), len(rows))
 		}
-		bar := plain(rows[1])
+		if hit, ok := rows[0].hit.(int); !ok || hit != spendLensTabHit {
+			t.Fatalf("%s first row is not the lens tab chrome: %#v", lens.word(), rows[0].hit)
+		}
+		bar := plain(rows[0].text)
 		for _, want := range []string{"rhythm", "models", "days", "year"} {
 			if !strings.Contains(bar, want) {
-				t.Fatalf("%s chip strip missing %q: %q", lens.word(), want, bar)
+				t.Fatalf("%s tab bar missing %q: %q", lens.word(), want, bar)
 			}
 		}
-		if len(stops) < 2 || !stops[1].lensBar {
-			t.Fatalf("%s row 1 is not the lens bar: %#v", lens.word(), stops)
+		if strings.TrimSpace(rows[1].text) != "" {
+			t.Fatalf("%s expected a blank under the tabs, got %q", lens.word(), plain(rows[1].text))
 		}
-		head := plain(rows[2])
-		if strings.Contains(head, lens.word()+" · ") {
-			t.Fatalf("%s head still repeats the lens word after the chips: %q", lens.word(), head)
+		// Content starts with the rails pointer, not a second chip strip.
+		rails := plain(rows[spendLensChromeRows].text)
+		if strings.Contains(rails, "rhythm") && strings.Contains(rails, "models") && strings.Contains(rails, "days") {
+			t.Fatalf("%s content still opens with a chip strip: %q", lens.word(), rails)
 		}
 		foot := (placeSpend{}).hint(a)
 		if !strings.Contains(foot, spendLensWord) {
@@ -312,18 +316,18 @@ func TestSpendLensChipsNameEveryReading(t *testing.T) {
 	}
 }
 
-// A PRESS ON A LENS CHIP SWITCHES THE READING without walking the cursor.
-func TestSpendLensChipPressSwitches(t *testing.T) {
+// A PRESS ON A LENS TAB SWITCHES THE READING without walking the cursor.
+func TestSpendLensTabPressSwitches(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	a.setSpendLens(spendLensRhythm)
 	_ = placeSpend{}.body(a, 120, 40)
 	// Column of the "models" chip: lead + rhythm chip + gap.
 	x := tabLead + tabChipCols("rhythm") + tabGap + 1
 	a.clickX = x
-	// Row of the chip strip in the place body: under the place head, under rails.
-	y := placeHeadRows + 1
+	// Row of the tab bar: first body row under the place head.
+	y := placeHeadRows
 	if cmd, took := (placeSpend{}).press(a, y); !took {
-		t.Fatal("press on the lens bar was not taken")
+		t.Fatal("press on the lens tabs was not taken")
 	} else if cmd != nil {
 		t.Fatal("switching a lens returned a command")
 	}

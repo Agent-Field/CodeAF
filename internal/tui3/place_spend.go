@@ -635,7 +635,7 @@ func (a *app) readSpendFrom(from time.Time) {
 // than no door at all.
 func (a *app) openSpendRow() (tea.Cmd, bool) {
 	stop := a.spendStopAt(a.spend.cursor)
-	if !stop.ok || stop.lensBar {
+	if !stop.ok {
 		return nil, false
 	}
 	// AND THE POINTER LINE OPENS THE ONE EDITOR MONEY HAS. It is the only row
@@ -764,48 +764,61 @@ func (placeSpend) remote(a *app) string {
 }
 
 func (placeSpend) body(a *app, width, room int) []placeRow {
+	// THE LENS TABS LEAD THE BODY — settings' own second-bar grammar. They are
+	// pinned chrome; the ledger under them scrolls. An empty machine still shows
+	// the tabs so rhythm / models / days / year stay discoverable before the
+	// first priced call lands.
+	chrome := spendLensChrome(width, a.spend.lens, a.pal)
+	contentRoom := room - len(chrome)
+	if contentRoom < 1 {
+		contentRoom = 1
+	}
+
 	// A LEDGER STILL ON THE WIRE is a skeleton, not the empty-machine whisper:
 	// whispering "priced as it runs" over a bill that has not arrived yet is a
 	// lie about an unknown, and the emptiness law draws unknown as absent —
 	// here the honest absent is the warming line, never `$0.00`.
-	if !a.spend.known {
-		return spendWarmingRows(width, room, a.pal)
-	}
-	if a.spend.reading.empty() && a.spend.lens != spendLensYear {
-		if !a.spend.held {
-			return placeWhisperRows(pageSpend, width, room, a.pal)
-		}
+	var content []placeRow
+	switch {
+	case !a.spend.known:
+		content = spendWarmingRows(width, contentRoom, a.pal)
+		a.spend.top, a.spend.shown = 0, len(content)
+	case a.spend.reading.empty() && a.spend.lens != spendLensYear && !a.spend.held:
+		content = placeWhisperRows(pageSpend, width, contentRoom, a.pal)
+		a.spend.top, a.spend.shown = 0, len(content)
+	case a.spend.reading.empty() && a.spend.lens != spendLensYear && a.spend.held:
 		// THE HEADER STAYS, because it is the only thing on this frame naming the
 		// window the four arrow keys move ([spendPage.held] holds the argument).
 		// Under it sits the quiet guide — how to leave — not blank air.
-		return spendQuietWindowRows(a, width, room)
-	}
-	if a.spend.lens == spendLensYear && !a.spend.held && a.spend.reading.empty() {
-		return placeWhisperRows(pageSpend, width, room, a.pal)
-	}
-	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
-	body, stops := a.spend.reading.paintLens(a.spend.lens, a.spend.group, a.spend.sort, width, a.pal, lit)
-	a.spend.stops = stops
-	// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
-	// loses the cursor off the bottom of the screen the moment the ledger is
-	// longer than the terminal, which is the one thing a list may never do.
-	a.spend.top = placeTop(a.spend.top, a.spend.cursor, len(body), room)
-	rows := make([]placeRow, 0, room)
-	for i := a.spend.top; i < len(body); i++ {
-		if len(rows) >= room {
-			break
+		content = spendQuietWindowRows(a, width, contentRoom)
+	case a.spend.lens == spendLensYear && !a.spend.held && a.spend.reading.empty():
+		content = placeWhisperRows(pageSpend, width, contentRoom, a.pal)
+		a.spend.top, a.spend.shown = 0, len(content)
+	default:
+		lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
+		body, stops := a.spend.reading.paintLens(a.spend.lens, a.spend.group, a.spend.sort, width, a.pal, lit)
+		a.spend.stops = stops
+		// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
+		// loses the cursor off the bottom of the screen the moment the ledger is
+		// longer than the terminal, which is the one thing a list may never do.
+		a.spend.top = placeTop(a.spend.top, a.spend.cursor, len(body), contentRoom)
+		content = make([]placeRow, 0, contentRoom)
+		for i := a.spend.top; i < len(body); i++ {
+			if len(content) >= contentRoom {
+				break
+			}
+			text := body[i]
+			if lit(i) {
+				text = placeBand(text, width, a.pal)
+			}
+			content = append(content, placeRow{text: text, hit: i})
 		}
-		text := body[i]
-		if lit(i) {
-			text = placeBand(text, width, a.pal)
+		a.spend.shown = len(content)
+		for len(content) < contentRoom {
+			content = append(content, placeRow{text: "", hit: -1})
 		}
-		rows = append(rows, placeRow{text: text, hit: i})
 	}
-	a.spend.shown = len(rows)
-	for len(rows) < room {
-		rows = append(rows, placeRow{text: "", hit: -1})
-	}
-	return rows
+	return append(chrome, content...)
 }
 
 // stops is every row of the body that names something money was spent on.
@@ -865,7 +878,7 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
-	// spendLensWord is the FOOT's cycle clause. The chip strip under the rails
+	// spendLensWord is the FOOT's cycle clause. The tab bar under the place bar
 	// already names every lens; the foot keeps the keys and the NEXT lens so a
 	// person who prefers the keyboard still finds `] models` from rhythm.
 	spendLensWord = "[ ] lenses"
@@ -936,20 +949,28 @@ func (placeSpend) hint(a *app) string {
 }
 
 func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
-	at, ok := placeBodyLine(y, a.spend.top, a.spend.shown)
-	if !ok {
+	row := y - placeHeadRows
+	if row < 0 {
 		return nil, true
 	}
-	stop := a.spendStopAt(at)
-	// A PRESS ON A LENS CHIP SWITCHES THE READING. The strip is chrome, not a
-	// cursor door — clickX is the only way to know which word was under the
-	// pointer (settings.go's [sheetPress] uses the same column for its tabs).
-	if stop.lensBar {
+	// A PRESS ON THE LENS TABS SWITCHES THE READING. The bar is pinned chrome
+	// above the scrolled ledger — settings' own second-bar press path
+	// (settings.go's [sheetPress] on sheetHitTabs).
+	if row == 0 {
 		if lens, hit := spendLensAtColumn(a.clickX); hit {
 			a.setSpendLens(lens)
 		}
 		return nil, true
 	}
+	if row < spendLensChromeRows {
+		return nil, true
+	}
+	contentRow := row - spendLensChromeRows
+	if contentRow < 0 || contentRow >= a.spend.shown {
+		return nil, true
+	}
+	at := a.spend.top + contentRow
+	stop := a.spendStopAt(at)
 	if stop.ok {
 		a.spend.cursor = at
 		a.touch()
@@ -960,8 +981,15 @@ func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
 
 func (placeSpend) hover(a *app, y int) bool {
 	next := -1
-	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
-		next = at
+	row := y - placeHeadRows
+	if row >= spendLensChromeRows {
+		contentRow := row - spendLensChromeRows
+		if contentRow >= 0 && contentRow < a.spend.shown {
+			at := a.spend.top + contentRow
+			if a.spendStopAt(at).ok {
+				next = at
+			}
+		}
 	}
 	return placeHoverMoved(&a.spend.hover, next, a)
 }
@@ -1014,16 +1042,15 @@ func spendWarmingRows(width, room int, pal palette) []placeRow {
 }
 
 // spendQuietWindowRows is a held ledger paged onto a stretch that spent
-// nothing: rails pointer, lens chips, window head with the control, and the
-// quiet guide — how to leave — rather than blank air under the head. The chips
-// stay so a quiet stretch still offers models / days / year by eye.
+// nothing: rails pointer, window head with the control, and the quiet guide —
+// how to leave — rather than blank air under the head. The lens tabs sit above
+// this content in [placeSpend.body], so a quiet stretch still offers every reading.
 func spendQuietWindowRows(a *app, width, room int) []placeRow {
 	rows := make([]placeRow, 0, room)
 	inner := width - len(placeLead)
 	r := a.spend.reading
 	rails := placeLead + r.railsRowIn(inner, a.pal.dim)
 	rows = append(rows, placeRow{text: rails, hit: 0})
-	rows = append(rows, placeRow{text: spendLensBar(width, a.spend.lens, a.pal), hit: 1})
 	rows = append(rows, placeRow{text: r.windowHeaderRowFor(a.spend.lens, width, a.pal), hit: -1})
 	if inner > 0 {
 		rows = append(rows, placeRow{text: "", hit: -1})
@@ -1032,9 +1059,6 @@ func spendQuietWindowRows(a *app, width, room int) []placeRow {
 	a.spend.stops = make([]spendStop, len(rows))
 	if len(a.spend.stops) > 0 {
 		a.spend.stops[0] = spendStop{ok: true, rails: true}
-	}
-	if len(a.spend.stops) > 1 {
-		a.spend.stops[1] = spendStop{lensBar: true}
 	}
 	a.spend.top, a.spend.shown = 0, len(rows)
 	for len(rows) < room {
