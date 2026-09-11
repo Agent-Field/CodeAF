@@ -143,10 +143,10 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	}
 	// THE LOOK GOES THROUGH THE BELT'S ONE DOOR FOR ASKING A MODEL (toolask.go).
 	// The tag that names this call in the log, the phase the person reads while
-	// it lasts, the ceiling on how much the seer may write, the bound on the
-	// wait and the bill folded into the session are all that door's, said once
-	// there rather than again here — which is how this tool came to make an
-	// untagged, unannounced, unbounded-in-length call in the first place.
+	// it lasts, the bound on the wait and the bill folded into the session are
+	// all that door's, said once there rather than again here — which is how this
+	// tool came to make an untagged, unannounced, unbounded call in the first
+	// place.
 	answer, err := a.askModel(ctx, toolAsk{
 		tool:   "view_image",
 		doing:  "looking at " + filepath.Base(absolute),

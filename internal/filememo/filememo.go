@@ -35,6 +35,16 @@
 // within one tick of the filesystem's timestamp resolution. On every filesystem
 // this program runs on that tick is a nanosecond. It is written down here rather
 // than guarded against, because guarding against it means reading the file.
+//
+// IT IS NOT THE SURFACE'S OWN HOLDER, and the difference is the contract rather
+// than the code. The surface keeps a thing of the same family for what it draws
+// with, and that one is refreshed by the frame's beat from a single goroutine
+// and never stats anything on the path — it answers with whatever the last beat
+// left, because a frame that blocks is a frame dropped. This one is the
+// opposite bargain: it stats on every read, from any goroutine, and is therefore
+// never behind the disk by more than a write that has not finished. A caller who
+// can afford to be one beat stale wants that one; a caller who must not serve a
+// setting the person just changed wants this one.
 package filememo
 
 import (

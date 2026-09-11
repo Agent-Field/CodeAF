@@ -422,12 +422,22 @@ are standing in and touches whatever it names, including files in a folder you c
 the model's `read`, `write` and `edit` go through the copy.
 
 **The copy is made the moment you choose the folder, not the first time something
-is written.** You may see one dim line while it happens — `preparing · a working
-copy of <folder>` — which is a branch being taken or, for a plain folder, a copy
-being made. It runs while you are reading your own screen, so by the time the
-model writes anything it is already there. It used to be made inside that first
-write instead, which is why an edit into a large repository used to sit for
-seconds with nothing on screen to say why.
+is written** — unless you said to work in the folder directly, or it is the
+folder you are standing in, and then there is never a copy at all. You may see
+one dim line while it happens — `preparing · a working copy of <folder>` — which
+is a branch being taken or, for a plain folder, a copy being made. It runs while
+you are reading your own screen, so by the time the model writes anything it is
+already there. It used to be made inside that first write instead, which is why
+an edit into a large repository used to sit for seconds with nothing on screen
+to say why.
+
+Saying "work in it directly" always wins, even said afterwards. Because a folder
+has to be chosen before you can say anything about it, the copy has usually
+already been taken by then — so it is given back: the branch and the working copy
+go, and the folder is edited directly from that moment. The one thing that is
+never given back is a copy something has already been written into; that work is
+in there and nowhere else, so it stays, and `changes for <name> · /land` still
+leads to it.
 
 If the copy cannot be made at all, nothing is refused: the write goes to the real
 folder, exactly as it would have before you chose one.

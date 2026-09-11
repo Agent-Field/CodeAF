@@ -85,6 +85,13 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 // value it holds rather than a copy, so the eight readers in this package treat
 // what comes out of here as read-only — which every one of them already did,
 // because the only writer is [writeProfileValues] and it builds its own map.
+//
+// IT IS A LAW AND NOT A HOPE: TestAWriteDoesNotRewriteWhatTheMemoIsHolding reads
+// a value, writes a different one through the writer, and fails if the map the
+// reader was handed moved. Cloning on the way out would have made that
+// impossible too, and it would also have put an allocation back on the path
+// [APIKeyConfigured] runs on for every Enter — which is the cost this whole memo
+// exists to remove. The law is free; the clone is not.
 func readProfileConfig(profileDir string) (map[string]json.RawMessage, error) {
 	return profileConfigMemo.Read(BudgetConfigPath(profileDir))
 }

@@ -142,6 +142,16 @@ type compactedResult struct {
 }
 
 // fresh says whether this entry was made from the message now at its index.
+//
+// THE TWO FACTS ARE THE CALL ID AND THE BYTE WEIGHT, and between them they cover
+// every way this package rewrites a frozen result: a stub replaces the text,
+// which moves the weight; a history rebuilt around a different call moves the
+// id. The one thing they cannot tell apart is a result at the same index, under
+// the same tool call id, rewritten to EXACTLY its old byte count — which nothing
+// in this package does, because the rewrites it has all replace a result with a
+// pointer that is shorter. It is written down rather than guarded against:
+// guarding means digesting the whole result again, which is the cost this memo
+// exists to remove.
 func (c compactedResult) fresh(message ai.Message) bool {
 	return c.made && c.callID == message.ToolCallID && c.wasBytes == messageBytes(message)
 }

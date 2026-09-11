@@ -657,6 +657,11 @@ func BenchmarkCompactToolHistory(b *testing.B) {
 // change by definition — the turn records its boundary before its first request
 // — and this pass was rebuilding every reduced view from scratch on each one,
 // digesting the whole of every old result to find its pointer each time.
+//
+// THAT THE ANSWER IS STILL RIGHT IS PINNED BY EVERY TEST ABOVE, UNCHANGED. They
+// were written against the reduction itself and none of them was touched by the
+// memo beyond taking their agent from [compactedFixture]; a memo that returned
+// anything but what the cold path returns fails them first and this one second.
 func TestAFrozenPrefixIsReducedOncePerConversationAndNotPerRequest(t *testing.T) {
 	messages := toolCompactMessages(60, 1)
 	var pointers int

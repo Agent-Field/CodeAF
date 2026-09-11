@@ -253,6 +253,7 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 	// hand writing what another is reading.
 	a.mu.Lock()
 	found := false
+	var ref PlaceRef
 	places := make([]PlaceRef, len(a.places))
 	copy(places, a.places)
 	for index := range places {
@@ -260,6 +261,7 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 			continue
 		}
 		found, places[index].Mode = true, mode
+		ref = places[index]
 	}
 	if found {
 		a.places = places
@@ -267,6 +269,19 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 	a.mu.Unlock()
 	if !found {
 		return fmt.Errorf("this conversation is not about %s", dir)
+	}
+	// THE WORD WINS WHICHEVER WAY IT ARRIVES, and it always arrives second: the
+	// place is referred before anything can be said about it, so the head start
+	// ([Agent.startStandingTree]) has already begun by the time this runs. Saying
+	// "in place" therefore has to take a copy back rather than merely stop the
+	// next one — and the settle first is what makes that possible, because a cut
+	// still in flight would finish into the folder just after it was retired.
+	// Clearing the word takes the same road in the other direction.
+	if keptAside(ref, a.workspaceStoodIn()) {
+		a.startStandingTree(ref)
+	} else {
+		a.treesAhead().Settle()
+		a.retireUntouchedTree(dir)
 	}
 	a.stampPlaces()
 	return nil

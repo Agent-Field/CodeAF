@@ -96,6 +96,13 @@ func (a *Agent) metaStamp() *stampWriter {
 // write. A deferred write's whole risk is a process that stops while one is
 // owed; this is the answer to that risk, and it belongs at [Agent.Close] and in
 // every test that reads one of those files back.
+//
+// IT MUST NOT BE CALLED WITH a.mu HELD, and that is the whole of its contract.
+// Every write it waits on takes that lock to read or replace what it is writing
+// — the stamp fills a Meta, the cut appends to a.trees — so a call from inside
+// the lock waits forever on work that is waiting for the caller. In [Agent.Close]
+// the place is beside [Agent.settleDeliveries] (agent.go), BEFORE the
+// `a.mu.Lock()` that follows it, and nowhere after.
 func (a *Agent) SettleWrites() {
 	if a == nil {
 		return

@@ -7,6 +7,14 @@ package session
 // that the next person who puts a `git status`, a whole-file write or a second
 // timeout budget on a person's path is told by the build rather than by a
 // census six weeks later.
+//
+// WHAT IT PINS IS THE THREE SHAPES THIS FILE'S OWN CHANGE INTRODUCED and not the
+// package at large: the worktree reading taken beside the batch rather than
+// inside it, the fix shelf's read path writing nothing, and the one door a hand
+// on the belt asks a model through. The other deferred writes of the same wave
+// are pinned where they live — the meta stamp by the title and meta-transaction
+// tests, the working copy by standingtree_test.go, the memos by their own
+// packages' tests.
 
 import (
 	"go/ast"
@@ -165,6 +173,15 @@ func TestConsultingTheFixStoreWritesNothingOnThePath(t *testing.T) {
 // make them set no tag, and a tag is set either by the caller or not at all.
 // This is a structural law rather than a runtime one because the defect is the
 // EXISTENCE of a second send site, not its behaviour.
+//
+// A HAND IS A FILE ON THE BELT — tools_*.go — AND THAT IS THE WHOLE OF WHAT THIS
+// WALKS. The package's other senders are not hands and must not be dragged
+// through this door: auxiliary.go is the auxiliary ladder, which has a tagging
+// door of its own; image.go's vision answer IS the person's own turn under
+// another model, streaming into the room under [lane.RoleTalk]; checkpoint.go,
+// guardian.go, spellout.go and the task shapers are the engine asking on its own
+// account. A door built for "a tool call is waiting on this" would be the wrong
+// bound and the wrong phase for every one of them.
 func TestNoHandAsksAModelOutsideTheOneDoor(t *testing.T) {
 	set := token.NewFileSet()
 	entries, err := os.ReadDir(".")

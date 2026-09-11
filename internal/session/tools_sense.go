@@ -395,9 +395,9 @@ const (
 
 // senseOneShot is one rung of a sense asking one model, THROUGH THE BELT'S ONE
 // DOOR FOR THAT (toolask.go). Everything a tool-made model call owes — the tag
-// that names it in the log, the phase the person reads, the ceiling on the
-// answer, the bound on the wait, the bill folded into the session — is that
-// door's, said once there rather than four times here.
+// that names it in the log, the phase the person reads, the bound on the wait,
+// the bill folded into the session — is that door's, said once there rather than
+// four times here.
 //
 // What this adds is the SENTENCE the person and the model see while it runs:
 // `read` is one verb over four kinds of file, so the phase has to say which

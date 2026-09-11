@@ -205,13 +205,13 @@ func (ref PlaceRef) staged() bool { return TaskMode(ref.Mode) != TaskModeInPlace
 // project and then to one library inside it gets the library's own copy for
 // paths under it rather than the project's.
 func (a *Agent) standingFolder(path string) (PlaceRef, bool) {
-	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
+	workspace := a.workspaceStoodIn()
 	if workspace != "" && under(path, workspace) {
 		return PlaceRef{}, false
 	}
 	var best PlaceRef
 	for _, place := range a.referredPlaces() {
-		if !under(path, place.Path) || !place.staged() {
+		if !under(path, place.Path) || !keptAside(place, workspace) {
 			continue
 		}
 		if len(place.Path) > len(best.Path) {
@@ -219,6 +219,50 @@ func (a *Agent) standingFolder(path string) (PlaceRef, bool) {
 		}
 	}
 	return best, best.Path != ""
+}
+
+// keptAside is THE ONE ANSWER to "may this referred folder ever be worked on in
+// a copy", and both roads that can make a copy read it: the write path above,
+// and the ahead-of-time cut that [Agent.ReferPlace] owes ([Agent.treesAhead]).
+//
+// IT EXISTS BECAUSE THE SECOND ROAD ONCE HAD ITS OWN, WEAKER ANSWER. The eager
+// cut asked only whether a copy was already held, so it staged the two folders
+// this predicate's two clauses exist to protect — cutting a real branch and a
+// worktree in the person's own repository for the folder they were standing in.
+// A predicate with a name cannot be half-remembered by the next caller.
+//
+// THE TWO CLAUSES, each already a law elsewhere in this file:
+//
+//   - A FOLDER SAID TO BE WORKED IN DIRECTLY IS NEVER COPIED. That is the
+//     person's own word about their own folder ([Agent.SetPlaceMode]) and
+//     nothing may overrule it, which is what [PlaceRef.staged] is for.
+//   - THE STANDING WORKSPACE ALWAYS WINS. A referred folder that IS the
+//     conversation's own directory, or sits inside it, can never be staged for
+//     any path — every path under it is also under the workspace, which the
+//     clause above in [Agent.standingFolder] already sends direct. So a copy of
+//     it could only ever be a copy nothing would use.
+//
+// It is `under` and not equality on purpose. A folder that strictly CONTAINS the
+// workspace is still legitimately staged — for the paths inside it that are not
+// inside the workspace — so only a folder at or below the workspace is the one
+// that can never be.
+func keptAside(place PlaceRef, workspace string) bool {
+	return place.staged() && !(workspace != "" && under(place.Path, workspace))
+}
+
+// workspaceStoodIn is the directory this conversation is standing in, canonical,
+// read under the lock that moves it. It is NOT [Agent.standingWorkspace], which
+// answers a different question (where a standing item belongs, home included);
+// this one is only ever the folder a copy must never be made of.
+//
+// IT TAKES THE LOCK BECAUSE THE ANSWER MOVES. `anchor_workspace` rewrites both
+// [Config.Workspace] and [Config.Place] under a.mu in one breath
+// (tools_anchor_workspace.go), and both readers below run off the person's
+// path — one from a tool call, one from a deferred write.
+func (a *Agent) workspaceStoodIn() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return canonicalPath(strings.TrimSpace(a.config.Workspace))
 }
 
 // under reports whether a path is the directory itself or something inside it.
@@ -387,13 +431,29 @@ func (a *Agent) startStandingTree(place PlaceRef) {
 	if strings.TrimSpace(place.Path) == "" {
 		return
 	}
-	if strings.TrimSpace(a.config.Place.Trees()) == "" {
+	if !keptAside(place, a.workspaceStoodIn()) {
+		return
+	}
+	if strings.TrimSpace(a.treesDir()) == "" {
 		// Nowhere to put one. cutStandingTree says so to a caller that asked;
 		// nobody asked yet.
 		return
 	}
 	a.treesAhead().Owe()
 }
+
+// placeHere is this conversation's own folder, read under the lock
+// `anchor_workspace` moves [Config.Place] with (tools_anchor_workspace.go). The
+// cut runs off the person's path — in a deferred write or inside a tool call —
+// so it reads the place once, here, rather than field by field as it goes.
+func (a *Agent) placeHere() Place {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.Place
+}
+
+// treesDir is where copies are kept.
+func (a *Agent) treesDir() string { return a.placeHere().Trees() }
 
 // treesAhead is the one deferred piece of work behind every referred folder:
 // "cut a working copy of anything referred that has none".
@@ -404,10 +464,19 @@ func (a *Agent) startStandingTree(place PlaceRef) {
 // [Agent.treeCut]. [offpath.Write]'s coalescing does the whole of that: a refer
 // arriving while a cut is running owes one more pass, and that pass looks at the
 // set as it stands then.
+//
+// IT ASKS [keptAside] EXACTLY AS THE WRITE PATH DOES. The head start may never
+// reach a folder the write path would have left alone, or it would cut a branch
+// and a worktree in the person's own repository for a folder they only meant to
+// stand in.
 func (a *Agent) treesAhead() *offpath.Write {
 	a.treesOnce.Do(func() {
 		a.treesWrite = offpath.Deferred(func() {
+			workspace := a.workspaceStoodIn()
 			for _, place := range a.referredPlaces() {
+				if !keptAside(place, workspace) {
+					continue
+				}
 				if _, held := a.standingTreeFor(place.Path); held {
 					continue
 				}
@@ -445,7 +514,8 @@ func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 	if tree, held := a.standingTreeFor(place.Path); held {
 		return tree, nil
 	}
-	trees := a.config.Place.Trees()
+	here := a.placeHere()
+	trees := here.Trees()
 	if strings.TrimSpace(trees) == "" {
 		// A conversation with no folder of its own — a headless run, a test —
 		// has nowhere to put a working copy, so it has none and writes where it
@@ -462,7 +532,7 @@ func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 
 	if root, ok := repositoryRoot(place.Path); ok && hasCommit(root) {
 		branch := "chat/" + name + "-" + shortID()
-		cut, err := cutWorktreeAt(a.config.Place, root, dir, branch, 0o700)
+		cut, err := cutWorktreeAt(here, root, dir, branch, 0o700)
 		if err != nil {
 			return StandingTree{}, err
 		}
@@ -658,6 +728,42 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	}
 	a.dropStandingTree(tree.Folder)
 	return landing, nil
+}
+
+// retireUntouchedTree takes back a working copy NOTHING HAS BEEN WRITTEN INTO.
+//
+// It exists for one moment, and the order of that moment cannot be otherwise: a
+// mode is a fact ABOUT a place, so the place is referred first and the person's
+// "work in this one directly" arrives second — after [Agent.startStandingTree]
+// has already had its head start. Without this, their own word about their own
+// folder would be honoured by every future write while a branch and a worktree
+// they never asked for sat in their repository, belonging to nothing.
+//
+// AN UNTOUCHED COPY IS THE ONLY KIND THIS REMOVES. The moment anything has been
+// written into one, the work is in there and nowhere else; [Agent.Land] is the
+// one door that moves work out of a copy and this is not a second one. A copy
+// with writes stays exactly where it is, and the chip still leads back to it.
+//
+// THE BRANCH IS DELETED BY `git branch -d` AND NOT BY FORCE, so the refusal that
+// protects it is git's own: a branch holding a commit of its own is not merged,
+// `-d` says so, and the branch stays. Nothing here has to keep its own bookkeeping
+// about what "untouched" means for a branch.
+func (a *Agent) retireUntouchedTree(folder string) {
+	tree, held := a.standingTreeFor(folder)
+	if !held || len(tree.Wrote) > 0 {
+		return
+	}
+	if tree.Mode == TaskModeWorktree {
+		release := lockGitRoot(a.placeHere(), tree.Root)
+		_, _ = git(tree.Root, "worktree", "remove", "--force", tree.Dir)
+		_, _ = git(tree.Root, "worktree", "prune")
+		_, _ = git(tree.Root, "branch", "-d", tree.Branch)
+		release()
+	} else {
+		_ = os.RemoveAll(tree.Dir)
+		_ = os.Remove(filepath.Dir(tree.Dir))
+	}
+	a.dropStandingTree(folder)
 }
 
 // dropStandingTree forgets one copy and writes the record without it.

@@ -174,6 +174,15 @@ func (w *Write) drain() {
 // IT IS THE EXIT DOOR AND THE TEST'S DOOR, and it is the reason a deferred write
 // is not a lost write: whoever closes a session calls it, and whoever asserts on
 // the file calls it. Nothing on a person's path does.
+//
+// IT DRAINS AND IT DOES NOT CLOSE. A Write settled is a Write ready, and an
+// [Write.Owe] after a Settle starts the performer again exactly as the first one
+// did. That is deliberate and it is used mid-life, not only at exit: a caller
+// that has to act on the state a write leaves behind — the session's
+// "work in this folder directly", which settles the working-copy cut so it can
+// decide about a copy that is no longer being made — settles, acts, and goes on
+// owing writes afterwards. A door that latched shut on its first use could not
+// serve that, and the two would have become two mechanisms.
 func (w *Write) Settle() {
 	if w == nil {
 		return
