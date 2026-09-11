@@ -215,6 +215,15 @@ type questionShown struct {
 	// rule says `r make it a rule` is on this question's answers row: the third
 	// same-shaped yes has been given ([app.questionRuleOffered]).
 	rule bool
+	// scope is HOW LONG the answer this person is about to give will last, and
+	// it is only ever one the question itself offered (questionscope.go). The
+	// zero value means nobody has touched the row, which reads as the narrowest
+	// lifetime offered — never as "no lifetime".
+	//
+	// IT LIVES ON THE QUESTION for [questionShown.other]'s reason: a person who
+	// said "for this project" and is then handed the next question in a queue
+	// must not find that choice sitting on somebody else's frame.
+	scope session.AnswerScope
 	// ruled says this question's SHAPE is answered by a rule this project has
 	// written down (`/autonomy`), which is what puts `· your rule` on the row.
 	//
@@ -1684,7 +1693,7 @@ func (a *app) questionPickShape(head questionShown, at int) tea.Cmd {
 		return nil
 	}
 	answer := session.Answer{
-		Key: key, Picked: []string{key}, Scope: questionScopeOf(head.question, key),
+		Key: key, Picked: []string{key}, Scope: questionScopeOf(head, key),
 		// THE SHAPE RIDES ON THE ANSWER, which is what lets the lane's own hand
 		// write it down and lets the engine know a rule exists rather than
 		// writing a wider one of its own ([session.AnswerBanked]).
@@ -3446,7 +3455,7 @@ func (a *app) questionAnswerKey(head questionShown, key string) tea.Cmd {
 		return nil
 	}
 	answer := session.Answer{Key: key, Picked: []string{key}}
-	if scope := questionScopeOf(head.question, key); scope != "" {
+	if scope := questionScopeOf(head, key); scope != "" {
 		answer.Scope = scope
 	}
 	return a.answerQuestion(head, answer)
@@ -3455,16 +3464,18 @@ func (a *app) questionAnswerKey(head questionShown, key string) tea.Cmd {
 // questionScopeOf is how far one answer reaches, where the option says.
 //
 // THE WIDENING ANSWER CARRIES THE WIDEST SCOPE THE QUESTION OFFERED, and every
-// other answer carries `once`. [session.AnswerOption.Widening] is the lane's own
-// mark for "this grants more than the question asked about", so the surface
-// never has to guess which of a lane's answers is the wide one.
-func questionScopeOf(q session.Question, key string) session.AnswerScope {
-	option, ok := q.Option(key)
+// other answer carries WHAT THE PERSON SAID ON THE ROW (questionscope.go), which
+// is `once` until they touch it. [session.AnswerOption.Widening] is the lane's
+// own mark for "this grants more than the question asked about", so the surface
+// never has to guess which of a lane's answers is the wide one — and an answer
+// that already grants everything is not narrowed by a row about lifetimes.
+func questionScopeOf(q questionShown, key string) session.AnswerScope {
+	option, ok := q.question.Option(key)
 	if !ok || !option.Widening {
-		return session.ScopeOnce
+		return questionScopeNow(q)
 	}
 	widest := session.ScopeOnce
-	for _, scope := range q.Scope {
+	for _, scope := range q.question.Scope {
 		switch scope {
 		case session.ScopeAlways:
 			return session.ScopeAlways
@@ -3515,6 +3526,12 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		}), true
 	case questionDialKey:
 		return a.questionDial(head), true
+	case questionScopeKey:
+		// `t` CHANGES THE ROW AND NOTHING ELSE. Nothing is written and nothing
+		// is answered; the lifetime travels with the answer when one is given
+		// ([questionScopeOf]), so the key is safe to press and to press back.
+		a.questionScopeNext(head)
+		return nil, true
 	case questionRuleKey:
 		return a.questionMakeRule(head), true
 	case questionUndoKey:

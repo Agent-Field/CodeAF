@@ -196,6 +196,14 @@ func (a *app) questionPanelBody(q questionShown, inner int) []string {
 			rows = append(rows, line)
 		}
 	}
+	// AND HOW LONG THE ANSWER LASTS IS ONE ROW UNDER THE ANSWERS, where there is
+	// a choice of it to make (questionscope.go). It is below them and not among
+	// them because it is not an answer: it says how far the answer above it
+	// reaches, and a row a person could land the pointer on would make `enter`
+	// mean two things.
+	if row := a.questionScopeRow(q, room); row != "" {
+		rows = append(rows, "", row)
+	}
 	// AND THE ONE LINE OVER A FREE-TEXT BOX IS THE LAST ROW, because the box it
 	// is about is the message box under the panel ([session.InputShape.Prompt]
 	// calls it "the one line above a free-text box"). It is the asker saying

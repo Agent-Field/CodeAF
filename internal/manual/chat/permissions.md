@@ -312,7 +312,26 @@ nowhere, it is one of these:
 Nothing here is a pause you can resume: aforge has no key that suspends a
 session and none that wakes one.
 
-## How long an answer lasts: once, this session, or written down — how to make it stop asking every time
+## How long an answer lasts: once, this session, or written down — how to make it stop asking every time, stop asking me for this, remember this
+
+There is a row for it on the frame. Under the answers, where the question offers
+more than one lifetime, aforge draws them in your own words with a tick on the
+one that is on, and `t how long` walks between them:
+
+```
+  ✓ just this once · for this project · from now on
+```
+
+It starts on **just this once**, always. Pressing `t` changes that row and
+nothing else — nothing is written and nothing is answered until you give an
+answer, so you can cycle it and press `esc` and have written no rule. The
+lifetime you leave it on travels with the answer you then give.
+
+**Two things are never offered there.** A lifetime the question did not offer —
+only the asker knows whether a rule for this shape can be written at all — and
+any lifetime at all on an **irreversible** call: something that cannot be taken
+back is asked about every single time, and the row is absent rather than
+refusing.
 
 - **Once** — `1`, `3` and a typed answer under `c` answer this call and nothing
   else. `esc` answers nothing at all: it puts the question off.

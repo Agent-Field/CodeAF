@@ -192,6 +192,10 @@ const (
 	// reads ([questionAxes]). THE EMPTINESS LAW: `x` on a question with nothing
 	// to compare would open a table with no rows in it.
 	needCompare
+	// needScope is a question that offered more than one LIFETIME for its answer
+	// and can be taken back (questionscope.go). A question with one lifetime has
+	// nothing to cycle, and an irreversible one is asked every time.
+	needScope
 )
 
 // The keys, by the name each is referred to by. They are constants rather than
@@ -208,6 +212,11 @@ const (
 	questionDialKey    = "D"
 	questionRuleKey    = "r"
 	questionUndoKey    = "u"
+	// questionScopeKey cycles HOW LONG the answer lasts (questionscope.go). It
+	// is `t` and not `s` because `s` is the sheet's send, and a key that sent a
+	// batch on one form and changed a lifetime on another is two keys as far as
+	// anybody learning it is concerned.
+	questionScopeKey = "t"
 	questionBlankKey   = "tab"
 	// questionToggleKey IS `space` AND NOT `" "`, which the table's own contract
 	// demands: "key is the key as bubbletea spells it, which is what a comparison
@@ -326,6 +335,11 @@ var questionKeys = []questionVerb{
 	// happens once, and a row that dropped it to keep `[c] change` would have
 	// spent the offer on nothing. `u` is beside it for the same reason — a
 	// ratify line whose undo is off the row is a ratify line with no undo.
+	// HOW LONG THE ANSWER LASTS sits beside the rule offer, because the two are
+	// the same instinct at two strengths — "not this again" now, and "write it
+	// down" — and it is given up late for the same reason: a frame that drew the
+	// lifetimes and no key to change them would be a row nobody can work.
+	{key: questionScopeKey, word: "how long", forms: formsBlock | formsRoom, needs: needScope, giveUp: 2},
 	{key: questionRuleKey, word: "make it a rule", forms: formsBlock | formsRoom, needs: needRule, giveUp: 2},
 	{key: questionUndoKey, word: "undo", forms: formsRatify | formsRoom, needs: needUndo, giveUp: 2},
 	// `tab` IS THE BLANKS SHAPE'S OWN VERB AND IS RANKED WITH THE ANSWERS, for
@@ -602,6 +616,8 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
 	case needRule:
 		return q.rule
+	case needScope:
+		return len(questionScopes(q.question)) > 0
 	case needUndo:
 		return q.undoable
 	case needRoom:
