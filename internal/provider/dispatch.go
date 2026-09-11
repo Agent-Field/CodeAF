@@ -297,12 +297,21 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// See the branch it governs below: a backoff is what we pay to ask the same
 	// machine again, and it is the only thing it is for.
 	moved := false
-	// unattributed says the last REFUSAL named nobody, so there is nothing to put
-	// on the next body and the next body is the one that was just refused. It is
-	// the move generator's ([control.Plan.Unattributed]) and it is deliberately
-	// not set by a fault that never reached a machine: that names nobody for a
-	// different reason — the bytes never arrived — and keeps the walk it has.
-	unattributed := false
+	// accountPaced says the last refusal was the ACCOUNT'S OWN CEILING: this base
+	// has a pool behind the model, it asked the whole key to slow down, and it
+	// named none of that pool while doing it. There is nothing to put on the next
+	// body and every machine is behind the same ceiling, which is the move
+	// generator's ([control.Plan.AccountRefused]).
+	accountPaced := false
+	// sentVeto is what the body now in flight was WRITTEN AGAINST: the machines
+	// that had already refused this call at the moment it was encoded, which is
+	// exactly the list [Client.dropRefusedHere] read to build the veto on it.
+	//
+	// IT IS SNAPSHOTTED AT THE ENCODE AND NEVER READ BACK AT THE REFUSAL. The
+	// list is shared by every arm of one question ([refusedHere]), so a sibling
+	// arm adding a name while this body was on the wire would make it look as
+	// though this body's veto had failed — when this body never carried it.
+	var sentVeto []string
 	// move is what the plan says to do next, and it is empty on the first pass
 	// because the first send is not a recovery from anything.
 	var move control.Move
@@ -372,14 +381,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// after the first recovered pass it pays the ordinary fault backoff
 			// below. Everything else asks the one move generator as before.
 			if !reconnected {
-				// What the last refusal asked us to wait, and whether it named
-				// anybody at all: the two inputs the move generator needs that
-				// change between moves. A refusal that implicated no machine
-				// leaves nothing to put on the next body, which is what stops an
-				// open set pretending it has somewhere to go
-				// ([control.Plan.Unattributed]).
+				// What the last refusal asked us to wait, and whether it was the
+				// account's own ceiling rather than a machine's: the two inputs
+				// the move generator needs that change between moves. A ceiling
+				// over the whole key leaves nothing to put on the next body,
+				// which is what stops an open set pretending it has somewhere to
+				// go ([control.Plan.AccountRefused]).
 				plan.Comeback = providerWait
-				plan.Unattributed = unattributed
+				plan.AccountRefused = accountPaced
 				move = control.Next(plan, plan.Moves.List())
 				if move.Kind == control.MoveNone {
 					break
@@ -525,6 +534,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// which posts a multipart form rather than a completion — carries no
 		// refusal set and keeps the bytes it was given.
 		if attempt > 0 && knobs.refused != nil {
+			sentVeto = knobs.refused.list()
 			written, err := c.encodeRequest(request, knobs)
 			if err != nil {
 				cancelAttempt()
@@ -578,10 +588,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
-			// AND A FAULT IS NOT AN UNATTRIBUTED REFUSAL, whatever an earlier
-			// attempt of this call learned: the bytes never reached anybody, so
-			// nothing has been established about where they may go next.
-			unattributed = false
+			// AND A FAULT IS NOT A CEILING, whatever an earlier attempt of this
+			// call learned: the bytes never reached anybody, so nothing has been
+			// established about where they may go next.
+			accountPaced = false
 			// A TRANSPORT FAULT NAMES NOBODY, so nothing is excluded from the next
 			// body: the bytes never reached a machine that could be blamed, and
 			// writing one down would be this loop guessing. What the next attempt
@@ -743,7 +753,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// which is the narrower and shorter-lived question. A refusal that
 		// implicated no machine adds nothing.
 		fresh := knobs.refused.add(refusal.Lane)
-		unattributed = strings.TrimSpace(refusal.Lane) == ""
+		// AND A PACE THAT NAMED NONE OF A POOL IS THE KEY'S OWN CEILING. Both
+		// halves are needed and neither is the status alone: a base this process
+		// has never seen publish a set has one machine, and "come back later"
+		// from it is answered by coming back later ([Client.baseServesLanes]).
+		accountPaced = rateLimited && strings.TrimSpace(refusal.Lane) == "" && c.baseServesLanes()
 		// AND THE MOVE LOG IS CORRECTED TO THE MACHINE THAT ANSWERED. A move
 		// NAMES THE MACHINE WE EXPECT AND NEVER THE MACHINE WE COMMAND
 		// ([control.Move]) — `provider.order` is advisory once `allow_fallbacks`
@@ -854,8 +868,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// ── AN EXCLUSION THAT DID NOT TAKE IS NOWHERE ELSE TO GO ────────────
 		//
 		// A refusal that NAMED a machine bought this call one move, and the move
-		// is only worth taking if it really was a move: a second refusal from a
-		// machine this call has ALREADY vetoed is the router telling us, in the
+		// is only worth taking if it really was a move: an answer from a machine
+		// THE BODY THAT WENT OUT HAD JUST VETOED is the router telling us, in the
 		// only way it can, that the veto changed nothing — either the pool is
 		// that one machine or this base does not honour `provider.ignore`.
 		// Either way there is no other endpoint to reach and the honest thing is
@@ -872,11 +886,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// Who refused is the fact; the number it wore is the upstream's
 		// ([taxonomy.Evidence.Named]).
 		//
-		// A REFUSAL THAT NAMED NOBODY IS NOT THIS, and it is `fresh` being false
-		// for an empty name that would otherwise make it look like one. Nothing
-		// was vetoed, so no veto failed; that road is the wait and then the model
-		// ([control.Plan.Unattributed]).
-		if strings.TrimSpace(refusal.Lane) != "" && !fresh {
+		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. Nothing was vetoed, so no veto
+		// failed; that road is the wait and then the model
+		// ([control.Plan.AccountRefused]).
+		if namesEndpoint(sentVeto, refusal.Lane) && !demandedAlone(knobs, refusal.Lane) {
 			return nil, lastErr
 		}
 		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
@@ -894,6 +907,25 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// demandedAlone reports that this request DEMANDED this one machine and nothing
+// else — a rescue's arm, a person's strict pin, a pool narrowed to its last
+// member.
+//
+// IT IS WHAT KEEPS "THE VETO DID NOT TAKE" AN HONEST QUESTION. The encoder
+// leaves a demand down to its last machine exactly as it stands and never vetoes
+// a demanded name ([Client.dropRefusedHere]), so a machine that answers such a
+// request was never taken off anything and its refusal proves nothing about
+// whether a veto works. That case is the one legal same-machine move and is
+// answered above, by the comeback the machine asked for itself.
+func demandedAlone(knobs callKnobs, lane string) bool {
+	lane = strings.TrimSpace(lane)
+	if lane == "" {
+		return false
+	}
+	demand := requestSet(knobs)
+	return len(demand) == 1 && namesEndpoint(demand, lane)
 }
 
 // ── THE RUNG IS A MOVE LIKE ANY OTHER ───────────────────────────────────────

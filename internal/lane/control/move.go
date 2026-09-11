@@ -239,6 +239,23 @@ func Next(plan Plan, history []Move) Move {
 	shape := shapeReached(history)
 	for {
 		candidates := plan.serving()
+		// 0. A REFUSAL ABOUT THE ACCOUNT HAS ALREADY ANSWERED FOR EVERY MACHINE
+		// AND EVERY SHAPE. It is a ceiling over the whole key, so every machine
+		// behind the model is behind it, no field of the request can get under
+		// it, and the exclusion list the machine walk depends on has nothing to
+		// grow by — the next body would be the body that was just refused, sent
+		// to whoever sent it back ([Plan.AccountRefused]). What is left is the
+		// comeback the refusal named, once, and then the model, which is the
+		// session's and is always faster than a window.
+		if plan.AccountRefused {
+			if plan.Comeback > 0 && !madeKind(history, MoveWait) {
+				return Move{
+					Kind: MoveWait, Model: plan.Model, Lane: plan.head(),
+					Shape: shape, Wait: plan.Comeback,
+				}
+			}
+			return Move{Kind: MoveNone, Model: plan.Model}
+		}
 		// 0. A REFUSAL ABOUT THE SHAPE HAS ALREADY ANSWERED FOR EVERY MACHINE.
 		// The router read our own bytes and said no endpoint can serve them, so
 		// walking machines would buy the identical sentence from each of them;
@@ -252,12 +269,7 @@ func Next(plan Plan, history []Move) Move {
 			// There is nothing here to walk and nothing to run out of, so the
 			// deadline is the whole bound.
 			//
-			// AND THE EXCLUSION LIST IS THE WHOLE PREMISE, so a refusal that named
-			// nobody takes the premise away: there is nothing to add to the next
-			// body, the next body is the one that was just refused, and this
-			// answer would be the identical bytes to the identical machine for the
-			// length of the deadline ([Plan.Unattributed]).
-			if len(candidates) == 0 && !plan.Unattributed {
+			if len(candidates) == 0 {
 				return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
 			}
 			// 1. ANOTHER MACHINE. The head of the choice first, then the
@@ -268,20 +280,14 @@ func Next(plan Plan, history []Move) Move {
 					return move
 				}
 			}
-			// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN THERE IS NO OTHER. A set one
+			// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN IT IS ALONE. A set one
 			// machine wide has no other machine for the next body to go to — a
-			// person's strict pin, a rescue's demand, an account-wide hold — and
-			// so has an open set whose refusal named nobody, because a body that
-			// can exclude nothing is a body that can only go back where it came
-			// from. The comeback the refusal named itself is the only legal repeat
-			// there is, and it is legal once.
-			if len(candidates) <= 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
-				alone := ""
-				if len(candidates) == 1 {
-					alone = candidates[0]
-				}
+			// person's strict pin, a rescue's demand, an account-wide hold — so
+			// the comeback the machine named itself is the only legal repeat
+			// there is.
+			if len(candidates) == 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
 				return Move{
-					Kind: MoveWait, Model: plan.Model, Lane: alone,
+					Kind: MoveWait, Model: plan.Model, Lane: candidates[0],
 					Shape: shape, Wait: plan.Comeback,
 				}
 			}

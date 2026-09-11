@@ -57,7 +57,7 @@ If you have turned the mouse off (`ui.mouse`), only the command works.
 **The name you press is the model you move.** Out in the conversation that is the
 conversation's model. Inside a running task's room the status line at the very bottom
 names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
-from its next turn onward. Nothing else moves: not the conversation, not any other task.
+from its next request onward. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 

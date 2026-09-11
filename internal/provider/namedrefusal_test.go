@@ -2,8 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -139,21 +137,6 @@ func TestANamedRefusalGoesToAnotherMachineWithNoWait(t *testing.T) {
 	}
 }
 
-// anonymousPace is the account's own ceiling: a 429 that names no machine at
-// all and asks for a comeback in its own body, which is where this router puts
-// it (`retry_after` was on not one of 1,106 paced rows' headers in ten days).
-func anonymousPace(mu *sync.Mutex, sends *int, comeback time.Duration) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		*sends++
-		mu.Unlock()
-		writer.Header().Set("Content-Type", "application/json")
-		writer.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprintf(writer,
-			`{"error":{"message":"rate limit exceeded","retry_after":%d}}`, int(comeback.Seconds()))
-	})
-}
-
 // total is how long a call asked to be paused for, all told.
 func total(waits []time.Duration) time.Duration {
 	var spent time.Duration
@@ -164,35 +147,26 @@ func total(waits []time.Duration) time.Duration {
 }
 
 // TestAnAccountWidePaceWaitsOnceAndThenHandsBack is the other half of the same
-// defect. A 429 that names NOBODY is the account's own ceiling: every machine
-// answers it identically, so there is nothing to take off the next body and the
-// next body is therefore the SAME BYTES TO THE SAME MACHINE. It earns exactly
-// one wait — the comeback the refusal itself named — and then the refusal is
-// handed back so the session can offer another model, which always beats a
-// window.
+// defect. A 429 that names NOBODY on a router with a whole pool behind the
+// model is the account's own ceiling: every machine is behind it, nothing can
+// be taken off the next body, and a relaxed shape does not get under it. It
+// earns exactly one wait — the comeback the refusal itself named — and then the
+// refusal is handed back so the session can offer another model, which always
+// beats a window.
 func TestAnAccountWidePaceWaitsOnceAndThenHandsBack(t *testing.T) {
-	var mu sync.Mutex
-	sends := 0
-	client := pacedClient(t, anonymousPace(&mu, &sends, 3*time.Second))
-	client.velocity = newVelocityLedger()
-	var waits []time.Duration
-	client.wait = func(_ context.Context, delay time.Duration) error {
-		waits = append(waits, delay)
-		return nil
-	}
+	rig, waits := wafered(t, "wafer/keypaced", false)
+	rig.server.PacesTheKey(3 * time.Second)
+	ctx := WithLaneChoice(WithPatientRateLimits(talking()), asking(rig.model))
 
-	_, err := client.CompleteWithMessages(WithPatientRateLimits(talking()), userMessages("hello"))
+	_, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err == nil {
 		t.Fatal("an account-wide ceiling has no machine to move to; the call should have handed it back")
 	}
-	mu.Lock()
-	got := sends
-	mu.Unlock()
-	if got != 2 {
+	if got := len(rig.server.Asks()); got != 2 {
 		t.Errorf("the call sent the same bytes %d times, want the first and the one re-ask the refusal asked for", got)
 	}
-	if len(waits) != 1 || waits[0] != 3*time.Second {
-		t.Errorf("the call waited %v, want exactly the three seconds the refusal named", waits)
+	if got := waits(); len(got) != 1 || got[0] != 3*time.Second {
+		t.Errorf("the call waited %v, want exactly the three seconds the refusal named", got)
 	}
 	if !strings.Contains(err.Error(), "429") {
 		t.Fatalf("the call failed with %v, want the pacing a model hop is offered on", err)

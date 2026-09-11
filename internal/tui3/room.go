@@ -259,7 +259,16 @@ func (a *app) retargetTask(id uint64, model string) {
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 	if a.room != nil && a.room.id == id {
-		timing := "its next turn takes it"
+		// AND THE TIMING IS WHAT IS TRUE, which "its next turn takes it" was not.
+		// A running node is told at once — the engine writes the model onto the
+		// node and onto the worker in the same breath (session's RetargetTask) —
+		// so the change lands on the next REQUEST that step makes, which is
+		// usually seconds away and never a whole turn. It also outranks the
+		// rescue: a step whose model stops answering comes back to the one chosen
+		// here rather than walking a chain (session's nextNodeModel). A person
+		// told "next turn" while a step was stuck waited for a boundary that was
+		// twenty minutes off and typed `continue` to try to force it.
+		timing := "the next request takes it"
 		if taskSetupLater(a.roomNode()) {
 			timing = "saved for when you continue"
 		}

@@ -278,9 +278,15 @@ type TaskNode struct {
 	// Continuation choices preserve the completed attempt until work is reopened.
 	nextModel  string
 	nextEffort *string
-	graph      *TaskGraph
-	id         uint64
-	dependsOn  []uint64
+	// chose says A PERSON named this node's model themselves, in its own room,
+	// rather than the planner having written one into `propose_task`. It is
+	// written by [TaskNode.retargetLocked] — the only post-admission spec write
+	// there is — and read by [TaskNode.standingModel], which is the whole of what
+	// it is for. It is in-memory on purpose; see that method.
+	chose     bool
+	graph     *TaskGraph
+	id        uint64
+	dependsOn []uint64
 	// parent is the node this one was handed out BY, and 0 for the work a
 	// conversation proposed. It is the family seam [TaskNotice.Parent] carries,
 	// and it is not an edge: dependsOn says what must finish first, this says
@@ -2175,12 +2181,47 @@ func (n *TaskNode) retarget(model string) {
 func (n *TaskNode) retargetLocked(model string) {
 	n.spec.model = model
 	n.spec.modelWord = model
+	// AND THE FACT THAT SOMEBODY SAID IT OUT LOUD IS KEPT BESIDE THE ID. The spec
+	// carries a model for two quite different reasons — the planner wrote one in
+	// `propose_task`, or a person chose one in this node's room — and only the
+	// second is a standing instruction to come back to. [TaskNode.standingModel]
+	// is where it is read, and it is what stops a rescue quietly finishing the
+	// work on a model nobody picked while the person watches the one they did.
+	n.chose = true
 	if n.ran != "" {
 		n.ran = ""
 		if isTaskModelRescueNote(n.mend) {
 			n.mend = ""
 		}
 	}
+}
+
+// standingModel is the model A PERSON CHOSE for this node and that it is not
+// running on, and "" when nobody chose one or the node is already there.
+//
+// IT IS THE ONE THING A RESCUE MAY NOT OUTRANK (the measured turn of 2026-09-11
+// 14:39–14:41). The person picked a model in the room while a step was stuck on
+// a rate-limited machine and was told the choice was taken; the step then ran out
+// of transport budget, the fallback chain answered "the next model in the
+// adapter's list", and the work finished on a model nobody had named while the
+// room showed the one they had. A chain is what to try when NOBODY has said; the
+// moment somebody has, it is an answer to a question that is no longer open.
+//
+// IT IS NOT PERSISTED, AND THAT IS DELIBERATE. A standing choice that has to
+// survive a restart is the one made against settled work, and it is already kept
+// and already read ([TaskNode.nextModel], task_continue.go). This is about the
+// run in front of the person now.
+func (n *TaskNode) standingModel() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if !n.chose {
+		return ""
+	}
+	chosen := strings.TrimSpace(n.spec.model)
+	if chosen == "" || strings.EqualFold(chosen, n.runModelLocked()) {
+		return ""
+	}
+	return chosen
 }
 
 // runModelLocked is the model a row about this node should NAME: the one it is
@@ -8873,6 +8914,13 @@ func terminalProviderFailure(err error) bool {
 // Empty is A MOVE THAT IS ABSENT rather than one that fails: a build with no
 // chain, or `--one-model`, and the node fails on the error it always failed on.
 func (a *Agent) nextNodeModel(node *TaskNode) (string, bool) {
+	// A PERSON'S OWN PICK COMES BEFORE THE CHAIN, and it is the only thing that
+	// does. The chain answers "what should this try next when nobody has said";
+	// somebody HAS said ([TaskNode.standingModel]), so the question is closed and
+	// the move is the model they named.
+	if standing := node.standingModel(); standing != "" {
+		return standing, true
+	}
 	options := a.fallbackModels(node.runModel())
 	if len(options) == 0 {
 		return "", false

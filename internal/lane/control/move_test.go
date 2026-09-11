@@ -249,21 +249,21 @@ func TestANilMoveLogIsEmptyAndDecidesNothing(t *testing.T) {
 	}
 }
 
-// ── AN UNATTRIBUTED REFUSAL IS NOT AN OPEN SET ──────────────────────────────
+// ── AN ACCOUNT'S OWN CEILING IS NOT AN OPEN SET ─────────────────────────────
 //
 // THE LAW: a walk of an open set is only a walk while the exclusion list is
-// growing. A refusal that named no machine adds nothing to the next body, so
-// the next body is the one that was just refused — which is the same bytes to
-// the same machine, the one thing the design forbids
+// growing. A ceiling over the whole key names no machine, so it adds nothing to
+// the next body, so the next body is the one that was just refused — which is
+// the same bytes to the same machine, the one thing the design forbids
 // (docs/design/recovery/DESIGN.md §3).
 //
-// THE MEASURED FAILURE this pins is the account-wide ceiling: seven sends of
-// identical bytes behind a doubling wait, because [Next] answered every one of
-// them with a machine move it could not name.
-func TestAnUnattributedRefusalGetsOneComebackAndThenTheModel(t *testing.T) {
+// THE MEASURED FAILURE this pins is exactly that: seven sends of identical
+// bytes behind a doubling wait, because [Next] answered every one of them with
+// a machine move it could not name.
+func TestAnAccountCeilingGetsOneComebackAndThenTheModel(t *testing.T) {
 	t.Parallel()
 	plan := planOf("m", nil, nil, 3*time.Second)
-	plan.Unattributed = true
+	plan.AccountRefused = true
 
 	made := walk(plan)
 	if len(made) != 1 {
@@ -280,32 +280,26 @@ func TestAnUnattributedRefusalGetsOneComebackAndThenTheModel(t *testing.T) {
 	}
 }
 
-// AND A REFUSAL THAT NAMED NOBODY AND ASKED FOR NOTHING HAS NO MOVE AT ALL. It
-// cannot be routed around and it did not say when to come back, so the honest
-// answer is the model — which is [MoveNone], and the session's.
-func TestAnUnattributedRefusalWithNoComebackHasNowhereToGo(t *testing.T) {
+// AND A CEILING THAT ASKED FOR NOTHING HAS NO MOVE AT ALL. It cannot be routed
+// around and it did not say when to come back, so the honest answer is the
+// model — which is [MoveNone], and the session's.
+func TestAnAccountCeilingWithNoComebackHasNowhereToGo(t *testing.T) {
 	t.Parallel()
 	plan := planOf("m", nil, nil, 0)
-	plan.Unattributed = true
+	plan.AccountRefused = true
 	if move := Next(plan, nil); move.Kind != MoveNone {
-		t.Fatalf("a refusal with nothing to exclude and no comeback answered %s", move.Kind)
+		t.Fatalf("a ceiling with nothing to exclude and no comeback answered %s", move.Kind)
 	}
 }
 
-// AND A NAMED SET IS UNTOUCHED BY ANY OF IT. The flag is about a body that can
-// exclude nothing; a request confined to machines still walks them, and the one
-// legal repeat is still the last of them.
-func TestAnUnattributedRefusalStillWalksASetItCanName(t *testing.T) {
+// AND IT OUTRANKS THE LADDER TOO. No field of a request gets under a ceiling
+// over the whole key, so offering a rung would be a relaxation spent to be told
+// the identical thing.
+func TestAnAccountCeilingIsNotAnswerableByARelaxedShape(t *testing.T) {
 	t.Parallel()
-	plan := planOf("m", []string{"A", "B"}, nil, 2*time.Second)
-	plan.Unattributed = true
-	made := walk(plan)
-	if len(made) != 2 {
-		t.Fatalf("a set of two earned %d moves: %+v", len(made), made)
-	}
-	for index, want := range []string{"A", "B"} {
-		if made[index].Kind != MoveMachine || made[index].Lane != want {
-			t.Fatalf("move %d is %s/%q, want the machine %q", index, made[index].Kind, made[index].Lane, want)
-		}
+	plan := planOf("m", []string{"A", "B"}, []string{"removed reasoning", "removed tools"}, 0)
+	plan.AccountRefused = true
+	if move := Next(plan, nil); move.Kind != MoveNone {
+		t.Fatalf("a ceiling over the key was answered with %s", move.Kind)
 	}
 }

@@ -580,14 +580,29 @@ its own.
   through a reply was handed the next request, and the one after that — three
   times in a minute and a half, on one measured turn.
 - **A rate limit that names nobody is your whole account**, not one machine, and
-  nothing is stepped around: there is nowhere better to go. aforge waits it out
-  for as long as that kind of work is given — **ninety seconds** on a turn you
-  are sitting in front of, four and a half minutes inside a task, nine for a
-  standing order — and then hands you what the provider said. Sending the same
-  request to a second machine would only spend the account's allowance faster.
-  (Before 2026-09-11 these were separate numbers of their own, two minutes and
-  ten; there is one clock now and it is the same one everything else on this
-  page is measured against.)
+  nothing is stepped around: every machine behind the model is behind the same
+  ceiling, so there is nowhere better to go and nothing to leave off the next
+  request. aforge waits **once**, for exactly as long as the answer itself asked
+  for — and not at all when it asked for nothing, because a wait nobody named is
+  a wait aforge would be inventing — and then moves to another model, because a
+  second machine would only
+  spend the account's allowance faster, and a different model is not on the same
+  allowance at all. With no model left to move to you are handed what the
+  provider said. On your screen it reads `we are being asked to slow down`.
+  (Until 2026-09-11 this kept re-sending the identical request behind a wait that
+  doubled each time — 0.7s, 1.4, 2.8, 5.6 and on — for the whole of the time that
+  kind of work is given: ninety seconds on a turn, four and a half minutes inside
+  a task. Nothing changed between those sends, because there was nothing that
+  could change.)
+- **And a machine that keeps answering after you have stepped around it stops
+  the walk.** The name in `(via Io Net)` is the upstream's, and not every
+  upstream name is one the router will route around — so when the next request
+  says "not that one" and that one answers it anyway, aforge has learned that
+  routing cannot help this request, and it goes on to the wider set and then to
+  another model instead of asking a third time. Until 2026-09-11 only a plain
+  refusal did this and a rate limit was exempt, which cost one measured task
+  eight sends to one machine over ninety seconds while six other machines on the
+  same model were answering in under five.
 
 ## What all providers have been ignored means — a refusal from nobody
 

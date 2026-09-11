@@ -330,27 +330,28 @@ type Plan struct {
 	// never climb. It is set by the one caller that holds such a refusal's own
 	// body (internal/provider's dispatch.go, [Client.recoverFromRefusal]).
 	ShapeRefused bool
-	// Unattributed says the last refusal NAMED NO MACHINE: an account-wide
-	// ceiling, a router answering for itself, a refusal whose envelope carried
-	// no upstream. Nothing can be taken off the next body, so the next body is
-	// byte-for-byte the body that was just refused.
+	// AccountRefused says the last refusal was about the ACCOUNT and not about
+	// the machine that relayed it: a router with a pool behind this model asked
+	// the whole key to slow down and named no pool while doing it. Every machine
+	// it could have picked is behind the same ceiling.
 	//
-	// IT IS THE SECOND FACT [Next] CANNOT WORK OUT FOR ITSELF, and it is the one
-	// that makes an open set honest. An open set has another machine in it
-	// forever ([Plan.serving]) BECAUSE each body carries a longer exclusion list
-	// than the last — and that premise is exactly what an unattributed refusal
-	// breaks. Without this field the generator answered such a refusal with a
-	// machine move every time, the dispatcher sent the identical bytes again
-	// behind a doubling wait, and a person watched one ceiling for the whole of
-	// the call's deadline.
+	// IT IS [Plan.ShapeRefused]'S SIBLING AND THE SAME KIND OF FACT: something
+	// [Next] cannot see for itself, because the serving set of such a request is
+	// usually OPEN — nobody named a pool — and an open set has another machine in
+	// it forever ([Plan.serving]). That rule is sound only because each body
+	// carries a longer exclusion list than the last, and an account ceiling is
+	// exactly the refusal that gives the list nothing to grow by. Without this
+	// field the generator answered it with a machine move every time and the
+	// dispatcher sent the identical bytes again behind a doubling wait, for as
+	// long as the deadline lasted — ninety seconds of `waiting` on 2026-09-11
+	// with nothing whatever changing between the sends.
 	//
-	// So a call that cannot narrow anything is one machine wide as far as it can
-	// tell, and it gets what a set of one gets: the comeback the refusal asked
-	// for, once, and then the model. It is set by the one caller that holds the
-	// refusal (internal/provider's dispatch.go) and is false for a fault that
-	// never reached a machine at all, which names nobody for a different reason
-	// and keeps the walk it has always had.
-	Unattributed bool
+	// A BASE WITH NO POOL BEHIND IT IS NOT THIS. An endpoint that paces us and
+	// has one machine is saying "come back later" and repeating really is all
+	// there is; what makes a pace an ACCOUNT'S is that a set exists and the
+	// refusal named none of it. The one caller that holds the refusal decides
+	// both halves (internal/provider's dispatch.go).
+	AccountRefused bool
 	// Role is who the call is being made for, spelled as `lane.Role` spells it.
 	// It is carried rather than looked up so the dispatcher, the hazard and the
 	// row all read the same word.
