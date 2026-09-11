@@ -275,6 +275,7 @@ func (p *callProgress) opened(at time.Time) {
 		return
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.state.Model = p.model
 	p.state.Attempt = p.attempt
 	p.state.Started = at
@@ -283,7 +284,6 @@ func (p *callProgress) opened(at time.Time) {
 	p.state.Err = nil
 	p.open = true
 	p.say(at)
-	p.mu.Unlock()
 }
 
 // serving is the machine the stream named, reported at once rather than held
@@ -294,11 +294,11 @@ func (p *callProgress) serving(lane string) {
 		return
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.state.Served != lane {
 		p.state.Served = lane
 		p.say(p.state.Started)
 	}
-	p.mu.Unlock()
 }
 
 // paced is the call parking on a provider's "not yet", and leaving that park.
@@ -375,14 +375,15 @@ func (p *callProgress) closed(end CallEnd, err error) {
 		return
 	}
 	p.mu.Lock()
-	if p.open {
-		p.open = false
-		p.state.Phase = CallEnded
-		p.state.End = end
-		p.state.Err = err
-		p.say(p.state.Started)
+	defer p.mu.Unlock()
+	if !p.open {
+		return
 	}
-	p.mu.Unlock()
+	p.open = false
+	p.state.Phase = CallEnded
+	p.state.End = end
+	p.state.Err = err
+	p.say(p.state.Started)
 }
 
 // say hands the report over. It runs with the lock held, which is what keeps

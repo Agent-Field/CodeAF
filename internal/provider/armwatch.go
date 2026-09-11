@@ -562,9 +562,7 @@ func (w *streamWatch) lostRace() {
 	if w == nil {
 		return
 	}
-	w.mu.Lock()
-	w.lost = true
-	w.mu.Unlock()
+	w.markLost()
 	// AND A WATCHER IS TOLD IT WAS EXHAUST AND NOT A FAILURE, from here, because
 	// this is the only place that knows the difference. The row this arm goes on
 	// to write says `context canceled`, which is what a person stopping the turn
@@ -573,6 +571,17 @@ func (w *streamWatch) lostRace() {
 	// (callprogress.go, and [streamWatch.lost] above for what that reading has
 	// already cost one census).
 	w.progress.closed(CallEndCancelled, nil)
+}
+
+// markLost is the critical section [streamWatch.lostRace] is the whole of,
+// split out so the flag is set under a scoped lock and the report that follows
+// it is made outside one — a watcher is somebody else's code and this process's
+// locks may not be underneath it ([streamWatch.takeFreeMove] gives the same
+// reason about a cancel).
+func (w *streamWatch) markLost() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lost = true
 }
 
 // written is how many tokens this arm delivered.
