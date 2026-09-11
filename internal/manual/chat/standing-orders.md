@@ -765,7 +765,7 @@ folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
 followed). Braces are not expanded, so `{inbox/*,notes/*}` is refused (`… uses braces,
 which a watch does not expand: one order watches one pattern …`): watch a folder they are
-all under, when the report is not inside it. One set up with braces before that is quiet,
+all under, when the report is not inside it; otherwise the chat asks you. One set up with braces before that is quiet,
 not failing: `its pattern uses braces, which a watch does not expand, so it matches
 nothing — change its pattern`. A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
