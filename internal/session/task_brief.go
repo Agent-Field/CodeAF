@@ -137,8 +137,9 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 	// brief in the system to answer a question nobody in it had asked.
 	quoted, evidence := admissionQuotesSection(heard), admissionEvidenceSection(heard)
 	stated := ""
-	if own.real() && own.names(request, work, deliverable, acceptance, expects, quoted, evidence) {
-		stated = own.note()
+	sections := []string{request, work, deliverable, acceptance, expects, quoted, evidence}
+	if own.real() && own.names(sections...) {
+		stated = own.note(sections...)
 	}
 	// AND THE MODEL-AUTHORED HALF IS BOUND TO THE COPY, and only that half. The
 	// person's request is a quotation and is never edited ([briefAskRule] makes
@@ -587,13 +588,17 @@ func replaceWholePath(text, address, with string) string {
 // see in the person's quotation — or trust "stands as written" and aim a
 // write at a copy it may not touch.
 //
-// IT IS SAID AS A RULE AND NOT AS A HEADCOUNT. This document is composed
-// before anybody asks how many tasks this conversation has run, so a sentence
+// IT IS SAID ONLY WHERE ONE WAS ACTUALLY NAMED, and that is the difference
+// between it and the two sentences above it. The ground and the conversation's
+// own folder are facts about every worktree task alive — the note is drawn at
+// all only because one of them was spelled in the contract — while another
+// task's copy is an address most briefs never carry, and a paragraph
 // announcing that other copies EXIST would be false in the ordinary case of
-// the first task in a fresh conversation. What is always true is the rule —
-// a copy that belongs to another task is not yours to write in, and an
-// address under one has been moved — and that is what it says.
-func (c taskCopy) note() string {
+// the first task in a fresh conversation. A worker reads this document once
+// and acts on it; a sentence about a folder nothing in its contract mentions
+// is one more address for it to wander to, which is the failure this whole
+// section is here to prevent.
+func (c taskCopy) note(sections ...string) string {
 	note := "The work is about " + c.ground + ".\n" +
 		"Your own copy of it is " + c.dir + ", and that is where you are standing.\n\n" +
 		"Every address below is written as its address in your copy. The person's own message is quoted as they typed it, so a path in it that begins " + c.ground +
@@ -602,8 +607,8 @@ func (c taskCopy) note() string {
 		note += "\n\nThis conversation's own folder, " + c.work + ", is the one exception. You cannot write there either, so an address under it is written below as the same path under " +
 			work + ", and what you leave there comes home with the rest of your work."
 	}
-	if c.trees != "" {
-		note += "\n\nAnother task in this conversation may have a copy of its own under " + c.trees + ", and those are an exception too. You cannot write in one, so an address under one of them is written below as the same path under " +
+	if c.trees != "" && namesGround(c.trees, sections...) {
+		note += "\n\nAnother task in this conversation has a copy of its own under " + c.trees + ", and that is an exception too. You cannot write in one, so an address under one of them is written below as the same path under " +
 			c.dir + "."
 	}
 	return note

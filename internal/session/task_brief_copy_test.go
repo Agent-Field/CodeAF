@@ -433,7 +433,7 @@ func TestTheBriefStatesAnotherTreeOfThisConversationWhereverItIsNamed(t *testing
 		"/s/trees/1/internal/widget.go", "/s/trees/1/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
 	for _, want := range []string{
 		briefCopyHeading,
-		"Another task in this conversation may have a copy of its own under " + place.Trees() + ", and those are an exception too.",
+		"Another task in this conversation has a copy of its own under " + place.Trees() + ", and that is an exception too.",
 		"the same path under /s/trees/2",
 		briefMakeHeading + "\n\n/s/trees/2/internal/widget.go",
 		briefDoneHeading + "\n\n/s/trees/2/internal/widget.go says new",
@@ -450,6 +450,20 @@ func TestTheBriefStatesAnotherTreeOfThisConversationWhereverItIsNamed(t *testing
 	}
 	if !strings.Contains(quoted, briefCopyHeading) {
 		t.Fatalf("a brief whose only moved address was another tree was told nothing:\n%s", quoted)
+	}
+
+	// AND A BRIEF THAT NAMES NO OTHER TREE IS TOLD NOTHING ABOUT ONE. The
+	// ordinary worktree task is the first task in a fresh conversation, where
+	// there are no other copies at all; a paragraph about them would be a
+	// folder the worker never saw named, and one more address for it to wander
+	// to. The document such a task opens on is the one it opened on before.
+	ordinary := composeBrief(briefWhole, "make the widget say new", "change /x/repo/internal/widget.go so it says new",
+		"/x/repo/internal/widget.go", "/x/repo/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
+	if !strings.Contains(ordinary, briefCopyHeading) {
+		t.Fatalf("a brief naming the ground was told nothing about its copy:\n%s", ordinary)
+	}
+	if strings.Contains(ordinary, place.Trees()+"\n") || strings.Contains(ordinary, "Another task in this conversation") {
+		t.Fatalf("a brief that names no other tree was told about one anyway:\n%s", ordinary)
 	}
 }
 
