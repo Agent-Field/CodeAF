@@ -2216,7 +2216,16 @@ const (
 	// run is over, so it is named only while the row under the cursor could take
 	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
 	// person looks to the end of the line for.
-	railHoldKeys = "↑↓ move · →← tree · enter open · " + railWidenChord + " wide"
+	//
+	// AND `x` IS NAMED ONLY WHERE IT IS TRUE, which is the stop card's own
+	// carve-out in the law that a letter is a letter the moment there is a box to
+	// type into (stop.go): a held roster with its cursor on a stoppable row is the
+	// one posture where `x` means stop and nothing else, so the line names it there
+	// and keeps quiet about it everywhere else. It is the whole answer to the
+	// person who pressed `x` over an empty box and watched a letter appear — the
+	// key works the moment the roster is being driven, and this line is where that
+	// is said out loud (#892).
+	railHoldKeys = "↑↓ move · →← tree · enter open · " + stopRaiseKey + " stop · " + railWidenChord + " wide"
 	railHoldHint = railHoldKeys + " · esc"
 	// The footer names both answers the handle can give. A bare "w" in a column
 	// of counts is a keystroke nobody would risk pressing, and a handle whose

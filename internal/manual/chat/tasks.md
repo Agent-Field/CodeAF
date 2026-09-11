@@ -86,8 +86,9 @@ handed-off work, and it differs from an ordinary task in four ways:
   works through, ticking each as it goes.
 
 Everything else is the task machinery you already know: a row on the column with a state
-and a clock, a room you can walk into and read, `enter` to steer it, `x` to stop it, its
-own spend, its own model. The word for what it is, on the row and on the card, is `quick`.
+and a clock, a room you can walk into and read, `enter` to steer it, `x` to stop it — straight
+away when it is the only running row, with `alt+t` first when it is not — its own spend, its own
+model. The word for what it is, on the row and on the card, is `quick`.
 
 Because it wrote in your own folder, its card carries no branch and no merge word — only
 the files, if it changed any.
@@ -649,8 +650,10 @@ different about it: a row, a room, a report, and everything else on this page.
   cannot be reached, or that replies with anything but the small JSON object it was asked
   for, starts nothing and says nothing. A yes nobody could confirm is not a start.
 
-**Stopping one you did not want** is the ordinary stop: `x` on its row over an empty message
-box, or `Stop` on the pointer. Nothing about it is special from the moment it exists.
+**Stopping one you did not want** is the ordinary stop: `x` over an empty message box —
+which works at once when it is the only running task, and needs `alt+t` to walk to its row
+first when there are others — or `Stop` on the pointer. Nothing about it is special from the
+moment it exists.
 
 **There is no setting that turns this off.** No `/settings` row switches it, and nothing you
 type disarms it for the session. What bounds it is the list above, and the stop.
@@ -4409,8 +4412,10 @@ refusal offers, or leave the model out so the work runs on the default.
 
 ## Stopping a task — how to cancel or kill running work
 
-**`x` stops it, and it asks first.** Press `x` with the roster's cursor on the task, or
-inside the task's room, over an empty message box. One card comes up:
+**`x` stops it, and it asks first.** Press `x` over an empty message box: with the roster's
+cursor on the task, or inside the task's room, or — when the roster does not hold the
+keyboard — with exactly one stoppable task visible, where the key needs nothing first.
+One card comes up:
 
 ```
 ? Stop this task? Its work halts; the branch it wrote on is kept.
