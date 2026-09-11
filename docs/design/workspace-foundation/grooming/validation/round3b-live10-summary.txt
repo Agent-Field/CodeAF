@@ -1,0 +1,12 @@
+BINARY aforge 1ad80ad3f (dirty) built 2026-09-11 01:48 · go1.26.5 linux/arm64
+run01 start=2026-09-11T05:48:14Z exit=0 verdict=DEMO PASSED calls=15 spend=$0.0322 cumulative=$0.0322
+run02 start=2026-09-11T05:55:09Z exit=0 verdict=DEMO PASSED calls=18 spend=$0.0254 cumulative=$0.0576
+run03 start=2026-09-11T05:59:29Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.0245 cumulative=$0.0821
+run04 start=2026-09-11T06:05:22Z exit=0 verdict=DEMO PASSED calls=12 spend=$0.0375 cumulative=$0.1196
+run05 start=2026-09-11T06:11:11Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.0343 cumulative=$0.1539
+run06 start=2026-09-11T06:17:59Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.0304 cumulative=$0.1843
+run07 start=2026-09-11T06:23:05Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.028 cumulative=$0.2123
+run08 start=2026-09-11T06:27:38Z exit=0 verdict=DEMO PASSED calls=14 spend=$0.0292 cumulative=$0.2415
+run09 start=2026-09-11T06:32:22Z exit=0 verdict=DEMO PASSED calls=13 spend=$0.0252 cumulative=$0.2667
+run10 start=2026-09-11T06:36:44Z exit=0 verdict=DEMO PASSED calls=12 spend=$0.03 cumulative=$0.2967
+FINISHED 2026-09-11T06:40:16Z total=$0.2967

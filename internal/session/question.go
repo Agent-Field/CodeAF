@@ -1056,10 +1056,13 @@ func (a *Agent) Decisions() []DecisionRecord {
 
 // recordDecision appends one answered question to the record and says so.
 //
-// EVERY FAILURE IS SILENCE, on answers.go's terms exactly: a session must not
-// stall or say anything because a directory would not answer, and the answer
-// has already been applied by the time this runs. What is lost is the record of
-// it, which is worth strictly less than the answer.
+// EVERY FAILURE IS SILENCE: a session must not stall or say anything because a
+// directory would not answer, and the answer has already been applied by the
+// time this runs. What is lost is the record of it, which is worth strictly
+// less than the answer. (An answer that came through the doorstep has a second
+// record that is not best-effort: the journal line [Agent.drainAnswers] syncs
+// before it clears the doorstep. What a power cut can take from this file is
+// the gate's memory of a decision, never the answer.)
 func (a *Agent) recordDecision(record DecisionRecord) {
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {

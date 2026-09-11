@@ -1,0 +1,156 @@
+package session
+
+// standing_absent_test.go confirms, for round 3b, the chat door's ten-run
+// measurement of 2026-09-11 against wave 4's grant-shaped belts. Three of its
+// ten runs (01, 02, 08) reached for `bash` to read file sizes and times —
+// `stat -c '%s %Y'`, `ls -la`, `find -exec stat` — were refused "nobody to
+// ask", and the refusal parked a report the run had already finished as
+// waiting on the person. Under the shipped floor `bash` is not granted, so it
+// is not on the belt: the same calls are answered as a tool the run does not
+// have, and a finished report publishes.
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+)
+
+// callingMany is one response that says text and then calls every tool in
+// calls at once, in order.
+func callingMany(text string, calls ...[2]string) step {
+	return func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		if text != "" {
+			provider.Emit(ctx, provider.StreamDelta, text)
+		}
+		response := toolResponseWithText("call_0", calls[0][0], calls[0][1], text)
+		for i, call := range calls[1:] {
+			response.Choices[0].Message.ToolCalls = append(response.Choices[0].Message.ToolCalls, ai.ToolCall{
+				ID: "call_" + string(rune('1'+i)), Type: "function", Function: ai.ToolCallFunction{Name: call[0], Arguments: call[1]},
+			})
+		}
+		return response, nil
+	}
+}
+
+func shellCall(command string) [2]string {
+	args, _ := json.Marshal(map[string]string{"command": command})
+	return [2]string{"bash", string(args)}
+}
+
+// THE CHAT DOOR'S RUN 01, UNDER WAVE 4. The run wrote its whole report, then
+// reached for the shell four ways to read a size and a time it already had in
+// its evidence, then said so. None of it is on the belt; nothing is refused as
+// a question; the finished report publishes.
+func TestAFinishedReportIsNotParkedByTheShellCallsAfterIt(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	report := "<report>\n# Inbox\n- inbox/today.md — 148 bytes, changed 2026-09-10 23:56\n</report>"
+	model := &scriptedCompleter{steps: []step{
+		callingMany(report,
+			shellCall("stat -c '%s %Y' inbox/today.md"),
+			shellCall("ls -la inbox/"),
+			shellCall("find inbox -name '*.md' -exec stat {} \\;"),
+			shellCall("pwd; ls -la"),
+		),
+		saying("I could not run stat here; the sizes and times above are from the check's evidence."),
+	}}
+	runner, built := grantedRunner(t, root, model, shippedFloorForTest())
+	outcome, err := runner.Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beltNameSet((*built).beltTools())["bash"] {
+		t.Fatal("the shipped floor put a shell on an unattended run's belt")
+	}
+	if outcome.Kind != "landed" || outcome.NeedsPerson != "" || outcome.Withheld != "" || outcome.Published == nil {
+		t.Fatalf("a finished report was parked by shell calls after it: %+v", outcome)
+	}
+	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+	if !strings.Contains(string(raw), "148 bytes") {
+		t.Fatalf("published %q", raw)
+	}
+	for _, seen := range model.seen {
+		for _, message := range seen {
+			if strings.Contains(messageText(message), "nobody to ask") {
+				t.Fatalf("an absent tool was refused as a question: %q", messageText(message))
+			}
+		}
+	}
+}
+
+// EVERY VERB THE FLOOR DOES NOT GRANT, AT ONCE. Whatever an unattended run
+// reaches for that its person never allowed — the shell, the writers, a
+// commit, a question, a fork — is a tool it does not have, answered as one,
+// and none of those answers is a question for the person.
+func TestNoUngrantedCallParksAFinishedReport(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	write, _ := json.Marshal(map[string]string{"path": "notes.md", "content": "x"})
+	edit, _ := json.Marshal(map[string]string{"path": "notes.md", "old": "x", "new": "y"})
+	model := &scriptedCompleter{steps: []step{
+		callingMany("<report>\n# Inbox\n- one change\n</report>",
+			shellCall("ls -la"),
+			[2]string{"write", string(write)},
+			[2]string{"edit", string(edit)},
+			[2]string{"commit", `{"id":"b1"}`},
+			[2]string{"ask", `{"question":"may I?"}`},
+			[2]string{"fork", `{"brief":"look around"}`},
+		),
+		saying("Done."),
+	}}
+	runner, _ := grantedRunner(t, root, model, shippedFloorForTest())
+	outcome, err := runner.Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.NeedsPerson != "" || outcome.Withheld != "" || outcome.Published == nil {
+		t.Fatalf("an ungranted call parked a finished report: %+v", outcome)
+	}
+}
+
+
+// shippedFloorForTest is the approval floor cmd/aforge's v3BuiltinApprovals
+// seeds under the shipped prompt default, spelled here because this package
+// cannot import the door. A change to that floor is a change to what unattended
+// work carries, and belongs in both places.
+func shippedFloorForTest() *approval.Policy {
+	return &approval.Policy{Default: approval.ActionPrompt, Tools: map[string]approval.Action{
+		"read": approval.ActionAllow, "grep": approval.ActionAllow, "find": approval.ActionAllow, "ls": approval.ActionAllow,
+		"jobs": approval.ActionAllow, "remember": approval.ActionAllow, "track": approval.ActionAllow, "recall": approval.ActionAllow,
+		"manual": approval.ActionAllow, "settings": approval.ActionAllow,
+	}}
+}
+
+// callingTwo is one response that calls two tools at once, as the live runs'
+// resumed pass did before it replied with its report.
+func callingTwo(first, firstArgs, second, secondArgs string) step {
+	return func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		response := toolResponse("call_a", first, firstArgs)
+		response.Choices[0].Message.ToolCalls = append(response.Choices[0].Message.ToolCalls, ai.ToolCall{
+			ID: "call_b", Type: "function", Function: ai.ToolCallFunction{Name: second, Arguments: secondArgs},
+		})
+		return response, nil
+	}
+}
+
+// grantedRunner is a firing's runner under a policy, keeping the child agent
+// it built so the test can read the belt the run actually carried.
+func grantedRunner(t *testing.T, root string, model Completer, policy *approval.Policy) (*standingRunner, **Agent) {
+	t.Helper()
+	runner := standingChildRunner(t, root, model)
+	runner.parent.ApprovalPolicy = policy
+	var built *Agent
+	child := runner.child
+	runner.child = func(cfg Config) (*Agent, error) {
+		agent, err := child(cfg)
+		built = agent
+		return agent, err
+	}
+	return runner, &built
+}
+

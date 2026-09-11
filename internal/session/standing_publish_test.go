@@ -229,6 +229,9 @@ func TestTheWithheldCodesArePinned(t *testing.T) {
 		withheldUnwritten:   "not-written",
 		// Added by the third round (2026-09-10), deliberately.
 		withheldReportChanged: "report-changed",
+		// Added by round 3b (2026-09-11), deliberately: a fence that cannot
+		// read the stop holds instead of falling through.
+		withheldStopUnknown: "stop-unknown",
 	}
 	if len(withheldCodes) != len(want) {
 		t.Fatalf("withheldCodes has %d codes, the pinned set has %d", len(withheldCodes), len(want))
@@ -239,7 +242,7 @@ func TestTheWithheldCodesArePinned(t *testing.T) {
 		}
 	}
 	// Every reason but "not withheld" has a code, and that one has none.
-	for reason := notWithheld + 1; reason <= withheldReportChanged; reason++ {
+	for reason := notWithheld + 1; reason <= withheldStopUnknown; reason++ {
 		if reason.code() == "" {
 			t.Errorf("reason %d has no code", reason)
 		}
@@ -349,6 +352,48 @@ func TestALaterTurnsNewReportStandsInForOneCutAtTheLimit(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
 	if string(raw) != "# Report\n- both parts, folded\n" || outcome.Published == nil || outcome.Withheld != "" {
 		t.Fatalf("published %q, outcome %+v", raw, outcome)
+	}
+}
+
+// RECEIPT, THE WORDLESS CONTINUATION (round 3b; the third review named it
+// missing). A report cut at the limit, then a resumed turn that says nothing at
+// all and ends clean: silence is not a newer account, so it neither replaces
+// the report nor clears the cut that came with it, and nothing is published.
+func TestAReportCutAtTheLimitIsNotRehabilitatedByAWordlessTurn(t *testing.T) {
+	workspace := t.TempDir()
+	outcome := dividedReportRun(t, workspace, &cutThenFolding{
+		cut:   []string{"<report>\n# Report\n- the first part", "\n- the second part\n</report>", "\nand then more notes"},
+		after: "",
+	})
+	if _, err := os.Stat(filepath.Join(workspace, "reports", "r.md")); !os.IsNotExist(err) {
+		raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+		t.Fatalf("the cut report was published after a wordless turn: %q (outcome %+v)", raw, outcome)
+	}
+	if outcome.Kind != standing.OutcomeFailed || outcome.Withheld != "output-limit" {
+		t.Fatalf("outcome %+v, want failed · output-limit", outcome)
+	}
+}
+
+// The same two orders one turn at a time, and the third sequence the review
+// asked about. A cut report, then a wordless clean turn, is withheld. A cut
+// report, then a new closed report in a clean turn, then a wordless clean turn,
+// PUBLISHES THE NEW REPORT, and that is the design rather than a hole: the
+// report standing is one whose own turn ended clean, and silence after it is
+// not a newer account of anything.
+func TestSilenceAfterAReportKeepsWhateverThatReportsOwnTurnSaid(t *testing.T) {
+	cut := "<report>\n# Report\n- half"
+	var e firingEnd
+	e.closeTurn(cut, cut, true)
+	e.closeTurn("", "", false)
+	if w := e.withheld(true, nil); w != withheldOutputLimit {
+		t.Fatalf("cut then wordless: %q, want output-limit", w.code())
+	}
+	e = firingEnd{}
+	e.closeTurn(cut, cut, true)
+	e.closeTurn("<report>\n# Report\n- whole\n</report>", "<report>\n# Report\n- whole\n</report>", false)
+	e.closeTurn("", "", false)
+	if w := e.withheld(true, nil); w != notWithheld || e.body() != "# Report\n- whole" {
+		t.Fatalf("cut, then a whole report, then wordless: %q with body %q; want the whole report", w.code(), e.body())
 	}
 }
 
@@ -526,7 +571,7 @@ func publishedBefore(t *testing.T, store *standing.Store, item standing.Item, bo
 // run lasts minutes: somebody annotated it while the run worked, and the
 // publication replaced it with no look at what it was replacing. It is not
 // written over now; the draft waits beside the run.
-func TestAReportThePersonEditedMidRunIsNeverWrittenOver(t *testing.T) {
+func TestAReportThePersonEditedMidRunIsNotWrittenOver(t *testing.T) {
 	root, workspace := t.TempDir(), withLastGoodReport(t)
 	store, item := storedReporting(t, root, workspace)
 	publishedBefore(t, store, item, lastGoodReport)

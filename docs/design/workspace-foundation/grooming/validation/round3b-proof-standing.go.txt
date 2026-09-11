@@ -1,0 +1,170 @@
+package standing
+
+// round3b_test.go holds round 3b of the third review (c7ec2566f..4701f270d)
+// for this package: a folder sync that fails is a failure (B4), the last
+// publication is read without walking the item's whole history (B5), and the
+// receipt the review found missing — two processes minting run numbers at once.
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"testing"
+)
+
+// B4, A FOLDER THAT WOULD NOT SYNC. The sync after a rename is what makes the
+// rename survive a power cut, and a failed one was read as success — so a run
+// counter could come back older than the folders it had numbered. An I/O error
+// is an error now; a filesystem that cannot sync a folder at all is not.
+func TestAFolderSyncThatFailsIsAFailedWrite(t *testing.T) {
+	restore := syncFolder
+	defer func() { syncFolder = restore }()
+	syncFolder = func(*os.File) error { return syscall.EIO }
+	path := filepath.Join(t.TempDir(), "doc.json")
+	if err := writeAtomic(path, []byte("{}\n")); !errors.Is(err, syscall.EIO) {
+		t.Fatalf("a folder sync that failed with an I/O error was read as success: %v", err)
+	}
+	syncFolder = func(*os.File) error { return syscall.EINVAL }
+	if err := writeAtomic(path, []byte("{}\n")); err != nil {
+		t.Fatalf("a folder that cannot be synced at all refused the write: %v", err)
+	}
+}
+
+// AND AN ITEM WHOSE RECEIPT PREDATES THE FILE IS LOOKED FOR IN A WINDOW, found
+// by number from its run counter, never by walking every folder: a receipt in
+// its newest runs is found, and one older than the window is not — the file it
+// describes is then one aforge cannot vouch for, which the publisher holds
+// rather than writes over.
+func TestAnOlderItemsLastPublicationIsLookedForInItsNewestRunsOnly(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "0123456789abcdef"
+	record := func(n int, sha string) {
+		dir := filepath.Join(store.RunsDir(id), RunName(n))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		occurrence := Occurrence{ID: fmt.Sprintf("%s/%d", id, n), ItemID: id, Phase: PhaseFinished}
+		if sha != "" {
+			occurrence.Published = &Publication{Path: "reports/r.md", SHA256: sha}
+		}
+		if err := WriteOccurrence(dir, occurrence); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for n := 1; n <= 200; n++ {
+		record(n, "")
+	}
+	record(1, "ancient")
+	if err := os.WriteFile(filepath.Join(store.ItemDir(id), runCounterFile), []byte("200\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if last, err := store.LastPublication(id, "reports/r.md"); err != nil || last != nil {
+		t.Fatalf("a receipt 200 runs back was searched for: %+v %v", last, err)
+	}
+	record(190, "recent")
+	if last, err := store.LastPublication(id, "reports/r.md"); err != nil || last == nil || last.SHA256 != "recent" {
+		t.Fatalf("a receipt in the newest runs was not found: %+v %v", last, err)
+	}
+}
+
+// mintHelperEnv names the store a helper process mints into.
+const mintHelperEnv = "AFORGE_STANDING_MINT_HELPER"
+
+// TestMintHelperProcess is not a test: it is the second process of
+// [TestTwoProcessesMintingRunsNeverShareANumber], run by the test binary
+// itself, and it returns at once when that test did not start it.
+func TestMintHelperProcess(t *testing.T) {
+	spec := os.Getenv(mintHelperEnv)
+	if spec == "" {
+		return
+	}
+	parts := strings.SplitN(spec, "|", 3)
+	count, _ := strconv.Atoi(parts[2])
+	store := &Store{root: parts[0]}
+	out := bufio.NewWriter(os.Stdout)
+	for i := 0; i < count; i++ {
+		dir, err := store.newRunDir(parts[1])
+		if err != nil {
+			fmt.Fprintf(out, "ERROR %v\n", err)
+			continue
+		}
+		fmt.Fprintf(out, "MINTED %s\n", filepath.Base(dir))
+		// The sweep reaps a run that came to nothing, and here every one did:
+		// the folder goes at once, so only the counter remembers the number.
+		_ = os.Remove(dir)
+	}
+	_ = out.Flush()
+	os.Exit(0)
+}
+
+// RECEIPT, TWO PROCESSES MINTING AT ONCE. A run number comes from the item's
+// counter, advanced under the item's lock and written before the folder is
+// made. The claim is that two processes serialize on it: every number is
+// handed out once, and with no crash none is skipped. Two real processes each
+// mint fifty runs of the same item at the same time, and each run's folder is
+// reaped the moment it is made — the case the counter exists for (F7), where a
+// folder on disk can no longer say a number was taken.
+func TestTwoProcessesMintingRunsNeverShareANumber(t *testing.T) {
+	root := t.TempDir()
+	const id, each = "0123456789abcdef", 50
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		minted []int
+		failed []string
+	)
+	for p := 0; p < 2; p++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestMintHelperProcess$")
+			cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s|%s|%d", mintHelperEnv, root, id, each))
+			out, err := cmd.Output()
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				failed = append(failed, err.Error())
+			}
+			for _, line := range strings.Split(string(out), "\n") {
+				switch {
+				case strings.HasPrefix(line, "MINTED "):
+					n, _ := strconv.Atoi(strings.TrimPrefix(line, "MINTED "))
+					minted = append(minted, n)
+				case strings.HasPrefix(line, "ERROR "):
+					failed = append(failed, line)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if len(failed) > 0 {
+		t.Fatalf("a process failed to mint: %q", failed)
+	}
+	sort.Ints(minted)
+	if len(minted) != 2*each {
+		t.Fatalf("minted %d runs, want %d", len(minted), 2*each)
+	}
+	for i, n := range minted {
+		if n != i+1 {
+			t.Fatalf("run numbers are not 1..%d once each: %v", 2*each, minted)
+		}
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, id, runCounterFile))
+	if strings.TrimSpace(string(raw)) != strconv.Itoa(2*each) {
+		t.Fatalf("the counter says %q after %d runs", raw, 2*each)
+	}
+}

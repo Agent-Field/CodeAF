@@ -840,6 +840,10 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			withheld = held
 			outcome.Kind = standing.OutcomeFailed
 			outcome.Text = "the run was cut off before its report was published: " + oneLine(ctx.Err().Error()) + "; the previous report is unchanged"
+		case held == withheldStopUnknown:
+			withheld = held
+			outcome.Kind = standing.OutcomeFailed
+			outcome.Text = "the report was not published: " + stopUnknownWhy(err) + "; the previous report is unchanged"
 		case held == withheldReportChanged:
 			withheld = held
 			outcome.Kind = standing.OutcomeNeedsYou
@@ -852,6 +856,14 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		default:
 			published = true
 			outcome.Published = receipt
+			if fence.store != nil {
+				// The receipt the next publication is compared against, kept
+				// where it is read in one step ([standing.Store.LastPublication]).
+				// A receipt that could not be kept leaves the next run finding
+				// a file aforge cannot vouch for, which it holds rather than
+				// writes over.
+				_ = fence.store.KeepPublication(item.ID, *receipt)
+			}
 			if occurred {
 				// Recorded the moment it exists, so a process that dies before
 				// the pass finishes still leaves the receipt behind — and the
@@ -874,22 +886,32 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// and its `previous` list from this outcome whatever it says
 	// (internal/standing's tick.go), so the money and the fact that it ran
 	// survive the run folder the sweep will eventually reap.
-	var note func() (reportWithheld, error)
+	var note func() error
 	if outcome.Kind != standing.OutcomeNothing {
 		kind, text := outcome.Kind, outcome.Text
-		note = func() (reportWithheld, error) {
+		note = func() error {
 			r.deliver(item, kind, text, runDir)
-			return notWithheld, nil
+			return nil
 		}
 	}
-	switch held, _ := fence.do(note); held {
+	// The note of a run already cut off is the account of the cut, and the cut
+	// does not hold it back ([effectFence.tell]); every other note is held by a
+	// cancellation read at the moment it would go.
+	var (
+		held  reportWithheld
+		cause error
+	)
+	if withheld == withheldCutOff {
+		held, cause = fence.tell(note)
+	} else {
+		held, cause = fence.act(nil, note)
+	}
+	switch held {
+	case notWithheld:
 	case withheldStopped:
 		return stoppedWhileItRan(outcome, end.saved, report, published), nil
-	case withheldCutOff:
-		if withheld == notWithheld {
-			withheld = held
-		}
-		outcome.Text = clip(outcome.Text+"; the pass was cut off before its note was delivered", standingOutcomeClip)
+	default:
+		outcome, withheld = heldAtTheNote(outcome, withheld, held, cause, published)
 	}
 	// The answer is recorded beside the outcome, as a code (occurrence.json's
 	// "withheld"), for whatever reads the record rather than the line.
@@ -921,24 +943,45 @@ func stoppedWhileItRan(outcome standing.Outcome, saved bool, report string, publ
 
 // reportChangedLine is what a run whose report file changed under it waits on
 // the person with. The draft is kept in the run's folder, as a held report is
-// ([heldReportFile]); the person's file is never written over.
+// ([heldReportFile]); the person's file, as aforge found it, is not written over.
 func reportChangedLine(runDir, report, draft string) string {
 	line := "report held back, not published: " + report + " is not what aforge last published there — it was changed, or it was there before aforge wrote it — so aforge did not write over it"
-	path := filepath.Join(runDir, heldReportFile)
-	if err := os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600); err == nil {
-		line += "; the draft is in " + path
+	return line + keepHeldDraft(runDir, draft) + ". Move your copy aside to let the next run publish"
+}
+
+// keepHeldDraft writes a held report's draft beside the run ([heldReportFile])
+// and answers the clause the line carries about it: where it is, or that it
+// could not be kept and why.
+//
+// A DRAFT THAT COULD NOT BE KEPT IS SAID (the third review, B2c). Both lines
+// that hold a report back used to point at the draft only when it was written,
+// and to say nothing when it was not — so a person was told their report was
+// held and not that the words it held were gone.
+func keepHeldDraft(runDir, draft string) string {
+	path, err := writeHeldDraft(runDir, draft)
+	if err != nil {
+		return "; the draft could not be kept (" + oneLine(err.Error()) + ")"
 	}
-	return line + ". Move your copy aside to let the next run publish"
+	return "; the draft is in " + path
+}
+
+// writeHeldDraft writes the draft and answers where.
+func writeHeldDraft(runDir, draft string) (string, error) {
+	path := filepath.Join(runDir, heldReportFile)
+	return path, os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600)
 }
 
 // fenceFor is the fence for this firing's acts ([effectFence]): the pass's
-// context as the decision found it, and the item's store.
+// context, read at each act and never here, and the item's store. A store the
+// runner has and cannot open is recorded, not dropped: the fence then holds.
 func (r *standingRunner) fenceFor(ctx context.Context, item standing.Item) effectFence {
-	fence := effectFence{ctx: ctx, live: ctx.Err() == nil, id: item.ID}
+	fence := effectFence{ctx: ctx, id: item.ID}
 	if r.root != "" && item.ID != "" {
-		if store, err := standing.Open(r.root); err == nil {
-			fence.store = store
+		store, err := standing.Open(r.root)
+		if err != nil {
+			fence.unreadable = err
 		}
+		fence.store = store
 	}
 	return fence
 }
@@ -1007,13 +1050,12 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 		held = "it does not keep a rule placed on this work — " + verdict.finding()
 	}
 	if held != "" {
-		path := filepath.Join(runDir, heldReportFile)
-		if err := os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600); err == nil {
-			check.Held = path
-		}
 		held = "report held back, not published: " + held + ". The previous report is unchanged"
-		if check.Held != "" {
-			held += "; the draft is in " + check.Held
+		if path, err := writeHeldDraft(runDir, draft); err == nil {
+			check.Held = path
+			held += "; the draft is in " + path
+		} else {
+			held += "; the draft could not be kept (" + oneLine(err.Error()) + ")"
 		}
 	}
 	if occurrence, err := standing.ReadOccurrence(runDir); err == nil {
@@ -1120,10 +1162,28 @@ func standingReportBlock(item standing.Item, report string) string {
 // L1). A run lasts minutes, and the report is a file in the person's project
 // that people also open and annotate; replacing it on the strength of a read
 // taken before the run is a write that loses whatever they typed meanwhile. So
-// the rename happens only if the file is still exactly what aforge last
+// the report is placed only if the file is still exactly what aforge last
 // published there, or is absent. A file aforge never wrote — there before the
 // first publication — is the person's the same way. Otherwise nothing is
 // written over it and the run waits on the person with its draft kept.
+//
+// ── WHAT IS ATOMIC, AND THE WINDOW THAT IS LEFT (the third review, B2) ──
+//
+// A FIRST PUBLICATION IS A CREATE, NOT A REPLACE. The file was absent when it
+// was looked for, and a rename would then have replaced whatever was there by
+// the time it ran — so a file the person made in between was written over. It
+// is placed by a hard link from the finished temporary file, which the
+// filesystem refuses when the name is taken ([placeReport]): a file that
+// appeared after the look is never written over, whenever it appeared.
+//
+// A REPLACEMENT IS NOT A COMPARE-AND-SWAP, and nothing here claims it is. The
+// file is read and hashed under the item's lock, immediately before the rename
+// — the pass's context is the only thing read between them — so the window is
+// the few microseconds between the last byte read and the rename. An editor's
+// save landing in exactly that window is written over. The item's lock orders
+// aforge's own acts and a person's stop; it does not hold off another
+// program's write, and no portable call replaces a file only if its contents
+// are still what they were.
 func publishStandingReport(fence effectFence, workspace, report, text, last string) (*standing.Publication, reportWithheld, error) {
 	root, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
@@ -1169,27 +1229,70 @@ func publishStandingReport(fence effectFence, workspace, report, text, last stri
 	if err := os.Chmod(name, 0o644); err != nil {
 		return nil, notWithheld, err
 	}
-	held, err := fence.do(func() (reportWithheld, error) {
-		if !unchangedSince(target, last) {
-			return withheldReportChanged, nil
-		}
-		return notWithheld, os.Rename(name, target)
-	})
+	var found reportFile
+	held, err := fence.act(
+		func() reportWithheld {
+			if found = reportFileAt(target, last); found == reportChanged {
+				return withheldReportChanged
+			}
+			return notWithheld
+		},
+		func() error { return placeReport(name, target, found == reportAbsent) },
+	)
+	if errors.Is(err, os.ErrExist) {
+		// The name was taken between the look and the link: somebody made the
+		// file, and it is theirs.
+		return nil, withheldReportChanged, nil
+	}
 	if held != notWithheld || err != nil {
 		return nil, held, err
 	}
 	return &standing.Publication{Path: report, SHA256: sha256Hex(body), Bytes: len(body), At: time.Now().UTC()}, notWithheld, nil
 }
 
-// unchangedSince answers whether the file at target is still what aforge last
-// published there (last, a sha256), or absent. A file that is there with no
-// publication behind it is not aforge's to replace.
-func unchangedSince(target, last string) bool {
+// reportFile is what the report path held when aforge looked, under the lock.
+type reportFile int
+
+const (
+	// reportAbsent: nothing is there; the placement is a create.
+	reportAbsent reportFile = iota
+	// reportUnchanged: exactly what aforge last published is there.
+	reportUnchanged
+	// reportChanged: something else is there, or it could not be read.
+	reportChanged
+)
+
+// reportFileAt reads the file at target against what aforge last published
+// there (last, a sha256). A file that is there with no publication behind it
+// is not aforge's to replace.
+func reportFileAt(target, last string) reportFile {
 	current, err := os.ReadFile(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return true
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return reportAbsent
+	case err == nil && last != "" && sha256Hex(string(current)) == last:
+		return reportUnchanged
 	}
-	return err == nil && last != "" && sha256Hex(string(current)) == last
+	return reportChanged
+}
+
+// placeReport puts the finished temporary file at target: by a hard link when
+// target was absent, which fails with [os.ErrExist] if the name has been taken
+// since, and by a rename over what aforge last published otherwise. A
+// filesystem that cannot link refuses the first publication rather than
+// falling back to a rename that could write over a file nobody has looked at.
+func placeReport(temporary, target string, create bool) error {
+	if !create {
+		return os.Rename(temporary, target)
+	}
+	if err := os.Link(temporary, target); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return os.ErrExist
+		}
+		return err
+	}
+	// The temporary name goes with the deferred remove; the report is the link.
+	return nil
 }
 
 func sha256Hex(text string) string {
@@ -1701,8 +1804,11 @@ func (a *Agent) drainStandingInbox() {
 	}
 	if len(notes) == 0 {
 		// Everything staged is already in this conversation's record, or there
-		// was nothing: either way the files have done their work.
-		if len(stages) > 0 && !a.foldIsPendingAny() {
+		// was nothing: either way the files have done their work — once the
+		// record is on the disk. A journal whose sync fails consumes nothing
+		// (the third review, B4): what this agent remembers writing is not what
+		// a power cut leaves, and the next open settles from the latter.
+		if len(stages) > 0 && !a.foldIsPendingAny() && a.recordIsDurable() {
 			commit()
 		}
 		return
@@ -1712,14 +1818,36 @@ func (a *Agent) drainStandingInbox() {
 	// folds with two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
 	fold := userText(standingAwayNote(notes))
+	ids := make([]deliveryID, 0, len(notes))
 	for _, note := range notes {
-		fold.delivered = append(fold.delivered, durableDelivery{id: inboxDeliveryID(note), settled: commit})
+		ids = append(ids, inboxDeliveryID(note))
 	}
-	a.markFoldPending(fold.delivered)
+	// The fold settles once, however many notes it carries: what it folded is
+	// no longer pending, and the files it came from are consumed.
+	settled := sync.OnceFunc(func() {
+		a.foldSettled(ids)
+		commit()
+	})
+	for _, id := range ids {
+		fold.delivered = append(fold.delivered, durableDelivery{id: id, settled: settled})
+	}
+	a.markFoldPending(ids)
 	if !a.enqueueNote(fold) {
+		// Nobody took the fold, so nothing is pending on it; the files stay for
+		// the next open.
+		a.foldSettled(ids)
 		return
 	}
 	a.queueStandingNews(notes)
+}
+
+// recordIsDurable answers whether this conversation's record is on the disk:
+// its journal synced, or no journal at all to hold anything.
+func (a *Agent) recordIsDurable() bool {
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	return file.sync() == nil
 }
 
 // inboxDeliveryID is the durable delivery id one inbox note is folded under.
@@ -1729,14 +1857,32 @@ func inboxDeliveryID(note standing.Note) deliveryID {
 
 // markFoldPending records the notes a fold carries until its record holds
 // them.
-func (a *Agent) markFoldPending(carried []durableDelivery) {
+//
+// IT HOLDS ONLY WHAT IS STILL OWED (the third review, B5). The set used to
+// keep every note this agent had ever folded, and [Agent.foldIsPendingAny]
+// walked all of it under the agent's lock on every surface attach — work that
+// grew with every note the conversation was ever told (law L6). A fold's notes
+// leave the set the moment the fold settles ([Agent.foldSettled]), so it holds
+// at most the folds whose record has not reached the disk yet; after that, the
+// journal's own record is what says a note was folded.
+func (a *Agent) markFoldPending(ids []deliveryID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.foldPending == nil {
 		a.foldPending = map[deliveryID]bool{}
 	}
-	for _, delivery := range carried {
-		a.foldPending[delivery.id] = true
+	for _, id := range ids {
+		a.foldPending[id] = true
+	}
+}
+
+// foldSettled takes a fold's notes off the pending set: its record is on disk,
+// or nobody took it.
+func (a *Agent) foldSettled(ids []deliveryID) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, id := range ids {
+		delete(a.foldPending, id)
 	}
 }
 
