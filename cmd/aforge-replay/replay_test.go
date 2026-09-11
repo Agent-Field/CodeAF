@@ -213,6 +213,25 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 	}
 }
 
+func TestTheClassesAreExactlyWhatTheRoleTableCanProduce(t *testing.T) {
+	// The report's two tables are keyed on this list, and the quantile candidate
+	// keeps one picture per entry of it. A role added to internal/lane whose class
+	// is not in the list would drop every call in it out of both silently.
+	can := map[string]bool{}
+	for _, role := range append(lane.Roles(), lane.RoleUnknown) {
+		can[classOf(role)] = true
+	}
+	for _, class := range classes {
+		if !can[class] {
+			t.Errorf("the report prints a %q class no role can produce", class)
+		}
+		delete(can, class)
+	}
+	for class := range can {
+		t.Errorf("the role table produces a %q class the report never prints", class)
+	}
+}
+
 func TestTheHalfLifeFallsBackToTheBeliefsOwnWhenNothingMoves(t *testing.T) {
 	measured, _ := fixtureWorld(t)
 	// Nothing in the fixture drifts, so the variogram never reaches halfway and

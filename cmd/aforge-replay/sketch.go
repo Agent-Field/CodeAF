@@ -103,7 +103,12 @@ func (f *fading) add(at time.Time, by float64, halfLife time.Duration) {
 	f.at = at
 }
 
+// left is how much of this count is still standing at a moment. A count nobody
+// has ever added to is nil and answers zero, so a reader need not check.
 func (f *fading) left(now time.Time, halfLife time.Duration) float64 {
+	if f == nil {
+		return 0
+	}
 	return f.weight * decay(now.Sub(f.at), halfLife)
 }
 

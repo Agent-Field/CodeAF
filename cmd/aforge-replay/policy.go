@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"sort"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
@@ -283,7 +284,11 @@ func (q *quantilePolicy) Judged(outcome lane.Outcome) {
 // to a measured shape instead of to a posterior.
 func (q *quantilePolicy) Demand(one asked) string {
 	best, cost := "", math.Inf(1)
-	for machine := range q.seen[one.model] {
+	// THE ORDER IS FIXED AND NOT THE MAP'S. Two machines can be believed exactly
+	// equal — a pair seen once each, at the same measured speed — and an
+	// instrument whose answer to that depends on Go's map seed is an instrument
+	// whose table moves between two runs over one file.
+	for _, machine := range sorted(q.seen[one.model]) {
 		key := sketchKey{ID: lane.ID{Model: one.model, Lane: machine}, class: one.class()}
 		waits, rates := q.ttft[key], q.rate[key]
 		if waits == nil || rates == nil {
@@ -295,9 +300,14 @@ func (q *quantilePolicy) Demand(one asked) string {
 			continue
 		}
 		felt := lane.PerceivedSeconds(ttft/1000, rate, one.want.visible, one.want.hidden)
-		asks := q.fade(q.asks, key).left(one.at, q.halfLife)
-		answers := q.fade(q.answers, key).left(one.at, q.halfLife)
-		if asks > 0 && answers > 0 {
+		// AND DIVIDED BY HOW OFTEN IT ANSWERS AT ALL, on the same floor of one in
+		// n that [serving] derives: a machine seen n times cannot honestly be
+		// claimed to answer less often than once in n. The counts are decayed
+		// weights rather than tallies, so the floor tightens as the evidence
+		// arrives and loosens as it is forgotten.
+		asks := q.asks[key].left(one.at, q.halfLife)
+		answers := q.answers[key].left(one.at, q.halfLife)
+		if asks > 0 {
 			felt /= math.Max(answers/asks, 1/asks)
 		}
 		if felt < cost {
@@ -307,8 +317,23 @@ func (q *quantilePolicy) Demand(one asked) string {
 	return best
 }
 
-// classes is the two-way split a class-keyed picture is kept under. It is
-// derived from the role table rather than written twice: see [asked.class].
+// sorted is a set of machine names in a fixed order.
+func sorted(names map[string]bool) []string {
+	held := make([]string, 0, len(names))
+	for name := range names {
+		held = append(held, name)
+	}
+	sort.Strings(held)
+	return held
+}
+
+// classes is the two-way split a class-keyed picture is kept under, and the
+// order the report prints them in: what somebody is reading first.
+//
+// IT IS WRITTEN HERE AND DERIVED IN [classOf], AND A LAW HOLDS THE TWO TOGETHER
+// (`TestTheClassesAreExactlyWhatTheRoleTableCanProduce`). A list that fell out of
+// step with the role table would silently drop a whole class of call out of the
+// tables, which is the kind of wrong that looks like a finding.
 var classes = []string{"watched", "unattended"}
 
 func (q *quantilePolicy) note(id lane.ID) {
