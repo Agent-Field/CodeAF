@@ -57,8 +57,8 @@ If you have turned the mouse off (`ui.mouse`), only the command works.
 **The name you press is the model you move.** Out in the conversation that is the
 conversation's model. Inside a running task's room the status line at the very bottom
 names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
-from its next turn onward, and sooner than that if the step it is on has to be rescued.
-Nothing else moves: not the conversation, not any other task.
+from its next turn onward — and the first time that step has to be rescued, it is rescued
+onto your pick. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
@@ -1303,11 +1303,15 @@ there is no ceiling, only the deadline. That patience is the *call's* own, insid
 request. What happens when the whole request
 keeps failing — several 429s in a row, a `502` between them — is the next section.
 
-**Picking another model is still worth doing while this is happening.** The reply in flight
-finishes on the model it started on, and so does the rest of that turn — but when the model
-gives up, the work moves to **the one you picked** rather than to the next name in your
-`fallback models` row. So a pick made over a stuck step is where it lands. See *I changed
-the model but my task is still on the old one*.
+**Inside a task, picking another model is worth doing while this is happening.** The call in
+flight finishes on the model it started on, and so does the rest of that step — but a step
+being paced no longer just sits there: it moves to **the model you picked in the task's
+room**, rather than to the next name in your `fallback models` row, and it says so in the
+run's own log. Before 2026-09-11 a rate limit was the one failure that moved nothing at
+all, so a pick made over a stuck step was read only after something else had already
+rescued it. This is about a task's model; **a pick in a conversation you are sitting in
+front of still lands on your next message.** See *I changed the model but my task is still
+on the old one*.
 
 ## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
 
@@ -1341,8 +1345,10 @@ the model would not take the request · moving to gpt-5-mini
 The new model gets a whole give-up of its own — what the last one did says nothing about
 this one — and the cost lands against the model that actually answered. **It is a rescue,
 not a choice you made**: your model is untouched, `/status` still shows it, and your next
-message goes back to it. And if you *have* chosen one, the rescue moves to yours rather
-than walking the chain past it.
+message goes back to it. **In a conversation the chain is the whole of it** — a model you
+pick with `/model` applies to your next message and does not redirect a rescue that is
+already happening. Inside a task's room it is different, and *Changing the model for one
+task while it is running* on the tasks page says how.
 
 **It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
 a refusal walked the four tries and then ended the turn, so a measured conversation on

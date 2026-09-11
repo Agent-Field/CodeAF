@@ -266,12 +266,17 @@ func (a *app) retargetTask(id uint64, model string) {
 		// it — and it was ALSO the whole of what the room said, which is what made
 		// it read as "nothing happens until this finishes".
 		//
-		// SO IT SAYS THE HALF THAT ANSWERS THEM TOO. A step whose model stops
-		// answering comes back to the model chosen HERE rather than walking
-		// aforge's own fallback chain (session's nextNodeModel), so a pick made
-		// over a stuck step is where the work lands rather than somewhere nobody
-		// named. Cutting the request in flight is a separate change to the turn
-		// loop's own law and is not this one.
+		// SO IT SAYS THE HALF THAT ANSWERS THEM TOO, AND ONLY BECAUSE THAT HALF IS
+		// NOW TRUE. The very next move this step makes goes to the model chosen
+		// HERE — including when the step is being paced, which used to be the one
+		// failure that moved nothing (session's movesForFailure and
+		// nextNodeModel, both reading [TaskNode.standingModel]). So the wait ends
+		// at the pick rather than somewhere nobody named.
+		//
+		// IT IS A SENTENCE ABOUT THIS ROOM AND NOT ABOUT THE CONVERSATION. A
+		// `/model` typed out in the chat still lands on the next message; the
+		// standing pick is a fact on a NODE. Cutting the request in flight is a
+		// separate change to the turn loop's own law and is not this one.
 		timing := "the next turn takes it; a rescue goes to it first"
 		if taskSetupLater(a.roomNode()) {
 			timing = "saved for when you continue"

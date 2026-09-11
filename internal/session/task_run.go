@@ -278,12 +278,22 @@ type TaskNode struct {
 	// Continuation choices preserve the completed attempt until work is reopened.
 	nextModel  string
 	nextEffort *string
-	// chose says A PERSON named this node's model themselves, in its own room,
-	// rather than the planner having written one into `propose_task`. It is
-	// written by [TaskNode.retargetLocked] — the only post-admission spec write
-	// there is — and read by [TaskNode.standingModel], which is the whole of what
-	// it is for. It is in-memory on purpose; see that method.
-	chose     bool
+	// picked is THE MODEL A PERSON NAMED FOR THIS NODE THAT IT HAS NOT RUN ON
+	// YET, and "" the rest of the time. It is written by
+	// [TaskNode.retargetLocked] — the only post-admission spec write there is —
+	// and cleared by [TaskNode.startedOn] when a worker is actually built on it.
+	//
+	// IT IS A FACT AND NOT A COMPARISON, and that is the whole of why it is a
+	// field. It was a bool beside the spec's id, and "is the pick still owed"
+	// was then derived by comparing the spec against the model the node was
+	// running on — which the pick itself had just rewritten, so the answer was
+	// no from the instant the person chose. Only a LATER rescue, after something
+	// else had moved the node off the pick, could see it. The person's own
+	// scenario — pick a model over a step that is grinding, and have the next
+	// move go there — was exactly the one the derivation could not answer.
+	//
+	// It is in-memory on purpose; see [TaskNode.standingModel].
+	picked    string
 	graph     *TaskGraph
 	id        uint64
 	dependsOn []uint64
@@ -2187,7 +2197,10 @@ func (n *TaskNode) retargetLocked(model string) {
 	// second is a standing instruction to come back to. [TaskNode.standingModel]
 	// is where it is read, and it is what stops a rescue quietly finishing the
 	// work on a model nobody picked while the person watches the one they did.
-	n.chose = true
+	// It is OWED from this moment until a worker is actually built on it
+	// ([TaskNode.startedOn]), which is what makes the FIRST move after a pick go
+	// to the pick rather than the second.
+	n.picked = model
 	if n.ran != "" {
 		n.ran = ""
 		if isTaskModelRescueNote(n.mend) {
@@ -2196,8 +2209,28 @@ func (n *TaskNode) retargetLocked(model string) {
 	}
 }
 
-// standingModel is the model A PERSON CHOSE for this node and that it is not
-// running on, and "" when nobody chose one or the node is already there.
+// startedOn spends the standing pick: the node is about to be worked on this
+// model, so a pick naming it has been carried out and is no longer owed.
+//
+// IT IS CALLED WHERE THE WORKER IS BUILT and nowhere else, because that is the
+// one moment a node begins running on anything. Clearing it at the retarget
+// instead is what made the pick invisible to the very next move; clearing it on
+// the run keeps the promise the room makes and keeps it exactly once.
+func (n *TaskNode) startedOn(model string) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if strings.EqualFold(n.picked, model) {
+		n.picked = ""
+	}
+}
+
+// standingModel is the model A PERSON CHOSE for this node that it has not been
+// run on, and "" when nobody chose one or the choice has already been carried
+// out.
 //
 // IT IS THE ONE THING A RESCUE MAY NOT OUTRANK (the measured turn of 2026-09-11
 // 14:39–14:41). The person picked a model in the room while a step was stuck on
@@ -2214,14 +2247,7 @@ func (n *TaskNode) retargetLocked(model string) {
 func (n *TaskNode) standingModel() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	if !n.chose {
-		return ""
-	}
-	chosen := strings.TrimSpace(n.spec.model)
-	if chosen == "" || strings.EqualFold(chosen, n.runModelLocked()) {
-		return ""
-	}
-	return chosen
+	return strings.TrimSpace(n.picked)
 }
 
 // runModelLocked is the model a row about this node should NAME: the one it is
@@ -5271,6 +5297,18 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// could not answer has learned nothing about the work, and throwing away a
 	// prepared worktree over that is throwing away the part that was expensive.
 	for {
+		// THE MODEL THIS RUN IS ON IS READ ONCE, HERE, and held for the whole
+		// attempt. Every later reader of it — the gate on a failure, the move that
+		// answers one, the sentence a person reads — has to mean THE MODEL THAT
+		// JUST FAILED, and the node's own fields cannot be trusted for that by
+		// then: a person choosing a model in the room rewrites the spec's id from
+		// another goroutine while this run is still going. Asking the node
+		// afterwards is how the pick came to be compared against itself.
+		ranOn := node.runModel()
+		// AND A PICK NAMING THIS MODEL IS NOW SPENT, because the node is about to
+		// run on it — which is the whole of what "the pick has been carried out"
+		// means ([TaskNode.startedOn]).
+		node.startedOn(ranOn)
 		worker, err := a.newTaskAgent(ctx, taskGroundDir(node, tree), node, "")
 		if err != nil {
 			node.end(TaskEndingError)
@@ -5375,14 +5413,14 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			retire()
 			continue
 		}
-		if !a.movesForFailure(node, runErr, log) {
+		if !a.movesForFailure(node, ranOn, runErr, log) {
 			break
 		}
-		next, moved := a.escalateNodeModel(node)
+		next, moved := a.escalateNodeModel(node, ranOn)
 		if !moved {
 			break
 		}
-		movedFrom = node.runModel()
+		movedFrom = ranOn
 		fmt.Fprintf(log, "%s could not answer: running again on %s\n", movedFrom, next)
 		// The retarget machinery is the room's own (task_room.go's RetargetTask):
 		// the row, the roster, the card and the checkpoint all learn the new model
@@ -8913,15 +8951,25 @@ func terminalProviderFailure(err error) bool {
 //
 // Empty is A MOVE THAT IS ABSENT rather than one that fails: a build with no
 // chain, or `--one-model`, and the node fails on the error it always failed on.
-func (a *Agent) nextNodeModel(node *TaskNode) (string, bool) {
+//
+// `ranOn` is the model THE RUN THAT JUST FAILED WAS BUILT ON, read off the node
+// by the run loop before anything could rewrite it.
+func (a *Agent) nextNodeModel(node *TaskNode, ranOn string) (string, bool) {
 	// A PERSON'S OWN PICK COMES BEFORE THE CHAIN, and it is the only thing that
 	// does. The chain answers "what should this try next when nobody has said";
 	// somebody HAS said ([TaskNode.standingModel]), so the question is closed and
 	// the move is the model they named.
-	if standing := node.standingModel(); standing != "" {
+	//
+	// IT IS WEIGHED AGAINST THE MODEL THE FAILED RUN ACTUALLY USED, which the
+	// caller holds and no field can be rewritten out from under. The spec's id is
+	// the wrong thing to compare a pick to: the pick IS the spec's id by the time
+	// this is asked. A person who picks the model the work is already on has
+	// asked for nothing to change, and moving "to" it would spend a worker to
+	// arrive where the last one died.
+	if standing := node.standingModel(); standing != "" && !strings.EqualFold(standing, ranOn) {
 		return standing, true
 	}
-	options := a.fallbackModels(node.runModel())
+	options := a.fallbackModels(ranOn)
 	if len(options) == 0 {
 		return "", false
 	}
