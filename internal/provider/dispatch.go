@@ -263,11 +263,23 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// through, or given up — because a surface left holding "still waiting"
 	// for a call that has landed is worse than one that was never told.
 	parked := false
-	defer func() {
-		if parked && notice != nil {
-			notice(false)
+	// park is THE ONE SITE that says whether this call is waiting a provider's
+	// pacing out, and it says it to both readers of that fact at once: the older
+	// bool above, and the phase on the seam that carries everything else about
+	// this call's life (callprogress.go's [CallPaced]). One site, so the two
+	// cannot disagree — which is the only reason the older spelling is still
+	// safe to leave standing while its one caller is moved over.
+	park := func(on bool) {
+		if parked == on {
+			return
 		}
-	}()
+		parked = on
+		if notice != nil {
+			notice(on)
+		}
+		streamWatchFrom(ctx).callPaced(on, dispatchNow())
+	}
+	defer func() { park(false) }()
 	// pacedSince is when this call FIRST drew a 429, and zero until it does. It
 	// is what tells [PhasePaced] from [PhaseRetrying] — whose fault the wait is —
 	// and nothing else: the budget it used to be measured against is gone, and
@@ -637,10 +649,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// first one it decides to wait out: by the time the backoff is
 			// computed the call is already not moving, and that is the fact
 			// anybody watching wants.
-			if !parked && notice != nil {
-				parked = true
-				notice(true)
-			}
+			park(true)
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.

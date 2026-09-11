@@ -342,6 +342,25 @@ in it. `aforge logs --run <id>` answers a miss the same way.
 The id is the one the plan gave that step — the same id `logs --node <id>` filters on, and
 the value of the `node` field in `logs --json`.
 
+## The run finished and my directory is empty — where did the work go after aforge do spent money and wrote no files
+
+`aforge do` edits the directory you point it at in place; it files nothing anywhere else.
+When a run did work but ended without delivering or creating or changing a file, its answer
+ends with:
+
+```
+No created or changed files were recorded: this run worked in /srv/project, editing it in place.
+```
+
+A run that did write instead names every file by its absolute path.
+
+The run's own record is separate. On a run that does not finish cleanly, the
+`record kept at <path>` line on stderr names the private store holding its traces and job
+logs. The empty file record concerns the project directory. It does not prove the directory is
+unchanged: deletions and files outside the bounded workspace scan may be absent. Under
+`aforge do --json`, `workspace` carries the same absolute project directory. It is empty
+when an existing resident did the work and this invocation cannot establish its directory.
+
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
@@ -524,7 +543,9 @@ The answer is the thing you would capture: the deliverable, the `--json` object,
 `aforge logs`, the plan `aforge plan show` prints. Everything a person reads *about* the
 run is on stderr: the `goal:` and `models:` preamble, the progress lines, warnings, the
 path a record was kept at, the receipt saying a file was written, and any question the
-command asks you.
+command asks you. For `aforge chat --once`, this includes every handover and ending line:
+`finishing here · what was asked is done`, `stopping here · ` and the line that says a
+reply's work was moved. Landing-woken replies remain on stdout with the first reply.
 
 So these do what you would expect, and nothing has to be filtered out of them:
 
