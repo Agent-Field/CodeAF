@@ -183,8 +183,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
-| `/model` | — | — | opens the model picker |
+| `/model` | — | — | opens the model picker (`used lately` above `all models` when you have run anything) |
 | `/model` | — | `<slug>` | switches the model to that slug |
+| `/model` | — | `used` | opens the picker filtered to models you have run lately |
+| `/model` | — | `used <text>` | the used set, narrowed by the ordinary filter |
 | `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
@@ -220,7 +222,13 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
+| `/spend` | — | — | opens the spend place on the `rhythm` lens (also `alt+3`) |
+| `/spend` | — | `models` | opens the spend place on the `models` lens |
+| `/spend` | — | `days` | opens the spend place on the `days` lens |
+| `/spend` | — | `year` | opens the spend place on the `year` lens |
+| `/spend` | — | `export` | writes the current window's ledger reading as JSON |
+| `/spend` | — | `7d` | `rhythm` on the last seven days |
+| `/spend` | — | `month` | `rhythm` on a thirty-day month-grain window |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -724,15 +732,28 @@ found by the words you remember of it. It is the same place `alt+7` opens and th
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches.
 
-`/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+3` opens.
+`/spend` opens the **spend place** — what this machine has cost. It is the same place
+`alt+3` opens. Bare `/spend` lands on the `rhythm` lens. Words after it pick a lens or a
+window:
+
+| argument | opens |
+|---|---|
+| `models` | the `models` lens |
+| `days` | the `days` lens |
+| `year` | the `year` lens |
+| `export` | writes the current window's ledger reading out as JSON beside the usage ledger |
+| `7d` | `rhythm` on the last seven days |
+| `month` | `rhythm` on a thirty-day window at month grain |
+
+`[` and `]` cycle `rhythm`, `models`, `days` and `year` once you are on the place.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
 spend place is *the whole machine* — every window, every task and every standing run,
 including a session opened from another machine over `--host` whose calls are still made
 here. The word `spend` belongs to the bigger reading, so the one guess most people make
-now lands on the place. `/cost` keeps `/usage` and `/tokens`.
+now lands on the place. `/cost` keeps `/usage` and `/tokens`. An unknown word after
+`/spend` is refused in one line.
 
 ## /cost — what this conversation has spent
 
@@ -850,6 +871,16 @@ name on the legend line above the box opens the same picker.
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
 left alone.
+
+The list itself has two sections when this machine has run anything in the last
+fortnight: **`used lately`** above **`all models`**. Models you have actually run sit in
+the first; the rest stay in the second. A dim chip on a used row can read
+`this fortnight $12 · 2.1M` (money and tokens for that model on this machine); either
+half drops when absent, and a quiet model carries no chip.
+
+`/model used` opens the picker already filtered to `used lately`. `/model used <text>`
+keeps that set and narrows it the ordinary way. `used` is a filter, not a refuse — a
+bare `/model <slug>` still switches even when that slug is not in the used set.
 
 A switch carries the conversation's words and nothing of the previous model's private
 thinking. A model's reasoning is its own — the router encrypts it and refuses to replay it

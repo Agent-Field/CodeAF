@@ -53,6 +53,11 @@ type spendPage struct {
 	// group and sort are the Models / Days lens controls (`g`, `c` / `t`).
 	group spendGroup
 	sort  spendSort
+	// priorWin and priorLens remember the Days view a day-drill left, so esc
+	// returns there instead of leaving the place (spendlens.go).
+	priorWin  session.UsageWindow
+	priorLens spendLens
+	drilled   bool
 	// reading is the answer the body is drawn from: derived, immutable, and
 	// rebuilt only when the lines, the window or the names actually changed.
 	reading spendReading
@@ -432,8 +437,17 @@ func (a *app) moveSpend(delta int) {
 func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
-		// ONE LAYER AT A TIME: a box with something in it is cleared first, and
-		// the second esc leaves.
+		// ONE LAYER AT A TIME: a day drill unwinds first, then a box with
+		// something in it is cleared, and the next esc leaves.
+		if a.spend.drilled {
+			a.spend.win = a.spend.priorWin
+			a.spend.lens = a.spend.priorLens
+			a.spend.drilled = false
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+			return nil
+		}
 		if box := a.placeBox(); box != nil && !box.empty() {
 			box.reset()
 			a.touch()
@@ -585,6 +599,9 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	// A DAYS-LENS ROW DRILLS INTO THAT DAY: the window becomes the day, the lens
 	// returns to Rhythm, and the models/subjects under it are that day's bill.
 	if stop.day.USD > 0 && !stop.day.At.IsZero() {
+		a.spend.priorWin = a.spend.win
+		a.spend.priorLens = a.spend.lens
+		a.spend.drilled = true
 		day := session.UsageWindow{From: stop.day.At, To: stop.day.At, Grain: session.GrainDay}
 		a.spend.win = day.Normalized()
 		a.spend.lens = spendLensRhythm

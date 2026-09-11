@@ -1968,6 +1968,103 @@ does. Paged onto a fortnight nothing was spent in, it keeps its head row — `no
 on the left and the control on the right — because that control is the only thing on the
 frame naming the window the arrows move.
 
+## used lately in the model picker — models I have run recently
+
+The model picker has two sections when this machine has priced any model call in the last
+fortnight:
+
+- **`used lately`** — the models you have actually run, drawn above the rest
+- **`all models`** — the full list the picker already showed
+
+A machine that has not run anything yet draws no `used lately` heading at all — not an
+empty block. The cursor still opens on the model in use. Typing still filters; hits in
+`used lately` stay above hits in `all models`.
+
+**Every door opens the same picker**, so the sections appear wherever you got here:
+`/model`, the model word on the status line, a task's model control, the **your model**
+row on the Providers tab, and the media slots that reuse this list.
+
+## the fortnight spend chip on a model row — this fortnight $12 · 2.1M
+
+On a model you have run lately, the right side of the row can carry one dim chip for what
+that model cost on this machine in the last fortnight. The shape is:
+
+```
+this fortnight $12 · 2.1M
+```
+
+Money first, then tokens. Either half is dropped when it is absent. A model with nothing
+priced in the fortnight carries no chip — never `$0.00`, never `0 tok`.
+
+On a narrow window the chip gives up words before figures: `this fortnight $12 · 2.1M`
+becomes `$12 · 2.1M`, then `$12`, then nothing. The model id keeps every cell it needs
+first, the same way the picker's other right-hand facts already do.
+
+The chip is a reading of the machine-wide ledger the spend place reads. It is not a
+limit and it does not open the Spending tab.
+
+## /model used — only the models I have actually run
+
+`/model used` opens the picker filtered to **`used lately`**: only models this machine
+has run in the recent fortnight. Typing still narrows inside that set.
+
+| you type | what happens |
+|---|---|
+| `/model` | the full picker — `used lately` above `all models` when there is anything to show |
+| `/model used` | the picker, already on the used set |
+| `/model used deepseek` | the used set, narrowed by `deepseek` the ordinary way |
+| `/model deepseek/deepseek-v4-flash` | switches straight to that slug — `used` is not required |
+
+`used` is a filter word, not a refuse. A slug you have never run is still accepted by
+`/model <slug>` the way a bare switch already works. If nothing has been run yet,
+`/model used` opens an empty used list and says so the way an empty filter already does
+— it does not invent rows.
+
+## spend lenses — rhythm, models, days, year on the spend place
+
+The spend place (`alt+3`, or `/spend`) is still a **reading** of what this machine has
+cost. It still never edits a limit; the Spending tab is the only editor, and the place's
+first line still points there.
+
+What you are reading is one of four **lenses**, named on the head row:
+
+| lens | what it shows |
+|---|---|
+| `rhythm` | the window, its chart, what ran it, and what the money was for — today's arrival |
+| `models` | a sortable table of models: In/Out, role, realized cost per million, spend |
+| `days` | the days in the window |
+| `year` | a year heatmap with streak, peak and favorite when those exist |
+
+Press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The foot names
+`[ ] lenses` when it has the cells.
+
+**`enter` on a day** (the `days` lens) opens that day's `rhythm` window. `esc` returns
+to `days` on the day you left.
+
+A quiet day, an unbound role, a year with no streak, peak or favorite — each draws
+**nothing** for the missing fact, never a zero. There is no bordered card around the
+year, and no share or "wrapped" view.
+
+## /spend models, /spend days, /spend year, /spend export — opening a lens or writing the ledger out
+
+`/spend` still opens the spend place. Words after it pick the lens or the window:
+
+| you type | what happens |
+|---|---|
+| `/spend` | opens on `rhythm` |
+| `/spend models` | opens on the `models` lens |
+| `/spend days` | opens on the `days` lens |
+| `/spend year` | opens on the `year` lens |
+| `/spend export` | writes the current window's ledger reading to a file (path rules follow `/export`) |
+| `/spend 7d` | opens `rhythm` on the last seven days |
+| `/spend month` | opens `rhythm` on this calendar month |
+
+`/cost` is a different command: this conversation's bill, printed into the conversation.
+`/spend` is the whole machine. An unknown word after `/spend` is refused in one short
+line naming what is accepted; it does not open the Spending tab and it does not invent a
+fifth lens.
+
+
 ## Moving the spend window — the time keys
 
 Time is two questions, so it gets two arrow axes and no letters:

@@ -510,7 +510,17 @@ are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer
 back. The cursor arrives on the first of them — the biggest thing the money went on. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
-**There is nothing to set here, and the page says where to go instead.** Its first line is
+Four **lenses**, cycled with `[` and `]`: `rhythm`, `models`, `days`, `year`. Arrival is
+`rhythm` — those three blocks above. The other three:
+
+- **`models`** — a sortable table (In/Out, role, realized cost per million, spend),
+  groupable by role or subject with `g`, sorted by `c` (cost) or `t` (tokens).
+- **`days`** — the days in the window; **`enter` on a day** drills into that day's
+  `rhythm` window, and **`esc`** returns to `days`.
+- **`year`** — a year heatmap with streak, peak and favorite when those exist; no
+  borders; missing facts draw nothing.
+
+**There is still nothing to set here, and the page says where to go instead.** Its first line is
 one dim pointer — `today $3.42 of $500 · /budget sets the limits` — and `enter` on that line
 opens the Spending tab of `/settings`, which is the one editor for every money limit. `→` on
 any row of the page opens a verb strip with one letter on it, `b the limits`, which opens the
@@ -520,7 +530,9 @@ door. `/cost` (also `/usage`, `/tokens`) still prints **this conversation's**
 figures into the conversation — a different question from this place's, which is the whole
 machine.
 
-**`/spend` is the typed door onto this place.** It used to be an alias of `/cost`, so the
+**`/spend` is the typed door onto this place**, with `/spend models`, `/spend days`,
+`/spend year`, `/spend export`, `/spend 7d` and `/spend month` as the lens and window
+doors. It used to be an alias of `/cost`, so the
 one word most people guess for "what has this cost" printed one conversation's bill and
 never mentioned the machine-wide ledger. It opens the place now.
 
