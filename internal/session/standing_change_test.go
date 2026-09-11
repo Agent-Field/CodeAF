@@ -445,3 +445,27 @@ func TestAnEditCardShowsAChangePastTheClip(t *testing.T) {
 		t.Fatalf("the does line reads\n%q, want\n%q", does, want)
 	}
 }
+
+// TestAMoveByEditNamesTheFolderToTakeItOutOf is the live move run of
+// 2026-09-11 (W5-A, run 2): told only that `collections place and unplace`
+// move work, the model placed the notes watch in Work and left it in
+// Personal, so its runs kept both folders' rules. A move is two acts, and the
+// refusal now names the folder the work is in, with the unplace that takes it
+// out.
+func TestAMoveByEditNamesTheFolderToTakeItOutOf(t *testing.T) {
+	d := newChatDoor(t, nil, nil)
+	personal := d.folder(t, "Personal")
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"placement": personal.ID})), finalText("set up")}}
+	d.proposeInbox(t, d.yes)
+	item := d.only(t)
+	move, _ := json.Marshal(map[string]any{"op": "edit", "id": item.ID, "placement": "Work"})
+	text, failed, err := d.agent.standTool(context.Background(), move)
+	if err != nil || !failed {
+		t.Fatalf("a move by edit answered %q (failed %v, %v)", text, failed, err)
+	}
+	for _, want := range []string{"Personal", personal.ID, "unplace"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the refusal does not name %q: %q", want, text)
+		}
+	}
+}

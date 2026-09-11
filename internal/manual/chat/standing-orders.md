@@ -851,7 +851,8 @@ What it will not do, each naming the road that does:
 - `nothing was changed: it was changed elsewhere after the card was drawn — read it
   again with op list and send the edit again` — a yes on a card someone else's edit
   overtook.
-- `an edit does not move work — collections place and unplace do`. How far a rule
+- `an edit does not move work — collections place and unplace do`, naming the folders
+  it is in now (`It is placed in Personal (…)`), since a move is both. How far a rule
   reaches, and whether it is a rule, a line to say or work that runs, are kept: stop it
   and propose the other.
 - A stopped order is set up afresh; there is no edit of it.
