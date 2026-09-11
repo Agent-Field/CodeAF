@@ -129,17 +129,17 @@ func (a *app) readMachineMoney(now time.Time) {
 // of what the figure means.
 func machineCounts(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
 	for _, row := range sessions {
-		// AND A LANDING NOBODY HAS CHECKED IS A WANT TOO, counted through the
-		// panel's own reading of it (homepanel_needs.go's [needsCallOf] and
-		// [needsAged]) rather than through a second test here. It is what makes
-		// `N want you` the sum of the two groups of `needs you`: the count and
-		// the rows are the same arithmetic, so a pulse over a home can no longer
-		// claim a number the panel under it does not show.
-		wants += machineChecks(now, row)
+		// AND A LANDING NOBODY HAS CHECKED IS A WANT TOO. How many rows of
+		// `needs you` a conversation is — its own question, its landings, or
+		// both — is ONE reading and it is the panel's own
+		// (homepanel_needs.go's [needsWants]), so a pulse over a home cannot
+		// claim a number the rows under it do not show. It answers zero for an
+		// archived conversation and for one whose only question IS its landing,
+		// which is the row the panel drops.
+		wants += needsWants(row, now)
 		switch {
 		case row.Archived:
 		case row.NeedsPerson():
-			wants++
 		case row.Tasks.Running > 1:
 			hands += row.Tasks.Running
 		case row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking:
@@ -174,27 +174,6 @@ func machineCounts(now time.Time, sessions []session.SessionRow, bands map[strin
 		}
 	}
 	return hands, wants
-}
-
-// machineChecks is how many of one conversation's landings are waiting to be
-// checked — the `to check` group's rows for that conversation, counted with the
-// group's own reading.
-//
-// AN ARCHIVED CONVERSATION IS NOT COUNTED, for the same reason its own row is
-// not: it has been put away, and work put away is not waiting on anybody.
-func machineChecks(now time.Time, row session.SessionRow) int {
-	if row.Archived {
-		return 0
-	}
-	n := 0
-	for i := range row.Tasks.Rows {
-		entry := row.Tasks.Rows[i]
-		if _, ok := needsCallOf(row, entry); !ok || needsAged(needsCallAt(entry), now) {
-			continue
-		}
-		n++
-	}
-	return n
 }
 
 // machineSpentToday is WHAT THIS MACHINE HAS SPENT TODAY, and it is the usage

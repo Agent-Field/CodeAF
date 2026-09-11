@@ -123,8 +123,8 @@ to, and its two answers at the right:
    built the tier-B subscription flow          1 accept   2 not right
 ```
 
-The two words are the task's own — `accept`/`not right` for work nobody could check,
-`resolve it`/`drop it` for a branch that would not fasten. **The two keys are `1` and `2`
+The two words are the task's own — `accept` and `not right` for work nobody could check,
+which is every row that reaches this group. **The two keys are `1` and `2`
 here and `[a]`/`[n]` everywhere else**, and that is deliberate: a bare letter on home always
 types, because the box under it promises "type to search or start something new" and the
 promise has no asterisk. A digit drawn on the row is the one printable exception home makes,

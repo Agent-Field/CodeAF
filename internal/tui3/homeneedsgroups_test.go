@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,20 @@ func (l *liveLab) openAt(width, height int) *app {
 	a.openHome()
 	homeText(a)
 	return a
+}
+
+// archive puts one of the lab's conversations away, the way a person does.
+func (l *liveLab) archive(id string) {
+	l.t.Helper()
+	dir := filepath.Join(l.project("-alpha"), id)
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	meta.Archived = true
+	if err := session.SaveMeta(dir, meta); err != nil {
+		l.t.Fatal(err)
+	}
 }
 
 // landed writes one landing whose call is the person's.
@@ -177,18 +192,95 @@ func TestToCheckFoldsBeforeANeedsYouRowGoes(t *testing.T) {
 }
 
 // THE PULSE'S COUNT IS THE SUM OF THE TWO GROUPS, read through the panel's own
-// reading of a landing rather than through a second one ([machineChecks]).
+// reading of a conversation's rows rather than through a second one
+// ([needsWants]).
+//
+// THE LANDINGS' OWN CONVERSATION IS LIVE AND WAITING ON THEM HERE, which is the
+// shape that made the first cut of this count disagree with the rows: the
+// conversation contributed a want the panel does not draw a row for.
 func TestThePulseCountsBothGroupsOfNeedsYou(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
+	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
+		Reason: needsYourCallLead + "fix the flaky sieve"})
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	l.landed("5", "port the parser", 5*time.Hour)
 	// AND A LANDING THAT AGED OUT IS NOT COUNTED, because it is not a row.
 	l.landed("6", "old business", homeNeedsTaskFresh+time.Hour)
 	a := l.open()
 	if rows := panelRows(a, panelNeeds); len(rows) != 3 || a.machine.wants != len(rows) {
-		t.Fatalf("the pulse says %d want you over %d rows", a.machine.wants, len(panelRows(a, panelNeeds)))
+		t.Fatalf("the pulse says %d want you over %d rows: %+v", a.machine.wants, len(rows), rows)
+	}
+}
+
+// A CONVERSATION STOPPED AT ITS FUEL GATE KEEPS ITS ROW, landing or no landing.
+// It banks no card at the desk and so writes no question object, and the first
+// cut of the "said once" test read that absence as "this is only waiting on its
+// landing" — which took a paused run off home entirely.
+func TestAPausedRunKeepsItsRowBesideItsOwnLanding(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
+		Reason: "out of fuel · 12 of 12 spent"})
+	l.landed("4", "fix the flaky sieve", 30*time.Minute)
+	a := l.open()
+	rows := panelRows(a, panelNeeds)
+	if len(rows) != 2 {
+		t.Fatalf("the paused run lost its row beside its landing: %+v", rows)
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, "out of fuel") || !strings.Contains(frame, "fix the flaky sieve") {
+		t.Fatalf("the frame does not hold both:\n%s", frame)
+	}
+	if a.machine.wants != len(rows) {
+		t.Fatalf("the pulse says %d want you over %d rows", a.machine.wants, len(rows))
+	}
+}
+
+// WORK IN A CONVERSATION SOMEBODY PUT AWAY IS NOT WAITING ON THEM: no row on
+// `to check`, and nothing in the count.
+func TestAnArchivedConversationsLandingIsNotOnToCheck(t *testing.T) {
+	l := newLiveLab(t)
+	l.landed("4", "fix the flaky sieve", 30*time.Minute)
+	l.archive("aaaa000000000002")
+	a := l.open()
+	if rows := panelRows(a, panelNeeds); len(rows) != 0 {
+		t.Fatalf("an archived conversation's landing is on to check: %+v", rows)
+	}
+	if a.machine.wants != 0 {
+		t.Fatalf("the pulse counts an archived conversation's landing: %d", a.machine.wants)
+	}
+}
+
+// ONE ANSWER PER LANDING, AND A CONVERSATION MAY HOLD SEVERAL. This window
+// remembers what it sent per QUESTION; a single slot per conversation meant
+// answering the second landing forgot the first, whose chips came back and whose
+// key sent a second answer for a question already answered from here.
+func TestAnsweringASecondLandingDoesNotReopenTheFirst(t *testing.T) {
+	l := newLiveLab(t)
+	l.landed("4", "fix the flaky sieve", 30*time.Minute)
+	l.landed("5", "port the parser", 5*time.Hour)
+	a := l.open()
+	var left []string
+	a.leaveAnswer = func(dir string, kind session.QuestionKind, id uint64, key string) error {
+		left = append(left, itoa64(id)+"/"+key)
+		return nil
+	}
+	press := func(id string) {
+		for i, line := range a.home.lines {
+			if line.task != nil && line.task.ID == id {
+				a.home.cursor = i
+			}
+		}
+		homeText(a)
+		a.homeGridAnswer(needsYesKey)
+	}
+	press("4")
+	press("5")
+	press("4")
+	want := []string{"4/" + session.LandingYesKey, "5/" + session.LandingYesKey}
+	if len(left) != len(want) || left[0] != want[0] || left[1] != want[1] {
+		t.Fatalf("a landing was answered twice: %v", left)
 	}
 }
 
