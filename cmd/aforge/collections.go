@@ -123,7 +123,9 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	case "show":
 		contents := folderContents{}
 		if contents.References, err = store.Members(ctx, rest[1]); err == nil {
-			contents.Placed, err = store.Placed(ctx, rest[1])
+			contents.Placed, err = everythingPlaced(func(w workspace.PlacedWindow) ([]workspace.Ref, bool, error) {
+				return store.Placed(ctx, rest[1], w)
+			})
 		}
 		result = contents
 	case "add":
@@ -162,6 +164,35 @@ func runCollectionsTo(args []string, output io.Writer) error {
 type folderContents struct {
 	References []workspace.Ref `json:"references"`
 	Placed     []workspace.Ref `json:"placed"`
+}
+
+// placedPage is how many placements one read of a folder holds while the
+// terminal prints all of them.
+const placedPage = 500
+
+// everythingPlaced is the whole of a folder's placements, which is what the
+// terminal prints. It pages through [workspace.Store.Placed], the windowed read
+// the chat's show calls, so the two doors keep ONE ROAD to what is placed in a
+// folder and cannot come to disagree about it.
+//
+// EACH PAGE STARTS AFTER THE LAST KEY PRINTED, NEVER AT A COUNT. The pages are
+// separate reads, and a placement made or taken away between two of them moved
+// every row after it: counted from an offset, the next page repeated one row or
+// skipped one. From the cursor, a row is printed once or not at all.
+func everythingPlaced(read func(workspace.PlacedWindow) ([]workspace.Ref, bool, error)) ([]workspace.Ref, error) {
+	placed := []workspace.Ref{}
+	window := workspace.PlacedWindow{Limit: placedPage}
+	for {
+		page, more, err := read(window)
+		if err != nil {
+			return nil, err
+		}
+		placed = append(placed, page...)
+		if !more || len(page) == 0 {
+			return placed, nil
+		}
+		window.After = page[len(page)-1]
+	}
 }
 
 // recordFolders is `collections find`: the folders that reference a record,

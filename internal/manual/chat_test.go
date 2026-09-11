@@ -2001,6 +2001,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does standing show say a run went over its limit", "standing-orders"},
 		{"is the work told which folder it is placed in", "standing-orders"},
 		{"collections show does not list the work placed in the folder", "collections"},
+		// Wave 5: the chat's folder view reads placements, and a ref names
+		// ongoing work by the standing kind.
+		{"what have I got filed under my Alpha folder", "collections"},
+		{"file that watch under my Archive folder", "collections"},
 		{"I edited the report file and aforge did not publish over it", "standing-orders"},
 		// Round 3b: the one window a replacement still has, the fence that
 		// cannot read the stop, and an answer that survives a crash.

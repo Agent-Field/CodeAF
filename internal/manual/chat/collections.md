@@ -75,19 +75,27 @@ organization, inherited instructions and communication between conversations are
 not implemented by these commands.
 
 
-## Can I organize and inspect work by asking in chat
+## Organizing by asking in chat: what have I got filed in a folder, and filing a watch under one
 
-Ask to create a collection, file this chat in it, or inspect its work. The
-`collections` tool supports list, show, find, create, add and remove. Omitting
-`ref` on add or find means this conversation. Show resolves direct members
-through their existing owners: chat titles, task state, ongoing items and file
-availability. It does not resume a closed conversation or start its work.
-Unavailable sources remain listed. Find accepts a case-insensitive name fragment
-or a member reference. Omitting both finds collections containing this chat;
-name and reference cannot be combined. Results are paged with `next_offset`.
-In chat, show lists references and `governing` answers which folders' rules reach a
-record; the local `aforge collections show` also prints what is placed in the folder.
-Task workers can inspect collections but cannot reorganize them.
+Ask to create a collection, file this chat or a piece of ongoing work in it, or
+inspect its work. The `collections` tool supports list, show, find, create, add
+and remove. Omitting `ref` on add or find means this conversation; to file ongoing
+work instead, such as a watch, `ref` names kind `standing` and the id `stand`
+returned for it. Filing is `add`: it never makes the folder's rules reach the work,
+which only `place` does. Show lists what `aforge collections show` prints, with its
+references under `items`: what the folder files, then under `placed` what is placed
+in it, whose rules reach it. Each row carries its kind — any of `conversation`,
+`task`, `standing`, `collection` (a subfolder) or `artifact` (a file) — its id, a
+one-line title and, where its owner keeps one, its state. It does not
+resume a closed conversation or start its work. Unavailable sources remain listed.
+Find accepts a case-insensitive name fragment or a member reference. Omitting both
+finds collections containing this chat; name and reference cannot be combined.
+Find by reference lists what `aforge collections find` prints: the folders that
+file it under `items`, then under `placed` the folders whose rules reach it; only
+those carry a depth (0 placed directly, higher for a folder further up). One page
+holds at most 25 across both lists; `next_offset` continues. `governing` answers
+which folders' rules reach a record. Task workers can inspect collections but
+cannot reorganize them.
 
 ## How do I share a decision or finding across chats
 
