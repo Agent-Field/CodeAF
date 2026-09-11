@@ -283,7 +283,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
-	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; aforge quotes the shared allowance."},` +
+	`"cost_words":{"type":"string","description":"When the person named a limit — money, or how many runs — quote it in their words: \"at most a dollar a run\", \"no more than 3 a day\". A rail sent without it is dropped. Omit when they named none; aforge quotes the shared allowance."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
@@ -487,6 +487,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	// moment that has passed and the refusal of an expiry that has passed all
 	// measure against the SAME instant; two readings a microsecond apart would
 	// be two answers to one question in a function whose whole subject is when.
+	parsed, limits := standingNamedLimits(parsed)
 	item, problem := a.standingItem(parsed, time.Now())
 	if problem != "" {
 		return problem, true, nil
@@ -501,7 +502,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return err.Error(), true, nil
 	}
 	if item.Scope != nil {
-		if a.steward() != nil {
+		// COLLECTIONS' LAW, asked where it is decided ([Agent.mayBindFolders]):
+		// a rule over folders is a governing binding like a placement.
+		if !a.mayBindFolders() {
 			return "folder rules need the person's answer in a conversation", true, nil
 		}
 		if a.config.Organization == nil {
@@ -559,7 +562,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
 		WhenWords: item.When.Words,
-		CostWords: a.standingCostWords(item),
+		CostWords: a.standingCostWords(item, limits),
 		Guessed:   parsed.Guessed,
 		Terms:     a.standingTerms(ctx, item, place),
 		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
@@ -640,11 +643,16 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	if len(place.folders) > 0 {
 		line += "\nplaced in: " + place.names()
 	}
-	// AND WHAT BINDS ITS SPENDING, from the item: a limit the call sent and the
-	// person never named was dropped ([standingNamedMoney]), and a model told
-	// only "set up" would go on to quote the number it sent.
+	// AND WHAT BINDS ITS SPENDING, from the item, and every limit the call sent
+	// that did not stand ([standingNamedLimits]). A model told only "set up"
+	// quoted the number it had sent (the second live measurement, run 01: "over
+	// $0.50 a run won't proceed" over a limit that was never kept).
 	if costs := notice.CostWords; costs != "" {
 		line += "\ncosts: " + costs
+	}
+	if len(limits.dropped) > 0 {
+		line += "\nlimits not kept, because cost_words quoted no limit the person named: " +
+			strings.Join(limits.dropped, ", ") + " — say only what costs: says"
 	}
 	// THE MODEL IS TOLD WHAT THE PERSON WAS TOLD ABOUT CHECKS. The live chat
 	// door (2026-09-11) replied "with background checks active" on a host whose
@@ -687,7 +695,7 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	rails, problem := standingRails(standingNamedMoney(parsed), when, now)
+	rails, problem := standingRails(parsed, when, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -999,30 +1007,40 @@ func standingFirstFiring(when standing.When, now time.Time) (moment time.Time, n
 }
 
 // standingCostWords is the card's costs line, written from the item's own
-// limits and never from the model's words about them: the allowance every
-// standing item on this machine shares, led by any limit of this item's own
-// that differs from the quiet defaults — so a limit that will bind a run is
-// always on the card the person says yes to.
+// limits and never from the model's words about them: every limit the call
+// sent — the one the person named, or the default standing where one was
+// dropped — then the allowance every standing item on this machine shares. A
+// limit that will bind a run because of what was said is always on the card
+// the person says yes to, even when it equals the default.
 //
 // A HOLD SAYS NOTHING ABOUT MONEY, which is the emptiness law reaching a whole
 // band of the card: nothing wakes a rule, so nothing about it is ever bought,
 // and quoting the day's allowance under one would be asking a person to weigh a
 // figure that can never be drawn on ([standing.Item.Spends]).
-func (a *Agent) standingCostWords(item standing.Item) string {
+func (a *Agent) standingCostWords(item standing.Item, limits standingLimits) string {
 	if !item.Spends() {
 		return ""
 	}
 	var words []string
-	if item.Rails.PerRunUSD != standDefaultPerRunUSD {
-		words = append(words, "up to $"+strconv.FormatFloat(item.Rails.PerRunUSD, 'f', 2, 64)+" a run")
+	if limits.perRun != limitUnsent {
+		words = append(words, standingPerRunWords(item.Rails.PerRunUSD)+limits.perRun.said())
 	}
-	if n := item.Rails.MaxPerDay; n != standDefaultMaxPerDay {
-		words = append(words, "at most "+standingRunsWords(n)+" a day")
+	if limits.perDay != limitUnsent {
+		words = append(words, "at most "+standingRunsWords(item.Rails.MaxPerDay)+" a day"+limits.perDay.said())
 	}
 	if a.config.Standing != nil && a.config.Standing.DailyRailUSD > 0 {
 		return strings.Join(append(words, "shares the day's $"+strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64)+" allowance"), " · ")
 	}
 	return strings.Join(append(words, "shares the day's allowance"), " · ")
+}
+
+// standingPerRunWords is a per-run limit as a person reads it. ZERO IS NO
+// LIMIT ([standing.Rails.PerRunUSD]), so it is said as none and never as $0.00.
+func standingPerRunWords(usd float64) string {
+	if usd == 0 {
+		return "no per-run limit"
+	}
+	return "up to $" + strconv.FormatFloat(usd, 'f', 2, 64) + " a run"
 }
 
 // standingRunsWords is a count of runs as a person says it.
@@ -1033,16 +1051,67 @@ func standingRunsWords(n int) string {
 	return strconv.Itoa(n) + " runs"
 }
 
-// standingNamedMoney keeps the money limits of a call only when the person
-// named them. The schema says to send rails and cost_words only then; a call
-// with limits and no cost_words is a model choosing a number the person never
-// said, and a limit nobody asked for can cut their work short — so it is
-// dropped, the quiet defaults stand, and the card says what binds.
-func standingNamedMoney(parsed standArguments) standArguments {
-	if strings.TrimSpace(parsed.CostWords) == "" {
-		parsed.Rails.PerRunUSD, parsed.Rails.MaxPerDay = nil, nil
+// limitFate is what became of one limit a call may send.
+type limitFate int
+
+const (
+	// limitUnsent is a limit the call left out; the quiet default stands and
+	// the card does not mention it.
+	limitUnsent limitFate = iota
+	// limitKept is a limit that stands as sent — named by the person, or
+	// negative and so left for the item's own validation to refuse.
+	limitKept
+	// limitDropped is a limit sent with nothing quoting the person; the
+	// default stands in its place, and the card says it is the default.
+	limitDropped
+)
+
+// said is what the costs line adds after a limit, by its fate.
+func (f limitFate) said() string {
+	if f == limitDropped {
+		return " (the default)"
 	}
-	return parsed
+	return ""
+}
+
+// standingLimits is what became of a call's two limits, and the ones dropped,
+// spelled as the call sent them so the tool's answer can name each.
+type standingLimits struct {
+	perRun, perDay limitFate
+	dropped        []string
+}
+
+// standingNamedLimits keeps each limit a call sends only on the person's own
+// words for a limit — cost_words, which covers money and a count of runs
+// alike, so "no more than 3 runs a day" stands as surely as "a dollar a run".
+// The schema says to send rails only then; a limit with nothing quoting the
+// person is a model choosing a number nobody said, and one nobody asked for
+// can cut their work short — so it is dropped, the default stands, the card
+// says so, and the tool's answer names it.
+//
+// A NEGATIVE LIMIT IS NOT DROPPED. It is kept for [standing.Item.Validate] to
+// refuse, because a call that sends -1 has an error to fix, and dropping it
+// would be answering a question the model got wrong with a silence.
+func standingNamedLimits(parsed standArguments) (standArguments, standingLimits) {
+	var limits standingLimits
+	named := strings.TrimSpace(parsed.CostWords) != ""
+	if v := parsed.Rails.PerRunUSD; v != nil {
+		limits.perRun = limitKept
+		if !named && *v >= 0 {
+			limits.perRun = limitDropped
+			limits.dropped = append(limits.dropped, "rails.per_run_usd "+strconv.FormatFloat(*v, 'f', -1, 64))
+			parsed.Rails.PerRunUSD = nil
+		}
+	}
+	if v := parsed.Rails.MaxPerDay; v != nil {
+		limits.perDay = limitKept
+		if !named && *v > 0 {
+			limits.perDay = limitDropped
+			limits.dropped = append(limits.dropped, "rails.max_per_day "+strconv.Itoa(*v))
+			parsed.Rails.MaxPerDay = nil
+		}
+	}
+	return parsed, limits
 }
 
 // standingSent is a string the call may have left out, as the store keeps it.

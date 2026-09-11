@@ -1982,6 +1982,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the card says no background checks on this machine", "keeping-an-eye"},
 		{"the card says report none no file is kept current", "standing-orders"},
 		{"the model picked a spending limit I never asked for", "keeping-an-eye"},
+		{"I said no more than 3 runs a day, does the card keep it", "keeping-an-eye"},
+		{"the card says at most 10 runs a day (the default)", "keeping-an-eye"},
 		{"work placed in two folders from the chat", "standing-orders"},
 		{"what woke this run and what did it make", "standing-orders"},
 		{"a standing order run was killed midway, is it retried", "standing-orders"},

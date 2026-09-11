@@ -674,8 +674,9 @@ Honest limits, so you do not rely on something that is not built:
 - **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. A per-run or per-day
-  limit you named yourself leads the costs line (`up to $1.00 a run · …`); one you never
-  named is not kept.
+  limit you named yourself leads the costs line (`up to $1.00 a run · …`, or `at most 3
+  runs a day · …`); one you never named is not kept, and the card says the default that
+  stands instead (`… (the default)`).
 - **There is no outward lane.** No phone, no email, no desktop notification. News lands
   in a chat you have open, or waits — the keeping-an-eye page has the order it is
   delivered in.
@@ -743,11 +744,11 @@ This door never turns on the background timer. Its orders are checked when a win
 is open, when the timer is already on, or when you run `aforge standing check`. News
 from an order with no conversation behind it waits in its project's inbox.
 
-Saying the same thing in a conversation makes **the same order**: the same instructions,
-version 1, the same report aforge publishes, the same folder and rules, the same check and
-the same receipts. `aforge standing show` then says `set up by: person, through the chat`,
-and its log opens `set up in the chat` where a terminal-made one says `set up at the
-terminal`. An edit to either is `aforge standing edit`, whichever door made it.
+Saying it in a conversation makes **the same order as far as a run can tell**
+(*Keep a report current from the chat*); its log opens `set up in the chat` and `show`
+says `through the chat`. Its record also keeps the conversation it came from, writes its
+reach `project` where the terminal leaves it empty (read as project), and may word when
+it wakes the chat's way. `aforge standing edit` edits either.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
@@ -788,9 +789,9 @@ files and writes one local file.
 ## Keep a report current from the chat — the card's does, report, folder and rule lines
 
 In a conversation, just say it: "keep an eye on my inbox folder and keep
-reports/inbox-report.md current". It is the same order `aforge standing add --watch
---report --place` makes. The card for work that runs has more lines under `where ·`,
-and they are what a yes agrees to:
+reports/inbox-report.md current". It is the order `aforge standing add --watch
+--report --place` makes — the record also keeps the conversation it came from. The card
+for work that runs has more lines under `where ·`, and they are what a yes agrees to:
 
 ```
 does · Read the changed files in inbox/ and write a short report of new decisions …
@@ -809,7 +810,8 @@ folders this conversation is placed in (`, where this conversation is placed`; w
 Only you can bind a folder: a delegated run is refused (`placing work in a folder needs
 the person's answer in a conversation`). The `rule ·` lines are the rules that reach it
 now, read as its runs read them (`rules · none reach this work yet`), up to five, then
-`rules · and N more`; past 64 the card warns every run would stop. The folder is bound
+`rules · and N more`; past 64 rules or 64 KiB of their words the card warns every run
+would stop. The folder is bound
 after your yes and before the work exists — at the terminal too; if that fails nothing
 is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
 show` says `set up by: person, through the chat`.

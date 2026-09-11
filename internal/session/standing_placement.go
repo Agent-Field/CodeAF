@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -229,29 +230,15 @@ func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place sta
 		folder += place.reach()
 	}
 	terms = append(terms, standingFolderTag+folder)
-	rules, err := a.standingRulesIfPlaced(ctx, item, place.ids())
+	governing, err := a.standingGoverningIfPlaced(ctx, item, place.ids())
 	switch {
 	case errors.Is(err, errNoGoverningReader):
 		// NOTHING HERE CAN READ RULES, so the card says nothing about them
 		// rather than claiming none reach the work.
 	case err != nil:
 		terms = append(terms, standingRulesTag+"could not be read: "+oneLine(err.Error()))
-	case len(rules) == 0:
-		terms = append(terms, standingRulesTag+standingRulesNone)
-	case len(rules) > governingHoldLimit:
-		// THE GATE EVERY RUN WOULD MEET, SAID BEFORE THE YES. A run whose
-		// rules outnumber what a run may carry stops before it acts
-		// ([Agent.standingBlockLocked]); a card that quoted five of them and
-		// said nothing would be agreeing to work that can never run.
-		terms = append(terms, fmt.Sprintf("%s%d reach this work, more than the %d a run can carry — every run would stop until they are narrowed", standingRulesTag, len(rules), governingHoldLimit))
 	default:
-		for at, rule := range rules {
-			if at == standingCardRules {
-				terms = append(terms, fmt.Sprintf("%sand %d more", standingRulesTag, len(rules)-at))
-				break
-			}
-			terms = append(terms, standingRuleTag+clip(oneLine(rule.Prompt()), standingCardClip))
-		}
+		terms = append(terms, governing.ruleTerms()...)
 	}
 	return terms
 }
@@ -260,31 +247,68 @@ func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place sta
 // rules apply — a test's fake store, a door with no standing owner.
 var errNoGoverningReader = errors.New("session: nothing here reads rules")
 
-// standingRulesIfPlaced answers the rules that would reach this item's runs if
-// it were placed in folders, from the reading the run itself will make.
-func (a *Agent) standingRulesIfPlaced(ctx context.Context, item standing.Item, folders []string) ([]standing.Item, error) {
+// standingGoverning is what would govern an item's runs if it were placed:
+// every order that applies and the placements that bring them — the two
+// things a run's <standing> section is rendered from.
+type standingGoverning struct {
+	items  []standing.Item
+	places []workspace.GoverningCollection
+}
+
+// standingGoverningIfPlaced answers what would govern this item's runs if it
+// were placed in folders, from the reading the run itself will make.
+func (a *Agent) standingGoverningIfPlaced(ctx context.Context, item standing.Item, folders []string) (standingGoverning, error) {
 	reader := a.governingReader()
 	if reader == nil {
-		return nil, errNoGoverningReader
+		return standingGoverning{}, errNoGoverningReader
 	}
 	var places []workspace.GoverningCollection
 	if len(folders) > 0 {
 		store, err := a.config.Organization.open(false)
 		if err != nil {
-			return nil, err
+			return standingGoverning{}, err
 		}
 		found, err := store.GoverningIfPlaced(ctx, folders)
 		store.Close()
 		if err != nil {
-			return nil, err
+			return standingGoverning{}, err
 		}
 		places = nearestPlaces(nil, found)
 	}
 	items, err := reader.ApplicableScope(item.Workspace, item.Origin.SessionID, placementDepths(places))
 	if err != nil {
-		return nil, err
+		return standingGoverning{}, err
 	}
-	return GoverningRules(items), nil
+	return standingGoverning{items: items, places: places}, nil
+}
+
+// ruleTerms is the card's lines about the rules: each rule's words, or the
+// gate every run would meet.
+//
+// THE GATES EVERY RUN WOULD MEET ARE SAID BEFORE THE YES, in the order the run
+// meets them ([Agent.standingBlockLocked]): more rules than a run may carry,
+// then more rendered words than it may carry. A run over either stops before
+// it acts, and a card that quoted five rules and said nothing would be
+// agreeing to work that can never run.
+func (g standingGoverning) ruleTerms() []string {
+	rules := GoverningRules(g.items)
+	switch {
+	case len(rules) == 0:
+		return []string{standingRulesTag + standingRulesNone}
+	case len(rules) > governingHoldLimit:
+		return []string{fmt.Sprintf("%s%d reach this work, more than the %d a run can carry — every run would stop until they are narrowed", standingRulesTag, len(rules), governingHoldLimit)}
+	}
+	if size := len(renderStandingWorld(g.items, g.places, "")); size > governingPromptBytes {
+		return []string{fmt.Sprintf("%stheir words come to %d KiB, more than the %d KiB a run can carry — every run would stop until they are narrowed", standingRulesTag, (size+1023)/1024, governingPromptBytes/1024)}
+	}
+	var terms []string
+	for at, rule := range rules {
+		if at == standingCardRules {
+			return append(terms, fmt.Sprintf("%sand %d more", standingRulesTag, len(rules)-at))
+		}
+		terms = append(terms, standingRuleTag+clip(oneLine(rule.Prompt()), standingCardClip))
+	}
+	return terms
 }
 
 // governingReader is the standing owner this conversation reads rules
@@ -359,36 +383,63 @@ func (a *Agent) placeInFolders(ctx context.Context, id string, place standingPla
 
 // standingNamedReport refuses work that runs whose call left does.report out
 // while the person's own sentence names a file — "keep reports/inbox.md
-// current" set up as work that keeps nothing. The refusal names the field and
-// both honest answers, so the model sends one of them: the path when each run
-// keeps that file current, or "" when the work only reads it. A file the watch
-// itself reaches is what wakes the work, never its report, and is not asked
-// about.
+// current" set up as work that keeps nothing. The refusal names the field,
+// every file the sentence names, and both honest answers, so the model sends
+// one of them: the path of the file each run keeps current, or "" when the
+// work only reads them.
+//
+// A NAMED FILE IS ASKED ABOUT ONLY IF IT COULD BE THE REPORT, by the law the
+// report itself is admitted under ([standingCouldReport]): a home path, a path
+// out of the project, a file the watch reaches or a file in a folder it
+// watches is never the report, whatever the sentence says about it.
 func standingNamedReport(parsed standArguments, item standing.Item) string {
 	if item.Does.Kind != standing.ActionTask || parsed.Does.Report != nil {
 		return ""
 	}
+	var named []string
 	for _, field := range strings.Fields(parsed.Words) {
 		path := strings.TrimRight(strings.Trim(field, "\"'`“”‘’,;:!?()[]{}<>"), ".")
-		if standingLooksLikeFile(path) && !item.Watches(path) {
-			return "Invalid arguments: their sentence names " + path + " — send does.report " + strconv.Quote(path) +
-				" if each run keeps that file current, or does.report \"\" if the work only reads it"
+		if standingLooksLikeFile(path) && standingCouldReport(item, path) && !slices.Contains(named, path) {
+			named = append(named, path)
 		}
 	}
-	return ""
+	switch len(named) {
+	case 0:
+		return ""
+	case 1:
+		return "Invalid arguments: their sentence names " + named[0] + " — send does.report " + strconv.Quote(named[0]) +
+			" if each run keeps that file current, or does.report \"\" if the work only reads it"
+	default:
+		return "Invalid arguments: their sentence names " + strings.Join(named, ", ") +
+			" — send does.report with the one each run keeps current, or does.report \"\" if the work only reads them"
+	}
+}
+
+// standingCouldReport answers whether path could be this item's report at all,
+// by [standing.Item.Validate] — the report law every door admits an item under:
+// relative, inside the project, outside its own watch and the folders it
+// watches. A path that opens with ~ is the person's home directory, which is
+// outside the project whatever its lexical reading.
+func standingCouldReport(item standing.Item, path string) bool {
+	if strings.HasPrefix(path, "~") {
+		return false
+	}
+	item.Does.Report = path
+	return item.Validate() == nil
 }
 
 // standingLooksLikeFile answers whether one word of a sentence is a file path:
-// a name with an extension that starts with a letter ("inbox-report.md",
-// "notes/today.txt"), and not a web address, a pattern, a version or an
-// abbreviation ("v1.2", "e.g").
+// a name with an extension of two or more characters that starts with a letter
+// ("inbox-report.md", "notes/a.txt"), and not a web address, a pattern, a
+// version or an abbreviation ("v1.2", "e.g", "i.e"). A one-letter extension
+// ("x.c") is not read as a file; asking about it would be the rarer mistake.
 func standingLooksLikeFile(word string) bool {
 	if word == "" || strings.Contains(word, "://") || strings.ContainsAny(word, "*?[") {
 		return false
 	}
 	ext := filepath.Ext(word)
 	name := strings.TrimSuffix(filepath.Base(word), ext)
-	if len(ext) < 2 || len(ext) > 9 || len(name) < 2 || !unicode.IsLetter(rune(ext[1])) {
+	if len(ext) < 3 || len(ext) > 9 || name == "" || !unicode.IsLetter(rune(ext[1])) {
 		return false
 	}
 	for _, r := range ext[1:] {
