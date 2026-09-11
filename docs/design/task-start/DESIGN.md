@@ -387,4 +387,5 @@ the carve is lane S1's (`openTaskWorld`, `prepareTaskTreeForNode`). With memory 
 the constructor, consent → first request is the carve alone. The seam, if S1's
 rungs can carve without touching the person's `.git` (the mirror rung can):
 `prepareTaskTreeForNode` taking a reserved id and a spec rather than a node, called
-from `askTask` beside `awaitTaskAnswer`, with the tree removed on a decline.
+from `askTask` beside `awaitTaskAnswer`, with the tree removed on a decline. Filed
+as #893 with that shape and its acceptance.
