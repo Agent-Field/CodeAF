@@ -1160,10 +1160,11 @@ the model went quiet mid-reply · moving to gpt-5-mini
 The turn finishes there and the cost lands against the model that actually answered. **It
 is a rescue, not a choice you made**: your model is untouched, `/status` still shows it,
 and your next message goes back to it. If it keeps stalling, `/model` is how you move for
-good.
+good — and it does not wait for the stall to finish: name a model while nothing has come
+back and that request is let go of and asked again on yours.
 
-Only when there is nowhere to go — you are on `--one-model`, or no chain resolves — does
-the turn end instead:
+Only when there is nowhere to go — you are on `--one-model`, or no chain resolves, **and
+you have not named a model yourself** — does the turn end instead:
 
 ```
 error: nothing came back from the model in 1m30s, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
@@ -1346,15 +1347,16 @@ there is no ceiling, only the deadline. That patience is the *call's* own, insid
 request. What happens when the whole request
 keeps failing — several 429s in a row, a `502` between them — is the next section.
 
-**Inside a task, picking another model is worth doing while this is happening.** The call in
-flight finishes on the model it started on, and so does the rest of that step — but a step
-being paced no longer just sits there: it moves to **the model you picked in the task's
-room**, rather than to the next name in your `fallback models` row, and it says so in the
-run's own log. Before 2026-09-11 a rate limit was the one failure that moved nothing at
-all, so a pick made over a stuck step was read only after something else had already
-rescued it. This is about a task's model; **a pick in a conversation you are sitting in
-front of still lands on your next message.** See *I changed the model but my task is still
-on the old one*.
+**Picking another model is worth doing while this is happening, and it is the fastest way
+out of it.** A call that is only waiting has given you nothing, so it is **let go of at
+once** and asked again on the model you named — within a second, in a task's room and in
+the conversation alike. A step being paced no longer just sits there. If the answer had
+already begun arriving, it finishes on the model it started on and the step's next request
+is on yours; either way the move goes to **the model you picked**, rather than to the next
+name in your `fallback models` row, and it says so in the run's own log. Before 2026-09-11
+a rate limit was the one failure that moved nothing at all, so a pick made over a stuck
+step was read only after something else had already rescued it. See *Can I switch models
+while it is replying* above, and *I changed the model but my task is still on the old one*.
 
 ## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
 
@@ -1388,10 +1390,10 @@ the model would not take the request · moving to gpt-5-mini
 The new model gets a whole give-up of its own — what the last one did says nothing about
 this one — and the cost lands against the model that actually answered. **It is a rescue,
 not a choice you made**: your model is untouched, `/status` still shows it, and your next
-message goes back to it. **In a conversation the chain is the whole of it** — a model you
-pick with `/model` applies to your next message and does not redirect a rescue that is
-already happening. Inside a task's room it is different, and *Changing the model for one
-task while it is running* on the tasks page says how.
+message goes back to it. **But a model you name is the head of that chain** — pick one with
+`/model` while the moving is happening and the next move goes to yours instead of to the
+next name in the row, in the conversation exactly as in a task's room. *Changing the model
+for one task while it is running* on the tasks page says what a room adds to that.
 
 **It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
 a refusal walked the four tries and then ended the turn, so a measured conversation on

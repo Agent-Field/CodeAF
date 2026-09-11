@@ -77,8 +77,8 @@ func retargetAgent(t *testing.T) (*Agent, *TaskNode, *Agent, func()) {
 
 // A RUNNING NODE MOVES, AND EVERYTHING THAT RECORDS ITS MODEL MOVES WITH IT: the
 // spec the checkpoint is written from, the row a surface draws, and the worker
-// itself — which is what makes the switch a fact about the next turn rather than
-// a label.
+// itself — which is what makes the switch a fact about the work rather than a
+// label. WHEN it reaches the work is the separate law in personsword_test.go.
 func TestRetargetTaskMovesARunningNodeAndEveryRowThatNamesIt(t *testing.T) {
 	agent, node, child, land := retargetAgent(t)
 	updates := agent.TaskUpdates()
