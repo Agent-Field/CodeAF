@@ -409,6 +409,10 @@ func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
 func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	// The conversation over the family is opened by hand and left that way: this
+	// is about the FAMILY's fold, and the root above it would otherwise hide the
+	// whole page ([tasksReading.opens]).
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true}
 
 	shut := reading.lay(120)
 	work := func(lines []tasksLine) []tasksLine {
@@ -448,7 +452,7 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 
 	// OPENED, the three workers are under it, connected, and the last one closes
 	// the family.
-	reading.open = map[tasksKey]bool{tasksFamilyOf(root.item.entry): true}
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksFamilyOf(root.item.entry): true}
 	rows = work(reading.lay(120))
 	if len(rows) != 5 {
 		t.Fatalf("an open family drew %d rows of work", len(rows))
@@ -729,7 +733,9 @@ func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 	// under it in their own order.
 	fam, famWin, famNow := tasksFamilyFixture()
 	family := readTasks(fam, tasksMine{}, famWin, tasksSort{}, time.Time{}, famNow)
-	family.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
+	// The conversation and the family both open shut, and this is about the order
+	// INSIDE the family, so both are opened by hand.
+	family.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "1"}: true}
 	var kin []string
 	for _, line := range family.lay(120) {
 		if line.kind == tasksLineTask {
@@ -795,14 +801,17 @@ func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	if got, want := tasksUnderWord(1), "holds 1 more"; got != want {
 		t.Fatalf("a fold holding one says %q, want %q", got, want)
 	}
-	// AND IT IS THE FIRST THING THE TAIL SAYS, joined like every other fact.
-	// `3 files holds 3 more` ran two claims together with a bare space, at the
-	// far right of the row, eleven cells from the edge where the eye does not go.
+	// AND IT IS SAID IN THE STATE COLUMN, AFTER THE STATE, joined like every other
+	// fact. `3 files holds 3 more` ran two claims together with a bare space, at
+	// the far right of the row, eleven cells from the edge where the eye does not
+	// go; it is now `done · holds 3 more`, in the one cell that is about what the
+	// fold is standing over.
 	fam, famWin, famNow := tasksFamilyFixture()
 	shut := readTasks(fam, tasksMine{}, famWin, tasksSort{}, time.Time{}, famNow)
-	row := tasksDrawnRow(tasksPage(shut, 120), "port the parser")
-	if !strings.Contains(row, "holds 3 more · ") {
-		t.Fatalf("the shut family's row reads\n  %s\nand its count must lead the tail: `… holds 3 more · <facts>`", row)
+	shut.open = map[tasksKey]bool{tasksChatKey("room-a"): true}
+	row := tasksDrawnRow(tasksPageFolded(shut, 120), "port the parser")
+	if !strings.Contains(row, "done"+rowSep+tasksUnderWord(3)) {
+		t.Fatalf("the shut family's row reads\n  %s\nand its state cell must say what it is holding: `done · holds 3 more`", row)
 	}
 }
 

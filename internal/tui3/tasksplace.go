@@ -1312,12 +1312,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
-		kin := pal.dim(line.kin)
-		room -= ansi.StringWidth(line.kin)
-		if room < 1 {
-			room = 1
-		}
-		return lead + kin + tasksChatRow(line, room, r.now, r.folder, r.tilde, r.order, pal, lit)
+		return lead + tasksChatRow(line, room, r.now, r.folder, r.tilde, r.order, pal, lit)
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
 		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
@@ -1326,18 +1321,18 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
 	}
-	// THE FAMILY COLUMN IS PAINTED HERE AND CHOSEN IN THE LAYOUT. It is dim
+	// THE FAMILY COLUMN IS CHOSEN IN THE LAYOUT AND PAINTED BY THE ROW. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's
-	// words — and the room the row gets is what is left after it.
-	kin := pal.dim(line.kin)
-	room -= ansi.StringWidth(line.kin)
-	if room < 1 {
-		room = 1
-	}
+	// words. The TABLE spends it out of the name so its columns stand still
+	// ([tasksTableRow]); the phone card has no columns and takes what is left.
 	if layoutTier(width) == tierPhone {
-		return lead + kin + tasksCardHead(line.item, room, pal, lit)
+		card := room - ansi.StringWidth(line.kin)
+		if card < 1 {
+			card = 1
+		}
+		return lead + pal.dim(line.kin) + tasksCardHead(line.item, card, pal, lit)
 	}
-	return lead + kin + tasksRow(line, room, r.now, r.order, pal, lit)
+	return lead + tasksRow(line, room, r.now, r.order, pal, lit)
 }
 
 // tasksUnderWord is what a shut fold says about the work it is holding.
@@ -1638,7 +1633,11 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	if project := chatProjectWord(folderOf, folder, tilde); project != "" && project != chat.title {
 		name += rowSep + project
 	}
-	return tasksTableRow(name, tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
+	// A ROOT HAS NO MARK and its name starts where the marks are, which is the
+	// rule (spec.md §2): a conversation is not a piece of work and has no state
+	// of its own to wear one for.
+	return tasksTableRow(pal.dim(line.kin), ansi.StringWidth(line.kin), name,
+		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
@@ -1659,14 +1658,11 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palette, lit bool) string {
 	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
-	lead := glyph + " "
-	room := width - ansi.StringWidth(lead)
-	if room < 1 {
-		room = 1
-	}
-	return glyphInk(glyph) + " " + tasksTableRow(tasksLabel(item.entry),
+	lead := pal.dim(line.kin) + glyphInk(glyph) + " "
+	cells := ansi.StringWidth(line.kin) + ansi.StringWidth(glyph) + 1
+	return tasksTableRow(lead, cells, tasksLabel(item.entry),
 		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
-		tasksKeyInk(by.key, lit, pal), room, by.key, pal, lit)
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
 // tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings

@@ -161,19 +161,28 @@ func tasksChatStateField(chat tasksChat) rowField {
 
 // ── the row ─────────────────────────────────────────────────────────────────
 
-// tasksTableRow lays one row of the table out: the name in what the columns
-// leave, then the two columns, then one cell of air.
+// tasksTableRow lays one row of the table out: the row's lead — its family
+// connectors and its mark — then the name in what the columns leave, then the
+// two columns, then one cell of air.
 //
-// EVERY ROW OF ONE FRAME ANSWERS THE SAME TWO QUESTIONS. That is the whole
-// difference from the tail it replaces — the columns are in the same cells on
-// every row, so the eye reads DOWN a column instead of re-parsing each row's own
-// ranked prefix, and a row with nothing to say in a column draws nothing there
-// rather than pulling the next fact leftwards into the hole.
-func tasksTableRow(name string, state, second rowField, secondInk func(string) string,
-	room int, key tasksSortKey, pal palette, lit bool) string {
+// EVERY ROW OF ONE FRAME ANSWERS THE SAME TWO QUESTIONS IN THE SAME CELLS. That
+// is the whole difference from the tail it replaces — the eye reads DOWN a
+// column instead of re-parsing each row's own ranked prefix, and a row with
+// nothing to say in a column draws nothing there rather than pulling the next
+// fact leftwards into the hole.
+//
+// WHICH IS WHY THE LEAD IS SPENT OUT OF THE NAME AND NOT OUT OF THE ROOM. The
+// connectors are two cells wider three levels down a family and a root has no
+// mark at all, so a row that measured its columns from what its own lead left
+// would put them in a different place on every line of the page — a table whose
+// columns move is a tail with extra steps. Only the NAME flexes (rowfit.go law
+// 1), and the lead eats into the name.
+func tasksTableRow(lead string, leadCells int, name string, state, second rowField,
+	secondInk func(string) string, room int, key tasksSortKey, pal palette, lit bool) string {
 	stateCells, secondCells, nameCells := tasksColumns(room, key)
+	nameCells = max(nameCells-leadCells, 1)
 	said := fit(name, nameCells)
-	out := placeSubject(said, lit, pal) + pad(nameCells-ansi.StringWidth(said))
+	out := lead + placeSubject(said, lit, pal) + pad(nameCells-ansi.StringWidth(said))
 	if stateCells > 0 {
 		word := rowTail([]rowField{state}, stateCells)
 		out += placeFactInk(lit, pal)(word) + pad(stateCells-ansi.StringWidth(word))
