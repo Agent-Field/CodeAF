@@ -217,12 +217,11 @@ func (a *app) learnPictureOf(e *entry) {
 		return
 	}
 	if path, ok := a.picturePath(e); ok {
-		// THE BYTES UNDER A PATH A CALL JUST WROTE ARE NEW BYTES BY DEFINITION,
-		// so whatever was learned about that name before this moment is wrong.
-		// Regenerating into the same file is the ordinary way to meet this.
-		if readPath, found := a.readPathFor(path, true); found {
-			a.pictures.forget(readPath)
-		}
+		// A CALL THAT JUST WROTE THIS PATH WROTE NEW BYTES, so the reading taken
+		// here replaces whatever was learned about that name before — which is
+		// what makes regenerating into the same file redraw at once rather than
+		// on the beat. [learned.learn] reads and lays in one go, so there is
+		// nothing to forget first.
 		a.learnPicture(path, true)
 	}
 }
@@ -241,7 +240,6 @@ func (a *app) learnMirroredPicture(blob remoteBlob) {
 		return
 	}
 	if path, err := store.Path(blob.ref); err == nil {
-		a.pictures.forget(path)
 		a.pictures.learn(path)
 	}
 }
