@@ -511,8 +511,11 @@ There are quiet per-run and per-day backstops inside each item so one noisy orde
 cannot consume the pool unchecked, but aforge does not ask the model to negotiate
 them and does not quote them on an ordinary card. The real protection is the
 shared allowance and the approval rules you already banked. If you said "spend at
-most a dollar" or named a daily firing limit yourself, that is different: the
-card says your limit back exactly, and the item keeps it.
+most a dollar" or named a daily firing limit yourself, that is different: the item
+keeps it and the costs line leads with it, written from the item —
+`up to $1.00 a run · at most 2 runs a day · shares the day's allowance`. A limit
+the model picked that you never named is dropped before the card, so a number you
+did not choose never cuts your work short unseen.
 
 A check that fires nothing still costs the look and the one small judgement call,
 so it shares the allowance even when it has nothing to say.

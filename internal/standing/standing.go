@@ -576,7 +576,7 @@ func (it Item) validateReport() error {
 		if filepath.IsAbs(pattern) {
 			target = filepath.Join(it.Workspace, clean)
 		}
-		if watchMatches(pattern, target) {
+		if it.Watches(clean) {
 			return errors.New("the report would be one of the files it watches, so every report would wake it again; keep the report outside " + pattern)
 		}
 		// A WATCHED FOLDER WAKES IT TOO. The reading records a matched
@@ -591,6 +591,21 @@ func (it Item) validateReport() error {
 		}
 	}
 	return nil
+}
+
+// Watches answers whether this item's file watch reaches rel, a path relative
+// to its workspace. It is the pass's own reading ([watchMatches]), shared by the
+// report law above and by the chat door, which asks it of a file the person
+// named before treating that file as a report.
+func (it Item) Watches(rel string) bool {
+	if it.When.Kind != WhenFile || it.When.Glob == "" {
+		return false
+	}
+	target := filepath.Clean(rel)
+	if filepath.IsAbs(it.When.Glob) {
+		target = filepath.Join(it.Workspace, target)
+	}
+	return watchMatches(it.When.Glob, target)
 }
 
 // Spends answers whether anything about this item can ever cost money, and it

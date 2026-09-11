@@ -48,6 +48,10 @@ invalidates:
   - "`**` in a file watch behaved as `*`, so nested edits never woke it. A whole `**` segment now reaches every folder below, and a watch reaching more than 10000 files and folders is refused at setup and edit."
   - "A file touched or rewritten with identical contents woke a paid run. When a file's size or time moves its contents are hashed and compared with the last reading (files up to 4 MiB); the same contents are not a change. Readings kept before hashes existed are read quietly."
   - "`aforge collections show --json` printed an array of references and `find --json` an array of collections. Both now print `{\"references\": [...], \"placed\": [...]}`, and the text output lists work placed in a folder (show) and the folders whose rules reach a record (find) under their own labels."
+  - "A stand card's costs line quoted the model's cost_words, so a model that sent limits the person never named ($0.50 a run, 24 a day — 8 of 10 live calls) showed an empty costs line over a limit that would bind. Unnamed limits are now dropped before the card, and the costs line is written from the item: `up to $1.00 a run · at most 2 runs a day · shares the day's allowance`; the stand result tells the model the same line."
+  - "Work that runs and keeps no file drew no report line, and a call that left does.report out while the person's sentence named a file made work that keeps nothing (1 of 10 live runs). The card now says `report · none — no file is kept current`, and such a call is refused with the file named and both answers (`does.report \"<path>\"` or `\"\"`)."
+  - "A stand card placed work in the conversation's own folders even when a delegated principal was answering, bypassing collections' law. Any placement, named or inherited, now needs `mayBindFolders` (the person, in a conversation), the same predicate `collections place` asks."
+  - "After the once-ever background notice, the stand result said nothing about checks, so the model's reply about a later item was a guess. The result now always carries what checks the item (`checks every 5 minutes, window or not · …` or `background checks are not running · …`); the person's row is still said once."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -176,3 +180,12 @@ yet placed, from the same walk as `GoverningCollections`. `TestChatDoorJourney` 
 a scripted conversation and a terminal-made twin through `bin/aforge standing check`
 and `show` to identical records; `TestRealChatDoorJourney` is the same road with a real
 model. `docs/design/workspace-foundation/grooming/BUILD-CHATDOOR.md` has the evidence.
+
+After wave 4 merged, a ten-run live measurement of the chat door
+(`grooming/validation/chatdoor-live10.md`) drove four seam fixes: unnamed spending
+limits are dropped and the card's costs line is written from the item; a file the
+person named is asked about as `does.report` before any card, and a card for work that
+keeps no file says `report · none — no file is kept current`; an inherited folder
+placement is written only under collections' law; and the stand result always tells
+the model what checks the work. The card also names two folders in the plural and
+warns when the rules reaching a placement are more than a run can carry (64).

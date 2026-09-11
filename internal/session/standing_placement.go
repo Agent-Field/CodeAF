@@ -39,7 +39,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -56,14 +59,20 @@ const (
 	// standingReportWho is who writes the report, said on the card and in the
 	// tool's answer: the run replies with it, and aforge is the only writer.
 	standingReportWho = "aforge publishes this file; the run never writes it"
-	// standingFolderReach is what a placement means to the person reading it.
-	standingFolderReach = " — its rules reach every run"
+	// standingFolderReach is what a placement means to the person reading it,
+	// for one folder and for several.
+	standingFolderReach  = " — its rules reach every run"
+	standingFoldersReach = " — their rules reach every run"
 	// standingFolderInherited says why a folder nobody named is on the card.
 	standingFolderInherited = ", where this conversation is placed"
 	// standingFolderNone is work in no folder, which is allowed and not a gap.
 	standingFolderNone = "none — it can be placed in one later"
 	// standingRulesNone is a placement, or none, that no rule reaches yet.
 	standingRulesNone = "none reach this work yet"
+	// standingReportNone is work that runs and keeps no file, said rather than
+	// left out: the person may have asked for one, and a card silent about it
+	// reads the same as a card that forgot.
+	standingReportNone = "none — no file is kept current"
 )
 
 // standingCardRules is how many rules a card quotes by their words before it
@@ -106,6 +115,23 @@ func (p standingPlacement) names() string {
 	return strings.Join(out, ", ")
 }
 
+// reach is what the placement means, in the number the folders are.
+func (p standingPlacement) reach() string {
+	if len(p.folders) > 1 {
+		return standingFoldersReach
+	}
+	return standingFolderReach
+}
+
+// logLine is the item's own log line for its placement, in the terminal
+// door's grammar ("placed in folder X; its rules reach this work").
+func (p standingPlacement) logLine() string {
+	if len(p.folders) > 1 {
+		return "placed in folders " + strings.Join(p.ids(), ", ") + "; their rules reach this work"
+	}
+	return "placed in folder " + strings.Join(p.ids(), ", ") + "; its rules reach this work"
+}
+
 // standingPlacementFor decides the folders a proposal's work will be placed
 // in: the one the call named, else the ones this conversation is placed in
 // directly, else none. It answers a refusal in the model's grammar when the
@@ -123,10 +149,8 @@ func (a *Agent) standingPlacementFor(ctx context.Context, parsed standArguments,
 		return standingPlacement{}, ""
 	}
 	if named != "" {
-		// THE SAME LAW AS collections place: a governing binding is changed in a
-		// conversation with the person, never by a delegated answer.
-		if a.steward() != nil {
-			return standingPlacement{}, "placing work in a folder needs the person's answer in a conversation"
+		if !a.mayBindFolders() {
+			return standingPlacement{}, standingPlacementLaw
 		}
 		if err := (workspace.Ref{Kind: workspace.CollectionKind, ID: named}).Validate(); err != nil {
 			return standingPlacement{}, "Invalid arguments: placement " + err.Error()
@@ -169,8 +193,19 @@ func (a *Agent) standingPlacementFor(ctx context.Context, parsed standArguments,
 			place.folders = append(place.folders, folder.Collection)
 		}
 	}
+	// AN INHERITED FOLDER IS STILL A BINDING, and it is written under the same
+	// law as a named one: in a conversation with the person, never by a
+	// delegated answer. Work set up without it would run outside the rules this
+	// conversation is under, so it is refused rather than left unplaced.
+	if len(place.folders) > 0 && !a.mayBindFolders() {
+		return standingPlacement{}, standingPlacementLaw + " — this conversation is placed in " + place.names()
+	}
 	return place, ""
 }
+
+// standingPlacementLaw is the refusal of a placement nobody may write here, the
+// stand tool's spelling of collections' own law ([Agent.mayBindFolders]).
+const standingPlacementLaw = "placing work in a folder needs the person's answer in a conversation"
 
 // standingTerms is the card's lines about work that runs: what one run does,
 // the report and who writes it, the folder, and the rules that reach it now.
@@ -180,16 +215,18 @@ func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place sta
 		return nil
 	}
 	terms := []string{standingDoesTag + clip(oneLine(item.Does.Brief), standingCardClip)}
-	if report := item.Does.Report; report != "" {
-		terms = append(terms, standingReportTag+report+" — "+standingReportWho)
+	report := standingReportNone
+	if item.Does.Report != "" {
+		report = item.Does.Report + " — " + standingReportWho
 	}
+	terms = append(terms, standingReportTag+report)
 	folder := standingFolderNone
 	if len(place.folders) > 0 {
 		folder = place.names()
 		if place.inherited {
 			folder += standingFolderInherited
 		}
-		folder += standingFolderReach
+		folder += place.reach()
 	}
 	terms = append(terms, standingFolderTag+folder)
 	rules, err := a.standingRulesIfPlaced(ctx, item, place.ids())
@@ -201,6 +238,12 @@ func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place sta
 		terms = append(terms, standingRulesTag+"could not be read: "+oneLine(err.Error()))
 	case len(rules) == 0:
 		terms = append(terms, standingRulesTag+standingRulesNone)
+	case len(rules) > governingHoldLimit:
+		// THE GATE EVERY RUN WOULD MEET, SAID BEFORE THE YES. A run whose
+		// rules outnumber what a run may carry stops before it acts
+		// ([Agent.standingBlockLocked]); a card that quoted five of them and
+		// said nothing would be agreeing to work that can never run.
+		terms = append(terms, fmt.Sprintf("%s%d reach this work, more than the %d a run can carry — every run would stop until they are narrowed", standingRulesTag, len(rules), governingHoldLimit))
 	default:
 		for at, rule := range rules {
 			if at == standingCardRules {
@@ -312,4 +355,46 @@ func (a *Agent) placeInFolders(ctx context.Context, id string, place standingPla
 		}
 	}
 	return nil
+}
+
+// standingNamedReport refuses work that runs whose call left does.report out
+// while the person's own sentence names a file — "keep reports/inbox.md
+// current" set up as work that keeps nothing. The refusal names the field and
+// both honest answers, so the model sends one of them: the path when each run
+// keeps that file current, or "" when the work only reads it. A file the watch
+// itself reaches is what wakes the work, never its report, and is not asked
+// about.
+func standingNamedReport(parsed standArguments, item standing.Item) string {
+	if item.Does.Kind != standing.ActionTask || parsed.Does.Report != nil {
+		return ""
+	}
+	for _, field := range strings.Fields(parsed.Words) {
+		path := strings.TrimRight(strings.Trim(field, "\"'`“”‘’,;:!?()[]{}<>"), ".")
+		if standingLooksLikeFile(path) && !item.Watches(path) {
+			return "Invalid arguments: their sentence names " + path + " — send does.report " + strconv.Quote(path) +
+				" if each run keeps that file current, or does.report \"\" if the work only reads it"
+		}
+	}
+	return ""
+}
+
+// standingLooksLikeFile answers whether one word of a sentence is a file path:
+// a name with an extension that starts with a letter ("inbox-report.md",
+// "notes/today.txt"), and not a web address, a pattern, a version or an
+// abbreviation ("v1.2", "e.g").
+func standingLooksLikeFile(word string) bool {
+	if word == "" || strings.Contains(word, "://") || strings.ContainsAny(word, "*?[") {
+		return false
+	}
+	ext := filepath.Ext(word)
+	name := strings.TrimSuffix(filepath.Base(word), ext)
+	if len(ext) < 2 || len(ext) > 9 || len(name) < 2 || !unicode.IsLetter(rune(ext[1])) {
+		return false
+	}
+	for _, r := range ext[1:] {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
