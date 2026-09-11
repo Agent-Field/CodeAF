@@ -41,9 +41,9 @@ setup)
   printf 'unicode path\n' > "$root/modal project/ユニコード long folder name/naïve 文件.txt"
   chmod 000 "$root/modal project/no access" 2>/dev/null || true
   # A 16x8 true-colour PNG exercises aspect fitting without relying on native graphics protocols.
-  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/fGkeAAAAFUlEQVR42mP8z8AARMAgYKSAAQAA//8DABJAAf8lKQAAAABJRU5ErkJggg==' \
+  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/FOjAAAAAJklEQVR42mO45uFBEmIgWYPHtTySEBkaKq6RhEjXcO2IB0mIZA0AGHTNQaRA4NAAAAAASUVORK5CYII=' \
     | base64 --decode > "$root/modal project/pixel.png" 2>/dev/null || \
-    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/fGkeAAAAFUlEQVR42mP8z8AARMAgYKSAAQAA//8DABJAAf8lKQAAAABJRU5ErkJggg==' \
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/FOjAAAAAJklEQVR42mO45uFBEmIgWYPHtTySEBkaKq6RhEjXcO2IB0mIZA0AGHTNQaRA4NAAAAAASUVORK5CYII=' \
       | base64 -D > "$root/modal project/pixel.png"
   printf '%s\n' "$root/modal project"
   ;;
