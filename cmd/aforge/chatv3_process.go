@@ -269,10 +269,32 @@ func (p *v3Process) setModelSources(sources modelsource.Set) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Settings.Sources = sources
-	p.Shelf.setSources(sources)
+	if p.Shelf != nil {
+		p.Shelf.setSources(sources)
+	}
 	for _, agent := range p.agents {
 		agent.SetSources(sources)
 	}
+}
+
+// refreshModelSources re-reads this process's own profile and makes that
+// answer live in every conversation it retains.
+//
+// The surface on the linked-local road writes a newly connected service into
+// the same profile, but it cannot push an address or key into this process
+// without inventing a second authority and a new wire message. Re-resolving at
+// the engine keeps key-environment precedence and profile writes behind
+// [config.ResolveSources], the one door that already owns them.
+func (p *v3Process) refreshModelSources() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	profileDir := p.ProfileDir
+	key := p.Settings.APIKey
+	base := p.Settings.BaseURL
+	p.mu.Unlock()
+	p.setModelSources(config.ResolveSources(profileDir, key, base))
 }
 
 func (p *v3Process) currentAccount() (string, modelsource.Set) {

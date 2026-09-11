@@ -134,6 +134,22 @@ type WrappedAgent interface {
 type Engine struct {
 	// Agent is the conversation the surface starts on. Required.
 	Agent WrappedAgent
+	// RefreshModelSources updates the engine's own agents from its own profile
+	// immediately before a model-set call. It is nil for engines with no
+	// profile behind them and changes no wire shape: the existing SetModel call
+	// is the notification that a local surface has already written the row.
+	RefreshModelSources func()
+	// RefreshApprovals updates this conversation's running gate from the engine's
+	// own profile immediately before a rule-scoped consent answer is applied.
+	// It is nil for engines with no profile behind them and changes no wire
+	// shape: the existing consent answer is the notification that a local
+	// surface has already written the rule.
+	RefreshApprovals func()
+	// ProfileDir is the profile directory this engine process resolved. It is
+	// carried in Welcome so a linked-local surface writes every local row back
+	// to the profile the running conversation actually reads. A remote surface
+	// does not use the path for local writes.
+	ProfileDir string
 	// Workspace is the directory the engine resolved and works in — the answer
 	// to the path the hello asked for, which the welcome carries back.
 	Workspace string
@@ -1107,6 +1123,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Note:                       note,
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
+		ProfileDir:                 sess.engine.ProfileDir,
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
 		Held:                       sess.held.waitingFor(s.arrived),
@@ -2380,6 +2397,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		if refresh := sess.engine.RefreshModelSources; refresh != nil {
+			refresh()
+		}
 		agent.SetModel(model)
 		// AND EVERY SURFACE IS TOLD, not only the one that turned the knob. Two
 		// windows on one conversation is a shape this protocol supports
@@ -2452,6 +2472,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		args, err := arg[ConsentArgs](call)
 		if err != nil {
 			return nil, err
+		}
+		if args.Scope == session.ConsentRule {
+			// THE RULE MUST STAND BEFORE THE CALL IS RELEASED. A rule-scoped
+			// answer deliberately leaves no session-wide memo, because the
+			// surface has already written the narrower rule. Re-read that row
+			// before delivery so the next matching call sees it.
+			if refresh := sess.engine.RefreshApprovals; refresh != nil {
+				refresh()
+			}
 		}
 		agent.ResolveConsentRemember(args.ID, args.Allow, args.Scope)
 		s.answered(HeldConsent, args.ID, "")
