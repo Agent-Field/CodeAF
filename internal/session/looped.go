@@ -633,7 +633,10 @@ func (w *loopWatch) treeMoved() bool {
 		return false
 	}
 	if w.dirtAhead == nil {
-		w.dirtAhead = offpath.Take(func() string { return worktreeDirtReading(w.dir) })
+		// The reading and the directory are taken HERE, on this side of the
+		// goroutine, so nothing the gatherer touches can be written while it runs.
+		read, dir := worktreeDirtReading, w.dir
+		w.dirtAhead = offpath.Take(func() string { return read(dir) })
 	}
 	dirt, settled := w.dirtAhead.Settle(worktreeDirtJoin)
 	if !settled {
