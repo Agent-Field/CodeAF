@@ -11,7 +11,6 @@ invalidates:
   - "A `control.Report` was the end of the story: nothing could be started, so nothing happened and the question went on being answered at the pace that earned the report. A report is now also a move — the serving machine is written onto the plan's move log (asked of `control.Next`, so a question with nowhere else to go keeps the only machine it has) and the person is told."
   - "There was no word for a stream that is writing too slowly to read. `writing` was false about the wait and `all lanes slow · still waiting` was false about the silence, so the surface said nothing: the measured call showed one nudge and then eighty-six seconds. `provider.PhaseBelowPace` is the third word and `internal/tui3` draws it as `answering slowly · nowhere faster · 1m 26s`."
   - "A watch belonged to an ARM and an arm can send many times, so every attempt after the first ran inside the first one's once-only flags: `streamWatch.acted` keeps the FIRST act, so a later attempt's row could never be written, and the controller's own report and purse refusal are once per controller. The 363-second second attempt of 2026-09-11 carried no action, no reason and no silence at all. Every attempt now gets its own controller, dated from the moment its own bytes leave (`streamWatch.attempt`, called from `Client.send`); what belongs to the QUESTION — the deadline and the move log — is untouched."
-  - "The flat `Belief.TTFT` / `Belief.Rate` the chooser ranks on was a SECOND Kalman filter over the same number the four-level chain holds, fed the same observation with the same noise and reaching a different answer — the chain absorbs about four fifths of a surprise where the flat belief absorbs a seventh. By the end of that afternoon the chain said six tokens a second and the belief the chooser reads still said eleven. The flat belief is now the chain read flat (the `flatten` the chooser already used for cold pairs), for the quantity a sighting actually taught; `stepTo` is deleted with the second filter it existed to repair."
   - "`TestTheScreenshotScenarioAnswersThroughTheFourthMachine` was red on dev: the walk it stages died on the first machine's 404, because the walk was bounded by that rolling allowance. It now answers through the fourth machine, and its phase assertion is corrected — a walk between MACHINES says `switching` and names the one it is going to, which is the better sentence; the ordinal belongs to the retry loop, which is not what moved."
 ---
 
@@ -21,11 +20,17 @@ expecting sixty a second) and the two cases that must NOT fire; `internal/provid
 stages the same wire through `lanestub` twice — once where the call's budget affords the
 rescue and the fast machine answers, once where it may spend nothing and the row, the
 move log and the person's own line all have to carry it; `internal/lane` replays the
-09:33 series and the 14:29 sighting and asserts that the two accounts of one rate agree
-and that both land on what the answer measured.
+09:33 series and the 14:29 sighting and asserts the chain the controller waits against
+learns the collapse in one sighting.
 
-What is deliberately NOT here: the change-point alarm still cannot fire on a step the
-chain absorbs in one observation (its CUSUM peaked at 3.4 against an alarm of 4.0 and
-then decayed, which is what `rate/drift` shows in the real belief file). It no longer
-matters for this defect — there is no second filter left for it to repair — and re-sizing
-it is a fit for the simulator rather than a change to make from one afternoon.
+What is deliberately NOT here, measured and written down at `lane.stepTo` rather than
+patched: the flat `Belief.Rate` the CHOOSER ranks on is a separate, slower account of the
+same number, and it still lags. A run of consistent sightings makes that single filter
+confident — in this very replay its variance fell to 0.011 against an observation noise
+of 0.36, a gain of three per cent — and its one escape hatch is the chain's change point,
+which on a collapse like this one never fires: the CUSUM peaks at 3.4 against an alarm of
+4.0 and then decays, because a chain that absorbs nine tenths of a surprise in one
+observation leaves no run of surprises to accumulate. Lowering the alarm buys false steps
+on ordinary noise and giving the flat belief its own change point is a third account of
+one number, so the fix belongs where the two accounts are reconciled — and that moves how
+every lane is ranked, which is a question for `bench/lanelab` and not for one afternoon.

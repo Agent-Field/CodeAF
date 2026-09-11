@@ -94,7 +94,8 @@ func TestEveryAttemptGetsItsOwnController(t *testing.T) {
 		t.Fatalf("the second attempt is dated %s rather than the moment its own bytes left (%s)", watch.began, second)
 	}
 	if watch.tokens != 0 || watch.visible != 0 || watch.beats != 0 || watch.served != "" {
-		t.Fatalf("the second attempt started holding the first one's stream: %+v", *watch)
+		t.Fatalf("the second attempt started holding the first one's stream: %d tokens, %d visible, %d beats, served by %q",
+			watch.tokens, watch.visible, watch.beats, watch.served)
 	}
 	if watch.deadline.Before(second) {
 		t.Fatalf("the second attempt's deadline %s is already past at %s", watch.deadline, second)
