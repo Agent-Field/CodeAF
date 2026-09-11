@@ -299,7 +299,25 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// the whole of how long, [control.Next] the whole of what, and neither of
 	// them is a number this file holds.
 	plan := c.dispatchPlan(ctx, request, knobs)
-	total := len(plan.Serving())
+	// ── HOW MANY MACHINES THERE ARE, AS HONESTLY AS THIS PROCESS CAN SAY ────
+	//
+	// It used to be the attempt ceiling — `2 of 6`, where six was a statement
+	// about patience and not about anything a person could count — so a walk of
+	// three machines read as though half of something was left over.
+	//
+	// THE SET IS THE ANSWER WHERE THERE IS ONE: a demand, or the candidates the
+	// chooser drew. Where there is none the pool belongs to the router and its
+	// width is genuinely unknown to us, so the honest denominator is what this
+	// CALL has met — the machines that have refused it, plus the one it is about
+	// to ask. It grows as the walk discovers the pool, which is the truth: "the
+	// third of the three I know about" is a real thing to say, and `3 of 6` is
+	// not.
+	width := func() int {
+		if named := len(plan.Serving()); named > 0 {
+			return named
+		}
+		return knobs.refused.count() + 1
+	}
 	// ── A WAIT WE ASKED FOR IS SPENT WHETHER OR NOT THE CLOCK MOVED ─────────
 	//
 	// [Client.wait] is a seam, and what a test usually fills it with is a
@@ -368,7 +386,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// rather than a number it cannot stand behind.
 			now := c.clock()
 			notePhase(ctx, c.modelFor(request), PhaseRetrying,
-				ordinalOf(attempts, total), now, now, "")
+				ordinalOf(attempts, width()), now, now, "")
 			providerWait = 0
 		} else if attempt > 0 && !reconnected {
 			// AND THE WAIT THE MACHINE ITSELF NAMED OUTRANKS OUR DOUBLING. A
@@ -408,7 +426,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 			now := c.clock()
 			notePhase(ctx, c.modelFor(request), paced,
-				ordinalOf(attempts, total), now, now.Add(delay), "")
+				ordinalOf(attempts, width()), now, now.Add(delay), "")
 			// Spent. It described one moment to come back at, and coming back
 			// is what we are doing; carrying it forward made a single 429 set
 			// the floor for every remaining attempt of the call.
