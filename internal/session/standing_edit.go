@@ -71,10 +71,10 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	if store == nil {
 		return "there is nothing here to read", true, nil
 	}
-	if strings.TrimSpace(parsed.ID) == "" {
-		return "Invalid arguments: edit names the item with id — its id, or the person's own words for it", true, nil
-	}
-	current, problem := a.standingNamed(standArguments{ID: parsed.ID})
+	// AN EDIT IS NAMED AS PAUSE, RESUME AND STOP ARE: by id, else by the
+	// person's own words. Three of five live lifecycle runs sent the item's
+	// sentence in words and no id, as they do for the other three.
+	current, problem := a.standingNamed(parsed)
 	if problem != "" {
 		return problem, true, nil
 	}
@@ -135,9 +135,10 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		return "nothing was changed: " + err.Error(), true, nil
 	}
 	// The item's log, in the terminal's grammar ("revised at the terminal to
-	// version N: …"), with the person's own words for the change after it.
+	// version N: …"), with the person's own words for the change after it —
+	// unless those words are the item's own sentence, sent to name it.
 	logged := fmt.Sprintf("revised in the chat to version %d: %s", revised.SpecRevision, strings.Join(changed, ", "))
-	if words := strings.TrimSpace(parsed.Words); words != "" {
+	if words := strings.TrimSpace(parsed.Words); words != "" && words != current.Words {
 		logged += " — " + strconv.Quote(words)
 	}
 	_ = store.Log(revised.ID, logged)
