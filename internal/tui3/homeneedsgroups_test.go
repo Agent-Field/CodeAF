@@ -80,7 +80,7 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 	if got := strings.Count(frame, "1 allow once"); got != 1 {
 		t.Fatalf("the consent's chips are drawn on %d rows:\n%s", got, frame)
 	}
-	if got := strings.Count(frame, session.LandingYesKey+" accept"); got != 0 {
+	if got := strings.Count(frame, needsYesKey+" accept"); got != 0 {
 		t.Fatalf("a landing nobody is standing on drew its answers:\n%s", frame)
 	}
 	// AND THE CURSOR OUTRANKS THE TOP ROW. Walked onto the landing, the chips
@@ -94,7 +94,7 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 	if strings.Count(frame, "1 allow once") != 0 {
 		t.Fatalf("the chips stayed on the top question with the cursor on a landing:\n%s", frame)
 	}
-	if got := strings.Count(frame, session.LandingYesKey+" accept"); got != 1 {
+	if got := strings.Count(frame, needsYesKey+" accept"); got != 1 {
 		t.Fatalf("the landing under the cursor drew its answers %d times:\n%s", got, frame)
 	}
 }

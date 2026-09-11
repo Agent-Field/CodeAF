@@ -19,7 +19,7 @@ answering one question you would ask walking up to a colleague's desk:
                                                  since you left · 12h
  to check · 3       finished, nobody has checked it  Spark Fleet Ssh Audit · 2 hosts up, 1 not
    tier-B subs                      3 files · 1d    made apartments-minto-street.md
-   built the tier-B flow   a accept   n not right
+   built the tier-B flow   1 accept   2 not right
    package release radar                      1d  spend                    today $0.14 of $20
    1 more · 15 older · tasks                         ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10 · loudest mon $9.20
                                                   opus 63%  ·  3 chats and 1 task today
@@ -120,13 +120,16 @@ to, and its two answers at the right:
 
 ```
    tier-B subs                                                       3 files · 1d
-   built the tier-B subscription flow          a accept   n not right
+   built the tier-B subscription flow          1 accept   2 not right
 ```
 
-The two words are the task's own (`accept`/`not right` for work nobody could check,
-`resolve it`/`drop it` for a branch that would not fasten) and the two keys are
-**`a` and `n`, the same keys the landing card and the task's record take** — so what you
-learn here works everywhere else. `enter` opens the conversation on the task's record.
+The two words are the task's own — `accept`/`not right` for work nobody could check,
+`resolve it`/`drop it` for a branch that would not fasten. **The two keys are `1` and `2`
+here and `[a]`/`[n]` everywhere else**, and that is deliberate: a bare letter on home always
+types, because the box under it promises "type to search or start something new" and the
+promise has no asterisk. A digit drawn on the row is the one printable exception home makes,
+so a landing takes `1` and `2` on this screen and its own letters on its card, in its room
+and on its record. `enter` opens the conversation on the task's record.
 
 **A landing wears no mark.** The `?` means something has stopped and will not move; this
 work has already finished.
@@ -147,12 +150,16 @@ as an ordinary line once it has been answered or has aged out of the group.
 **Exactly one row of the frame draws its answers** — `1 allow once  2 always  3 deny`,
 three at most, then `enter` — and **the key answers that row from anywhere on home**,
 wherever the cursor is. Every other row says `enter` instead, so one `1` is never on the
-screen twice with two meanings. The answers are that question's own, on its own keys:
-there is no home-specific `y`/`n` translation anywhere on this screen.
+screen twice with two meanings. The words are that question's own and nothing here is put
+into a vocabulary of home's; there is no `y`/`n` anywhere on this screen.
+
+**The keys are the question's own wherever those keys are digits**, which is every card a
+conversation stops on. The one place they are not is a landing in `to check`: its keys are
+`[a]`/`[n]` everywhere else and `1`/`2` here, because a bare letter on home types.
 
 **Which row is it?** The row under the cursor when that row can take an answer, and the top
 answerable row otherwise. So a digit works on a frame you have not walked, and once you have
-walked onto a landing in `to check` its `a`/`n` are the keys that are live.
+walked onto a landing in `to check` its `1`/`2` are the keys that are live.
 
 Every kind of question can be answered this way: the whole question is in the file home
 reads, and the answer goes back through the one door that knows which part of the engine
@@ -175,7 +182,7 @@ With something typed in the box a digit is a character going into it, never an a
 `to check` row opens the conversation that ran the work, on the task's record, where the
 question, its whole report and its two answers are — whatever project it belongs to, with
 the conversation you were in left running behind it. You do not have to open it to answer:
-`a` and `n` on the row itself send the same two answers.
+`1` and `2` on the row itself send the same two answers.
 
 A conversation's own question opens that conversation, where the question is waiting above
 the box. Work that landed also reaches home through **the `since you left` panel**: a line
@@ -197,7 +204,7 @@ Three ways to settle it, and they are the same door:
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
   `[s] tell it`, which opens the task's page rather than answering, and a dimmer
   `[d] let aforge decide this one`;
-- **home** — walk onto its row in `to check` and press `a` or `n`. The conversation applies
+- **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
   the next time that conversation runs, and the row says
   `answered · waiting for it to pick that up` meanwhile;

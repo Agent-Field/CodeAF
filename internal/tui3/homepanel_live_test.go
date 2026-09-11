@@ -212,7 +212,8 @@ func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
 func TestALandingGrowsItsReportAndAnswersUnderTheCursor(t *testing.T) {
 	l := newLiveLab(t)
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
-		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
+		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute),
+		Outcome: "Reseeded the generator and the sieve is stable over a thousand runs."})
 	a := l.open()
 	at := -1
 	for i, line := range a.home.lines {
@@ -223,17 +224,16 @@ func TestALandingGrowsItsReportAndAnswersUnderTheCursor(t *testing.T) {
 	if at < 0 {
 		t.Fatal("the landing is not a line of the column")
 	}
-	if frame := homeText(a); homeLineAfter(frame, "fix the flaky sieve") != "" &&
-		strings.Contains(homeLineAfter(frame, "fix the flaky sieve"), "nobody could check it") {
+	if frame := homeText(a); strings.Contains(frame, "Reseeded the generator") {
 		t.Fatalf("the landing grew its line with the cursor elsewhere:\n%s", frame)
 	}
 	a.home.cursor = at
 	frame := homeText(a)
 	under := homeLineAfter(frame, "fix the flaky sieve")
-	if !strings.Contains(under, "nobody could check it") {
-		t.Fatalf("the cursor row did not grow its report:\n%s", frame)
+	if !strings.Contains(under, "Reseeded the generator") {
+		t.Fatalf("the cursor row did not grow the report's first sentence:\n%s", frame)
 	}
-	if !strings.Contains(under, session.LandingYesKey+" accept") || !strings.Contains(under, session.LandingNoKey+" not right") {
+	if !strings.Contains(under, needsYesKey+" accept") || !strings.Contains(under, needsNoKey+" not right") {
 		t.Fatalf("the grown line does not carry the ask's own answers:\n%s", frame)
 	}
 }
@@ -256,8 +256,13 @@ func TestALandingUnderTheCursorTakesItsOwnAnswerKey(t *testing.T) {
 		}
 	}
 	homeText(a)
-	if _, took := a.homeGridAnswer(session.LandingYesKey); !took {
-		t.Fatal("the landing under the cursor did not take its own accept key")
+	// AND A BARE LETTER STILL TYPES, which is why the key on this screen is a
+	// digit: `a` is the landing's key everywhere else and must not be one here.
+	if _, took := a.homeGridAnswer(session.LandingYesKey); took {
+		t.Fatal("a bare letter answered a landing from home")
+	}
+	if _, took := a.homeGridAnswer(needsYesKey); !took {
+		t.Fatal("the landing under the cursor did not take the accept it draws")
 	}
 	if len(left) != 1 || left[0] != string(session.QuestionLanding)+"/4/"+session.LandingYesKey {
 		t.Fatalf("the accept did not reach the conversation's doorstep as a landing answer: %v", left)

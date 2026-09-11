@@ -241,16 +241,20 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// screen saying the opposite of what was true.
 	cell := &homeCell{panel: panelNeeds, title: title, right: needsCallFacts(entry, asked, now),
 		key:   needsCallKey + entry.ID,
-		grows: true, sub: needsCallSub(status), answers: needsCallAnswers(status)}
+		grows: true, sub: needsCallSub(entry, status), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}
 }
 
-// needsCallSub is the line a landing grows under the cursor: the first sentence
-// of what the work came to, and the engine's own reason for the call where the
-// work left no report.
-func needsCallSub(status session.TaskStatus) string {
+// needsCallSub is the line a landing grows under the cursor: THE FIRST SENTENCE
+// OF WHAT THE WORK CAME TO, which is what a person needs in order to say whether
+// it holds. The engine's own reason for the call stands in where the work left no
+// report, and the tier's word where there is neither.
+func needsCallSub(entry session.TaskIndexEntry, status session.TaskStatus) string {
+	if sub := switcherFirstLine(entry.Outcome); sub != "" {
+		return sub
+	}
 	if sub := switcherFirstLine(status.Reason); sub != "" {
 		return sub
 	}
@@ -277,23 +281,56 @@ func needsCallFacts(entry session.TaskIndexEntry, asked, now time.Time) string {
 	return files + rowSep + age
 }
 
-// needsCallAnswers is the two answers a landing offers, IN THE TASK'S OWN WORDS
-// AND ON TASK-STATES' OWN KEYS.
+// The two keys a landing is answered with ON HOME, and the landing keys they
+// stand for.
+//
+// ── WHY THEY ARE DIGITS HERE AND LETTERS EVERYWHERE ELSE ────────────────────
+//
+// A landing is `[a] accept · [n] not right` on its card, in its room and on its
+// record, and [session.LandingYesKey] is that letter (answers.go: the landing
+// keys are task-states' own, letter for letter). HOME CANNOT OFFER A LETTER. Its
+// foot promises "type to search or start something new" and the promise has no
+// asterisk — a bare letter on this screen always types, whatever the cursor is
+// resting on (home.go's [app.homeKey] states it), and the ONE printable
+// exception it allows is a digit drawn on the row itself. An `a` that sometimes
+// accepted a landing and sometimes began "a site for my café" is the mode that
+// law exists to forbid.
+//
+// So the KEY is home's and the WORDS are the task's: `1 accept   2 not right`,
+// read off [session.TaskAsk], mapped back to the landing's own keys before the
+// answer leaves this surface ([needsLandingKey]). Nothing about the answer is
+// renumbered — only the key a person presses on THIS screen, which is the same
+// bargain the drawn digit has always been.
+const (
+	needsYesKey = "1"
+	needsNoKey  = "2"
+)
+
+// needsCallAnswers is the two answers a landing offers, in the task's own words
+// on home's own two digits.
 //
 // THE WORDS ARE THE ASK'S ([session.TaskAsk.Yes] and .No, filled in by the
 // engine for the row's own shape — `accept` / `not right` for work nobody could
 // check, `resolve it` for a branch that would not fasten) and this file spells
-// none of them. THE KEYS ARE [session.LandingYesKey] AND [session.LandingNoKey],
-// letter for letter, because a landing is answered with the same two keys
-// wherever it is drawn (answers.go states the law from the writing end) and a
-// surface that renumbered them to `1` and `2` would be teaching a person a key
-// that does not work on the record they open next.
+// none of them. A row whose ask has no words offers nothing, which is the
+// absence law: there is no default pair to fall back on.
 func needsCallAnswers(status session.TaskStatus) string {
 	yes, no := strings.TrimSpace(status.Ask.Yes), strings.TrimSpace(status.Ask.No)
 	if yes == "" || no == "" {
 		return ""
 	}
-	return session.LandingYesKey + " " + yes + homeCellGap + session.LandingNoKey + " " + no
+	return needsYesKey + " " + yes + homeCellGap + needsNoKey + " " + no
+}
+
+// needsLandingKey is home's digit as the landing key the engine answers to.
+func needsLandingKey(key string) (string, bool) {
+	switch key {
+	case needsYesKey:
+		return session.LandingYesKey, true
+	case needsNoKey:
+		return session.LandingNoKey, true
+	}
+	return "", false
 }
 
 // needsChecking is every landing the `to check` group is drawing, by the
@@ -392,8 +429,8 @@ func needsLandingQuestion(line homeLine) (session.PresenceQuestion, bool) {
 		return session.PresenceQuestion{}, false
 	}
 	return session.PresenceQuestion{Kind: session.QuestionLanding, ID: id, Options: []session.AnswerOption{
-		{Key: session.LandingYesKey, Label: yes},
-		{Key: session.LandingNoKey, Label: no, Safe: true},
+		{Key: needsYesKey, Label: yes},
+		{Key: needsNoKey, Label: no, Safe: true},
 	}}, true
 }
 
@@ -405,8 +442,8 @@ func needsAnswerWords(clause string) (yes, no string, ok bool) {
 	if len(parts) != 2 {
 		return "", "", false
 	}
-	yes = strings.TrimPrefix(parts[0], session.LandingYesKey+" ")
-	no = strings.TrimPrefix(parts[1], session.LandingNoKey+" ")
+	yes = strings.TrimPrefix(parts[0], needsYesKey+" ")
+	no = strings.TrimPrefix(parts[1], needsNoKey+" ")
 	return yes, no, yes != "" && no != ""
 }
 
@@ -431,7 +468,8 @@ func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	label := question.Label(key)
-	if label == "" {
+	answer, ok := needsLandingKey(key)
+	if label == "" || !ok {
 		return nil, false
 	}
 	row := a.homeTrue(line.row)
@@ -445,9 +483,9 @@ func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
 		if !ok {
 			return nil, false
 		}
-		answer := session.Answer{At: time.Now(), Kind: session.QuestionLanding, ID: question.ID,
-			Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson}
-		if err := doors.ResolveQuestion(answer); err != nil {
+		sent := session.Answer{At: time.Now(), Kind: session.QuestionLanding, ID: question.ID,
+			Key: answer, Picked: []string{answer}, DecidedBy: session.DecidedByPerson}
+		if err := doors.ResolveQuestion(sent); err != nil {
 			return nil, false
 		}
 		a.home.say(answerSentWord+label, "")
@@ -457,7 +495,7 @@ func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
 	if a.leaveAnswer == nil || dir == "" {
 		return nil, false
 	}
-	if err := a.leaveAnswer(dir, question.Kind, question.ID, key); err != nil {
+	if err := a.leaveAnswer(dir, question.Kind, question.ID, answer); err != nil {
 		a.home.say(answerFailedWord, dir)
 		return nil, true
 	}
