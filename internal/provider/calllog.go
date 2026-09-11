@@ -331,6 +331,18 @@ func (c *Client) record(facts recordFacts) {
 	if facts.phase == calllog.PhaseStart {
 		c.closeOpenAttempt(facts.ctx, facts.knobs.trace, endedHopped)
 	}
+	// AND WHOEVER ASKED TO WATCH THIS CALL RUN IS TOLD FROM THE SAME TWO ROWS
+	// (callprogress.go). This door is the only writer the log has and its law is
+	// that every attempt gets a start row and exactly one row that ends it — so
+	// it is also the only place in the process that can say, once and honestly,
+	// that a call went out and how it came back. The token counts between the
+	// two come from the read loop's own watch, which is where they are already
+	// counted. One nil check on every call nobody is watching.
+	if facts.phase == calllog.PhaseStart {
+		streamWatchFrom(facts.ctx).callOpened(facts.began)
+	} else {
+		streamWatchFrom(facts.ctx).callClosed(callEndOf(facts), facts.err)
+	}
 	// Built even when the file is off: the log's in-memory half (calllog.Last)
 	// is what the headless waiting line reads, and the file's own switch is
 	// read where the file is written.
