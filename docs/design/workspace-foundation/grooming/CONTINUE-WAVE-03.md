@@ -1,5 +1,32 @@
 # Continue the local-file E2E wave
 
+## Third round — NOT A CLEAN SIGN-OFF, and what this round changed (2026-09-11, about 00:45 UTC)
+
+**The second-review pass below was not the end.** The round-2 review of `c7ec2566f` found its four fixes credible and correctly wired, but not a clean sign-off. Three blockers remained in the publish seam, and the owner added the scale audit's laws L1–L3 as the bar. The same session (`847eb4c6`) answered it. The lane is at **`4701f270d`** (source `84b423d87`), merged here with `git diff 4701f270d HEAD -- ':!docs' ':!*.md'` empty.
+
+- **B1, a report kept with its turn.**
+  - `turnReport` and `turnWords` carry how the turn that produced them ended, and the reader closes each turn with one `closeTurn`.
+  - A later turn rehabilitates a cut report only by writing a new report.
+- **B2, truthful no-report outcomes.** Output-limit, cap and cut-off bind orders with no report. Those runs come to `failed` with their code, and `withheld` is recorded for any unclean run.
+- **B3, fenced acts (L2) and compare-and-swap (F1).**
+  - `effectFence` rechecks the context and the stop at the rename and at the note. The stop is read under the item flock (`Store.UnlessStopped`).
+  - The rename replaces the file only if it still matches the last receipt's sha256, or is absent. Otherwise the run waits on the person with the draft held (`report-changed`).
+- **Scale audit.**
+  - F2 / L3: the inbox fold consumes on the settle of its durable deliveries; answers are consumed after they are applied; stale staged files are re-read.
+  - F4 / L4: a torn journal tail goes to a `.torn` sidecar; there is one sync per turn and one before a settle; standing writes sync file and folder.
+  - F7 / L8: run numbers come from a recorded counter, are ordered by number, and are six digits.
+  - F3 was skipped on purpose: it is dev-side memory code this branch never delivers to dev, and it is noted for the dev-side wave.
+- **Test repairs:** both timing-fragile tests now assert the durable record, and a mutation check shows each still fails on a real loss.
+- **Regressions:** thirteen fail at `c7ec2566f` and pass at `84b423d87`; two positive controls pass at both ([receipt](validation/wave03-publish-old-logic-c7ec2566f.log)).
+- **Validation:** focused validation at `84b423d87` is 11/11 ([receipt](validation/wave03-validate-round3.log)).
+- **Live acceptance, ten serial runs:** **7/10** at `84b423d87` on `deepseek/deepseek-v4-flash`, $0.0941 in total. The three failures, run05, run07 and run08, are **one systematic defect that predates this round, at a 30% rate**. In each, the resumed pass (run `000003`) called a tool the unattended posture does not grant: `commit` in two of them, `bash` in one. The refusal read `nobody to ask`, and a complete `<report>` was withheld as `waiting-on-person`. It is **not fixed here: it is wave-04 item 1**, under the owner's Q3 ruling that an ungranted tool is absent from the belt rather than refused, and validator finding S09c is the same class ([table and autopsy](BUILD-WAVE-03.md), [summary](validation/wave03-live8-summary.txt)).
+- **Known, recorded:**
+  - A person's copy of the report blocks publication until it is moved aside.
+  - Same-turn truncation stickiness after `checkpointReopen`; it can only over-withhold.
+  - Cross-conversation duplicate project folds; a duplicate, never a loss.
+  - The instant between compare and rename.
+  - `TestSessionFileRoundTrip` was red before this round (context_exposure lines) and is fixed.
+
 ## Second review — NOT DONE, and what the pass after it changed (2026-09-10, about 23:10 UTC)
 
 **The completion below was premature.** An independent review of `b48387207` confirmed that blockers 1–2 were fixed, then returned **NOT DONE** on two new publish-path blockers. The same implementation session (`847eb4c6`) fixed them, and the lane is at **`c7ec2566f`** (source `40cd31e8c`). It is merged here by an ordinary `--no-ff` merge with no conflicts, and `git diff c7ec2566f HEAD -- ':!docs' ':!*.md'` is empty.
