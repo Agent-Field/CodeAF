@@ -6,6 +6,9 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 )
 
 // task_child_run.go is ONE NODE'S RUN, from the first request to the last report
@@ -68,14 +71,20 @@ type childRun struct {
 	// ([childRun.tellSpend]), so a step that moved no money says nothing.
 	spendTold float64
 
-	changed  []string
-	seen     map[string]bool
-	ledger   *progressLedger
-	lastDirt string
-	failure  error
-	stopped  string
-	steps    int
-	idle     int
+	changed []string
+	seen    map[string]bool
+	ledger  *progressLedger
+	// tree is the node's working copy, read at most once a batch ([treeWatch]).
+	// inFlight counts the calls this batch has begun and not yet finished, and
+	// treeAsked says the batch's one reading has been spent — a batch is the
+	// calls between the first begin after nothing was open and the last end.
+	tree      *treeWatch
+	inFlight  int
+	treeAsked bool
+	failure   error
+	stopped   string
+	steps     int
+	idle      int
 	// ranCheck says this node had been RUNNING its work — a build, a test, a
 	// script — before anything was taken off its belt. It is what makes the
 	// landing's "unverified" sentence a fact rather than a guess: a node that
@@ -157,10 +166,15 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		log:           log,
 		seen:          map[string]bool{},
 		ledger:        newProgressLedger(),
+		tree:          newTreeWatch(dir),
 		effects:       newEffectLedger(),
 		deadline:      child.taskClockNow().Add(limits.deadline),
 		reportedParts: child.reportedChildren(),
 	}
+	// THE RUN OWNS ITS READING OF THE TREE and this is where it is joined: a
+	// reading still in flight when the run ends is stopped and waited for, so
+	// nothing the run started outlives it ([treeWatch.close]).
+	defer run.tree.close()
 	if err := run.open(instruction); err != nil {
 		return nil, "", err
 	}
@@ -327,8 +341,10 @@ func (r *childRun) observe(event Event) {
 	r.room.publish(event)
 	switch event.Kind {
 	case EventToolBegin:
+		r.batchBegan()
 		fmt.Fprintf(r.log, "· %s\n", event.Hint)
 	case EventToolEnd, EventToolFailed:
+		r.batchEnded()
 		r.step(event)
 		r.tellSpend()
 	case EventTurnDone:
@@ -421,9 +437,9 @@ func (r *childRun) step(event Event) {
 	// now — a step that moved the work arms the reading after it
 	// (novelty.go's [progressLedger]) — and a rule with state that
 	// is spelled out at its call site is a rule with two versions.
-	moved := worktreeMoved(r.dir, &r.lastDirt)
 	path, wrote := changedPath(event, r.dir)
 	saved := wrote && event.Kind == EventToolEnd
+	moved := r.batchMoved(event, saved)
 	// ── AND THE JOURNAL RECORDS WHAT THE STEP PRODUCED ──
 	//
 	// The line the checkpoint will read used to be the hand and its
@@ -438,7 +454,7 @@ func (r *childRun) step(event Event) {
 	// IT IS RECORDED HERE, after the saving call's file is known,
 	// because the effect of a call that saves something is the file and
 	// not the sentence it answered with.
-	effect, produced := effectPrintOf(event, r.dir, path, saved, moved, r.lastDirt)
+	effect, produced := effectPrintOf(event, r.dir, path, saved, moved, r.tree.fingerprint())
 	repeat := r.effects.saw(event.Tool, effect, produced)
 	r.evidence = append(r.evidence, effectEvidence(event, repeat))
 	if len(r.evidence) > 24 {
@@ -885,3 +901,163 @@ func (r *childRun) park(news <-chan struct{}) {
 // move together and can be driven from a test without a sleep standing in for
 // causality. Production leaves the seam nil and takes the real clock.
 func (r *childRun) now() time.Time { return r.child.taskClockNow() }
+
+// batchBegan and batchEnded keep the one piece of bookkeeping a batch needs:
+// which calls are in it. A BEGIN WITH NOTHING IN FLIGHT IS A NEW BATCH, and a new
+// batch has its one reading of the tree still to spend. A call the harness
+// refused without ever beginning it has no begin to balance, so the count never
+// goes below nothing.
+func (r *childRun) batchBegan() {
+	if r.inFlight == 0 {
+		r.treeAsked = false
+	}
+	r.inFlight++
+}
+
+func (r *childRun) batchEnded() {
+	if r.inFlight > 0 {
+		r.inFlight--
+	}
+}
+
+// batchMoved answers whether THIS call moved the node's working copy. THE TREE
+// IS ASKED ONCE A BATCH, by the first call of it that could have changed
+// anything ([couldChangeTheTree]), and that call is the one that moved it
+// ([treeWatch]). Every other call of the batch reads the answer as spent, which
+// is what a second `git status` of the same finished batch would have said.
+func (r *childRun) batchMoved(event Event, saved bool) bool {
+	if r.treeAsked || !couldChangeTheTree(event, saved) {
+		return false
+	}
+	r.treeAsked = true
+	return r.tree.moved(lane.Hysteresis)
+}
+
+// ── WHETHER A NODE'S WORKING COPY MOVED ─────────────────────────────────────
+//
+// treeWatch is the runner's answer to "is there something in this node's tree
+// now that was not there a batch ago", and it is asked of ONE BATCH, NEVER OF
+// ONE CALL.
+//
+// IT IS THE BACKSTOP UNDER THE TWO LISTS ABOVE: a hand nobody classified — a
+// service call that saves a report, a harness that writes itself, a tool added
+// next month — is still judged by the one thing that cannot be argued with,
+// which is whether the tree moved. Without it a node whose whole job was
+// producing files could be killed for having produced them with the wrong verb.
+//
+// ── IT USED TO RUN A `git status` FOR EVERY FINISHED CALL ──
+//
+// And every one of them read the same tree. A batch's end events all arrive
+// together, after the whole batch has run (loop.go sends them after the batch's
+// wait), so eight calls were eight processes answering one question, the first
+// of which — in call order, even a `read` — was credited with whatever the
+// batch had done. Ten to thirty milliseconds each on a small repository, seconds
+// each on a large one, on the goroutine that publishes the node's room and has
+// to reach the end of the stream before the node can finish.
+//
+// So the tree is read AT MOST ONCE A BATCH, at the first call of it that could
+// have changed anything ([couldChangeTheTree]), and that call is the one that
+// moved it; the rest of the batch reads the answer as spent. A batch made only
+// of reading hands asks nothing at all, which is most of a node's exploring.
+//
+// AND THE READING IS TAKEN BESIDE THE RUNNER, NOT IN FRONT OF IT. It is an
+// [offpath.Reading] — the one shape this build has for "a fact gathered in the
+// background and read when it is wanted" (looped.go's stuck watch reads the
+// same fingerprint through the same type) — settled with the same bound that
+// watch uses, [lane.Hysteresis], the wait nobody can feel. On a repository git
+// answers inside that, the answer is exactly what it was; on one it cannot, the
+// reading stays in flight and the next batch that asks takes it for nothing, so
+// a huge tree's movement is credited a batch late rather than holding the room.
+//
+// ── WHO OWNS WHAT ──
+//
+// The watch is the run's, used only from the run's drain goroutine, so it holds
+// no lock. It owns at most one reading at a time, run under its own context, and
+// [treeWatch.close] is the join point: the run closes it on its way out, which
+// kills a reading still in flight and waits for its goroutine, so nothing this
+// watch started outlives the node that started it.
+type treeWatch struct {
+	dir string
+	// dirt is the fingerprint at the last reading that settled. It starts empty,
+	// and a readable tree's fingerprint never is, so the first reading of a
+	// repository is movement — the runner's rule since before this type existed.
+	dirt string
+	// ahead is a reading in flight, and nil when none is out.
+	ahead *offpath.Reading[string]
+	// read is the reading itself: [worktreeDirtIn] for every run, and a stand-in
+	// for a test that has to count the readings or hold one back.
+	read func(ctx context.Context, dir string) string
+	// ctx ends every reading when the watch is closed.
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// newTreeWatch opens a watch on one node's working copy.
+func newTreeWatch(dir string) *treeWatch {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &treeWatch{dir: dir, ctx: ctx, cancel: cancel, read: worktreeDirtIn}
+}
+
+// fingerprint is the tree's fingerprint at the last reading that settled, and
+// "" for a run that has no watch.
+func (w *treeWatch) fingerprint() string {
+	if w == nil {
+		return ""
+	}
+	return w.dirt
+}
+
+// moved answers whether the tree is different from the last reading that
+// settled, and records the new fingerprint either way. It starts a reading when
+// none is out and waits for it at most `within`; a reading that is not in by
+// then answers "not moved" now and is the next call's for nothing.
+//
+// A non-git directory answers "" forever — stable, so it never moves the
+// counter either way, and such a node is judged on novelty alone.
+func (w *treeWatch) moved(within time.Duration) bool {
+	if w == nil || w.dir == "" {
+		return false
+	}
+	if w.ahead == nil {
+		ctx, dir, read := w.ctx, w.dir, w.read
+		w.ahead = offpath.Take(func() string { return read(ctx, dir) })
+	}
+	dirt, settled := w.ahead.Settle(within)
+	if !settled {
+		return false
+	}
+	w.ahead = nil
+	if dirt == w.dirt {
+		return false
+	}
+	w.dirt = dirt
+	return true
+}
+
+// close ends the watch: a reading still in flight is killed and its goroutine
+// waited for, which is quick because the process it was waiting on is gone.
+func (w *treeWatch) close() {
+	if w == nil {
+		return
+	}
+	w.cancel()
+	if w.ahead != nil {
+		_ = w.ahead.Wait()
+		w.ahead = nil
+	}
+}
+
+// couldChangeTheTree reports whether one finished call is the kind whose effect
+// on the working copy only the working copy can say — the calls a batch reads
+// the tree for.
+//
+// THREE KINDS ARE ALREADY KNOWN and are keyed on the belt's own classes, never
+// on a list written here. A READING HAND ([knowledgeTools]) returns what the
+// world is and changes none of it. A CALL THE HARNESS ANSWERED never reached the
+// world (withdrawn.go's [Event.HarnessMade]). A SAVE THAT NAMED ITS FILE is its
+// own evidence: the file it saved is progress one question up, whatever the
+// tree says. Everything else — bash, a save with no name, a hand nobody
+// classified — can move the tree unseen, and is what the reading is for.
+func couldChangeTheTree(event Event, saved bool) bool {
+	return !event.HarnessMade && !knowledgeTools[event.Tool] && !saved
+}

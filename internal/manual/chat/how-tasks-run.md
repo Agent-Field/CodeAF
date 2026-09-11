@@ -258,9 +258,13 @@ wrote — and your own copy of them is never touched.
 **When it cannot be done that way**, the task falls back to a copy made by git, and then
 what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
-- furrow could not take that folder on this machine — the binary will not run, the folder
-  will not attach, the fork failed. Nothing is refused and nothing is reported: the copy is
-  simply made the other way.
+- furrow could not take that folder on this machine — the folder would not attach, the
+  fork failed, or it took longer than a minute. Nothing is refused; the task's log says it,
+  with furrow's reason and what the attempt cost: `a fork of the whole folder was tried
+  and could not be made`. After that aforge **stops trying on that folder**: later
+  tasks there go straight to the git copy and their log says `a fork of the whole folder
+  was not tried`, with the reason and when it last failed. It tries again once aforge or
+  the furrow it carries is updated.
 - the folder is a **linked worktree** — its `.git` is a file naming another repository
   rather than a directory of its own. aforge never copies one of those whole, because a
   byte-exact copy would write the task's commits into the repository that file points at
@@ -272,10 +276,10 @@ a merge into your branch — unless the checkout is protected, detached, on anot
 or on a commit you moved after the cut, in which case the branch is kept and named for you
 instead. Commits from aforge's own landings do not count as you moving it.
 
-**To see which one a task got,** open its page: the first line of its log says what world
-it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
-copy, and `its world is a branch off <folder> as it stood, uncommitted work included` for
-the git one.
+**To see which one a task got,** open its page: the log says what world it worked in —
+`its world is a fork of <folder> as it stood, taken whole` for the whole copy, and `its
+world is a branch off <folder> as it stood, uncommitted work included` for the git one —
+and then `its world was made in <time>`.
 
 **Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
 furrow keeps its own ids in. aforge adds that name to your repository's
