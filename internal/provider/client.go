@@ -1329,6 +1329,17 @@ func (c *Client) completeWithMessagesStreaming(
 	// by construction — and so is every rung of the endpoint ladder and every
 	// retry, which each re-encode the same request.
 	ctx = c.withLaneChoice(ctx, request)
+	// AND THE QUESTION'S OWN REPORT IS OPENED HERE, ONCE, FOR WHOEVER ASKED TO
+	// WATCH IT RUN (callprogress.go). It is opened here for the reason the phase
+	// clock below it is: a raced request is still ONE question, and an arm
+	// re-entering this function on a child context finds the one already open
+	// rather than starting a second account of the same work. The call that
+	// opened it is the call the question returns through, so it is the only one
+	// that may say the question is over.
+	ctx, questionProgress := beginCallProgress(ctx, c.modelFor(request))
+	if questionProgress != nil {
+		defer questionProgress.finished()
+	}
 	// AND THE PHASE CLOCK, ONCE, FOR THE WHOLE REQUEST (phase.go). It is
 	// created here rather than below the race because a raced request is still
 	// ONE request: two arms making two clocks would have the surface told

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -188,14 +189,28 @@ func TestAnAnswerThatStopsHalfwayIsReportedCut(t *testing.T) {
 // which is also what a person pressing stop says, and only the race knows the
 // difference (armwatch.go's [streamWatch.lost]).
 func TestEachArmOfARaceIsWatchedAndTheLoserIsNotAFailure(t *testing.T) {
+	// A IS HELD ON A SIGNAL AND NOT ON A CLOCK. Which arm wins is the rule this
+	// asserts, and an A told to resume after some number of milliseconds asserts
+	// nothing but the slack between two wall-clock figures — which a loaded box
+	// eats, and a correct build then looks broken (hedge_test.go says the same
+	// thing at more length). Held open until this channel closes, and it closes
+	// only at teardown, A cannot finish first.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "progress/race",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
-			TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24, Heartbeats: true,
+			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
+			StallAfter: 30, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	// Released after the assertions and BEFORE the rig closes its server, so a
+	// run that never reached the cancel still lets the handler go.
+	t.Cleanup(func() { close(resume) })
+	// Believed at a quarter of what it really writes at, which is the honest
+	// shape of a belief: ordinary jitter is never a surprise and a long silence
+	// is nothing else.
+	rig.believes("A", 2, 250)
 	SetHedgeBudget(lanes.NewBudget(1, 0))
-	rig.patience(t, 150*time.Millisecond)
 
 	log := &progressLog{}
 	report := &HedgeReport{}
@@ -208,41 +223,38 @@ func TestEachArmOfARaceIsWatchedAndTheLoserIsNotAFailure(t *testing.T) {
 		t.Fatal("the scenario did not race, so there is nothing here about two arms")
 	}
 
-	// Both arms have to have said SOMETHING, and the loser's cancel is written
-	// from the race's own goroutine as it unwinds.
-	waitFor(t, func() bool {
-		arms := map[int]bool{}
-		for _, progress := range log.all() {
-			arms[progress.Attempt] = true
-		}
-		return len(arms) > 1
-	})
-	waitFor(t, func() bool {
-		for _, progress := range log.all() {
-			if progress.End == CallEndCancelled {
-				return true
-			}
-		}
-		return false
-	})
+	// BOTH ARMS ARE REPORTED, each under its own number, so a reader can draw the
+	// rescue beside the request it was sent to save.
+	arms := map[int]bool{}
+	for _, report := range log.all() {
+		arms[report.Attempt] = true
+	}
+	if len(arms) < 2 {
+		t.Fatalf("%d arm reported, want the primary and the rescue both", len(arms))
+	}
 
-	answered, cancelled := map[int]bool{}, map[int]bool{}
-	for _, progress := range log.all() {
-		switch progress.End {
-		case CallEndAnswered:
-			answered[progress.Attempt] = true
-		case CallEndCancelled:
-			cancelled[progress.Attempt] = true
+	// AND THE QUESTION ENDS ONCE, ON THE ARM THAT ANSWERED. The loser is cut off
+	// the instant the winner commits and its row says `context canceled` — which
+	// is what a person pressing stop says too. A seam that let that be the
+	// question's ending would draw this build's own hedging policy as a call the
+	// person abandoned.
+	endings := 0
+	for _, report := range log.all() {
+		if report.Phase != CallEnded {
+			continue
+		}
+		endings++
+		if report.End != CallEndAnswered {
+			t.Fatalf("the question ended %q, want the answer the race went and got", report.End)
+		}
+		if report.Served != "B" {
+			t.Fatalf("the ending names %q, want the arm that answered", report.Served)
 		}
 	}
-	if len(answered) != 1 {
-		t.Fatalf("%d arms reported answering, want the one that won", len(answered))
+	if endings != 1 {
+		t.Fatalf("%d endings, want exactly one however many arms ran", endings)
 	}
-	for arm := range answered {
-		if cancelled[arm] {
-			t.Fatalf("arm %d reported both answering and being cancelled", arm)
-		}
-	}
+	waitFor(t, func() bool { return rig.server.Cancels("A") == 1 })
 }
 
 // TestNobodyWatchingCostsNothingAndTheCallIsUnchanged is the empty state, which
@@ -266,42 +278,52 @@ func TestNobodyWatchingCostsNothingAndTheCallIsUnchanged(t *testing.T) {
 	}
 }
 
-// TestAWatcherIsNotAttachedTwiceToOneRequest guards the one thing a context
-// seam can get wrong: [withStreamWatch] is reached once per arm, and a second
-// pass over the same watch must not build a second reporter for it — two
-// reporters over one request would each hold their own coalescing beat and a
-// surface would be redrawn at twice the rate the law states.
-func TestAWatcherIsNotAttachedTwiceToOneRequest(t *testing.T) {
+// TestOneQuestionOpensOneReportHoweverManyArmsRun guards the thing a context
+// seam can get wrong. The door that opens the report is re-entered by every arm
+// of a race on a child context; an arm that opened a second report would give
+// the question a second ending, and two reports over one question would each
+// hold their own coalescing beat and redraw a surface at twice the stated rate.
+func TestOneQuestionOpensOneReportHoweverManyArmsRun(t *testing.T) {
 	log := &progressLog{}
 	ctx := WithCallProgress(talking(), log.watch)
-	watch := &streamWatch{race: &hedgeRace{model: "openrouter/x"}, arm: 0}
-	ctx = withStreamWatch(ctx, watch)
-	first := watch.progress
-	if first == nil {
-		t.Fatal("a watched call built no reporter")
+	ctx, opened := beginCallProgress(ctx, "openrouter/x")
+	if opened == nil {
+		t.Fatal("a watched question opened no report")
 	}
-	if again := withStreamWatch(ctx, watch); watch.progress != first {
-		t.Fatalf("a second pass built a second reporter (%v)", again)
+	if _, again := beginCallProgress(ctx, "openrouter/x"); again != nil {
+		t.Fatal("an arm re-entering the door opened a second report, so the question would end twice")
+	}
+	primary, rescue := &streamWatch{arm: 0}, &streamWatch{arm: 1}
+	withStreamWatch(ctx, primary)
+	withStreamWatch(ctx, rescue)
+	if primary.progress != opened || rescue.progress != opened {
+		t.Fatal("two arms of one question report into two rows")
 	}
 }
 
-// TestTheBeatHoldsAFastStreamToTenReportsASecond is the coalescing law, judged
-// against a scripted clock so that the arithmetic is the thing under test and
-// not the speed of the box.
+// TestTheBeatHoldsAFastStreamToTheSurfacesOwnFrame is the coalescing law,
+// judged against a scripted clock so that the arithmetic is the thing under test
+// and not the speed of the box.
 //
 // A hundred deltas arrive over one second — the rate a fast lane really writes
-// at. A surface redraws ten times a second, so nine of every ten forwarded
-// reports would be work nobody ever sees.
-func TestTheBeatHoldsAFastStreamToTenReportsASecond(t *testing.T) {
+// at. The surface paints on `internal/tui3`'s frameInterval, and two reports
+// inside one of those frames differ only in which is thrown away, so the rule is
+// that no two reports of a climbing count are closer together than the frame.
+func TestTheBeatHoldsAFastStreamToTheSurfacesOwnFrame(t *testing.T) {
+	const gap = 10 * time.Millisecond
 	log := &progressLog{}
-	progress := newCallProgress(log.watch, "openrouter/x", 0)
+	progress := newCallProgress(log.watch, "openrouter/x")
 	began := time.Now()
-	progress.opened(began)
+	progress.opened(0, began)
 	for delta := 1; delta <= 100; delta++ {
-		progress.note(began.Add(time.Duration(delta)*10*time.Millisecond), delta, 0)
+		progress.note(0, began.Add(time.Duration(delta)*gap), delta, 0)
 	}
 
+	// The moment of each report is derived from its own count, because the count
+	// IS the delta index here — which is what lets this assert the spacing rule
+	// rather than a total somebody has to recompute when the frame moves.
 	reports := 0
+	previous := time.Time{}
 	tokens := 0
 	for _, seen := range log.all() {
 		if seen.Phase != CallWriting {
@@ -311,12 +333,16 @@ func TestTheBeatHoldsAFastStreamToTenReportsASecond(t *testing.T) {
 			t.Fatalf("the count went from %d to %d", tokens, seen.Tokens)
 		}
 		tokens = seen.Tokens
-		reports++
+		at := began.Add(time.Duration(seen.Tokens) * gap)
+		if reports > 0 {
+			if spacing := at.Sub(previous); spacing < callProgressBeat {
+				t.Fatalf("two reports %v apart, want no closer than the frame (%v)", spacing, callProgressBeat)
+			}
+		}
+		previous, reports = at, reports+1
 	}
-	// Ten in the second: the first token, which is news and is never held, and
-	// then one every hundred milliseconds after it.
-	if reports != 10 {
-		t.Fatalf("a hundred deltas over one second drew %d reports, want ten — the beat is ten a second", reports)
+	if reports == 0 || reports >= 100 {
+		t.Fatalf("a hundred deltas drew %d reports, want them coalesced onto the frame", reports)
 	}
 }
 
@@ -327,12 +353,12 @@ func TestTheBeatHoldsAFastStreamToTenReportsASecond(t *testing.T) {
 // the call back where it was.
 func TestThePacingParkIsAPhaseOfTheCall(t *testing.T) {
 	log := &progressLog{}
-	progress := newCallProgress(log.watch, "openrouter/x", 0)
+	progress := newCallProgress(log.watch, "openrouter/x")
 	began := time.Now()
-	progress.opened(began)
-	progress.paced(true, began.Add(time.Second))
-	progress.paced(true, began.Add(2*time.Second))
-	progress.paced(false, began.Add(3*time.Second))
+	progress.opened(0, began)
+	progress.paced(0, true, began.Add(time.Second))
+	progress.paced(0, true, began.Add(2*time.Second))
+	progress.paced(0, false, began.Add(3*time.Second))
 
 	phases := []CallPhase{}
 	for _, seen := range log.all() {
@@ -347,15 +373,82 @@ func TestThePacingParkIsAPhaseOfTheCall(t *testing.T) {
 			t.Fatalf("report %d is %q, want %q", index, phases[index], phase)
 		}
 	}
+}
 
-	// AND THE PARK IS TAKEN BACK ON THE WAY OUT OF A CALL THAT WAS GIVEN UP ON,
-	// after the row that ended it. A seam that spoke then would put a request
-	// going out after its own ending.
-	progress.paced(true, began.Add(4*time.Second))
-	progress.closed(CallEndRefused, nil)
-	before := len(log.all())
-	progress.paced(false, began.Add(5*time.Second))
-	if after := len(log.all()); after != before {
-		t.Fatalf("leaving the park spoke after the call had ended (%d reports, was %d)", after, before)
+// TestALatchedEndingIsNotAnEndingYet is the ordering the dispatcher really
+// produces on a call that was paced and then given up on, and it is the shape
+// that would have a surface settle a row on a call that is still running.
+//
+// [Client.send] takes the pacing park back from a deferred call on its way out,
+// which runs AFTER the row that ended the last attempt. So the park being taken
+// back speaks while an ending is already latched, and the ending itself is said
+// once, at the end, by the door the request returns through.
+func TestALatchedEndingIsNotAnEndingYet(t *testing.T) {
+	log := &progressLog{}
+	progress := newCallProgress(log.watch, "openrouter/x")
+	began := time.Now()
+	progress.opened(0, began)
+	progress.paced(0, true, began.Add(time.Second))
+	progress.landed(0, CallEndRefused, errors.New("no"))
+	progress.paced(0, false, began.Add(2*time.Second))
+	progress.finished()
+	progress.finished()
+
+	seen := log.all()
+	endings := 0
+	for _, report := range seen {
+		if report.Phase == CallEnded {
+			endings++
+			continue
+		}
+		if report.End != "" || report.Err != nil {
+			t.Fatalf("a %q report carried the ending %q (%v) — only the last report may", report.Phase, report.End, report.Err)
+		}
+	}
+	if endings != 1 {
+		t.Fatalf("%d endings, want exactly one however many attempts landed", endings)
+	}
+	last := seen[len(seen)-1]
+	if last.Phase != CallEnded || last.End != CallEndRefused || last.Err == nil {
+		t.Fatalf("the call ended %q/%q (%v), want the last attempt's own refusal", last.Phase, last.End, last.Err)
+	}
+}
+
+// TestACallThatWalksToAnotherMachineEndsOnce is the same law through the wire,
+// and it is the one a reader of this seam would otherwise get wrong: the log
+// writes a closing row for every attempt, so a call refused by its first machine
+// and answered by its second must report going out TWICE and ending ONCE.
+func TestACallThatWalksToAnotherMachineEndsOnce(t *testing.T) {
+	rig := newLaneRig(t, "progress/walk",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{FailWith: 500}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 12}},
+	)
+	rig.patience(t, 5*time.Second)
+
+	log := &progressLog{}
+	ctx := WithCallProgress(talking(), log.watch)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	starts, endings := 0, 0
+	for _, report := range log.all() {
+		switch report.Phase {
+		case CallStarted:
+			starts++
+		case CallEnded:
+			endings++
+		}
+	}
+	if starts < 2 {
+		t.Fatalf("%d reports of the request going out, want one per machine it was sent to", starts)
+	}
+	if endings != 1 {
+		t.Fatalf("%d endings, want exactly one — an attempt ending is not the call ending", endings)
+	}
+	last, _ := log.last()
+	if last.End != CallEndAnswered {
+		t.Fatalf("the call ended %q, want the machine that answered to have the last word", last.End)
 	}
 }

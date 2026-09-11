@@ -1200,6 +1200,13 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			return
 		}
 	}
+	// written is how many visible deltas this lane has put on the wire, which is
+	// what [Profile.TearAfter] counts. It is kept across BOTH shapes of answer so
+	// that a staged answer and a generated one tear the same way — a knob that
+	// silently did nothing on one of them would be a fixture lying about what it
+	// staged.
+	written := 0
+	torn := func() bool { return lane.TearAfter > 0 && written >= lane.TearAfter }
 	if lane.Answer != "" {
 		if !pause() {
 			s.cancelled(lane.Name)
@@ -1209,6 +1216,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			s.cancelled(lane.Name)
 			return
 		}
+		written++
 	} else {
 		for token := 0; token < total; token++ {
 			if !pause() {
@@ -1219,16 +1227,19 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 				s.cancelled(lane.Name)
 				return
 			}
-			// AND THE WIRE GOES AWAY UNDER THE ANSWER ([Profile.TearAfter]).
-			// [http.ErrAbortHandler] is the standard library's own way to say
-			// "close this connection without finishing the response", so the
-			// client reads an incomplete chunked body — which is exactly what a
-			// torn reply is and is not something a handler returning normally
-			// can produce.
-			if lane.TearAfter > 0 && token+1 >= lane.TearAfter {
-				panic(http.ErrAbortHandler)
+			written++
+			if torn() {
+				break
 			}
 		}
+	}
+	// AND THE WIRE GOES AWAY UNDER THE ANSWER ([Profile.TearAfter]).
+	// [http.ErrAbortHandler] is the standard library's own way to say "close this
+	// connection without finishing the response", so the client reads an
+	// incomplete chunked body — which is exactly what a torn reply is, and is not
+	// something a handler returning normally can produce.
+	if torn() {
+		panic(http.ErrAbortHandler)
 	}
 	if !write("data: " + finishJSON(id, ask.Model, named) + "\n\n") {
 		s.cancelled(lane.Name)

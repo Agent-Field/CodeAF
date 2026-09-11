@@ -159,17 +159,14 @@ type streamWatch struct {
 type streamWatchContextKey struct{}
 
 func withStreamWatch(ctx context.Context, watch *streamWatch) context.Context {
-	// AND THIS IS WHERE A WATCHER OF THE CALL IS PICKED UP, because it is the
-	// one line in the process that has both the caller's context and the arm
-	// that is about to be run from it (callprogress.go). Doing it here rather
-	// than at the construction site is what lets any caller attach the seam
-	// without hedge.go being changed for them.
+	// AND THIS IS WHERE THE QUESTION'S REPORTER IS PICKED UP, because it is the
+	// one line in the process that has both the caller's context and the arm that
+	// is about to be run from it (callprogress.go). Doing it here rather than at
+	// the construction site is what lets any caller attach the seam without
+	// hedge.go being changed for them — and the reporter is the QUESTION'S, so
+	// both arms of a race report into one row under their own arm numbers.
 	if watch != nil && watch.progress == nil {
-		model := ""
-		if watch.race != nil {
-			model = watch.race.model
-		}
-		watch.progress = newCallProgress(callProgressFrom(ctx), model, watch.arm)
+		watch.progress = callProgressOn(ctx)
 	}
 	return context.WithValue(ctx, streamWatchContextKey{}, watch)
 }
@@ -227,7 +224,7 @@ func (w *streamWatch) note(reading control.Reading) {
 	// it on would have a surface announce that the model had started writing
 	// because the gateway said hello.
 	if reading.Visible > 0 || reading.Hidden > 0 {
-		w.progress.note(reading.At, visible, hidden)
+		w.progress.note(w.arm, reading.At, visible, hidden)
 	}
 	w.takeFreeMove()
 
@@ -369,7 +366,7 @@ func (w *streamWatch) serve(lane string) {
 	if first {
 		// The machine that is really answering, forwarded to whoever is watching
 		// this call run (callprogress.go). It is said once per request.
-		w.progress.serving(lane)
+		w.progress.serving(w.arm, lane)
 	}
 	if !first || model == "" {
 		return
@@ -562,23 +559,6 @@ func (w *streamWatch) lostRace() {
 	if w == nil {
 		return
 	}
-	w.markLost()
-	// AND A WATCHER IS TOLD IT WAS EXHAUST AND NOT A FAILURE, from here, because
-	// this is the only place that knows the difference. The row this arm goes on
-	// to write says `context canceled`, which is what a person stopping the turn
-	// says too — so a seam that waited for the ending to be classified from the
-	// error would have drawn every won race as an abandoned call
-	// (callprogress.go, and [streamWatch.lost] above for what that reading has
-	// already cost one census).
-	w.progress.closed(CallEndCancelled, nil)
-}
-
-// markLost is the critical section [streamWatch.lostRace] is the whole of,
-// split out so the flag is set under a scoped lock and the report that follows
-// it is made outside one — a watcher is somebody else's code and this process's
-// locks may not be underneath it ([streamWatch.takeFreeMove] gives the same
-// reason about a cancel).
-func (w *streamWatch) markLost() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.lost = true
@@ -594,28 +574,28 @@ func (w *streamWatch) written() int {
 	return w.tokens
 }
 
-// callOpened and callClosed are the two ends of one request, forwarded to
+// callOpened and callLanded are the two ends of ONE ATTEMPT, forwarded to
 // whoever asked to watch this call run (callprogress.go).
 //
 // THEY ARE DRIVEN FROM THE MODEL-CALL LOG'S OWN TWO ROWS (calllog.go's
 // [Client.record]) and from nowhere else, because those rows are the two
 // moments this whole process already agrees on: the log's law is that every
 // attempt writes a start row and exactly one row that ends it, kept by a door
-// no path can return past. A seam with its own idea of when a call began would
-// be a second answer to a question that already has one, free to disagree with
-// the row a person autopsies.
+// no path can return past. A seam with its own idea of when a request went out
+// would be a second answer to a question that already has one, free to disagree
+// with the row a person autopsies.
 func (w *streamWatch) callOpened(at time.Time) {
 	if w == nil {
 		return
 	}
-	w.progress.opened(at)
+	w.progress.opened(w.arm, at)
 }
 
-func (w *streamWatch) callClosed(end CallEnd, err error) {
+func (w *streamWatch) callLanded(end CallEnd, err error) {
 	if w == nil {
 		return
 	}
-	w.progress.closed(end, err)
+	w.progress.landed(w.arm, end, err)
 }
 
 // callPaced is this call parking on a provider's pacing, and leaving that park
@@ -624,7 +604,7 @@ func (w *streamWatch) callPaced(parked bool, at time.Time) {
 	if w == nil {
 		return
 	}
-	w.progress.paced(parked, at)
+	w.progress.paced(w.arm, parked, at)
 }
 
 // guardedBy hands this arm the silence watch over the same request, so a

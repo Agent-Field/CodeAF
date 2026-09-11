@@ -56,11 +56,18 @@ type CallProgress struct {
 	// reader drawing one line per call keys on it, so that the rescue does not
 	// overwrite the request it was sent to save — and so that the loser's
 	// [CallEndCancelled] does not read as the question having been abandoned.
+	//
+	// IT IS NOT A COUNT OF TRIES. A call that walks to a second machine keeps its
+	// number and says so with a fresh Started; what changes is where it is, never
+	// how many goes it has had.
 	Attempt int
-	// Started is when this request really went out, and FirstToken when the
-	// first delta of anything — answer or thought — came back. FirstToken is
-	// ZERO UNTIL IT DOES, which is the state a surface most needs to draw: the
-	// gap between the two is the whole of what a person is waiting through.
+	// Started is when THIS ATTEMPT really went out, and it MOVES: a call that is
+	// refused and walks to another machine reports [CallStarted] again with a
+	// later Started, because the wait a person is sitting through began again.
+	// FirstToken is when the first delta of anything — answer or thought — came
+	// back, and is ZERO UNTIL IT DOES, which is the state a surface most needs to
+	// draw: the gap between the two is the whole of what a person is waiting
+	// through.
 	Started    time.Time
 	FirstToken time.Time
 	// Tokens is progress a person could read and Reasoning is the run of thought
@@ -97,7 +104,11 @@ const (
 	// CallWriting is the answer arriving.
 	CallWriting CallPhase = "writing"
 	// CallEnded is the last report this call makes, and the only one carrying an
-	// [CallEnd].
+	// [CallEnd]. It is said ONCE, when the request has really come back — never
+	// for an attempt that is about to be made again on another machine, which is
+	// what a person sees as one call still running (see
+	// [callProgress.landed] for why an attempt's ending is latched and not
+	// spoken).
 	CallEnded CallPhase = "ended"
 )
 
@@ -122,28 +133,33 @@ const (
 	CallEndCancelled CallEnd = "cancelled"
 )
 
-// callProgressBeat is the fastest this seam will speak, and IT IS NOT A NUMBER
-// THIS FILE CHOSE. It is the rule this build already states, one layer up, in
-// the same words: internal/session's `formingInterval` (toolhint.go) holds a
-// forming tool call to ten reports a second because "ten frames a second is
-// already faster than a person reads a growing byte count, and the two things
-// that are NOT time-based bypass it entirely, because those are the moments the
-// row actually changes what it says".
+// callProgressBeat is the fastest this seam will speak, and IT IS THE FRAME THE
+// SURFACE DRAWS ON, not a number chosen here.
 //
-// The quantity both approximate is the same one, and it is a fact about the
-// READER rather than about the stream: a count climbing faster than a surface
-// paints is drawn identically whether it was reported once or sixty times, so
-// every report past the paint is a struct copy and a redraw nobody sees. The
-// moments that are NEWS — the first token, the phase turning over, the machine
-// naming itself, the ending — are exempt for the same reason they are there:
-// each happens once, and each changes what the row says.
+// ── THE DERIVATION ──────────────────────────────────────────────────────────
 //
-// SO THE NUMBER BELONGS DOWN HERE AND THE COPY UP THERE IS THE ONE TO DELETE.
-// This package is beneath internal/session, so the throttle a forming call
-// applies to its own fragments can read this; the reverse cannot. That fold is
-// a one-line change in a file this wave does not own, and it is written down in
-// the lane report rather than reached for here.
-const callProgressBeat = 100 * time.Millisecond
+// A report that arrives between two paints is drawn identically to one that
+// never arrived: the reader holds the newest [CallProgress] and paints it, so
+// two reports inside one frame differ only in which of them is thrown away. The
+// quantity to match is therefore the surface's own frame, and this build has
+// exactly one — `internal/tui3`'s `frameInterval`, 33 ms, the LOCAL cadence
+// every animation on the chat surface is counted in (app.go). A surface read
+// over a connection paints on `remoteFrameInterval`, three of those, and steps
+// the same distance through each frame (link.go's `app.frameEvery` and
+// `app.frameStride`) — so the link's stride is COARSER and holding a local
+// surface to it would stutter a token count on one frame in three.
+//
+// So the beat is the local frame and not the link's, and 33 ms is the figure it
+// carries. This package cannot import `internal/tui3` — a surface may depend on
+// a transport and never the other way — so the two constants are named here
+// instead, and a change to `frameInterval` is a change to this (PERF.md carries
+// the pair).
+//
+// THE MOMENTS THAT ARE NEWS ARE EXEMPT FROM IT — the first token, the phase turning
+// over, the machine naming itself, the ending — for the same reason they are
+// there at all: each happens once, and each changes what the row says rather
+// than what a number in it reads.
+const callProgressBeat = 33 * time.Millisecond
 
 // CallWatcher receives one call's progress synchronously and in order. It is a
 // function and not a one-method interface for the reason [StreamObserver] is:
@@ -155,9 +171,18 @@ type CallWatcher func(CallProgress)
 type callProgressKey struct{}
 
 // WithCallProgress attaches the one callback this package makes about a call
-// while the call is still running. Every call made under ctx reports to it —
-// going out, parked on a provider's pacing, thinking, writing, and how it
-// ended.
+// while the call is still running: going out, parked on a provider's pacing,
+// thinking, writing, and how it ended.
+//
+// WHAT REPORTS IS EVERY STREAMED CALL THAT RUNS UNDER A WAITING CONTROLLER, and
+// that is the honest bound rather than "every call". The watcher is picked up in
+// [withStreamWatch], which is reached from one site — hedge.go's startArm — under
+// [Client.raceFor]'s gate, so a build with no controller installed
+// (`internal/lane`'s seam, which a shipped binary always fills) hears nothing,
+// and so does anything that never reaches [Client.completeWithMessagesStreaming].
+// A watcher attached to a call that cannot report is silent rather than wrong;
+// if that ever becomes a real door rather than a test's empty state, the fix is
+// to give the bare stream loop a watch, not to feed this from somewhere else.
 //
 // IT IS CALLED SYNCHRONOUSLY FROM THE READ LOOP AND MUST DO NO WORK. See the
 // type's own doc; the same law [WithPacingNotice] states in patience.go.
@@ -178,6 +203,39 @@ func callProgressFrom(ctx context.Context) CallWatcher {
 	}
 	watcher, _ := ctx.Value(callProgressKey{}).(CallWatcher)
 	return watcher
+}
+
+type callProgressReporterKey struct{}
+
+// beginCallProgress opens the reporter for ONE QUESTION and puts it where every
+// request made for that question will find it.
+//
+// IT ANSWERS A REPORTER ONLY TO THE CALL THAT OPENED IT, and that is what makes
+// the ending single: the door this is called from is re-entered by every arm of
+// a race on a child context, and an arm that found one already there is not the
+// question returning — it is one of its requests. So the outermost call, and
+// only it, gets something to defer [callProgress.finished] on.
+//
+// A question nobody is watching opens nothing and costs one context lookup.
+func beginCallProgress(ctx context.Context, model string) (context.Context, *callProgress) {
+	if ctx == nil || ctx.Value(callProgressReporterKey{}) != nil {
+		return ctx, nil
+	}
+	progress := newCallProgress(callProgressFrom(ctx), model)
+	if progress == nil {
+		return ctx, nil
+	}
+	return context.WithValue(ctx, callProgressReporterKey{}, progress), progress
+}
+
+// callProgressOn is the reporter this question opened, nil when nobody is
+// watching it.
+func callProgressOn(ctx context.Context) *callProgress {
+	if ctx == nil {
+		return nil
+	}
+	progress, _ := ctx.Value(callProgressReporterKey{}).(*callProgress)
+	return progress
 }
 
 // endingWords is the log's own closing vocabulary (calllog.go) read into this
@@ -225,152 +283,226 @@ func callEndOf(facts recordFacts) CallEnd {
 	return CallEndRefused
 }
 
-// callProgress is one request's report: the identity that never changes, the
-// counts as they stand, and the coalescing that keeps a sixty-hertz stream from
-// becoming sixty redraws a second.
+// callProgress is ONE QUESTION'S REPORT: what the caller asked for, the state of
+// each request in flight for it, and the coalescing that keeps a sixty-hertz
+// stream from becoming sixty redraws a second.
 //
-// IT IS PER REQUEST AND NOT PER CALLER. A race's arms each build their own from
-// the same watcher, which is what makes [CallProgress.Attempt] mean anything:
-// two arms writing into one of these would interleave two token counts and the
-// reader would draw their sum.
+// ── IT IS PER QUESTION AND NOT PER REQUEST, AND THAT IS THE WHOLE DESIGN ────
 //
-// Every method is nil-safe, so an unwatched call pays one nil check at each of
-// the five seams and nothing else.
+// One question is more than one request more often than a reader would guess. A
+// hedge puts two on the wire at once; a refusal starts a rescue arm; a retry
+// inside the dispatcher, a repaired 400 and a rung of the endpoint ladder each
+// close the model-call log's row and open another. Every one of those is a
+// request going out, and NONE of them is the question being over.
+//
+// So the state is kept per attempt and the ENDING is kept once. A reader is told
+// which request each report is about ([CallProgress.Attempt]) and gets exactly
+// one [CallEnded] — from the door the question itself returns through — so a row
+// drawn from this seam cannot settle on the first 429 of a call that went on to
+// answer.
+//
+// Every method is nil-safe, so an unwatched call pays one nil check at each seam
+// and nothing else.
 type callProgress struct {
 	watcher CallWatcher
 	model   string
-	attempt int
 
 	mu sync.Mutex
-	// state is the report as it stands, carried between events so that each one
-	// is whole: a surface never has to remember what the last one said.
-	state CallProgress
-	// spoke is when this request last reported, and open whether it has started
-	// and not yet ended. A retry inside the dispatcher opens a second time
-	// (dispatch.go), and that is honest — the bytes really did go out again.
+	// attempts is what each request in flight has done, kept apart because two
+	// arms of a race are two requests: one set of counters would interleave two
+	// token counts and a reader would draw their sum.
+	attempts map[int]*callAttempt
+	// spoke is when this question last reported. It is SHARED by the attempts
+	// because the beat is a fact about the reader and not about any one stream:
+	// two arms writing at sixty hertz each are still one row being redrawn.
 	spoke time.Time
-	open  bool
+	// end, err and ending are the question's own ending and the attempt it came
+	// from, latched as the attempts land and spent once by
+	// [callProgress.finished].
+	end    CallEnd
+	err    error
+	ending int
+	// open is set by the first request going out and cleared by the ending, so
+	// that nothing speaks after the last word.
+	open bool
 }
 
-// newCallProgress builds the reporter for one request, or nil when nobody is
+// callAttempt is one request's state.
+type callAttempt struct {
+	started    time.Time
+	firstToken time.Time
+	served     string
+	tokens     int
+	reasoning  int
+	phase      CallPhase
+}
+
+// newCallProgress builds the reporter for one question, or nil when nobody is
 // watching — which is every call in an ordinary run.
-func newCallProgress(watcher CallWatcher, model string, attempt int) *callProgress {
+func newCallProgress(watcher CallWatcher, model string) *callProgress {
 	if watcher == nil {
 		return nil
 	}
-	return &callProgress{watcher: watcher, model: model, attempt: attempt}
+	return &callProgress{watcher: watcher, model: model, attempts: map[int]*callAttempt{}}
 }
 
-// opened is the request going out. It is taken from the row the model-call log
-// writes at that moment (calllog.go) rather than from a clock read of its own,
-// because the two facts are the same fact and a second reading of the world's
-// clock could only disagree with the first.
+// state is one attempt's row, made if this is the first anybody has heard of it.
+// It runs with the lock held.
+func (p *callProgress) state(attempt int) *callAttempt {
+	row, known := p.attempts[attempt]
+	if !known {
+		row = &callAttempt{}
+		p.attempts[attempt] = row
+	}
+	return row
+}
+
+// opened is one request going out. The moment is taken from the row the
+// model-call log writes at that instant (calllog.go) rather than from a clock
+// read of its own, because the two facts are the same fact and a second reading
+// of the world's clock could only disagree with the first.
 //
-// THE COUNTS ARE NOT RESET. A retry inside the dispatcher re-opens this
-// reporter, and everything the stream had delivered by then it really had
-// delivered; a count that went backwards would be a surface told the answer was
-// being unwritten.
-func (p *callProgress) opened(at time.Time) {
+// THE COUNTS ARE RESET AND [CallProgress.Started] MOVES. A request that is
+// refused and sent again is a new wait for the person sitting in front of it,
+// and a row still counting up from the first one would be a clock that does not
+// mean anything.
+func (p *callProgress) opened(attempt int, at time.Time) {
 	if p == nil {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.state.Model = p.model
-	p.state.Attempt = p.attempt
-	p.state.Started = at
-	p.state.Phase = CallStarted
-	p.state.End = ""
-	p.state.Err = nil
+	p.attempts[attempt] = &callAttempt{started: at, phase: CallStarted}
 	p.open = true
-	p.say(at)
+	p.say(attempt, at)
 }
 
-// serving is the machine the stream named, reported at once rather than held
-// for the next delta: it happens once per request, and on a lane that then
-// thinks for a minute it is the only thing there is to say.
-func (p *callProgress) serving(lane string) {
+// serving is the machine the stream named, reported at once rather than held for
+// the next delta: it happens once per request, and on a lane that then thinks
+// for a minute it is the only thing there is to say.
+func (p *callProgress) serving(attempt int, lane string) {
 	if p == nil || lane == "" {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.state.Served != lane {
-		p.state.Served = lane
-		p.say(p.state.Started)
+	row := p.state(attempt)
+	if row.served == lane {
+		return
 	}
+	row.served = lane
+	p.say(attempt, row.started)
 }
 
-// paced is the call parking on a provider's "not yet", and leaving that park.
+// paced is a request parking on a provider's "not yet", and leaving that park.
 //
-// LEAVING IT RESTORES THE PHASE THE CALL WAS IN, which is [CallStarted] on
-// every real park: the request never reached a machine, so nothing had been
-// thought or written and the call is once again one that has gone out and is
-// waiting. Inventing a phase here — or leaving the park's own word standing —
-// would be a surface told a call was still queued while its answer arrived.
-func (p *callProgress) paced(parked bool, at time.Time) {
+// LEAVING IT RESTORES THE PHASE THE REQUEST WAS IN, which is [CallStarted] on
+// every real park: the bytes never reached a machine, so nothing had been
+// thought or written.
+func (p *callProgress) paced(attempt int, parked bool, at time.Time) {
 	if p == nil {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	// A PARK ONLY EXISTS WHILE THE REQUEST DOES. The dispatcher takes the park
-	// back on every way out of its loop, including the way out of a call that has
-	// just been given up on — and the row that ended it has already been written
-	// by then, so speaking here would put a request going out AFTER its own
-	// ending, which is the one order a surface cannot draw.
+	// A PARK ONLY EXISTS WHILE THE QUESTION DOES. The dispatcher takes the park
+	// back from a deferred call on every way out of its loop, including the way
+	// out of a call that has just been given up on — so speaking here would put a
+	// request going out AFTER the question's own ending, which is the one order a
+	// surface cannot draw.
 	if !p.open {
 		return
 	}
+	row := p.state(attempt)
 	phase := CallStarted
 	if parked {
 		phase = CallPaced
 	}
-	if p.state.Phase == phase {
+	if row.phase == phase {
 		return
 	}
-	p.state.Phase = phase
-	p.say(at)
+	row.phase = phase
+	p.say(attempt, at)
 }
 
-// note is one moment of the stream, already folded by the watch that owns the
+// note is one moment of one stream, already folded by the watch that owns the
 // counts — visible is progress a person could read and hidden is the run of
 // thought, exactly as [control.Reading] separates them.
 //
-// The moment comes from the reading rather than from a clock here, so a
-// scenario written in seconds is judged in the seconds it wrote.
-func (p *callProgress) note(at time.Time, visible, hidden int) {
+// The moment comes from the reading rather than from a clock here, so a scenario
+// written in seconds is judged in the seconds it wrote.
+func (p *callProgress) note(attempt int, at time.Time, visible, hidden int) {
 	if p == nil {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	first := p.state.FirstToken.IsZero()
+	row := p.state(attempt)
+	first := row.firstToken.IsZero()
 	if first {
-		p.state.FirstToken = at
+		row.firstToken = at
 	}
-	p.state.Tokens = visible
-	p.state.Reasoning = hidden
+	row.tokens, row.reasoning = visible, hidden
 	phase := CallThinking
 	if visible > 0 {
 		phase = CallWriting
 	}
-	turned := p.state.Phase != phase
-	p.state.Phase = phase
+	turned := row.phase != phase
+	row.phase = phase
 	// NEWS IS NEVER HELD, AND EVERYTHING ELSE IS. The first token and the phase
 	// turning over each happen once and are the two things a person is watching
-	// for; a climbing count between them is worth ten reports a second and no
-	// more (callProgressBeat).
+	// for; a climbing count between them is worth one report a frame and no more
+	// (callProgressBeat).
 	if first || turned || at.Sub(p.spoke) >= callProgressBeat {
-		p.say(at)
+		p.say(attempt, at)
 	}
 }
 
-// closed is the end, and it is said ONCE for each time the request was opened.
-// A call that reached several endings — the guard cutting a stream the race had
-// already abandoned, say — is one request that ended once, and the first
-// ending is the one that ended it.
-func (p *callProgress) closed(end CallEnd, err error) {
+// landed is ONE REQUEST coming back, and it says nothing out loud.
+//
+// ── WHY AN ATTEMPT ENDING IS NOT AN ENDING ──────────────────────────────────
+//
+// The model-call log writes a closing row for every attempt, and a question
+// makes more of them than a reader would guess. Reporting each as [CallEnded]
+// would have a surface settle a row on the first 429 of a call that went on to
+// answer — the one mistake a reader of this seam would make, because the word
+// would have told them to.
+//
+// So an attempt's ending is LATCHED here and spent by [callProgress.finished].
+// What a reader sees in the meantime is the next [callProgress.opened] — the
+// request going out again, with its own moment — which is the useful fact.
+//
+// A CANCELLED ARM NEVER BECOMES THE QUESTION'S ENDING WHILE ANYTHING ELSE
+// COULD. A race cuts its loser off the instant the winner commits, and that
+// arm's row says `context canceled` — exhaust, not failure (armwatch.go's
+// [streamWatch.lost] says what reading it as failure has already cost one
+// census). So a cancel is latched only when nothing has landed at all, and any
+// real ending after it takes its place.
+func (p *callProgress) landed(attempt int, end CallEnd, err error) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.open {
+		return
+	}
+	if end == CallEndCancelled && p.end != "" {
+		return
+	}
+	p.end, p.err, p.ending = end, err, attempt
+}
+
+// finished is the QUESTION being over, said once.
+//
+// IT IS DRIVEN FROM THE ONE PLACE THAT KNOWS — the door the question itself
+// returns through (client.go's completeWithMessagesStreaming, on the call that
+// built this reporter) — because no row in the log and no arm of a race can say
+// whether another request is still coming. A question that ended with nothing
+// latched is one nothing wrote a closing row for, which the log's own law says
+// cannot happen; [CallEndCut] is the honest reading if it ever does, because the
+// request is over and no answer came out of it.
+func (p *callProgress) finished() {
 	if p == nil {
 		return
 	}
@@ -380,26 +512,45 @@ func (p *callProgress) closed(end CallEnd, err error) {
 		return
 	}
 	p.open = false
-	p.state.Phase = CallEnded
-	p.state.End = end
-	p.state.Err = err
-	p.say(p.state.Started)
+	if p.end == "" {
+		p.end = CallEndCut
+	}
+	p.state(p.ending).phase = CallEnded
+	p.say(p.ending, p.state(p.ending).started)
 }
 
-// say hands the report over. It runs with the lock held, which is what keeps
-// two goroutines' events in the order they happened — the read loop's deltas
-// and the race's cancel are genuinely concurrent, and a reader shown the ending
-// before the last token would draw a call that finished before it wrote.
+// say hands the report over. It runs with the lock held, which is what keeps two
+// goroutines' events in the order they happened — the read loop's deltas and a
+// race's cancel are genuinely concurrent, and a reader shown the ending before
+// the last token would draw a call that finished before it wrote.
 //
 // It is also why the watcher may not do work: this lock is on the read loop's
 // own path. See [WithCallProgress].
-func (p *callProgress) say(at time.Time) {
-	// The beat is only ever moved FORWARD. Two of the four seams have no moment
-	// of their own and hand over the one they know — the request going out — and
-	// a clock that walked backwards on them would spend the next delta's
-	// coalescing budget on nothing.
+func (p *callProgress) say(attempt int, at time.Time) {
+	// The beat is only ever moved FORWARD. Two of the seams have no moment of
+	// their own and hand over the one they know — the request going out — and a
+	// clock that walked backwards on them would spend the next delta's coalescing
+	// budget on nothing.
 	if at.After(p.spoke) {
 		p.spoke = at
 	}
-	p.watcher(p.state)
+	row := p.state(attempt)
+	report := CallProgress{
+		Model:      p.model,
+		Served:     row.served,
+		Attempt:    attempt,
+		Started:    row.started,
+		FirstToken: row.firstToken,
+		Tokens:     row.tokens,
+		Reasoning:  row.reasoning,
+		Phase:      row.phase,
+	}
+	// A LATCHED ENDING IS NOT AN ENDING YET, and no report but the last one may
+	// carry one: a report that went out in between carrying it — the dispatcher
+	// taking a pacing park back, say — would tell a surface that a question still
+	// running had already failed.
+	if report.Phase == CallEnded {
+		report.End, report.Err = p.end, p.err
+	}
+	p.watcher(report)
 }
