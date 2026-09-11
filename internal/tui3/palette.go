@@ -32,9 +32,10 @@ import (
 //     (models.go), so the first frame after /model is a list and never a
 //     spinner; the one fetch it makes is asked for with a key, and the list
 //     stays usable while it runs (modelrefresh.go).
-//   - It is bottom-anchored and takes the input line's place. The conversation
-//     shrinks above it; nothing pops up over the middle of what somebody was
-//     reading.
+//   - The chat overlay (`a.pick`) is a framed sheet over a faded conversation,
+//     the same shape as the context chooser (pickmodal.go). Settings, home and
+//     the composer still embed this same picker type in their own bodies — the
+//     sheet is the chat door's frame, not a second list.
 //   - It changes nothing until enter. esc restores the draft that was being
 //     typed, the model in use, and the frame — the picker holds its own filter
 //     text, and the person's half-written sentence is never in it.
@@ -43,6 +44,11 @@ const pickerRows = 12
 // picker is the overlay's whole state. The zero value is closed.
 type picker struct {
 	open bool
+
+	// win is where the chat overlay's sheet last landed on the SCREEN
+	// (pickmodal.go). Embedded pickers in settings, home and the composer never
+	// paint through that door, so their win stays zero.
+	win pickWin
 
 	// all is the list as it was resolved, and lower the same ids folded once at
 	// open: filtering is per keystroke over every row, and lowercasing a few
@@ -246,9 +252,10 @@ func (p *picker) relist() {
 	}
 }
 
-// close puts the picker away and forgets the filter. The next /model opens on
-// the whole list, which is the only thing a person can predict; a picker that
-// remembered last week's query would open onto a list with no explanation.
+// close puts the picker away and forgets the filter, the subject and the sheet's
+// last hit map. The next /model opens on the whole list, which is the only thing
+// a person can predict; a picker that remembered last week's query would open
+// onto a list with no explanation.
 func (p *picker) close() { *p = picker{} }
 
 // rank re-filters against the filter box: case-insensitive, EVERY TOKEN MUST
