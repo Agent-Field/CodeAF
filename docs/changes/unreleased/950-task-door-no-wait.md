@@ -10,7 +10,7 @@ invalidates:
   - "The forming block previewed the brief as the shaper wrote it (WithBriefWatch / BriefWatch, from 125-forming-stream) and could be opened and walked with arrows, a press or the pointer. The preview, the window, the walk and the stream behind them are deleted."
   - "The surface said `the work looks wide · one worker starts, and it can split as it goes` after a judge's yes. That note is deleted; the judge's parts arrive in the task's own room."
   - "The shaper named a /task (its `title`) and placed it (its `where`). It writes only the brief and the done-condition now, and prompts/shape.md no longer asks for either field. The namer names every /task at admission, and the ground ladder places it from the paths in the person's sentence."
-  - "The remote wire was version 14. It is version 15: Task.Judge is retired and Task.Start carries `solo`, so a version-14 surface is refused at the handshake."
+  - "The remote wire was version 14, and #960 moved it to 15. It is version 16 now: Task.Judge is retired and Task.Start carries `solo`, so a version-15 surface is refused at the handshake."
 ---
 
 One thing is narrower than it was, and it is written down rather than absorbed: a task the
