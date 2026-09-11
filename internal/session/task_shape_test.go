@@ -327,7 +327,6 @@ func TestAQueuedTaskThatSurvivedARestartStillHasItsBriefWritten(t *testing.T) {
 	// AND THE SECOND PROCESS OPENS THE SAME JOURNAL. Recovery puts the node back
 	// on the frontier, and the worker it gets is the first this task ever had.
 	completer := newDoorCompleter()
-	completer.releaseShaper()
 	second, _ := newTestAgent(t, completer, func(config *Config) {
 		config.SessionFile, config.Workspace = journal, repo
 		config.RolesSource = shaperSettings()
@@ -342,13 +341,30 @@ func TestAQueuedTaskThatSurvivedARestartStillHasItsBriefWritten(t *testing.T) {
 	if node == nil {
 		t.Fatal("the queued task did not survive the restart")
 	}
-	if !node.spec.unshaped || !node.spec.unsized {
-		t.Fatalf("the resumed node owes unshaped=%v unsized=%v, want both readings still owed",
-			node.spec.unshaped, node.spec.unsized)
+	// THE FLAGS ARE READ UNDER THE GRAPH'S OWN LOCK, because the reading beside
+	// the worker spends `unsized` under it ([TaskNode.widthToRead]) and the
+	// resumed node is already running by the time this line is reached.
+	graph.mu.Lock()
+	unshaped, unsized := node.spec.unshaped, node.spec.unsized
+	graph.mu.Unlock()
+	if !unshaped || !unsized {
+		t.Fatalf("the resumed node owes unshaped=%v unsized=%v, want both readings still owed", unshaped, unsized)
 	}
+	// THE SHAPER IS HELD UNTIL THE WORKER HAS ASKED SOMETHING, because that is
+	// the only order in which the queue can be read at all. A brief that lands
+	// BEFORE the worker's first request is taken by that request's own drain —
+	// which is correct, and the best thing that can happen to it — but then it
+	// never sits on the queue for a poll to see, and a test that waited for it
+	// there would be waiting for a frame the engine had already gone past. That
+	// is what made this fail seven runs in eight on a loaded laptop. The worker's
+	// own first answer is held too, so the order is MADE here rather than hoped
+	// for: the request goes out, then the brief lands, then it is read.
 	if opening := completer.worker(t, 0); !strings.Contains(opening, shapedAsk) {
 		t.Fatalf("the resumed worker opened on %q, want the person's own words", opening)
+	} else if strings.Contains(opening, briefWrittenBeside) {
+		t.Fatalf("the resumed worker's FIRST request already carried the written brief: %q", opening)
 	}
+	completer.releaseShaper()
 	worker := node.openRoom().speaker()
 	if worker == nil {
 		t.Fatal("nobody was in the room while the resumed worker was at work")
