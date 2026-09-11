@@ -425,8 +425,15 @@ func splitSketchSteps() *scriptedCompleter {
 // parts out of a turn that only read is handed to a quick node instead
 // (checkpoint_quick.go's [Agent.quickFromDrawing]).
 func writingSplitSketchSteps() *scriptedCompleter {
+	// THE SCRIPT RUNS TO ONE SHORT OF THE SECOND MARK, which is slack rather than
+	// a figure: the drawing rides BESIDE the work now (checkpoint.go's [markAside])
+	// and is spent at the next boundary it has landed by, so a fixture cut to the
+	// rounds the handover needs on a quiet machine is a fixture that runs its
+	// script out on a loaded one and hands nothing over. One short of the second
+	// mark is as much room as this road can be given without changing which rung
+	// it is about.
 	return &scriptedCompleter{
-		steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
+		steps: writingGrindSteps(checkpointMarkAt(2)-1, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }

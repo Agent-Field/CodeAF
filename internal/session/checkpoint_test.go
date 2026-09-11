@@ -916,9 +916,10 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	// Well past the first mark and well short of the second, so what fires here
-	// can only be the first.
-	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	// Well past the first mark and one short of the second, so what fires here can
+	// only be the first and the script cannot run out from under a drawing that
+	// lands a round or two late on a loaded machine.
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(2)-1, checkpointSplitSketch, dowry)}
 	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
@@ -934,18 +935,21 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted at the first mark, want exactly one", count)
 	}
-	// AND IT STOPPED AT THE MARK. The script had six rounds left in it, and the
-	// ceiling stands three times further along. The slack past the mark is the
-	// calls the handover itself makes — the draft and the mastermind that writes
-	// the brief out of it — plus THE STEPS THE DRAWING RIDES BESIDE. The drawing
-	// is no longer a wait in front of the work (checkpoint.go's [markAside]): it
-	// is started at the boundary that crosses the mark and spent at the next one
-	// the turn reaches, so a turn that is about to be handed over pays for the
-	// step it was already taking. That is the trade this wave bought, and it is
-	// one round of a machine's time against eight seconds of a person's.
-	if completer.requests() > checkpointMarkAt(1)+5 {
-		t.Errorf("the turn made %d requests past a first mark standing at %d rounds",
-			completer.requests(), checkpointMarkAt(1))
+	// AND IT WAS THE FIRST MARK THAT MOVED IT, which is what the request count is
+	// here to say: the turn never reached the SECOND rung, so the handover above
+	// belongs to the first one and to nothing else.
+	//
+	// THE BOUND IS THE NEXT RUNG AND NOT A HANDFUL OF CALLS, and that is a
+	// consequence of this wave rather than slack for its own sake. The drawing is
+	// no longer a wait in front of the work (checkpoint.go's [markAside]): it is
+	// started at the boundary that crosses the mark and spent at the next boundary
+	// it has landed by, so how many steps a turn rides between the two is a fact
+	// about the machine the test is running on. Counting them would be asserting
+	// the scheduler. What does not vary is the rung.
+	if completer.requests() >= checkpointMarkAt(2) {
+		t.Errorf("the turn made %d requests and reached the second mark at %d; the handover "+
+			"was supposed to be the first one, standing at %d",
+			completer.requests(), checkpointMarkAt(2), checkpointMarkAt(1))
 	}
 	// THE LINE, EXACTLY.
 	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
