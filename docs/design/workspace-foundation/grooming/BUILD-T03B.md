@@ -341,7 +341,7 @@ failing (`/tmp/t03b-review-head.log` on Spark), then the fix.
 | Integrity before resolution | **Partly, and differently from the review's first suggestion.** Every resolve checks what it delivers against the records: the body read joins the record's pointer, so a live row naming a non-current revision, or a lane its revision is not in, is `ErrDrift`. `Verify` and `Rebuild` now refuse a record whose pointer names no revision (an outer join) | `TestAResolveRefusesALiveRowThatIsNotTheCurrentRevision` (failed on `dc9251859`: it delivered the drifted rule). `TestVerifyCatchesADanglingCurrentPointer` (failed: `passed Verify: <nil>`). **Not at every open:** a full `Verify` of the load model takes 1.10–1.13 s on Spark, and every turn opens the store; §2.5's background check at open belongs with the product lane that owns a process |
 | Mutual overrides | A over B and B over A is an unresolved `Conflict`; neither is annotated; a `conflicts_with` stays. Longer cycles need no rule, because overrides annotate pairs and delivery is a union | `TestMutualOverridesAreAnUnresolvedConflict` (failed: `conflicts []`) |
 | `Via` wording | "Representative paths" in `Applied`'s doc and above | — |
-| Informational paging | The page is cut in SQL: `GROUP BY record_id ORDER BY written_at DESC, record_id LIMIT ? OFFSET ?`, with each finding's matched places as one JSON array. Only the page crosses into Go. SQLite still sorts the rows matched at the subject's own places in a temp B-tree | `TestAnInformationalPageIsCutInTheStore`: 60 findings, a page of 10 reads 11 rows; the `informational` golden |
+| Informational paging | The page is cut in SQL: `GROUP BY record_id ORDER BY written_at DESC, record_id LIMIT ? OFFSET ?`, with each finding's matched places as one JSON array. Only the page crosses into Go. SQLite still sorts the rows matched at the subject's own places in a temp B-tree (**bounded in the re-review pass below**) | `TestAnInformationalPageIsCutInTheStore`: 60 findings, a page of 10 reads 11 rows; the `informational` golden |
 | Plan coverage from executed statements | Every resolver statement carries a `/* name */` prefix; the plan test records what a real resolve sent and plans exactly that, with its arguments. The write path's lookups are planned from the variables it uses. A golden no statement sends fails | `TestTheResolversPlansSeekAndNeverScanAGrowingTable` |
 | Time-stable fixture | Every fixture date is drawn back from `loadNow`, and every load-model resolve runs at `loadNow` | — |
 | WAL best-effort, optimize non-failing | Stated in lane 1 above | — |
@@ -363,6 +363,7 @@ failing (`/tmp/t03b-review-head.log` on Spark), then the fix.
   (§3.4). **So no writer today may withdraw or supersede a finding** — including the
   person. Today's shared context lets it be withdrawn. **Owner or design: should the
   person's §4.1 row gain informational → withdrawn?** It is one line in `section41`.
+  *(Answered in the re-review: yes, withdraw only — see below.)*
 - **Link kinds per writer.** §4.1 gives overrides and conflicts_with to the person
   alone. The model may also write `supersedes` (its `propose_change`: a replacement
   applied only if the person accepts) and `derived_from`; every other writer only
@@ -433,6 +434,88 @@ The first scripted run of the full suites ended with exit 143, a SIGTERM from
 outside the script with no test output; every other step in that run passed. The
 full suites were rerun in the foreground and passed, as above.
 
+## Re-review pass — two holes and the harness
+
+The re-review of `4e0c13013` found it mergeable and named two holes to close
+before lane 4 adds an import site, plus harness and paging items. Each item got
+a regression first, shown failing on `4e0c13013` (`/tmp/t03b-r2-head.log`,
+`/tmp/t03b-rr-head-laws.log`, `/tmp/t03b-rr-head-authority.log` on Spark),
+then the fix.
+
+### Per item: change → regression → what it said on `4e0c13013`
+
+| Item | Change | Regression (failing on `4e0c13013`) |
+|---|---|---|
+| R1 — the importer renamed by an interface | `Import` and `FinishImportRun` are package-level functions: `direction.Import(ctx, s, run, item)`. So are the raw doors: `workspace.ReadSnapshot(ctx, s, fn)` and `workspace.WriteImmediate(ctx, s, fn)`. No interface or type-parameter constraint can stand in for a function, and no type that embeds a store inherits one, so every use names the watched object. That removed the need for the name ban on declared methods | `TestTheLawsCatchEveryRouteAroundThem` with the new probes: `ifaceimport walked around the import law unreported (reported [])`, `constraint walked around the import law unreported (reported [])`. Both probes are rewritten into the only forms that compile after the fix: an adaptor that names `direction.Import`, and a type parameter instantiated with it. Both are reported. New: `TestNoInterfaceCanStandInForTheImporterOrARawDoor` shows the old forms no longer type-check. `TestEveryWatchedObjectIsAPackageLevelName` fails if one becomes a method again |
+| R2 — a kept identity re-imported without its ID | `ImportItem.validate`: a `contexts` item must carry `ID`, equal to the context's own id; a `standing` or `memory` item must not. §3.4 keeps only shared context's identity, so the source store decides the path, not whether a caller remembered the id | `TestAKeptIdentityCannotBeReimportedWithoutIt`, the review's exact sequence: `{Outcome:appended Record:cccc… Revision:2}` and `(cccccc, 2) now reads "the venue holds 50"; the old store's revision 2 said "the venue holds 45"` |
+| A tree error passed two laws | The tree is read once with `sync.OnceValues`, and its error is kept, so every law fails on a tree it cannot read | A temporary non-building file spelling `direction.Import`: on `4e0c13013`, `FAIL TestPersonReceipts…`, `PASS TestTheImporterIsCalled…`, `PASS TestOnlyTheDirectionPackageUses…`. After: all three fail with `the laws cannot read the tree, so none of them passes` (`/tmp/t03b-rr-fixed-once.log`). The file was removed |
+| `reaches` missed defined non-struct types and `any` | The exposure check reads a defined type's underlying type and a module type's exported methods. It also treats an interface a forbidden type satisfies (`any`) as reaching, **where a caller receives it**. A parameter flips direction: taking `any` hands nothing out, but a callback that is given `any` receives it. A type from outside the module is judged only by what it is defined as, so `context.Context`'s `Value() any` is not this package's door | `TestTheExposureCheckSeesEveryShape` on the `exposes` probe: `exposes.Handles` (`[]*workspace.Store`), `exposes.Opener` (`func() (*sql.Tx, error)`) and `exposes.Door` (`func(int) any`) were each `unreported (reported map[])` |
+| The raw-door name ban was repo-wide | Removed. The doors are functions (R1), so a method that shares their name is not them | The `namesake` probe, an unrelated `Cache` with `ReadSnapshot` and `WriteImmediate` methods: `namesake reported [raw raw] and breaks no law` |
+| The loose-file rule matched the text `Import` | `refersToWatched` matches the watched symbol syntactically: a watched package's watched name through that package's import, under any import name, or bare under a dot import. Every watched object is package-level, so this is the only way a file can refer to one. It is also the pre-filter for type-checking | `TestTheLooseFileRuleMatchesTheWatchedSymbol`: three files were `judged true, want false` — a build-tagged `func (T) Import()`, a `ReadSnapshot` func beside `go/importer`, and an `Import` method in a file that imports `direction` for another name |
+| Paged lanes read and sorted every match | New index `direction_live_newest (target_kind, ref_id, session_id, lane, reach, written_at DESC, record_id)`. At each place and reach, the pending and informational lanes read a window newest first — `MaxPending + 1` proposals inside the pending window, `offset + limit + 1` findings — through a correlated `IN` list, with no sort inside it. Then the live row is sought by its full key. Only the merged windows are grouped and sorted. The governing lane is still read whole, because it is admitted whole or not at all. PERF.md's "cut in SQL" now says what is true | `TestAPendingPageReadsOnlyWhatItCanShow`: `the pending read took 300 proposals to show 20`. `TestAPagedLaneNeverReadsAWholePlace`: `informational reads every live row at a place`, on `4e0c13013`'s query (`SEARCH l USING PRIMARY KEY (… lane=?)` then `USE TEMP B-TREE FOR ORDER BY`). This one ran with the earlier items already fixed, but `resolve.go`'s paging was still `4e0c13013`'s |
+| Precedence links onto the person's records | An import copies an `overrides` or `conflicts_with` link only onto a record whose current revision an import wrote. An import never writes after another writer, so that means one no one else has written. Anything else is `ErrTransition` (`checkLinkTarget`). The person's own links may name any record | `TestAnImportStatesNoPrecedenceOverThePersonsRecord`: `an import wrote overrides over the person's record: {Outcome:imported …}`, the same for `conflicts_with`, and `refused imports left 3 records` |
+| No writer could retire a finding | The person's §4.1 row gains informational → withdrawn. The finding leaves the informational lane, no authority changes, and a withdrawn finding stays withdrawn. Supersede of a finding is still refused | `TestEveryWriterAndTransitionIsAllowedOrRefusedAsDesigned`, row `informational finding: the person withdraws`: `a person writer does not move a informational finding to withdrawn` |
+
+### Readings these needed, for review
+
+- **The v4 DDL changed in place again.** It gained one index,
+  `direction_live_newest`. No build ships v4; a store made by earlier code on this
+  branch lacks the index and still gives correct answers, with the old paging cost.
+  The index is additive, so a later stamped version can create it `IF NOT EXISTS`
+  if any such store matters.
+- **`PendingMore` now means "more may reach here".** Exclusions are weighed after the
+  window is read. So when a proposal that excludes the subject fills a slot in a
+  full window, a proposal past the window may reach and not be shown. The page then
+  sets `PendingMore`, and it is set whenever any window comes back full. Without
+  exclusions in a full window the page is exact: whatever precedes a proposal at
+  its best place also precedes it on the page. `TestAFullPendingWindowSaysThereMayBeMore`
+  pins it. A deep informational page costs its offset. No chat path asks for more
+  than the first page.
+- **"Import-origin target" is read as "current revision written by an import".**
+  A record the person later withdrew or revised is no longer the import's to rank.
+  A re-import that repeats such a link is refused and reported, not rewritten.
+
+### Open, recorded and not changed
+
+- **The three-record override cycle.** A over B over C over A: each pair has one
+  direction, so each pair is annotated and all three are delivered. No `Conflict`
+  is raised, though the cycle says no more about which governs than a mutual pair
+  does, and a mutual pair is an unresolved `Conflict`. Whether a longer cycle
+  should be one too is open.
+- **A folder exclusion on an `everywhere` rule** (lane 3's open question above).
+  Under the literal reading of §2.2 step 4 it has no effect, because an
+  `everywhere` target has no folder path, and that is still what the code does.
+  No writer can create the combination until lane 7. The owner or the design
+  decides.
+
+### Latency after the windows (Spark, 2026-09-10)
+
+| run | open+resolve+close p50 | p90 | **p99** | max | resolve only p99 | Verify |
+|---|---|---|---|---|---|---|
+| 1 | 5.73 ms | 8.75 ms | **11.01 ms** | 36.4 ms | 9.15 ms | 1.02 s |
+| 2 | 5.67 ms | 8.67 ms | **10.88 ms** | 36.1 ms | 8.89 ms | 1.13 s |
+| 3 | 5.68 ms | 8.64 ms | **10.54 ms** | 36.0 ms | 8.91 ms | 1.07 s |
+
+The p99 is about 0.6 ms above the review pass. The load model's places hold few
+proposals and findings, so a window is rarely cheaper there than the old read.
+The windows bound the worst case, and the typical case pays one more index
+probe per window. Statements per resolve are unchanged (at most 10).
+
+### Validation (Spark)
+
+```
+go build ./...                                       ok
+go vet ./internal/direction/... ./internal/workspace/... ./internal/workspaceview/   ok
+go test -count=1 ./internal/direction/ ./internal/workspace/ ./internal/workspaceview/
+                                                    ok  30.0s / 11.5s / 0.5s (load model included)
+go test -count=1 -short ./internal/direction/        ok  14.1s
+go test -count=1 -run 'Collection|Organization|Placement' ./cmd/aforge/   ok
+./scripts/laws.sh                                    ok (66 files, 20 packages; internal/direction included)
+make changelog-check                                 ok
+make build                                           ok
+AFORGE_DIRECTION_MEASURE=1 go test -run TestMeasureResolveLatency -v ./internal/direction/   3 runs, table above
+```
+
 ---
 
 ## Invalidations for the feature's change entry
@@ -445,3 +528,4 @@ feature lands on `dev`:
 - "Organization schema 3 was the newest. Schema 4 adds the direction record tables, but only `direction.Open` creates them; an ordinary open leaves a store at 3."
 - "Direction was held in three stores (holds, shared context, memory decisions). `internal/direction` now holds the one record and its resolver, with no product caller yet; the old stores still govern."
 - "An import could be read as able to carry a person's acceptance. It cannot: an imported acceptance is `legacy_person`, `legacy_delegated` or `legacy_unknown`, and only the four `PersonReceipt` constructors make a person receipt."
+- "The importer and the collections store's raw transactions were methods (`s.Import`, `ws.WriteImmediate`). They are package-level functions — `direction.Import(ctx, s, …)`, `direction.FinishImportRun(ctx, s, …)`, `workspace.ReadSnapshot(ctx, ws, …)`, `workspace.WriteImmediate(ctx, ws, …)` — so no interface can rename them past the laws."
