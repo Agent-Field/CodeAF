@@ -1435,8 +1435,8 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		}
 		return p.rowText(model, dial, width)
 	case laneAutoAt:
-		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto picks
-		// the fastest lane each answer — coreweave now" is a claim about where
+		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto weighs
+		// speed against price each answer — coreweave now" is a claim about where
 		// the NEXT REQUEST would go, and only the chooser answers that; the
 		// order the rows are drawn in is this file's own reading of the same
 		// beliefs and is allowed to differ.
@@ -1493,7 +1493,7 @@ func (p *picker) mark(filled bool) string {
 // laneAutoNote is what the auto row says it does. It is a sentence and not a
 // word because it is the row a person will land on first and the one they will
 // leave alone: what it is FOR has to be on it.
-const laneAutoNote = "picks the fastest lane each answer"
+const laneAutoNote = "weighs speed against price each answer"
 
 // laneUnmeasured is the one line a fold draws in the machines' place when
 // nothing behind the model has been measured. It is a sentence a person would

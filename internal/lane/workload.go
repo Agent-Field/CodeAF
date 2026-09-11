@@ -6,6 +6,31 @@ import (
 	"time"
 )
 
+// AssumedAnswerTokens is how long an answer is taken to be while nothing has
+// measured its length.
+//
+// AN UNKNOWN ANSWER IS NOT A FREE ANSWER. A zero is a number the rest of the
+// routing arithmetic compares, and pricing no output makes every lane with the
+// same input tariff look equally cheap, handing the turn to whichever starts
+// soonest at any output tariff. The design's ordinary talk figure is therefore
+// used for COMPARING lanes (ideation/provider-routing.md, "The choice"); it is
+// never taught, billed, or shown as a measurement.
+//
+// THE ASSUMED ANSWER IS VISIBLE. It is the shape of the prose somebody
+// watching an empty line is waiting for; reading it as hidden would inflate
+// every candidate's perceived wait and buy generation speed nobody needed.
+const AssumedAnswerTokens = 400
+
+// answered is this request with the answer length the chooser compares on.
+func (req Request) answered() Request {
+	if req.Visible >= 0 && req.Hidden >= 0 && (req.Visible > 0 || req.Hidden > 0) {
+		return req
+	}
+	req.Visible = AssumedAnswerTokens
+	req.Hidden = 0
+	return req
+}
+
 // Workload is a completed answer's measured generation, split by whether a
 // person could read it while the next operation was waiting. Class identifies
 // the caller's work and reasoning setting; it never identifies a provider.

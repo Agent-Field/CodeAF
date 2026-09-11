@@ -497,6 +497,10 @@ func (c *chooser) Choose(req Request) Choice {
 	// lookup below, including the two that key on [Request.Model] directly,
 	// asks about the model whose beliefs exist.
 	req.Model = BareModel(req.Model)
+	// AN ANSWER LENGTH GETS ONE READING. Fill an unknown request here, before
+	// anything below is looked up, priced, or timed, so every part of the choice
+	// compares the same answer.
+	req = req.answered()
 	// THE LEDGER IS ASKED FIRST AND THE WORLD SECOND. What this process has
 	// measured about this model is the best account there is; the sheet and the
 	// hierarchy are what stand in when there is not enough of it to rank, which
