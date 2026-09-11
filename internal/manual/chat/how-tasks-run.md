@@ -1062,6 +1062,13 @@ a session host answered in its journal only: the window sat at idle, the task ca
 done, and the answer was waiting in the transcript for whoever opened the conversation
 next. The turn now crosses the wire like any other.
 
+This is true for the ordinary `aforge chat` too, not only when you asked for a host: an
+ordinary chat is served by a session host. The same road brings the reply when a background
+job exits or a watch fires, so "my job finished and nothing appeared" is not a separate
+kind of silence. And it stays true after you have typed: a window used to stop hearing
+those self-started turns the moment it had run one turn of its own, and reopening the
+conversation was the only way to read what the model had said about the landed work.
+
 An ordinary reply to something you typed has no such line. If an old task has no recorded
 request, the line shows its identity mark and name alone rather than an empty quotation.
 If several tasks arrive before one answer, their lines are stacked in arrival order above
