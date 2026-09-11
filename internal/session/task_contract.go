@@ -480,6 +480,14 @@ type TaskNotice struct {
 	// countdown (task.autoapprove_seconds). A zero Deadline means the clock is
 	// off or has been held by typing, and only an answer resolves the proposal.
 	Deadline time.Time
+	// Withdrawn is set on the one rebroadcast of a proposal that takes it back
+	// before anybody's answer admitted it, and it is the reason in the engine's
+	// words. It happens to exactly one kind of proposal: one whose card went up
+	// while the message carrying the call was still arriving, when that message
+	// then did not go through (task.go's [Agent.stageTask]). A surface settles
+	// the card with it — whatever its own clock has drawn by then — because
+	// nothing was started and nothing is waiting on the card any more.
+	Withdrawn string
 
 	// ModelOptions is the shortlist a `model` argument raised that fits more
 	// than one model this install has (taskmodel.go). It is empty for every

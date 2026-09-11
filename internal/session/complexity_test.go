@@ -83,7 +83,6 @@ var complexityDebt = map[string]int{
 	"declaredInvalidations": 21,
 	"groundLint":            21,
 	"pathTokens":            21,
-	"Agent.proposeTask":     16,
 	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
 	"gitOnlyReads":          16,
@@ -126,8 +125,6 @@ var whyTheDebtIsStillThere = map[string]string{
 	"pathTokens": "one reading of what in a sentence is a path (taskstands.go). Twenty " +
 		"lines, and most of its number is the single `FieldsFunc` predicate naming every " +
 		"character that ends a token.",
-	"Agent.proposeTask": "the door work comes in through (task.go): every field checked " +
-		"before anybody is asked anything, each refusal naming its own fix.",
 	"gitOnlyReads": "whether one git verb, with its flags, only looks (taskoutside.go). " +
 		"The answer is per verb and the flags are what decide it.",
 	"refusedGitVerb": "the verbs a task may not run and the sentence each is refused " +
