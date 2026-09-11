@@ -566,26 +566,34 @@ func transcriptCarries(agent *Agent, needle string) bool {
 
 // A QUICK TASK CAUGHT BY THE CLOSE SETTLES AND NEVER COMES BACK.
 //
-// What tells the runner to hand a node to the quick body is `taskSpec.quick`,
-// and that field is not in the checkpoint — so a quick node put back on the
-// frontier is one the next session would run as an ORDINARY WORKER: a copy of
-// the folder, a branch and a check, for work whose whole promise was that it
-// had none of those. It is the design's and the run's own law
-// (task_store.go's [interrupt]) and it is pinned here because the fall-through
-// under it is what an unlisted kind silently gets.
+// Its body is on the record now, so it could be rebuilt; it is settled because
+// it must not be restarted — its worker's context and its caller's turn died
+// with the process (task_store.go's [interrupt]). The report is the list, ticked
+// and not, because the list is the only account of the work that survived. A
+// record written before the body was carried settles on the ending alone.
 func TestAQuickTaskCaughtByTheCloseSettlesRatherThanResuming(t *testing.T) {
-	settled, branch := interrupt(taskRecord{Kind: TaskKindQuick, State: TaskRunning}, "")
+	record := taskRecord{Kind: TaskKindQuick, State: TaskRunning, Wrote: []string{"notes.md"},
+		Quick: &quickRecord{Line: "walk the two", Items: []string{"one", "two"}, Done: []bool{true, false}}}
+	settled, branch := interrupt(record, "")
 	if settled.State != TaskFailed {
-		t.Fatalf("an interrupted quick task came back %q — the next session would run it as a worker in a worktree", settled.State)
+		t.Fatalf("an interrupted quick task came back %q — the next session would start it again", settled.State)
 	}
-	if settled.Report != quickInterruptedReport {
-		t.Fatalf("it settled saying %q, want %q", settled.Report, quickInterruptedReport)
+	want := quickInterruptedReport + "\nticked 1 of 2: one\nnot ticked: two"
+	if settled.Report != want {
+		t.Fatalf("it settled saying %q, want %q", settled.Report, want)
+	}
+	if len(settled.Changed) != 1 || settled.Changed[0] != "notes.md" {
+		t.Fatalf("it settled with %q changed, want what it had written", settled.Changed)
 	}
 	if settled.EndedAt.IsZero() {
 		t.Fatal("a quick task that settles on the close carries no ending time, so its row rebuilds undated")
 	}
 	if branch != "" {
 		t.Fatalf("an interrupted quick task named branch %q, and it has none to name", branch)
+	}
+	old, _ := interrupt(taskRecord{Kind: TaskKindQuick, State: TaskRunning}, "")
+	if old.State != TaskFailed || old.Report != quickInterruptedReport {
+		t.Fatalf("a record from before the body was carried settled %q saying %q", old.State, old.Report)
 	}
 }
 

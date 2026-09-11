@@ -473,10 +473,12 @@ type TaskNode struct {
 	// which world, and this says what the world was promised to contain — and it
 	// is written once, at admission, from the spec.
 	//
-	// It is deliberately NOT on the checkpoint. The contract is answered before
-	// the node's first step, so a node that comes back from a checkpoint has
-	// already been through it, and carrying the manifest forward would only
-	// invite a second reading of a question that has been settled.
+	// The contract is answered before the node's first step, so this is restored
+	// from a checkpoint only onto a node that has NOT yet run (task_store.go's
+	// [expectsOwed]); one that started has been through it, and handing it the
+	// manifest again would put a settled question to a working copy its own work
+	// has since changed. The spec's copy survives either way, because the brief
+	// carries it as a section.
 	Expects []Expectation
 	brief   string
 	// adjudicated says this node has already spent its one tiebreak: a division

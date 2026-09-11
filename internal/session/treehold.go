@@ -108,19 +108,11 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 	g.mu.Lock()
 	for _, id := range g.order {
 		node := g.nodes[id]
-		if node == nil || node.state != TaskRunning {
-			continue
-		}
-		// A NODE WITH A BRANCH OF ITS OWN CLAIMS NO TREE. Its writes land in a
-		// worktree nobody else is in and come home through a merge, which is the
-		// machinery this whole question exists because the in-place road lacks.
-		// The FILES it has already written are a different claim ([fileOwner]):
-		// the person's directory stays theirs, those paths do not.
-		if node.merge != mergeInPlace && strings.TrimSpace(node.branch) != "" {
+		if node == nil || node.state != TaskRunning || !node.holdsTreeLocked() {
 			continue
 		}
 		dir := strings.TrimSpace(node.worktree)
-		if dir == "" || !treeCovers(dir, path) {
+		if !treeCovers(dir, path) {
 			continue
 		}
 		// Earliest run-start wins, and ties fall to admission order because this
@@ -160,9 +152,10 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 // worktree kept the bytes apart. It did not keep the logical file to one
 // owner, and a merge cannot invent one afterwards.
 //
-// THE LAW: A RUNNING WORKTREE NODE OWNS EVERY PATH IT HAS ALREADY WRITTEN.
-// A write of one of those paths from anywhere else — the chat, a sibling
-// node — is refused with the holder named. One owner per file at a time.
+// THE LAW: A RUNNING NODE THAT DOES NOT HOLD ITS TREE OWNS EVERY PATH IT HAS
+// ALREADY WRITTEN. A write of one of those paths from anywhere else — the chat,
+// a sibling node — is refused with the holder named. One owner per file at a
+// time.
 //
 // IT IS A FACT AND NOT AN INTENT, the same bar [TaskNode.wrote] is held to:
 // a path is owned because a saving call came back, never because the brief
@@ -171,9 +164,22 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 // person is not locked out of their repository for a node that has not
 // touched a file.
 //
-// In-place nodes are not asked here. They already claim the whole tree
-// ([claimOver]), and a second sentence about one file would be a second
-// wording for a refusal the tree already made.
+// AND IT IS EVERY NODE THAT DOES NOT HOLD ITS WHOLE TREE, not only the ones in
+// a copy of their own. A quick task writes in its caller's folder with no tree
+// claimed — it must not lock the person out of their own directory, and two of
+// them run side by side ([Agent.runQuickNode]) — and until 2026-09-11 that left
+// it holding NOTHING: the one kind of node writing in the person's own folder
+// was the one kind whose half-written file the chat or a sibling could
+// overwrite, while the manual said the first writer owned it. What decides now
+// is how the node stands ([TaskNode.holdsTreeLocked]), never whether it has a
+// branch: a node that holds its tree is answered by [claimOver] for every path
+// in it, and every other running node owns the paths it has written, by name.
+//
+// THE NAME IS THE LOGICAL FILE, in whichever copy the writer is standing: a
+// path relative to the writer's own workspace against a path relative to the
+// holder's. For a worktree node that is the F36 law — the copies keep the bytes
+// apart and the merge would put them back in one file — and for a quick task
+// the two are the same file on disk, because it writes where its caller works.
 func (g *TaskGraph) fileOwner(relative string, writer uint64) (treeClaim, bool) {
 	relative = filepath.ToSlash(filepath.Clean(strings.TrimSpace(relative)))
 	if g == nil || relative == "" || relative == "." || strings.HasPrefix(relative, "../") {
@@ -187,10 +193,7 @@ func (g *TaskGraph) fileOwner(relative string, writer uint64) (treeClaim, bool) 
 	g.mu.Lock()
 	for _, id := range g.order {
 		node := g.nodes[id]
-		if node == nil || node.state != TaskRunning {
-			continue
-		}
-		if node.merge == mergeInPlace || strings.TrimSpace(node.branch) == "" {
+		if node == nil || node.state != TaskRunning || node.holdsTreeLocked() {
 			continue
 		}
 		if !ownsWritten(node.wrote, relative) {
@@ -211,6 +214,24 @@ func (g *TaskGraph) fileOwner(relative string, writer uint64) (treeClaim, bool) 
 		return treeClaim{}, false
 	}
 	return claim, true
+}
+
+// holdsTreeLocked reports whether a running node's hold is its WHOLE TREE rather
+// than the files it has written, and it is the one derivation both claims read
+// ([TaskGraph.claimOver] takes the nodes it answers yes for, [TaskGraph.fileOwner]
+// every other), so the two can never both answer for one node or both skip it.
+//
+// A node holds its tree when it works in a directory nobody isolated for it: a
+// working copy is set, and it is not a branch of its own coming home through a
+// merge. A node with a branch writes in a copy nobody else is in, and a node
+// with no working copy at all — a quick task, which writes where its caller
+// works and deliberately sets none — holds only what it writes. Called with the
+// graph's lock held.
+func (n *TaskNode) holdsTreeLocked() bool {
+	if n.merge != mergeInPlace && strings.TrimSpace(n.branch) != "" {
+		return false
+	}
+	return strings.TrimSpace(n.worktree) != ""
 }
 
 // ownsWritten reports whether `relative` is one of the paths a node has already

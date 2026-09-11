@@ -500,6 +500,28 @@ type taskRecord struct {
 	// always did: the design fails with nothing saved.
 	Offer *harnessOfferRecord `json:"offer,omitempty"`
 
+	// Quick is a QUICK NODE'S BODY — its line, its list, the ticks against the
+	// list and the files it claimed ([quickRecord]) — and absent on every other
+	// kind of node.
+	//
+	// THE CHECKLIST IS THE GRAPH (docs/design/quick-task/DESIGN.md), and until this
+	// field existed the graph's own file could label a quick node and not rebuild
+	// it: the kind was written and the body was not, so a node read back came home
+	// with nothing telling [Agent.runTaskNode] it was quick, nothing a restart
+	// could say about how far down its list it got, and nothing for the next
+	// checkpoint to write back. A record written before this field decodes with
+	// nil here and is settled on the kind alone, exactly as it always was.
+	Quick *quickRecord `json:"quick,omitempty"`
+
+	// Expects is the checkable half of the handoff this node was given — what its
+	// brief assumes of the world it gets ([TaskNode.Expects], handoffcontract.go).
+	// It is on the record because both of its readers outlive a restart: the
+	// brief a worker opens on carries it as a section ([TaskNode.instructionOn]),
+	// and a node that had not yet started still owes the preflight against it.
+	// Absent on every node nobody wrote one for, which is nearly all of them, and
+	// on every checkpoint written before it was carried.
+	Expects []Expectation `json:"expects,omitempty"`
+
 	// Assignment is what this node is working towards NOW, when that is no longer
 	// only what it was admitted with: the revisions the person's own directions
 	// made, and the receipts for every line said to it (assignment.go).
@@ -510,6 +532,50 @@ type taskRecord struct {
 	// acceptance are the effective ones — so an old session opens unchanged, and
 	// the fields it would have overlaid are still on the record beside it.
 	Assignment *assignmentRecord `json:"assignment,omitempty"`
+}
+
+// quickRecord is a quick node's body on disk: the four fields of
+// [quickTaskSpec] that are facts about the work. `waits` is not among them — it
+// is a receipt for the moment of admission, and the edge it produced is already
+// on [taskRecord.DependsOn].
+//
+// Done is parallel to Items, one tick per item, exactly as it is in memory.
+type quickRecord struct {
+	Line  string   `json:"line"`
+	Items []string `json:"items,omitempty"`
+	Done  []bool   `json:"done,omitempty"`
+	Files []string `json:"files,omitempty"`
+}
+
+// quickRecordLocked copies a quick body out, with the graph held — the lock the
+// `items` tool writes the list under ([TaskNode.quickListChange]). nil for every
+// node that is not a quick one, which omitempty drops.
+func quickRecordLocked(spec *quickTaskSpec) *quickRecord {
+	if spec == nil {
+		return nil
+	}
+	return &quickRecord{
+		Line:  spec.line,
+		Items: append([]string(nil), spec.items...),
+		Done:  append([]bool(nil), spec.done...),
+		Files: append([]string(nil), spec.files...),
+	}
+}
+
+// body is the record as a quick node's body again, through the one constructor
+// every body comes through ([newQuickTaskSpec]) and with the ticks laid back
+// over it. A record carrying more ticks than items — which nothing writes — has
+// the surplus dropped rather than trusted, because a tick is only ever a claim
+// about an item that exists.
+func (r *quickRecord) body() *quickTaskSpec {
+	if r == nil {
+		return nil
+	}
+	spec := newQuickTaskSpec(r.Line, append([]string(nil), r.Items...), append([]string(nil), r.Files...))
+	for index := range spec.done {
+		spec.done[index] = index < len(r.Done) && r.Done[index]
+	}
+	return spec
 }
 
 // assignmentRecord is the overlay and its receipts on disk. The admitted brief,
@@ -1103,6 +1169,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Resolving:      n.resolving,
 		Kind:           n.kind,
 		Offer:          n.offer,
+		Quick:          quickRecordLocked(n.spec.quick),
+		Expects:        append([]Expectation(nil), n.spec.expects...),
 		Assignment:     recordedAssignment(n.assignment),
 	}
 }
@@ -1165,7 +1233,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d has no title", record.ID)
 		case strings.TrimSpace(record.Brief) == "":
 			return taskDocument{}, fmt.Errorf("node %d has no brief", record.ID)
-		case strings.TrimSpace(record.Acceptance) == "":
+		case record.lacksAcceptance():
 			return taskDocument{}, fmt.Errorf("node %d has no acceptance", record.ID)
 		case !validTaskState(record.State):
 			return taskDocument{}, fmt.Errorf("node %d is in state %q", record.ID, record.State)
@@ -1225,6 +1293,18 @@ func decodeTasks(content []byte) (taskDocument, error) {
 	return document, nil
 }
 
+// lacksAcceptance reports a node the store must refuse for having no
+// done-condition.
+//
+// A QUICK NODE HAS NONE BY DESIGN — nothing ever checks it ([Agent.newQuickSpec])
+// — so its empty one is the kind's and not a corruption. Refusing it refused the
+// WHOLE file, and every conversation that had run one quick task resumed with no
+// tasks at all, its ordinary ones included. Every other kind is still held to
+// having one.
+func (r taskRecord) lacksAcceptance() bool {
+	return strings.TrimSpace(r.Acceptance) == "" && r.Kind != TaskKindQuick
+}
+
 func validTaskState(state TaskState) bool {
 	switch state {
 	case TaskQueued, TaskRunning, TaskDone, TaskFailed, TaskUnverified:
@@ -1282,6 +1362,12 @@ type taskRecovery struct {
 	// finish" are two different pieces of news, and one sentence for both would
 	// send somebody looking at the wrong thing.
 	runs int
+	// quick is a QUICK TASK the close caught, running or still waiting. It is
+	// counted apart for the reason runs are — it does not resume ([interrupt]) —
+	// and apart from runs because what it left is different: not a journal but
+	// whatever it had written in the person's own folder, which its own note
+	// names beside the items it had ticked.
+	quick int
 	// branches are the interrupted nodes' branches that are still on disk. They
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
@@ -1308,7 +1394,7 @@ type taskRecovery struct {
 // any reports whether the recovery restored anything at all. A checkpoint that
 // held an empty graph — a session that proposed nothing — is not news.
 func (r taskRecovery) any() bool {
-	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.asking+r.runs+r.waiting > 0
+	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.asking+r.runs+r.quick+r.waiting > 0
 }
 
 // note is the ONE line the person and the model read about a resumed graph,
@@ -1370,26 +1456,18 @@ func (r taskRecovery) note() string {
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
 	}
-	if r.designs > 0 {
-		word := " design did not finish (nothing saved)"
-		if r.designs > 1 {
-			word = " designs did not finish (nothing saved)"
+	// THE KINDS THAT DO NOT RESUME each say so in a clause of their own, in the
+	// order a person meets them, and each is one counted phrase — which is why
+	// they are a table and not four copies of the same three lines.
+	for _, clause := range []string{
+		countedClause(r.designs, "design did not finish (nothing saved)", "designs did not finish (nothing saved)"),
+		countedClause(r.asking, "design asks again", "designs ask again"),
+		countedClause(r.runs, "run did not finish", "runs did not finish"),
+		countedClause(r.quick, "quick task did not finish", "quick tasks did not finish"),
+	} {
+		if clause != "" {
+			parts = append(parts, clause)
 		}
-		parts = append(parts, strconv.Itoa(r.designs)+word)
-	}
-	if r.asking > 0 {
-		word := " design asks again"
-		if r.asking > 1 {
-			word = " designs ask again"
-		}
-		parts = append(parts, strconv.Itoa(r.asking)+word)
-	}
-	if r.runs > 0 {
-		word := " run did not finish"
-		if r.runs > 1 {
-			word = " runs did not finish"
-		}
-		parts = append(parts, strconv.Itoa(r.runs)+word)
 	}
 	if r.waiting > 0 {
 		parts = append(parts, strconv.Itoa(r.waiting)+" waiting")
@@ -1399,6 +1477,18 @@ func (r taskRecovery) note() string {
 		note += "\n\n" + strings.Join(r.notes, "\n\n")
 	}
 	return note
+}
+
+// countedClause is one count and its phrase, singular or plural, and "" for a
+// count of nothing — the emptiness law, so the note has no "0 designs" in it.
+func countedClause(count int, one, many string) string {
+	switch {
+	case count <= 0:
+		return ""
+	case count == 1:
+		return "1 " + one
+	}
+	return strconv.Itoa(count) + " " + many
 }
 
 // keptBranches names what an interrupt left behind, or says plainly that it left
@@ -1479,6 +1569,48 @@ func (a *Agent) recoverTasks() {
 	}
 }
 
+// reconcile files ONE record and answers it as the graph is to hold it: a node
+// the close caught is turned into what it became ([interrupt]) and counted under
+// its own clause, and every other is counted as it stands ([taskRecovery.countSettled]).
+//
+// A QUICK NODE IS CAUGHT BY THE CLOSE WHETHER IT WAS RUNNING OR STILL WAITING,
+// because nothing of a quick task outlives its window ([interrupt] says why), and
+// one left queued would start on its own in a session that has forgotten why it
+// was asked for.
+//
+// AND THE KINDS THAT DO NOT RESUME ARE COUNTED APART. Which way a design went is
+// read off what the interrupt made of it: back on the frontier with its page (it
+// asks again), or over with nothing saved. Counting either beside ordinary
+// interrupted work would be the summary promising a resume that is not that kind
+// of resume — and so would counting a run or a quick task there, under a clause
+// that says `no branch kept` about work that never had a branch and is not
+// coming back.
+func (r *taskRecovery) reconcile(record taskRecord, workspace string) taskRecord {
+	caught := record.State == TaskRunning || (record.Kind == TaskKindQuick && record.State == TaskQueued)
+	if !caught {
+		r.countSettled(&record)
+		return record
+	}
+	kind := record.Kind
+	record, kept := interrupt(record, workspace)
+	switch {
+	case kind == TaskKindHarness && record.State == TaskQueued:
+		r.asking++
+	case kind == TaskKindHarness:
+		r.designs++
+	case kind == TaskKindSubharness:
+		r.runs++
+	case kind == TaskKindQuick:
+		r.quick++
+	default:
+		r.interrupted++
+	}
+	if kept != "" {
+		r.branches = append(r.branches, kept)
+	}
+	return record
+}
+
 // countSettled files ONE node that was not running when the file was written,
 // and it is a function of its own because [TaskGraph.rehydrate] is at its
 // ending budget (internal/session's complexity ratchet) — the counting is a
@@ -1530,33 +1662,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	var recovery taskRecovery
 	records := make([]taskRecord, 0, len(document.Nodes))
 	for _, record := range document.Nodes {
-		if record.State == TaskRunning {
-			var kept string
-			harness := record.Kind == TaskKindHarness
-			running := record.Kind == TaskKindSubharness
-			record, kept = interrupt(record, workspace)
-			// A DESIGN IS COUNTED APART, and which way it went is read off what
-			// the interrupt made of it: back on the frontier with its page (it
-			// asks again), or over with nothing saved. Counting either beside
-			// ordinary interrupted work would be the summary promising a resume
-			// that is not that kind of resume.
-			switch {
-			case harness && record.State == TaskQueued:
-				recovery.asking++
-			case harness:
-				recovery.designs++
-			case running:
-				recovery.runs++
-			default:
-				recovery.interrupted++
-			}
-			if kept != "" {
-				recovery.branches = append(recovery.branches, kept)
-			}
-		} else {
-			recovery.countSettled(&record)
-		}
-		records = append(records, record)
+		records = append(records, recovery.reconcile(record, workspace))
 	}
 
 	g.mu.Lock()
@@ -1720,7 +1826,18 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			effort:      restoredRung(record.Effort),
 			maxSteps:    record.MaxSteps,
 			noProgress:  record.NoProgress,
+			expects:     record.Expects,
+			// AND A QUICK NODE'S BODY, which is what tells the runner it is quick
+			// and what the next checkpoint writes back ([taskRecord.Quick]).
+			quick: record.Quick.body(),
 		},
+		// THE PREFLIGHT IS OWED ONLY BY A NODE THAT HAS NOT RUN. The contract is
+		// answered before a node's first step (task_run.go's
+		// [Agent.briefMatchesItsWorld]), so a record that started has answered it,
+		// and handing it the manifest again would put a question already settled
+		// to a working copy that work has since changed. The brief keeps its
+		// section either way, above.
+		Expects:        expectsOwed(record),
 		Ground:         record.Ground,
 		Mode:           record.Mode,
 		Home:           record.Home,
@@ -1813,6 +1930,15 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		close(node.done)
 	}
 	return node
+}
+
+// expectsOwed is the manifest a restored node still has to answer: all of it
+// for a node that never ran, and nothing for one that did.
+func expectsOwed(record taskRecord) []Expectation {
+	if !record.StartedAt.IsZero() || record.Interrupted {
+		return nil
+	}
+	return record.Expects
 }
 
 // harnessInterruptedReport is what a design that was still being written when
@@ -1915,22 +2041,30 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	}
 
 	if record.Kind == TaskKindQuick {
-		// A QUICK TASK IS NEVER RE-RUN EITHER, and this is the line that makes it
-		// true. The argument is the two above it, arrived at from a third side.
+		// A QUICK TASK NEVER OUTLIVES ITS WINDOW, and this is the line that makes
+		// it true — for one that was working and for one still waiting its turn.
 		//
-		// What tells [Agent.runTaskNode] to hand a node to the quick body rather
-		// than to a worker is [taskSpec.quick], and that field is not in the
-		// checkpoint: the list it carries is being ticked while the node runs, and
-		// there is no finished record here that could rebuild it. So a quick node
-		// put back on the frontier is a node the next session would run as an
-		// ORDINARY WORKER — a copy of the folder, a branch and a check, for work
-		// whose whole promise was that it had none of those.
+		// Its body is on the record ([taskRecord.Quick]), so this is no longer a
+		// node that cannot be rebuilt; it is a node that must not be restarted.
+		// What died with the process is the part a quick task is FOR: the worker's
+		// context — everything it had read on the way down its list — and the
+		// caller that was going to read its last message and carry on. A worker
+		// started again would open on the line with none of that, in whatever
+		// folder the new session's runner stands in rather than the one its caller
+		// was in, and its answer would land in a turn that no longer exists; a
+		// waiting one started later would be work arriving in a conversation that
+		// has since forgotten why it was asked for. A quick task is small by
+		// design, so asking for it again costs less than any of those.
 		//
-		// It settles instead, saying the one thing that is true of it: it did not
-		// finish, and because it was working in the person's own folder rather
-		// than a copy, whatever it managed is already in front of them.
+		// It settles instead, saying what is true of it: whether it had begun,
+		// that anything it wrote is already in the person's own folder rather than
+		// a copy, and how far down its list it got. And what it wrote is its
+		// changed list, exactly as a quick node that landed carries it
+		// ([Agent.landQuickNode]).
+		started := record.State == TaskRunning
 		record.State = TaskFailed
-		record.Report = quickInterruptedReport
+		record.Report = quickClosedReport(record.Quick, started)
+		record.Changed = mergePaths(record.Changed, record.Wrote)
 		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}

@@ -374,14 +374,12 @@ type taskSpec struct {
 	// is set [Agent.runTaskNode] hands the node to the quick body — same graph,
 	// same room, same stop, a fourth middle.
 	//
-	// IT IS NOT IN THE CHECKPOINT EITHER, for the reason [taskSpec.design] and
-	// [taskSpec.run] both state about themselves, and task_store.go's [interrupt]
-	// is what makes that safe: a quick node interrupted mid-work settles before
-	// the graph ever holds it, so there is nothing to re-enter. A quick node put
-	// back on the frontier without this field would be handed to an ordinary
-	// worker in a worktree with its one line as a brief — a copy of the folder, a
-	// branch and a check, for work whose whole promise was that it had none of
-	// those.
+	// IT IS IN THE CHECKPOINT, unlike [taskSpec.design] and [taskSpec.run]: the
+	// list is the node's graph, so the record carries it whole with its ticks
+	// (task_store.go's [taskRecord.Quick]) and a node read back is the quick node
+	// it was. What a restart does NOT do is run it again — task_store.go's
+	// [interrupt] settles every quick node the close caught, because what died
+	// with the process is its worker's context and its caller's turn.
 	//
 	// IT IS NEVER SET BESIDE [taskSpec.drawn]. A drawing is an instruction to
 	// divide this work into children; the items ARE the division, done in order

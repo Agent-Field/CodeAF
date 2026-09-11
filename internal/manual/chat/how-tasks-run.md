@@ -383,7 +383,9 @@ cart.py is held by task 2 (discount code entry), so nothing was written.
 ```
 
 The hold is one file at a time, not the directory. A second task that tries the same file
-is refused the same way: one owner per file. The write is not routed into the task — it is
+is refused the same way: one owner per file. **A quick task holds what it has written the
+same way**, though it writes in your folder rather than a checkout of its own — it never
+holds the folder, only the files it has saved so far. The write is not routed into the task — it is
 refused so the two copies cannot drift. You can still edit that file yourself in your own
 editor; this is a rule about the chat's tools, not a lock on disk.
 
@@ -2455,6 +2457,10 @@ When a session comes back:
   closed; nothing was saved`, and it is never handed to an ordinary worker. Nothing reaches
   the harness registry until you approve the card, so an unfinished design left nothing
   behind to pick up — ask for it again and it is designed from the start;
+- **a quick task does not resume either, running or still waiting.** It comes back
+  **failed**, its note listing the items it had ticked, the ones it had not, and the files
+  it wrote. Its worker's reading and the turn waiting for its answer are gone, so ask for
+  it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
 
@@ -2465,8 +2471,9 @@ one:
 recovered task graph: 2 done · 1 interrupted (branch task/fix-it-9c1a2f kept) · 1 waiting
 ```
 
-The counts are done, failed, needing a look, interrupted, designs that did not finish, and
-waiting. A design's own clause is `1 design did not finish (nothing saved)`. The branch
+The counts are done, failed, needing a look, interrupted, designs that did not finish, quick
+tasks that did not finish, and waiting. A design's own clause is `1 design did not finish
+(nothing saved)`; a quick task's is `1 quick task did not finish`. The branch
 clause reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes
 that were never delivered appear underneath.
 

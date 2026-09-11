@@ -3815,7 +3815,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// to skip: a worktree nobody opens and a ninety-second writer producing a
 	// paragraph the items say better.
 	if quick := a.quickFromDrawing(read, asked); quick != nil {
-		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+		return a.handOverAsQuick(ctx, hub, turn, started, model, *quick)
 	}
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
@@ -4055,7 +4055,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
