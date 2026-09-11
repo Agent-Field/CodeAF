@@ -1,0 +1,1 @@
+SEARCH direction_legacy USING INDEX sqlite_autoindex_direction_legacy_1 (source_store=? AND source_id=? AND source_sha256=?)
