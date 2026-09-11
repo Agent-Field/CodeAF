@@ -104,9 +104,9 @@ func effortNext(rung effort.Rung) effort.Rung {
 // level dialled onto a model are the two scopes whose absence means something:
 // hand this piece of work, or this model, back to whatever stands above it. The
 // surface is the only door that sets either, so it has to be the door that
-// clears them. The conversation rung above ([effortNext]) is cleared from the
-// settings row instead, which is why it keeps the wheel that never lands on
-// absence.
+// clears them. The conversation rung above ([effortNext]) is cleared by
+// `/effort auto`, and a standing item's in its own document, which is why both
+// keep the wheel that never lands on absence.
 func effortNextClearing(rung effort.Rung) effort.Rung {
 	if rung == effort.Rungs[len(effort.Rungs)-1] {
 		return effort.None

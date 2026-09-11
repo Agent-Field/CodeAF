@@ -14,14 +14,15 @@ invalidates:
   - The picker and a task's control each had their own answer for what happens off the top of
     the wheel. Both now take internal/tui3's effortNextClearing, the wheel for the two scopes
     whose absence means "hand this back to whatever stands above it" and which the surface is
-    the only door onto. The conversation chip and a standing item keep effortNext, which never
-    lands on absence, because those rungs are cleared where they are written down.
+    the only door onto. The conversation rung beside the model and a standing item keep
+    effortNext, which never lands on absence; `/effort auto` clears the first, and the
+    item's own document clears the second.
   - SetTaskEffort refused an unknown word with "Use one of, low, medium, high, xhigh, max, or
     off" while the settings row, the task control and the manual all call absence auto. The
     refusal ends ", or auto". off and "" are still read - a profile written by an older build
     means what it meant.
   - The thinking row in /settings offered ctrl+v "on home with the cursor on no row" as a door
-    onto the install's rung. That card was retired when ↑ off the top of home's list started
+    onto the install's rung. That card was retired when ↑ off the top of a home column started
     reaching the tab bar; the row now names the doors that exist, ctrl+t in /model among them.
     keys.md and models-and-cost.md said the same retired thing and no longer do.
   - commands.md and models-and-cost.md said the picker walks off → low → medium → high → off
