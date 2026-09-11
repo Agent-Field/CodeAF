@@ -12,6 +12,8 @@ invalidates:
   - "MiniMax's plan and metered balances share a host, a bearer, the models and the request, so nothing on the wire says which answered. It ships as ONE door with no plan claim; two would have labelled ordinary metered spending as a subscription."
   - "The Z.ai coding endpoint's `/models` route lists ten models and its documentation covers two. The plan door offers the four documented ids — `glm-5.3`, `glm-5.3-flash` and their `[1m]` forms — rather than eight choices the plan refuses with `1311`."
   - "aforge identifies itself as aforge on every direct request, including the tool-call loop, which previously bypassed that transport entirely. Zhipu lists the tools its plan covers and aforge is not among them; a listing request is drafted and unsent, and the page says exactly that."
+  - "Not every request aforge made said who it was. The completion door stamped `User-Agent: aforge` and the receipt route, built beside it, sent Go's default `Go-http-client/1.1`. One method on the client decides identity for both now, and the attribution headers that name aforge to one router's ranking page travel only to that router rather than to every base."
+  - "A direct stream that ended without its usage block was sent to that vendor's nonexistent `/generation` route with the plan bearer and OpenRouter's attribution, then written as `unbilled` even though the plan charged nothing per call. A direct service is never asked for a routed receipt now; the unmeasured call writes no ledger row, while OpenRouter still receives its receipt request with `User-Agent: aforge` and its own attribution."
 ---
 
 Stacked on #800. Verified against a real Z.ai Team Plan key with both hosts behind recording

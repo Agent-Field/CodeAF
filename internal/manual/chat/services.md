@@ -141,11 +141,17 @@ same model name. `via <machine>` belongs only to a default-service model with ro
 lanes. A direct-service row and status line draw no `via` at all and open no lane
 sheet; that service has one road, not a choice of serving machines.
 
-## Why there is no price on a direct service yet
+## Why does my plan show no cost instead of unbilled or could not be priced?
 
 Phase 1 records no cost for a direct service. Its calls therefore add nothing to the
 spend page and show no invented `$0.00`. This does not mean the vendor charged nothing;
 consult that account for its bill and limits.
+
+When a direct stream ends before its usage block arrives, aforge asks for no OpenRouter
+receipt and writes no ledger row for that unmeasured call. `/cost` stays silent about it
+rather than saying a subscription call was charged but could not be priced. Direct calls
+whose usage block does arrive still record their model call and token counts without an
+invented price.
 
 A direct service has one lane, so there is no serving-machine picker and nothing to
 choose between. That is not a fault. Price caps, privacy negotiation and lane routing

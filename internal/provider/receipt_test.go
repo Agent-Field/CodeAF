@@ -41,6 +41,158 @@ func receiptResult(t *testing.T, results <-chan Reconciled) Reconciled {
 	}
 }
 
+// writeReceiptCut writes one identified answer fragment and then leaves the
+// stream open. The shortened silence guard closes it, reproducing the ending
+// whose absent usage block makes receipt reconciliation relevant.
+func writeReceiptCut(w http.ResponseWriter, r *http.Request, id string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `data: {"id":%q,"choices":[{"index":0,"delta":{"content":"begun"}}]}`+"\n\n", id)
+	w.(http.Flusher).Flush()
+	<-r.Context().Done()
+}
+
+// TestContracts1And3ADirectCutStopsAtItsCompletion is validation contract
+// items 1 and 3: after a direct stream ends without usage, either kind of
+// direct billing door receives only the completion and no missing-price result
+// reaches the sink that would book an unbilled marker.
+func TestContracts1And3ADirectCutStopsAtItsCompletion(t *testing.T) {
+	defer shortenStallBounds(t, 30*time.Millisecond, 30*time.Millisecond)()
+	for _, door := range []string{"coding plan", "pay-as-you-go"} {
+		t.Run(door, func(t *testing.T) {
+			var mu sync.Mutex
+			releaseUnexpected := make(chan struct{})
+			var releaseOnce sync.Once
+			var requests []struct {
+				method string
+				path   string
+				header http.Header
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				requests = append(requests, struct {
+					method string
+					path   string
+					header http.Header
+				}{method: r.Method, path: r.URL.Path, header: r.Header.Clone()})
+				mu.Unlock()
+				if r.URL.Path != "/chat/completions" {
+					<-releaseUnexpected
+					http.NotFound(w, r)
+					return
+				}
+				writeReceiptCut(w, r, "direct-cut")
+			}))
+			t.Cleanup(func() {
+				releaseOnce.Do(func() { close(releaseUnexpected) })
+				server.Close()
+			})
+			client, err := NewClient(Config{
+				APIKey: "direct-key", BaseURL: server.URL, Model: "direct/model",
+				Direct: true, BillingDoor: door, HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reconciled atomic.Int64
+			ctx := WithStreamObserver(t.Context(), func(StreamEvent) {})
+			ctx = WithReconcile(ctx, func(Reconciled) { reconciled.Add(1) })
+			if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+				t.Fatal("the cut direct stream returned no error")
+			}
+			mu.Lock()
+			got := append([]struct {
+				method string
+				path   string
+				header http.Header
+			}(nil), requests...)
+			mu.Unlock()
+			if len(got) != 1 || got[0].method != http.MethodPost || got[0].path != "/chat/completions" {
+				t.Fatalf("direct service requests = %+v, want only POST /chat/completions", got)
+			}
+			if agent := got[0].header.Get("User-Agent"); agent != DirectUserAgent {
+				t.Fatalf("direct completion User-Agent = %q, want %q", agent, DirectUserAgent)
+			}
+			for _, name := range []string{"HTTP-Referer", "X-Title", "X-OpenRouter-Title", "X-OpenRouter-Categories"} {
+				if value := got[0].header.Get(name); value != "" {
+					t.Fatalf("direct completion %s = %q, want no OpenRouter attribution", name, value)
+				}
+			}
+			client.receiptMu.Lock()
+			receiptWorkers := client.receiptRunning
+			client.receiptMu.Unlock()
+			if receiptWorkers != 0 {
+				t.Fatalf("the direct cut started %d receipt workers, want none", receiptWorkers)
+			}
+			if reconciled.Load() != 0 {
+				t.Fatalf("the direct cut entered receipt reconciliation %d times, want none", reconciled.Load())
+			}
+			releaseOnce.Do(func() { close(releaseUnexpected) })
+		})
+	}
+}
+
+// TestContracts2And4AnOpenRouterCutChasesAnIdentifiedReceipt is validation
+// contract items 2 and 4: the real default-service client still asks for the
+// missing receipt on a 404, and both that GET and its completion identify as
+// aforge while the GET keeps OpenRouter's attribution.
+func TestContracts2And4AnOpenRouterCutChasesAnIdentifiedReceipt(t *testing.T) {
+	defer shortenStallBounds(t, 30*time.Millisecond, 30*time.Millisecond)()
+	var requests atomic.Int64
+	completionHeaders := make(chan http.Header, 1)
+	receiptRequests := make(chan *http.Request, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Path {
+		case "/chat/completions":
+			completionHeaders <- r.Header.Clone()
+			writeReceiptCut(w, r, "openrouter-cut")
+		case "/generation":
+			receiptRequests <- r.Clone(r.Context())
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewClient(Config{
+		APIKey: "router-key", BaseURL: server.URL, Model: "openrouter/test-model",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.wait = func(context.Context, time.Duration) error { return nil }
+	results := make(chan Reconciled, 1)
+	ctx := WithStreamObserver(t.Context(), func(StreamEvent) {})
+	ctx = WithReconcile(ctx, func(result Reconciled) { results <- result })
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("the cut OpenRouter stream returned no error")
+	}
+	result := receiptResult(t, results)
+	if result.Found || result.Ref != "openrouter-cut" || !result.Billed.Empty() {
+		t.Fatalf("404 receipt result = %+v, want the named call reported without invented figures", result)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("OpenRouter requests = %d, want the completion and one receipt GET", got)
+	}
+	completion := <-completionHeaders
+	if got := completion.Get("User-Agent"); got != DirectUserAgent {
+		t.Fatalf("completion User-Agent = %q, want %q", got, DirectUserAgent)
+	}
+	receipt := <-receiptRequests
+	if receipt.Method != http.MethodGet || receipt.URL.Path != "/generation" || receipt.URL.Query().Get("id") != "openrouter-cut" {
+		t.Fatalf("receipt request = %s %s, want GET /generation?id=openrouter-cut", receipt.Method, receipt.URL.String())
+	}
+	if got := receipt.Header.Get("User-Agent"); got != DirectUserAgent {
+		t.Fatalf("receipt User-Agent = %q, want %q", got, DirectUserAgent)
+	}
+	if got := receipt.Header.Get("Authorization"); got != "Bearer router-key" {
+		t.Fatalf("receipt Authorization = %q", got)
+	}
+	assertAttributed(t, receipt.Header, "receipt GET")
+}
+
 // TestACutStreamIsBilledFromTheProvidersReceipt is C1: the stream names its
 // generation twice and then stalls, and only the provider's later figures are
 // delivered. Native counts are deliberately different so the normalised pair

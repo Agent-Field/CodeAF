@@ -2227,20 +2227,12 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
-	if c.config.Direct {
-		httpRequest.Header.Set("User-Agent", DirectUserAgent)
-	}
+	c.applyRequestIdentity(httpRequest)
 	if apiKey != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
-	}
-	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
-	// machine's ranking page and by nothing else, so the question really is
-	// "is this that machine" (prefcarry.go says why every other site moved).
-	if c.shippedRouterHint() {
-		ApplyAttribution(httpRequest.Header)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
 	// still honour a session header, and a router that honours neither is
@@ -2253,6 +2245,24 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 		httpRequest.Header.Set("X-Session-Id", routingSessionID(key))
 	}
 	return httpRequest, nil
+}
+
+// applyRequestIdentity gives every request this client builds the product's
+// own name and adds the router's attribution only on the router. Keeping both
+// decisions together matters because a late receipt is still this client's
+// request: if it has a second header path, it can silently identify as Go or
+// carry one service's ranking headers and bearer to a different service.
+func (c *Client) applyRequestIdentity(request *http.Request) {
+	if request == nil {
+		return
+	}
+	request.Header.Set("User-Agent", DirectUserAgent)
+	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
+	// machine's ranking page and by nothing else, so the question really is
+	// "is this that machine" (prefcarry.go says why every other site moved).
+	if c.shippedRouterHint() {
+		ApplyAttribution(request.Header)
+	}
 }
 
 // shippedRouterHint reports whether this client is talking to THE SHIPPED
