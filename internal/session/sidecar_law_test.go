@@ -819,6 +819,111 @@ func watchLaw(set *token.FileSet, file *ast.File) []string {
 	return complaints
 }
 
+// ── AND THE ANSWER IS READABLE BEFORE THE INTERRUPTION IS DELIVERED ─────────
+//
+// #956 was one statement in the wrong order. [readBeside] published its answer
+// only once `act` had RETURNED, and `act` is the interruption — so the boundary
+// the cut bought arrived at a [sidecar.take] that is non-blocking by
+// construction, read the reading as still in flight, and let that boundary pass.
+// The turn paid for a whole extra step, and where that step was its last, a
+// drawing that said the work had independent parts in it was written down as a
+// carry-on and nothing was handed anywhere.
+//
+// THE PROPERTY IS STRUCTURAL AND SO IS THE LAW: inside the one door, the settle
+// closes BEFORE the `act` is called. It is written here rather than as a comment
+// in sidecar.go because the old order had a paragraph of its own explaining why
+// it was right, and the paragraph was what survived the reading.
+func TestTheAnswerIsReadableBeforeTheInterruptionIsDelivered(t *testing.T) {
+	set := token.NewFileSet()
+	var checked bool
+	for _, file := range parsePackage(t, set) {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "readBeside" || fn.Body == nil {
+				continue
+			}
+			checked = true
+			if complaint := settleBeforeActLaw(set, fn); complaint != "" {
+				t.Error(complaint)
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("readBeside was not found in this package; the law is reading the wrong tree")
+	}
+}
+
+// AND IT BITES. The order the door was written in before #956, which reads like
+// nothing at all and cost a drawing the boundary its own cut had just bought.
+func TestTheLawNamesAnAnswerPublishedAfterItsInterruption(t *testing.T) {
+	source := `package session
+func readBeside[T any](ctx context.Context, ask func(context.Context) T, act func(T)) *sidecar[T] {
+	readCtx, stop := context.WithCancel(ctx)
+	side := &sidecar[T]{stop: stop, settled: make(chan struct{})}
+	go func() {
+		answer := ask(readCtx)
+		side.answer = answer
+		if act != nil && readCtx.Err() == nil {
+			act(answer)
+		}
+		close(side.settled)
+	}()
+	return side
+}`
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, "planted.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parsing the plant: %v", err)
+	}
+	fn := file.Decls[0].(*ast.FuncDecl)
+	complaint := settleBeforeActLaw(set, fn)
+	if complaint == "" {
+		t.Fatal("the law said nothing about an answer published after its own interruption — " +
+			"that is the order #956 was, and a law that is green on it is a comment")
+	}
+	if !strings.Contains(complaint, "settled") {
+		t.Errorf("the law complained without naming the settle: %s", complaint)
+	}
+}
+
+// settleBeforeActLaw is the property itself: within [readBeside], the statement
+// that closes the settle precedes the one that calls `act`.
+func settleBeforeActLaw(set *token.FileSet, fn *ast.FuncDecl) string {
+	var closed, acted token.Pos
+	ast.Inspect(fn.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name, ok := call.Fun.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		switch name.Name {
+		case "close":
+			if closed == token.NoPos {
+				closed = call.Pos()
+			}
+		case "act":
+			if acted == token.NoPos {
+				acted = call.Pos()
+			}
+		}
+		return true
+	})
+	if closed == token.NoPos {
+		return fmt.Sprintf("%s: readBeside closes no settle at all — a reading nobody can take is not a "+
+			"reading beside the work (sidecar.go)", set.Position(fn.Pos()))
+	}
+	if acted == token.NoPos || closed < acted {
+		return ""
+	}
+	return fmt.Sprintf("%s: readBeside delivers the reading's interruption before it closes `settled`, so "+
+		"the boundary that interruption opens can read the answer as still in flight and let it pass "+
+		"(#956). The answer is published first; sidecar.spent is what keeps a late act out of the next "+
+		"turn", set.Position(acted))
+}
+
 func receiverNames(recv *ast.FieldList, want string) bool {
 	if recv == nil || len(recv.List) == 0 {
 		return false

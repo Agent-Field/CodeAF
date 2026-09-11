@@ -145,12 +145,35 @@ type activeGeneration struct {
 	cancel context.CancelCauseFunc
 }
 
+// beginGeneration installs one attempt's stop handle, and SPENDS A CUT THAT
+// ARRIVED BEFORE THERE WAS ANYTHING TO CUT.
+//
+// That second half is the same lock doing the same job one moment earlier. A
+// reading beside the work asks for a boundary by cutting the request in flight,
+// and the request it means is the one this turn is about to make — so a cut that
+// crossed the gap between one attempt ending and the next beginning was, before
+// #956, delivered to nothing at all and the drawing behind it waited out a whole
+// extra step. The gap is not small: the loop takes its boundary, parks on owed
+// jobs, drains steering, guards the request size, compacts tool history and
+// assembles the transcript before it reaches this line.
+//
+// AND IT SPENDS THE OWED CUT THROUGH THE ONE DOOR, never by reaching for the
+// handle it is holding. [Agent.cutGeneration] is the only reader of a.generation
+// that can tell a live attempt from one that returned a microsecond ago, and an
+// installer that cancelled its own handle instead would be the second answer to
+// "is there anything to cut" that door exists to prevent.
 func (a *Agent) beginGeneration(parent context.Context) (context.Context, *activeGeneration) {
 	ctx, cancel := context.WithCancelCause(parent)
 	active := &activeGeneration{ctx: ctx, cancel: cancel}
 	a.mu.Lock()
 	a.generation = active
+	owed := a.cutOwed
+	a.cutOwed = owedCut{}
+	spend := owed.cause != nil && owed.turn == a.turnSeq
 	a.mu.Unlock()
+	if spend {
+		a.cutGeneration(owed.cause)
+	}
 	return ctx, active
 }
 
@@ -175,18 +198,44 @@ func (a *Agent) endGeneration(active *activeGeneration) error {
 // recall that landed before the first token, a mark that says hand this over —
 // both come through here.
 //
-// It reports whether anything was actually cut, which is the fact a caller with
-// ONE cut to spend has to have: a generation that has not started yet needs none
-// (the transcript it will be assembled from already carries the change), and a
-// caller told otherwise would spend its allowance on nothing.
+// It reports whether the cut will be ANSWERED — a live attempt stopped now, or an
+// owed cut the next [Agent.beginGeneration] will stop — which is the fact a caller
+// with ONE cut to spend has to have.
+//
+// AND A CUT THAT FINDS NOTHING TO CUT IS NOT ALWAYS A CUT THAT IS DONE WITH. Which
+// it is depends on the reading behind it and is declared by the cause, not decided
+// here (see [boundaryCut]): a recall's block is written into the transcript before
+// the cut is raised, so the request being assembled carries it either way and
+// there is genuinely nothing to do — while a mark's DRAWING rides no transcript at
+// all. It exists to be spent at a boundary, the cut is the only thing that brings
+// that boundary forward, and a cut dropped here left the drawing waiting out a
+// whole extra step (#956). So that one is OWED rather than spent on nothing.
 func (a *Agent) cutGeneration(cause error) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.generation == nil {
-		return false
+		if !opensABoundary(cause) {
+			return false
+		}
+		a.cutOwed = owedCut{cause: cause, turn: a.turnSeq}
+		return true
 	}
 	a.generation.cancel(cause)
 	return true
+}
+
+// owedCut is a cut that arrived when there was nothing to cut, kept until there
+// is ([Agent.beginGeneration] is the one place that spends it).
+//
+// IT BELONGS TO THE TURN THAT ASKED FOR IT, and the number is what says so. A
+// drawing read against one turn's transcript has nothing whatever to say about
+// the next thing a person types, so a cut this turn never got to spend is not
+// spent on the turn after it — which is also what makes a reading that answers
+// late, into a turn that has already stopped waiting for it, harmless by
+// construction rather than by timing.
+type owedCut struct {
+	cause error
+	turn  uint64
 }
 
 // The two machine cuts, beside [errSteerCut] which is the person's.
@@ -199,8 +248,26 @@ func (a *Agent) cutGeneration(cause error) bool {
 // and never to precede it.
 var (
 	errRecallCut = errors.New("session: generation cut to carry the recalled memories")
-	errMarkCut   = errors.New("session: generation cut by the mark's reading")
+	errMarkCut   = boundaryCut{errors.New("session: generation cut by the mark's reading")}
 )
+
+// boundaryCut is a cut WHOSE REASON RIDES NO TRANSCRIPT, and it is a property of
+// the reading rather than of the moment the cut happens to arrive — which is why
+// it is written down beside the cause instead of being decided at the call.
+//
+// A cut is asked for because something the model is about to be sent has changed,
+// or because a boundary is wanted NOW. The first kind is already recorded by the
+// time it is raised and needs a live request or nothing; the second kind has
+// nowhere else to live, so [Agent.cutGeneration] owes it rather than dropping it.
+type boundaryCut struct{ error }
+
+// opensABoundary reports the second kind. It reads the cause rather than a list
+// of names, so a cut added tomorrow declares itself in the one place its cause is
+// written and nothing here has to be edited to know about it.
+func opensABoundary(cause error) bool {
+	var boundary boundaryCut
+	return errors.As(cause, &boundary)
+}
 
 // turnSteer is one steer as the AGENT holds it while it waits: the note the
 // events carry, and the stream the person who sent it is reading.

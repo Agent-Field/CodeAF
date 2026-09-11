@@ -742,8 +742,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
 		// What it costs is bounded twice — by [checkpointSketchWindow] and by the
 		// drawing having started a whole round earlier.
+		//
+		// AND WHAT IS WRITTEN DOWN IS WHAT THE DRAWING SAID. A reading that lands
+		// here landed with no boundary left to spend it at, which is a different
+		// fact from a reader that decided to carry on — and the file spelled them
+		// alike until #956 ([checkpointSketch.endOfTurnDecision]).
 		if landed, ok := marked.takeAtTheEnd(); ok {
-			a.journalMarkRead(landed.read, landed.mark, landed.rounds, landed.read.sketch.carryOnDecision())
+			a.journalMarkRead(landed.read, landed.mark, landed.rounds, landed.read.sketch.endOfTurnDecision())
 		}
 		marked.end()
 	}()

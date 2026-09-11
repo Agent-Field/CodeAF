@@ -48,6 +48,17 @@ package session
 // generation in flight (steer.go's [Agent.cutGeneration]) so that the boundary
 // where the answer can be spent arrives at once rather than whenever the step
 // happens to end. Anything slower than that belongs in the caller's `take`.
+//
+// AND THE ANSWER AND ITS INTERRUPTION ARE ONE FACT. An `act` that had been
+// delivered while the answer was still unreadable was the whole of #956: the cut
+// landed, the step unwound, the loop arrived at the boundary the cut had just
+// bought — and `take`, which is non-blocking by construction, read the reading as
+// still in flight and let that boundary pass. The turn then paid for a whole
+// extra step, and where that step was its last, a drawing that said the work had
+// independent parts in it was written down as a carry-on. So the answer is
+// PUBLISHED FIRST and the interruption is delivered after it, and the two are
+// ordered against the taker by one claim ([sidecar.spent]) rather than by which
+// goroutine happens to be running.
 
 import (
 	"context"
@@ -75,6 +86,18 @@ type sidecar[T any] struct {
 	// It is an atomic because the decomposition row is written by the turn while
 	// a late reading may still be finishing.
 	asked atomic.Bool
+	// spent is the ORDER BETWEEN THE READING'S ONE POWER OVER THE WORK AND THE
+	// TAKER WHO WILL SPEND ITS ANSWER, and whichever of the two arrives first is
+	// the one that happens.
+	//
+	// An `act` exists to bring the boundary where the answer can be spent FORWARD.
+	// So an answer that has ALREADY REACHED a boundary has nothing left for an
+	// interruption to bring, and an interruption raised after that would land on
+	// whatever the turn does next — which is the hazard the old act-before-settle
+	// order was reaching for and paid for with #956's dropped drawing. Claiming it
+	// here costs one atomic on each side and needs no lock, so `take` stays the
+	// closed-channel test loop.go's law requires it to be.
+	spent atomic.Bool
 }
 
 // readBeside starts one reading beside the work.
@@ -89,13 +112,15 @@ type sidecar[T any] struct {
 // raised. It must be as cheap as a stream observer. Nil is the ordinary case —
 // most readings simply wait to be taken.
 //
-// IT RUNS BEFORE THE ANSWER CAN BE TAKEN, and the order is load-bearing rather
-// than incidental: what `act` does is bring the moment the answer can be spent
+// IT RUNS AFTER THE ANSWER IS TAKEABLE, and the order is load-bearing rather
+// than incidental. What `act` does is bring the moment the answer can be spent
 // FORWARD — cutting the request in flight so the next boundary arrives at once —
-// and an answer a taker could see before that had happened would be an answer
-// spent against a step the interruption was still about to cut. So the settle
-// closes after it, which costs a taker exactly as long as `act` is documented to
-// be short.
+// and the taker that then arrives at that boundary is non-blocking by
+// construction. So an answer published only once `act` had RETURNED was an
+// answer the boundary its own cut opened could read as still in flight, which is
+// #956: the cut was paid for and bought nothing. The settle therefore closes
+// first, and [sidecar.spent] is what keeps the interruption from being delivered
+// into a turn that has already spent the answer without it.
 //
 // AND A READING THAT HAS BEEN LET GO OF INTERRUPTS NOTHING. [sidecar.end] cancels
 // this context, and a cancelled reading that answers anyway — because `ask` was
@@ -113,12 +138,13 @@ func readBeside[T any](ctx context.Context, ask func(context.Context) T, act fun
 	go func() {
 		answer := ask(readCtx)
 		side.answer = answer
-		if act != nil && readCtx.Err() == nil {
+		close(side.settled)
+		if act != nil && readCtx.Err() == nil && side.spent.CompareAndSwap(false, true) {
 			act(answer)
 		}
-		close(side.settled)
-		// AND THE WATCH HEARS IT LAST, once the answer can be taken: whoever it
-		// lets go of finds the reading settled rather than a moment from it.
+		// AND THE WATCH HEARS IT LAST, once the answer can be taken AND the
+		// interruption has been raised: whoever it lets go of finds the reading
+		// settled rather than a moment from it.
 		watch.landed()
 	}()
 	return side
@@ -226,6 +252,10 @@ func (w *besideWatch) quiet(ctx context.Context) {
 // cannot become something later. A nil sidecar is a reading that was never
 // started, which is the ordinary case for every gated turn and is what lets a
 // caller hold this in one line with no branch around it.
+//
+// AND A LANDED READING IS TAKEABLE WHATEVER ITS OWN INTERRUPTION IS DOING, which
+// is the whole of the boundary contract: this is the moment the `act` exists to
+// buy, so it must never be the moment that reads the reading as still in flight.
 func (s *sidecar[T]) take() (T, bool) {
 	var none T
 	if s == nil || s.taken {
@@ -234,12 +264,17 @@ func (s *sidecar[T]) take() (T, bool) {
 	select {
 	case <-s.settled:
 		s.taken = true
+		s.claim()
 		s.stop()
 		return s.answer, true
 	default:
 		return none, false
 	}
 }
+
+// claim records that this answer has reached a boundary, so that a reading whose
+// `act` has not been delivered yet does not deliver it — see [sidecar.spent].
+func (s *sidecar[T]) claim() { s.spent.Store(true) }
 
 // settle WAITS for the reading and then answers it, once.
 //
@@ -258,6 +293,7 @@ func (s *sidecar[T]) takeAtTheEnd() (T, bool) {
 	}
 	<-s.settled
 	s.taken = true
+	s.claim()
 	s.stop()
 	return s.answer, true
 }
