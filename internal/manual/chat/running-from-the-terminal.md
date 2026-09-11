@@ -1,5 +1,27 @@
 # Commands you type in a terminal
 
+## How do I install or update aforge to the latest version — the curl line, dev, staging, rc and stable
+
+The installer puts aforge at `~/.aforge/bin/aforge`. Choose the newest build on
+one channel:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --stable
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --rc
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --dev
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --staging
+```
+
+Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
+
+The last installer line is `aforge version`; it shows the tag installed, when it
+was built, and the Go and operating-system target. Nothing self-updates: run the
+curl command again when you want a newer build.
+
 ## Running aforge from the terminal — can I run this without the chat
 
 Typing `aforge` with no arguments opens the conversation. Everything else is a verb after
@@ -323,7 +345,7 @@ the value of the `node` field in `logs --json`.
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
-`aforge do` run does **not** work there: it uses a private store of its own, kept only when
+`aforge do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
 says where:
 

@@ -1,0 +1,488 @@
+package release
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
+)
+
+type fakeRelease struct {
+	TagName string `json:"tag_name"`
+}
+
+type installGitHub struct {
+	server      *httptest.Server
+	releases    []string
+	badChecksum bool
+	failAPI     bool
+	mu          sync.Mutex
+	requests    []*http.Request
+}
+
+func newInstallGitHub(t *testing.T, releases ...string) *installGitHub {
+	t.Helper()
+	github := &installGitHub{releases: releases}
+	github.server = httptest.NewServer(http.HandlerFunc(github.serve))
+	t.Cleanup(github.server.Close)
+	return github
+}
+
+func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request) {
+	github.mu.Lock()
+	github.requests = append(github.requests, request.Clone(request.Context()))
+	github.mu.Unlock()
+
+	path := request.URL.Path
+	const prefix = "/repos/Agent-Field/aforge-v2/"
+	if strings.HasPrefix(path, prefix) {
+		if github.failAPI {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		switch {
+		case path == prefix+"releases/latest":
+			if len(github.releases) == 0 {
+				http.NotFound(w, request)
+				return
+			}
+			github.writeJSON(w, fakeRelease{TagName: github.releases[0]})
+			return
+		case path == prefix+"releases":
+			var releases []fakeRelease
+			for _, tag := range github.releases {
+				releases = append(releases, fakeRelease{TagName: tag})
+			}
+			github.writeJSON(w, releases)
+			return
+		}
+	}
+
+	const downloads = "/Agent-Field/aforge-v2/releases/download/"
+	if strings.HasPrefix(path, downloads) {
+		rest := strings.TrimPrefix(path, downloads)
+		tag, name, ok := strings.Cut(rest, "/")
+		if !ok || !contains(github.releases, tag) {
+			http.NotFound(w, request)
+			return
+		}
+		github.writeAsset(w, tag, name)
+		return
+	}
+	http.NotFound(w, request)
+}
+
+func (github *installGitHub) writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string) {
+	binary := fakeBinary(tag)
+	switch name {
+	case platformAsset():
+		_, _ = w.Write(binary)
+	case "checksums.txt":
+		digest := sha256.Sum256(binary)
+		checksum := hex.EncodeToString(digest[:])
+		if github.badChecksum {
+			checksum = strings.Repeat("0", len(checksum))
+		}
+		fmt.Fprintf(w, "%s  %s\n", checksum, platformAsset())
+	default:
+		http.NotFound(w, nil)
+	}
+}
+
+func fakeBinary(tag string) []byte {
+	return []byte("#!/bin/sh\nprintf 'aforge " + tag + " · fake\\n'\n")
+}
+
+func platformAsset() string {
+	extension := ""
+	if runtime.GOOS == "windows" {
+		extension = ".exe"
+	}
+	return "aforge-" + runtime.GOOS + "-" + runtime.GOARCH + extension
+}
+
+func contains(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+type installRun struct {
+	code       int
+	output     string
+	home       string
+	installDir string
+}
+
+func runInstaller(t *testing.T, github *installGitHub, arguments []string, extraEnv ...string) installRun {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the installer contract is exercised through Bash")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+	home := t.TempDir()
+	installDir := filepath.Join(home, "install")
+	path := minimalPath(t, true)
+	command := exec.Command(bash, append([]string{filepath.Join(repositoryRoot(t), "scripts", "install.sh")}, arguments...)...)
+	command.Env = append([]string{
+		"HOME=" + home,
+		"AFORGE_INSTALL_DIR=" + installDir,
+		"AFORGE_GITHUB_API=" + github.server.URL,
+		"AFORGE_GITHUB_DOWNLOAD=" + github.server.URL,
+		"PATH=" + path,
+		"SHELL=/bin/bash",
+	}, extraEnv...)
+	output, runErr := command.CombinedOutput()
+	code := 0
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !strings.Contains(runErr.Error(), "exit status") || !asExitError(runErr, &exitErr) {
+			t.Fatalf("run installer: %v", runErr)
+		}
+		code = exitErr.ExitCode()
+	}
+	return installRun{code: code, output: string(output), home: home, installDir: installDir}
+}
+
+func asExitError(err error, target **exec.ExitError) bool {
+	exitErr, ok := err.(*exec.ExitError)
+	if ok {
+		*target = exitErr
+	}
+	return ok
+}
+
+func minimalPath(t *testing.T, withCurl bool) string {
+	t.Helper()
+	dir := t.TempDir()
+	commands := []string{"awk", "basename", "cat", "chmod", "cp", "dirname", "grep", "mkdir", "mktemp", "mv", "rm", "sed", "sha256sum", "shasum", "tr", "uname", "wget"}
+	if withCurl {
+		commands = append(commands, "curl")
+	}
+	for _, name := range commands {
+		target, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	run := runInstaller(t, github, nil, "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("exit %d:\n%s", run.code, run.output)
+	}
+	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "aforge v1.2.3 · fake"} {
+		if !strings.Contains(run.output, want) {
+			t.Errorf("output does not contain %q:\n%s", want, run.output)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(run.installDir, "aforge")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(run.output, "export PATH=") {
+		t.Fatalf("the no-modify-path run did not print the line to paste:\n%s", run.output)
+	}
+	if _, err := os.Stat(filepath.Join(run.home, ".bashrc")); !os.IsNotExist(err) {
+		t.Fatalf("--no-modify-path edited the shell file: %v", err)
+	}
+}
+
+func TestInstallerSelectsTheNewestBuildOfEachChannel(t *testing.T) {
+	github := newInstallGitHub(t,
+		"v2.0.0", "dev-20260910-aaaaaaaaaaaa", "v2.1.0-rc.2",
+		"staging-20260910-bbbbbbbbbbbb", "v2.1.0-rc.1")
+	for _, test := range []struct{ channel, want string }{
+		{"rc", "v2.1.0-rc.2"}, {"dev", "dev-20260910-aaaaaaaaaaaa"}, {"staging", "staging-20260910-bbbbbbbbbbbb"},
+	} {
+		t.Run(test.channel, func(t *testing.T) {
+			arguments := []string{"--" + test.channel}
+			environment := []string{"AFORGE_NO_MODIFY_PATH=1"}
+			if test.channel == "rc" {
+				arguments = nil
+				environment = append(environment, "CHANNEL=rc")
+			}
+			run := runInstaller(t, github, arguments, environment...)
+			if run.code != 0 || !strings.Contains(run.output, test.want) {
+				t.Fatalf("exit %d, want %s:\n%s", run.code, test.want, run.output)
+			}
+		})
+	}
+}
+
+func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3", "build-legacy")
+	run := runInstaller(t, github, []string{"--version", "v1.2.3"}, "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 0 || !strings.Contains(run.output, "stable v1.2.3") {
+		t.Fatalf("exit %d:\n%s", run.code, run.output)
+	}
+	fromEnvironment := runInstaller(t, github, nil, "VERSION=v1.2.3", "AFORGE_NO_MODIFY_PATH=1")
+	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "stable v1.2.3") {
+		t.Fatalf("VERSION install exit %d:\n%s", fromEnvironment.code, fromEnvironment.output)
+	}
+	legacy := runInstaller(t, github, []string{"--version", "build-legacy"}, "AFORGE_NO_MODIFY_PATH=1")
+	wantLegacy := "aforge: build-legacy for " + runtime.GOOS + "/" + runtime.GOARCH
+	if legacy.code != 0 || !strings.Contains(legacy.output, wantLegacy) || strings.Contains(legacy.output, "aforge: version ") {
+		t.Fatalf("legacy-tag install exit %d:\n%s", legacy.code, legacy.output)
+	}
+
+	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "AFORGE_NO_MODIFY_PATH=1")
+	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
+		t.Fatalf("missing release: exit %d:\n%s", missing.code, missing.output)
+	}
+}
+
+func TestDocumentedVersionPinReachesThePipedInstaller(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the installer contract is exercised through Bash")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+	github := newInstallGitHub(t, "v1.2.3", "v9.9.9")
+	home := t.TempDir()
+	installDir := filepath.Join(home, "install")
+	path := minimalPath(t, true)
+	if err := os.Symlink(bash, filepath.Join(path, "bash")); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(repositoryRoot(t), "scripts", "install.sh")
+	command := exec.Command(bash, "-c", `cat "$1" | VERSION=v1.2.3 bash`, "documented-pin", script)
+	command.Env = []string{
+		"HOME=" + home,
+		"AFORGE_INSTALL_DIR=" + installDir,
+		"AFORGE_GITHUB_API=" + github.server.URL,
+		"AFORGE_GITHUB_DOWNLOAD=" + github.server.URL,
+		"AFORGE_NO_MODIFY_PATH=1",
+		"PATH=" + path,
+		"SHELL=/bin/bash",
+	}
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "stable v1.2.3") || strings.Contains(string(output), "v9.9.9") {
+		t.Fatalf("documented pin failed: %v\n%s", err, output)
+	}
+}
+
+func TestInstallerNamesAnEmptyChannelWithoutWriting(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		releases  []string
+		arguments []string
+	}{
+		{name: "stable", arguments: []string{"--stable"}},
+		{name: "staging", releases: []string{"v1.2.3"}, arguments: []string{"--staging"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, test.releases...)
+			run := runInstaller(t, github, test.arguments)
+			want := "aforge: no " + test.name + " build has been published yet"
+			if run.code != 1 || !strings.Contains(run.output, want) {
+				t.Fatalf("exit %d:\n%s", run.code, run.output)
+			}
+			if _, err := os.Stat(run.installDir); !os.IsNotExist(err) {
+				t.Fatalf("install directory was written on refusal: %v", err)
+			}
+		})
+	}
+}
+
+func TestInstallerChecksBeforeReplacingAndCanRunTwice(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	badHome := t.TempDir()
+	badDir := filepath.Join(badHome, "install")
+	github.badChecksum = true
+	run := runInstaller(t, github, nil, "AFORGE_INSTALL_DIR="+badDir, "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 1 || !strings.Contains(run.output, "checksum") {
+		t.Fatalf("checksum refusal: exit %d:\n%s", run.code, run.output)
+	}
+	if _, err := os.Stat(filepath.Join(badDir, "aforge")); !os.IsNotExist(err) {
+		t.Fatalf("a failed checksum left a binary: %v", err)
+	}
+
+	github.badChecksum = false
+	home := t.TempDir()
+	dir := filepath.Join(home, "install")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "aforge"), []byte("old running binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := runInstaller(t, github, nil, "HOME="+home, "AFORGE_INSTALL_DIR="+dir)
+	second := runInstaller(t, github, nil, "HOME="+home, "AFORGE_INSTALL_DIR="+dir)
+	if first.code != 0 || second.code != 0 {
+		t.Fatalf("repeat exits %d and %d:\n%s\n%s", first.code, second.code, first.output, second.output)
+	}
+	rc, err := os.ReadFile(filepath.Join(home, ".bashrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(rc), "# aforge installer") != 1 {
+		t.Fatalf("PATH edit is not idempotent:\n%s", rc)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".aforge.tmp.*")); len(matches) != 0 {
+		t.Fatalf("atomic install left temporary files: %v", matches)
+	}
+	installed, err := os.ReadFile(filepath.Join(dir, "aforge"))
+	if err != nil || strings.Contains(string(installed), "old running binary") {
+		t.Fatalf("the old binary was not replaced: %v %q", err, installed)
+	}
+}
+
+func TestInstallerSendsTheTokenOnAPICalls(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		arguments []string
+		path      string
+	}{
+		{name: "latest", path: "/repos/Agent-Field/aforge-v2/releases/latest"},
+		{name: "list", arguments: []string{"--rc"}, path: "/repos/Agent-Field/aforge-v2/releases"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3", "v1.3.0-rc.1")
+			const token = "secret-installer-token"
+			run := runInstaller(t, github, test.arguments, "GITHUB_TOKEN="+token, "AFORGE_NO_MODIFY_PATH=1")
+			if run.code != 0 {
+				t.Fatalf("token install exit %d:\n%s", run.code, run.output)
+			}
+			github.mu.Lock()
+			defer github.mu.Unlock()
+			for _, request := range github.requests {
+				if request.URL.Path == test.path {
+					if authorization := request.Header.Get("Authorization"); authorization != "Bearer "+token {
+						t.Fatalf("API request Authorization = %q", authorization)
+					}
+					return
+				}
+			}
+			t.Fatalf("API request %s was not made", test.path)
+		})
+	}
+}
+
+func TestInstallerNeverSendsAuthorizationOnDownloads(t *testing.T) {
+	for _, token := range []string{"", "GITHUB_TOKEN=secret-installer-token"} {
+		name := "without_token"
+		if token != "" {
+			name = "with_token"
+		}
+		t.Run(name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			environment := []string{"AFORGE_NO_MODIFY_PATH=1"}
+			if token != "" {
+				environment = append(environment, token)
+			}
+			run := runInstaller(t, github, nil, environment...)
+			if run.code != 0 {
+				t.Fatalf("install exit %d:\n%s", run.code, run.output)
+			}
+			github.mu.Lock()
+			defer github.mu.Unlock()
+			downloads := 0
+			for _, request := range github.requests {
+				if strings.Contains(request.URL.Path, "/releases/download/") {
+					downloads++
+					if authorization := request.Header.Get("Authorization"); authorization != "" {
+						t.Errorf("download %s has Authorization %q", request.URL.Path, authorization)
+					}
+				}
+			}
+			if downloads != 2 {
+				t.Fatalf("download requests = %d, want 2", downloads)
+			}
+		})
+	}
+}
+
+func TestInstallerDoesNotPrintTheTokenWithVerboseOutput(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	const token = "secret-installer-token"
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token, "VERBOSE=1", "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 0 || strings.Contains(run.output, token) {
+		t.Fatalf("verbose install exit %d or leaked token:\n%s", run.code, run.output)
+	}
+}
+
+func TestInstallerHelpUnknownFlagsAndAPIFailures(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	help := runInstaller(t, github, []string{"--help"})
+	if help.code != 0 || !strings.Contains(help.output, "Channels:") || !strings.Contains(help.output, "Environment:") {
+		t.Fatalf("help exit %d:\n%s", help.code, help.output)
+	}
+	unknown := runInstaller(t, github, []string{"--unknown"})
+	if unknown.code != 2 || !strings.Contains(unknown.output, "Usage:") {
+		t.Fatalf("unknown exit %d:\n%s", unknown.code, unknown.output)
+	}
+	github.failAPI = true
+	failure := runInstaller(t, github, nil)
+	if failure.code != 1 || !strings.Contains(failure.output, "GITHUB_TOKEN") || !strings.Contains(failure.output, "VERSION=") {
+		t.Fatalf("API failure exit %d:\n%s", failure.code, failure.output)
+	}
+}
+
+func TestInstallerUsesWgetWhenCurlIsAbsent(t *testing.T) {
+	if _, err := exec.LookPath("wget"); err != nil {
+		t.Skip("wget is not installed")
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	run := runInstaller(t, github, nil, "PATH="+minimalPath(t, false), "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 0 || !strings.Contains(run.output, "aforge v1.2.3 · fake") {
+		t.Fatalf("wget install exit %d:\n%s", run.code, run.output)
+	}
+	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "PATH="+minimalPath(t, false), "AFORGE_NO_MODIFY_PATH=1")
+	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
+		t.Fatalf("wget missing release exit %d:\n%s", missing.code, missing.output)
+	}
+}
+
+func TestInstallerNamesAnUnsupportedPlatform(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	path := minimalPath(t, true)
+	uname := filepath.Join(path, "uname")
+	if err := os.Remove(uname); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(uname, []byte("#!/bin/sh\nprintf 'plan9\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := runInstaller(t, github, nil, "PATH="+path, "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 1 || !strings.Contains(run.output, "unsupported platform: plan9") {
+		t.Fatalf("unsupported install exit %d:\n%s", run.code, run.output)
+	}
+}
+
+func TestInstallerKeepsTheWebsiteChannelSeam(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "\nCHANNEL=\"${CHANNEL:-stable}\"\n") {
+		t.Fatal("the website-rewritten CHANNEL line is missing")
+	}
+}

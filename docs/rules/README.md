@@ -21,8 +21,8 @@ never be looked up:
   of the three.**
 - **`staging` and `main` only ever fast-forward to a commit that is already on
   `dev`.** They are pointers at tested history, not places work is done.
-- **Releases come off `staging`, from a tag, cut by a person.** Nothing
-  publishes on its own.
+- **Pushes to `dev` and `staging` publish channel builds; a push to `main`
+  publishes an rc.** A person cuts stable by dispatching `Release` on `main`.
 - **Every pull request carries a change entry** in `docs/changes/unreleased/`,
   and what it carries is not what shipped but **what somebody now believes
   wrongly**.

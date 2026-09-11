@@ -3,15 +3,18 @@
 ## The map
 
 ```
-feature/*  ──pull request──▶  dev  ══fast-forward══▶  staging  ──tag v*──▶  release
-                           (trunk)                    (soak)
-                                                                main  (parked at v0.1.0)
+feature/*  ──pull request──▶  dev  ══fast-forward══▶  staging  ══fast-forward══▶  main
+                           (trunk)                    (soak)                       (release)
+                              │                          │                            │
+                           dev build                staging build                 rc / stable
 ```
 
 `dev` is the trunk and the default branch. Every branch starts there and every
 pull request goes back there. `staging` is a pointer at a commit of `dev` that
-has been through the full check and is being used by people. A release is a
-semver tag on a commit that is on `staging`.
+has been through the full check and is being used by people. `main` is the
+release pointer at a commit already on `staging`. Pushes to the three pointers
+publish dev, staging and rc builds respectively; a stable release is dispatched
+on `main` by a person.
 
 ## Why promotion is a fast-forward and not a merge
 
@@ -37,19 +40,16 @@ Three things follow from that, and all three are the reason:
 The cost is that promoting is a deliberate act rather than a merge button, which
 for a soak branch is the point. [promotion.md](promotion.md) is the runbook.
 
-## `main` is parked, on purpose
+## `main` is the release branch
 
-`main` sits at `v0.1.0` (`9716dcbf`, 17 Aug 2026) — the released v1. `dev` is
-about fifteen hundred commits ahead of it.
+Since 2026-09-10, `main` is the last fast-forward pointer in the pipeline. Moving
+it publishes a release candidate from exactly the commit that soaked on
+`staging`; dispatching the `Release` workflow there cuts the stable version.
 
-It is *technically* fast-forwardable: `main` is a clean ancestor of `dev`, so the
-promotion would work today. It is not done because it would silently hand every
-v1 user a v2, and that is a product decision about a release, not a git
-operation. **Until somebody decides to cut v2, `main` is not part of the
-pipeline: nothing promotes to it and nothing is released from it.** `staging` is
-the top of the pipeline in the meantime.
-
-When that decision comes, it is the same fast-forward as any other, plus a tag.
+The old reason for parking it was sound: moving `main` would hand v2 to every v1
+user. That is now an explicit release decision rather than an indefinite hold.
+The stable dispatch makes that decision on purpose, while an rc on every `main`
+push gives the same bytes a public trial first.
 
 ## Naming, and how long a branch lives
 
@@ -67,11 +67,11 @@ have been split.**
 
 ## What is forbidden
 
-- **No direct push to `dev`, `staging` or `main`.** Everything into `dev` arrives
-  through a pull request; everything into `staging` arrives through a
-  fast-forward from `dev`.
-- **No force-push to any of the three.** Rolling back is re-releasing an earlier
-  tag or moving `staging` forward onto a revert — never rewriting a branch other
+- **No work is pushed directly to `dev`, `staging` or `main`.** Everything into
+  `dev` arrives through a pull request; the only direct updates to `staging` and
+  `main` are the deliberate fast-forwards in the promotion runbook.
+- **No force-push to any of the three.** Rolling back is marking an earlier
+  stable Latest or promoting a revert forward — never rewriting a branch other
   people have pulled.
 - **No long-lived integration branch besides `dev`.** Two trunks is two truths.
 - **No `git add -A` and no `git add .`** — several sessions work this tree at

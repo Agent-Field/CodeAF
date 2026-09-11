@@ -5,8 +5,8 @@
 | Where | Workflow | What runs | Roughly |
 | --- | --- | --- | --- |
 | pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `light gate`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched. `check`: green only when both are | `light gate` a few minutes; `touched packages` as long as the slowest touched package; `check` when both are in |
-| pull request into `staging`, every push to `staging`, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
-| a `v*` tag | `.github/workflows/release-binaries.yml` | the release surface, then publish | — |
+| pull request into `staging` or `main`, every push to either, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
+| every push to `dev`, `staging` or `main`; a manual stable or channel dispatch | `.github/workflows/release.yml` | resolve and guard the tag, test the release surface except on dev, build six binaries with furrow, publish | — |
 
 **The light gate is deliberately light.** Work reaches `dev` many times a day,
 much of it written by agents, and a gate that takes fifteen minutes is a gate
@@ -159,8 +159,8 @@ entries are Linux-only, is written in the file's own comments and nowhere else �
 
 ## What blocks a merge
 
-Required today: **`check`** on `dev`, **`cross build`** on `staging`. Those are
-the two whose green is trustworthy right now.
+Required today: **`check`** on `dev`, **`cross build`** on `staging` and `main`.
+Those are the two check names whose green is trustworthy right now.
 
 `full tests` and `remote` run and report, and are deliberately not required yet —
 neither has been seen green in this repository's CI twice in a row, and a
