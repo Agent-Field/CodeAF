@@ -58,7 +58,7 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 		if err := change(&draft); err != nil {
 			return err
 		}
-		changed = specChanges(*current, draft)
+		changed = SpecChanges(*current, draft)
 		if len(changed) == 0 {
 			return ErrUnchanged
 		}
@@ -96,11 +96,13 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 	return item, changed, nil
 }
 
-// specChanges names the specification parts that differ, in a fixed order so
+// SpecChanges names the specification parts that differ, in a fixed order so
 // a log line reads the same way every time. THE NAMES ARE READ BY THE PERSON —
-// in the item's log and in the terminal's receipt — so they are the words a
-// person would use for each part, never the field names.
-func specChanges(before, after Item) []string {
+// in the item's log, in the terminal's receipt and on the chat's edit card —
+// so they are the words a person would use for each part, never the field
+// names. It is exported for that card, which says before the yes what
+// [Store.Revise] will say after it.
+func SpecChanges(before, after Item) []string {
 	var changed []string
 	add := func(name string, differs bool) {
 		if differs {

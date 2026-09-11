@@ -247,6 +247,12 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	if root := strings.TrimSpace(a.config.readRoot); root != "" {
 		plane.register(readRootGuard{root: root})
 	}
+	// AND WHICH FILES aforge PUBLISHES (standing_writeguard.go), registered only
+	// where there is a standing store to ask: the conversation's write of a
+	// report ongoing work keeps current is refused, naming the work.
+	if a.standingItems() != nil {
+		plane.register(standingReportGuard{agent: a})
+	}
 	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
 	// and about a different kind of reach: not which files this agent may touch,
 	// but whose work it may pull into its own copy (taskgit.go). It is registered

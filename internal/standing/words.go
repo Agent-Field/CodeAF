@@ -276,6 +276,52 @@ func moneyWord(usd float64) string {
 	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
 
+// WakeWords is how any waking is said when nobody said it in their own words:
+// the moment, the rhythm, the watch, the quiet or the look — `every 20 minutes`,
+// `checks every 1 minute: cat ci/status.txt`. A rule never wakes and says "".
+//
+// EVERY CARD SAYS WHEN IT WAKES (ruling R12). Only a file watch had a fallback,
+// so a person approved `when ·` blank over a probe that ran every minute (the
+// chat protocol's probe case, 2026-09-11). ONE SPELLING FOR BOTH DOORS, as
+// [WatchWords] is: `aforge standing add` writes it and the chat's card falls
+// back to it.
+func WakeWords(w When) string {
+	switch w.Kind {
+	case WhenAt:
+		if !w.At.IsZero() {
+			return "at " + w.At.Format("15:04 on Mon 2 Jan")
+		}
+	case WhenEvery:
+		if span, err := time.ParseDuration(strings.TrimSpace(w.Every)); err == nil {
+			return "every " + spanWords(span)
+		}
+		return "on the schedule " + strings.TrimSpace(w.Every)
+	case WhenFile:
+		return WatchWords(w.Glob)
+	case WhenIdle:
+		return "when this machine has been quiet for " + spanWords(w.IdleFor)
+	case WhenProbe:
+		look := strings.TrimSpace(w.Probe.Command)
+		if look == "" {
+			look = "the " + strings.TrimSpace(w.Probe.Tool) + " tool"
+		}
+		return "checks every " + spanWords(w.ProbeEvery) + ": " + look
+	}
+	return ""
+}
+
+// spanWords is a duration as a person says it: whole hours or minutes where it
+// is one, and Go's own spelling for anything finer.
+func spanWords(span time.Duration) string {
+	switch {
+	case span >= time.Hour && span%time.Hour == 0:
+		return plainCount(int(span/time.Hour), "hour")
+	case span >= time.Minute && span%time.Minute == 0:
+		return plainCount(int(span/time.Minute), "minute")
+	}
+	return span.String()
+}
+
 // WatchWords is how a file watch's waking is said when nobody said it in their
 // own words: `when inbox/* changes`.
 //
