@@ -1660,16 +1660,13 @@ func (a *Agent) applyToLane(answer Answer) error {
 	words := answer.Words()
 	switch answer.Kind {
 	case QuestionAsk:
+		// The delivery cannot block and the entry is the ownership, so this is
+		// one call under one lock rather than the read-unlock-send it was
+		// (askwait.go). An answer to an ask that has already ended finds nothing
+		// parked and is nothing to do.
 		a.mu.Lock()
-		wait := a.askWaits[answer.ID]
-		if wait != nil {
-			delete(a.askWaits, answer.ID)
-		}
+		a.asked.answerLocked(answer.ID, answer)
 		a.mu.Unlock()
-		if wait == nil {
-			return nil
-		}
-		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		if answer.Kind == QuestionStanding && key == "" && words != "" {
@@ -1922,10 +1919,7 @@ func (a *Agent) OpenQuestions() []Question {
 	var open []Question
 
 	a.mu.Lock()
-	modelAsks := make([]uint64, 0, len(a.askWaits))
-	for id := range a.askWaits {
-		modelAsks = append(modelAsks, id)
-	}
+	modelAsks := a.asked.openLocked()
 	consent := make([]uint64, 0, len(a.consent))
 	for id := range a.consent {
 		consent = append(consent, id)

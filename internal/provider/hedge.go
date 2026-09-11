@@ -400,33 +400,66 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 	}
 }
 
-// abandonGrace is how long a cancelled race waits for its arms to say they have
-// stopped. An arm whose request has just been cancelled unwinds in
-// microseconds, so this is never really spent; what it bounds is the arm that
-// cannot report at all, which is exactly the shape issue #264 was found in.
+// abandonGrace is how long the accounting for a cancelled race waits for its
+// arms to say they have stopped. An arm whose request has just been cancelled
+// unwinds in microseconds, so this is never really spent; what it bounds is the
+// arm that cannot report at all, which is exactly the shape issue #264 was
+// found in.
+//
+// NOBODY WAITS OUT THIS GRACE ANY MORE. It is paid on the goroutine
+// [hedgeRace.accountForTheAbandoned] runs on and never by the caller — see
+// [hedgeRace.abandon] for the measurement that moved it.
 const abandonGrace = time.Second
 
-// abandon leaves the race because its caller did, and leaves it accounted for.
+// abandon leaves the race because its caller did.
 //
-// The arms are already cut — [hedgeRace.run] defers the cancel of the context
-// they all ride — and each of them writes its own end row as its stream unwinds
-// (calllog.go). SO THIS DRAINS THEM RATHER THAN WALKING AWAY: a stop that left
-// its requests unreported would put a start row in the log with nothing under
-// it, which is the exact state the log exists to make impossible. The drain is
-// bounded, which is the whole difference from the loop it replaces.
+// ── WHAT THE PERSON IS WAITING FOR WHEN THIS RUNS ──
+//
+// A cancelled race is almost always a person's own steer: they typed a
+// correction into a running turn, internal/session cut the generation, and the
+// very next thing that should happen is their words going to the model
+// ([lane.SpokenWithin] is the whole allowance for it). This function is on that
+// path — internal/session's loop is blocked in the call that lands here — so
+// EVERY MILLISECOND SPENT HERE IS A MILLISECOND THE PERSON SPENDS WATCHING
+// NOTHING MOVE.
+//
+// It used to spend up to a second of it, draining the arms and withdrawing the
+// offer before answering the caller. Both of those are about the race that is
+// ENDING, and nothing the next request needs is in either: the drain exists so
+// the call log has no start row without an end row under it, and the withdrawal
+// gives an offer token back. So they happen where they belong — behind the
+// caller, on their own goroutine — and the cancellation is answered at once.
+//
+// THE ARMS ARE ALREADY CUT. [hedgeRace.run] defers the cancel of the context
+// they all ride, so nothing is left running by returning early; what is left is
+// only the account of it.
+func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Response, bool, error) {
+	// `seen` is handed over rather than shared. [hedgeRace.run] returns this
+	// call's value directly and never reads the map again, so the goroutine
+	// below is its only reader from here — which is what makes an unsynchronised
+	// map safe across the seam.
+	guard.Go("provider.hedge.abandoned", func() { r.accountForTheAbandoned(seen) })
+	return nil, false, ctx.Err()
+}
+
+// accountForTheAbandoned is everything a cancelled race owes the process once
+// its caller has gone: the arms' own endings, the offer token, and the money.
 //
 // AND IT DELIBERATELY DOES NOT SETTLE. The arms were never allowed to finish,
 // so folding their waits into the belief would teach the ledger that a lane it
 // cut off is slow. The money is the other way round — a cancelled request was
 // still made, and the rate limit is counted in requests — so the two
 // denominators are noted here exactly as [hedgeRace.settle] notes them.
-func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Response, bool, error) {
+//
+// The order is the drain FIRST: the spend it notes is read off what the arms
+// report, so noting it before they have reported would bill the pool for less
+// than the race actually spent.
+func (r *hedgeRace) accountForTheAbandoned(seen map[int]armResult) {
 	r.drainArms(seen)
 	r.withdraw()
 	now := waitNow()
 	r.budget.NoteRequest(now)
 	r.budget.NoteSpend(r.spent(seen), now)
-	return nil, false, ctx.Err()
 }
 
 // drainArms collects what the arms report as they stop, for at most

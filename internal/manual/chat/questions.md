@@ -726,7 +726,9 @@ lies. `x` again goes back to the answers.
 
 There is no separate typing place: **the message box under the question is where
 the words go**, and the block says what they will mean. With nothing pressed,
-what you type is a message to the conversation and the question waits. Press
+what you type is a message to the conversation — and sending it **takes the
+question back**, because saying something else is a kind of answer (the next
+section). Press
 `c` first and the answers row turns into `change: say what you want different,
 then enter · it goes with [2] Adaptive · esc back` — now the box is the
 question's: every letter types (even `d`), `enter` sends the sentence together
@@ -738,6 +740,30 @@ answer afterwards.
 
 If the row still shows the keys — `[enter] take it · [esc] later · …` — the box
 is the conversation's, and what you type there goes to the model as a message.
+
+## I typed instead of pressing a key — answering a question in my own words, talking past it
+
+Send a message while a question is open and **the question comes down and your
+sentence goes to the model at once**. The row it leaves behind reads
+
+```
+  ⊘ Which painting genres do you like? — no longer needed · you said something else instead
+```
+
+and your own line is marked `took this instead of the question`.
+
+The model is told, in as many words, that nobody answered it and that your
+sentence is the next thing it will read — so `portrait` typed under a list of
+genres is read as your answer to it, and nothing is filed in the record as a
+choice you pressed. If what you said leaves the decision open, it asks again.
+
+**This is why nothing gets stuck.** A question waits for you and the work waits
+for the question, so a sentence that only queued behind the question would be
+waiting for itself: you would type, and the screen would sit there. Your words
+end the wait instead.
+
+If you meant to say something *beside* the question and keep it open, `?` is the
+key for that — ask back, and the question stays exactly where it was.
 
 ## Comment on one option
 
