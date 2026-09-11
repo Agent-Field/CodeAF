@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -2946,6 +2947,21 @@ type Agent struct {
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the
 	// journal, so it never re-names itself.
+	// metaStampWriter is the one deferred write this session owes meta.json, and
+	// metaStampOnce builds it on the first stamp rather than on every agent:
+	// a session that never speaks starts no goroutine (placemeta.go).
+	metaStampOnce   sync.Once
+	metaStampWriter *stampWriter
+
+	// toolCompact is the reduced form of this session's frozen tool history,
+	// carried between requests rather than rebuilt on each one (toolcompact.go).
+	toolCompact toolCompactMemo
+
+	// treesWrite cuts the working copy of a referred folder AHEAD of the first
+	// write into it, and treesOnce builds it on the first refer (standingtree.go).
+	treesOnce  sync.Once
+	treesWrite *offpath.Write
+
 	title      string
 	titleTried bool
 	shortTitle string

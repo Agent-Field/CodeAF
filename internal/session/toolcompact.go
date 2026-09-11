@@ -47,6 +47,7 @@ package session
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -87,11 +88,95 @@ func (s resultSource) of(message ai.Message) string {
 	return s(message)
 }
 
+// toolCompactMemo is this reduction, CARRIED BETWEEN REQUESTS.
+//
+// THE DEFECT IT CLOSES, and it is the one this file's own header should have
+// predicted: the frozen region is by definition the part of the transcript that
+// cannot change, and this pass rebuilt its reduced form from scratch on EVERY
+// request of every tool round. For each old result that meant a SHA-256 over the
+// whole of its text (the pointer's key, chatlog.go's chatRefKey), a copy of that
+// text out of its content parts ([messageContentText] builds a string), a trim,
+// a head, a tail and an allocated view — work proportional to the total bytes of
+// everything the conversation has ever read, paid again and again while the
+// conversation got longer. A two-hundred-message conversation with a few
+// megabytes of tool output behind it paid it before every single request.
+//
+// SO THE REDUCED FORM IS HELD PER MESSAGE AND REBUILT ONLY FOR MESSAGES THAT ARE
+// NEW OR HAVE MOVED. The guard is per index and it is cheap: a tool result's own
+// call id and the length of its text. Anything that rewrites a frozen message in
+// place — the end-of-turn stubbing pass (stub.go) is the one thing that does —
+// changes one of the two and is recomputed; a message that is what it was is
+// answered from here.
+//
+// AND THE HELD MESSAGE IS THE SAME VALUE EVERY TIME, which is worth more than
+// the arithmetic: the provider's encode memo keeps one encoding per position and
+// compares the message it holds against the one it is given (internal/provider's
+// memo.go). A freshly composed view compares equal only after a byte-by-byte
+// walk of its text; the held one compares equal on the string's own pointer.
+type toolCompactMemo struct {
+	mu sync.Mutex
+	// place is the workspace the pointers in these views were resolved against.
+	// A stub path is relative to its workspace, so an anchor move
+	// ([Agent.AnchorWorkspace]) invalidates every view here at once.
+	place string
+	held  []compactedResult
+}
+
+// compactedResult is one frozen tool result as this pass leaves it: the view
+// that replaces it, the one-line form the budget walk may fall back to, and the
+// two facts that say whether the message at that index is still the one these
+// were made from.
+type compactedResult struct {
+	made   bool
+	callID string
+	// wasBytes is [messageBytes] of the ORIGINAL message. It is the guard's
+	// second fact and it is chosen because it is the one size that can be taken
+	// without copying anything: messageBytes sums the lengths of the content
+	// parts, where messageContentText builds a whole new string out of them.
+	wasBytes int
+
+	view      ai.Message
+	viewBytes int
+	line      ai.Message
+	lineBytes int
+}
+
+// fresh says whether this entry was made from the message now at its index.
+//
+// THE TWO FACTS ARE THE CALL ID AND THE BYTE WEIGHT, and between them they cover
+// every way this package rewrites a frozen result: a stub replaces the text,
+// which moves the weight; a history rebuilt around a different call moves the
+// id. The one thing they cannot tell apart is a result at the same index, under
+// the same tool call id, rewritten to EXACTLY its old byte count — which nothing
+// in this package does, because the rewrites it has all replace a result with a
+// pointer that is shorter. It is written down rather than guarded against:
+// guarding means digesting the whole result again, which is the cost this memo
+// exists to remove.
+func (c compactedResult) fresh(message ai.Message) bool {
+	return c.made && c.callID == message.ToolCallID && c.wasBytes == messageBytes(message)
+}
+
+// begin brings the memo to this request's workspace and length, dropping
+// everything when the workspace has moved under it.
+func (m *toolCompactMemo) begin(place string, length int) {
+	if m.place != place {
+		m.place, m.held = place, nil
+	}
+	switch {
+	case len(m.held) < length:
+		m.held = append(m.held, make([]compactedResult, length-len(m.held))...)
+	case len(m.held) > length:
+		// A transcript that SHRANK is one a compaction rewrote wholesale, and
+		// nothing held beyond its new end describes a message that still exists.
+		m.held = m.held[:length]
+	}
+}
+
 // compactToolHistory returns a shallow copy of messages whose consumed tool
 // results before frozen have been compacted for the next turn-loop request.
 // The input slice and the messages it still shares with the live transcript
 // are not written.
-func compactToolHistory(messages []ai.Message, frozen int, source resultSource) []ai.Message {
+func (a *Agent) compactToolHistory(messages []ai.Message, frozen int, source resultSource) []ai.Message {
 	if frozen > len(messages) {
 		frozen = len(messages)
 	}
@@ -114,22 +199,23 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	calls := toolResultCalls(messages[:newest])
 	out := append([]ai.Message(nil), messages...)
 
+	memo := &a.toolCompact
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	memo.begin(a.compactPlace(), len(messages))
+
 	// spent is the running weight of the old results in out, carried rather than
 	// recomputed. The budget walk below used to re-add every old result on every
 	// iteration — quadratic in the call count, on the hot path of every request.
 	spent := 0
 	for _, index := range old {
-		text := messageContentText(messages[index])
-		if !compactLeaveVerbatim(text) {
-			view := reducedResultView(toolResultName(calls[index]), text, source.of(messages[index]))
-			// A reduction that does not reclaim enough is not a reduction: it
-			// would spend a rewrite, and the cold prefix behind it, to save
-			// almost nothing. See [compactViewEarnsItsRewrite].
-			if compactViewEarnsItsRewrite(len(text), len(view)) {
-				out[index] = replaceToolText(messages[index], view)
-			}
+		entry := &memo.held[index]
+		if !entry.fresh(messages[index]) {
+			*entry = makeCompactedResult(messages[index], toolResultName(calls[index]),
+				source.of(messages[index]))
 		}
-		spent += messageBytes(out[index])
+		out[index] = entry.view
+		spent += entry.viewBytes
 	}
 	// The digest budget is the ceiling for consumed evidence — the same 5k-token
 	// account the checkpoint reader is held to. Newest-of-old keep their views;
@@ -145,20 +231,65 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		if spent <= checkpointDigestBytes {
 			break
 		}
-		original := messageContentText(messages[index])
-		if compactLeaveVerbatim(original) {
+		entry := &memo.held[index]
+		if entry.lineBytes == 0 {
 			continue
 		}
-		line := reducedOutcomeLine(toolResultName(calls[index]), original, source.of(messages[index]))
-		reduced := replaceToolText(out[index], line)
-		before, after := messageBytes(out[index]), messageBytes(reduced)
+		before, after := entry.viewBytes, entry.lineBytes
 		if !compactViewEarnsItsRewrite(before, after) {
 			continue
 		}
-		out[index] = reduced
+		out[index] = entry.line
 		spent -= before - after
 	}
 	return out
+}
+
+// makeCompactedResult is where the per-result work is DONE, exactly once per
+// result per workspace. Everything expensive in this file happens here: the
+// pointer (which digests the result's whole text, chatlog.go), the string built
+// out of the content parts, the trim, the head and the tail.
+//
+// A RESULT THAT MUST BE LEFT ALONE IS STILL AN ENTRY. Its view is the message
+// itself and its line is empty, so the walks above ask the memo rather than
+// re-deciding — and a result already stubbed or already reduced is recognised
+// once rather than on every request for the rest of the conversation.
+func makeCompactedResult(message ai.Message, tool, source string) compactedResult {
+	entry := compactedResult{
+		made:      true,
+		callID:    message.ToolCallID,
+		wasBytes:  messageBytes(message),
+		view:      message,
+		viewBytes: messageBytes(message),
+	}
+	text := messageContentText(message)
+	if compactLeaveVerbatim(text) {
+		return entry
+	}
+	view := reducedResultView(tool, text, source)
+	// A reduction that does not reclaim enough is not a reduction: it would
+	// spend a rewrite, and the cold prefix behind it, to save almost nothing.
+	// See [compactViewEarnsItsRewrite].
+	if compactViewEarnsItsRewrite(len(text), len(view)) {
+		entry.view = replaceToolText(message, view)
+		entry.viewBytes = messageBytes(entry.view)
+	}
+	// The far end's one line is composed here too, beside the view, because the
+	// budget walk below needs it only sometimes and needs it from the ORIGINAL
+	// text every time — and composing it there meant rebuilding that text on
+	// every request of every round for results the budget never reached.
+	entry.line = replaceToolText(message, reducedOutcomeLine(tool, text, source))
+	entry.lineBytes = messageBytes(entry.line)
+	return entry
+}
+
+// compactPlace is the workspace the memo's pointers were resolved against, read
+// under the lock an anchor moves it with ([Agent.resultPlaceNow] states the same
+// rule for one request's own reading).
+func (a *Agent) compactPlace() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return strings.TrimSpace(a.config.Workspace)
 }
 
 // resultPlace is where this session can put a result's bytes and where its

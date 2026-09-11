@@ -34,11 +34,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -50,22 +50,11 @@ import (
 // error dialog.
 const viewImageDefaultQuestion = "Describe this image precisely: subject, composition, any text verbatim, and anything that looks wrong or malformed."
 
-// viewLookWindow is how long ONE look may take before the tool answers without
-// it. IT IS THE WHOLE REASON THIS TOOL CANNOT HANG: a call that starts always
-// ends journaled, and the completion below was the one path out of this
-// function that could return neither a result nor an error — the turn's context
-// carries no deadline of its own, so a provider that accepted the request and
-// then went quiet left the row running for the rest of the session (the surface
-// draws a journaled call with no result as still-running, internal/tui3's
-// room.go, and it is right to).
-//
-// It is [providerTimeout] rather than a second number: the look is one
-// non-streamed completion on this session's client, which is exactly what that
-// constant already bounds.
-//
-// It is a var only so the tests can run the clock out in a millisecond, the way
-// connect.go's own waits are. NOTHING IN A BUILD WRITES IT.
-var viewLookWindow = providerTimeout
+// THE LOOK'S WINDOW IS NOT THIS FILE'S ANY MORE. It was `viewLookWindow`, set
+// to [providerTimeout] — ten minutes, a second budget beside the deadline the
+// dispatcher already derives from the call's role. It is now [toolAskWindow],
+// which every tool-made model call on this belt shares and which comes out of
+// [lane.Role.GiveUp] rather than out of a constant anybody typed.
 
 // The description TEACHES, by Decision 8: capability is not something a model
 // should discover by failing. It names the uses that are otherwise invisible —
@@ -152,56 +141,33 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	if question == "" {
 		question = viewImageDefaultQuestion
 	}
-	// The look is bounded here and streamed nowhere ([viewLookWindow]).
-	// WithoutStream for the reason the title, the guardian and the compaction
-	// summary use it (internal/provider's stream.go): this answer is a TOOL
-	// RESULT and not the room's reply, so it must not be typed into the
-	// transcript in the chat model's voice — and it is also what puts the call
-	// on the client bounded in total rather than on the stream client, which by
-	// design carries no total deadline at all (internal/provider's
-	// transport.go).
-	// And it names itself an errand for the same reason it is unstreamed: the
-	// answer is a tool result, so nobody is reading it arrive (internal/lane's
-	// roles.go).
-	look, stopLooking := context.WithTimeout(
-		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), viewLookWindow)
-	defer stopLooking()
-	response, err := a.completeWithModel(look, []ai.Message{{
-		Role: "user",
-		Content: []ai.ContentPart{
-			{Type: "text", Text: question},
-			{Type: "image_url", ImageURL: &ai.ImageURLData{
-				URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
-			}},
-		},
-	}}, seer)
-	// Accounted BEFORE the answer is judged, and folded into the SESSION total
-	// rather than the turn's ([Agent.addAuxiliaryUsage]): the look was paid for
-	// whether or not it said anything useful, and no turn of the person's ran on
-	// that model — the same treatment the title, the compaction summary and a
-	// generated picture get.
-	if response != nil {
-		a.addAuxiliaryUsage(response, seer, 1)
-	}
-	if err != nil {
-		// The window running out is its own answer, and it is told apart from
-		// the person's interrupt by the caller's context still being alive: a
-		// model that stopped answering is something this model can act on, while
-		// "context deadline exceeded" is a Go sentence about nothing it can see.
-		if look.Err() != nil && ctx.Err() == nil {
-			return seer + " did not answer about " + shown + " within " + taskSpanWord(viewLookWindow) + " — try again, or ask about a smaller picture", true, nil
-		}
+	// THE LOOK GOES THROUGH THE BELT'S ONE DOOR FOR ASKING A MODEL (toolask.go).
+	// The tag that names this call in the log, the phase the person reads while
+	// it lasts, the bound on the wait and the bill folded into the session are
+	// all that door's, said once there rather than again here — which is how this
+	// tool came to make an untagged, unannounced, unbounded call in the first
+	// place.
+	answer, err := a.askModel(ctx, toolAsk{
+		tool:   "view_image",
+		doing:  "looking at " + filepath.Base(absolute),
+		model:  seer,
+		prompt: question,
+		part: ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
+			URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
+		}},
+	})
+	switch {
+	case errors.Is(err, errToolAskRanOut):
+		// The window running out is its own answer, and the door has already
+		// told it apart from the person's interrupt.
+		return seer + " did not answer about " + shown + " within " + taskSpanWord(toolAskWindow) + " — try again, or ask about a smaller picture", true, nil
+	case errors.Is(err, errToolAskSaidNothing):
+		return seer + " returned no answer for " + shown, true, nil
+	case err != nil:
 		// The cause reaches the model verbatim, bounded to a line: "try
 		// something else" is only actionable when the refusal names what went
 		// wrong, and an API error can carry a whole HTML page.
 		return seer + " could not look at " + shown + ": " + oneLineReason(err.Error()), true, nil
-	}
-	answer := ""
-	if response != nil {
-		answer = strings.TrimSpace(response.Text())
-	}
-	if answer == "" {
-		return seer + " returned no answer for " + shown, true, nil
 	}
 	// "seen by <model>" is the same sentence internal/exec's own view_image
 	// returns, and it is said out loud for image.go's reason: a second model

@@ -28,7 +28,10 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 )
 
 // metaTitleLimit is how much of the person's first line becomes the folder's
@@ -45,16 +48,107 @@ const metaTitleLimit = 56
 // (title.go), and [Agent.stampTitle] replaces this with that. Between the two
 // the picker still has a row a person recognizes, which is the whole difference
 // between a list of conversations and a list of ids.
+// IT IS OWED HERE AND WRITTEN BEHIND THE PATH. The stamp used to be a whole
+// [LoadMeta] and [SaveMeta] — a read, a MkdirAll, a CreateTemp, a write and a
+// rename — performed with THE AGENT LOCK HELD, in the moment between a person
+// pressing Enter and their turn starting. Nothing in that write is something the
+// turn needs, and nothing that reads meta.json is running yet: a picker reads it
+// when a person opens the home page, not while they are typing. So what happens
+// on the path is the snapshot, and the disk is [offpath.Write]'s
+// ([Agent.metaStamp]).
+//
+// The LAST STAMP WINS and that is correct rather than merely tolerable: what is
+// being recorded is "the person last spoke just now", so a stamp overtaken by a
+// newer one has nothing to say that the newer one does not say better.
 func (a *Agent) stampUserLocked(text string) {
 	snapshot := a.fillMetaLocked(Meta{})
-	a.updateMeta(a.config.Place.Dir, snapshot, func(meta *Meta) {
-		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
-		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
-		meta.LastUserAt = time.Now()
-		if strings.TrimSpace(meta.Title) == "" {
-			meta.Title = placeholderTitle(text)
-		}
+	dir := a.config.Place.Dir
+	at := time.Now()
+	title := placeholderTitle(text)
+	a.metaStamp().Owe(func() {
+		a.updateMeta(dir, snapshot, func(meta *Meta) {
+			meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+			meta.LastUserAt = at
+			if strings.TrimSpace(meta.Title) == "" {
+				meta.Title = title
+			}
+		})
 	})
+}
+
+// metaStamp is the one deferred write this session owes its own lookup file.
+//
+// It is built on first use rather than in the constructor because an agent
+// assembled by a test may never speak: a session that stamps nothing starts no
+// goroutine and has nothing to settle.
+func (a *Agent) metaStamp() *stampWriter {
+	a.metaStampOnce.Do(func() { a.metaStampWriter = &stampWriter{} })
+	return a.metaStampWriter
+}
+
+// SettleWrites waits until everything this session owes a file BEHIND a person's
+// path has landed: the meta.json stamp, the fix shelf's counters, and the
+// working copy of any folder referred but not yet cut.
+//
+// IT IS THE ONE EXIT DOOR, and there is one rather than one per owner because a
+// caller closing a session should not have to know which parts of it defer a
+// write. A deferred write's whole risk is a process that stops while one is
+// owed; this is the answer to that risk, and it belongs at [Agent.Close] and in
+// every test that reads one of those files back.
+//
+// IT MUST NOT BE CALLED WITH a.mu HELD, and that is the whole of its contract.
+// Every write it waits on takes that lock to read or replace what it is writing
+// — the stamp fills a Meta, the cut appends to a.trees — so a call from inside
+// the lock waits forever on work that is waiting for the caller. In [Agent.Close]
+// the place is beside [Agent.settleDeliveries] (agent.go), BEFORE the
+// `a.mu.Lock()` that follows it, and nowhere after.
+func (a *Agent) SettleWrites() {
+	if a == nil {
+		return
+	}
+	a.metaStamp().settle()
+	a.fixShelfFor().settle()
+	a.treesAhead().Settle()
+}
+
+// stampWriter is [offpath.Write] with the patch it is to perform carried beside
+// it, because what a stamp writes is decided on the path and performed off it.
+//
+// THE PATCH IS REPLACED AND NOT QUEUED, which is the coalescing rule
+// [offpath.Write] states applied to this particular write: two user messages a
+// second apart owe ONE meta.json, holding the later of the two stamps.
+type stampWriter struct {
+	mu    sync.Mutex
+	patch func()
+	write *offpath.Write
+}
+
+func (s *stampWriter) Owe(patch func()) {
+	s.mu.Lock()
+	s.patch = patch
+	if s.write == nil {
+		s.write = offpath.Deferred(s.perform)
+	}
+	write := s.write
+	s.mu.Unlock()
+	write.Owe()
+}
+
+func (s *stampWriter) perform() {
+	s.mu.Lock()
+	patch := s.patch
+	s.mu.Unlock()
+	if patch != nil {
+		patch()
+	}
+}
+
+func (s *stampWriter) settle() {
+	s.mu.Lock()
+	write := s.write
+	s.mu.Unlock()
+	write.Settle()
 }
 
 // placeholderTitle cuts the folder's working name out of what a person said:

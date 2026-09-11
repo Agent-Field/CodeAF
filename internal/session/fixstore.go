@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/aforge-v2/internal/redact"
 )
 
@@ -409,6 +410,11 @@ type fixStore struct {
 	// the merge on save adds them to what is on disk rather than replacing it.
 	askedDelta, foundDelta, workedDelta, failedDelta int
 
+	// countersWrite is what carries the read path's two counters to disk without
+	// putting a write on that path ([fixStore.consult]), built on first use.
+	countersOnce  sync.Once
+	countersWrite *offpath.Write
+
 	// now is the clock, injectable so the decay can be tested without waiting a
 	// week. It is nil everywhere but a test.
 	now func() time.Time
@@ -484,9 +490,22 @@ func (s *fixStore) reindexLocked() {
 // consult answers one failed call: the patches worth offering, at most
 // [fixAdviceLimit] of them, best first. It is the ONLY read path, and it counts
 // itself — every consultation is an `asked`, and one that answers is a `found`.
+//
+// A READ PATH DOES NOT WRITE. It used to: the two counters above were persisted
+// here, inside the call, which meant that every failed tool call in a
+// conversation paid FOUR whole-file read-modify-write cycles — one per store,
+// twice, since [fixShelf.consult] reads both — before the model was handed a
+// single suggestion. And it paid them at the worst possible moment: a tool has
+// just failed, the person is watching the row, and the harness is doing disk I/O
+// about its own hit rate.
+//
+// So the counters are owed rather than written ([offpath.Write]). The write is
+// performed behind this call, coalesced with every other consultation in the
+// same batch, and settled at the door a session closes by ([fixStore.settle]).
+// Nothing about the ADVICE is deferred — the ranking above is pure memory, and
+// the answer this returns is the same answer it always returned.
 func (s *fixStore) consult(signature string) []*fixEntry {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.loadLocked()
 
 	s.askedDelta++
@@ -494,8 +513,39 @@ func (s *fixStore) consult(signature string) []*fixEntry {
 	if len(best) > 0 {
 		s.foundDelta++
 	}
-	s.saveLocked()
+	s.mu.Unlock()
+	s.counters().Owe()
 	return best
+}
+
+// counters is the deferred write the read path owes, built on first use so a
+// store nobody consults starts no goroutine.
+func (s *fixStore) counters() *offpath.Write {
+	s.countersOnce.Do(func() {
+		s.countersWrite = offpath.Deferred(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.saveLocked()
+		})
+	})
+	return s.countersWrite
+}
+
+// settle waits for whatever this store owes its file. It is the exit door and
+// the tests' door, and nothing on a person's path calls it.
+func (s *fixStore) settle() { s.counters().Settle() }
+
+// settle is the same door for the pair. A shelf whose stores have nothing owed
+// returns at once.
+func (s *fixShelf) settle() {
+	if s == nil {
+		return
+	}
+	for _, store := range []*fixStore{s.project, s.global} {
+		if store != nil {
+			store.settle()
+		}
+	}
 }
 
 // rankLocked is the argmax: the candidates that pass the gate, ordered by how

@@ -1388,7 +1388,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// The place a pointer may name is read ONCE for the whole request, under
 		// the lock an anchor takes to move it (toolcompact.go).
 		place := a.resultPlaceNow()
-		messages = compactToolHistory(messages, frozenToolHistory,
+		messages = a.compactToolHistory(messages, frozenToolHistory,
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
