@@ -2443,17 +2443,20 @@ With `routing: off` there is nothing measured, so there is no lane to choose, no
 
 ## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
 
-This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
-then excluded that endpoint under your OpenRouter account's privacy setting because its
-provider may train on prompts. It does not mean the model disappeared or that your prompt
-was rejected.
+This sentence means the endpoints your request was down to were all excluded by your
+OpenRouter account's privacy setting, because their providers may train on prompts. It
+does not mean the model disappeared or that your prompt was rejected. The request can be
+down to one endpoint because aforge's price cap left only one, because it asked for one
+machine by name, or because its list of slow machines covered the rest.
 
-aforge first relaxes the endpoint filter and asks again under the same cap. If the router
-still refuses that wider request, aforge drops the cap and asks the same model a third time.
-The attempt lines say `relaxed the endpoint filter` and then `dropped the price ceiling`.
-A rescue request or a request pinned to one lane never carries the cap, because that lane
-has already passed aforge's price choice. Once the price rung is reached, the cap stays off
-that model for the rest of this session, including the next rescue.
+aforge answers it without ending your turn. A machine asked for by name is remembered as
+out of reach for your account — for every model, for a day, across restarts — and the
+answer moves to another machine. When there is nowhere left to move, aforge relaxes the
+endpoint filter and lets the router choose, then drops the cap and asks again. The attempt
+lines say `relaxed the endpoint filter` and then `dropped the price ceiling`. A rescue
+request or a request pinned to one lane never carries the cap, because that lane has
+already passed aforge's price choice. Once the price rung is reached, the cap stays off
+that model for the rest of this session.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this

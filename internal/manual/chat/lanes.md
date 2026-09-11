@@ -308,7 +308,12 @@ A refusal is final for that machine, immediately:
   so it is not picked again later in the session;
 - if there is nowhere left to move to, the request itself is widened — the
   demand for one machine is the first thing dropped — and the answer usually
-  arrives from wherever the router picks.
+  arrives from wherever the router picks. This happens even when the last
+  machine tried failed some other way (busy, or went quiet): a widening that was
+  put off for a move is always done before you are shown anything, with its
+  `Retry 1/N: relaxed the endpoint filter` lines. If nothing lands, the error you
+  see is the most useful one — a machine's rate limit and its wait before an
+  earlier machine's refusal.
 
 If a later machine accepts the request and starts writing but that stream is
 cut, the cut is the failure aforge acts on. The partial reply is cleared and the
@@ -397,6 +402,16 @@ request.
 
 If a machine later answers, aforge counts it again immediately. Switching a
 provider back on needs nothing from you.
+
+The **privacy switch for providers that may train on paid prompts** is the same
+kind of list, and OpenRouter names it: `0 endpoints out of 1 requested are
+available matching your guardrail restrictions and data policy … Paid model
+training violation (account settings)`. When that answer is about a machine
+aforge asked for by name, the machine is remembered as out of reach for your
+account — for **every model**, for **a day**, and across restarts
+(`~/.aforge/v3/account-exclusions.json`) — so no later request names it and it
+costs one refused round trip, once. Nothing about its speed is written, and an
+answer from it takes it back at once.
 
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 

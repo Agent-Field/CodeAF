@@ -289,6 +289,28 @@ func (w *streamWatch) canWalk() bool {
 	return w.race.canWalk()
 }
 
+// deferLadder tells the race that this arm's refusal door handed a routing
+// refusal to the walk instead of climbing the ladder, and what the router said.
+// It is the PROMISE half of [streamWatch.canWalk]: the prediction was that the
+// walk would carry it, and the race is the only thing that can find out whether
+// it did ([hedgeRace.exhausted]). A call with no race has nobody to hand to and
+// never gets here — its door answered false and climbed.
+func (w *streamWatch) deferLadder(body []byte) {
+	if w == nil || w.race == nil {
+		return
+	}
+	w.race.deferLadder(body)
+}
+
+// ranLadder tells the race that this arm's door climbed the ladder itself, so
+// nothing is owed: a question may climb it once, never twice.
+func (w *streamWatch) ranLadder() {
+	if w == nil || w.race == nil {
+		return
+	}
+	w.race.ranLadder()
+}
+
 // speaking reports whether this arm is the one the person is hearing.
 //
 // An unwatched stream always is — there is nobody else. An arm of a race is
