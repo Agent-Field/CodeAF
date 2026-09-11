@@ -627,7 +627,7 @@ type TaskNotice struct {
 	// stands, one landed with the check switched off and one a person accepted
 	// are all done and none of them was judged (taskgrade.go's
 	// [TaskNode.checkSaid]).
-	Checked provider.Verdict
+	Checked provider.Reading
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that

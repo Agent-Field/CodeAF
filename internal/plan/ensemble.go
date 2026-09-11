@@ -248,10 +248,10 @@ func DecidePanel(ctx context.Context, client Completer, goal, terrain string, as
 	// the wrong thing for the record: a third answer means the pass did not
 	// answer the question it was asked.
 	if panel.Mode != "decompose" && panel.Mode != "ensemble" {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return &panel, usageOf(response), nil
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return &panel, usageOf(response), nil
 }
 

@@ -806,7 +806,7 @@ type TaskNode struct {
 	//
 	// repairs is how many times the work was handed back before that answer —
 	// the repair rounds the gate spent (task_audit.go's [Agent.auditWithRepair]).
-	checked provider.Verdict
+	checked provider.Reading
 	repairs int
 	// blockedBy names the task whose working copy refused this node's writes
 	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
