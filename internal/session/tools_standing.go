@@ -610,11 +610,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
-	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. It
-	// is said to the person and not to the model: the line goes on the screen
-	// as its own dim row, and the model's whole reply is still the one sentence
-	// about what now stands ([standingRatifiedLine]).
-	a.standingBackgroundOn(store, created)
+	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. The
+	// line goes on the screen as its own dim row, and the model's whole reply
+	// is still the one sentence about what now stands ([standingRatifiedLine]).
+	checks := a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		if created.Scope != nil {
@@ -628,6 +627,14 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	if len(place.folders) > 0 {
 		line += "\nplaced in: " + place.names()
+	}
+	// THE MODEL IS TOLD WHAT THE PERSON WAS TOLD ABOUT CHECKS. The live chat
+	// door (2026-09-11) replied "with background checks active" on a host whose
+	// dim row had just said there are none: a model that never sees that row
+	// fills the gap with the reassuring guess, and its one line is the part the
+	// person reads.
+	if checks != "" {
+		line += "\n" + checks
 	}
 	line += "\n" + standingRatifiedLine
 	return line, false, nil
@@ -1349,7 +1356,8 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 // ── background checks, on by default, said once ─────────────────────────────
 
 // standingBackgroundOn installs this machine's timer the first time anything
-// ever stands, and says the one dim line about it.
+// ever stands, says the one dim line about it, and returns that line (empty
+// when it said nothing) so the tool's result can carry the same fact.
 //
 // NOBODY IS ASKED, AND IT HAPPENS ONCE, EVER. There used to be a question here
 // — keep checking when no window is open? — and it had one sensible answer:
@@ -1362,9 +1370,9 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 // the person's machine; a marker written afterwards would be lost by exactly
 // the failure that makes remembering worth doing, and they would be told all
 // over again tomorrow.
-func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
+func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) string {
 	if store == nil || a.config.Standing == nil {
-		return
+		return ""
 	}
 	if a.config.Standing.Watch == nil {
 		// NO TIMER HERE, SAID EVERY TIME SOMETHING THAT WAKES IS SET UP. It is
@@ -1372,30 +1380,36 @@ func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
 		// on the person's machine, and this is a fact about each thing they
 		// just agreed to — it will be checked only while somebody is here. A
 		// rule never wakes, so there is nothing for it to say about one.
-		if item.Spends() {
-			a.emitStandingUpdate(standingBackgroundUpdate, item, standingNoTimerLine)
+		if !item.Spends() {
+			return ""
 		}
-		return
+		return a.standingSayBackground(item, standingNoTimerLine)
 	}
 	if _, told := standingWatchAsked(store.Root()); told {
-		return
+		return ""
 	}
 	// THE ROW OUTRANKS THE DEFAULT. Somebody who turned background checks off
 	// before anything ever stood has answered this already, and installing a
 	// timer over that answer would make the switch a suggestion.
 	if !config.BackgroundChecksWantedAt(a.config.ProfileDir) {
 		standingRememberWatch(store.Root(), false)
-		return
+		return ""
 	}
 	standingRememberWatch(store.Root(), true)
 	if err := a.config.Standing.Watch.Install(context.Background()); err != nil {
 		// SAID HONESTLY AND NOT SWALLOWED. The person is about to walk away from
 		// a machine they think is watching something for them.
-		a.emitStandingUpdate(standingBackgroundUpdate, item,
+		return a.standingSayBackground(item,
 			standingBackgroundFailed+oneLine(err.Error())+" · "+standingChecksHow+standingBackgroundWhere)
-		return
 	}
-	a.emitStandingUpdate(standingBackgroundUpdate, item, standingBackgroundLine)
+	return a.standingSayBackground(item, standingBackgroundLine)
+}
+
+// standingSayBackground puts one line about checks on the screen and hands the
+// same line back for the tool's result.
+func (a *Agent) standingSayBackground(item standing.Item, line string) string {
+	a.emitStandingUpdate(standingBackgroundUpdate, item, line)
+	return line
 }
 
 // oneLine flattens whatever the operating system said into the single row this
