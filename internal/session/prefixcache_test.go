@@ -361,7 +361,7 @@ func TestARoutedMemoryChangeLeavesMessageZeroByteIdentical(t *testing.T) {
 
 	// The block a task node is opened with, and the block a router hands back,
 	// are the same field: this session has no store, so what is set here is what
-	// the turn carries (agent.go's memoryBrief, memory.go's refreshMemory).
+	// the turn carries (memory.go's takeMemory and refreshMemory).
 	agent.mu.Lock()
 	agent.memoryText = "\n<memory>\n- indent: this person indents with tabs (learned today)\n</memory>\n"
 	agent.mu.Unlock()

@@ -190,9 +190,9 @@ Every word it draws:
 
 - `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
   held behind named work instead, it reads `waits: <the work it waits on>`.
-- `sizing the work` — the reading that decides whether this job is handed out in parts and
-  how. It is the first thing a brand new task does, before its worker has said a word, and
-  it is why a page can sit there for a few seconds with nothing on it.
+- `sizing the work` — the task's worker asked to hand parts of its work out and is waiting
+  while a reading decides whether, and how. A brand new task never waits on it: its worker
+  starts at once, and any parts somebody drew are weighed beside it.
 - `working` — its worker is getting on with it. This is the ordinary one.
 - `checking what it left` — the worker has stopped and what it produced is being read.
 - `closing gaps · round 1 of 2` — the check found something and a round is closing it.

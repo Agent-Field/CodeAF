@@ -1735,8 +1735,8 @@ closes the gaps that look named. **Every one of them is `running`** — nothing 
 and nothing was undone between them — so the card, the rail row, the room header and the
 home row say which of them it is in:
 
-- `sizing the work` — a reading is deciding whether this job is handed out in parts, and
-  how. See *A task that has only just appeared and says sizing the work* below.
+- `sizing the work` — the task's worker asked to hand parts of its work out and is waiting
+  while a reading decides whether, and how. See *What sizing the work means* below.
 - `checking what it left` — the worker is finished and its work is being read.
 - `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
   second number is `task.repair_rounds` (default 1), so with the default you will only
@@ -1782,36 +1782,33 @@ whole cost is on the one task's bill, because you asked for one piece of work.
 the heartbeat is the thing to read — see the heartbeat section on this page for telling a
 working task from a hung one.
 
-## A task that has only just appeared and says sizing the work — task stuck before starting, why is my new task doing nothing, sizing the work how long, task appeared and then nothing happened
+## What sizing the work means — my task says sizing the work, how long does sizing the work take, task appeared and then nothing happened, why is my new task doing nothing
 
-`sizing the work` is the one life a task can be in **before its worker has said a word**,
-and it is the answer to "a task appeared, the clock is going, and nothing is happening".
+`sizing the work` means a task's worker found the job wider than one pair of hands,
+**asked to hand parts of it out**, and is waiting while a model on the thinking tier reads
+the parts and decides whether, and how.
 
-It means a model is reading the job and deciding **whether it is handed out in parts, and
-how**. It happens in two places:
+**A new task never waits on it.** When work is moved out of a reply that had parts in it
+(`this has parts · handing it to a task that can take them side by side`), the parts
+somebody drew are read **beside** the task's worker, which starts at once on the whole
+brief — so a task that has just appeared shows its worker's own calls, not this word. When
+that reading answers: parts are handed out as workers of their own, each from the task's
+copy of the folder as it stood at that moment, and the task gathers their reports (the
+roster says `split into 3 parts:`); one job, or nobody to ask, changes nothing, because the
+worker is already doing it as one; work only a person can do stops the worker (*A task that
+landed needing your look without doing anything*); and an answer that arrives after the
+worker has finished is dropped.
 
-- **Just after the task appears**, when the work was moved out of a reply that had parts
-  in it (`this has parts · handing it to a task that can take them side by side`). Somebody
-  has already drawn the parts, and this reading is what decides whether they are admitted.
-- **Mid-run**, when a worker has opened the material, found the job wider than one pair of
-  hands, and asked to hand it out.
-
-**How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
+**How long is normal.** One full model call on the tier that thinks: **ten to thirty
 seconds**, measured at thirteen. It is bounded at **ten minutes for the whole reading** —
 that tier's own patience — but a model that goes quiet is cut in tens of seconds by the
-guard every request runs under, so the ten minutes is what a reading being written may
-take and never how long you wait for one that is not coming. It carries no numbers — how
-many parts there are is exactly what it is deciding — and the roster says what happened
-afterwards, either `split into 3 parts:` or the task carrying on as one worker. *What the
-row under sizing the work says* below is the line that names the model being asked.
+guard every request runs under. It carries no numbers: how many parts there are is what it
+is deciding. *What the row under sizing the work says* below names the model being asked.
 
-**Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
-a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
-
-**Cheap refusals draw nothing.** Where a division is turned down without a reading at all —
-no lane is free to pick the parts up, or a width floor you turned on says the material names
-too few items — the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
-so only the reading is said.
+**Nothing is wrong if it ends with no parts.** The task carries on as one worker, nothing
+is cancelled, and nothing is lost. Where a division is turned down without a reading at all
+— no lane free for the parts, or a width floor you turned on — it takes microseconds and no
+word is drawn.
 
 ## What the row under sizing the work says — which model is being asked, sizing says asking a model, my task said a model did not answer in time, nobody answered going with the parts as drawn, asking again
 
@@ -1899,7 +1896,7 @@ nobody would say — or the work held and one of the files it wrote moved under 
 ran, which is its own section below — or the work held and its branch would not merge
 cleanly, or the folder it was going to lay its work back over holds an edit of your own in
 one of those files — or what was left of the work turned out to be something no worker can
-do at all, which lands this way before a worker is ever started (*A task that landed needing
+do at all, which stops the task's worker and lands this way (*A task that landed needing
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
 the six on the tasks page — `nobody could check it`, `the check did not pass it: <gaps>`,
@@ -2017,19 +2014,20 @@ it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
-Sometimes a task lands as `your call` within seconds, having written nothing, spent
-almost nothing and touched no files. That is not a failure and nothing went wrong. It means
+Sometimes a task lands as `your call` soon after it starts, having written little or
+nothing and spent little. That is not a failure and nothing went wrong. It means
 what was left of the work is **not work a worker can do**: an approving review only a named
 person may give, a credential or an account nobody here holds, a decision that is yours to
 make, or a step that is somebody else's system doing something by itself.
 
 It is found by the same `mastermind` model that reads a task's parts before it splits (the
-tasks page, *when a task turns out to be too wide for one worker*). That reading happens
-**before the task's worker is asked anything**, and when it comes back saying nobody here
-can do this, the task stops there rather than starting one. The report is that reading's own
-sentence, in its words — `nobody could check it — an approving review GitHub will
+tasks page, *when a task turns out to be too wide for one worker*). That reading runs
+**beside the task's worker**, which has already started, and when it comes back saying
+nobody here can do this, the worker is stopped where it is — the one time a started worker
+is interrupted — and whatever it wrote is kept on the branch. The report is that reading's
+own sentence, in its words — `nobody could check it — an approving review GitHub will
 only accept from a human who isn't the author`, say — so what you are being asked to do is
-the first line on the card.
+the first line on the card, with what the worker had said under it.
 
 Everything else about the landing is the ordinary `your call` landing above: nothing
 merges, the branch is kept, nothing waiting on it fails, and the chips on the card
@@ -2037,10 +2035,9 @@ are the door. Usually the right one is to do the thing yourself and then accept 
 say what you want done instead and start the work again.
 
 **Why this exists.** Before it did, a task whose whole remainder was two GitHub approvals
-was read correctly, told nobody, and ran anyway: nine minutes and about $1.24 across the
-run, the check, a repair round and the check again, spent editing a file in an empty copy
-of the repository while it looked for something it could do — and then failed by the check.
-The reading that would have saved all of it had already been paid for.
+was read correctly, told nobody, and ran anyway: nine minutes and about $1.24 spent editing
+a file in an empty copy of the repository while it looked for something it could do — and
+then failed by the check.
 
 ## Why my task says your call when it finished fine — another window changed the same file
 

@@ -729,10 +729,15 @@ const (
 	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
 	// belongs on this list beside the other three. The reading is a full call to
 	// the tier that thinks — measured at thirteen seconds, and bounded by the
-	// role's own tier — and it happens twice in a node's life where the
-	// harness submits a drawing on the worker's behalf before its first request
-	// (task_divide_sketch.go): a card that has just appeared, with a clock going
-	// up and nothing else on it, for as long as the reading lasts.
+	// role's own tier — and the worker that asked for it sits inside its own
+	// `divide_work` call for all of it.
+	//
+	// IT IS DRAWN ONLY WHERE SOMEBODY WAITS ON IT (task_divide.go's
+	// [Agent.sizingWait]). It used to be drawn over the drawing the harness put
+	// before a node's first request as well, which held a brand new card on this
+	// word for three and a half minutes on the measured node; that drawing is
+	// weighed beside a worker that is already at work now (task_divide_sketch.go),
+	// and the row says what the worker is doing instead.
 	TaskPhaseSizing = "sizing"
 )
 
