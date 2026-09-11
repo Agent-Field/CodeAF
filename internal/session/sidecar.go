@@ -189,9 +189,17 @@ func (w *besideWatch) landed() {
 	w.mu.Unlock()
 }
 
-// quiet waits until no reading under this watch is in flight. Every reading is
-// bounded by its own window and by the work's context, so the wait is too.
-func (w *besideWatch) quiet() {
+// quiet waits until no reading under this watch is in flight, or until the work
+// those readings belong to is over.
+//
+// IT IS BOUNDED BY THE FACT AND NOT BY A CLOCK. [sidecar.end] cancels a
+// reading's window but never joins it, so a reading whose own call ignores that
+// cancellation is counted until the call returns — and an unbounded wait here
+// would park the next caller forever and report as a package timeout naming
+// whichever test happened to be running. The context these readings were
+// started under is the fact that says the work is over, so it is what ends the
+// wait when no landing does.
+func (w *besideWatch) quiet(ctx context.Context) {
 	if w == nil {
 		return
 	}
@@ -205,7 +213,10 @@ func (w *besideWatch) quiet() {
 	}
 	wait := w.calm
 	w.mu.Unlock()
-	<-wait
+	select {
+	case <-wait:
+	case <-ctx.Done():
+	}
 }
 
 // take answers the reading IF IT HAS ALREADY LANDED, and never waits.

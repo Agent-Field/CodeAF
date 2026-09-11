@@ -528,7 +528,7 @@ type recallAside struct {
 // outlive this turn, and even inside it a line sent before the turn's stream is
 // subscribed is a line its reader never gets, so every line goes through
 // [Agent.sayMemory], which reads whichever stream is live under the same lock.
-func (a *Agent) startRecallLocked(ctx context.Context, _ *eventHub, cue string) {
+func (a *Agent) startRecallLocked(ctx context.Context, cue string) {
 	a.recall = nil
 	// [Agent.remembers] takes no lock — it reads two pointers fixed at
 	// construction — so it is legal under a.mu and is the same gate the routing
@@ -1042,19 +1042,23 @@ func (a *Agent) saySuperseded(oldTitle, newTitle string) {
 // settled by the recall beside the turn, which usually lands inside it and
 // sometimes after it, and this is the one door for both.
 //
-// THE LINE IS SAID UNDER a.mu, and that is what makes "when there is one" true.
-// Every road that ends a turn clears a.hub under this lock before it closes the
-// hub (agent.go's turn cleanup, [Agent.Abandon], the vision turn), and a turn
-// starts under it too, subscribing its stream before it lets go. So a line sent
-// here lands on a stream that is open and read, and a line that finds no hub
-// is held; there is no instant at which it is sent onto one that has closed.
-// A hub send is an append and a signal ([eventHub.send]), so the lock is held
-// for nothing longer than the steer drains already hold it.
+// THE HUB ITSELF SAYS WHETHER THE LINE LANDED, and that is what makes "when
+// there is one" true — not an ordering between this door and the roads that end
+// turns. [eventHub.send] reports it from under the hub's own lock, which is the
+// only place the answer is not already stale, and a line that did not land is
+// held for the next turn exactly as a line that found no hub at all is. A nil
+// hub answers false by the same door, so there is one road here and not two.
+//
+// The line is still said under a.mu, which is how this reads the pointer at all
+// — and because every road that ends a turn clears a.hub under this lock before
+// closing the hub, the usual case is that a live hub takes it. That is now an
+// explanation of why holding a line is rare, and no longer the reason the door
+// is correct. A hub send is an append and a signal, so the lock is held for
+// nothing longer than the steer drains already hold it.
 func (a *Agent) sayMemory(text string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.hub != nil {
-		a.hub.send(Event{Kind: EventNotice, Text: text})
+	if a.hub.send(Event{Kind: EventNotice, Text: text}) {
 		return
 	}
 	a.memory.queueNotice(text)

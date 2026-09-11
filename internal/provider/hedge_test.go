@@ -207,8 +207,12 @@ func theControllersWord(t *testing.T) <-chan struct{} {
 	t.Helper()
 	spoken := make(chan struct{})
 	var once sync.Once
-	var previous func(PhaseNews)
-	previous = OnPhase(func(news PhaseNews) {
+	// The reader that was there is taken FIRST and only then chained, because a
+	// closure that assigns the handler it chains to is a write racing its own
+	// reads: [OnPhase] has installed it by the time the assignment happens, and
+	// a phase posted in that window reads the variable from another goroutine.
+	previous := OnPhase(nil)
+	OnPhase(func(news PhaseNews) {
 		switch news.Phase {
 		case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
 			once.Do(func() { close(spoken) })

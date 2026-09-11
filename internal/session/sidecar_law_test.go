@@ -782,7 +782,7 @@ func TestTheRunningProductNeverWaitsOnAReadingsLanding(t *testing.T) {
 	const planted = `package session
 func (a *Agent) runTurn(ctx context.Context) {
 	ctx = withBesideWatch(ctx, &besideWatch{})
-	besideWatchOn(ctx).quiet()
+	besideWatchOn(ctx).quiet(ctx)
 }`
 	file, err := parser.ParseFile(set, "planted.go", planted, parser.SkipObjectResolution)
 	if err != nil {

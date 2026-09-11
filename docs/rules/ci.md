@@ -161,8 +161,9 @@ entries are Linux-only, is written in the file's own comments and nowhere else �
 
 It is a bug report, and it never goes on the ledger above. Reproduce it under
 load — a focused `-count=50` at `GOMAXPROCS=2` with a few `yes > /dev/null`
-beside it — and fix the CAUSE, which is almost always that the test measured the
-SCHEDULER and called it the road:
+beside it, **on Spark and never on the laptop**, since the point is to starve
+the machine — and fix the CAUSE, which is almost always that the test measured
+the SCHEDULER and called it the road:
 
 - **Wait on the fact, never on a figure.** A fixed number of scripted rounds, a
   margin between two wall-clock numbers, slack "to one short of the next mark" —

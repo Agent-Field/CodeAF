@@ -1515,7 +1515,7 @@ func answerWhenQuiet(ctx context.Context, request ai.Request) {
 	if len(request.Tools) == 0 {
 		return
 	}
-	besideWatchOn(ctx).quiet()
+	besideWatchOn(ctx).quiet(ctx)
 }
 
 func rolesOf(messages []ai.Message) []string {

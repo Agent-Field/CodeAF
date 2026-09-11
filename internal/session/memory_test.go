@@ -1224,6 +1224,33 @@ func TestAHeldLineOutlivesTheReadingThatTookIt(t *testing.T) {
 	}
 }
 
+// TestALineSaidOntoAClosedStreamIsHeldInstead is the property the held line
+// rests on, and the reason it is a property and not an ordering: a reading that
+// outlived its turn may still be holding the pointer to that turn's hub, and
+// the only thing that can say whether a line landed is the hub, under its own
+// lock. Here the hub is closed with the pointer deliberately left in place —
+// the shape a fourth road that closed before it cleared would leave behind —
+// and the line is still there to be said on the next turn.
+func TestALineSaidOntoAClosedStreamIsHeldInstead(t *testing.T) {
+	const line = "superseded · deploys on Fridays → deploys on Tuesdays"
+	agent, _ := brainAgent(t, &reflexScript{route: `{"inject":[],"cmd":null}`}, nil)
+	watchReadings(t, agent)
+
+	hub := newEventHub()
+	hub.close()
+	agent.mu.Lock()
+	agent.hub = hub
+	agent.mu.Unlock()
+	agent.sayMemory(line)
+	agent.mu.Lock()
+	agent.hub = nil
+	agent.mu.Unlock()
+
+	if said := supersessionSaid(collect(t, mustSubmit(t, agent, "what else is on today"))); said != line {
+		t.Fatalf("the next turn said %q, want the line the closed stream could not take", said)
+	}
+}
+
 // supersessionSaid is the supersession line a turn put on its stream, or "".
 func supersessionSaid(events []Event) string {
 	for _, text := range noticeTexts(events) {
