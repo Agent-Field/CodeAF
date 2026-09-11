@@ -375,6 +375,11 @@ func (a *app) questionPageList(left int) ([]string, []int) {
 	return out, at
 }
 
+// questionAttachIndent is where the question's OWN evidence sits: under its one
+// dim title and one step in from it, so a block reads as belonging to the title
+// above it rather than as a second title beside it.
+const questionAttachIndent = "    "
+
 // questionPageAttach is what the asker showed for the WHOLE decision, as opposed
 // to what hangs off one answer: one dim title, and the blocks under it.
 //
@@ -392,7 +397,7 @@ func (a *app) questionPageAttach(width int) []string {
 		if i > 0 {
 			out = append(out, "")
 		}
-		out = append(out, a.questionBlockRows(block, len(questionIndent), width)...)
+		out = append(out, a.questionBlockRows(block, len(questionAttachIndent), width)...)
 	}
 	return out
 }

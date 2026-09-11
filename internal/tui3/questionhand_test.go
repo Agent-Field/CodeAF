@@ -197,21 +197,21 @@ func TestThePageScrollsToTheAnswerTheArrowsWalkTo(t *testing.T) {
 	}
 	a.openQuestionRoom(head)
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
-	// Open every answer so the page is taller than the window, which is the
-	// shape the defect needs and the shape a page worth opening has.
+	// Walk to the last answer, which is what makes the page taller than the
+	// window — the answer the pointer is on carries its evidence, so a page
+	// worth opening does not fit and this is the shape the defect needs.
 	for range len(q.Options) {
 		a.questionMoveFocus(1)
-		a.qroom.open[a.qroom.focus] = true
 	}
 	rows := a.questionRoomRows(a.bodyWidth())
 	if len(rows) <= a.viewHeight() {
 		t.Skipf("the page fits the window (%d rows in %d), so there is nothing to scroll", len(rows), a.viewHeight())
 	}
 	a.questionMoveFocus(0)
-	offset := a.questionRoomOffsetFor(len(rows), a.viewHeight())
+	offset := a.qroom.offset
 	last := -1
-	for at, of := range a.qroom.spots {
-		if of == a.qroom.focus {
+	for at, spot := range a.qroom.spots {
+		if spot.at == a.qroom.focus {
 			last = at
 		}
 	}
