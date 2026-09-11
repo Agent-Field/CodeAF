@@ -11,7 +11,12 @@ CO-ROUTINE keys
       CO-ROUTINE x
         SCAN n CONSTANT ROWS
       SCAN x
+MATERIALIZE h
+  SCAN n CONSTANT ROWS
 SCAN keys
-SEARCH l USING PRIMARY KEY (target_kind=? AND ref_id=? AND session_id=? AND lane=?)
+SCAN h
+SEARCH l USING PRIMARY KEY (target_kind=? AND ref_id=? AND session_id=? AND lane=? AND record_id=?)
+CORRELATED LIST SUBQUERY n
+  SEARCH n USING COVERING INDEX direction_live_newest (target_kind=? AND ref_id=? AND session_id=? AND lane=? AND reach=?)
 USE TEMP B-TREE FOR GROUP BY
 USE TEMP B-TREE FOR ORDER BY

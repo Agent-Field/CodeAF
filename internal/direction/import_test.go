@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 var importRun = ImportRun{ID: "run-1", Mode: "apply", Binary: "test"}
@@ -46,7 +48,7 @@ func contextItem(id string, texts ...string) ImportItem {
 func countRecords(t *testing.T, s *Store) int {
 	t.Helper()
 	var n int
-	if err := s.ws.ReadSnapshot(context.Background(), func(tx *sqlTx) error {
+	if err := workspace.ReadSnapshot(context.Background(), s.ws, func(tx *sqlTx) error {
 		return tx.QueryRowContext(context.Background(), "SELECT count(*) FROM direction_records").Scan(&n)
 	}); err != nil {
 		t.Fatal(err)
@@ -64,7 +66,7 @@ func TestAnImportCannotCarryAPersonReceipt(t *testing.T) {
 	for _, door := range []Door{DoorCard, DoorTerminal, DoorPage, DoorMigration} {
 		item := holdItem("hold-"+string(door), "1", "reports never include phone numbers")
 		item.Revisions[0].Receipt = Receipt{Actor: ActorPerson, Door: door, Ref: "proposal-1"}
-		if res, err := s.Import(ctx, importRun, item); err == nil {
+		if res, err := Import(ctx, s, importRun, item); err == nil {
 			t.Errorf("an import through the %s door wrote a person receipt: %+v", door, res)
 		}
 	}
@@ -75,7 +77,7 @@ func TestAnImportCannotCarryAPersonReceipt(t *testing.T) {
 	// evidence of that: it governs, labelled, and is never the person.
 	item := holdItem("hold-adopted", "1", "reports never include phone numbers")
 	item.Revisions[0].Receipt = Receipt{Actor: ActorLegacyPerson, Door: DoorCard, Ref: "proposal-1"}
-	res, err := s.Import(ctx, importRun, item)
+	res, err := Import(ctx, s, importRun, item)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,15 +93,15 @@ func TestAStaleImportNeverAppendsOverANewerOne(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 	must := musts(t)
-	first, err := s.Import(ctx, importRun, holdItem("hold-1", "1", "at most $200 a night"))
+	first, err := Import(ctx, s, importRun, holdItem("hold-1", "1", "at most $200 a night"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	newer, err := s.Import(ctx, importRun, holdItem("hold-1", "3", "at most $300 a night"))
+	newer, err := Import(ctx, s, importRun, holdItem("hold-1", "3", "at most $300 a night"))
 	if err != nil || newer.Outcome != Appended {
 		t.Fatalf("importer B: %+v, %v", newer, err)
 	}
-	stale, err := s.Import(ctx, importRun, holdItem("hold-1", "2", "at most $250 a night"))
+	stale, err := Import(ctx, s, importRun, holdItem("hold-1", "2", "at most $250 a night"))
 	cur := must(s.Current(ctx, first.Record))
 	if err != nil || stale.Outcome == Appended || cur.Revision != newer.Revision || cur.Text != "at most $300 a night" {
 		t.Fatalf("importer A's stale version: %+v, %v; the record is now revision %d %q", stale, err, cur.Revision, cur.Text)
@@ -108,7 +110,7 @@ func TestAStaleImportNeverAppendsOverANewerOne(t *testing.T) {
 		t.Fatalf("a stale version is a no-op with a report line: %+v", stale)
 	}
 	// The same version with other content is no newer either.
-	same, err := s.Import(ctx, importRun, holdItem("hold-1", "3", "at most $350 a night"))
+	same, err := Import(ctx, s, importRun, holdItem("hold-1", "3", "at most $350 a night"))
 	if err != nil || same.Outcome != Stale || musts(t)(s.Current(ctx, first.Record)).Revision != newer.Revision {
 		t.Fatalf("an equal version: %+v, %v", same, err)
 	}
@@ -122,12 +124,12 @@ func TestAnImportNeverOverwritesWhatThePersonChanged(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 	must := musts(t)
-	first, err := s.Import(ctx, importRun, holdItem("hold-1", "1", "at most $200 a night"))
+	first, err := Import(ctx, s, importRun, holdItem("hold-1", "1", "at most $200 a night"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	withdrawn := must(s.Withdraw(ctx, Fence{ID: first.Record, Revision: first.Revision}, "paused", card(t, "pause it")))
-	res, err := s.Import(ctx, importRun, holdItem("hold-1", "2", "at most $250 a night"))
+	res, err := Import(ctx, s, importRun, holdItem("hold-1", "2", "at most $250 a night"))
 	cur := must(s.Current(ctx, first.Record))
 	if err == nil || cur.Revision != withdrawn.Revision || cur.State != Withdrawn {
 		t.Fatalf("an import over the person's withdrawal: %+v, %v; the record is now revision %d %s", res, err, cur.Revision, cur.State)
@@ -147,10 +149,10 @@ func TestAContextImportedInStepsKeepsEveryRevisionNumber(t *testing.T) {
 	must := musts(t)
 	id := strings.Repeat("c", 32)
 	texts := []string{"the venue holds 40", "the venue holds 45", "the venue holds 50"}
-	if _, err := s.Import(ctx, importRun, contextItem(id, texts[:1]...)); err != nil {
+	if _, err := Import(ctx, s, importRun, contextItem(id, texts[:1]...)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Import(ctx, importRun, contextItem(id, texts...)); err != nil {
+	if _, err := Import(ctx, s, importRun, contextItem(id, texts...)); err != nil {
 		t.Fatal(err)
 	}
 	for i, text := range texts {
@@ -172,10 +174,10 @@ func TestADivergentContextHistoryIsRefusedNotOverwritten(t *testing.T) {
 	s := openTest(t)
 	must := musts(t)
 	id := strings.Repeat("d", 32)
-	if _, err := s.Import(ctx, importRun, contextItem(id, "parking is on level 1", "parking is on level 2")); err != nil {
+	if _, err := Import(ctx, s, importRun, contextItem(id, "parking is on level 1", "parking is on level 2")); err != nil {
 		t.Fatal(err)
 	}
-	res, err := s.Import(ctx, importRun, contextItem(id, "parking is on level 1", "parking is on level 3", "parking is free"))
+	res, err := Import(ctx, s, importRun, contextItem(id, "parking is on level 1", "parking is on level 3", "parking is free"))
 	cur := must(s.Current(ctx, id))
 	two := must(s.At(ctx, id, 2))
 	if err == nil || cur.Revision != 2 || two.Text != "parking is on level 2" {
@@ -191,7 +193,7 @@ func TestADivergentContextHistoryIsRefusedNotOverwritten(t *testing.T) {
 func TestAFinishedImportRunKeepsABoundedCount(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
-	if _, err := s.Import(ctx, importRun, holdItem("hold-1", "1", "formal tone")); err != nil {
+	if _, err := Import(ctx, s, importRun, holdItem("hold-1", "1", "formal tone")); err != nil {
 		t.Fatal(err)
 	}
 	for name, counts := range map[string]string{
@@ -199,11 +201,64 @@ func TestAFinishedImportRunKeepsABoundedCount(t *testing.T) {
 		"not object": "[1,2]",
 		"too long":   `{"note":"` + strings.Repeat("x", maxCounts) + `"}`,
 	} {
-		if err := s.FinishImportRun(ctx, importRun.ID, "", counts); !errors.Is(err, ErrInvalid) {
+		if err := FinishImportRun(ctx, s, importRun.ID, "", counts); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if err := s.FinishImportRun(ctx, importRun.ID, "", `{"imported":1}`); err != nil {
+	if err := FinishImportRun(ctx, s, importRun.ID, "", `{"imported":1}`); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A KEPT IDENTITY STAYS KEPT. Shared context is imported with its own id and
+// revision numbers; re-importing the same document without the id would take
+// the unnumbered path and append its newest revision as (C, 2), which is not
+// what the old store's revision 2 said. It is refused before anything is read.
+func TestAKeptIdentityCannotBeReimportedWithoutIt(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	id := strings.Repeat("c", 32)
+	texts := []string{"the venue holds 40", "the venue holds 45", "the venue holds 50"}
+	if _, err := Import(ctx, s, importRun, contextItem(id, texts[:1]...)); err != nil {
+		t.Fatal(err)
+	}
+	unkept := contextItem(id, texts...)
+	unkept.ID = ""
+	res, err := Import(ctx, s, importRun, unkept)
+	if err == nil {
+		t.Errorf("a kept identity was re-imported without it: %+v", res)
+	}
+	if two, err := s.At(ctx, id, 2); err == nil {
+		t.Fatalf("(%s, 2) now reads %q; the old store's revision 2 said %q", id[:6], two.Text, texts[1])
+	}
+}
+
+// AN IMPORT STATES NO PRECEDENCE OVER THE PERSON'S RECORD (R4: "precedence
+// exists only through an explicit overrides link written with a person
+// receipt"). An import may copy an overrides or conflicts_with link between
+// records it imported; one naming a record the person wrote is refused whole.
+func TestAnImportStatesNoPrecedenceOverThePersonsRecord(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	must := musts(t)
+	persons := must(s.Accept(ctx, must(s.Propose(ctx, rule("formal tone", chatTarget("w")), AsPerson(card(t, "proposed")))).Fence(), card(t, "yes")))
+	for _, kind := range []LinkKind{Overrides, ConflictsWith} {
+		item := holdItem("hold-"+string(kind), "1", "casual tone")
+		item.Revisions[0].Draft.Links = []Link{{Kind: kind, To: persons.ID}}
+		if res, err := Import(ctx, s, importRun, item); !errors.Is(err, ErrTransition) {
+			t.Errorf("an import wrote %s over the person's record: %+v, %v", kind, res, err)
+		}
+	}
+	if n := countRecords(t, s); n != 1 {
+		t.Fatalf("refused imports left %d records", n)
+	}
+	first, err := Import(ctx, s, importRun, holdItem("hold-1", "1", "at most $200 a night"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := holdItem("hold-2", "1", "at most $400 a night")
+	item.Revisions[0].Draft.Links = []Link{{Kind: Overrides, To: first.Record}}
+	if _, err := Import(ctx, s, importRun, item); err != nil {
+		t.Fatalf("an import copying an override between imported records: %v", err)
 	}
 }

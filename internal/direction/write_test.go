@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // A STALE WRITER IS REFUSED WHOLE (L1). Every change to an existing record
@@ -120,7 +122,7 @@ func TestASupersedeWithOneMovedRecordWritesNothing(t *testing.T) {
 		t.Fatalf("the moved record changed: %+v", got)
 	}
 	var records int
-	if err := s.ws.ReadSnapshot(ctx, func(tx *sqlTx) error {
+	if err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sqlTx) error {
 		return tx.QueryRowContext(ctx, "SELECT count(*) FROM direction_records").Scan(&records)
 	}); err != nil {
 		t.Fatal(err)
@@ -269,7 +271,7 @@ func TestBoundsRefuseTheWholeRecord(t *testing.T) {
 		t.Errorf("linked to a record that does not exist: %v", err)
 	}
 	var records int
-	if err := s.ws.ReadSnapshot(ctx, func(tx *sqlTx) error {
+	if err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sqlTx) error {
 		return tx.QueryRowContext(ctx, "SELECT count(*) FROM direction_records").Scan(&records)
 	}); err != nil || records != 1 {
 		t.Fatalf("refused writes left %d records: %v", records, err)
@@ -340,11 +342,11 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 			WrittenAt: created,
 		}},
 	}
-	first, err := s.Import(ctx, run, hold)
+	first, err := Import(ctx, s, run, hold)
 	if err != nil || first.Outcome != Imported || first.Revision != 1 {
 		t.Fatalf("first import: %+v, %v", first, err)
 	}
-	again, err := s.Import(ctx, run, hold)
+	again, err := Import(ctx, s, run, hold)
 	if err != nil || again.Outcome != Unchanged || again.Record != first.Record {
 		t.Fatalf("second import: %+v, %v", again, err)
 	}
@@ -356,7 +358,7 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 	changed.Legacy.Version, changed.Legacy.SHA256 = "4/1", hash("v2")
 	changed.Revisions = []ImportRevision{hold.Revisions[0]}
 	changed.Revisions[0].Draft.Text = "Reports never include phone numbers or emails."
-	appended, err := s.Import(ctx, run, changed)
+	appended, err := Import(ctx, s, run, changed)
 	if err != nil || appended.Outcome != Appended || appended.Record != first.Record || appended.Revision != 2 {
 		t.Fatalf("a changed source: %+v, %v", appended, err)
 	}
@@ -369,7 +371,7 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 			{Draft: finding("Venue holds 40 people.", chatTarget("chat")), State: Withdrawn, WrittenAt: created.Add(time.Hour),
 				Receipt: Receipt{Actor: ActorLegacyUnknown, Door: DoorMigration, Ref: run.ID}},
 		}}
-	got, err := s.Import(ctx, run, ctxItem)
+	got, err := Import(ctx, s, run, ctxItem)
 	if err != nil || got.Record != contextID || got.Revision != 2 {
 		t.Fatalf("context import: %+v, %v", got, err)
 	}
@@ -386,11 +388,11 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 		"a receipt on a proposal": {Legacy: Legacy{Store: LegacyMemory, ID: "m1", Version: "1", SHA256: hash("m1")},
 			Revisions: []ImportRevision{{Draft: rule("x"), State: Proposed, Receipt: Receipt{Actor: ActorLegacyUnknown, Door: DoorMigration, Ref: "x"}}}},
 	} {
-		if _, err := s.Import(ctx, run, item); err == nil {
+		if _, err := Import(ctx, s, run, item); err == nil {
 			t.Errorf("%s was imported", name)
 		}
 	}
-	if err := s.FinishImportRun(ctx, run.ID, "", `{"imported":2}`); err != nil {
+	if err := FinishImportRun(ctx, s, run.ID, "", `{"imported":2}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Verify(ctx); err != nil {

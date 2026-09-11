@@ -143,7 +143,7 @@ type Effective struct {
 	Phase         Phase
 	Governing     []Applied // complete, or ErrGoverningTooLarge; never truncated
 	Pending       []Applied // labelled proposals, at most MaxPending
-	PendingMore   bool      // more proposals reach here than the page carries
+	PendingMore   bool      // more proposals may reach here than the page carries
 	Informational Page
 	Conflicts     []Conflict
 	// Placements is the governing ancestry: collection → nearest depth, for
@@ -161,7 +161,7 @@ func (s *Store) Resolve(ctx context.Context, subj Subject) (Effective, error) {
 		return Effective{}, err
 	}
 	var eff Effective
-	err = s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err = workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		var err error
 		eff, err = resolveIn(ctx, tx, subj, s.now().UTC())
 		return err
@@ -184,7 +184,7 @@ func (s *Store) Informational(ctx context.Context, subj Subject, offset, limit i
 		limit = MaxInformational
 	}
 	var page Page
-	err = s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err = workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		var err error
 		page, err = informational(ctx, tx, subj, offset, limit)
 		return err
@@ -256,13 +256,29 @@ up(child_kind,child,child_sess,parent) AS (
 ) SELECT child_kind,child,child_sess,parent FROM up`)
 }
 
-// candidateQuery finds the governing and pending live rows at the probed places.
-func candidateQuery(keys int) string {
-	return named("candidates", "WITH "+valuesCTE("q", "k,r,s", keys, 3)+`
-SELECT l.target_kind,l.ref_id,l.session_id,l.lane,l.record_id,l.revision,l.reach,l.has_exclusions,l.has_links,l.written_at
- FROM q CROSS JOIN direction_live l ON l.target_kind=q.k AND l.ref_id=q.r AND l.session_id=q.s
- WHERE l.lane IN ('governing','pending') AND (l.lane='governing' OR l.written_at>=?)`)
+// candidateQuery finds the live rows the resolver weighs at the probed places:
+// every governing row, because governing input is admitted whole or not at
+// all, and a WINDOW of pending rows — at each place, for each reach that can
+// reach the subject from it, the newest MaxPending+1 inside the pending window,
+// read newest first from direction_live_newest and cut there. A place with a
+// thousand proposals costs what one with twenty-one does.
+//
+// SQLite has no lateral join, so each window is a correlated IN list: for each
+// row of w, the subquery walks the index in page order under its LIMIT, and
+// the live row is then sought by its full primary key.
+func candidateQuery(keys, windows int) string {
+	return named("candidates", "WITH "+valuesCTE("q", "k,r,s", keys, 3)+", "+valuesCTE("w", "k,r,s,reach", windows, 4)+`
+SELECT `+liveColumns+` FROM q CROSS JOIN direction_live l
+ ON l.target_kind=q.k AND l.ref_id=q.r AND l.session_id=q.s AND l.lane='governing'
+UNION ALL
+SELECT `+liveColumns+` FROM w CROSS JOIN direction_live l
+ ON l.target_kind=w.k AND l.ref_id=w.r AND l.session_id=w.s AND l.lane='pending' AND l.record_id IN (
+  SELECT n.record_id FROM direction_live n
+  WHERE n.target_kind=w.k AND n.ref_id=w.r AND n.session_id=w.s AND n.lane='pending' AND n.reach=w.reach AND n.written_at>=?
+  ORDER BY n.written_at DESC, n.record_id LIMIT ?)`)
 }
+
+const liveColumns = "l.target_kind,l.ref_id,l.session_id,l.lane,l.record_id,l.revision,l.reach,l.has_exclusions,l.has_links,l.written_at"
 
 // revisionsCTE is the list of (record, revision) pairs the follow-up reads key on.
 func revisionsCTE(pairs int) string { return valuesCTE("c", "id,rev", pairs, 2) }
@@ -299,8 +315,16 @@ SELECT c.id,g.source_store,g.source_id,g.source_version FROM c CROSS JOIN direct
 
 // informationalQuery pages the findings at the subject's own places, at the
 // folders it is a member of (one hop) and at everywhere or its legacy
-// workspace. The page is cut in SQL — newest first, then by id — so only the
-// page crosses into Go, each finding once with the places that matched it.
+// workspace, newest first, then by id.
+//
+// EACH PLACE IS READ AS A WINDOW, NEVER WHOLE: for each place and reach, the
+// newest offset+limit+1 findings, read in page order from direction_live_newest
+// and cut there. That is enough: a finding among the first offset+limit+1 of
+// the page is among the first offset+limit+1 of every place it sits at, since
+// whatever precedes it there precedes it on the page. Only the merged windows
+// — at most places × reaches × (offset+limit+1) rows — are grouped and sorted,
+// and only the page crosses into Go, each finding once with the places that
+// matched it.
 func informationalQuery(refs, extra int) string {
 	cte := "WITH " + valuesCTE("q", "k,r,s", refs, 3)
 	keys := `, keys(k,r,s) AS (
@@ -312,10 +336,27 @@ func informationalQuery(refs, extra int) string {
 		keys += `
  UNION SELECT k,r,s FROM x`
 	}
-	return named("informational", cte+keys+`)
+	return named("informational", cte+keys+`), `+valuesCTE("h", "reach", len(reaches), 1)+`
 SELECT l.record_id,l.revision,l.written_at,json_group_array(json_array(l.target_kind,l.ref_id,l.session_id))
- FROM keys CROSS JOIN direction_live l ON l.target_kind=keys.k AND l.ref_id=keys.r AND l.session_id=keys.s AND l.lane='informational'
+ FROM keys CROSS JOIN h CROSS JOIN direction_live l
+ ON l.target_kind=keys.k AND l.ref_id=keys.r AND l.session_id=keys.s AND l.lane='informational' AND l.record_id IN (
+  SELECT n.record_id FROM direction_live n
+  WHERE n.target_kind=keys.k AND n.ref_id=keys.r AND n.session_id=keys.s AND n.lane='informational' AND n.reach=h.reach
+  ORDER BY n.written_at DESC, n.record_id LIMIT ?)
  GROUP BY l.record_id ORDER BY l.written_at DESC, l.record_id LIMIT ? OFFSET ?`)
+}
+
+// informationalArgs are informationalQuery's arguments, in its order.
+func informationalArgs(refs []workspace.Ref, extra []placeKey, offset, limit int) []any {
+	args := make([]any, 0, len(refs)*3+len(extra)*3+len(reaches)+3)
+	for _, r := range refs {
+		args = append(args, string(r.Kind), r.ID, r.SessionID)
+	}
+	args = append(args, keyArgs(extra)...)
+	for _, r := range reaches {
+		args = append(args, string(r))
+	}
+	return append(args, offset+limit+1, limit+1, offset)
 }
 
 // ── the walk ────────────────────────────────────────────────────────────────
@@ -467,7 +508,7 @@ func resolveIn(ctx context.Context, q querier, subj Subject, now time.Time) (Eff
 	sum := sha256.Sum256([]byte(strings.Join(c.edges, "\n") + "\n" + strconv.FormatInt(maxSeq.Int64, 10)))
 	eff := Effective{Snapshot: hex.EncodeToString(sum[:16]), Phase: subj.Phase, Placements: c.depth}
 
-	cands, err := readCandidates(ctx, q, subj, c, now)
+	cands, pendingFull, err := readCandidates(ctx, q, subj, c, now)
 	if err != nil {
 		return Effective{}, err
 	}
@@ -495,8 +536,8 @@ func resolveIn(ctx context.Context, q querier, subj Subject, now time.Time) (Eff
 		return Effective{}, err
 	}
 	sortApplied(pending)
+	eff.PendingMore = pendingFull || len(pending) > MaxPending
 	if len(pending) > MaxPending {
-		eff.PendingMore = true
 		pending = pending[:MaxPending]
 	}
 	bodies, err := readBodies(ctx, q, append(append([]applied{}, governing...), pending...))
@@ -565,24 +606,43 @@ func keyArgs(keys []placeKey) []any {
 	return args
 }
 
-func readCandidates(ctx context.Context, q querier, subj Subject, c closure, now time.Time) ([]candidate, error) {
+// pendingWindow is how many proposals the resolver reads at one place and
+// reach: one more than a page, so a full window says there may be more.
+const pendingWindow = MaxPending + 1
+
+// readCandidates reads the governing rows and the pending windows at the
+// probed places. full reports that some window came back full: more proposals
+// sit at that place than were read, so more may reach the subject than the
+// page can show.
+//
+// A window is exact for the page, by the argument informationalQuery makes,
+// with one difference: the subject's exclusions are weighed in Go after the
+// read, so a proposal an exclusion removes still took its place's slot. Only a
+// full window can hide a proposal that way, and a full window sets full.
+func readCandidates(ctx context.Context, q querier, subj Subject, c closure, now time.Time) (cands []candidate, full bool, err error) {
 	keys := probes(subj, c)
+	windows := pendingWindows(keys, subj, c)
+	args := append(keyArgs(keys), windowArgs(windows)...)
 	type row struct {
 		t Target
 		candidate
 	}
-	rows, err := collect(ctx, q, candidateQuery(len(keys)), append(keyArgs(keys), stamp(now.Add(-PendingWindow))),
+	rows, err := collect(ctx, q, candidateQuery(len(keys), len(windows)), append(args, stamp(now.Add(-PendingWindow)), pendingWindow),
 		func(r scanner) (row, error) {
 			var x row
 			return x, r.Scan(&x.t.Kind, &x.t.Ref, &x.t.Session, &x.lane, &x.id, &x.revision, &x.t.Reach,
 				&x.hasExclusions, &x.hasLinks, &x.writtenAt)
 		})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	byID := map[string]int{}
-	var cands []candidate
+	perWindow := map[Target]int{}
 	for _, r := range rows {
+		if r.lane == LanePending {
+			perWindow[r.t]++
+			full = full || perWindow[r.t] == pendingWindow
+		}
 		i, ok := byID[r.id]
 		if !ok {
 			i = len(cands)
@@ -591,7 +651,41 @@ func readCandidates(ctx context.Context, q querier, subj Subject, c closure, now
 		}
 		cands[i].targets = append(cands[i].targets, r.t)
 	}
-	return cands, nil
+	return cands, full, nil
+}
+
+// pendingWindows is each place and reach a pending proposal can reach the
+// subject from: a folder's subtree reach always — the closure holds only the
+// folders the subject is under — and its direct reach only where one of the
+// subject's refs is placed in it (R1, R2); every other place by equality,
+// which is direct reach.
+func pendingWindows(keys []placeKey, subj Subject, c closure) []Target {
+	windows := make([]Target, 0, len(keys)*2)
+	for _, k := range keys {
+		base := Target{Kind: k.kind, Ref: k.ref, Session: k.session, Reach: Direct}
+		if k.kind != TargetCollection {
+			windows = append(windows, base)
+			continue
+		}
+		sub := base
+		sub.Reach = Subtree
+		windows = append(windows, sub)
+		for _, r := range subj.Refs {
+			if c.directPlacement(refNode(r), k.ref) {
+				windows = append(windows, base)
+				break
+			}
+		}
+	}
+	return windows
+}
+
+func windowArgs(windows []Target) []any {
+	args := make([]any, 0, len(windows)*4)
+	for _, w := range windows {
+		args = append(args, string(w.Kind), w.Ref, w.Session, string(w.Reach))
+	}
+	return args
 }
 
 func pairArgs[T any](items []T, pair func(T) (string, int)) []any {
@@ -922,8 +1016,9 @@ func deliver(list []applied, bodies map[string]Revision, legacy map[string]*Lega
 // nothing about which governs, so neither is annotated, the pair is an
 // unresolved Conflict, and it never hides a conflicts_with the person wrote.
 // Overrides are pairwise annotations and the delivery is a union, so a longer
-// cycle (A over B over C over A) leaves every pair with one direction and
-// needs no rule of its own.
+// cycle (A over B over C over A) leaves every pair annotated one way and raises
+// no Conflict. Whether it should, as a mutual pair does, is an open item
+// (BUILD-T03B, re-review pass).
 func annotate(governing []Applied, links []struct{ from, kind, to string }) []Conflict {
 	index := make(map[string]int, len(governing))
 	for i, a := range governing {
@@ -979,15 +1074,11 @@ func pairOf(a, b string) [2]string {
 // informational reads one page of the findings lane. The store cuts the page;
 // Go reads only its bodies.
 func informational(ctx context.Context, q querier, subj Subject, offset, limit int) (Page, error) {
-	args := make([]any, 0, len(subj.Refs)*3+8)
-	for _, r := range subj.Refs {
-		args = append(args, string(r.Kind), r.ID, r.SessionID)
-	}
 	extra := []placeKey{{TargetEverywhere, Everywhere, ""}}
 	if subj.Workspace != "" {
 		extra = append(extra, placeKey{TargetLegacyWorkspace, subj.Workspace, ""})
 	}
-	args = append(append(args, keyArgs(extra)...), limit+1, offset)
+	args := informationalArgs(subj.Refs, extra, offset, limit)
 	list, err := collect(ctx, q, informationalQuery(len(subj.Refs), len(extra)), args, func(r scanner) (applied, error) {
 		a := applied{candidate: candidate{lane: LaneInformational}}
 		var matched string

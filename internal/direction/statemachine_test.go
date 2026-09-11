@@ -44,7 +44,7 @@ func atBy(t *testing.T, s *Store, kind Kind, state State, author Actor) Revision
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := s.Import(ctx, importRun, ImportItem{
+			res, err := Import(ctx, s, importRun, ImportItem{
 				Legacy: Legacy{Store: LegacyContexts, ID: id, Version: "2", SHA256: legacyHash(id)}, ID: id,
 				Revisions: []ImportRevision{
 					{Draft: d, State: Informational, WrittenAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
@@ -204,7 +204,7 @@ func TestEveryWriterAndTransitionIsAllowedOrRefusedAsDesigned(t *testing.T) {
 		{kind: Finding, from: Informational, name: "the person revises", do: revise(AsPerson(person)), state: Informational},
 		{kind: Finding, from: Informational, name: "the person accepts", do: accept(person), want: ErrTransition},
 		{kind: Finding, from: Informational, name: "the person rejects", do: reject(person), want: ErrTransition},
-		{kind: Finding, from: Informational, name: "the person withdraws", do: withdraw(person), want: ErrTransition},
+		{kind: Finding, from: Informational, name: "the person withdraws", do: withdraw(person), state: Withdrawn},
 		{kind: Finding, from: Informational, name: "the person links", do: link(person), state: Informational},
 		{kind: Finding, from: Informational, name: "the person supersedes", do: supersede(person), want: ErrTransition},
 		{kind: Finding, from: Withdrawn, name: "the person accepts", do: accept(person), want: ErrTransition},

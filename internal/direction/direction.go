@@ -211,6 +211,10 @@ const (
 	Subtree Reach = "subtree"
 )
 
+// reaches is every reach, for a read that takes each place's rows one reach at
+// a time.
+var reaches = []Reach{Direct, Subtree}
+
 // LinkKind is a typed relation from one revision to another record.
 type LinkKind string
 

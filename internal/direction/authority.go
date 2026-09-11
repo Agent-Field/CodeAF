@@ -13,12 +13,17 @@ import (
 // held to it by permit, inside the transaction that writes it. The doors may
 // refuse earlier with a kinder message; none of them decides.
 //
-// Cells the design leaves unwritten are refused, not guessed. Two readings
+// Cells the design leaves unwritten are refused, not guessed. Three readings
 // are needed where §4.1 is silent and another section speaks:
 //   - the person revises a live record in place (§1.1 "revise"), which is how
 //     exclusions and links are added or removed;
-//   - an import (§3.4) is the only writer that moves a finding out of the
-//     informational state; §4.1 gives no other writer that transition.
+//   - the person withdraws a finding: it leaves the informational lane and
+//     changes no authority, and without it no writer could retire a finding
+//     but an import (§3.4, which copies the old store's own retirements);
+//   - an import states precedence only between records it imported: R4 says
+//     precedence exists only through a link written with a person receipt,
+//     so an overrides or conflicts_with link an import copies may name only
+//     a record no one but an import has written (checkReferences).
 
 // move is one step of a record's state, from its current revision to the next.
 // A move to the same state is a revision in place.
@@ -76,15 +81,16 @@ var section41 = map[AuthorClass]rights{
 	// "Person: any kind, any state it asserts. proposed → accepted / rejected;
 	// accepted → withdrawn / superseded; withdrawn → accepted; add or remove
 	// exclusions; write overrides / conflicts_with." It creates an accepted
-	// record only as a replacement it makes (Supersede).
+	// record only as a replacement it makes (Supersede), and withdraws a
+	// finding (the second reading above).
 	AuthorPerson: {
 		creates: []createCell{{kinds: directive, state: Proposed}, {kinds: []Kind{Finding}, state: Informational},
 			{kinds: directive, state: Accepted}},
 		moves: map[move]bool{
 			{Proposed, Accepted}: true, {Proposed, Rejected}: true,
 			{Accepted, Withdrawn}: true, {Accepted, Superseded}: true,
-			{Withdrawn, Accepted}: true,
-			{Proposed, Proposed}:  true, {Accepted, Accepted}: true, {Informational, Informational}: true,
+			{Withdrawn, Accepted}: true, {Informational, Withdrawn}: true,
+			{Proposed, Proposed}: true, {Accepted, Accepted}: true, {Informational, Informational}: true,
 		},
 		links: allLinks, excludes: true, followsOthers: true,
 	},
