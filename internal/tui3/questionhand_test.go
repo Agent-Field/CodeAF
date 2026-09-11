@@ -254,16 +254,27 @@ func TestTheAnswersRowIsWhereTheBlockSaysItIsWithAReceiptAboveIt(t *testing.T) {
 	answer := plain(second.Options[0].Label)
 	drawn := -1
 	for at, row := range rows {
-		if strings.Contains(row, answer) {
+		if strings.Contains(row, answer) && drawn < 0 {
 			drawn = at
 		}
 	}
 	if drawn < 0 {
 		t.Fatalf("no row of the block draws %q:\n%s", answer, strings.Join(rows, "\n"))
 	}
-	if lab.a.questionSpanRow != drawn {
-		t.Fatalf("the block says its answers are on row %d and they are drawn on row %d — every receipt above them is an off-by-one on the pointer and the click",
-			lab.a.questionSpanRow, drawn)
+	// AND THE BLOCK'S OWN ACCOUNT IS WHICHEVER ONE A PRESS RESOLVES AGAINST.
+	// A form that lays its answers out one to a row keeps BANDS, and
+	// [app.questionBandPress] compares them with the chrome's row index; a form
+	// that draws them along one row keeps SPANS at [app.questionSpanRow]. The
+	// law is the same for both and so is the defect it guards — a receipt above
+	// the answers is an off-by-one on the pointer and the click — so it is asked
+	// of whichever the block wrote.
+	said, kind := lab.a.questionSpanRow, "the span row"
+	if len(lab.a.questionBands) > 0 {
+		said, kind = lab.a.questionBands[0].row, "the first band"
+	}
+	if said != drawn {
+		t.Fatalf("%s says the answers are on row %d and they are drawn on row %d — every receipt above them is an off-by-one on the pointer and the click:\n%s",
+			kind, said, drawn, strings.Join(rows, "\n"))
 	}
 }
 
