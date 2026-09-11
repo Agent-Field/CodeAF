@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -181,7 +180,7 @@ func TestATurnWhoseLastCallErroredIsNotReopened(t *testing.T) {
 	// should: the turn loop matched the sentence against `isRetryable`, found
 	// nothing, and returned — over the top of a verdict that had already read the
 	// same failure as the wire (loop.go's deleted regex).
-	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	impatient(t, agent, turnLadderAttempts)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
