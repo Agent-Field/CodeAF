@@ -159,6 +159,24 @@ type sessionEntry struct {
 	// is not one, and from every file written before it existed.
 	Caption *journalCaption `json:"caption,omitempty"`
 
+	// Took is a `took` line: how long ONE tool call's own work ran, keyed by the
+	// call's id (loop.go's EventToolFinished).
+	//
+	// IT IS ITS OWN LINE FOR THE CAPTION'S REASON. The finish is known the
+	// instant the tool returns, and the tool MESSAGE that answers it is journaled
+	// only after the whole batch has run — so there is no result line open to
+	// write the figure into when it is measured. Anchored by call id, it is the
+	// same identity a live surface pairs on, so the record and the stream name
+	// the duration the same way.
+	//
+	// WITHOUT IT A REOPENED PAGE LOSES THE FIGURE. The live stream writes it onto
+	// the row as EventToolFinished arrives; a page that opens after the batch —
+	// or a room rebuilt from the journal after a landing — has only the record,
+	// and a record that carried Args and Output but not Took drew the rows with
+	// no duration at all. Absent from every line that is not one, and from every
+	// file written before the line existed.
+	Took *journalTook `json:"took,omitempty"`
+
 	// Deliveries names the durable deliveries this line is the record of
 	// ([durableDelivery]): a landing's news, identified by session, task,
 	// attempt and ending. It is what lets a resumed session tell a landing it
@@ -834,6 +852,17 @@ type journalCaption struct {
 	Category ActionCategory `json:"category,omitempty"`
 }
 
+// journalTook is ONE call's own duration as the journal holds it: which call,
+// and how long it ran from begin to end of its Execute.
+//
+// DurationMS rather than a stamped interval, because the journal is not a clock
+// — it is a figure the surface already knew live (Event.Took) and must be able
+// to say again after a reopen. Zero is never written (see [sessionFile.appendTook]).
+type journalTook struct {
+	CallID     string `json:"callId"`
+	DurationMS int64  `json:"durationMs"`
+}
+
 // journalPartImage names the one non-text part a person's message can carry
 // today. It is a field rather than an implied shape so a file written now stays
 // readable when there is a second kind.
@@ -1011,6 +1040,15 @@ type sessionFile struct {
 	// to be recovered from, and a replay without this index falls back to
 	// recomposing a sentence out of tool names.
 	captions map[string]journalCaption
+
+	// tooks is HOW LONG EACH CALL RAN, keyed by the call's own id ([journalTook]).
+	//
+	// It lives here for the captions' reason: a call's duration is not a message
+	// either — the model never reads one — and the tool result that answers the
+	// call is journaled AFTER the batch, so the figure measured at finish has
+	// nowhere else to sit. A replay without this index draws finished rows with
+	// no duration, which is the lie a room opened after landing used to tell.
+	tooks map[string]journalTook
 
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
@@ -1216,6 +1254,60 @@ func (s *sessionFile) appendCaption(callID, text string, category ActionCategory
 	s.captions[callID] = mark
 	s.mu.Unlock()
 	s.writeLine(sessionEntry{Type: "caption", Caption: &mark, Timestamp: stamp()})
+}
+
+// took returns how long this call ran, or 0 when the journal never recorded one
+// — which is every call in a file written before the `took` line existed, and
+// every call that never finished.
+//
+// The NIL RECEIVER answers zero, for the reason [sessionFile.caption] answers
+// empty: a session with no file wrote no journal, so there is nothing to have
+// measured.
+func (s *sessionFile) took(callID string) time.Duration {
+	if s == nil {
+		return 0
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mark, told := s.tooks[callID]
+	if !told || mark.DurationMS <= 0 {
+		return 0
+	}
+	return time.Duration(mark.DurationMS) * time.Millisecond
+}
+
+// appendTook journals one call's own duration against the call it is about.
+//
+// IT IS CALLED WHERE EventToolFinished IS SENT and with the same id, so the
+// record and the live stream cannot disagree about which call the figure names.
+// A second finish of the same id simply lands after the first; the replay takes
+// the last, which is what a surface would have been left looking at.
+//
+// A zero or negative duration is not written: the emptiness law applied to a
+// figure — a call that finished before a frame could have drawn it running is
+// still a call whose duration the surface omits (toolview.go's elapsedFloor),
+// and a line saying "0ms" would only grow the file.
+func (s *sessionFile) appendTook(callID string, took time.Duration) {
+	if s == nil {
+		return
+	}
+	callID = strings.TrimSpace(callID)
+	ms := took.Milliseconds()
+	if callID == "" || ms <= 0 {
+		return
+	}
+	mark := journalTook{CallID: callID, DurationMS: ms}
+	s.mu.Lock()
+	if s.tooks == nil {
+		s.tooks = make(map[string]journalTook, 4)
+	}
+	s.tooks[callID] = mark
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "took", Took: &mark, Timestamp: stamp()})
 }
 
 // rememberSteer marks one message as a splice, in a map the caller owns — the
@@ -1454,6 +1546,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.noteDeliveries = replayed.noteDeliveries
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
+	journal.tooks = replayed.tooks
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1609,6 +1702,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// news about a batch that is not carried by any message, so this pass is the
 	// only place it can be picked up (see [sessionFile.captions]).
 	captions := make(map[string]journalCaption)
+	// And the took index, for the captions' reason: a `took` line is news about
+	// one call's duration that is not carried by any message (see
+	// [sessionFile.tooks]).
+	tooks := make(map[string]journalTook)
 	replyTags := make(map[string][]TaskReplyTag)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
@@ -1764,6 +1861,18 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			captions[mark.CallID] = mark
+		case "took":
+			// ONE CALL'S OWN DURATION. It rebuilds no message — nothing was ever
+			// said to the model here — so it only indexes, and the LAST line for
+			// a call wins the way a caption's last line does.
+			if entry.Took == nil {
+				continue
+			}
+			mark := *entry.Took
+			if strings.TrimSpace(mark.CallID) == "" || mark.DurationMS <= 0 {
+				continue
+			}
+			tooks[mark.CallID] = mark
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
 			// ([sessionFile.appendSteerFellThrough]). Those words never reached
@@ -1940,6 +2049,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		noteDeliveries: noteDeliveries,
 		steers:         steers,
 		captions:       captions,
+		tooks:          tooks,
 		usage:          spent,
 		created:        created,
 		existed:        lines > 0,
@@ -2129,6 +2239,9 @@ type replayedSession struct {
 	// captions is what the narrator said about each batch, keyed by the batch's
 	// first call id — the index [sessionFile.captions] is opened holding.
 	captions map[string]journalCaption
+	// tooks is how long each call ran, keyed by the call's own id — the index
+	// [sessionFile.tooks] is opened holding.
+	tooks map[string]journalTook
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went

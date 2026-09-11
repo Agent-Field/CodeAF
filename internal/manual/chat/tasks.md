@@ -63,6 +63,247 @@ of work has it in full.
 A task can also break its own brief into smaller tasks when it finds independent parts in
 it, and those are drawn as a family under it — see *When a task splits its own work*.
 
+**And a copy of its own is the ordinary task, not every task.** The other kind is the
+**quick task**: no copy of the folder, no branch, no check and no merge — it works in the
+folder you are already in, and its last message is its answer. It is the next several
+sections, starting with *What a quick task is*. Everything below about briefs, cards,
+branches, checks and landings is about the ordinary kind unless it says otherwise.
+
+## What a quick task is — a small job done here in the folder you are in, instead of on a branch, with no check and no merge
+
+**A quick task is a task with everything optional taken off.** It is the other kind of
+handed-off work, and it differs from an ordinary task in four ways:
+
+- **It works where you work.** No working copy of your repository, no branch, no copy of
+  the folder — the folder this conversation is standing in, the one you are looking at.
+- **It starts the instant it is asked for.** No sizing call, no shaped brief, no card
+  asking whether to run it, no countdown, nothing to accept: the row is simply there,
+  already running.
+- **Nothing checks it, and nothing lands.** There is no branch to merge and no check over
+  the work. **Its last message is its answer**, and it arrives as the ordinary note a
+  finished task sends back — into the conversation, or into the task that started it.
+- **It carries a checklist.** One line saying what to do, and an ordered list of items it
+  works through, ticking each as it goes.
+
+Everything else is the task machinery you already know: a row on the column with a state
+and a clock, a room you can walk into and read, `enter` to steer it, `x` to stop it, its
+own spend, its own model. The word for what it is, on the row and on the card, is `quick`.
+
+Because it wrote in your own folder, its card carries no branch and no merge word — only
+the files, if it changed any.
+
+## How a quick task starts — there is no /quick command, aforge starts one itself
+
+**You cannot type a quick task into being.** There is no `/quick` command and `/task`
+never makes one: `/task` is the ordinary road, with its sizing call and its shaped brief.
+A quick task is started by the model, with its `quick_task` tool, when it judges that the
+work in front of it is that shape — most often when you have asked for several small
+things that can go at once.
+
+So you ask in words. *"Read those four config files and tell me which one sets the
+timeout"* becomes four quick tasks and a reply that reads their answers. Nothing asks you
+to confirm: the rows appear, and the answers come back into the reply you are waiting on.
+
+When it starts one, the model may hand the tool a title, the files it means to write, ids
+it must wait for, and a model to run on. What it gets back is one line, at once:
+
+```
+quick task 7 started: compare the four configs · 4 items
+```
+
+That is the whole of the ceremony. If you want the other road instead, say so — *"do that
+as a proper task"* — and the model proposes an ordinary task, card, branch, check and all.
+*"Just do it quickly"* goes the other way.
+
+## What quick means next to a task on the row — `quick · 2/4 · reading server.go`
+
+Where an ordinary task's row shows the state it is in, a running quick task's row shows
+what it is doing:
+
+```
+quick · 2/4 · read the timeout out of server.go
+```
+
+Three parts, joined the way every row joins its facts. `quick` says what kind of work this
+is. `2/4` is how many of its items are ticked off out of how many it has. The rest is the
+item it is on now. A quick task with no items at all — a one-line job — reads just
+`quick`.
+
+The counter moves when the worker ticks an item off, not on a clock, so a row sitting on
+`1/3` for a while is a worker still on item 2 rather than a stalled one. When it ends, the
+row settles like any other: `done` with the answer under it, or the reason it did not
+finish.
+
+## Steering a quick task — adding an item, changing one, telling it to skip the rest
+
+The same as steering any other task: `enter` on its row opens its room, you type, and your
+line reaches the worker at its next step. Nothing about a quick task's box is different.
+
+What you are usually changing is the checklist, because that is a quick task's whole plan.
+*"Also check the staging config"* adds an item; *"skip the third one and tell me what you
+have"* takes one off the end. The worker keeps the list itself, with its `items` tool — it
+ticks an item as it finishes it and appends the ones you ask for — and the row's counter
+and next item move as it does.
+
+**You cannot edit the list yourself.** There is no checklist to click, and no key that
+ticks a box. The items belong to the worker; the words belong to you.
+
+## Why it said waits for task 5 — two quick tasks that would write the same file
+
+A quick task may name the files it intends to write. When it does, and another quick task
+that is running or queued in the same folder has already claimed one of those paths, the
+second one **waits for the first to finish** instead of both editing at once. The line the
+model reads says which and over what:
+
+```
+quick task 7 started: rewrite the retry helper · 3 items · waits for task 5 (both claim internal/net/retry.go)
+```
+
+Nothing is refused and nothing is lost. The row is on the column from the start, waiting
+with the task it is waiting for named on it, and it begins by itself the moment task 5 is
+done. Quick tasks that claim different paths — or claim nothing at all — run at the same
+time.
+
+This is a promise made in advance, and naming nothing does not make a free-for-all: a
+quick task that named no files may write anywhere in your folder, but the first one to
+write a file owns that file until it finishes, and a second one aiming at the same path is
+refused with the holder named. What naming files up front buys is the *waiting* — the two
+never start together at all, so neither one has to find out halfway through.
+
+## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
+
+`x` stops it, from its row or inside its room, and it asks before it does, the way
+stopping any task does. What is different is what is left behind.
+
+**There is no branch, so nothing is kept anywhere else.** An ordinary task you stop leaves
+its work committed on its own branch for you to look at. A quick task was writing in your
+folder the whole time, so what you are left with is your folder: the changes it had
+already made, exactly as it left them, **possibly half made**. A file it was in the middle
+of is as far as it got. Your own git is the undo — `git diff` shows the whole of what it
+did, and `git checkout -- <file>` throws it away.
+
+The same is true of a quick task that runs out of its rounds rather than being stopped by
+you. Its report leads with `out of rounds — ` and quotes its own last sentence back,
+because that sentence is the only account in existence of the change it was halfway
+through.
+
+## What a quick task cannot do — no check of its own, nothing to inspect, and it goes when the window goes
+
+Five limits, and they are the price of there being no ceremony:
+
+- **Nothing checks the work.** No check reads what it did against what was asked. A quick
+  task is never `your call` and never waits for your approval — what you get is what it
+  says it did, in its own last message.
+- **There is nothing to inspect afterwards.** No branch, no copy of the folder, no diff of
+  its own. The only record of what it changed is your folder and its room.
+- **It does not outlive this window.** Work that has to keep going while the terminal is
+  closed is an ordinary task.
+- **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
+  one worker was never quick.
+- **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
+  words never appear on a quick task's card, because there was never a second copy of
+  anything.
+
+None of these are settings. A quick task that turns out to need any of them is a sign the
+work wanted an ordinary task, and you can say so mid-flight: stop it and ask for a task.
+
+## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how aforge decides which road your work takes
+
+The rule is written once, in the words the model itself reads:
+
+> A task gets its own copy of the folder, is checked, and lands. A quick task works where
+> you are and its last message is its answer. If you will read the result and carry on,
+> it is quick. If it must be checked and merged on its own, or survive the window
+> closing, it is a task. One edit, one read, one command is a step: do it yourself.
+> Related steps that share what they learn are one quick task's items, not several quick
+> tasks. Keep one small — a few files and a few minutes: reading is not progress, so
+> six steps that only read end it.
+
+**What decides is what happens to the answer, never how wide the work is.** Work whose
+result comes back for the conversation to read and carry on with is quick tasks, one per
+independent part, however many parts there are — a survey of four packages is four of
+them, not one task with a branch. Work that has to be *checked and landed on its own*, or
+to outlive the window you are looking at, is a task. Width only decides the shape of the
+second one: a wide **change** is one task whose worker hands the real parts out from
+inside once it has opened the material, and a wide **read** never comes down that road.
+
+**And the model is told what each one costs**, rather than given a list of which kinds of
+work go where. Its own instructions describe a quick task as a copy of its abilities
+working where it stands and a task as a worker in a copy of the folder that is checked and
+merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
+out in one breath cost the longest of them. Everything on this page follows from that, and
+so does anything this page did not think to list.
+
+Three consequences worth knowing. **Small things still do not become work at all** — one
+edit, one read, one command is done in the reply, and it was never a candidate for either
+road. **Related steps are one quick task's items, not several quick tasks**: reading
+four files to answer one question about them is one quick task with four items, because
+the fourth read is worth more to somebody who has seen the first three. And **one quick
+task is a few files and a few minutes** — see *How big one quick task should be* below.
+
+You can overrule it either way in words, and the model follows.
+
+## How big one quick task should be — a quick task that ran out of rounds, one that read twenty files and cost a dollar, why a big package became several
+
+**A few files and a few minutes.** A quick task is one worker with one context and no
+grooming, so the thing that ends it early is not a wall clock, it is running out of room:
+a worker that only reads is not making progress by aforge's own measure, and after a few
+such steps in a row it is stopped and its row lands saying `out of rounds`.
+
+That is a real failure and not a hypothetical. A quick task told to survey twenty files
+and 8,600 lines read them whole into a context with no space for them, stopped on
+`out of rounds — stopped: 6 steps without progress` after eight minutes, and cost over
+half a dollar for an answer nobody got.
+
+So a large package is **several** quick tasks of a few files each, or one quick task with
+one item per small group — never one over all of it. And a quick task that starts quick
+tasks of its own cuts them smaller still, because its own room is already spent.
+
+## Why several things started at once — three quick tasks in one message, why it did not do them one at a time
+
+**Because they did not need each other, and one after another is the slowest order.**
+When a turn has independent pieces in front of it, aforge starts them in the same breath
+rather than in turn, keeps one piece for itself and gets on with it. You wait for the
+longest piece instead of the sum of them, and the rail shows every one of them running.
+
+What it will *not* do is watch them. Each landing arrives on its own and wakes the
+conversation, so once nothing is left that is independent of the work it handed out, the
+turn simply ends — a reply that sat there polling would have spent your money to learn
+what it was going to be told anyway. If the pieces share what they learn, they are one
+quick task's items instead, and they stay in order.
+
+## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
+
+**Yes, under exactly the bounds every task is under.** A quick task's worker carries
+`quick_task` and `propose_task` on the same terms as any other worker.
+
+**Depth is two levels.** The conversation starts work; that work may start more; the third
+level may not. A worker at the floor has neither tool on its belt — `quick_task` is
+withheld there the same way `propose_task` is — so a child saying it cannot hand work out
+is describing a limit and not a choice.
+
+**Fan-out is five pieces per parent**, counting quick tasks and ordinary tasks together. A
+worker asking for a sixth is told it has handed out as many as one task may, and to do the
+rest itself.
+
+And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
+tasks queue behind it with everything else.
+
+## A quick task started inside a task — a quick row appeared under my task, and who reads its answer
+
+A quick task started by a task hangs **under that task** on the column, in its family,
+folding and unfolding with it. Its row reads the same `quick · 2/4 · …` it would read
+anywhere.
+
+**Its answer goes to the worker that started it, not to you.** The note with its last
+message in it is delivered to its parent, which reads it and carries on — the same road a
+part's report takes. You see the row and can open its room, but the conversation is not
+handed the answer; what reaches the conversation is what the parent task says when *it*
+lands.
+
+The other direction is the same shape: a quick task started by the conversation reports
+into the conversation, and its note is what you read.
+
 ## Why my task's brief is longer than what I typed — the brief is shaped
 
 A task you start with `/task` does not go out as the sentence you typed. Between the
@@ -492,6 +733,31 @@ this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
+## A quick task took over my answer · this has parts, a quick task is taking them here · why was there no copy of the folder · the moved work carried on in my own folder
+
+**When the answer being moved has changed nothing on disk, a quick task takes it instead of a
+full one.** That is the whole of what aforge reads here — not what the work was about, but
+whether the reply had written or edited anything under the folder you are in. A reply that
+only read files, ran searches and looked things up has nothing to isolate and nothing to
+merge, so it is not given a copy of the folder.
+
+**You read one line instead of two:**
+
+```
+this has parts · a quick task is taking them here, in this folder: audit the pricing code
+```
+
+**What that means.** The work carries on **in the folder you are standing in** — no branch,
+no copy, no merge. The parts the second reader drew become the quick task's **items**, in
+the order they were drawn, and it works through them in that order. Nothing checks it and
+there is nothing to land: its last message is the answer, and it reaches you as the ordinary
+note when the row goes `done`. It is on the rail like any other task, so it can be opened,
+steered and stopped from there.
+
+**If the reply had written anything at all, none of this applies.** One edit is enough: the
+answer takes the ordinary road above — a task in its own copy of the folder, briefed,
+checked and landed — and you read the two lines that road writes.
+
 ## It made a task out of work that was already done · why did it hand over when everything was written · the task redid what the answer had already written · it started again from my first message
 
 **When aforge stops to look at a long answer, it asks the model writing that answer whether
@@ -794,8 +1060,7 @@ saved cut from `edit_video`, and a shell command that names what it would change
 just looking. A `cd` inside the command is followed, so a write into somewhere else is
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
-outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
-count; see *Do hands get around the write limit* below.
+outside this folder — a scratch file in `/tmp` is not your work.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -962,15 +1227,15 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
+## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it keep asking about a task that is still running
 
 **A reply that ends while something IT started is still running is never carried on.** A
-background command, a watch, a video or music render, a forked hand — while any of those is
-still going, the reply is waiting on it exactly the way a reply that ends on a question is
-waiting on you, and pushing it on would only make it poll.
+background command, a watch, a video or music render — while any of those is still going,
+the reply is waiting on it exactly the way a reply that ends on a question is waiting on
+you, and pushing it on would only make it poll.
 
 **The ending comes back and starts a new reply by itself.** A background command exiting, a
-render landing, a hand coming home, **a watch firing**: each of those wakes aforge and you get
+render landing, **a watch firing**: each of those wakes aforge and you get
 the sentence about it without typing anything. So you can start something, close the laptop
 lid on the conversation, and come back to the answer rather than to a card and silence.
 `jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
@@ -994,10 +1259,9 @@ the running-long point moved the wait into a task whose done-condition nobody co
 reply handed *this* request's work to a task and that task is queued or running, the reply
 stops there and is not read: the outcome is the task's to deliver, its landing wakes a reply
 here on its own, and *that* reply is read for what remains with the report in front of it. It
-is narrow on purpose — a task started for an **earlier** message excuses nothing, so a reply
-that hands nothing over is read exactly as it was before; **anything you say after the
-handoff**, including a correction typed into the running reply, puts the reading back; and a
-task that has already **failed or finished** is news to answer rather than work to wait for.
+is narrow on purpose — **anything you say after the handoff**, including a correction typed
+into the running reply, puts the reading back; and a task that has already **failed or
+finished** is news to answer rather than work to wait for.
 
 **What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
 no done-condition is answered. A reply that hands one part of your message over and quietly
@@ -1006,6 +1270,48 @@ not skipped. The measured failure it fixes: "hand this work to a task, run the b
 the marker, keep the conversation free while it runs" was done exactly as asked, read as
 unfinished because the marker was not known yet, and carried on into polling the task it had
 just started and a watch over its own work.
+
+## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on
+
+**Carry on is the reply being pushed on past its own ending.** When a reply stops, its
+ending is read against what you asked. If something you asked for is still missing, the reply
+is not left there: it is carried on, with the missing piece as its brief, and the row says so.
+`carried on 3 times` is the count, and three is the limit — after the third the reply stops
+where it is and tells you, rather than being pushed on again over the same gap.
+
+**It is never carried on over its own running work.** A reply waiting on a task, a quick
+task, a background command or a watch it started is waiting, not unfinished; the ending it
+waits for wakes a new reply here on its own.
+
+**And a reply you did not type is left alone while any of its own tasks is still out.** A
+landing wakes a reply here, and that reply often has nothing to do but say so: one of two quick
+tasks is in, the other is still running. While a task or a quick task this conversation started
+is queued or running, that reply is not read and not carried on — what it is waiting for is the
+other landing, and that landing is what wakes it. **Your own words outrank this**: the moment
+you type or steer anything, the reply is read for what you asked exactly as it always was,
+whatever is still out, so a task from an earlier message excuses nothing you say. Measured on a
+real drive: a chat started two quick tasks, answered the first one's landing, and was then
+pushed on three times over the second — each push another reading and another `tasks` poll of
+the node that was about to report, each answered "still running, no gap to fix".
+
+## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
+
+**When the task that was this request comes home done and its own checks have passed, the
+reply that reports the landing is not carried on as unfinished.** The card already shows
+it done. The end-of-turn reader is looking at a short account of what was said, not at the
+tree or the checks that already ran, and a reader that answers "still not finished" over
+that card is not evidence — it is the same echo that used to carry a finished ask on three
+times and then tell you it was unfinished.
+
+**A piece of a larger ask is still read.** If the landing is one finished part and what you
+asked for is bigger, or the landing is incomplete, or nobody ran the task's own checks, that
+reply is still read for what remains, the way a cheap woken reply always is. The gate is the
+landing's own fact: this request, this task, done, checks green.
+
+**It is the other half of handing the work out.** While the task is queued or running, the
+reply that started it is not read. When it lands done with its checks green, the reply that
+reports it is not read either. What is in between — a failed landing, a landing nobody
+checked, a new sentence you typed after it — is still read.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
@@ -1232,6 +1538,13 @@ src/analysis.rs is in the working copy task 4 (repair the parser) is using right
 nothing was written.
 ```
 
+**A quick task is in your folder and does not hold it.** It has no copy of its own, so it
+writes where you are — but the folder stays yours: keep editing, and the chat's `edit` and
+`write` go on working everywhere else in it. Its claim is **files, not the directory**: a
+file it named at the start, or one it has written, is held by it and refused with its name
+on it, the first case above. Two quick tasks that name one file never write it at once
+either — the second waits (*Why it said waits for task 5*).
+
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place
 holds the directory*.
@@ -1438,6 +1751,10 @@ Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `e
 selected card opens the task's room instead. What the expansion holds, and in what order, is
 under *What an expanded landing card shows* below. Each long field caps at 20 rows.
 
+**A quick task always comes home `in your own folder`**, with no branch row at all, because
+it never had a branch or a copy to bring back. Its card is the state, the clock, the files
+if it wrote any, and its own last message as the answer.
+
 The branch row is labelled with **where the work was done**, in plain words rather than in
 git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
@@ -1581,7 +1898,7 @@ root; the root then carries the family's aggregate state glyph and a `▸ +N` ba
 hidden descendants.
 
 **Workers under a task are the family's own rows and nothing else** — there is no second,
-smaller list of hands drawn beneath a row. A task that split itself into parts, and an
+smaller list drawn beneath a row. A task that split itself into parts, and an
 adaptive run and its workers, each announce themselves as tasks with a parent, so every one
 of them is an ordinary row of the forest above: its own state glyph, its own name, its own
 `#id`, reachable with `↑`/`↓` and openable with `→`. A worker you can see is a row you can
@@ -1724,8 +2041,8 @@ never arrives costs a good name and nothing else — the command stays on the ro
 **No call is made** when the job already has a label of its own, or when the command is
 already short and readable:
 
-- a watch, a render or a hand is named the moment it starts (`watch app`, the render's
-  title, the hand's part) — a second call would disagree with `jobs list`
+- a watch or a render is named the moment it starts (`watch app`, the render's
+  title) — a second call would disagree with `jobs list`
 - a command with no shell metacharacters and no more than four words is left alone —
   `npm run dev` is what a person would call that job
 
@@ -1879,7 +2196,7 @@ Type digits while the layer is up and the figure is whatever you typed.
   is the *asks* in the sentence on the line.
 
 **A task started any other way carries whatever this window carries.** `/task <brief>`, the
-proposal card and the model's own hands run under the conversation's own limit — the
+proposal card and the model's own proposals run under the conversation's own limit — the
 `per conversation` row on the **Spending** tab of `/settings`, which reads `no limit` until
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
@@ -3724,11 +4041,13 @@ than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
 what this section is about. It promises nothing: the tests below still have to pass.
 
-**And this is what I do with wide work too.** When I hand work off myself rather than you
-typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
-work broad — a sweep across many files, research across many sources, the same change over
-many separate items. It still starts **one** task, armed to split itself; it is not a
-planner and not three tasks. **There is no planner on my belt at all any more**, and there
+**And this is what I do with a wide change too.** When I hand work off myself rather than
+you typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever the work
+that must be checked and landed is broad — the same edit over many separate items, a sweep
+that writes across many files. It still starts **one** task, armed to split itself; it is
+not a planner and not three tasks. A wide **read** never comes down this road at all: a
+survey or a comparison across many packages is quick tasks in your own folder, one per
+part, and *Quick task or a proper task* is where that is decided. **There is no planner on my belt at all any more**, and there
 is no sentence you can type that reaches one either, so width has nowhere else to go —
 *adaptive runs*, under *How do I start an adaptive run*, is the whole of that answer.
 
@@ -3759,174 +4078,12 @@ width floor stands under the splits that do happen, which is off unless you set 
 (*Can I make it always split the work*). Both are environment pins rather than preferences,
 which is why neither is in the settings panel.
 
-## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
-
-Sometimes the work is not big enough to hand away and still has separate parts in it. Three
-files to change that do not touch each other. A page to write and a table to fill in beside
-it. For that, aforge can **copy itself, right there in the middle of your answer**, into two,
-three or four **hands** that work side by side. Its tool for it is `fork`.
-
-A hand is not a task and it is not a part of one. Nobody writes a brief for it: it starts
-with **everything the answer has already read and said**, the whole conversation up to that
-moment, and is told exactly one line — what its part is, which files it may write, and what
-each of the others is doing so it does not redo their work. That is the whole trick, and it
-is why hands are cheap: the expensive thing about handing work over is explaining it, and a
-hand needs no explaining.
-
-**What you see** is one dim line at the moment they go out:
-
-```
-three hands on it · each one folds in as it lands
-```
-
-The answer then carries on. It does **not** go quiet and wait for all of them — see the next
-section. What they cost is folded into that turn's own cost, which is where it belongs: it is
-your answer being worked on, not work that left.
-
-Do not confuse it with `this one wants more hands · handing it over with everything found so
-far`, which is the opposite move — that one is your answer **leaving** to become a task.
-
-## Do hands get around the write limit — my reply changed six files through hands and never became a task, does forking count against the allowance
-
-**No. What a hand changes counts against the same allowance as an edit the reply makes
-itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
-under this folder, and a shell command that names what it changes. Reads do not count. A
-refused write changed nothing and counts nothing, and neither does anything outside the
-folder this conversation is open on.
-
-A hand is a stream, so this count can arrive after the reply that called `fork` has already
-ended. It arrives when the hand reports back. The reply at the next step boundary reads it:
-that may be the reply already running when the report lands, or the reply the report wakes.
-If the allowance has been spent, that reply says
-`this is changing more than a quick edit · moving it to a task that is watched and can split`
-and moves what remains onto the same one-task road as an inline edit. Each hand's landed call
-is counted once.
-
-## A hand is a stream, not a wait — the answer keeps working while its hands are out
-
-`fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
-in the conversation, the moment that hand finishes — in the order they **come home**, not the
-order they were asked for. Nothing polls and nothing waits.
-
-That matters because the alternative was measured and it was expensive. On one benchmark task
-a worker forked three hands at 00:53. The first was finished ninety seconds later. The tool
-call did not return until 01:33, when the slowest one hit its budget — so for thirty-nine
-minutes the worker sat inside a tool call doing nothing at all, while the first hand's
-finished work sat in the working copy unbuilt and unmeasured. When it finally returned, the
-worker built once, ran the check, and gained 29 passing tests. Forty minutes for work that had
-been ready after two.
-
-So now the answer builds and tests **each slice as its report lands**, while the other hands
-are still writing elsewhere in the tree.
-
-Every hand still out also rides at the foot of every result the answer reads, the way a
-background job does:
-
-```
-[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
-```
-
-Which hand, how old, what it last did. So a hand can never be forgotten and never has to be
-asked about.
-
-**Hands get job ids now.** They are in `jobs list` beside background commands and watches,
-each with a log on disk, and `jobs kill 4` ends one — its writes stay in your working copy and
-may be half made, and no report comes.
-
-**Every hand owns a slice of the files and can write nowhere else.** They share one working
-copy — no branches, no copies of the repository — so what keeps them out of each other's way
-is that the slices are declared before any of them starts, and two hands claiming the same
-path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
-by good manners, and it carries on inside its own.
-
-**A hand that declares an empty slice only reads.** `"scope": []` asks for a hand with no
-`edit` and no `write` tool. Its shell keeps the existing restricted orientation policy;
-this is a tool policy, not an operating-system sandbox. It can inspect sources, datasets
-or files without declaring a file to change. Readers claim nothing, so **two of them may look at the same
-file** and neither collides with a writing hand beside it. A fork can mix them freely.
-
-**The `scope` key is always required.** An empty list is a request; a missing key is a slip,
-and it is refused rather than read as one — the reply is told to name the paths, or to send
-`[]` if the hand only reads.
-
-## How a hand's slice of files is spelled, and when a fork is refused over it
-
-The paths a hand may write are **relative to your working copy** — `src/parser.rs`,
-`internal/session`, `docs`. A directory claims everything under it.
-
-A path written out **in full** is accepted and means the same thing: if your working copy is
-`/work/repo`, then `/work/repo/src/parser.rs` and `src/parser.rs` are one slice, and the
-overlap check reads them as one. This is worth knowing because it used to be the opposite. A
-task worker once declared its hands' slices in full, the door accepted them, the refusal was
-made against the short form, and **every single write in every hand was refused** — the model
-kept being told that files plainly inside its slice were outside it, and it never split its
-work again. Both ends now read a path the same way, once.
-
-Three spellings are turned away at the call, before any hand starts, with a line naming the
-offending path and the form that would have worked:
-
-- a path **outside your working copy**, like `/etc` or `../secrets` — a slice is a slice of
-  this directory, and one that is not could never match anything a hand writes;
-- **`.`**, the whole working copy — that is not a slice of it, and it collides with every
-  sibling;
-- **two hands claiming one path**, in any spelling — the one shape a shared working copy
-  cannot survive.
-
-Nothing is spawned in any of those cases: the answer reads the refusal, redraws the slices
-and calls again.
-
-## What hands cannot do, and how they differ from a task
-
-**They cannot build and they cannot run tests.** All of them are writing the same working
-copy at once, so a build in the middle of that reads a half-written repository: a pass would
-prove nothing and a failure would be a neighbour's unfinished work. Their `bash` runs
-`git diff`, `git log`, `git status`, `git show`, `pwd`, `wc`, `head` and `cat` and refuses
-everything else. The build, the tests and the review happen **in the answer itself**, hand by
-hand as each report lands.
-
-**They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
-declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over. A hand that declared `[]` does not carry those
-two tools in the first place. A writing hand also spends the reply's write
-allowance when its changes come home.
-
-**They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
-simply does not have the tool.
-
-**A hand has nine tools, and it is told which nine.** It opens on the whole conversation —
-the same transcript and the same instructions the answer that forked it was reading, word
-for word, because that shared page is what makes a copy of a mind cheap to make. Those
-instructions were written for the belt the **caller** carries, which is a much longer list,
-so a short note is added under them naming what is actually this reader's: `read`, `grep`,
-`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. A hand that only reads
-gets seven of those — `edit` and `write` are absent — and its note says so. Nothing else is on
-a hand's belt however the page above the note reads, and a call for anything else is answered
-`Unknown tool` rather than run.
-
-**They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
-that started it has finished, and its report wakes the session when it lands — the same thing
-a background command's exit does. What stops a hand where it stands is **your interrupt**
-(that is the difference from a background job: a job is a command you asked to be left
-running, a hand is the answer itself) and closing the window. A task that forked hands does
-**not** land while a hand is still out: it waits, reads the reports, and lands after.
-
-**Each has a budget of 15 rounds of tool calls.** A hand that runs out reports it **leading**
-with `OUT OF ROUNDS`, names the files it wrote, and **quotes its last sentence back verbatim**
-— because that sentence is the only description in existence of the change it was halfway
-Nothing built or ran those files, so the change may be
-half made. The answer is told plainly that this part is not done — it is never quietly treated
-as finished.
-
-**How it differs from the other two roads.** A **task** is work that leaves: its own copy of
-the repository, its own room, a check, a landing, and it survives you closing the window. A
-**divided task** is that again, several workers under one, for material too wide for one
-worker. **Hands** are neither — they are one answer being worked on in parallel and finished
-in the same breath. If the work should still exist after this reply, it wants a task; if it
-is this reply, it wants hands.
-
 ## How deep tasks nest, and how many pieces one task may hand out
 
 Two hard bounds, and they behave differently on purpose.
+
+**Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
+at the floor exactly as `propose_task` is.
 
 **Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
 piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
@@ -3951,7 +4108,7 @@ cap is not evidence that deeper delegation cannot be useful.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
-## How many tasks run at once — can I have it do two things at the same time
+## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** aforge does not cap the number of tasks running at the
 same time.
@@ -4159,7 +4316,9 @@ told its prerequisite will never finish. Either way:
 
 - **its branch is kept, with its work on it.** Nothing it wrote is thrown away: whatever
   reached disk is committed onto the branch, and the landing card names the branch and the
-  files, exactly as it does for every other early ending.
+  files, exactly as it does for every other early ending. **A quick task has no branch**,
+  so there is nothing to commit anywhere: what it had written is in your folder as it left
+  it, possibly half made (*Stopping a quick task*).
 - **what it spent is what it spent.** The figure freezes where it was.
 - **it is not a failure.** The roster draws `■` rather than the failure cross, the room's
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes

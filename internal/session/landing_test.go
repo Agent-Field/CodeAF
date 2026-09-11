@@ -153,7 +153,7 @@ func TestStubBytesKeepTheLegacyPathWithoutAFolder(t *testing.T) {
 //
 // The pair above is a SESSION with a folder and a session without one. These are
 // the third case, which is neither: an agent that is not a session at all — a
-// task node's worker, a fork's hand, a part's worker under either — and which
+// task node's worker, a part's worker under it — and which
 // therefore carries no Place. It borrows somebody's repository to work in, so
 // "the zero Place is the legacy layout" put the harness's own litter inside that
 // repository (landing.go states the measured failure).
@@ -258,39 +258,6 @@ func TestATaskWorkersStubsLandWithTheFamilyAndNotInTheRepository(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, droppingsLegacyDir)); !os.IsNotExist(err) {
 		t.Fatalf("a worker littered the person's repository: %v", err)
-	}
-}
-
-// A hand is the same story with no worktree at all: it works in the CALLER'S own
-// workspace by construction (fork.go), so a hand that filed its own droppings
-// against that workspace wrote into the person's repository on every fork the
-// conversation itself ran.
-func TestAForkHandsStubsLandWithTheSessionAndNotInTheRepository(t *testing.T) {
-	place := newPlace(t, false)
-	agent, repo := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.Place = place
-	})
-	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	seed, system := agent.forkSeed()
-	hand, err := agent.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, system, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatalf("newHandAgent: %v", err)
-	}
-	t.Cleanup(func() { _ = hand.Close() })
-
-	before := treeShape(t, repo)
-	loadHeavyTurns(hand, heavyOutput("A LONG READ"))
-	hand.stubOldOutputs()
-
-	entries, err := os.ReadDir(filepath.Join(place.Logs(), droppingStubs))
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("the session's stubs directory holds %v (%v); want the one result the hand stubbed", entries, err)
-	}
-	if got := treeShape(t, repo); !reflect.DeepEqual(got, before) {
-		t.Fatalf("a hand changed the workspace it shares with the caller:\n before: %v\n  after: %v", before, got)
 	}
 }
 
@@ -481,7 +448,11 @@ func TestEveryAgentThisPackageBuildsSaysWhereItsDroppingsGo(t *testing.T) {
 			return true
 		})
 	}
-	if seen < 4 {
+	// The floor is a check on the SCAN and not a ratchet on the package: it
+	// fails loudly if a rename or a refactor leaves this walking nothing. It
+	// came down from four when `fork` left and its hand's Config literal with
+	// it; lower it again only alongside the construction that went.
+	if seen < 3 {
 		t.Fatalf("the scan found %d agent constructions, so it has broken rather than passed", seen)
 	}
 	if len(silent) > 0 {

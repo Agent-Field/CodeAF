@@ -162,8 +162,7 @@ func TestTwoInPlaceNodesCannotBothHoldOneTree(t *testing.T) {
 }
 
 // A NODE'S OWN FAMILY IS NOT SOMEBODY ELSE — taskground.go's law, asked at write
-// time. A part cut out of the node's work, and a fork hand of its worker, are
-// that node writing.
+// time. A part cut out of the node's work is that node writing.
 func TestTheHoldersOwnFamilyWritesFreelyInItsTree(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
 	graph := inPlaceGraph(t, workspace, runningNode{id: 4, title: "repair the parser"})
@@ -183,33 +182,6 @@ func TestTheHoldersOwnFamilyWritesFreelyInItsTree(t *testing.T) {
 	agent.config.taskID = 9
 	if _, _, ok := (treeClaimGuard{agent: agent}).PreAction(context.Background(), nil, nil, call); ok {
 		t.Fatal("an unrelated node wrote into the holder's tree")
-	}
-}
-
-// A FORK HAND IS ITS CALLER'S NODE. It shares the caller's working directory, so
-// the claim question has to get the same answer for a hand as for the worker
-// that forked it — and without the two rows fork.go carries down, a hand of a
-// node's worker is indistinguishable from the conversation.
-func TestAHandInheritsTheNodeItIsWorkingFor(t *testing.T) {
-	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
-	graph := inPlaceGraph(t, workspace, runningNode{id: 4, title: "repair the parser"})
-	agent.config.tasker = graph
-	agent.config.taskID = 4
-
-	hand, err := agent.newHandAgent(forkPart{Role: "one", Scope: []string{"src"}},
-		[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "go"}}}},
-		"do the thing", &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatalf("newHandAgent: %v", err)
-	}
-	defer hand.Close()
-	if hand.config.taskID != 4 || hand.config.tasker != graph {
-		t.Fatalf("the hand carries taskID=%d tasker=%v, want its caller's node",
-			hand.config.taskID, hand.config.tasker != nil)
-	}
-	if _, _, ok := (treeClaimGuard{agent: hand}).PreAction(context.Background(), nil, nil,
-		scopedCall("edit", filepath.Join(workspace, "src/analysis.rs"))); !ok {
-		t.Fatal("a hand of the node's own worker was refused a write in its node's tree")
 	}
 }
 

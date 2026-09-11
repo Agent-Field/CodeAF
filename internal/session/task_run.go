@@ -950,6 +950,22 @@ type TaskGraph struct {
 	seq     uint64
 	running int
 
+	// quickGate serialises the ADMISSION of quick nodes, and it is the one lock
+	// in this file that is not `mu` (task_quick.go).
+	//
+	// IT EXISTS BECAUSE THE WRITE CLAIM IS READ BEFORE IT IS WRITTEN. A quick
+	// node's claim is compared against every running or queued quick node's at
+	// admission and a collision becomes an edge, and a model fanning out emits
+	// its calls TOGETHER and the loop runs them concurrently (loop.go) — so two
+	// doors claiming one path would each look, each find the graph empty of the
+	// other, and each start. That is the exact case the serialisation exists for,
+	// and it is the one it would have missed.
+	//
+	// It is held across the look and the admit and nothing else, so it is never
+	// held while anything is spent or awaited, and it is never taken with `mu`
+	// held. Nothing but a quick node's door touches it.
+	quickGate sync.Mutex
+
 	// limit is how many nodes may RUN AT ONCE, and 0 IS NO LIMIT
 	// (session.Config's TaskParallel, config.KeyTaskParallel).
 	//
@@ -4447,16 +4463,19 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	}
 
 	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
-	// three kinds — the deadline, the job row, the settle — and the middle is
+	// four kinds — the deadline, the job row, the settle — and the middle is
 	// what a node of this spec IS: a worker in a worktree, a subharness being
-	// written in a room (harness_task.go), or a subharness being RUN in one
-	// (subharness_run.go).
+	// written in a room (harness_task.go), a subharness being RUN in one
+	// (subharness_run.go), or a quick task working where its caller works
+	// (task_quick.go).
 	work := a.workTaskNode
 	switch {
 	case node.spec.design != nil:
 		work = a.designHarnessNode
 	case node.spec.run != nil:
 		work = a.runSubharnessNode
+	case node.spec.quick != nil:
+		work = a.runQuickNode
 	}
 	state := work(ctx, node, listed)
 	if state == "" {
@@ -5898,19 +5917,12 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 // yet to deliver its report. It is false in a conversation and in a node that
 // never fanned out: neither has a family to be outstanding.
 //
-// A FORKED HAND COUNTS HERE TOO, and it is the same question with a smaller
-// piece of work in it: this agent handed part of what it is doing to something
-// else, and has not been told what came of it. A hand is a stream now rather
-// than a barrier (fork.go), so a node CAN reach the end of its turn with hands
-// still out — and the two readers of this answer are exactly the two that must
-// not get it wrong. The tail loop in [runTaskChild] would land the node on top
-// of a hand's unread report and throw away the writes the fork was for; the
-// no-progress counter would read a node whose work is in somebody else's hands
-// as a node spinning.
+// THE TWO READERS OF THIS ANSWER ARE EXACTLY THE TWO THAT MUST NOT GET IT
+// WRONG. The tail loop in [runTaskChild] would land the node on top of a child's
+// unread report and throw away the work that report was for; the no-progress
+// counter would read a node whose work is in somebody else's hands as a node
+// spinning.
 func (a *Agent) childrenOutstanding() bool {
-	if a.jobs.handsOutstanding() {
-		return true
-	}
 	a.mu.Lock()
 	graph, parent := a.config.tasker, a.config.taskID
 	a.mu.Unlock()
@@ -6905,6 +6917,22 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
+		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
+		//
+		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
+		// worker shares the person's own copy — there is no worktree to isolate it
+		// — so what stands in for the isolation is the scope it declared, enforced
+		// by the guard that is already a citizen of every agent's control plane
+		// (orchestrate.go's [writeGuard]). EMPTY IS UNRESTRICTED, which is that
+		// guard's own law and is what a quick task that named no files gets.
+		//
+		// AND THE LIST, wired here for [Config.reviseDesign]'s reason: a belt is
+		// assembled once, when the agent is constructed (agent.go), so a door
+		// handed over afterwards would be a verb the model is never told it has.
+		// It is nil for every other node — there is no list to tick — which is
+		// what keeps `items` off every other belt in this build (task_quick.go).
+		writeScope: node.quickScope(),
+		quickItems: node.quickDoor(),
 		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
 		// reason: a belt is assembled once, when the agent is constructed
 		// (agent.go), so a door handed over after this call would be a verb the

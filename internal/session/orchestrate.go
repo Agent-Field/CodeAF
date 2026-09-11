@@ -1300,11 +1300,11 @@ func orchestrateJournalPath(session, run, node string) string {
 // refusal is a result the model READS — it can pick a different file and carry
 // on — because a veto that ended the turn would cost it its work.
 //
-// IT HAS TWO CITIZENS NOW and they want it for opposite reasons. A node of an
+// IT HAS TWO CITIZENS and they want it for opposite reasons. A node of an
 // adaptive run is scoped so that nodes running in DIFFERENT places do not both
-// claim the same corner of the plan; a fork's hand is scoped so that hands
+// claim the same corner of the plan; a quick task is scoped so that quick tasks
 // running in THE SAME working copy cannot collide at all, which is what stands
-// in for the worktree a hand does not get (fork.go).
+// in for the worktree a quick task does not get.
 //
 // IT BINDS THE CALLS WHOSE TARGET IS A KNOWN PATH — edit, write, and the three
 // edit_video actions that write the file they name (recovery.go's [mutatedPath],
@@ -1321,10 +1321,8 @@ func orchestrateJournalPath(session, run, node string) string {
 // timestamped name in the session's own video folder, which nothing can read out
 // of the arguments, so that call goes unscoped exactly as generate_image's does.
 //
-// What bounds a node's shell is the same thing that bounds every other agent's —
-// the approval floor; what bounds a hand's is that a hand's bash cannot write at
-// all (fork.go's [forkBelt]), which is the one place this hole is closed rather
-// than named.
+// What bounds a node's shell is the same thing that bounds every other agent's:
+// the approval floor.
 type writeGuard struct{ agent *Agent }
 
 func (writeGuard) Name() string { return "write-scope" }

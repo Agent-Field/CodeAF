@@ -383,8 +383,8 @@ even when there is no transcript file beside the current conversation.
   included. A miss does not prove the subject was never discussed.
 - **It is off when memory is off.** The conversations are kept in the same place
   the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Task workers and forked hands inherit
-  read-only search when their parent has it; this does not enable memory writes or worker-message indexing.
+  is written and there is nothing to search. Task workers inherit read-only search
+  when their parent has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, aforge searches and quotes rather than
@@ -647,7 +647,7 @@ Three kinds of failure are watched and deliberately **not** written down, becaus
 nothing the next command did could have fixed them:
 
 - **aforge itself said no.** A refused call — a permission you denied, a command
-  outside what a task's checker may run, a hand a task does not have — is
+  outside what a task's checker may run, a tool a task does not have — is
   aforge's own answer, written before anything ran. Whatever gets typed next is
   simply the next thing that was typed.
 - **the tool is not there.** `Unknown tool: …` is the same fact from the other

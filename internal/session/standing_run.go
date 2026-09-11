@@ -1063,6 +1063,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			Role: effort.RoleSentinel,
 		}); rung != effort.None {
 			callCtx = provider.WithConfiguredEffortRung(callCtx, rung)
+			recordEffort(callCtx, model, rung)
 		}
 		response, err := client.CompleteWithMessages(
 			// WithoutStream for the reason the guardian and the route judge use

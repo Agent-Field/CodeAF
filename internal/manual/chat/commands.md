@@ -343,9 +343,11 @@ It ends with a note that says which of the two happened: `new conversation · <p
 when it added one, and `new session · <path>` — or just `new session` with no file — when
 it replaced a fresh empty one.
 
-**How many conversations are already open is never a reason to refuse.** There is no cap:
-the ninth and the fiftieth `/new` open exactly like the first, and the one you were in is
-left running. Nothing closes one for you — that is what `/quit` is for.
+**How many conversations are already open is never a reason to refuse.** The ninth and
+the fiftieth `/new` open exactly like the first, and the one you were in is left running.
+Past twelve open, a quiet conversation you have not looked at for fifteen minutes may be
+let go of — home's page under *How many conversations can one terminal hold* is the whole of
+that. `/quit` is still how you close the one in front.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -1069,7 +1071,8 @@ that folder is gone · <path>
 row is still there. `/new is unavailable here` is what the typing-to-start box says where no
 fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
 moved since its last conversation: home stays up and nothing is opened. **How many
-conversations this terminal already holds is never a refusal** — there is no cap on that.
+conversations this terminal already holds is never a refusal.** Past twelve, a quiet
+one left alone may be let go of; that is not a refusal of the one you asked for.
 A task another window is running cannot be stopped from home: its `running` row says
 `another window` and offers no stop.
 

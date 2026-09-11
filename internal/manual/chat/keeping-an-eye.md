@@ -733,8 +733,9 @@ machine: home's panels are that machine's — its questions, its running work, i
 `next up` — and the
 standing place lists both what stands on this conversation and what stands anywhere else on
 that machine. `p` and `s` write to the far machine's store and the refusal, if the store
-refuses, is that store's own. The status line counts too — `◦ 2 standing orders` is about
-the workspace this window is on, which over `--host` is a path on the far machine.
+refuses, is that store's own. The count at the foot of the task column — and the
+same words under `watching` on `/status` — says `◦ 2 standing orders` about the
+workspace this window is on, which over `--host` is a path on the far machine.
 
 One live detail is still missing over a connection, and it says nothing rather than
 guessing:
@@ -895,8 +896,8 @@ reasons, in the order worth checking:
   is over and off every list by the time you get back.
 - **It has not fired yet.** A window checks its items every five minutes, the
   first check five minutes after it opened, so a one-minute reminder can arrive
-  up to five minutes late. `/status` shows `◦ N standing orders` while something
-  stands.
+  up to five minutes late. The task column's foot (and `/status` under `watching`)
+  shows `◦ N standing orders` while something stands.
 - **The check found nothing to say.** A watch or a rule that looked and found
   nothing writes nothing at all — that is the design, not a fault. The item's own
   record on home says when it last ran.
