@@ -573,7 +573,7 @@ func TestAProseRepeatedActionIsLiftedWithoutBecomingCheckerAuthority(t *testing.
 	// landed, and not any part's.
 	ground := t.TempDir()
 	for _, node := range append(nest.graph.children(nest.parent.id), nest.parent) {
-		door := auditDoorFor(node, ground)
+		door := auditDoorFor(node, standingOn(ground))
 		if len(door.checks) != 0 {
 			t.Fatalf("%q's checker was handed %q, and nobody declared any of it", node.title(), door.checks)
 		}
@@ -623,7 +623,7 @@ func TestASharedCheckDeclaredByEveryPartIsLiftedOffTheirOwnDoors(t *testing.T) {
 		if len(checks) != 1 || !strings.Contains(checks[0], kid.title()) {
 			t.Errorf("the part %q kept %q, want its own check and nothing else", kid.title(), checks)
 		}
-		if door := auditDoorFor(kid, t.TempDir()); containsWord(door.checks, familySuite) {
+		if door := auditDoorFor(kid, standingOn(t.TempDir())); containsWord(door.checks, familySuite) {
 			t.Errorf("the part %q's own checker still opens on the family's suite: %q", kid.title(), door.checks)
 		}
 	}
@@ -631,7 +631,7 @@ func TestASharedCheckDeclaredByEveryPartIsLiftedOffTheirOwnDoors(t *testing.T) {
 	if len(family) != 1 || family[0] != familySuite {
 		t.Fatalf("the parent owns %v, want the family-wide check that came off its parts", family)
 	}
-	if door := auditDoorFor(nest.parent, t.TempDir()); !containsWord(door.checks, familySuite) {
+	if door := auditDoorFor(nest.parent, standingOn(t.TempDir())); !containsWord(door.checks, familySuite) {
 		t.Fatalf("the parent's own door holds %q, want the check only it can honestly make", door.checks)
 	}
 }
@@ -684,7 +684,7 @@ func TestTheParentsAuditDoorOffersTheDeclaredFamilyChecksItOwns(t *testing.T) {
 	nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
 	nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
 
-	door := auditDoorFor(nest.parent, t.TempDir())
+	door := auditDoorFor(nest.parent, standingOn(t.TempDir()))
 	if !strings.Contains(door.offer(), familySuite) {
 		t.Fatalf("the parent's door offers %q, want the family-wide check it now owns", door.offer())
 	}

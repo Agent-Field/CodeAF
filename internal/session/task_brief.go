@@ -438,9 +438,28 @@ func bindFolder(text, folder, into string) string {
 		text = replaceWholePath(text, folder, into)
 	}
 	for _, alias := range groundAliases(folder, text) {
-		text = replaceWholePath(text, alias.spelling, filepath.Join(into, alias.under))
+		text = replaceWholePath(text, alias.spelling, underCopy(into, alias.under))
 	}
 	return text
+}
+
+// copyRoot is the copy spelled AS THE DIRECTORY A COMMAND IS RUN IN, which is
+// the one spelling of it that is true in every copy at once
+// ([taskCopy.bindCommand] is its only reason and says why).
+const copyRoot = "."
+
+// underCopy joins one path onto the copy it now stands in. It is
+// [filepath.Join] with one difference, and the difference is the whole reason
+// it has a name: a copy spelled as its own root keeps the `./` in front of what
+// is under it, because a bare word is a PROGRAM the shell looks for on PATH
+// ([onThePath]) and this is a path. Join alone would clean that prefix away and
+// leave a check whose first word names a file in the tree looking like the name
+// of something installed on the machine.
+func underCopy(into, under string) string {
+	if into == copyRoot {
+		return copyRoot + "/" + filepath.ToSlash(under)
+	}
+	return filepath.Join(into, under)
 }
 
 // workInCopy is where the conversation's own folder stands inside the copy: a
@@ -456,7 +475,102 @@ func (c taskCopy) workInCopy() string {
 	if c.work == "" || c.dir == "" {
 		return ""
 	}
-	return filepath.Join(c.dir, filepath.Base(c.work))
+	return underCopy(c.dir, filepath.Base(c.work))
+}
+
+// bindCommand is [taskCopy.bind] for A COMMAND THAT WILL BE RUN IN A COPY OF THE
+// GROUND, rather than for a document a worker reads.
+//
+// THE DIFFERENCE IS WHICH COPY. A brief is written for ONE directory — the one
+// its worker is standing in — so its addresses are bound to that directory by
+// name. A declared check is run in SEVERAL: the checker judges a clean restore
+// of what would ship (task_audit.go's [auditGround]), the before-reading runs
+// the same commands on the commit the work was cut from (task_baseline.go), and
+// the progress reader runs them in the worker's own tree. All three stand at the
+// ROOT of a copy of the ground, and every one of them runs the command with that
+// directory as its working directory ([runOneCheck] sets it, and the checker's
+// own shell is opened there) — so an address at or under the ground is bound to
+// the copy the command is being run in, whichever one that is, which is what `.`
+// means and the only spelling that means it in all of them.
+//
+// THE DEFECT THIS IS FOR (#886). A parent standing in the person's checkout
+// writes that checkout's absolute paths into `checks`, which is exactly what
+// prompts/system.md asks it for, and the checker then ran `grep -q rewritten
+// /person/folder/report.txt` in the copy: the cwd is the copy, but an absolute
+// argument is not a cwd question, so the check read the untouched original,
+// answered red, and correct work landed `your call · nobody could check it`. The
+// bind [composeBrief] applies to the contract's other four fields reaches the
+// fifth here.
+//
+// AND THE BEFORE-READING BECOMES HONEST BY THE SAME LINE. That absolute path
+// made the base reading read the person's checkout too, so a check the work
+// really had broken came back "red before this work and remains red" — a finding
+// softened by an address, in the one reading whose whole job is to say who made
+// the tree red.
+func (c taskCopy) bindCommand(command string) string {
+	if !c.real() {
+		return command
+	}
+	// The map itself is built from the REAL directories — which folder swallows
+	// which is a question about folders on disk, and [newTaskCopyOf] answers it
+	// once — and only the destination is re-spelled here.
+	inside := c
+	inside.dir = copyRoot
+	return inside.bind(command)
+}
+
+// standingOn is the map for a checker standing ON THE FOLDER THE WORK IS ABOUT
+// rather than on a copy of it: the identity, carrying the directory it stands in
+// so that a file check still has somewhere to resolve against
+// ([auditDoor.ground]).
+//
+// IT IS NOT AN EMPTY MAP WITH A FIELD FILLED IN. A ground that IS its own
+// directory is exactly what [taskCopy.real] already reads as "no copy" — the
+// shape every in-place task has always had — so nothing is bound, and the
+// addresses a contract wrote stand as the contract wrote them.
+func standingOn(dir string) taskCopy {
+	return newTaskCopy(dir, dir, "")
+}
+
+// copyOnto is THE ONE READING of "is this directory a copy of that ground, and
+// what does it map onto what". It has two callers and they are the two questions
+// that must never disagree: [taskCopyFor] asks it about the directory the WORKER
+// was given, and [Agent.checkCopy] about the directory a CHECK is about to be
+// run in.
+//
+// ONLY A MODE WHOSE DIRECTORY IS GENUINELY A COPY OF ITS GROUND BINDS, and the
+// reason each mode does or does not is stated on [taskCopyFor].
+func copyOnto(ground string, mode TaskMode, dir string, place Place) taskCopy {
+	switch mode {
+	case TaskModeWorktree, TaskModeMirror:
+		return newTaskCopyOf(ground, dir, place.Work(), place.Trees())
+	}
+	return standingOn(dir)
+}
+
+// checkCopy is the map ONE DECLARED CHECK IS BOUND THROUGH: the folder the
+// node's work is ABOUT, onto the copy of it the check is about to be run in.
+//
+// IT IS READ OFF THE NODE'S OWN RECORD of where its work stands — which
+// [TaskNode.setTree] writes from the tree that was really made — rather than off
+// a tree in hand, because the readers that need it hold different directories
+// and not all of them hold a tree: the node's audit stands in a clean restore
+// and the progress reader stands in the worker's own copy, and both reach one
+// door through this.
+func (a *Agent) checkCopy(node *TaskNode, dir string) taskCopy {
+	if node == nil {
+		return standingOn(dir)
+	}
+	ground, mode := node.standsOn()
+	return copyOnto(ground, mode, dir, a.config.Place)
+}
+
+// standsOn is the node's own record of the folder its work is about and of how
+// its copy stands on it, read under the graph's lock.
+func (n *TaskNode) standsOn() (string, TaskMode) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.Ground, n.Mode
 }
 
 // bindSiblingTrees rewrites every address that stands under another tree of
@@ -487,7 +601,7 @@ func bindSiblingTrees(text, trees, dir string) string {
 		}
 		into := dir
 		if under != "" {
-			into = filepath.Join(dir, under)
+			into = underCopy(dir, under)
 		}
 		text = replaceWholePath(text, alias.spelling, into)
 	}

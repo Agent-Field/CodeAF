@@ -35,7 +35,7 @@ func TestAutomaticTaskChecksReachTheRealChecker(t *testing.T) {
 			ground := t.TempDir()
 			writeCheckFile(t, ground, "verify.sh", "#!/bin/sh\nprintf VERIFIED", 0o755)
 			writeCheckFile(t, ground, "deploy.sh", "#!/bin/sh\nprintf REPEATED_WORK", 0o755)
-			door := auditDoorFor(node, ground)
+			door := auditDoorFor(node, standingOn(ground))
 			if len(door.checks) != 1 || door.checks[0] != "sh ./verify.sh" {
 				t.Fatalf("checker received %q, want the declared verification", door.checks)
 			}
@@ -77,7 +77,7 @@ func TestAutomaticTaskAdmissionDoesNotGrantStaleOrComposedChecks(t *testing.T) {
 			}
 			ground := t.TempDir()
 			writeCheckFile(t, ground, "verify.sh", "#!/bin/sh\nprintf SHOULD_NOT_RUN", 0o755)
-			door := auditDoorFor(node, ground)
+			door := auditDoorFor(node, standingOn(ground))
 			if len(door.checks) != 0 {
 				t.Fatalf("invalid verification became a runnable check: %q", door.checks)
 			}

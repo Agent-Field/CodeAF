@@ -83,7 +83,7 @@ func (a *Agent) sessionChecks() []string {
 	tree := a.deliverableTree()
 	var declared []string
 	if steward := a.steward(); steward != nil {
-		declared = appendChecks(declared, runnableChecks(steward.declaredChecks(), tree))
+		declared = appendChecks(declared, runnableChecks(steward.declaredChecks(), standingOn(tree)))
 	}
 	if graph := a.tasker(); graph != nil {
 		// Accessors below take the graph lock, so release the list snapshot
@@ -98,7 +98,13 @@ func (a *Agent) sessionChecks() []string {
 		graph.mu.Unlock()
 		for _, node := range nodes {
 			if node.stateNow().settled() {
-				declared = appendChecks(declared, auditDoorFor(node, tree).checks)
+				// THE WORK IS HOME, so there is no copy left to bind onto: a
+				// settled node's landing merged into the folder its contract was
+				// written about, and this reading stands on the session's own
+				// deliverable rather than on a copy of anything. [standingOn] is
+				// the identity, so an address the contract wrote still names the
+				// place that now holds the work.
+				declared = appendChecks(declared, auditDoorFor(node, standingOn(tree)).checks)
 			}
 		}
 	}

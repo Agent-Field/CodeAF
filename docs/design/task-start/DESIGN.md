@@ -583,109 +583,142 @@ The beat is not read by the surface, and it did not need to be.
   passes it to `phaseServing` and the machine reads `deepinfra 38 t/s`, as it does on the
   status line. Deriving a rate here from the counts would be a second estimator of one
   number.
-||||||| 71edb28b5
 
-## A proposal starts while the rest of its reply is still arriving (lane B)
+## A task and its own work agree (lane L)
 
-**What was true.** A reply carrying several `propose_task` calls ran none of them until
-the whole reply had streamed. The stream already surfaced each call the moment its
-arguments closed (`StreamToolCallReady`), and the turn loop already started calls from
-it, but only the four readers (`earlyTools`: read, grep, find, ls). The reason is loop.go's
-safety law, and it is sound: a reply that fails is asked for again, and a mutating call
-started early would then run twice. So the first proposal of a batch waited for the
-second and third to finish streaming, and only then put its card up and started its
-fifteen-second countdown.
+Two beliefs held by the code were wrong in the same way: a task's copy of the world
+was treated as a detail of where the *worker* stands, rather than as the world the
+task's whole life happens in. A check ran against the person's folder, and a piece of
+the task's own work that came home a minute late was handed to the person instead of to
+the task.
 
-**What was measured.** Every transcript on the Spark (5,562 files) holds ten replies with
-two or more task calls, all `propose_task`. No transcript carries per-delta timestamps, so
-the stream time after the first task call closes was estimated from the bytes that follow
-it, two ways: the reply's own wall time times that share of its output, and those bytes
-at 3.5 bytes per token over a throughput (the lane ledger puts deepseek-v4-flash lanes at
-10 to 56 tokens a second; 40 and 100 bracket it).
+### A declared check is run against the task's own copy (#886)
 
-| task calls | replies | bytes after the first closes | share of wall time | at 40 tok/s | at 100 tok/s |
-|---|---|---|---|---|---|
-| 2 | 8 | p50 1.8 KB, p90 4.4 KB | p50 11.3 s, p90 60.8 s | p50 11.6 s, p90 31.3 s | p50 4.6 s, p90 12.5 s |
-| 3 | 1 | 2.1 KB | 13.2 s | 15.1 s | 6.1 s |
-| 4 | 1 | 10.4 KB | 18.7 s | 74.1 s | 29.7 s |
+**What was true.** `taskCopy.bind` bound `work`, `deliverable`, `acceptance` and
+`expects` to the copy the worker was given (`composeBrief`, #566) and bound nothing
+else. `checks` went from `spec.checks` onto `TaskNode.Checks` untouched and reached
+`runOneCheck` as written. `runOneCheck` sets the command's working directory to the
+copy — and an absolute argument is not a working-directory question. So
+`grep -q rewritten /person/folder/report.txt`, which is exactly what
+`prompts/system.md` asks a parent standing in that folder to write, read the untouched
+original: it answered red, the checker spent minutes hunting for files its own check
+named (one call ran 2m29s and was abandoned), and correct work landed
+`your call · nobody could check it`. The same address made the **before**-reading read
+the person's folder too, so a check this work really had broken came back "red before
+this work and remains red" — a finding softened by an address. And a check whose first
+word was an absolute path into that folder named no file under the checker's feet, so
+`runnableHere` dropped it from the door in silence.
 
-Even on the fastest bracket, the median is several seconds a reply. For a proposal the
-gain is capped by its countdown: the work starts at the later of the reply ending and the
-countdown ending, where it used to start at the reply ending plus the countdown.
+**What is true now.** A check is bound onto **the copy it is run in**, through the same
+`taskCopy.bind` the brief's four fields go through, at the one place a check is turned
+into a door (`auditDoorFor` → `runnableChecks`). The copy is spelled as the directory
+the command will be run in — `.` — because a task's check is run in *several* copies of
+one ground: the clean restore of what would ship, the commit the task was cut from, and
+the worker's own tree for the progress reader. All of them stand at the root of a copy
+and all of them run the command there, so one spelling is true in all of them, and the
+before-reading, the landing reading and the checker's own shell can no longer disagree
+about which tree a check is about. The order in `runnableChecks` is shape, then bind,
+then "could this run here", which is what admits the ground's own script instead of
+dropping it. `copyOnto` is now the one reading of "is this directory a copy of that
+ground", shared by the worker's map (`taskCopyFor`) and the check's (`Agent.checkCopy`,
+read off the node's own record of where its work stands). A checker standing on the
+**ground itself** — the session's own reading after a task has landed — carries
+`standingOn`, the identity: the work is home, so the address the contract wrote names
+the place that now holds it. An address outside the ground is left as written, as
+before.
 
-**What is true now.** A tool may be built in two halves, and `propose_task` is.
-`internal/exec/bare`'s `StagedTool` builds a tool out of its first half, a function
-that returns a `Staged` value. The `Staged` value's `Commit` is the half that cannot be
-taken back, and its `Withdraw` undoes the first half. Execute is derived: the two halves
-run back to back through `RunStaged`. Whether a tool may start early is `Tool.Stages()`,
-and the field behind it is unexported, so the property is the tool's shape rather than a
-claim it makes about itself. That is the difference from `earlyTools`, which stays
-enumerated because read-only-ness cannot be checked.
+### A piece that comes home late is folded into its parent's report
 
-For `propose_task` (task.go), the first half is `stageTask`: it reads the arguments,
-asks the door refusals, settles the model, resolves the ground, takes a fan slot and an
-id, runs the preflight, and puts the card up with its clock running (`openTask`). The
-wait for the answer runs on its own goroutine from that moment (`taskWait.run`), so an
-answer given and a clock expiring while the reply is still arriving are read in the order
-they happened, exactly as before. The second half is `stagedProposal.Commit`: it reads
-what the wait came to, applies the redirect and the model shortlist, compiles what was
-said around the work (`admissionContext`), and admits.
+**What was true.** The runner withdrew the parent's seat the instant the worker's
+reading was over (`childRun.foldParts`, and `runTaskChild`'s `defer room.speaking(nil)`
+for every other road out) — it must, or a line said into that room would be taken by
+somebody who will never read it (#273). But the node stays open through its check, its
+repair round and its landing, "which on a checked node is minutes away". A piece landing
+in that window found an empty seat and fell through to the **person's conversation**,
+the fallback written for a parent that has already landed. Nothing was lost from the
+person's screen and everything was lost from the family: the piece's result never
+reached the deliverable it was cut out of, and the parent's report said nothing about
+it. The dominant trigger is not a race — a parent stopped at its threshold leaves its
+pieces running, `stopChildren` cuts them, and every one of their landings arrives while
+the parent is still being checked. At twenty pieces over three levels (#874) that is
+ordinary work.
 
-**The quality law, applied.** The admission context moved from before the card to the
-commit. The brief it produces quotes the transcript, including the words of the
-assistant message carrying the call. That message is recorded only once it is whole, so
-compiling it early would hand the node a brief missing the reply's own framing. At the
-commit, the brief is byte-for-byte the brief the batch would have compiled. For a call
-nobody started early it is compiled at the same moment in the turn as before, because
-nothing between the old and new positions writes to the transcript.
+**What is true now.** `taskNoteReaders` asks three readers in order: the parent's
+worker, then **the parent itself** (`landingFold`, `task_latefold.go`), then the
+conversation. The fold takes the news into the parent's own report, so the landing
+already on its way carries it — one account of what this node's work came to, in the
+family it belongs to. The fold refuses on exactly the fact the seat refuses on — the node
+has settled — so **only a parent that has already landed** sends its pieces to the
+person, which is the fallback as designed. Routing stays one ordered question
+(`deliverTo`); nothing branches on which road a message came by. **The fold is only
+for news that would otherwise leave the family:** when the delivering agent is itself
+the parent's reader (`Agent.standsIn` — a standing firing reads its root node's pieces
+as the graph's home, never from a seat), the list is the seat and that agent, with no
+fold between them. Folding there took the report from the one reader waiting on it and
+parked the firing forever (`TestADivisionUnderAFiringIsWaitedForAndBilledToTheRun`).
 
-**The hold.** An early start carries a `bare.Hold` on the call's context. `RunStaged`
-waits at it between the halves. `Release` lets the commit run. `Withdraw`, or the turn's
-context ending, runs the first half's `Withdraw` instead. The first decision wins. A
-withdrawn proposal is gone everywhere:
+Three properties make the fold a delivery rather than a string append, and each has a
+test (`task_latefold_test.go`):
 
-- the question is withdrawn from every window with `the reply that proposed it did not
-  go through`;
-- the card settles as `withdrawn · its reply did not go through` (the new
-  `TaskNotice.Withdrawn`, drawn by `internal/tui3`'s `proposeTask`);
-- a late answer finds nothing to answer;
-- the fan slot is handed back.
+- **The words are the sender's.** A landing note is written for a model — it opens by
+  telling its reader which word to say back (`landingNoteLead`) and may close on how to
+  settle — and a report a person reads must carry neither, nor may the next model be
+  handed an order about somebody else's word. So a delivery carries, beside its note, the
+  same message **as a record keeps it** (`delivery.record`): `deliverTaskNote` composes it
+  as the landing's head line, report and changed files (`landingRecord`, which shares
+  `taskNoteHead` with `taskNote` so the two cannot spell the head two ways), and a
+  message that says only what happened — `bubbleUnverifiedChildren`'s re-addressed
+  sentence — is its own record. The fold writes no sentence of its own.
+- **The fold is the acknowledgement.** A delivery is written down as announced only when
+  the recipient's record holds it (`durableDelivery`). For a fold the record is the
+  parent's report, checkpointed by `foldLatePart` before the receipt returns, so
+  `postTaskMessage` makes the mark and settles every durable delivery at once. Without
+  that, a restart restored the folded piece as unannounced and told its landing again —
+  to the person, once the parent had settled.
+- **The report has two halves and one author.** `TaskNode.report` is composed under the
+  graph's lock (`composeReportLocked`) from what the landing wrote (`landed`, written by
+  every road through `landLocked`) and every folded message (`late`). Both halves are on
+  the checkpoint (`taskRecord.Late`, and `taskRecord.Landed` beside them when there is a
+  folded half), so a restored node composes from the halves a live one does, and a second
+  fold after a restore adds its piece and nothing else.
 
-Two things stay. The id is spent, as a declined proposal's is. The place the ground
-ladder resolved stays on the conversation, because it is a fact about the conversation
-and not about the call.
+**What the fold does not do, stated rather than hidden.** It is not a turn: the worker's
+reading is over by definition, and starting a second one for a node whose check is
+running would pay a model to read a piece into a tree the checker is holding still. And
+the check does not see it — the checker is handed the worker's own last words
+(`checkerConclusion`), written before the piece came home, and is not asked again. A
+second audit of the same tree is the person paying twice for one question, and the
+piece's own check already answered for the piece. The manual says the same sentence.
 
-**Consent.** The card counting down early is the point: consent is the commit, so
-nothing starts before the person (or the clock) has answered *and* the reply is whole.
-An answer given before the reply finishes is honoured when it does. An answer given to
-a call that is then withdrawn is discarded with the call, and the replacement call is
-put to the person afresh.
+### The bar's four questions
 
-**The seam in loop.go.** loop.go belonged to another lane when this landed, so the lines
-that switch the early start on sit on branch `speed/ts-B-seam` as one commit on top of
-this change, with their tests (`stageearly_loop_test.go`) and the manual lines that
-describe the behaviour. The manual lines travel with the seam because the pages must not
-describe machinery that is not running yet. The seam is five moves, all in the warm
-batch:
-
-1. `consider` accepts a call whose tool `stagesEarly` (stageearly.go) and runs it on a
-   context carrying a new hold.
-2. `take` releases the hold when the batch claims the call, and withdraws it when the
-   sighting disagrees with the response.
-3. `keep(calls)` runs the moment a response is in hand and withdraws held calls it does
-   not carry. The transport can switch requests mid-answer (hedge.go), and a response
-   can end in words alone.
-4. `reset` withdraws everything still held. It already runs on every retry, steer and
-   refused reply.
-5. `runTurn` defers one `reset` for every other road out of the turn.
-
-Every withdrawal waits for the call to have finished withdrawing, so a turn cannot close
-its lane before the card's settling is sent.
-
-**What was deliberately not done.** `quick_task` is not a staged tool. Its commit is the
-worker's first request, and that request's brief quotes the reply that asked for it
-(`quickBrief` prints the admission context), so under the quality law nothing of it can
-run before the reply is whole. What could run early is parsing and a slot, which takes
-microseconds. The worktree and the other preparation after admission stay after
-admission too. Starting them before consent would be starting work before the person has
-said yes, and that preparation belongs to the lanes that own it (S1, S2).
+- **The one abstraction.** `taskCopy` as the map from the folder the work is *about*
+  onto a copy of it — now reached through one reading (`copyOnto`) by both the worker's
+  brief and the checker's door, with `bindCommand` for the one thing a command needs
+  that a document does not: to be true in whichever copy it is run in. Anything that
+  later has to run something declared in one world inside another world can use it.
+- **What was deleted.** `auditDoorFor`'s bare `ground string` parameter (a directory
+  with no account of what it was a copy of), `taskCopyFor`'s own copy of the mode
+  switch, and `taskNote`'s private spelling of its head line (now `taskNoteHead`, shared
+  with the record). `TaskNode.report` stopped being a field any road could overwrite:
+  every writer goes through `landLocked`, and the field is composed in one function
+  from the halves that own it.
+- **The law tests.** `TestADeclaredCheckIsBoundToTheTaskOwnCopy` (the door's check
+  answers green on what would ship, red on the base, and the command as written still
+  fails — the defect itself), `TestChecksBindOnlyWhatTheGroundHolds` (outside the
+  ground, relative, sibling tree, and the identity for a checker standing on the
+  ground), `TestAGroundCheckThatNamesItsOwnScriptOpensTheDoor`,
+  `TestAChildLandingAfterItsParentStoppedReadingIsFoldedIntoItsReport`,
+  `TestAChildLandingAfterItsParentSettledReachesTheConversation`,
+  `TestAFoldedPieceIsNotToldAgainAfterARestart`, `TestTwoFoldsAcrossARestoreKeepOneOfEach`
+  and `TestTheFoldKeepsTheSendersRecordAndNothingElse`. The structural law is
+  `TestEveryCheckDoorIsBuiltFromAMap` (`go/ast`, on the laws gate): every call to
+  `auditDoorFor` or `runnableChecks` is handed `checkCopy(...)`, `standingOn(...)` or
+  the map its own caller was handed, and a copy's fields are spelled only in
+  `task_brief.go`.
+- **What a reviewer might call a band-aid.** Spelling the copy as `.`. It is not a
+  trick for one call site: it is the only spelling of "the copy this is being run in"
+  that is true in all four places a task's check is run, and it is produced by the same
+  `bind` as every other address, from a map built out of the real directories. The
+  alternative — binding to one named directory — is correct for the checker and wrong
+  for the before-reading, which is how the "red before this work" softening got there.
