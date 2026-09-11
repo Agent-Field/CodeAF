@@ -123,7 +123,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	case "show":
 		contents := folderContents{}
 		if contents.References, err = store.Members(ctx, rest[1]); err == nil {
-			contents.Placed, err = store.Placed(ctx, rest[1])
+			contents.Placed, err = everythingPlaced(ctx, store, rest[1])
 		}
 		result = contents
 	case "add":
@@ -162,6 +162,28 @@ func runCollectionsTo(args []string, output io.Writer) error {
 type folderContents struct {
 	References []workspace.Ref `json:"references"`
 	Placed     []workspace.Ref `json:"placed"`
+}
+
+// placedPage is how many placements one read of a folder holds while the
+// terminal prints all of them.
+const placedPage = 500
+
+// everythingPlaced is the whole of a folder's placements, which is what the
+// terminal prints. It pages through [workspace.Store.Placed], the windowed read
+// the chat's show calls, so the two doors keep ONE ROAD to what is placed in a
+// folder and cannot come to disagree about it.
+func everythingPlaced(ctx context.Context, store *workspace.Store, id string) ([]workspace.Ref, error) {
+	placed := []workspace.Ref{}
+	for {
+		page, more, err := store.Placed(ctx, id, len(placed), placedPage)
+		if err != nil {
+			return nil, err
+		}
+		placed = append(placed, page...)
+		if !more {
+			return placed, nil
+		}
+	}
 }
 
 // recordFolders is `collections find`: the folders that reference a record,
