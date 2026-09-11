@@ -85,8 +85,15 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	// person's own words. Three of five live lifecycle runs sent the item's
 	// sentence in words and no id, as they do for the other three.
 	current, problem := a.standingNamed(parsed)
-	if problem != "" {
+	switch {
+	case problem != "" && strings.TrimSpace(parsed.ID) == "" && strings.HasPrefix(problem, "nothing here matches"):
+		return problem + standingEditNaming, true, nil
+	case problem != "":
 		return problem, true, nil
+	case current.Status == standing.StatusRetired:
+		// REFUSED BEFORE THE CARD, NOT AFTER THE YES: a card for work that
+		// can never change again asks the person a question with no answer.
+		return "nothing was changed: " + standing.ErrStopped.Error() + " — it was stopped, so propose it again", true, nil
 	}
 	parsed, limits, problem := standingNamedLimits(parsed)
 	if problem != "" {
@@ -120,7 +127,8 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		CostWords: standingChange(a.standingCostWords(current, standingKnownLimits(current, standingLimits{})),
 			a.standingCostWords(draft, standingKnownLimits(draft, limits))),
 		Guessed: parsed.Guessed,
-		Terms:   standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, from, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, to, found)),
+		Terms: append(standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, from, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, to, found)),
+			standingValueTerms(current, draft)...),
 		// A CHANGE HAS NO `just once`: doing it once is not a smaller version of
 		// changing work that keeps running.
 		Options: standingEditOptions(draft),
@@ -144,7 +152,7 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		return problem, true, nil
 	}
 	if !sameFolders(from, to) {
-		said = a.standingRefolder(ctx, store, revised, said, from, to)
+		said = a.standingRefolder(ctx, store, revised, said, to)
 	}
 	// NO UPDATE ROW IS SENT. The surface draws four shapes of news and none of
 	// them is "changed" (tui3's standUpdateRow draws an unknown word as
@@ -157,6 +165,14 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 // standingFolderChange is the name a move gives the parts an edit changes, as
 // [standing.SpecChanges] names the rest.
 const standingFolderChange = "folder"
+
+// standingEditNaming follows "nothing here matches" on an edit sent with no
+// id. WORDS ON AN EDIT NAME THE ITEM, as on pause, resume and stop; a model
+// that sent the change there is told where the change goes. A field of its own
+// for the words of the change was the other road, and it was not taken: it
+// would be a second spelling of the person's words in every call, paid in the
+// fixed prefix, for a line in the item's log.
+const standingEditNaming = " On an edit, words names the item by the person's own words for it: send its id instead (op list shows it), and put the change in the fields it changes."
 
 // standingRevise is the store revision of an edit's yes, when it changes the
 // item's spec: the revised item and its receipt, or the refusal of a yes that
@@ -196,17 +212,43 @@ func (a *Agent) standingMovedTo(ctx context.Context, parsed standArguments, draf
 	return a.standingPlacementFor(ctx, parsed, draft)
 }
 
-// standingRefolder places work in its new folders and takes it out of the ones it
-// leaves, after the yes and after any revision, and adds what happened to the
-// edit's receipt. It places before it unplaces, so a failure between the two
-// leaves the work under both folders' rules — never under none.
-func (a *Agent) standingRefolder(ctx context.Context, store standingStore, item standing.Item, said string, from, to standingPlacement) string {
+// standingRefolder places work in its new folders and takes it out of the
+// ones it is in AT THE YES, and adds what happened to the edit's receipt.
+//
+// IT IS FENCED AS A REVISION IS (L2). A move is decided under the item's lock
+// while the item is not stopped and still at the version the card — or the
+// revision just made — left it ([standing.Store.AtSpec]), and the folders it
+// leaves are read there, not when the card was drawn: a move with no other
+// change used to skip the revision and place a stopped item, and to unplace
+// only the folders it had read before the person answered. It places before
+// it unplaces, so a failure between the two leaves the work under both
+// folders' rules — never under none.
+func (a *Agent) standingRefolder(ctx context.Context, store standingStore, item standing.Item, said string, to standingPlacement) string {
+	lead := ""
+	if said != "" {
+		lead = said + "\n"
+	}
+	var moved string
+	err := store.AtSpec(item.ID, item.SpecRevision, func(now standing.Item) error {
+		moved = a.standingMoveFolders(ctx, store, now, a.standingPlacedNow(ctx, now), to)
+		return nil
+	})
+	switch {
+	case errors.Is(err, standing.ErrStopped):
+		return lead + "not moved: it was stopped after the card was drawn"
+	case errors.Is(err, standing.ErrConflict):
+		return lead + "not moved: it was changed elsewhere after the card was drawn — read it again with op list and send the move again"
+	case err != nil:
+		return lead + "not moved: " + oneLine(err.Error())
+	}
+	return lead + moved
+}
+
+// standingMoveFolders is the move itself, under [standingRefolder]'s fence.
+func (a *Agent) standingMoveFolders(ctx context.Context, store standingStore, item standing.Item, from, to standingPlacement) string {
 	moved := "moved " + item.ID + " to " + to.names()
 	if len(to.folders) == 0 {
 		moved = "moved " + item.ID + " out of " + from.names()
-	}
-	if said != "" {
-		moved = said + "\n" + moved
 	}
 	if err := a.placeInFolders(ctx, item.ID, standingPlacement{folders: foldersNotIn(to, from)}); err != nil {
 		return moved + " — not done: could not be placed in " + to.names() + ": " + oneLine(err.Error())
@@ -222,6 +264,39 @@ func (a *Agent) standingRefolder(ctx context.Context, store standingStore, item 
 		_ = store.Log(item.ID, "unplaced in the chat from folder "+strings.Join(leaving.ids(), ", "))
 	}
 	return moved
+}
+
+// standingValueTerms is an edit card's lines for the changes no other line
+// shows, each with its values old → new: what it may do (the grant, which is
+// the permission record), the title, the model, how anybody checks the work,
+// and the step limit. A card that named only the part — `what it may do` —
+// asked for a yes to words nobody had read (the review of 417fa43a3).
+func standingValueTerms(before, after standing.Item) []string {
+	var terms []string
+	add := func(tag, old, new, none string) {
+		if old == new {
+			return
+		}
+		shown := func(value string) string {
+			if value = oneLine(value); value == "" {
+				return none
+			}
+			return clip(value, standingCardClip)
+		}
+		terms = append(terms, tag+" · "+shown(old)+" → "+shown(new))
+	}
+	steps := func(n int) string {
+		if n <= 0 {
+			n = standingRunSteps
+		}
+		return strconv.Itoa(n)
+	}
+	add("grant", before.Grant, after.Grant, "none")
+	add("title", before.Brief.Title, after.Brief.Title, "none")
+	add("model", before.Does.Model, after.Does.Model, "the configured one")
+	add("acceptance", before.Does.Acceptance, after.Does.Acceptance, "none")
+	add("steps", steps(before.Does.MaxSteps), steps(after.Does.MaxSteps), "")
+	return terms
 }
 
 // foldersNotIn is the folders of one placement that the other does not hold.

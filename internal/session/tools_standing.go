@@ -177,6 +177,9 @@ type standingStore interface {
 	Revise(id string, expected uint64, change func(*standing.Item) error) (standing.Item, []string, error)
 	Get(id string) (standing.Item, error)
 	ForWorkspace(workspace string) ([]standing.Item, error)
+	// AtSpec is the fence a change that writes nothing in the item is held to
+	// ([standing.Store.AtSpec]): a move between folders.
+	AtSpec(id string, expected uint64, act func(standing.Item) error) error
 	// Log adds one line to the item's own log, the one `standing show` prints.
 	Log(id, line string) error
 	Root() string
@@ -294,7 +297,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
-	`"rails":{"type":"object","description":"Optional quiet backstops. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
+	`"rails":{"type":"object","description":"Optional quiet backstops. A hold takes none — it never wakes, so it never spends. Only expires means anything on one. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
