@@ -140,23 +140,51 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // widestPage weighs the larger direct/deferred wording for each fact.
-// THE BELT WAS NOT THE DOOR'S (2026-09-11). [v3ShapedAgent] was a hand list with
-// no standing store and no collections database, so every figure above weighed a
-// conversation without `stand`, `collections` or `shared_context` — three tools
-// the interactive door carries on every request. It builds through
-// [conversationDoor] now, and the first honest measurement was 62,201 bytes:
-// 23,898 of page and 38,303 of tool block over 21 tools, `stand` alone 11,008.
-// `stand` held its rules twice — the discharge test, anchoring, waking or
-// holding and the passed-moment recomputation in its own description AND on the
-// page section built from the same predicate, and the limits law under five
-// fields — so each is now said once: recognition on the page, one line per
-// field in the schema, and what a refusal or the manual says at the moment it
-// applies left to them (tools_standing.go's [standSchemaJSON]). `stand` went
-// 11,008 → 5,749 and the page 23,898 → 24,607, which is 57,651. That is still
-// over this number by 9,651, and nothing left on this belt says a rule twice at
-// that scale: what remains is one copy of each law, and meeting 48,000 now means
-// carrying fewer tools, which is a decision about the door and not a trim.
-const fixedPrefixBudget = 48_000
+// THE BELT WAS NOT THE DOOR'S, AND THE BUDGET IS NOW SET ON THE DOOR (2026-09-11).
+// [v3ShapedAgent] was a hand list with no standing store, no collections
+// database, no journal, no accounts hub and no memory store, so every figure
+// above weighed a conversation without `stand`, `collections`,
+// `shared_context`, `context_trace`, `services`, `use_service`, `remember` or
+// `search_conversations` — eight tools the interactive door carries on every
+// request. It reported 47,942 while the door sent 67,029. It builds through
+// [conversationDoor] now, which is chatv3.go's list and no second copy of it.
+//
+// What that first honest measurement was paid down with: `stand` held its rules
+// twice — the discharge test, anchoring, waking or holding and the passed-moment
+// recomputation in its own description AND on the page section built from the
+// same predicate, and the limits law under five fields — so each is now said
+// once (tools_standing.go's [standSchemaJSON]). `stand` went 11,008 → 5,749 and
+// the page 23,898 → 24,607.
+//
+// The door then measured 62,484 bytes: 24,607 of page and 37,877 of tool block
+// over 26 tools, of which the eight above are 13,825 (`stand` 5,749,
+// `shared_context` 1,792, `search_conversations` 1,613, `collections` 1,456,
+// `use_service` 999, `remember` 994, `services` 695, `context_trace` 527). The
+// budget is that measurement plus a tenth, rounded up to the thousand — the
+// founding rule of this constant, applied to the shape it was always meant to
+// bound. THIS IS A SHAPE CORRECTION AND NOT A LANE RAISING THE NUMBER: 48,000
+// bounded a belt this door never had, and the bytes it did not see were already
+// being sent. The next failure against 69,000 is paid for out of a second copy
+// and not raised, exactly as every entry above was.
+//
+// ONE CONDITIONAL IS UNWEIGHED: the web tools, which the door carries only where
+// a search provider is configured (chatv3.go's `v3Search`).
+//
+// AND THE FIRST PLACE TO LOOK WHEN IT FAILS. These rules are still said more
+// than once on this prefix, in other lanes' tools, and were left for them:
+//   - a line into a task does not stop it — 4: [tasksDescription], `tasks`'
+//     `say`, the belt's `tasks` bullet (beltfacts.go) and prompts/system.md's
+//     `SAYING "STOP" TO A TASK DOES NOT STOP IT`;
+//   - a landed task's four words and the `your call` verbs — 2:
+//     prompts/system.md's `A LANDED TASK SAYS ONE OF FOUR WORDS` and
+//     `your call IS A QUESTION` against the belt's `A LANDED TASK SAYS` bullet;
+//   - wide work is one task, never split — 3: `propose_task`'s description, the
+//     `WIDE WORK` handoff row and prompts/system.md's `THERE IS NO PLANNER`;
+//   - what you learned goes with the brief — 2: `propose_task`'s `brief` and
+//     prompts/system.md's `AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT`;
+//   - never wait or poll for what was handed off — 4: `propose_task`, `fork`,
+//     `jobs` and `tasks`, each in its own description.
+const fixedPrefixBudget = 69_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).

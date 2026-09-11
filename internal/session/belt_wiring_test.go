@@ -32,8 +32,7 @@ import (
 // v3ShapedAgent is a conversation configured the way the interactive door
 // configures one, which is [conversationDoor]'s list and no second copy of it:
 // this is also the belt prefixbudget_test.go weighs, and a hand list here is how
-// that budget went on measuring a door without `stand`, `collections` or
-// `shared_context` on it.
+// that budget went on measuring a door without eight of the tools it carries.
 func v3ShapedAgent(t *testing.T) *Agent {
 	t.Helper()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
