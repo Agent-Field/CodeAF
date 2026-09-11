@@ -1735,21 +1735,23 @@ func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
 
-// box is NOTHING ON THIS PLACE, AND THAT IS THE FILTER BOX MOVING RATHER THAN
-// GOING.
+// box is the filter, exactly as it has always been: every printable key on this
+// place goes into it and the list narrows as it fills.
 //
-// The composer at the foot WAS this page's filter: every printable key went to
-// [tasksPlace.query], and the router drew that editor's letters two rows under
-// the list they were narrowing. The table put the box where the typing is about
-// — the first row of the list, under the head and over the rows
-// ([tasksControlRow]) — and a box drawn in both places would be one person's
-// letters on screen twice, which is the defect this page's own title row was
-// removed for.
-//
-// SO THE FOOT KEEPS THE INVITATION AND LOSES THE ECHO ([placeTasks.resting]):
-// `› type to filter this list` stands there whatever is typed, and the letters
-// appear once, in the row that is narrowing.
-func (placeTasks) box(a *app) *editor { return nil }
+// WHAT MOVED IS WHERE IT IS DRAWN ([placeTasks.boxOnBody]). The router used to
+// put this editor's letters two rows UNDER the list they were narrowing; they
+// are on the first row of the list now, over the rows they changed
+// ([tasksControlRow]). The editor itself stays the place's box because a box is
+// more than a row of letters — the two-space door home is armed from it
+// ([app.placeHomeGesture]), a press in the foot puts the caret in it, and a
+// place that answered `nil` here would silently lose all of that.
+func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
+
+// boxOnBody says THIS PLACE DRAWS WHAT IS TYPED INTO ITS BOX ITSELF, in a row of
+// its own body, so the foot must not draw it a second time. The foot keeps the
+// invitation ([placeTasks.resting]) and loses the echo; one person's letters on
+// screen twice is the defect this page's own title row was removed for.
+func (placeTasks) boxOnBody() bool { return true }
 
 // resting is what that box says when nothing is typed in it, and it is THIS
 // PLACE'S sentence rather than the router's (pages.go's [place.resting]).

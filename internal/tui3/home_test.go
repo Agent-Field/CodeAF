@@ -3530,11 +3530,10 @@ func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
 		ID: "1", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
 		Status: string(session.TaskDone), SessionID: "aaaa000000000001",
 	})
-	a, _ := driveToPlace(t, lab, pageTasks)
-	// THE FILTER IS NOT THE COMPOSER ANY MORE. [placeTasks.box] returns nil and
-	// the letters draw on the control row at the top of the list, so what a
-	// person typed is read off the place's own editor.
-	box := &a.taskSheet.query
+	a, box := driveToPlace(t, lab, pageTasks)
+	if box == nil {
+		t.Fatal("the tasks place has no box to type into")
+	}
 	// THE DOOR HAS TO EXIST FOR THIS TEST TO MEAN ANYTHING, the same insistence
 	// [TestTheDoorStaysShutOverTheMemoryCardEditor] makes and for its reason: a
 	// fixture whose door went dark would pass this however wrong the fix was.
