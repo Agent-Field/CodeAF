@@ -58,12 +58,12 @@ func TestABlanksFootKeepsNextBlankAtAHundredColumns(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionBlanks())
 	a.width = 100
 	foot := footText(a)
-	if !strings.Contains(foot, "[tab] next blank") {
+	if !strings.Contains(foot, "tab next blank") {
 		t.Errorf("a blanks page at 100 columns must keep [tab] next blank:\n%s", foot)
 	}
 	// AND IT OUTRANKS THE SECONDARY KEYS THAT USED TO CROWD IT OFF. A foot that
 	// kept compare and lost the walk is the defect this pins.
-	if !strings.Contains(foot, "[esc] later") {
+	if !strings.Contains(foot, "esc later") {
 		t.Errorf("esc later must stay too:\n%s", foot)
 	}
 }

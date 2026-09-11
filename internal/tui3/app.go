@@ -923,6 +923,11 @@ type app struct {
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
 	hot hoverAt
+	// hotAnswer is which of the open question's answers the pointer is over, or
+	// -1. It is derived from the bands of the last paint at the top of the
+	// block's own layout ([app.questionRows]) so that an answer's row is painted
+	// once, on the ground it belongs on.
+	hotAnswer int
 	// drag is the left button's gesture in flight — a parked body click, or a
 	// sweep whose rows wear the selection — and the flash pair under it is what
 	// the status line says the last sweep copied (dragselect.go).

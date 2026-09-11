@@ -403,7 +403,7 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		// the surface having chosen.
 		aside = a.pal.dim(questionSafeWord)
 	}
-	rows := a.questionPanelRow(q, key, tick, word, say, aside, pad, room, focused)
+	rows := a.questionPanelRow(q, key, tick, word, say, aside, pad, room, focused, a.questionHovering(at))
 	if !focused {
 		return rows
 	}
@@ -417,6 +417,13 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		rows = append(rows, indent+line)
 	}
 	return rows
+}
+
+// questionHovering reports whether the mouse is over one answer's row. It asks
+// the pointer's own kind as well as the derived index, so a stale index cannot
+// light a row on a frame where the pointer is somewhere else entirely.
+func (a *app) questionHovering(at int) bool {
+	return a.hot.kind == hoverChoices && a.hotAnswer == at
 }
 
 // questionTickBlank is the cell an unticked checklist row stands in, so the
@@ -446,7 +453,7 @@ const questionKeyCell = 1
 // stand in the word's own column, and every one of them presses the same answer
 // (questionPanelBody records a band per row) — a label cut at the panel's edge
 // is an answer a person cannot read before taking it.
-func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside string, pad, room int, focused bool) []string {
+func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside string, pad, room int, focused, hovered bool) []string {
 	mark := "  "
 	if focused {
 		mark = a.pal.warnBold(a.icon(tokens.GPointer)) + " "
@@ -464,13 +471,18 @@ func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside stri
 		asideWidth = ansi.StringWidth(ansi.Strip(aside)) + 2
 	}
 	ground := func(line string, used int) string {
-		if !focused {
-			return line
+		// THE GROUND LADDER, IN ORDER (docs/DESIGN-LANGUAGE.md): a row the mouse
+		// is over takes `cursor`, the row the pointer stands on takes `selected`,
+		// and everything else stands on the terminal's own ground. THE EMPHASIS
+		// LAW, AND NOTHING ELSE: no ring, no second colour, no bolding spreading
+		// across the row.
+		switch {
+		case hovered:
+			return a.pal.cursor(line, room+2*len(questionPanelGap))
+		case focused:
+			return a.pal.background(line, room+2*len(questionPanelGap), a.pal.ramp.selected)
 		}
-		// THE EMPHASIS LAW, AND NOTHING ELSE: the ground steps up to `selected`
-		// and the leading mark turns. No ring, no second colour, no bolding
-		// spreading across the row.
-		return a.pal.background(line, room+2*len(questionPanelGap), a.pal.ramp.selected)
+		return line
 	}
 	indent := strings.Repeat(" ", leadWidth)
 	lines := wrap(word, max(room-leadWidth-asideWidth, 8))
@@ -589,7 +601,7 @@ func questionPickCase(q session.Question, key string) string {
 func (a *app) questionPanelOther(q questionShown, pad, room int) []string {
 	at := questionOtherAt(q.question)
 	if q.pick != at {
-		return a.questionPanelRow(q, itoa(at+1), "", questionPanelOtherWord, "", "", pad, room, false)
+		return a.questionPanelRow(q, itoa(at+1), "", questionPanelOtherWord, "", "", pad, room, false, a.questionHovering(at))
 	}
 	// THE ROW IS THE BOX. There is no mode to enter and nothing hidden behind a
 	// letter: the pointer arriving here is what opens it, `enter` sends what is

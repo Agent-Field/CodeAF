@@ -114,7 +114,7 @@ func TestTheStopCardOpensOnKeepGoing(t *testing.T) {
 		t.Fatalf("the cursor opened on %q", stopAnswers[at])
 	}
 	text := stopText(a)
-	for _, want := range []string{"Stop this task?", stopTaskDetail, "stop it", "keep going", "[esc] keep going"} {
+	for _, want := range []string{"Stop this task?", stopTaskDetail, "stop it", "keep going", "esc keep going"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the card is missing %q:\n%s", want, text)
 		}

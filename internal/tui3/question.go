@@ -941,6 +941,20 @@ func (a *app) questionRows(width int) []string {
 		return out
 	}
 	a.markQuestionShown(head.token())
+	// WHICH ANSWER THE MOUSE IS OVER, read off the bands the LAST paint wrote.
+	// Hover is one frame behind everywhere on this surface — the pointer is
+	// resolved against the chrome marks of the screen a person is looking at —
+	// and this is that reading said in the block's own terms, so a row can be
+	// painted once, on the ground it belongs on, rather than painted focused and
+	// then painted over.
+	a.hotAnswer = -1
+	if a.hot.kind == hoverChoices {
+		for _, band := range a.questionBands {
+			if band.row == a.hot.index {
+				a.hotAnswer = band.at
+			}
+		}
+	}
 	a.questionBands = nil
 	// WHERE THE ANSWERS ARE IS COUNTED FROM THE TOP OF THE BLOCK, and the forms
 	// below count from the top of themselves. The receipts above them are rows
@@ -971,7 +985,16 @@ func (a *app) questionRows(width int) []string {
 		}
 		out = append(out, a.questionLineRows(head, width)...)
 	default:
-		out = append(out, a.questionPanelRows(head, width)...)
+		// THE BANDS ARE COUNTED FROM THE TOP OF THE BLOCK, because that is what a
+		// press resolves against ([app.questionBandPress] compares them with the
+		// chrome's own row index) — and the receipts of already-answered
+		// questions stand above the panel.
+		base, first := len(out), len(a.questionBands)
+		panel := a.questionPanelRows(head, width)
+		for i := first; i < len(a.questionBands); i++ {
+			a.questionBands[i].row += base
+		}
+		out = append(out, panel...)
 	}
 	a.shiftQuestionMarks(base)
 	// AND A RATIFY LINE IS NEVER COUNTED HERE: nothing waits on it, so a queue

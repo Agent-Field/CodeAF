@@ -181,7 +181,12 @@ func settleAsk(a *app) {
 func askOffer(t *testing.T, a *app) (string, int) {
 	t.Helper()
 	rows := a.questionRows(a.width)
+	// THE FIRST ANSWER'S ROW, which on the panel is the first band the layout
+	// wrote and on a one-row question is the row the spans were written on.
 	at := a.questionSpanRow
+	if len(a.questionBands) > 0 {
+		at = a.questionBands[0].row
+	}
 	if at < 0 || at >= len(rows) {
 		t.Fatalf("the block drew %d rows and put its answers on row %d", len(rows), at)
 	}

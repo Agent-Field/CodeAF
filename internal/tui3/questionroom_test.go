@@ -1098,10 +1098,10 @@ func TestTheQuestionsOwnEvidenceIsOneTitledSectionAboveTheAnswers(t *testing.T) 
 func TestTheFootNamesTheArrowsThatWalkTheSections(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
 	foot := footText(a)
-	if !strings.Contains(foot, "["+questionWalkDownKey+"] "+questionKeyWord(questionWalkDownKey)) {
+	if !strings.Contains(foot, questionWalkDownKey+" "+questionKeyWord(questionWalkDownKey)) {
 		t.Errorf("the foot should offer the pair that walks the sections:\n%s", foot)
 	}
-	if strings.Contains(foot, "["+questionWalkKey+"] "+questionKeyWord(questionWalkKey)) {
+	if strings.Contains(foot, questionWalkKey+" "+questionKeyWord(questionWalkKey)) {
 		t.Errorf("the foot must not name a pair that walks nothing here:\n%s", foot)
 	}
 }
