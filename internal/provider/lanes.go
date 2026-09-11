@@ -929,8 +929,8 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 	})
 }
 
-// noteLaneRefused tells the belief that a named lane did not answer at all — a
-// paced pool, a struck endpoint. It is the availability axis ([lanes.Outcome]'s
+// noteLaneRefused tells the belief that a named pool did not answer at all — a
+// 429 naming its pool. It is the availability axis ([lanes.Outcome]'s
 // Refused), and it exists because the strike ledger's five-minute `ignore` was
 // the ONLY memory of a refusal: per client, undone by the set-empty release, and
 // written over by the belief's own order on the same wire object. The belief

@@ -8,7 +8,7 @@ invalidates:
   - "A task node was routed at λ = 0 — price only, frontier pruned to 1.25× the cheapest. λ now has a floor of a quarter of a person's attention (`lane.UnattendedValue`); only the routing row's `price` word means zero."
   - "A 429 or a struck lane reached the strike ledger and never the belief. It is now an `Outcome{Refused: true}` on a new availability axis (`Belief.Availability`, five-minute half-life) that divides the expected wait; quality is not charged for it."
   - "The quality gate read the Beta's upper bound whatever the evidence. It reads the mean once a belief carries twelve observations."
-  - "No lane was ever too slow in absolute terms. A service floor — 6 s first token, 30 tok/s, half of requests answered, on a belief the ledger is sure about — refuses it, and never empties the set."
+  - "No lane was ever too slow in absolute terms. A service floor — 6 s first token, 15 tok/s, half of requests answered, on a belief the ledger is sure about — refuses it, and never empties the set."
 ---
 
 Three days of the call log put the router's mean regret on deepseek-v4.1-flash at

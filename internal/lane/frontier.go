@@ -524,10 +524,13 @@ const (
 	// and still be sent a request on its own merits. Six seconds is the
 	// unattended role's patience ceiling (roles.go) with nothing left over.
 	FloorTTFT = 6 * time.Second
-	// FloorRate is the slowest believed generation a lane may carry. Thirty
-	// tokens a second is the strike ledger's own LagRate and well under the
-	// slowest lane anybody would call fine.
-	FloorRate = 30.0
+	// FloorRate is the slowest believed generation a lane may carry. It sits
+	// UNDER [ReadRate]: a lane writing faster than a person reads is fast enough
+	// for prose whatever a tool loop thinks of it, and the prose objective
+	// rightly prefers a 20 tok/s lane with quick first words over a 200 tok/s
+	// lane that starts late (internal/provider's workload test). Fifteen is
+	// Morph's six and DeepInfra's fourteen, and nothing anybody would keep.
+	FloorRate = 15.0
 	// FloorServing is the least a lane may be believed to answer. Half: a lane
 	// refusing more than it serves costs more than two sends per answer.
 	FloorServing = 0.5

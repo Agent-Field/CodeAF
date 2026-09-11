@@ -119,12 +119,12 @@ func sureBelief(lane string, ttftMS, rate float64) Belief {
 func TestALaneSurelyUnderTheFloorIsNotACandidate(t *testing.T) {
 	morph := sureBelief("Morph", 27_000, 6)
 	quick := sureBelief("Novita", 1_800, 234)
-	crawl := sureBelief("DeepInfra", 1_500, 18)
+	crawl := sureBelief("DeepInfra", 1_500, 12)
 	if !underFloor(morph, noon) {
 		t.Fatal("twenty-seven seconds to a first token at six tokens a second is over the floor")
 	}
 	if !underFloor(crawl, noon) {
-		t.Fatal("eighteen tokens a second is under the rate floor")
+		t.Fatal("twelve tokens a second is under the rate floor")
 	}
 	if underFloor(quick, noon) {
 		t.Fatal("a lane at 1.8 s and 234 tok/s was put under the floor")
@@ -143,7 +143,7 @@ func TestALaneSurelyUnderTheFloorIsNotACandidate(t *testing.T) {
 
 func TestTheFloorNeverEmptiesTheSet(t *testing.T) {
 	morph := sureBelief("Morph", 27_000, 6)
-	crawl := sureBelief("DeepInfra", 1_500, 18)
+	crawl := sureBelief("DeepInfra", 1_500, 12)
 	front := frontierFor([]Belief{morph, crawl}, Request{Model: scriptedModel, Visible: 400, ValueOfTime: AttentionValue, QualityNeed: 0.9, Now: noon}, gateOptions{}, nil)
 	if len(front) == 0 {
 		t.Fatal("a model with no lane over the floor was left with no lane at all")

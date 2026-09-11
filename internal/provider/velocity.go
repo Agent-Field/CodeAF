@@ -1240,8 +1240,12 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 	if !refusal.struck() {
 		return false
 	}
+	// A STRUCK LANE IS NOT TOLD TO THE AVAILABILITY AXIS. It already reaches
+	// the belief twice — [refuseServing]'s thirty-minute hold on the serving set
+	// and the quality outcome terminal_error.go files — and a third entry would
+	// count one refusal three times. The paced branch above is the one that
+	// was silent, and the one the 429 loop lived in.
 	c.refuseServing(model, refusal)
-	c.noteLaneRefused(model, refusal.Lane, "refused")
 	return c.velocity.pace(model, refusal.Lane, 0)
 }
 

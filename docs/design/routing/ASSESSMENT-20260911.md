@@ -219,6 +219,6 @@ The pull request after this one carries five of the six: the wire ceiling comes 
 a belief-ordered request, λ has a floor of a quarter of a person's attention
 (`lane.UnattendedValue`), a refusal is an `Outcome{Refused: true}` on a new
 availability axis that divides the expected wait, the quality gate reads the mean once
-a belief carries twelve observations, and a service floor (6 s first token, 30 tok/s,
-half of requests answered) refuses a lane the ledger is sure about without ever
+a belief carries twelve observations, and a service floor (6 s first token, 15 tok/s,
+half of requests answered; the rate floor sits under the reading rate) refuses a lane the ledger is sure about without ever
 emptying the set. Censored timing for cut streams is still owed.
