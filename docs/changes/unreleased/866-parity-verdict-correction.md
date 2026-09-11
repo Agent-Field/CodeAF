@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the parity bench's own verdict, corrected — one regression, one flake, and a grep read as a screen
-pr: 865
+pr: 866
 surface: [docs]
 invalidates:
   - "docs/design/prompt-diet/BENCH.md §1a landed saying TWO subtests regressed on the prompt diet. One did. `TestTUIE2E/space_in_the_task_room_pages_the_card` was FLAKE: it failed once at 249s against the baseline's 71.7s because the task landed `your call · ran 2m 8s` where the baseline's landed `done · ran 10s`, so two 30-second waits blew before the paging assertion was reached — and on two further runs a side it passed 2/2 on both. The draft was written before those repeats came back and says so in a sentence (\"Both are candidates, not verdicts\") that is easy to read past. Anyone acting on it would have spent a day hunting a behaviour change that never happened."
