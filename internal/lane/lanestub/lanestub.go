@@ -234,6 +234,24 @@ type Lane struct {
 	// that left only it — gets the router's real refusal, body and metadata
 	// both ([accountRefusal]).
 	AccountExcluded bool
+
+	// Unvetoable is a machine the router GOES ON SERVING however loudly the
+	// request vetoes it: `provider.ignore` names it and the next body lands
+	// there again anyway.
+	//
+	// IT IS THE ONE STATE A CALL CANNOT ROUTE ITS WAY OUT OF, and it is what the
+	// live router did on 2026-09-11 14:39: eight consecutive sends on
+	// deepseek/deepseek-v4.1-flash came back `(via Wafer: … temporarily
+	// rate-limited upstream)` while six other machines on the same model were
+	// answering. The name in a relayed refusal is the UPSTREAM's, and an upstream
+	// label is not always a name the router will route around — so a veto written
+	// from it can change nothing at all, and the call has to be able to find that
+	// out rather than spend its whole deadline discovering it eight times.
+	//
+	// A test stages it to assert what a call does when its veto does not take.
+	// Nothing else in this stub cares: [pick] applies every other filter exactly
+	// as before.
+	Unvetoable bool
 }
 
 // ── THE CLOCK ───────────────────────────────────────────────────────────────
@@ -833,7 +851,11 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 			Only: record.Only, Order: record.Order, MaxPrice: record.MaxPrice,
 			Ignore: append(append([]string(nil), record.Ignore...), lane.Name),
 		})
-		if !more {
+		// AND A MACHINE THAT CANNOT BE VETOED CANNOT BE FALLEN PAST either: the
+		// veto this loop writes is the same veto [pick] declines to honour for it
+		// ([Lane.Unvetoable]), so asking again would hand back the same machine
+		// for ever.
+		if !more || equalName(next.Name, lane.Name) {
 			break
 		}
 		s.mu.Lock()
@@ -940,7 +962,10 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 		if len(ask.Only) > 0 && !names(ask.Only, lane.Name) {
 			continue
 		}
-		if names(ask.Ignore, lane.Name) {
+		// A VETO THE ROUTER WILL NOT HONOUR IS NOT A FILTER ([Lane.Unvetoable]).
+		// The request said the name and the router serves the machine anyway,
+		// which is the shape a relayed upstream label produces.
+		if names(ask.Ignore, lane.Name) && !lane.Unvetoable {
 			continue
 		}
 		// The account's own settings are the router's last filter and it
@@ -952,6 +977,15 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 	}
 	if len(allowed) == 0 {
 		return Lane{}, serving, false
+	}
+	// AND A MACHINE THE ROUTER WILL NOT ROUTE AROUND ANSWERS FIRST, whatever the
+	// request ranked or vetoed ([Lane.Unvetoable]). `order` is advisory once
+	// fallbacks are on and `ignore` is a name this router declines to honour, so
+	// the request has said everything it can say and the machine answers anyway.
+	for _, lane := range allowed {
+		if lane.Unvetoable {
+			return lane, serving, true
+		}
 	}
 	for _, wanted := range ask.Order {
 		for _, lane := range allowed {

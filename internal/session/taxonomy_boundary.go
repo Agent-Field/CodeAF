@@ -328,6 +328,8 @@ func transportWords(verdict taxonomy.Verdict) string {
 		return "the connection to the model dropped"
 	case taxonomy.ReasonRefused:
 		return "the model would not take the request"
+	case taxonomy.ReasonPaced:
+		return "we are being asked to slow down"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
 	case taxonomy.ReasonWithdrawn:
@@ -370,6 +372,8 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 		return "the connection to the model kept dropping"
 	case taxonomy.ReasonRefused:
 		return "the model kept turning the request away"
+	case taxonomy.ReasonPaced:
+		return "we kept being asked to slow down"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
 	case taxonomy.ReasonWithdrawn:
