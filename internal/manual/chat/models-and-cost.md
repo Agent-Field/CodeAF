@@ -2451,7 +2451,9 @@ machine by name, or because its list of slow machines covered the rest.
 
 aforge answers it without ending your turn. A machine asked for by name is remembered as
 out of reach for your account — for every model, for a day, across restarts — and the
-answer moves to another machine. When there is nowhere left to move, aforge relaxes the
+answer moves to another machine. So is the one machine the price cap left, when the
+router's count and aforge's list of machines agree on which it was. A price cap that only
+out-of-reach machines fit under is not sent at all, so the next turn is not refused. When there is nowhere left to move, aforge relaxes the
 endpoint filter and lets the router choose, then drops the cap and asks again. The attempt
 lines say `relaxed the endpoint filter` and then `dropped the price ceiling`. A rescue
 request or a request pinned to one lane never carries the cap, because that lane has

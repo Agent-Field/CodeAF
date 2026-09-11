@@ -536,6 +536,13 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			c.velocity.learnUnreachable(model, sent.Ignore)
 		}
 	}
+	// AND A REFUSAL THE ACCOUNT'S OWN SETTINGS CAUSED IS LEARNED EVEN WHEN IT
+	// NAMES NO MACHINE (accountset.go). A demanded machine is filed by the strike
+	// above; a request with no demand — a ceiling and a ranking — is refused about
+	// the set its filters left, and when the router's count of that set and the
+	// sheet's agree exactly, those machines are the account's to exclude. Without
+	// this, the ceiling that only they fit under was sent again on every turn.
+	learnExcludedFromTheSet(model, sent, peek)
 
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,

@@ -295,10 +295,18 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 		return nil
 	}
 	const perMillion = 1_000_000
-	return &maxPrice{
+	ceiling := &maxPrice{
 		Prompt:     prompt * perMillion * latencyPriceCeiling,
 		Completion: completion * perMillion * latencyPriceCeiling,
 	}
+	// AND A CEILING ONLY A MACHINE THIS ACCOUNT CANNOT REACH FITS UNDER IS A
+	// DEMAND FOR THAT MACHINE, so it is not sent (accountset.go). The list price
+	// is the cheapest machine's tariff, and the cheapest machine is often the
+	// first-party one an account's privacy switch takes away.
+	if ceilingOnlyAdmitsTheUnserved(model, ceiling) {
+		return nil
+	}
+	return ceiling
 }
 
 // providerPreferences builds the object one request will carry, nil when none
