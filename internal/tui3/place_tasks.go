@@ -1301,11 +1301,17 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	if item, ok := r.at(lines, p.cursor); ok && tasksReasonShowing(a) {
 		grown = tasksReasonLine(item, width-len(tasksBareLead)-taskSheetPhoneIndent, a.pal)
 	}
-	if grown != "" && room > 1 {
-		room--
+	// The grown line costs the LIST a row and costs the FRAME nothing: the window
+	// holds one line less of the record, and the row it gives up is spent on the
+	// line under the cursor. Counting it against one budget twice returned a
+	// short body and left a blank line under the foot.
+	listRoom := room
+	if grown != "" && listRoom > 1 {
+		listRoom--
 	}
-	p.top = tasksTop(lines, p.cursor, p.top, room)
+	p.top = tasksTop(lines, p.cursor, p.top, listRoom)
 
+	drawn := 0
 	rows := make([]placeRow, 0, room)
 	// bare records, per drawn line, whether that line is wearing neither the
 	// cursor's band nor the pointer's — which is the one thing the depth fade
@@ -1316,10 +1322,11 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	var bare []bool
 	more := false
 	for at := p.top; at < len(lines); at++ {
-		if len(rows) >= room {
+		if drawn >= listRoom {
 			more = true
 			break
 		}
+		drawn++
 		hit, lit := taskSheetHit{}, false
 		if lines[at].kind == tasksLineControl {
 			hit = taskSheetHit{kind: taskSheetHitControl}

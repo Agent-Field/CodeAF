@@ -169,12 +169,24 @@ func TestTheStateWordIsTheLastThingARowGivesUp(t *testing.T) {
 		},
 	}} {
 		word := taskStateWord(tc.item.entry, tc.item.runs)
-		for _, width := range []int{120, 100, 90, 85, 80} {
+		// DOWN TO THE FLOOR THE COLUMN HAS, and no further. The state is a COLUMN
+		// now (spec.md §2) and a column is all of the page or none of it: at
+		// ninety cells it is drawn on every row, and under ninety it goes from
+		// every row at once and the sort key keeps its own cells. What a narrow
+		// frame gives a person instead is the CURSOR's row, which grows the state
+		// and the reason under it ([tasksReasonLine]) — one row said whole rather
+		// than twenty rows each missing the same word.
+		for _, width := range []int{120, 100, tasksStateFloor} {
 			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: tc.item}, width, now, tasksSort{}, pal, false))
 			if !strings.Contains(row, word) {
 				t.Fatalf("at %d columns %s reads\n  %s\nand has given up %q, which is the one thing the list is read for",
 					width, tc.why, strings.TrimRight(row, " "), word)
 			}
+		}
+		under := plain(tasksReasonLine(tc.item, tasksStateFloor-1, pal))
+		if !strings.Contains(under, word) {
+			t.Fatalf("under %d columns %s says %q on no line at all, and the cursor's own line is where it goes:\n  %s",
+				tasksStateFloor, tc.why, word, under)
 		}
 	}
 }
