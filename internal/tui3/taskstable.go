@@ -121,7 +121,18 @@ func tasksColumns(room int, key tasksSortKey) (state, second, name int) {
 func tasksStateField(line tasksLine) rowField {
 	item := line.item
 	if note := tasksNote(item); note != "" {
-		return rowSay(note)
+		// THE WORDS FIRST AND THE WINDOW'S NAME AFTER THEM. `another window ·
+		// Fix the nil-map crash` is thirty-eight cells and this column has twenty,
+		// and a field with only one spelling either fits or goes (rowfit.go law 4)
+		// — so offering the pair alone left the cell BLANK on exactly the rows
+		// whose mark most needs correcting. WHICH window is on the card `enter`
+		// opens and on the cursor's own grown line; THAT it is not this one is the
+		// fact the column exists for.
+		short := taskAwayWord
+		if item.here {
+			short = taskOpenHereWord
+		}
+		return rowSay(note, short)
 	}
 	word := taskStateWord(item.entry, item.runs)
 	if item.live != nil {
@@ -356,7 +367,15 @@ func tasksSortHint(by tasksSort) string {
 // ([tasksTop]) would be chasing a number that changed with the row it was
 // measuring.
 func tasksReasonLine(item tasksItem, width int, pal palette) string {
-	said := strings.TrimSpace(item.status().RowWord())
+	// WORK IN ANOTHER WINDOW SAYS WHERE IT IS, WHOLE. The state column has twenty
+	// cells and keeps only the words that correct the mark ([tasksStateField]);
+	// this line has the width of the list, and WHICH window is exactly the half a
+	// person needs to act — it is the difference between a terminal they can
+	// switch to and one they have to go and find.
+	said := strings.TrimSpace(tasksNote(item))
+	if said == "" {
+		said = strings.TrimSpace(item.status().RowWord())
+	}
 	if outcome := taskFirstSentence(item.entry.Outcome); outcome != "" && outcome != said {
 		said += rowSep + outcome
 	}
