@@ -216,6 +216,9 @@ type spendStop struct {
 	// day marks a Days-lens row: `enter` drills the window onto that bucket and
 	// returns to the Rhythm lens (spendlens.go).
 	day session.DaySpend
+	// sortHead marks the Models-lens column header: `enter` / a press cycles the
+	// sort to the next column (DESIGN.md §3 — head cells are the sort doors).
+	sortHead bool
 }
 
 // unfolding is this reading with the subjects' fold open or shut. It answers a

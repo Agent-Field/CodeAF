@@ -228,7 +228,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/spend` | — | `year` | opens the spend place on the `year` lens |
 | `/spend` | — | `export` | writes the current window's ledger reading as JSON |
 | `/spend` | — | `7d` | `rhythm` on the last seven days |
-| `/spend` | — | `month` | `rhythm` on a thirty-day month-grain window |
+| `/spend` | — | `month` | `rhythm` on the current calendar month |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -743,7 +743,7 @@ window:
 | `year` | the `year` lens |
 | `export` | writes the current window's ledger reading out as JSON beside the usage ledger |
 | `7d` | `rhythm` on the last seven days |
-| `month` | `rhythm` on a thirty-day window at month grain |
+| `month` | `rhythm` on the current calendar month |
 
 `[` and `]` cycle `rhythm`, `models`, `days` and `year` once you are on the place.
 

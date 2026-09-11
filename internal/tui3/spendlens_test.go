@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +83,95 @@ func TestModelsLensRowsSortByTokens(t *testing.T) {
 	}
 	if byTokens[0].tokens < byTokens[1].tokens || byTokens[1].tokens < byTokens[2].tokens {
 		t.Fatalf("tokens sort is not descending: %#v", byTokens)
+	}
+}
+
+// EVERY COLUMN THE TABLE DRAWS IS A SORT KEY. Model and role are A→Z; rate is
+// realized $/M dearest-first — the head-cell order DESIGN.md §3 names.
+func TestModelsLensSortsByEachColumn(t *testing.T) {
+	r := spendReading{
+		now: spendTestNow,
+		models: []session.ModelSpend{
+			{Model: "zeta", Input: 100, Output: 50, Tokens: 150, USD: 3},
+			{Model: "alpha", Input: 10, Output: 5, Tokens: 15, USD: 1.5},
+			{Model: "mid", Input: 1_000_000, Output: 0, Tokens: 1_000_000, USD: 2},
+		},
+		crew: spendCrew{role: map[string]string{
+			spendModelKey("zeta"):  "execution",
+			spendModelKey("alpha"): "naming",
+			spendModelKey("mid"):   "verification",
+		}},
+	}
+	byModel := r.modelsLensRows(spendGroupModel, spendSortModel)
+	if len(byModel) != 3 || byModel[0].name != "alpha" || byModel[2].name != "zeta" {
+		t.Fatalf("model sort = %#v, want alpha … zeta", byModel)
+	}
+	byRate := r.modelsLensRows(spendGroupModel, spendSortRate)
+	// alpha is $1.5 / 15 tok = $100k/M; zeta is $3/150 = $20k/M; mid is $2/1M = $2/M.
+	if len(byRate) != 3 || byRate[0].name != "alpha" {
+		t.Fatalf("rate sort = %#v, want alpha (dearest $/M) first", byRate)
+	}
+	a := spendLab(t, spendFixture())
+	a.setSpendLens(spendLensModels)
+	text := placeFrameText(a)
+	for _, want := range []string{"model", "in · out", "role", "$/M", "spend"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("models lens head is missing %q:\n%s", want, text)
+		}
+	}
+	headAt := -1
+	for i, stop := range a.spend.stops {
+		if stop.sortHead {
+			headAt = i
+			break
+		}
+	}
+	if headAt < 0 {
+		t.Fatalf("models lens has no sort-head door:\n%s", text)
+	}
+	a.spend.cursor = headAt
+	was := a.spend.sort
+	if _, ok := a.openSpendRow(); !ok {
+		t.Fatal("enter on the sort head opened nothing")
+	}
+	if a.spend.sort == was {
+		t.Fatalf("enter on the sort head left sort at %s", was.word())
+	}
+}
+
+// GROUPING CYCLES MODEL → ROLE → SUBJECT, and an unbound model stays in an
+// unbound group rather than inventing a role word on the ungrouped row.
+func TestModelsLensGroupCycleAndUnbound(t *testing.T) {
+	if g := spendGroupModel.next(); g != spendGroupRole {
+		t.Fatalf("model.next = %s, want role", g.word())
+	}
+	if g := spendGroupRole.next(); g != spendGroupSubject {
+		t.Fatalf("role.next = %s, want subject", g.word())
+	}
+	if g := spendGroupSubject.next(); g != spendGroupModel {
+		t.Fatalf("subject.next = %s, want model", g.word())
+	}
+	r := spendReading{
+		now: spendTestNow,
+		models: []session.ModelSpend{
+			{Model: "bound", Tokens: 10, USD: 1},
+			{Model: "free", Tokens: 20, USD: 2},
+		},
+		crew: spendCrew{role: map[string]string{spendModelKey("bound"): "execution"}},
+	}
+	ungrouped := r.modelsLensRows(spendGroupModel, spendSortCost)
+	for _, row := range ungrouped {
+		if row.name == "free" && row.role != "" {
+			t.Fatalf("unbound model invented role %q", row.role)
+		}
+	}
+	byRole := r.modelsLensRows(spendGroupRole, spendSortCost)
+	names := map[string]bool{}
+	for _, row := range byRole {
+		names[row.name] = true
+	}
+	if !names["unbound"] || !names["execution"] {
+		t.Fatalf("role group = %#v, want unbound and execution", byRole)
 	}
 }
 
@@ -249,6 +339,45 @@ func TestSpendUnknownArgRefuses(t *testing.T) {
 	got := lastNote(t, a)
 	if !strings.Contains(got, "usage: /spend") {
 		t.Fatalf("refuse did not name the accepted args: %q", got)
+	}
+}
+
+// `/spend models|days|year` AND `/spend 7d` LAND ON THE NAMED READING.
+func TestSpendSlashDoors(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.runSpendCommand("models")
+	if a.page != pageSpend || a.spend.lens != spendLensModels {
+		t.Fatalf("/spend models → page=%s lens=%s", a.page.word(), a.spend.lens.word())
+	}
+	a.runSpendCommand("days")
+	if a.spend.lens != spendLensDays {
+		t.Fatalf("/spend days → lens=%s", a.spend.lens.word())
+	}
+	a.runSpendCommand("year")
+	if a.spend.lens != spendLensYear {
+		t.Fatalf("/spend year → lens=%s", a.spend.lens.word())
+	}
+	a.runSpendCommand("7d")
+	if a.spend.lens != spendLensRhythm || a.spend.win.Buckets() != 7 {
+		t.Fatalf("/spend 7d → lens=%s buckets=%d", a.spend.lens.word(), a.spend.win.Buckets())
+	}
+}
+
+// `/spend export` WRITES A JSON FILE OF THE WINDOW'S PRICED LINES and notes the path.
+func TestSpendExportWritesJSON(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.runSpendCommand("export")
+	note := lastNote(t, a)
+	if !strings.HasPrefix(note, "spend · ") {
+		t.Fatalf("export note = %q, want spend · <path>", note)
+	}
+	path := strings.TrimPrefix(note, "spend · ")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read export %s: %v", path, err)
+	}
+	if !strings.Contains(string(raw), "opus 4.1") || !strings.Contains(string(raw), `"usd"`) {
+		t.Fatalf("export body missing priced rows:\n%s", raw)
 	}
 }
 

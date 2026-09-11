@@ -523,6 +523,22 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return nil
 		}
+	case "s":
+		// Cycle every Models column (head-cell order). Days stay on cost↔tokens.
+		if a.spend.lens == spendLensModels {
+			a.spend.sort = a.spend.sort.next()
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+			return nil
+		}
+		if a.spend.lens == spendLensDays {
+			a.spend.sort = a.spend.sort.nextDay()
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+			return nil
+		}
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()
@@ -628,6 +644,14 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	// [app.openSpending]).
 	if stop.rails {
 		return a.openSpending(spendTodayKey), true
+	}
+	// THE MODELS SORT HEAD CYCLES THE ACTIVE COLUMN. Enter on the head row is
+	// the keyboard twin of pressing a head cell (DESIGN.md §3).
+	if stop.sortHead {
+		a.spend.sort = a.spend.sort.next()
+		a.spend.woke = false
+		a.rebuildSpend()
+		return nil, true
 	}
 	// THE FOLD LINE OPENS WHERE IT STANDS, and the cursor stays on it: the
 	// line is still there, now saying `fewer`, so the next `enter` undoes it.
@@ -879,6 +903,8 @@ func (placeSpend) hint(a *app) string {
 	}
 	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
 		parts = append(parts, foldEnterWord(a.spend.unfolded))
+	} else if stop.sortHead {
+		parts = append(parts, "enter cycles the sort")
 	} else if stop.ok && stop.day.At.IsZero() {
 		parts = append(parts, spendEnterWord)
 		for _, v := range (placeSpend{}).verbs(a) {

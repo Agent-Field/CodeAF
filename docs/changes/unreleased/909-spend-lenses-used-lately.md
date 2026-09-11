@@ -13,6 +13,7 @@ invalidates:
   - "`/model` (and the status model word) used to be bottom chrome — a filter box in the draft's place with a short list under it. It is a framed sheet over a faded conversation now: title `choose model` (or `choose task model`), filter inside the sheet, `esc · cancel` on the foot, the same covering grammar as the context chooser. Settings, home and the composer still embed the same picker type in their bodies."
   - "`/model used` was not a filter. It opens the same picker already narrowed to models this machine has run in the last fortnight; `used` is a filter word, not a refuse of bare `/model <slug>`."
   - "A quiet spend window kept only `nothing spent` over blank air; a warming ledger looked like an empty machine. Quiet windows now carry a dim guide (`this stretch is quiet · shift+←→ moves the days · [ ] another reading`); a ledger still on the wire draws a skeleton (`reading what this machine has spent`) rather than the empty whisper; `/model used` with no spenders says `no models used this fortnight · drop used for the full list`."
+  - "The Models lens sorted only by cost/tokens via `c`/`t`. It sorts by every column now (model, in/out, role, `$/M`, spend); the head cells are the sort doors (`enter` cycles; `s` cycles; `c`/`t` still jump to cost/tokens)."
   - "`session.ModelSpend` and `DaySpend` carried only a token sum. They carry `Input` and `Output` as well, so the Models and Days lenses can compare the two halves; `PeakHour` and `ActiveStreak` answer the Year lens facts."
 ---
 

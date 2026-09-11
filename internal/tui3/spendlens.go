@@ -117,22 +117,41 @@ func (g spendGroup) next() spendGroup {
 	return spendGroup((int(g) + 1) % 3)
 }
 
-// spendSort is the Models / Days sort key.
+// spendSort is the Models / Days sort key. Models cycles every column the table
+// draws (DESIGN.md §3 — "sorts by each column"); Days keeps cost ↔ tokens.
 type spendSort int
 
 const (
 	spendSortCost spendSort = iota
 	spendSortTokens
+	spendSortModel
+	spendSortRole
+	spendSortRate // realized $/M
+	spendSortCount
 )
 
 func (s spendSort) word() string {
-	if s == spendSortTokens {
+	switch s {
+	case spendSortTokens:
 		return "tokens"
+	case spendSortModel:
+		return "model"
+	case spendSortRole:
+		return "role"
+	case spendSortRate:
+		return "$/M"
+	default:
+		return "cost"
 	}
-	return "cost"
 }
 
+// next advances the Models-lens sort through every column.
 func (s spendSort) next() spendSort {
+	return spendSort((int(s) + 1) % int(spendSortCount))
+}
+
+// nextDay is the Days-lens two-step: cost ↔ tokens only.
+func (s spendSort) nextDay() spendSort {
 	if s == spendSortCost {
 		return spendSortTokens
 	}
@@ -143,7 +162,7 @@ func (s spendSort) next() spendSort {
 const (
 	spendLensKeysWord   = "[ ] lenses"
 	spendGroupKeyWord   = "g group"
-	spendSortKeyWord    = "c/t sort"
+	spendSortKeyWord    = "c/t sort · enter on a head cell"
 	spendModelsLensWord = "what ran it"
 	spendDaysLensWord   = "by the day"
 	spendYearLensWord   = "this year"
@@ -219,6 +238,11 @@ func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width in
 	out = append(out, r.windowHeaderRowFor(spendLensModels, width, pal))
 	caption := spendModelsLensWord + " · by " + group.word() + " · " + sort.word()
 	out = appendPlaceSection(out, placeLead+placeHeading(fit(caption, inner), pal))
+	// THE HEAD CELLS ARE THE SORT DOORS (DESIGN.md §3). One row names every
+	// column; the active sort is ink, the rest stay dim; enter / a press on a
+	// cell sets that column.
+	headAt := len(out)
+	out = append(out, placeLead+modelsSortHead(inner, sort, on(headAt), pal))
 	rows := r.modelsLensRows(group, sort)
 	for _, row := range rows {
 		out = append(out, placeLead+r.modelsLensRow(row, inner, pal))
@@ -228,7 +252,39 @@ func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width in
 	}
 	stops := make([]spendStop, len(out))
 	stops[rails] = spendStop{ok: true, rails: true}
+	stops[headAt] = spendStop{ok: true, sortHead: true}
 	return out, stops
+}
+
+// modelsSortHead is the Models-lens column row. Cells left→right match the
+// design table: model · in · out · role · $/M · spend.
+func modelsSortHead(width int, sort spendSort, lit bool, pal palette) string {
+	cells := []struct {
+		key  spendSort
+		word string
+	}{
+		{spendSortModel, "model"},
+		{spendSortTokens, "in · out"},
+		{spendSortRole, "role"},
+		{spendSortRate, "$/M"},
+		{spendSortCost, "spend"},
+	}
+	parts := make([]string, 0, len(cells))
+	for _, cell := range cells {
+		word := cell.word
+		if cell.key == sort {
+			word = "▸ " + word
+			if lit {
+				parts = append(parts, pal.data(word))
+			} else {
+				parts = append(parts, pal.muted(word))
+			}
+			continue
+		}
+		parts = append(parts, pal.dim(word))
+	}
+	line := strings.Join(parts, pal.dim("  "))
+	return fit(line, width)
 }
 
 // modelsLensRow is one aggregated Models-lens line.
@@ -311,21 +367,47 @@ func (r spendReading) modelsBySubject(sort spendSort) []modelsLensRow {
 
 func sortModelsLens(rows []modelsLensRow, key spendSort) {
 	sort.SliceStable(rows, func(i, j int) bool {
-		if key == spendSortTokens {
-			if rows[i].tokens != rows[j].tokens {
-				return rows[i].tokens > rows[j].tokens
+		a, b := rows[i], rows[j]
+		switch key {
+		case spendSortTokens:
+			if a.tokens != b.tokens {
+				return a.tokens > b.tokens
 			}
-			return rows[i].usd > rows[j].usd
+		case spendSortModel:
+			if a.name != b.name {
+				return strings.ToLower(a.name) < strings.ToLower(b.name)
+			}
+		case spendSortRole:
+			if a.role != b.role {
+				return strings.ToLower(a.role) < strings.ToLower(b.role)
+			}
+		case spendSortRate:
+			ra, rb := modelsLensRate(a), modelsLensRate(b)
+			if ra != rb {
+				return ra > rb
+			}
+		default: // spendSortCost
+			if a.usd != b.usd {
+				return a.usd > b.usd
+			}
 		}
-		if rows[i].usd != rows[j].usd {
-			return rows[i].usd > rows[j].usd
+		if a.usd != b.usd {
+			return a.usd > b.usd
 		}
-		return rows[i].tokens > rows[j].tokens
+		return a.tokens > b.tokens
 	})
+}
+
+func modelsLensRate(row modelsLensRow) float64 {
+	if row.usd <= 0 || row.tokens <= 0 {
+		return 0
+	}
+	return row.usd / (float64(row.tokens) / 1_000_000)
 }
 
 func sortDaysLens(days []session.DaySpend, key spendSort) {
 	sort.SliceStable(days, func(i, j int) bool {
+		// Days only answer cost ↔ tokens; other keys fall through to cost.
 		if key == spendSortTokens {
 			if days[i].Tokens != days[j].Tokens {
 				return days[i].Tokens > days[j].Tokens

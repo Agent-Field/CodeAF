@@ -513,8 +513,9 @@ back. The cursor arrives on the first of them — the biggest thing the money we
 Four **lenses**, cycled with `[` and `]`: `rhythm`, `models`, `days`, `year`. Arrival is
 `rhythm` — those three blocks above. The other three:
 
-- **`models`** — a sortable table (In/Out, role, realized cost per million, spend),
-  groupable by role or subject with `g`, sorted by `c` (cost) or `t` (tokens).
+- **`models`** — a sortable table (In/Out, role, realized cost per million, spend).
+  The head cells are the sort doors (`enter` cycles them; `c`/`t` jump to cost or
+  tokens; `s` cycles every column). Group with `g` by role or subject.
 - **`days`** — the days in the window; **`enter` on a day** drills into that day's
   `rhythm` window, and **`esc`** returns to `days`.
 - **`year`** — a year heatmap with streak, peak and favorite when those exist; no

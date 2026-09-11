@@ -2040,7 +2040,7 @@ What you are reading is one of four **lenses**, named on the head row:
 | lens | what it shows |
 |---|---|
 | `rhythm` | the window, its chart, what ran it, and what the money was for — today's arrival |
-| `models` | a sortable table of models: In/Out, role, realized cost per million, spend |
+| `models` | a sortable table of models: In/Out, role, realized cost per million, spend — head cells are the sort doors (`enter` / `c` / `t` / `s`) |
 | `days` | the days in the window |
 | `year` | a year heatmap with streak, peak and favorite when those exist |
 
