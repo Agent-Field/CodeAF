@@ -33,6 +33,7 @@
   "blocking": {
     "turn": true
   },
+  "batch": "step:0",
   "scope": [
     "once",
     "always"

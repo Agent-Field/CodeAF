@@ -43,7 +43,7 @@ func TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer(t *testing.T
 		t.Fatalf("the default rules do not even ask about `rm -rf *`: %+v", decision)
 	}
 
-	ask := agent.consentAsk(9, call, decision, true, "needs your ok to run bash")
+	ask := agent.consentAsk(9, call, decision)
 
 	// THE STAKES, WHICH ARE THE HALF A SURFACE MUST NOT KEY A SAFETY DEFAULT ON.
 	if ask.Stakes == StakesIrreversible {
