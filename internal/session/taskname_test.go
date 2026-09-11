@@ -107,49 +107,87 @@ func TestCleanTaskNameCutsToThreeWordsAndRefusesWhatIsNotAName(t *testing.T) {
 
 // THE WHOLE FEATURE, END TO END: a task admitted under a sentence is renamed by
 // one cheap call, the new name is what every surface is told, and it is in the
-// checkpoint so a restart keeps it.
+// checkpoint so a restart keeps it. THE SECOND ROW IS #942'S WHOLE DOOR: a
+// namer that answered its plan instead of a label — 264 completion tokens of it,
+// measured in the field — is refused, and the row keeps the person's own words,
+// which is the title it was already drawn under.
 func TestWorkAdmittedUnderASentenceIsNamedByTheCheapModel(t *testing.T) {
-	client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-		if !isNameCall(messages) {
-			t.Errorf("the first call was not the namer's: %q", messageContentText(messages[0]))
-		}
-		return textResponse("parser recon"), nil
-	}}}
-	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
-	ran := make(chan uint64, 4)
-	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node.id })
+	const sentence = "read /Users/me/src and say what the parser does"
+	for _, c := range []struct {
+		name    string
+		answer  string
+		want    string
+		renames bool
+	}{
+		{"a namer that answers with a label", "parser recon", "parser recon", true},
+		// THE OBSERVED ANSWER OF #942. A refusal is the empty string, and that is
+		// a road which already works: the caller's only response is to leave the
+		// title where it was, and where it was is the person's own words. Nothing
+		// is published, so no surface is ever told "I'll start by".
+		{"a namer that answers its plan", "I'll start by creating the four bakery landing pages one at a time.", sentence, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+				if !isNameCall(messages) {
+					t.Errorf("the first call was not the namer's: %q", messageContentText(messages[0]))
+				}
+				return textResponse(c.answer), nil
+			}}}
+			agent, _ := newTestAgent(t, client, func(cfg *Config) { cfg.RolesSource = nameSettings() })
+			ran := make(chan uint64, 4)
+			graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node.id })
 
-	updates := agent.TaskUpdates()
-	id := graph.reserve()
-	graph.admit(id, taskSpec{
-		title:      "read /Users/me/src and say what the parser does",
-		summary:    "read the parser",
-		brief:      "Read the parser under /Users/me/src and write down what it does.",
-		acceptance: "a note saying what the parser does",
-	})
-	select {
-	case <-ran:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the admitted node never ran")
-	}
-
-	// THE NAME LANDS ON THE NODE, and it is the title from then on.
-	if !nameLanded(func() bool { return graph.node(id).title() == "parser recon" }) {
-		t.Fatalf("the node is still called %q", graph.node(id).title())
-	}
-	// AND THE WORLD IS TOLD. A row already on screen under the sentence learns
-	// the name from an ordinary update.
-	if !waitForNamedRow(updates, id, "parser recon") {
-		t.Fatal("no update carried the new name")
-	}
-	// AND IT IS KEPT. The checkpoint is what a resumed session reads its roster
-	// back out of, so a name that only lived in this process would be a row that
-	// went back to its sentence after a restart.
-	if got := graph.document().Nodes[0].Title; got != "parser recon" {
-		t.Fatalf("the checkpoint says %q", got)
-	}
-	if got := client.model(0); got != "cheap/model" {
-		t.Fatalf("the namer ran on %q, want the cheap tier", got)
+			updates := agent.TaskUpdates()
+			id := graph.reserve()
+			graph.admit(id, taskSpec{
+				title:      sentence,
+				summary:    "read the parser",
+				brief:      "Read the parser under /Users/me/src and write down what it does.",
+				acceptance: "a note saying what the parser does",
+			})
+			select {
+			case <-ran:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the admitted node never ran")
+			}
+			// THE NAMER REALLY WAS ASKED, in both rows: a title the call never
+			// touched reads the same as one a refusal left alone, and only one of
+			// those is this feature working.
+			if !nameLanded(func() bool { return client.requests() > 0 }) {
+				t.Fatal("the namer was never asked")
+			}
+			// THE NAME LANDS ON THE NODE, and it is the title from then on. In the
+			// refused row this is the row it never left.
+			if !nameLanded(func() bool { return graph.node(id).title() == c.want }) {
+				t.Fatalf("the node is called %q, want %q", graph.node(id).title(), c.want)
+			}
+			// AND THE WORLD IS TOLD. A row already on screen under the sentence
+			// learns the name from an ordinary update — and a refusal publishes
+			// nothing at all, which is the other half of the claim: no surface is
+			// ever handed the front of a sentence.
+			if c.renames && !waitForNamedRow(updates, id, c.want) {
+				t.Fatal("no update carried the new name")
+			}
+			// AND IT IS KEPT. The checkpoint is what a resumed session reads its
+			// roster back out of, so a name that only lived in this process would
+			// be a row that went back to its sentence after a restart.
+			if got := graph.document().Nodes[0].Title; got != c.want {
+				t.Fatalf("the checkpoint says %q, want %q", got, c.want)
+			}
+			if got := client.model(0); got != "cheap/model" {
+				t.Fatalf("the namer ran on %q, want the cheap tier", got)
+			}
+			// AND A REFUSAL IS A WINDOW IN WHICH A RENAME COULD STILL HAVE ARRIVED.
+			// The poll above can be satisfied before the answer has been read back,
+			// so the refused row waits out the answer's own latency and then holds
+			// the title: nothing arrives, and the person's words are what stays.
+			if !c.renames {
+				time.Sleep(200 * time.Millisecond)
+				if got := graph.node(id).title(); got != c.want {
+					t.Fatalf("a refused name moved the row to %q", got)
+				}
+			}
+		})
 	}
 }
 
