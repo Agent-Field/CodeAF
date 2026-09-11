@@ -749,7 +749,7 @@ func firingLine(found sighting, outcome Outcome) string {
 func (t *Ticker) noteFailure(before, item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
-	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
+	item.LastCheckLine = CouldNotCheck + ": " + shorten(oneLine(failure.Error()), 200)
 	item.FailedChecks++
 	wait := failureWait(item, item.FailedChecks)
 	if item.When.Kind == WhenFile {
@@ -759,6 +759,24 @@ func (t *Ticker) noteFailure(before, item Item, failure error) {
 	if item.FailedChecks == 1 || wait > failureWait(item, item.FailedChecks-1) {
 		_ = t.Store.Log(item.ID, item.LastCheckLine)
 	}
+}
+
+// CouldNotCheck leads the check line of a check that could not be made, and is
+// the whole of what a row says about a watch waiting out failed checks.
+const CouldNotCheck = "could not check"
+
+// Appointment is the next moment this item is due, or zero when it has none.
+//
+// A WAIT AFTER FAILED CHECKS IS NOT AN APPOINTMENT. A file watch's next-due is
+// only ever that wait ([Ticker.noteFailure]) — nothing else gives a file watch
+// a moment — and a surface that drew it as "in 38m" and sorted it among the
+// reminders was presenting a watch whose judge has no key as something
+// scheduled.
+func (it Item) Appointment() time.Time {
+	if it.When.Kind == WhenFile {
+		return time.Time{}
+	}
+	return it.NextDue
 }
 
 // FailureCeiling is the longest a watch waits after checks that could not be

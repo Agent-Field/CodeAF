@@ -366,3 +366,90 @@ func TestAConditionThatKeepsFailingBacksOff(t *testing.T) {
 		t.Fatalf("the watch did not come back when its judgment did: %+v", pass)
 	}
 }
+
+// failingOnce is a watch whose condition could not be asked on its last check:
+// the changes are held and the wait is running.
+func failingOnce(t *testing.T) (*Store, Item, string, time.Time) {
+	t.Helper()
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := clientsWatch(t, store)
+	runner := &occurrenceRunner{}
+	mustTick(t, newTicker(store, runner, now))
+	writeNested(t, filepath.Join(workspace, "inbox", "clients", "gamma", "thread.md"), "Gamma: hello\n")
+	later := now.Add(Interval)
+	store.clock = held(later)
+	ticker := newTicker(store, runner, later)
+	ticker.Sentinel = func(context.Context, Judgment) (bool, string, float64, error) {
+		return false, "", 0, errors.New("no key for the judging model")
+	}
+	mustTick(t, ticker)
+	back, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.FailedChecks != 1 || back.NextDue.IsZero() {
+		t.Fatalf("the failed check left no wait: %+v", back)
+	}
+	return store, back, workspace, later
+}
+
+// AN EDIT OF THE CONDITION ALONE KEEPS THE HELD CHANGES (L3). A person fixing
+// the condition after a judge failed is not asking to forget what changed.
+func TestAConditionEditKeepsTheChangesItHeld(t *testing.T) {
+	store, made, _, at := failingOnce(t)
+	if _, _, err := store.Revise(made.ID, made.SpecRevision, func(item *Item) error {
+		item.When.Hint = "a client's thread changed"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sentinel, shown := evidenceJudge("inbox/clients/gamma/thread.md")
+	ticker := newTicker(store, &occurrenceRunner{}, at)
+	ticker.Sentinel = sentinel
+	if pass := mustTick(t, ticker); pass.Fired != 1 {
+		t.Fatalf("the edit folded the held changes into a new baseline: %+v, shown %q", pass, *shown)
+	}
+}
+
+// A FAILING CHECK THAT FINISHES AFTER AN EDIT DOES NOT PUT BACK THE COUNT THE
+// EDIT CLEARED. The edit is newer than the check.
+func TestAnEditClearsTheFailureCountEvenMidCheck(t *testing.T) {
+	store, made, _, at := failingOnce(t)
+	at = at.Add(FailureCeiling)
+	store.clock = held(at)
+	ticker := newTicker(store, &occurrenceRunner{}, at)
+	ticker.Sentinel = func(context.Context, Judgment) (bool, string, float64, error) {
+		if _, _, err := store.Revise(made.ID, made.SpecRevision, func(item *Item) error {
+			item.When.Hint = "a client's thread changed"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return false, "", 0, errors.New("no key for the judging model")
+	}
+	mustTick(t, ticker)
+	back, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.FailedChecks != 0 || !back.NextDue.IsZero() {
+		t.Fatalf("a check that began before the edit restored its failures: count %d, wait until %s", back.FailedChecks, back.NextDue)
+	}
+}
+
+// RESUME MEANS NOW. A person resuming a watch that was waiting out failed
+// checks is not asking it to sit out the rest of the hour.
+func TestResumeClearsTheWait(t *testing.T) {
+	store, made, _, _ := failingOnce(t)
+	if _, err := store.SetStatus(made.ID, StatusPaused, ""); err != nil {
+		t.Fatal(err)
+	}
+	back, err := store.SetStatus(made.ID, StatusActive, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.FailedChecks != 0 || !back.NextDue.IsZero() {
+		t.Fatalf("a resumed watch still waits: count %d, until %s", back.FailedChecks, back.NextDue)
+	}
+}

@@ -205,8 +205,11 @@ func sizeWords(change Change, before, now map[string]fileEntry) string {
 // a link inside a watched folder that leads to somebody's keys is a file the
 // work itself could not read; the condition is held to the same border and is
 // shown the file's name and size instead. The link is resolved ONCE, and the
-// resolved target is what is looked at and opened, so nothing can be put in
-// the link's place between the check and the read.
+// resolved target is what is looked at and opened — without following a link
+// ([noFollow]), so a link put in the target's place after the check is refused
+// rather than read. A folder ABOVE the target swapped for a link in that
+// moment is not caught; that would take resolving beneath the project on every
+// component, which this package has no call for.
 func excerpt(workspace, name string) (string, bool) {
 	path := name
 	if !filepath.IsAbs(path) {
@@ -223,7 +226,7 @@ func excerpt(workspace, name string) (string, bool) {
 	case !info.Mode().IsRegular():
 		return notRegular, true
 	}
-	file, err := openRegular(target)
+	file, err := openRegular(target, noFollow)
 	if errors.Is(err, errNotRegular) {
 		return notRegular, true
 	}

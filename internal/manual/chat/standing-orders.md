@@ -757,10 +757,12 @@ folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
 followed). A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
-watch reads every one of them on every pass; watch a narrower pattern`. **The files are
-read the moment you say yes** (or `add` or `edit` runs); that reading is the baseline and
-runs nothing, so a file that lands a minute later is reported by the next check, never
-folded into the baseline. After that a run starts only when a matching
+watch reads every one of them on every pass; watch a narrower pattern`. **The baseline is
+taken the moment you say yes** (or `add` runs, or `edit` changes the pattern): each file's
+name, size and time, never its contents. It runs nothing, and a file that lands a minute
+later is reported by the next check. Because the baseline holds no contents, a file saved
+again unchanged before that first check does count as a change; hashing every file at the
+yes would read up to 10000 files while you wait. After that a run starts only when a matching
 file was added, changed or removed, and the run is told exactly which: `added
 inbox/a.md`, `modified inbox/a.md`. **A file touched, or saved again with the same
 text, is not a change**: when its size or time moves, its contents are compared with
@@ -798,7 +800,9 @@ to 8 KiB like a probe's output). A file whose link leads outside the project is 
 never shown. A condition that says no uses up those changes; one that could not be
 asked leaves them for the next check, and a watch whose checks keep failing — no key
 for the judging model, a pattern grown past its limit — waits 5 minutes, then 10, 20, 40,
-then an hour between tries, its log taking one line per step. `aforge standing list` and
+then an hour between tries, its log taking one line per step; home shows it as `could not
+check`, not as a time. Resuming it, or editing its condition, tries again at once and keeps
+the changes it was holding. `aforge standing list` and
 `show` say it as `wakes whenever a file changes inside inbox/clients/, only when: …`.
 
 A condition needs something to judge. On a moment, a rhythm, an idle wait or a rule it

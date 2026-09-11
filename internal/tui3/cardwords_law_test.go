@@ -31,11 +31,17 @@ import (
 // terminal, and the engine that answers the model.
 var cardWordsRoots = []string{".", "../tui", "../head", "../resident", "../session", "../../cmd/aforge"}
 
-// cardWordsOwed are the reads the law still forgives, keyed "package/file:func".
+// cardWordsOwed are the reads the law still forgives, keyed "package/file:func",
+// each with who owes the switch. It only shrinks.
 var cardWordsOwed = map[string]string{
-	"session/tools_standing.go:standPropose":  "the chat card's when line — the stand lane switches it to CardWords",
-	"session/tools_standing.go:standingRow":   "the stand list row the model reads — the stand lane switches it to CardWords",
-	"session/tools_standing.go:standingNamed": "matching a person's words to an item, which is a search and not a drawing",
+	"session/tools_standing.go:standPropose": "the chat card's when line — the stand lane switches it to CardWords",
+	"session/tools_standing.go:standingRow":  "the stand list row the model reads — the stand lane switches it to CardWords",
+}
+
+// cardWordsExempt are the reads that are not a surface saying what wakes an
+// item, and never will be, each with why.
+var cardWordsExempt = map[string]string{
+	"session/tools_standing.go:standingNamed": "matching the words a person used for an item against the words it was made with — a search, and the words are what they would remember",
 }
 
 func TestEverySurfaceSaysAWatchFromItsCardWords(t *testing.T) {
@@ -56,21 +62,24 @@ func TestEverySurfaceSaysAWatchFromItsCardWords(t *testing.T) {
 			for _, read := range whenWordsReads(t, file) {
 				key := pkg + "/" + filepath.Base(file) + ":" + read.fn
 				found[key] = true
-				if _, owed := cardWordsOwed[key]; !owed {
+				_, owed := cardWordsOwed[key]
+				if _, exempt := cardWordsExempt[key]; !owed && !exempt {
 					t.Errorf("%s reads When.Words to say what wakes an item; say item.When.CardWords() so a condition is said as the terminal says it", read.at)
 				}
 			}
 		}
 	}
 	var gone []string
-	for key := range cardWordsOwed {
-		if !found[key] {
-			gone = append(gone, key)
+	for _, ledger := range []map[string]string{cardWordsOwed, cardWordsExempt} {
+		for key := range ledger {
+			if !found[key] {
+				gone = append(gone, key)
+			}
 		}
 	}
 	sort.Strings(gone)
 	for _, key := range gone {
-		t.Errorf("%s no longer reads When.Words; delete its line from cardWordsOwed", key)
+		t.Errorf("%s no longer reads When.Words; delete its line from the ledger", key)
 	}
 }
 
@@ -134,5 +143,23 @@ func TestHomeSaysAConditionedWatchAsTheTerminalDoes(t *testing.T) {
 	}
 	if got := standRollup(StandingItemView{Item: item}, now); got != want {
 		t.Errorf("home's roll-up reads %q, the terminal %q", got, want)
+	}
+}
+
+// A WAIT AFTER FAILED CHECKS IS NOT AN APPOINTMENT. Home said "in 38m" for a
+// watch whose judge had no key, and sorted it ahead of real appointments; it
+// says what is true of it instead, and sorts with the watches that have none.
+func TestHomeDoesNotShowAFailingWatchAsAnAppointment(t *testing.T) {
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	failing := standing.Item{ID: "failing", When: standing.When{Kind: standing.WhenFile, Glob: "inbox/*"},
+		FailedChecks: 3, NextDue: now.Add(38 * time.Minute)}
+	if got := standWhenClause(failing, now); got != standing.CouldNotCheck {
+		t.Errorf("a failing watch's tail reads %q", got)
+	}
+	due := standing.Item{ID: "due", When: standing.When{Kind: standing.WhenEvery, Every: "0 11 * * *"}, NextDue: now.Add(2 * time.Hour)}
+	views := []StandingItemView{{Item: failing}, {Item: due}}
+	standByNextDue(views)
+	if views[0].Item.ID != "due" {
+		t.Errorf("a failing watch sorted ahead of an appointment: %s first", views[0].Item.ID)
 	}
 }

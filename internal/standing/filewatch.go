@@ -193,7 +193,7 @@ func contentHash(path string, info fs.FileInfo, last fileEntry) string {
 	if last.Hash != "" && last.Size == info.Size() && last.MTime == info.ModTime().UnixNano() {
 		return last.Hash
 	}
-	file, err := openRegular(path)
+	file, err := openRegular(path, 0)
 	if err != nil {
 		return ""
 	}
@@ -216,9 +216,11 @@ var errNotRegular = errors.New("not a regular file")
 // it, forever (wave 5 review). Every caller asks the file's kind before it
 // opens, and this closes the gap between that look and the open — a pipe put
 // in the file's place is opened without waiting (O_NONBLOCK is nothing to a
-// regular file) and refused by what the open handle says it is.
-func openRegular(path string) (*os.File, error) {
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+// regular file) and refused by what the open handle says it is. flags adds to
+// the open: [noFollow] where the path was already resolved and a link in its
+// place is a swap, never a file.
+func openRegular(path string, flags int) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|flags, 0)
 	if err != nil {
 		return nil, err
 	}
