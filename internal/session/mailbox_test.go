@@ -191,9 +191,27 @@ func TestAReportThatRacesTheWithdrawalIsNotSwallowed(t *testing.T) {
 	if got := queuedText(nest.node); len(got) != 0 {
 		t.Fatalf("the withdrawn worker was handed %#v", got)
 	}
-	if got := queuedText(nest.session); len(got) != 1 {
-		t.Fatalf("the conversation holds %#v, want the one report that lost the race", got)
+	// THE REPORT IS ASSERTED WHERE IT ENDS UP, not on the queue it passes
+	// through. The fallback note wakes the conversation, and its reader may
+	// take the note off the queue before this looks — which is the report
+	// being read, not lost. So the claim is the conversation's own record
+	// holding it; a delivery that swallowed it never gets there.
+	if !recordedEventually(nest.session, "task 2 finished: currency") {
+		t.Fatalf("the conversation never recorded the report that lost the race; it holds %#v queued", queuedText(nest.session))
 	}
+}
+
+// recordedEventually answers whether agent's own record holds a message
+// containing text within ten seconds.
+func recordedEventually(agent *Agent, text string) bool {
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
+		for _, message := range agent.snapshot() {
+			if strings.Contains(messageContentText(message), text) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // AND THE DELIVERY THAT WINS THAT RACE IS OWED NEWS THE RUNNER STILL READS. A

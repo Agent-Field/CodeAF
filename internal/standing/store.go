@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -338,38 +339,146 @@ func (s *Store) Log(id, line string) error {
 	return file.Close()
 }
 
-// newRunDir makes the next numbered folder under the item's runs/, zero-padded
-// so the folders sort the way they happened.
+// runCounterFile is where an item records the last run number it minted,
+// beside its runs/ folder rather than in it, so nothing that walks the runs
+// ever meets it.
+const runCounterFile = "last-run"
+
+// RunName is the folder name of run number n: zero-padded to six places, so a
+// listing sorts the way the runs happened for the first million of them. The
+// width is for people reading a listing; this package never trusts it, and
+// orders runs by their number ([newestFirst]), so a folder named by the older
+// four-place format sits in its right place beside the newer ones.
+func RunName(n int) string { return fmt.Sprintf("%06d", n) }
+
+// newRunDir mints the item's next run number and makes its folder.
+//
+// A RUN NUMBER IS MINTED ONCE AND NEVER REUSED (the scale audit's law L8,
+// finding F7). It used to be the highest folder on disk plus one — so when the
+// sweep reaped the newest run for coming to nothing, the next firing was given
+// its number, and the ledger's run path, the item's last run, a retry's
+// "supersedes" and a journal's cause could each name a different firing than
+// the one they were written about. The number now comes from the item's own
+// counter, advanced under the item's lock and written durably BEFORE the folder
+// is made: a crash between the two skips a number, and never hands one out
+// twice.
 func (s *Store) newRunDir(id string) (string, error) {
 	runs := s.RunsDir(id)
 	if err := os.MkdirAll(runs, 0o700); err != nil {
 		return "", err
 	}
+	var path string
+	err := s.underItemLock(id, func() error {
+		last, err := s.lastMinted(id)
+		if err != nil {
+			return err
+		}
+		// A folder that already exists is a run made by a process that died
+		// before its counter was written, so its number is passed over rather
+		// than trampled.
+		for next := last + 1; next <= last+64; next++ {
+			if err := writeAtomic(filepath.Join(s.ItemDir(id), runCounterFile), []byte(strconv.Itoa(next)+"\n")); err != nil {
+				return err
+			}
+			candidate := filepath.Join(runs, RunName(next))
+			if err := os.Mkdir(candidate, 0o700); err == nil {
+				path = candidate
+				return nil
+			} else if !os.IsExist(err) {
+				return err
+			}
+		}
+		return errors.New("standing: cannot make a run folder")
+	})
+	return path, err
+}
+
+// lastMinted is the last run number the item minted. An item made before the
+// counter existed has none, and its highest folder on disk is where the
+// counter starts — the one time that folder is read for a number.
+func (s *Store) lastMinted(id string) (int, error) {
+	raw, err := os.ReadFile(filepath.Join(s.ItemDir(id), runCounterFile))
+	if err == nil {
+		last, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if err != nil || last < 0 {
+			return 0, fmt.Errorf("standing: the run counter of %s is unreadable", id)
+		}
+		return last, nil
+	}
+	if !os.IsNotExist(err) {
+		return 0, err
+	}
+	names, err := runFolders(s.RunsDir(id))
+	if err != nil || len(names) == 0 {
+		return 0, err
+	}
+	number, _ := runNumber(names[0])
+	return number, nil
+}
+
+// runFolders answers the run folders under runs, newest first.
+func runFolders(runs string) ([]string, error) {
 	entries, err := os.ReadDir(runs)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	highest := 0
+	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		number := 0
-		if _, err := fmt.Sscanf(entry.Name(), "%d", &number); err != nil {
-			continue
-		}
-		if number > highest {
-			highest = number
+		if _, ok := runNumber(entry.Name()); ok && entry.IsDir() {
+			names = append(names, entry.Name())
 		}
 	}
-	// A folder that already exists is a run somebody made between the read and
-	// the make, so the next number is tried rather than trampled.
-	for attempt := highest + 1; attempt <= highest+64; attempt++ {
-		path := filepath.Join(runs, fmt.Sprintf("%04d", attempt))
-		if err := os.Mkdir(path, 0o700); err == nil {
-			return path, nil
-		} else if !os.IsExist(err) {
-			return "", err
-		}
+	newestFirst(names)
+	return names, nil
+}
+
+// newestFirst orders run folder names by their NUMBER, highest first. A string
+// sort put "9999" ahead of "10000", so past ten thousand runs the recovery
+// window read the oldest records as the newest (F7).
+func newestFirst(names []string) {
+	sort.SliceStable(names, func(i, j int) bool {
+		a, _ := runNumber(names[i])
+		b, _ := runNumber(names[j])
+		return a > b
+	})
+}
+
+// runNumber reads a run folder's number off its name.
+func runNumber(name string) (int, bool) {
+	number, err := strconv.Atoi(name)
+	return number, err == nil && number > 0
+}
+
+// UnlessStopped runs act under the item's own flock — the lock a person's stop
+// is written under ([Store.SetStatus]) — and only while the item is not
+// stopped, answering whether it was.
+//
+// A CONTROL IS RECHECKED WHERE THE EFFECT HAPPENS (the scale audit's law L2).
+// Asked once before a firing's last acts, a stop that landed between the
+// question and the act was missed, and the report of a stopped item was still
+// published. Under the one lock both take, a stop lands either before the act,
+// which then does not happen, or after it, which then already has. An item the
+// store does not hold is not stopped: nobody could have said stop to it.
+// NO MODEL OR NETWORK CALL MAY RUN INSIDE act.
+func (s *Store) UnlessStopped(id string, act func() error) (stopped bool, err error) {
+	if err := checkID(id); err != nil {
+		return false, err
 	}
-	return "", errors.New("standing: cannot make a run folder")
+	err = s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err == nil && current.Status == StatusRetired {
+			stopped = true
+			return nil
+		}
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		return act()
+	})
+	return stopped, err
 }
 
 // now is the store's clock. It is a field rather than a call to time.Now so a
@@ -462,6 +571,12 @@ func (s *Store) takeTickLock() (func(), error) {
 	}, nil
 }
 
+// writeAtomic replaces path whole: a unique temporary file in the same
+// folder, synced, renamed over it, and the folder synced after (the scale
+// audit's law L4). The syncs are what make "written" survive a power cut: a
+// rename that reached the disk ahead of its file's bytes comes back as an
+// empty document, and a run counter that comes back older than the folders
+// it numbered would hand a number out twice.
 func writeAtomic(path string, data []byte) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
@@ -477,10 +592,30 @@ func writeAtomic(path string, data []byte) error {
 		temporary.Close()
 		return err
 	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+// syncDir makes a rename inside dir durable. A filesystem that cannot sync a
+// folder (some refuse to open one for it) has nothing more to offer, and the
+// rename itself stands.
+func syncDir(dir string) error {
+	folder, err := os.Open(dir)
+	if err != nil {
+		return nil
+	}
+	defer folder.Close()
+	_ = folder.Sync()
+	return nil
 }
 
 // newID is 16 random hex characters, the same shape and the same reasoning as a

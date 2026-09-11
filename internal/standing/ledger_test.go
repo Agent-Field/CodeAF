@@ -184,10 +184,21 @@ func TestRunsSinceIsEmptyWithNothingToCount(t *testing.T) {
 	}
 }
 
+// drainNow stages an inbox and consumes it in the same breath, for a test
+// whose reader has nothing to record first.
+func drainNow(sessionDir string) ([]Note, error) {
+	stage, err := StageInbox(sessionDir)
+	if err != nil {
+		return nil, err
+	}
+	stage.Commit()
+	return stage.Notes, nil
+}
+
 func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	sessionDir := filepath.Join(t.TempDir(), "sessions", "0123456789abcdef")
 
-	notes, err := Drain(sessionDir)
+	notes, err := drainNow(sessionDir)
 	if err != nil {
 		t.Fatalf("an absent inbox is not a failure: %v", err)
 	}
@@ -208,7 +219,7 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 		t.Fatalf("the inbox was not written: %v", err)
 	}
 
-	notes, err = Drain(sessionDir)
+	notes, err = drainNow(sessionDir)
 	if err != nil {
 		t.Fatalf("drain: %v", err)
 	}
@@ -227,11 +238,45 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	if _, err := os.Stat(InboxPath(sessionDir)); !os.IsNotExist(err) {
 		t.Fatalf("the inbox is still there after a drain: %v", err)
 	}
-	notes, err = Drain(sessionDir)
+	notes, err = drainNow(sessionDir)
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("a second drain answered %d notes and %v", len(notes), err)
 	}
 	if entries, err := os.ReadDir(sessionDir); err != nil || len(entries) != 0 {
 		t.Fatalf("the drain left %v behind (%v)", entries, err)
+	}
+}
+
+// F2, CONSUME AFTER COMMIT. A reader killed after it staged the inbox and
+// before it recorded the fold left a staged file that no later drain read:
+// the notes in it were gone for good. The next open reads it, and nothing is
+// consumed until the reader commits.
+func TestAnInboxStagedBeforeACrashIsReadAtTheNextOpen(t *testing.T) {
+	sessionDir := t.TempDir()
+	now := time.Date(2026, 9, 10, 22, 0, 0, 0, time.UTC)
+	if err := Deliver(sessionDir, Note{At: now, ItemID: "aaaaaaaaaaaaaaaa", Kind: "landed", Text: "report updated"}); err != nil {
+		t.Fatal(err)
+	}
+	// The first open stages it, and is killed before it records anything.
+	first, err := StageInbox(sessionDir)
+	if err != nil || len(first.Notes) != 1 {
+		t.Fatalf("the first open staged %+v (%v)", first.Notes, err)
+	}
+	// A note arriving meanwhile starts a fresh inbox.
+	if err := Deliver(sessionDir, Note{At: now.Add(time.Minute), ItemID: "aaaaaaaaaaaaaaaa", Kind: "said", Text: "and again"}); err != nil {
+		t.Fatal(err)
+	}
+	// The next open finds both: the one the dead reader staged, and the new one.
+	again, err := StageInbox(sessionDir)
+	if err != nil || len(again.Notes) != 2 || again.Notes[0].ID != first.Notes[0].ID || again.Notes[1].Text != "and again" {
+		t.Fatalf("the next open read %+v (%v)", again.Notes, err)
+	}
+	// Committed, they are consumed, and a third open is empty.
+	again.Commit()
+	if last, err := StageInbox(sessionDir); err != nil || len(last.Notes) != 0 {
+		t.Fatalf("a committed inbox was read again: %+v (%v)", last.Notes, err)
+	}
+	if entries, _ := os.ReadDir(sessionDir); len(entries) != 0 {
+		t.Fatalf("a committed stage left %v behind", entries)
 	}
 }

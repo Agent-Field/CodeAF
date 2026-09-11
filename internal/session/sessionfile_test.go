@@ -132,8 +132,17 @@ func TestSessionFileRoundTrip(t *testing.T) {
 		t.Fatalf("journal holds %d call lines of the conversation's own, want one per answered request (2)",
 			called-errands)
 	}
+	// AND WHAT CONTEXT THE TURN WAS GIVEN is a fact about the session too: the
+	// context trace records each selection and each return beside the messages
+	// (context_trace.go), and those lines are counted here for the same reason.
+	exposures := 0
+	for _, line := range lines {
+		if strings.Contains(line, `"type":"context_exposure"`) {
+			exposures++
+		}
+	}
 	// system is never journaled: it is rendered fresh on every open.
-	if got, want := len(lines)-titles-used-called, 1+len(want)-1; got != want {
+	if got, want := len(lines)-titles-used-called-exposures, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }

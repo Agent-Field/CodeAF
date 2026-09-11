@@ -817,6 +817,11 @@ type Spend struct {
 // when the conversation's window is not open, and drained into one "while you
 // were away" fold the next time it is.
 type Note struct {
+	// ID names this one note for as long as it waits, so a reader that takes
+	// it twice — once before a crash, once after — can tell it already has it
+	// ([StagedInbox]). A note written before ids existed is given one read off
+	// its own line.
+	ID     string    `json:"id,omitempty"`
 	At     time.Time `json:"at"`
 	ItemID string    `json:"item"`
 	Words  string    `json:"words"`
@@ -855,8 +860,9 @@ type Outcome struct {
 	// Published is the receipt for the report the runner wrote, when the item
 	// has one ([Action.Report]) and the firing came to something to publish.
 	Published *Publication
-	// Withheld is the code of the one reason the runner did not publish the
-	// report ([Occurrence.Withheld]); "" when it published, or keeps none.
+	// Withheld is the code of the one reason the run did not come back clean
+	// ([Occurrence.Withheld]) — for an order that keeps a report, why it was not
+	// published; "" for a run that did.
 	Withheld string
 }
 

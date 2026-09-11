@@ -423,7 +423,7 @@ func TestTheAnswerFileIsOneLinePerAnswer(t *testing.T) {
 		t.Fatal("the answer carries no stamp")
 	}
 
-	answers, err := DrainAnswers(dir)
+	answers, err := DrainAnswers(dir, nil)
 	if err != nil {
 		t.Fatalf("draining: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestTheAnswerFileIsOneLinePerAnswer(t *testing.T) {
 		t.Fatalf("the drain answered %+v", answers)
 	}
 	// And a folder with nothing on its doorstep is an empty answer, not a fault.
-	again, err := DrainAnswers(dir)
+	again, err := DrainAnswers(dir, nil)
 	if err != nil || len(again) != 0 {
 		t.Fatalf("a second drain answered %+v, %v", again, err)
 	}

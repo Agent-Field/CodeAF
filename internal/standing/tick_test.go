@@ -432,7 +432,7 @@ func TestTickRunsATaskInItsOwnNumberedFolder(t *testing.T) {
 	if len(runner.runDirs) != 1 {
 		t.Fatalf("the run folders are %v", runner.runDirs)
 	}
-	if want := filepath.Join(store.RunsDir(made.ID), "0001"); runner.runDirs[0] != want {
+	if want := filepath.Join(store.RunsDir(made.ID), RunName(1)); runner.runDirs[0] != want {
 		t.Fatalf("the run folder is %q, wanted %q", runner.runDirs[0], want)
 	}
 	if info, err := os.Stat(runner.runDirs[0]); err != nil || !info.IsDir() {
@@ -458,7 +458,7 @@ func TestTickRunsATaskInItsOwnNumberedFolder(t *testing.T) {
 	if pass := mustTick(t, newTicker(store, runner, again)); pass.Fired != 1 {
 		t.Fatalf("the second firing is %+v", pass)
 	}
-	if want := filepath.Join(store.RunsDir(made.ID), "0002"); runner.runDirs[1] != want {
+	if want := filepath.Join(store.RunsDir(made.ID), RunName(2)); runner.runDirs[1] != want {
 		t.Fatalf("the second run folder is %q, wanted %q", runner.runDirs[1], want)
 	}
 }

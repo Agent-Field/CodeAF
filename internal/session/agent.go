@@ -2281,9 +2281,13 @@ func (a *Agent) markTurnTruncated() {
 }
 
 // turnDone is the event that ends a turn: its usage, and whether its last
-// answer was cut at the output limit ([Event.Truncated]). EVERY TURN THAT ENDS
-// THROUGH THE MODEL LOOP ENDS THROUGH THIS, so the stream says what the flag
-// says.
+// answer was cut at the output limit ([Event.Truncated]). EVERY TURN THAT
+// COMPLETES ends through this — the ten completion sites in the loop, the
+// checkpoint, the harness, the image and process-rule roads — so the event is a
+// snapshot of the flag at the turn's end. A turn that ends on an error ends
+// with [EventError] instead, which a standing run's reader treats as a cut
+// (standing_run.go), and a design room's milestone is a stream of its own
+// (harness_task.go).
 func (a *Agent) turnDone(usage Usage) Event {
 	return Event{Kind: EventTurnDone, Usage: usage, Truncated: a.turnTruncated()}
 }
@@ -2893,7 +2897,14 @@ func (a *Agent) settleDeliveries() {
 	a.mu.Lock()
 	settling := a.settling
 	a.settling = nil
+	file := a.file
 	a.mu.Unlock()
+	// A SENDER IS TOLD ONLY WHAT THE DISK HOLDS. Settling may consume the file
+	// the news came from (standing_run.go's [Agent.drainStandingInbox]), so the
+	// record it points at is synced first (the scale audit's F4).
+	if len(settling) > 0 {
+		file.sync()
+	}
 	for _, delivery := range settling {
 		if delivery.settled != nil {
 			delivery.settled()
