@@ -8,7 +8,7 @@ invalidates:
   - "`/spend` took no argument and opened the place alone. Words after it pick a lens, a window, or write a JSON export of the current window's priced lines beside the usage ledger."
   - "A day on the spend place was never a door. On the `days` lens, `enter` drills into that day's `rhythm` window — priced or quiet — and `esc` returns to `days` on the day you left."
   - "`/spend month` is the current calendar month (one month bucket from the 1st), not the last thirty days."
-  - "The active lens is named on the spend place's head row (`rhythm · …`); the foot only says `[ ] lenses`."
+  - "The active lens is named on the spend place's head row (`rhythm · …`); the foot says `[ ] lenses · ] <next>` so the next lens is named, not only the keys."
   - "The model picker ranked the catalog with no memory of what you had paid. Every door onto it (`/model`, Providers, task model, home draft, composer) now draws `used lately` above `all models` when the fortnight ledger has priced rows, and a dim chip `this fortnight $12 · 2.1M` on those rows (absent when unused)."
   - "`/model` (and the status model word) used to be bottom chrome — a filter box in the draft's place with a short list under it. It is a framed sheet over a faded conversation now: title `choose model` (or `choose task model`), filter inside the sheet, `esc · cancel` on the foot, the same covering grammar as the context chooser. Settings, home and the composer still embed the same picker type in their bodies."
   - "`/model used` was not a filter. It opens the same picker already narrowed to models this machine has run in the last fortnight; `used` is a filter word, not a refuse of bare `/model <slug>`."

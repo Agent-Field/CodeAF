@@ -912,7 +912,7 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
+filter · fast · cheap · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
 and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a

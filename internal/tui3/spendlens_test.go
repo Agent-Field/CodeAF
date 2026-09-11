@@ -299,6 +299,9 @@ func TestSpendLensNamedOnTheHead(t *testing.T) {
 		if !strings.Contains(foot, spendLensWord) {
 			t.Fatalf("%s foot dropped the cycle keys: %q", lens.word(), foot)
 		}
+		if !strings.Contains(foot, "] "+lens.next().word()) {
+			t.Fatalf("%s foot does not name the next lens: %q", lens.word(), foot)
+		}
 	}
 }
 

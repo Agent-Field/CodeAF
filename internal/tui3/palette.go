@@ -1787,14 +1787,14 @@ func (a *app) cycleReasoning() {
 // is WHOLE where the door offers no refresh and gives up exactly `enter · esc`
 // where it does — the refresh key earned its fourteen cells from the two verbs
 // nobody has to be taught, the way the fold earned its seven.
-const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
+const pickerHint = "filter · fast · cheap · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
 // spellings one (the one-source-of-truth law: a constant read by a person and a
 // list read by the fitter would otherwise drift).
 var pickerHintFields = []rowField{
-	rowSay("filter"), rowSay("↑↓"), rowSay("→ lanes"),
+	rowSay("filter"), rowSay("fast"), rowSay("cheap"), rowSay("↑↓"), rowSay("→ lanes"),
 	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
 }
 

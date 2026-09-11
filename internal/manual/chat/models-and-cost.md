@@ -142,7 +142,7 @@ remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
+`filter · fast · cheap · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
 
 There is no mouse commit on the picker's rows.
 
@@ -2045,7 +2045,8 @@ What you are reading is one of four **lenses**, named on the head row:
 | `year` | a year heatmap with streak, peak and favorite when those exist |
 
 Press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The foot names
-`[ ] lenses` when it has the cells.
+`[ ] lenses · ] models` (the next lens) when it has the cells — so rhythm, which looks
+like today's familiar bill, still tells you where `]` goes.
 
 **`enter` on a day** (the `days` lens) opens that day's `rhythm` window. `esc` returns
 to `days` on the day you left.

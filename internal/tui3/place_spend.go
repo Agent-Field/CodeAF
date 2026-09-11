@@ -865,8 +865,23 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
-	spendLensWord   = "[ ] lenses"
+	// spendLensWord is the FOOT's cycle clause. It used to say only `[ ] lenses`,
+	// which named the keys and hid the destination — people stood on rhythm
+	// (today's arrival, which looks like the old page) and never found models /
+	// days / year. Naming the NEXT lens is one short clause, not a tab strip.
+	spendLensWord = "[ ] lenses"
 )
+
+// spendLensHint is the foot clause for the lens cycle: `[ ] lenses · ] models`
+// on rhythm, and the same shape for every other lens. The head already names
+// the ACTIVE lens; the foot names the door out.
+func spendLensHint(lens spendLens) string {
+	next := lens.next().word()
+	if next == "" {
+		return spendLensWord
+	}
+	return spendLensWord + " · ] " + next
+}
 
 // hint is the foot, assembled from the clauses that are TRUE of the row under
 // the cursor and of the window this frame is drawing.
@@ -887,10 +902,10 @@ func (placeSpend) hint(a *app) string {
 	// over a whisper with nothing behind it, which advertised a key that moved
 	// nothing a person could see.
 	if a.spend.held || !a.spend.reading.empty() {
-		// THE LENS WORD LIVES ON THE HEAD ROW (paintLens). The foot only names
-		// the cycle keys, so the asker's word is said once — never as a second
-		// tab strip on the foot as well (docs/design/spend-lenses/DESIGN.md).
-		parts = append(parts, spendLensWord)
+		// THE ACTIVE LENS IS ON THE HEAD. The foot names the cycle keys and the
+		// next lens, so a person on rhythm (today's arrival) is told `] models`
+		// rather than guessing what `[ ] lenses` opens.
+		parts = append(parts, spendLensHint(a.spend.lens))
 		if a.spend.lens == spendLensModels {
 			parts = append(parts, spendGroupKeyWord, spendSortHeadWord)
 		}

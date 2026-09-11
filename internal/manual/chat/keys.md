@@ -1483,7 +1483,7 @@ have typed — with anything to step over, they move the caret through the filte
 instead. `tab` always opens and closes. With the lanes open, `enter` on one of them pins
 it instead of switching model.
 
-Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`;
+Its placeholder reads exactly `filter · fast · cheap · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`;
 on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
 cursor: `→ lanes · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
 lanes — with `tab lanes` and `tab back` in place of the arrows while there is typed text the
