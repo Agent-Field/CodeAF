@@ -102,11 +102,20 @@ type trailNews struct {
 	said     bool
 }
 
-// trailCall is one request as the trail last heard it, and whether its going
-// out has been written down — a request parked on a provider's pacing before
-// it ever reached the wire has said something and has not yet begun.
+// trailCall is one request as the trail last heard it, and what the record owes
+// about it: whether its going out has been written down — a request parked on a
+// provider's pacing before it ever reached the wire has said something and has
+// not yet begun — when the FIRST of its attempts went out, and how many times it
+// has moved to another machine since.
+//
+// THE FIRST MOMENT IS KEPT BECAUSE THE LAST ONE MOVES. A request that is refused
+// and walks reports a later [provider.CallProgress.Started], which is right for
+// the row — the wait a person is sitting through began again — and wrong for the
+// record, where the question's own length is what an autopsy asks for.
 type trailCall struct {
 	last  provider.CallProgress
+	first time.Time
+	hops  int
 	begun bool
 }
 
@@ -235,16 +244,37 @@ func (t *callTrail) run() {
 	}
 }
 
-// hear folds one moment of one request in, writes down the two ends of it, and
-// puts what is now true on the phase.
+// hear folds one moment of one request in, writes down its two ends, and puts
+// what is now true on the phase.
+//
+// A QUESTION IS MORE THAN ONE REQUEST, AND ONLY THE QUESTION ENDS. The seam says
+// [provider.CallEnded] ONCE, from the door the question returns through, naming
+// the request that ended it (internal/provider's callprogress.go). Every other
+// request the question had out — a rescue racing beside it, an arm the winner
+// cut — is over at that same moment, and nothing else will ever say so about
+// them: so the ending closes all of them, the named one as it really ended and
+// the rest as left.
+//
+// AND A REQUEST THAT WALKS TO ANOTHER MACHINE IS STILL ONE REQUEST TO THE
+// PERSON. A refusal that hops reports [provider.CallStarted] again under the
+// same attempt, with a later moment and no ending in between; the row's clock
+// restarts with it, which is the wait beginning again. The pulse therefore takes
+// no second edge and the journal opens no second line — the worker's own pulse
+// is one pair per question too (loop.go takes it either side of the retry
+// ladder, not inside it) — and what the record keeps instead is how many
+// machines the request took ([journalFlight.Hops]), which is what an autopsy of
+// a long wait asks.
 func (t *callTrail) hear(progress provider.CallProgress) {
 	call := t.calls[progress.Attempt]
 	if progress.Phase == provider.CallEnded {
-		if call != nil && call.begun {
+		// THE ENDING'S OWN COUNTS ARE THE RECORD'S. They are the row as the seam
+		// last held it and never less than the last report a reader was given:
+		// the counts between two frames are held back for the beat, and the
+		// ending is not (internal/provider's callprogress.go).
+		if call != nil {
 			call.last = progress
-			t.landed(call, progress.End)
 		}
-		delete(t.calls, progress.Attempt)
+		t.closeCalls(progress.Attempt, progress.End)
 		t.announce()
 		return
 	}
@@ -252,9 +282,12 @@ func (t *callTrail) hear(progress provider.CallProgress) {
 		call = &trailCall{}
 		t.calls[progress.Attempt] = call
 	}
+	if call.begun && progress.Started.After(call.last.Started) {
+		call.hops++
+	}
 	call.last = progress
 	if !call.begun && !progress.Started.IsZero() {
-		call.begun = true
+		call.begun, call.first = true, progress.Started
 		t.node.beatWriter().began()
 		t.agent.file.appendFlight(journalFlight{
 			Role:    string(t.role),
@@ -266,7 +299,35 @@ func (t *callTrail) hear(progress provider.CallProgress) {
 	t.announce()
 }
 
+// closeCalls writes the end of every request this trail still has open. ending
+// names the one the seam reported an ending for and end is how it ended; every
+// other open request is written down as left, and an ending that names none of
+// them (-1, the errand being over) leaves them all that way.
+func (t *callTrail) closeCalls(ending int, end provider.CallEnd) {
+	for attempt, call := range t.calls {
+		if call.begun {
+			became := provider.CallEndCancelled
+			if attempt == ending {
+				became = end
+			}
+			t.landed(call, became)
+		}
+		delete(t.calls, attempt)
+	}
+}
+
 // landed writes down the other end of one request.
+//
+// TWO CLOCKS, AND EACH IS MEASURED FROM THE MOMENT IT IS ABOUT. The length is
+// the QUESTION'S, from the first attempt that went out — a request that walked
+// to three machines waited for all three — and the first token is the LAST
+// attempt's, because the counts reset when a request moves and a first token
+// measured from a start that was abandoned is a figure about nothing.
+//
+// The end is read off the agent's own clock ([Agent.now]), which is [time.Now]
+// in the product and the one clock a test can move: the seam reports the moments
+// it knows and an ending is not one of them, so this is the only reading of the
+// world this file makes and it goes through the one door.
 func (t *callTrail) landed(call *trailCall, end provider.CallEnd) {
 	p := call.last
 	line := journalFlight{
@@ -276,7 +337,8 @@ func (t *callTrail) landed(call *trailCall, end provider.CallEnd) {
 		Attempt:    p.Attempt,
 		Phase:      string(provider.CallEnded),
 		End:        string(end),
-		DurationMS: time.Since(p.Started).Milliseconds(),
+		Hops:       call.hops,
+		DurationMS: t.agent.now().Sub(call.first).Milliseconds(),
 		Output:     p.Tokens,
 		Reasoning:  p.Reasoning,
 	}
@@ -295,12 +357,7 @@ func (t *callTrail) left() {
 	if len(t.calls) == 0 {
 		return
 	}
-	for attempt, call := range t.calls {
-		if call.begun {
-			t.landed(call, provider.CallEndCancelled)
-		}
-		delete(t.calls, attempt)
-	}
+	t.closeCalls(-1, provider.CallEndCancelled)
 	t.announce()
 }
 
@@ -320,23 +377,25 @@ func (t *callTrail) announce() {
 // question asked twice, and the person is waiting on whichever answers; the arm
 // that has written the most is the best reading there is of which that will be.
 func (t *callTrail) leading() *TaskCall {
-	var best *TaskCall
-	bestAttempt := 0
+	var best provider.CallProgress
+	bestAttempt, found := 0, false
 	for attempt, call := range t.calls {
 		p := call.last
-		drawn := &TaskCall{
-			Model:      p.Model,
-			Served:     p.Served,
-			Started:    p.Started,
-			FirstToken: p.FirstToken,
-			Tokens:     p.Tokens,
-			Reasoning:  p.Reasoning,
-			Phase:      p.Phase,
-		}
-		if best == nil || drawn.Received() > best.Received() ||
-			(drawn.Received() == best.Received() && attempt < bestAttempt) {
-			best, bestAttempt = drawn, attempt
+		had, has := best.Tokens+best.Reasoning, p.Tokens+p.Reasoning
+		if !found || has > had || (has == had && attempt < bestAttempt) {
+			best, bestAttempt, found = p, attempt, true
 		}
 	}
-	return best
+	if !found {
+		return nil
+	}
+	return &TaskCall{
+		Model:      best.Model,
+		Served:     best.Served,
+		Started:    best.Started,
+		FirstToken: best.FirstToken,
+		Tokens:     best.Tokens,
+		Reasoning:  best.Reasoning,
+		Phase:      best.Phase,
+	}
 }

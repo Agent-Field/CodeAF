@@ -900,11 +900,19 @@ type journalTook struct {
 // figures are carried on the end alone, as MILLISECONDS FROM THE START, so the
 // line reads without the one before it; zero is never written, which is the
 // emptiness law on a request that never had a first token.
+//
+// Attempt names WHICH CONCURRENT REQUEST of the question this is — a rescue
+// racing beside the caller's own is its own pair of lines — and Hops how many
+// times this one MOVED to another machine, which is a walk rather than a race
+// and stays one request on the row and one pair of lines here
+// (task_calltrail.go's [callTrail.hear]). Absent on the ordinary request that
+// went out once and was answered where it landed.
 type journalFlight struct {
 	Role         string `json:"role,omitempty"`
 	Model        string `json:"model,omitempty"`
 	Endpoint     string `json:"endpoint,omitempty"`
 	Attempt      int    `json:"attempt,omitempty"`
+	Hops         int    `json:"hops,omitempty"`
 	Phase        string `json:"phase"`
 	End          string `json:"end,omitempty"`
 	FirstTokenMS int64  `json:"firstTokenMs,omitempty"`

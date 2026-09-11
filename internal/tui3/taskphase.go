@@ -131,6 +131,14 @@ func taskPhaseLine(node *taskNode) string {
 // stays on the second row inside the ladder's sentence, because which model was
 // asked is the sentence's to say, and a figure beside a clipped id is two halves
 // of nothing.
+//
+// THE CLOCK HERE IS THE NODE'S OWN AND THE ROOM'S IS THE SURFACE'S, and that is
+// deliberate rather than an oversight. This row is drawn against [app.taskNow],
+// which FREEZES while somebody is standing in the node's room — a number
+// climbing in the corner of the screen is pressure applied to a person who has
+// already gone to look — and the room's own row ([app.roomCallRow]) counts on
+// [app.now], because inside the room the seconds this request has been out are
+// exactly what they went there to see.
 func (a *app) railPhase(node *taskNode, width int) []string {
 	word := taskPhaseLine(node)
 	line := fit(word, width)
@@ -203,6 +211,19 @@ var callPhaseWords = map[provider.CallPhase]provider.Phase{
 // are the model's writing and the bill counts both — the token column's own rule
 // ([modelWrote]). The machine is spelled by [phaseServing], the one place a
 // machine answering is spelled, so it reads the same here as on the status line.
+//
+// IT IS NOT [phaseFields], AND THE TWO DIFFER IN WHAT THEY ARE HANDED RATHER
+// THAN IN WHAT THEY BELIEVE. That function draws the conversation's own turn off
+// a [PhaseNews], which carries a phase's own start and, on a pacing wait, the
+// router's `Retry-After` — so it can say `paced · retry in 6s`, a real moment
+// this build will act at. A request reported through [provider.CallProgress]
+// carries neither: one moment (when it went out) and no deadline at all. So this
+// row says `paced 6s` — how long the park has lasted, which is the only true
+// thing there is to say about it here — and a countdown invented from nothing
+// would be the one thing phase.go's own header refuses. What it keeps that the
+// status line's paced arm drops is the MACHINE, because a task row is otherwise
+// silent: out here a person has the model segment beside the clock, and in a
+// node's row the machine answering is news.
 func (a *app) callFields(call *session.TaskCall, now time.Time) []rowField {
 	phase := callPhaseWords[call.Phase]
 	word := string(phase)

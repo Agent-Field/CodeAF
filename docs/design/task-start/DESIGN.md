@@ -422,9 +422,25 @@ seam, and it turns each moment into the three traces a worker's request already 
 - **The journal.** A new evidence-only line kind, `flight` (`journalFlight`, in
   `sessionfile.go`), is written at both ends of every request on the node's own file.
   The start line carries the role, the model and the arm. The end line adds the machine,
-  how the request ended, the milliseconds to the first token, the milliseconds overall,
-  and the stream's own counts of answer and reasoning. Like `call`, it is never money,
-  and the replay drops it.
+  how the request ended, how many machines the request walked to, the milliseconds to
+  the first token, the milliseconds overall, and the stream's own counts of answer and
+  reasoning. Like `call`, it is never money, and the replay drops it.
+
+  **A question is more than one request, and the seam says so.** internal/provider
+  reports `CallEnded` once per question, naming the request that ended it; a request
+  that is refused and walks to another machine reports `CallStarted` again under the
+  same attempt, with a later moment and no ending in between. The trail follows that
+  shape: a walk keeps one pair of lines and one pulse edge (as a worker's own retry
+  ladder does, `loop.go` taking the pulse either side of it and not inside it) and is
+  recorded as `hops`; the question's ending closes every request it had out, the named
+  one as it ended and the rest as left. The row's clock restarts on a walk, because the
+  wait really did begin again, while the end line's length is the question's own, from
+  its first attempt.
+
+  **The only reading of the world's clock** in the trail is the moment a request came
+  back, and it goes through the agent's one clock door (`Agent.now`, `Config.clock` —
+  which is what the checking window has always been measured against), so a test can pin
+  a 219-second reading without waiting for one.
 - **The phase.** The live request rides the phase notice the node already sends
   (`TaskPhaseNotice.Call`, a `TaskCall`), beside the ladder's sentence in `Text`. The
   rail, the room and a hosted window already fold that event whole, so all three draw it
@@ -467,7 +483,7 @@ the page saying nothing was happening while something was.
 
 | Where | Source |
 | --- | --- |
-| Local rail and room | `EventTaskPhase` on the standing task lane |
+| Local rail and room | `EventTaskPhase` on the standing task lane. The rail draws against `app.taskNow`, which freezes while somebody is in the room; the room draws against `app.now` |
 | Hosted (`--host`) rail and room | the same event, which `internal/remote`'s task lane carries whole as JSON (`TaskCall` carries no error, so it survives the wire) |
 | Another conversation's work opened as a guest | Nothing. Its phase is not drawn today (`tookGuestNotice` ignores phases), and the journal's `flight` lines are the record it could read |
 | An outside reader | the pulse file |
