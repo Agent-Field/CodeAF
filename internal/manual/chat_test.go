@@ -52,6 +52,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
+		// An answer is a message now (docs/design/questions/DESIGN.md), and the
+		// three things that fall out of it are asked in the words somebody
+		// reaches for: the work going on around a question, changing their mind
+		// afterwards, and a clock that went with the recommendation.
+		{"can you keep working while I decide", "questions"},
+		{"can I change my answer", "questions"},
+		{"why did it go with the recommended answer", "questions"},
+		// And the two a person asks the moment they regret a yes: one about the
+		// permission itself, one about the key that hands it back.
+		{"how do I take back a permission I allowed", "permissions"},
+		{"how do I stop the countdown on a question", "questions"},
 		// The two marks a question can open with that are NOT the amber `?`, and
 		// the countdown that goes with one of them. Somebody meeting either has
 		// no name for it and describes the shape, so both are asked that way.

@@ -56,6 +56,11 @@ var wakeRoads = map[string]string{
 		"and nobody else — a worker's turns are its runner's to start ([Agent.wakeLocked] " +
 		"declines inside a task) — so it never reaches the wake a person would have to be " +
 		"there for, and it is marked as the session's own words rather than as theirs",
+	"answerNote": "THE ANSWER TO A QUESTION THIS SESSION PUT, delivered when no call is parked " +
+		"on it (asklane.go). It is the one wake that cannot be addressed to nobody: it exists " +
+		"because somebody answered — a key on a screen, or the dial they set for this shape of " +
+		"question — so the person the sentence is for has just been there by construction, and " +
+		"what it says is their own decision read back",
 	"postTaskMessage": "THE ONE THAT MATTERED, and the seam both roads into a landed node's " +
 		"news take ([Agent.deliverTaskNote] announces the ending, " +
 		"[Agent.bubbleUnverifiedChildren] re-addresses what is still owed). The note is built " +

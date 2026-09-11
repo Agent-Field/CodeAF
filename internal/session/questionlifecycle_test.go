@@ -121,7 +121,7 @@ func TestARatifyIsShownAndWaitsOnNobody(t *testing.T) {
 		t.Fatalf("ResolveQuestion: %v", err)
 	}
 	waitForAsk(t, asks, EventQuestionAnswered)
-	if note := waitForNote(t, agent, askAnsweredLead); !strings.Contains(note, "put it back") {
+	if note := waitForNote(t, agent, askAnsweredWord); !strings.Contains(note, "put it back") {
 		t.Fatalf("the answer did not reach the model: %q", note)
 	}
 	if records, _ := ReadDecisions(dir); len(records) != 1 {
@@ -170,7 +170,7 @@ func TestAskingBackLeavesTheQuestionOpenAndTheAnswerArrivesLater(t *testing.T) {
 		t.Fatalf("ResolveQuestion: %v", err)
 	}
 	waitForAsk(t, asks, EventQuestionAnswered)
-	if note := waitForNote(t, agent, askAnsweredLead); !strings.Contains(note, "jsonl") {
+	if note := waitForNote(t, agent, askAnsweredWord); !strings.Contains(note, "jsonl") {
 		t.Fatalf("the answer never reached the model: %q", note)
 	}
 	if len(agent.OpenQuestions()) != 0 {

@@ -93,7 +93,7 @@ const steerTookTheQuestion = "took this instead of the question"
 // for the caller to say out loud once the lock is down.
 //
 // The ending itself belongs to [askedOfThePerson] and not to this file — it is
-// one of the three a parked ask has, beside the answer and the let-go, and it is
+// one of the endings an ask has, beside the answer and the let-go, and it is
 // written there with them (askwait.go).
 //
 // ── IT CLAIMS THE WORDS IN THE SAME BREATH AS THE WAIT ──

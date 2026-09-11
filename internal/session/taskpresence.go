@@ -716,6 +716,39 @@ func (a *Agent) presenceAskingQuestion(q Question) func() {
 	}
 }
 
+// presenceRestateQuestion writes one question at the desk again because a fact
+// ON it changed — today, its clock stopping ([Agent.holdAsk]).
+//
+// IT REPLACES THE ROW RATHER THAN ADDING ONE, and it is a replacement rather
+// than a withdrawal and a fresh raise because the question is the same question:
+// another window reading this file must see the countdown go, not see the
+// question disappear and come back. A row nobody banked is not created here —
+// there is nothing to restate about a question this desk was never told about.
+func (a *Agent) presenceRestateQuestion(q Question) {
+	desk := a.presence
+	if desk == nil {
+		return
+	}
+	found := false
+	desk.mu.Lock()
+	for at, ask := range desk.asks {
+		if ask.question.Kind != q.Kind || ask.question.ID != q.ID {
+			continue
+		}
+		restated := ask.question
+		restated.Options = q.Options
+		restated.Text = strings.TrimSpace(q.Head)
+		restated.Full = &q
+		desk.asks[at].question = restated
+		found = true
+		break
+	}
+	desk.mu.Unlock()
+	if found {
+		a.nudgePresence()
+	}
+}
+
 // beat is the heartbeat: one write now, one on every nudge, one on every tick,
 // and a removal on the way out.
 //
@@ -933,7 +966,10 @@ func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
 	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
 	// session stopped on a question telling every other window it was `working`.
-	// [Agent.asked] is what the `ask` tool blocks its turn on (askwait.go);
+	// [Agent.asked] is the lane's book of what the model has asked (askwait.go),
+	// and the half of it that BLOCKS is what belongs here
+	// ([askedOfThePerson.anyLocked]): a question the asker said its turn would
+	// not wait for is a conversation that is working, not one waiting on you;
 	// the desk already carries the whole question beside it
 	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
 	// only this predicate that did not know to look. Measured in two terminals

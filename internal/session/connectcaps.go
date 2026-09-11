@@ -361,23 +361,28 @@ func (a *Agent) serviceName(service string) string {
 // message is refusing one message; taking a capability away for good is a
 // decision with its own control, on a page they can see, and it should not be a
 // side effect of a keystroke in a prompt.
-func (a *Agent) rememberCapability(tool string, args json.RawMessage, allow bool) bool {
+func (a *Agent) rememberCapability(tool string, args json.RawMessage, allow bool) (grantMade, bool) {
 	if !allow || a.connect == nil {
-		return false
+		return grantMade{}, false
 	}
 	service := a.serviceOf(tool)
 	if service == "" {
-		return false
+		return grantMade{}, false
 	}
 	capability := a.capabilityOf(service, tool, args)
 	if capability == "" {
-		return false
+		return grantMade{}, false
 	}
 	if err := a.connect.SetCapabilityState(service, capability, connect.StateYes); err != nil {
 		// The answer could not be written down. The call it was given for still
 		// runs — that is what the person just said — and the memo takes the
 		// standing half of it for this session rather than losing it entirely.
-		return false
+		return grantMade{}, false
 	}
-	return true
+	// IT ANSWERS WHAT IT WROTE, not merely that it wrote. Taking a permission
+	// back needs the same two names this used to leave the account on, and
+	// working them out a second time from the arguments would be a second
+	// reading of [Agent.capabilityOf] that could disagree with this one — the
+	// revision has no arguments to read.
+	return grantMade{service: service, capability: capability}, true
 }

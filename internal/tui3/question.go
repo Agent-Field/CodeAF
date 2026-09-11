@@ -289,6 +289,11 @@ type questionShown struct {
 	// stopping that clock is a call over a connection, which is a lane's
 	// business and not a renderer's (task.go's [app.holdTask]).
 	held func()
+	// revising says this question is on the block for the SECOND time, because
+	// somebody pressed `c change` on its receipt. The answer it takes carries
+	// [session.Answer.Revises], which is what tells the engine a decision is
+	// being changed rather than answered late (questionchange.go).
+	revising bool
 	// clockAt is when the reading time on this question started and clockFor how
 	// long it runs; clockHeld says it has stopped for good.
 	//
@@ -341,6 +346,12 @@ type questionRecord struct {
 	// says `cannot change` instead, and the engine's own [session.
 	// DecisionRecord.Line] already writes that half.
 	reversible bool
+	// question is what was asked, kept so that `c change` can put it back on the
+	// block with its answers exactly as they were read the first time
+	// (questionchange.go). The record alone carries the head and the keys and
+	// not the words on the answers nobody picked, which is what somebody
+	// changing their mind is choosing between.
+	question session.Question
 }
 
 // ── what is open, and which one is drawn ────────────────────────────────────
@@ -449,6 +460,14 @@ func (a *app) raiseQuestion(q questionShown) {
 	// in the key table, a paragraph in the manual, and a key no ratify line ever
 	// drew ([questionUndoable] holds the reading).
 	q.undoable = q.undoable || questionUndoable(q.question)
+	// AND A CLOCK THAT ANSWERS IS STOPPED WHERE IT RUNS, which is in the engine.
+	// The hook is attached here, once, off the question's own properties rather
+	// than by each lane remembering to set one: a question that says it will take
+	// its own pick at a deadline is a question whose clock a key must be able to
+	// stop ([app.holdQuestionClocks] calls this for every key the block reads).
+	if q.held == nil {
+		q.held = a.questionHold(q.question)
+	}
 	q.holes = newQuestionInput(q.question)
 	for i := range a.questions {
 		if a.questions[i].token() != q.token() {
@@ -889,6 +908,9 @@ func (a *app) questionRows(width int) []string {
 		out = append(out, a.questionLineRows(head, width)...)
 	}
 	a.shiftQuestionMarks(base)
+	if aside := a.questionClockAside(head, width); aside != "" {
+		out = append(out, aside)
+	}
 	if more := len(a.questionOpen()) - 1; more > 0 {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
@@ -912,6 +934,35 @@ func (a *app) shiftQuestionMarks(by int) {
 		a.questionBands[i].row += by
 	}
 }
+
+// questionClockAside is the dim line under a question whose clock will ANSWER
+// it, and it is there because the tail above says what is about to happen
+// without saying what a person can do about it.
+//
+// BOTH HALVES ARE THE THING SOMEBODY WATCHING A COUNTDOWN WANTS TO KNOW. Any key
+// stops it — literally any, because [app.holdQuestionClocks] runs on every key
+// the block reads — and a pick the clock takes is provisional: the receipt it
+// leaves offers `c change`, and the model is told in so many words that the
+// answer may still change (session's `askProvisionalNote`). A countdown nobody
+// can stop and nobody can walk back is the shape this program must never have
+// (F41), so the row says it is neither.
+//
+// IT IS ONLY DRAWN WHILE THE CLOCK IS REALLY RUNNING. A held one says `paused`
+// in the tail and has nothing left to stop; a question with no clock at all
+// would be told about a key that does nothing.
+func (a *app) questionClockAside(head questionShown, width int) string {
+	if !questionClockAnswers(head.question) {
+		return ""
+	}
+	if head.question.Deadline.Sub(a.now()) <= 0 {
+		return ""
+	}
+	return a.pal.dim(fit("  "+questionClockAsideWord, width))
+}
+
+// questionClockAsideWord is that line, spelled once because the manual quotes it
+// and the tmux suite waits for it.
+const questionClockAsideWord = "any key stops the clock · you can still change the answer afterwards"
 
 // questionForm is which of the three forms this block draws one question in.
 //
@@ -2030,6 +2081,15 @@ const (
 // questionClockWord is that tail without the separator that joins it to a line
 // of words.
 func (a *app) questionClockWord(q questionShown) string {
+	if q.question.Policy.Kind == session.PolicyRecommendThenAuto && q.question.Deadline.IsZero() {
+		// A CLOCK THAT WOULD HAVE ANSWERED AND HAS NO DEADLINE LEFT IS PAUSED,
+		// and it says so rather than falling back to `waiting`. The deadline is
+		// the one source of truth for the countdown (session's [Agent.holdAsk]
+		// clears it when a key stops the clock), so a question that still says it
+		// would take its own pick and no longer says when is a question somebody
+		// is reading.
+		return questionPausedWord
+	}
 	if q.question.Policy.Kind != session.PolicyRecommendThenAuto || q.question.Deadline.IsZero() {
 		return a.questionHeldWord(q)
 	}
@@ -2346,9 +2406,17 @@ func (a *app) questionRecordRow(record questionRecord, width int) string {
 // never given up and never counted against the record's own words.
 func (a *app) questionReceiptLine(record questionRecord, width int) string {
 	const lead = "  decided "
+	// WHAT IS OFFERED IS WHAT THE KEY WILL DO, asked of the same two readings the
+	// keys ask (questionchange.go): `c change` puts the question back, and
+	// `u undo` hands back a permission that granted something standing. A
+	// reversible decision this door would refuse says nothing at all, which is
+	// what `cannot change` was for.
 	change := ""
-	if record.reversible {
-		change = session.DecisionSep + questionCommentKey + " change"
+	if questionCanUndo(record) {
+		change += session.DecisionSep + questionUndoKey + " undo"
+	}
+	if questionCanChange(record) {
+		change += session.DecisionSep + questionCommentKey + " change"
 	}
 	clauses := record.record.LineClauses()
 	for {
@@ -2574,6 +2642,11 @@ func (a *app) dressAnswer(q questionShown, answer session.Answer) session.Answer
 	if answer.DecidedBy == "" {
 		answer.DecidedBy = session.DecidedByPerson
 	}
+	// AND A DECISION BEING MADE AGAIN SAYS SO. Without this bit the engine reads
+	// a second answer to a settled question as a late one and drops it in
+	// silence, which is right for another window's key a moment too slow and
+	// wrong for somebody who has just read the receipt (questionchange.go).
+	answer.Revises = q.revising
 	// WHAT IS IN THE HOLES TRAVELS WITH THE ANSWER, and it travels whichever key
 	// gave it: a proposal approved with `1`, with `enter`, or with a click on the
 	// row all start the work on the model the card was showing. The filling is
@@ -2722,8 +2795,17 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 		return
 	}
 	labels := questionLabels(q.question, answer.Keys())
+	was := []string(nil)
+	if prior, changed := a.priorAnswers[q.token()]; changed && answer.Revises {
+		// A CHANGED DECISION SAYS WHAT IT REPLACED, here for the reason the
+		// engine's own record does it ([session.DecisionRecord.Was]): two lines
+		// about one question, with no clause between them, read as two questions.
+		was = prior.Labels
+		delete(a.priorAnswers, q.token())
+	}
 	record := session.DecisionRecord{
-		ID: q.question.ID, Ref: q.question.Ref,
+		Was: was,
+		ID:  q.question.ID, Ref: q.question.Ref,
 		Kind: q.question.Kind, Ask: q.question.Ask,
 		Head: strings.TrimSpace(q.question.Head), Subject: q.question.Subject,
 		Picked: answer.Keys(), Labels: labels, Change: answer.Words(),
@@ -2732,6 +2814,7 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 	}
 	a.questionRecords = append(a.questionRecords, questionRecord{
 		record: record, head: record.Head, at: answer.At, reversible: record.Reversible(),
+		question: q.question,
 	})
 }
 
@@ -2839,6 +2922,11 @@ func (a *app) raiseFolded() {
 func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	head, ok := a.questionHead()
 	if !ok {
+		// AND WHERE THERE IS NO QUESTION THERE MAY STILL BE A RECEIPT, which
+		// offers `c change` and `u undo` in so many words (questionchange.go).
+		if cmd, taken := a.questionReceiptKey(msg); taken {
+			return cmd, true
+		}
 		// WHAT IS DRAWN IS WHAT TAKES THE KEY. With nothing on the block the
 		// sheet has the rows, so the sheet has the keyboard (questionsheet.go)
 		// — and the same off-frame guard stands in front of it, because a sheet

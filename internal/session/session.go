@@ -2768,6 +2768,10 @@ type Agent struct {
 	// agent's life only. It is never persisted — a session-scoped answer that
 	// outlived the session would be a settings change nobody made.
 	consentMemo map[string]bool
+	// grants is what each standing yes BOUGHT, keyed by tool, so that changing
+	// your mind on the receipt can take back all of it rather than the half this
+	// session happens to hold ([grantMade], consent.go).
+	grants map[string]grantMade
 
 	// connectAsks is the connect questions a person owes an answer to, keyed by
 	// the id the EventConnectAsk carried, and connectSeq is what names them

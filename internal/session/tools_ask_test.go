@@ -50,10 +50,7 @@ func TestAskToolRoundTripsTheWholeAnswer(t *testing.T) {
 	if err := a.ResolveQuestion(want); err != nil {
 		t.Fatal(err)
 	}
-	var got Answer
-	if err := json.Unmarshal([]byte(<-done), &got); err != nil {
-		t.Fatal(err)
-	}
+	got := askAnswerRead(t, <-done)
 	if got.Change != want.Change || got.Reframe != want.Reframe || len(got.AskedBack) != 1 || got.Comments["2"] != "portable" {
 		t.Fatalf("answer did not round trip: %+v", got)
 	}
@@ -76,10 +73,7 @@ func TestAssumptionsStandAfterTheClock(t *testing.T) {
 	if err != nil || failed {
 		t.Fatalf("ask failed: %q %v %v", text, failed, err)
 	}
-	var answer Answer
-	if err := json.Unmarshal([]byte(text), &answer); err != nil {
-		t.Fatal(err)
-	}
+	answer := askAnswerRead(t, text)
 	if strings.Join(answer.Picked, ",") != "1,2" || answer.DecidedBy != DecidedByDial {
 		t.Fatalf("assumptions did not stand: %+v", answer)
 	}

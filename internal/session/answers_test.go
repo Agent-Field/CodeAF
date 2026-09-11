@@ -543,10 +543,7 @@ func TestAModelsOwnQuestionTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 	}
 	agent.drainAnswers()
 
-	var answer Answer
-	if err := json.Unmarshal([]byte(<-results), &answer); err != nil {
-		t.Fatalf("the ask handed back %v", err)
-	}
+	answer := askAnswerRead(t, <-results)
 	if answer.FirstKey() != "1" {
 		t.Fatalf("the model was handed %+v", answer)
 	}

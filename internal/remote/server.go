@@ -2108,6 +2108,21 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session cannot answer questions from here")
 		}
 		return nil, door.ResolveQuestion(args.Answer)
+	case MethodQuestionHold:
+		args, err := arg[QuestionHoldArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE OPTIONAL-DOOR PATTERN AGAIN, and here a missing door costs nothing
+		// but the clock: an engine that cannot hold a question still answers it.
+		door, ok := agent.(interface {
+			HoldQuestion(session.QuestionKind, string)
+		})
+		if !ok {
+			return nil, nil
+		}
+		door.HoldQuestion(args.Kind, args.Token)
+		return nil, nil
 	case MethodSetAutonomy:
 		args, err := arg[AutonomyArgs](call)
 		if err != nil {

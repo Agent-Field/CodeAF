@@ -289,7 +289,26 @@ import (
 // permanently dark, with nothing on the screen saying why. Refused at the door,
 // a person is told their engine is an older aforge; accepted, they would be told
 // nothing at all and their turn would simply stop. NEVER TO SILENCE.
-const Version = 14
+// VERSION 15 IS AN ANSWER THAT IS A MESSAGE (docs/design/questions/DESIGN.md).
+// A question the model asks no longer exists only for as long as the call that
+// asked is parked on it: the answer is delivered to the conversation, which is
+// what lets the model carry on while somebody decides, lets a clock take the
+// pick on a question nobody is waiting on, and lets a decision be CHANGED
+// afterwards. Two of those cross this wire:
+//
+//   - [session.Answer.Revises] says an answer is a person changing their mind
+//     about a settled question rather than a second click on one somebody else
+//     has already answered. It rides [MethodQuestionResolve], which has always
+//     carried the answer whole.
+//   - [MethodQuestionHold] stops a question's clock without answering it.
+//
+// THE NUMBER MOVES BECAUSE BOTH FAIL AS SILENCE ON AN OLDER ENGINE. A version-14
+// engine reads `revises` as a field it does not know, applies answers.go's own
+// law — a late answer is ignored and nothing says so — and the person watches
+// their change do nothing; and it answers `Question.Hold` with no such method
+// while its clock goes on counting, so the pick is taken under the hand of
+// somebody who pressed a key to stop exactly that. NEVER TO SILENCE.
+const Version = 15
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -422,6 +441,18 @@ const (
 	// are: they are what an older window on the other end of this wire sends, and
 	// this one is what a window that has the whole object sends.
 	MethodQuestionResolve = "ResolveQuestion" // QuestionArgs → nothing (or a refusal)
+	// MethodQuestionHold is the OTHER thing a key on a question can mean: stop
+	// the clock, do not answer. A question with a deadline takes the asker's own
+	// pick when it runs out ([session.PolicyRecommendThenAuto]), and a person
+	// reading it has to be able to stop that without deciding anything —
+	// [MethodTaskHold] is the same act for the one lane that had it first, and
+	// this is the door for every lane, named the way an answer is named: the lane
+	// and the lane's own token.
+	//
+	// IT NEVER MAKES A KEY WAIT. The surface sends it and carries on; the engine
+	// says the question again with its deadline gone, so every window stops
+	// counting from the same frame rather than from its own guess.
+	MethodQuestionHold = "Question.Hold" // QuestionHoldArgs → nothing
 	// MethodQuestionWatch is the surface saying it draws questions, and it buys
 	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
 	// frames from here on, including everything already open replayed the
@@ -1540,6 +1571,13 @@ type AutonomyArgs struct {
 // the pick are not part of the answer.
 type QuestionArgs struct {
 	Answer session.Answer `json:"answer"`
+}
+
+// QuestionHoldArgs names one question whose clock a person has stopped, the way
+// an answer names it: the lane, and the lane's own token ([session.Question.Token]).
+type QuestionHoldArgs struct {
+	Kind  session.QuestionKind `json:"kind"`
+	Token string               `json:"token"`
 }
 
 type HarnessArgs struct {

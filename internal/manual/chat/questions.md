@@ -72,7 +72,7 @@ card opens with.
 - **ratify** — something reversible was already done, and this is your chance to
   unwind it. Nothing is waiting on the answer.
 
-## Which questions wait, and which one carries a clock
+## Which questions wait, which one carries a clock, and when it keeps working while you decide
 
 Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
@@ -94,6 +94,22 @@ to strike a line and carries on with what it said it was assuming.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.
+
+**A question the model raises does not always stop the work.** It says when it
+asks whether its turn waits for you. Where it does, the turn stands still until
+you answer, and the row says `waiting`. Where it does not — because it has work
+in hand that does not depend on what you decide — it carries on, and your answer
+reaches it as a message the moment you give it: at the end of whatever step it is
+in the middle of, or as a new turn if it has finished and gone quiet. Either way
+nothing is lost by taking your time, and the question stays on the block until
+you answer it.
+
+**A ratify never stops the work**, and that is the one shape where the model does
+not get to choose: something reversible was already done, the row is your chance
+to unwind it, and a turn standing still over finished work would make the
+cheapest rung on the ladder the most expensive. It goes up, the work carries on,
+and an answer — `put it back` — reaches the model as a message whenever you give
+it. No window says this conversation is waiting on you because of one.
 
 ## The record — where your answers are saved
 
@@ -301,7 +317,7 @@ clock**. Trying to change either says so rather than failing quietly.
 The rules live in the project, not in your profile — the same kind of question can
 deserve a different answer in two pieces of work.
 
-## Why is there a countdown on this question, and what is `your rule`?
+## Why is there a countdown on this question, why did it go with the recommended answer, and what is `your rule`?
 
 A question that is going to be taken by a rule says so on its own row, with the
 answer that is about to be taken and how long is left:
@@ -314,6 +330,28 @@ answer that is about to be taken and how long is left:
 told to do**, not because the question came with one. `D` is the door that
 changes it, and `/autonomy` shows every row at once. **There are no hidden
 rules**: a clock you did not ask for never runs without that word beside it.
+
+**A clock is something you turn on.** No question the model raises carries one
+until you set a rule for that kind — `/autonomy choice recommend`, `D` on a row,
+or the settings. Where you name no length it is **ten minutes**, which is the
+same stretch of silence this program reads everywhere else as nobody being at the
+keyboard; `/autonomy choice recommend 30s` names a different one. The one shape
+that carries a clock without being asked to is an assumptions card, and nothing
+is decided at the end of that one: the asker stops waiting for you to strike a
+line and goes on with what it said it was assuming.
+
+**Any key on the question stops the clock, for good.** The question says so
+itself while the clock runs, on a dim line under it: `any key stops the clock ·
+you can still change the answer afterwards`. Press one and the tail changes to
+`paused`, that line goes, the work goes on waiting for you, and nothing decides
+it but you. There is no way back to a running clock — a countdown that started
+again would fire exactly when you had looked away mid-decision.
+
+**When a clock does run out, it goes with the recommended answer and says so.**
+The decision is written down as this program's own rather than yours — the
+receipt reads `aforge, on your settings` — and what the model is told says in
+so many words that the answer is provisional and you may still change it. That is
+the next section.
 
 ## Several questions at once — the sheet, and the same answer for all of them
 
@@ -596,8 +634,14 @@ Answering leaves one dim line where the question was:
 ```
 
 What was asked, what you picked, anything you said beside it, who decided, and
-when. Where a decision can still be taken back it says `c change`; where it
-cannot it says `cannot change` instead.
+when. A decision you changed says what it replaced — `changed from Hello` —
+so the two lines about one question never read as two different questions.
+Where a decision can still be taken back it says `c change`, and the key works
+from there: it asks you the same question again and your new answer replaces the
+old one. A permission you answered `always` says `u undo` beside it as well —
+one key that hands the standing yes back without asking you anything. Where a
+decision cannot be taken back it says `cannot change` instead, and nothing on it
+is a key.
 
 The name in the middle is who gave the answer: `you`, or `an earlier decision`
 where something you already settled covered it, or `done and not objected to`
@@ -623,7 +667,7 @@ off the right-hand edge, and the order is fixed:
 2. the time.
 
 **What is never given up**: the question and what you picked, **who decided**,
-`cannot change`, and `c change`. Who decided is the one thing on that line you
+`cannot change`, `u undo` and `c change`. Who decided is the one thing on that line you
 cannot work out for yourself — `another window` and `aforge, on your settings`
 are the whole reason it is written — and the last two are not details about the
 decision, they are what is still possible about it. A line that dropped
@@ -663,27 +707,45 @@ which of your decisions is still deciding things.
 Nothing is ever made into a rule on your behalf, and a `no` never becomes one: a
 standing refusal is something you write in your settings on purpose.
 
-## Undoing what you just approved
+## Undo what you just approved, or change an answer you already gave
 
-Two keys, and which one you get depends on whether the thing has happened yet.
+**Yes — you can change an answer you already gave**, and you can undo a
+permission you just approved. Two keys, and which one you get depends on whether
+the thing has happened yet.
 
-`u` is on a ratify line — something reversible was already done, and pressing it
-puts it back. It is only offered while there is really something to undo, and
-that is two things at once: the work has to be **reversible**, and whatever did
-it has to have written down the answer that puts it back. A ratify line about
-something costly or irreversible does not draw the key, and neither does one that
-named no way back — pressing `u` there would send an answer nobody described.
+`u undo` is on the receipt of a permission you answered **always**, and it hands
+that standing yes straight back: this conversation stops remembering it, the
+saved line in your settings goes with it, and an account capability the yes left
+switched on goes back to asking. It asks you nothing, because there is nothing
+left to decide — the next time that tool runs you get the question again. The
+line it leaves says `taken back · this tool asks again`. A shell `always` is the
+one that cannot be finished from here: the rule it saved is about a command
+shape, and the receipt does not know which line it wrote, so the row says `taken
+back for this conversation · the saved command rule is in /permissions`.
 
-`c` is on the receipt after you answer, spelled `c change` on the line. It shows
-what unwinding would cost before it reopens the question.
+`u` is also on a ratify line — something reversible was already done, and
+pressing it puts it back. There it is only offered while there is really
+something to undo, and that is two things at once: the work has to be
+**reversible**, and whatever did it has to have written down the answer that puts
+it back. A ratify line about something costly or irreversible does not draw the
+key, and neither does one that named no way back.
 
-Today `u` is never drawn: nothing yet tells a ratify row that the work behind it
-can still be put back, so the row reads `✓ <what was done> · [esc] later ·
-[c] change` and `c` is the way back.
+`c` is on the receipt after you answer, spelled `c change`. It asks you the same
+question again, with no clock on it; your new answer replaces the old one in the
+record, and the model is told what changed — `was sqlite, now jsonl` — so that
+anything it did on the old answer is looked at again. It is the receipt's key
+only while the receipt is on screen and your box is empty. A permission changed
+this way stops applying: the next call of that tool asks again.
 
-A decision that cannot be taken back says `cannot change` on its receipt and
-offers neither. Those are the ones that were never on a clock and that nobody
-but you was ever allowed to answer.
+On a ratify line `u` is still never drawn: nothing yet tells that row the work
+behind it can be put back, so it reads `✓ <what was done> · [esc] later ·
+[c] change` and `c` is the way back there.
+
+**Nothing irreversible is changed this way.** A decision that cannot be taken
+back says `cannot change` on its receipt and offers neither key; answering it
+again is refused in words, because what it allowed has already happened. Those
+are the ones that were never on a clock and that nobody but you was ever allowed
+to answer.
 
 ## Open a question up and read it properly — the page a question opens into
 

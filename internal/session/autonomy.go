@@ -11,6 +11,29 @@ import (
 
 const awayAfter = 10 * time.Minute
 
+// autonomyClock is THE ONE DERIVATION of how long a question's clock runs before
+// the asker's own pick is taken, and it is deliberately the only arithmetic in
+// this program about that length.
+//
+// THE NUMBER IS THE PERSON'S OWN. `set` is what they chose for this shape of
+// question ([Agent.SetAutonomy]); where they chose a shape and no length, it is
+// [awayAfter] — the boundary this program already uses everywhere else to
+// conclude that nobody is at the keyboard. So a pick is taken for somebody only
+// after exactly as long as it would take to decide they are not coming, and
+// there is no second figure anywhere that could drift from it.
+//
+// A CLOCK IS OPT-IN AND STAYS OPT-IN (owner ruling, 2026-09-11): nothing here
+// gives a question a clock. [Agent.autonomyFor] decides WHETHER there is one —
+// only where the person set a rule, plus the assumption kind, whose whole shape
+// is that its options stand unless somebody strikes them — and this decides only
+// how long.
+func autonomyClock(set time.Duration) time.Duration {
+	if set > 0 {
+		return set
+	}
+	return awayAfter
+}
+
 // autonomyFile is deliberately inside the project: the same kind of question
 // may deserve a different answer in two projects, and neither should leak.
 func (a *Agent) autonomyFile() string {
@@ -40,8 +63,12 @@ func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
 	if policy.Kind == "" {
 		policy.Kind = PolicyAsk
 	}
-	if policy.Kind == PolicyRecommendThenAuto && policy.After <= 0 {
-		return errors.New("recommend-then-auto needs a positive wait")
+	if policy.Kind == PolicyRecommendThenAuto {
+		// A LENGTH IS OPTIONAL AND NEVER MISSING. A row set from the settings
+		// sheet says "recommend then go" and names no number, and refusing it
+		// would make the one door harder to reach than the slash command it
+		// exists to replace ([autonomyClock] is where the figure comes from).
+		policy.After = autonomyClock(policy.After)
 	}
 	path := a.autonomyFile()
 	if path == "" {
@@ -92,10 +119,17 @@ func (a *Agent) autonomyFor(kind AskKind) Policy {
 		return Policy{Kind: PolicyAsk}
 	}
 	if policy, ok := a.readAutonomy()[kind]; ok {
+		if policy.Kind == PolicyRecommendThenAuto {
+			policy.After = autonomyClock(policy.After)
+		}
 		return policy
 	}
 	if kind == AskAssumption {
-		return Policy{Kind: PolicyRecommendThenAuto, After: awayAfter}
+		// THE ONE KIND WITH A CLOCK NOBODY ASKED FOR, and it is the kind whose
+		// own shape is that nothing is decided at the end of it: an assumptions
+		// card's options STAND unless they are struck, so the clock ends a
+		// reading and not a decision (docs/design/questions/DESIGN.md's table).
+		return Policy{Kind: PolicyRecommendThenAuto, After: autonomyClock(0)}
 	}
 	return Policy{Kind: PolicyAsk}
 }

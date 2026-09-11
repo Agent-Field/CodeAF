@@ -463,13 +463,13 @@ func TestAlwaysOnAnOrdinaryToolStillUsesTheMemo(t *testing.T) {
 	agent := connectAgent(t, &scriptedCompleter{}, hub, true)
 
 	for _, tool := range []string{"bash", "read", "services", ""} {
-		if agent.rememberCapability(tool, nil, true) {
+		if _, wrote := agent.rememberCapability(tool, nil, true); wrote {
 			t.Errorf("%q was treated as a call against an account", tool)
 		}
 	}
 	// And a no, even on a connector tool, is not an off: taking a capability
 	// away for good is a decision with its own control.
-	if agent.rememberCapability("gmail_send", nil, false) {
+	if _, wrote := agent.rememberCapability("gmail_send", nil, false); wrote {
 		t.Error("a refusal was written to the settings as an answer that lasts")
 	}
 	if got := hub.CapabilityState("google", "mail-send"); got != connect.StateAsk {

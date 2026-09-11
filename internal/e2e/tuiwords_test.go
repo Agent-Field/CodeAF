@@ -934,7 +934,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the head of the `/autonomy` sheet: this project's rules, in a person's own words",
 	},
 	"autonomyUsageWord": {
-		screen: "/autonomy <kind> ask · recommend <duration> · decide",
+		screen: "/autonomy <kind> ask · recommend [duration] · decide",
 		why: "the sheet's foot and the only place it names a door. An earlier draft put `· change` on " +
 			"every row, which is a word with no key behind it",
 	},

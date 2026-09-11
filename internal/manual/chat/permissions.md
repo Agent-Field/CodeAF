@@ -151,6 +151,26 @@ what it was told cannot become two accounts of one decision. It stays for about
 half a minute and then it is history — the transcript row keeps its own
 annotation for good.
 
+**`u undo` on that line takes the permission back**, and it appears there as soon
+as you answer one `always`:
+
+```
+  decided needs your ok to run bash → always · you · 14:02 · u undo · c change
+```
+
+While the receipt is on the screen and your box is empty, `u` hands the standing
+yes back whole — this conversation stops remembering it, the line it saved in
+your settings goes, and a connected account's capability that the yes switched on
+goes back to asking. It asks you nothing, and the row it leaves says `taken back ·
+this tool asks again`. **A shell `always` is the one exception**: the rule it saved
+is about a command shape rather than a tool name, and the receipt does not know
+which line it wrote, so `u` takes back this conversation's own memory and says
+`taken back for this conversation · the saved command rule is in /permissions` —
+which is where that line is removed for good.
+
+`c change` on the same line asks you the same thing again instead, for when the
+answer you want is `allow once` rather than nothing at all.
+
 A question the asker took back says so once instead, and the chip's count drops:
 
 ```
