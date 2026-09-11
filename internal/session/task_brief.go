@@ -74,11 +74,18 @@ const (
 // a task, as licence to hand its own piece out again. Neither is what the person
 // asked THIS worker for, and nothing else in the document said so.
 //
+// THE HANDING OUT IT DECLINES IS THE MESSAGE'S, NOT THE PIECE'S OWN. A piece
+// above the floor of the tree carries `propose_task` and the fan-out page, and
+// may split its own share when that share has parts; what it may not do is read
+// the person's "send this to a task" as a second order to hand the whole thing
+// out again. The clause says "any handing out it asks for" so that the rule and
+// the fan-out page cannot be read as one forbidding what the other teaches.
+//
 // WHAT IT MUST NOT DO IS SILENCE THEM. Their words still govern this piece: the
 // paraphrase above is the model's and theirs is not, so a real disagreement
 // about THIS work is still theirs to win, and a piece that cannot be done
 // without going against them is a report and not a quiet widening.
-const briefPieceRule = "This is the message the whole job came out of, and this task is ONE PIECE of it: do what THE WORK and DONE WHEN below name, and leave the rest of that message to whoever kept it — including handing work out, which is not yours to do again. Their words still govern your piece: where anything below reads differently from them about it, theirs are what was asked for, and if your piece cannot be done without going against them, say so in your report rather than widening the work."
+const briefPieceRule = "This is the message the whole job came out of, and this task is ONE PIECE of it: do what THE WORK and DONE WHEN below name, and leave the rest of that message to whoever kept it — including any handing out it asks for, which is not yours to do again. Their words still govern your piece: where anything below reads differently from them about it, theirs are what was asked for, and if your piece cannot be done without going against them, say so in your report rather than widening the work."
 
 // askRule is the rule that opens the document, chosen by the role.
 func (role briefRole) askRule() string {

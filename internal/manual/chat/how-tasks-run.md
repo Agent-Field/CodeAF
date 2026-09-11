@@ -631,14 +631,16 @@ that no transcript ever showed you is exactly what a task must not be able to ma
 **A piece is told it owns the piece.** Your message travels to every task and sub-task
 verbatim, and a task that was cut out of it opens on one line saying so: do what this brief
 and its `done when` name, and leave the rest of that message to whoever kept it — including
-handing work out, which a piece does not repeat. Your words still win about the piece it was
-given, and where its brief cannot be done without going against you, it says so in its report
-instead of quietly widening the job. A top-level task, with nobody between it and you, still
-reads your message as the whole of what was asked for.
+any handing out your message asks for, which a piece does not repeat. A piece whose own
+share turns out to have parts may still split that share. Your words still win about the
+piece it was given, and where its brief cannot be done without going against you, it says so
+in its report instead of quietly widening the job. A top-level task, with nobody between it
+and you, still reads your message as the whole of what was asked for.
 
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
-out when its brief holds parts that do not need each other — at most **5**, and a piece it
-hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
+out when its brief holds parts that do not need each other, at most **20** of them, and
+`tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
+may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
 whole world; the project's history is not its to read. The tasks page has the whole of it,

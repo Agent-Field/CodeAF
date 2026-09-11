@@ -164,27 +164,38 @@ const (
 	// decomposition (task.go's fan-out law), and each answers a different way
 	// for it to run away.
 	//
-	// TWO LEVELS IS A CHOSEN BOUND AND NOT A MEASURED FLOOR. The shape it is cut
-	// for: the conversation grooms a piece of work, that node finds two or three
-	// genuinely independent parts inside it and hands them out, and a part of a
-	// part is usually a step — which belongs in the hands already holding it. The
-	// cost is what makes the bound cheap to keep: every level adds a worktree, an
-	// audit and a wait, and it adds them to work that is by then small, so a third
-	// level buys parallelism where there is least of it left to buy.
+	// NEITHER IS WHAT DECIDES HOW WIDE WORK GOES, and until 2026-09-11 both were
+	// written as though they were. Five children was a guess about decomposition
+	// ("more than that has not decomposed its work, it has shredded it") and two
+	// levels a guess about where a third stops paying, and nobody had measured
+	// either. What actually bounds how much runs at once is the machine and the
+	// work: the person's task.parallel holds a ready node until a slot frees,
+	// the admission governor holds one while the machine is already loaded
+	// (task_pressure.go, which weighs the machine once per frontier pass, so a
+	// batch that becomes ready together is admitted on one reading), and two
+	// parts that would write one file are refused (a division) or queued one
+	// behind the other (quick tasks' file claims), not counted. Whether a worker
+	// SHOULD split is the fan-out page's question (prompts/fanout.md) and the
+	// division road's evidence gate (task_divide.go), each asked of the material
+	// in front of it; a constant here cannot know the answer for work it has
+	// never seen. The owner's ruling is that breadth may be large where the work
+	// parallelises, because a node's parts cost the longest of them and not
+	// their sum.
 	//
-	// NOBODY HAS MEASURED A THREE-LEVEL TREE HERE, and this comment used to read
-	// as though somebody had. What is known is the cost per level above; what is
-	// not known is where the crossover actually falls, and it will not be one
-	// number for every kind of work. Raising the cap is a wave with a measurement
-	// in it, not a constant edit.
+	// SO THE FAN CAP IS A RUNAWAY STOP AND NOTHING ELSE. A node handing out more
+	// than twenty pieces has lost the plot rather than found the width, and it
+	// still has to fold every one of their reports into one deliverable. It is a
+	// REFUSAL the model can read ([TaskGraph.claimChild]), not a queue, so the
+	// answer to a twenty-first part is to do it in its own hands.
 	//
-	// FIVE CHILDREN, because a node handing out more than that has not
-	// decomposed its work, it has shredded it — and it still has to read every
-	// one of their reports and make one deliverable out of them. The cap is a
-	// REFUSAL the model can read (task.go), not a queue: the answer to "I have
-	// eight parts" is to do some of them, and the refusal says so.
-	taskDepthLimit = 2
-	taskFanLimit   = 5
+	// THREE LEVELS lets a part of a wide job fan once more: the conversation's
+	// task hands out its parts, and a part that opens its material and finds it
+	// wide in turn may split its own share rather than grinding through it. The
+	// floor is still absence and not refusal (task.go's [Config.mayFanOut]), and
+	// every level still costs a worktree, a check and a wait, which is why the
+	// pages that teach splitting say sequential work is never split.
+	taskDepthLimit = 3
+	taskFanLimit   = 20
 )
 
 // The three things a node can be waiting on, spelled once. They are the
@@ -286,7 +297,8 @@ type TaskNode struct {
 	admitBy *Agent
 	admitAt requestEpoch
 	// depth is how many tasks deep this node sits — 1 for the conversation's
-	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
+	// own, 2 for a sub-task, 3 for a sub-task's own part — and it is what
+	// taskDepthLimit bounds.
 	depth int
 	// owner is the agent that RUNS this node: the conversation for a root, and
 	// the PARENT NODE'S OWN AGENT for a sub-task. That is the whole of the

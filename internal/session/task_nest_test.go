@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 )
 
 // ── harness ─────────────────────────────────────────────────────────────────
@@ -86,11 +88,35 @@ func pieceArgs(title string) json.RawMessage {
 // clock approves at once ([Agent.askTask]).
 func (n *nest) handOut(t *testing.T, title string) string {
 	t.Helper()
-	answer, _, err := n.node.proposeTask(context.Background(), pieceArgs(title))
+	return n.handOutFrom(t, n.node, title)
+}
+
+// handOutFrom is [nest.handOut] from any worker in the family, for the tests
+// that walk more than one generation.
+func (n *nest) handOutFrom(t *testing.T, worker *Agent, title string) string {
+	t.Helper()
+	answer, _, err := worker.proposeTask(context.Background(), pieceArgs(title))
 	if err != nil {
 		t.Fatalf("propose_task: %v", err)
 	}
 	return answer
+}
+
+// workerFor builds the agent that runs node, at the depth the node recorded at
+// admission — the one reading task_run.go hands a node's own agent — and seats
+// it in the node's room the way [newNest] seats the first one.
+func (n *nest) workerFor(t *testing.T, node *TaskNode) *Agent {
+	t.Helper()
+	worker, err := newAgent(Config{
+		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM",
+		InTask: true, tasker: n.graph, taskID: node.id, taskDepth: node.familyDepth(),
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent for task %d: %v", node.id, err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	node.openRoom().speaking(worker)
+	return worker
 }
 
 // ── the family ──────────────────────────────────────────────────────────────
@@ -208,6 +234,32 @@ func TestTheFanCapRefusesInWordsTheModelCanRead(t *testing.T) {
 	}
 }
 
+// A PARENT THAT ASKS WHAT IT HANDED OUT IS SHOWN ALL OF IT. The listing's own
+// default is the project's search window, and a full family is wider than that
+// window; the cap and the window may not be read against each other, so a node
+// that names no limit is shown every piece the cap allowed it (tools_tasks.go's
+// [Agent.taskSearchText]).
+func TestAParentListingItsPiecesSeesEveryOneOfThem(t *testing.T) {
+	if taskFanLimit > taskSearchCeiling {
+		t.Fatalf("a family may be %d wide and a listing is clamped at %d, so no call could show a parent all of its pieces", taskFanLimit, taskSearchCeiling)
+	}
+	nest := newNest(t, nil, nil)
+	for i := 0; i < taskFanLimit; i++ {
+		if answer := nest.handOut(t, fmt.Sprintf("piece number %d", i)); strings.HasPrefix(answer, "no:") {
+			t.Fatalf("piece %d was refused inside the cap: %s", i, answer)
+		}
+	}
+	listing, isError := runTool(t, nest.node, "tasks", `{}`)
+	if isError {
+		t.Fatalf("tasks with no arguments failed: %s", listing)
+	}
+	for i := 0; i < taskFanLimit; i++ {
+		if title := fmt.Sprintf("piece number %d", i); !strings.Contains(listing, title) {
+			t.Fatalf("the parent's listing leaves out %q:\n%s", title, listing)
+		}
+	}
+}
+
 // A BATCH RUNS CONCURRENTLY (loop.go), and a model fanning out sends its calls
 // in one batch — which is the exact moment a cap counted off admitted nodes
 // alone would let everything through.
@@ -281,6 +333,129 @@ func TestATaskAtTheFloorOfTheTreeIsNotGivenTheVerb(t *testing.T) {
 	}
 	if strings.Contains(renderSystem(Config{Workspace: t.TempDir()}), "Breaking the work up") {
 		t.Fatal("the conversation is given the task's own page")
+	}
+}
+
+// THE MANUAL SPELLS THE BOUNDS THE CODE ENFORCES. The chat answers "how many
+// pieces can a task hand out" from its manual and nowhere else, and a Markdown
+// page cannot interpolate a constant, so this is the line that makes the page
+// the second place the numbers live without being the place they drift: change
+// either constant and this names the sentence to rewrite. Whitespace is folded
+// because the pages wrap wherever a line runs long.
+func TestTheManualSpellsTheBoundsTheCodeEnforces(t *testing.T) {
+	for page, wants := range map[string][]string{
+		"tasks": {
+			fmt.Sprintf("**Depth is %d levels.**", taskDepthLimit),
+			fmt.Sprintf("**Fan-out is %d pieces per parent**", taskFanLimit),
+			fmt.Sprintf("**Depth: %d levels.**", taskDepthLimit),
+			fmt.Sprintf("**Fan-out: %d pieces per task**", taskFanLimit),
+			fmt.Sprintf("handed out %d pieces of this work", taskFanLimit),
+		},
+		"how-tasks-run": {
+			fmt.Sprintf("at most **%d**", taskFanLimit),
+			fmt.Sprintf("nest at most **%d** deep", taskDepthLimit),
+		},
+		"what-i-can-do": {
+			fmt.Sprintf("tasks nesting %d deep at most", taskDepthLimit),
+		},
+	} {
+		text, ok := manual.Chat().Page(page)
+		if !ok {
+			t.Fatalf("the %s page is missing from the chat corpus", page)
+		}
+		text = strings.Join(strings.Fields(text), " ")
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s page does not say %q", page, want)
+			}
+		}
+	}
+}
+
+// A PART IS ARMED BY ITS OWN WORDS AND NEVER BY ITS FAMILY'S.
+//
+// Every part of a division opens on its parent's brief composed around its own
+// scope, and the parent's brief is by construction the one that counted enough
+// items to divide. Read as the part's own text it armed EVERY part to divide
+// again, which nothing noticed while a part stood on the floor of the tree and
+// had no verb to use it with. Below the floor it would hand each part of an
+// eleven-file job the same eleven files to divide a second time. So a part whose
+// own scope is one small thing is not armed, and a part whose own scope counts a
+// pile of its own is, and may divide it (task_divide.go's [Agent.armDivision]).
+func TestAPartIsArmedByItsOwnWordsAndNotItsFamilys(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	answer := nest.divide(t, divideArgsFor(wideEvidence,
+		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "bring alpha up to the new interface", Acceptance: "a"},
+		dividePart{Title: "the codec adapters", Summary: "s", Brief: "bring the codec adapters up to the new interface: 9 files, one each", Acceptance: "a"},
+	))
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the division was not admitted: %q", answer)
+	}
+	armed := map[string]string{}
+	for _, kid := range nest.graph.children(nest.parent.id) {
+		armed[kid.spec.title] = kid.armedBy()
+		config := Config{Workspace: t.TempDir(), InTask: true, Divide: true, tasker: nest.graph, taskID: kid.id, taskDepth: kid.familyDepth()}
+		if config.mayDivide() != (kid.armedBy() != "") {
+			t.Fatalf("%q is armed by %q and may divide=%v", kid.spec.title, kid.armedBy(), config.mayDivide())
+		}
+	}
+	if got := armed["the alpha adapter"]; got != "" {
+		t.Fatalf("a one-adapter part was armed by %q, which is its family's count and not its own", got)
+	}
+	if got := armed["the codec adapters"]; got != armedCounted {
+		t.Fatalf("a part whose own scope counts nine files was armed by %q, want %q", got, armedCounted)
+	}
+}
+
+// A TREE GROWS TO ITS DEPTH LIMIT AND NO FURTHER, and every page on the way down
+// tells its worker the truth about the level below it.
+//
+// It walks the tree the way the runner builds it: each generation's worker is
+// given the depth its node recorded at admission ([TaskNode.familyDepth]), which
+// is what task_run.go hands a node's agent, and hands one piece out if its belt
+// carries the verb. The walk must stop on exactly [taskDepthLimit] — a level
+// that is admitted but given no verb, and nothing beneath it — and at every
+// level that could hand out, the page's clause about its pieces must agree with
+// the belt the next level was actually built with.
+func TestATreeGrowsToItsDepthLimitAndNoFurther(t *testing.T) {
+	nest := newNest(t, nil, nil)
+	node, worker := nest.parent, nest.node
+	for {
+		depth := node.familyDepth()
+		if !worker.hasTool("propose_task") {
+			if depth != taskDepthLimit {
+				t.Fatalf("the verb came off at depth %d, want it held until %d", depth, taskDepthLimit)
+			}
+			for _, gone := range []string{quickTaskToolName, "tasks"} {
+				if worker.hasTool(gone) {
+					t.Fatalf("%s is on the belt at the floor of the tree, where it can do nothing", gone)
+				}
+			}
+			return
+		}
+		if depth >= taskDepthLimit {
+			t.Fatalf("a worker at depth %d, the floor, can still hand work out", depth)
+		}
+		if answer := nest.handOutFrom(t, worker, fmt.Sprintf("the part at depth %d", depth+1)); strings.HasPrefix(answer, "no:") {
+			t.Fatalf("depth %d was refused a piece inside the limit: %s", depth, answer)
+		}
+		kids := nest.graph.children(node.id)
+		if len(kids) != 1 {
+			t.Fatalf("depth %d holds %d pieces after handing out one", depth, len(kids))
+		}
+		child := kids[0]
+		if got := child.familyDepth(); got != depth+1 {
+			t.Fatalf("a piece of a depth-%d task was admitted at depth %d", depth, got)
+		}
+		next := nest.workerFor(t, child)
+
+		page := renderSystem(Config{Workspace: t.TempDir(), InTask: true, tasker: nest.graph, taskID: node.id, taskDepth: depth})
+		splits, stops := strings.Contains(page, "may split its own share"), strings.Contains(page, "cannot hand out more")
+		if next.hasTool("propose_task") != splits || splits == stops {
+			t.Fatalf("at depth %d the page says its pieces split=%v stop=%v, and the next belt carries the verb=%v",
+				depth, splits, stops, next.hasTool("propose_task"))
+		}
+		node, worker = child, next
 	}
 }
 
@@ -938,10 +1113,10 @@ func TestAnAuditedFolderFamilyIsCheckedOnItsWholeProductAndLandsIt(t *testing.T)
 // was persisted there, an accepted folder family laid the parent's slice over
 // the person's folder and dropped everything under it.
 //
-// The third generation is put into the graph rather than run, because the runner
-// bounds a family at two levels ([taskDepthLimit]) and a test may not pretend
-// otherwise. What is exercised is the landing: the part's ledger is what the
-// landing left on it, never a list the test wrote there.
+// The third generation is put into the graph rather than run, because what is
+// exercised is the landing and not the runner: the part's ledger is what the
+// landing left on it, never a list the test wrote there. That a third
+// generation is admitted at all is [TestATreeGrowsToItsDepthLimitAndNoFurther].
 func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	ground := t.TempDir()
 	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
