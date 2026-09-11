@@ -182,7 +182,7 @@ and `show` to identical records; `TestRealChatDoorJourney` is the same road with
 model. `docs/design/workspace-foundation/grooming/BUILD-CHATDOOR.md` has the evidence.
 
 After wave 4 merged, a ten-run live measurement of the chat door
-(`grooming/validation/chatdoor-live10.md`) drove four seam fixes: unnamed spending
+(summarized in `grooming/BUILD-CHATDOOR.md`, *Round 2*) drove four seam fixes: unnamed spending
 limits are dropped and the card's costs line is written from the item; a file the
 person named is asked about as `does.report` before any card, and a card for work that
 keeps no file says `report · none — no file is kept current`; an inherited folder
