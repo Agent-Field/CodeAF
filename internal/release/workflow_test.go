@@ -53,6 +53,20 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	if strings.Contains(workflow, "40") {
 		t.Fatal("the retention count was copied into the workflow instead of read from aforge-release")
 	}
+	// `test` is skipped on every dev build, and GitHub skips any job whose
+	// dependency chain holds a skipped job unless that job's own condition says
+	// always(). The first live dev run built for eight minutes and published
+	// nothing because publish had no condition; both jobs below `test` must
+	// carry one, and it must still refuse a red predecessor.
+	for job, want := range map[string]string{
+		"build":   "    if: always() && needs.prepare.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')",
+		"publish": "    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success'",
+	} {
+		block := regexp.MustCompile(`(?ms)^  ` + job + `:\n    needs: [^\n]+\n(    if: [^\n]+)`).FindStringSubmatch(workflow)
+		if block == nil || block[1] != want {
+			t.Errorf("job %s must sit under `test` with the condition\n%s\nand has\n%v", job, want, block)
+		}
+	}
 	if strings.Contains(workflow, `--is-ancestor "$GITHUB_SHA"`) || strings.Count(workflow, `--is-ancestor "$sha"`) != 2 {
 		t.Fatal("the release order guards must check the resolved source commit")
 	}
