@@ -10,6 +10,14 @@ func (s *Store) recordRuntime(before, after Item) error {
 		sameSchedule := reflect.DeepEqual(current.When, before.When)
 		current.LastChecked = after.LastChecked
 		current.LastCheckLine = after.LastCheckLine
+		// A FAILURE COUNT IS THE CHECK'S ONLY WHILE NOTHING NEWER CAME BETWEEN.
+		// An edit or a resume clears it; a check that began before either and
+		// failed after must not put it back. A check that was made clears it
+		// whatever came between, since nothing is owed a failure it no longer
+		// has.
+		if current.Revision == before.Revision || after.FailedChecks == 0 {
+			current.FailedChecks = after.FailedChecks
+		}
 		current.SpentUSD += after.SpentUSD - before.SpentUSD
 		if after.Runs > before.Runs {
 			current.Runs += after.Runs - before.Runs
