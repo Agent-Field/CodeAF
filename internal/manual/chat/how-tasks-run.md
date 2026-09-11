@@ -3038,6 +3038,13 @@ argument is on `divide_work`, where each part declares what its own checker may 
 check every part declares is taken off all of them and given once to the task that divided
 them, which is the only one that can honestly make it after its parts are home.
 
+That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
+for you: the row in the conversation reads only `the call was refused`, the task's card
+reads `not started · the call was refused`, and the sentence itself — the field name, the
+quoted command, the repair — stays in the tool's own result, where the model reads it and
+fixes the call, and behind `ctrl+o` on that row for you if you ask. A command that genuinely
+ran and failed is the opposite case, and its row still opens with its own output.
+
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the
 limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what

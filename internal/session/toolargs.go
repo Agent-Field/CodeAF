@@ -642,6 +642,22 @@ func argumentRepair(text string) (string, bool) {
 	return repair, true
 }
 
+// ArgumentRefusal reports whether a tool result's text is a refusal the belt
+// wrote about the call's own arguments: a sentence addressed to the model, one
+// repair away from a working call, about a call that never reached the tool's
+// work.
+//
+// IT ANSWERS WITH THE LOOP GUARD'S OWN EYES ([argumentRepair], looped.go), so
+// the guard and a surface can never disagree about which failures are the
+// schema talking to the model: a bash that failed out in the world is the
+// person's business and opens itself, while a call refused on its arguments is
+// a repair the model is already making, and the person reads the row's own
+// words rather than the repair instruction.
+func ArgumentRefusal(text string) bool {
+	_, ok := argumentRepair(text)
+	return ok
+}
+
 // ── small parts ─────────────────────────────────────────────────────────────
 
 // The five shapes a JSON value can take, told apart by their first byte, which

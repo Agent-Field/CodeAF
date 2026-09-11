@@ -718,6 +718,12 @@ func claimRunning(es []entry, ev session.Event) int {
 	return fallback
 }
 
+// refusedCallWord is the whole of what a person is shown about a call the
+// engine refused on its own arguments: the fact, in the same words a refused
+// proposal's card already settles on (task.go's taskFormingRefused), and
+// nothing from the repair instruction the schema wrote for the model.
+const refusedCallWord = "the call was refused"
+
 // closeTool resolves the live line this result belongs to ([claimRunning] says
 // which one, and why).
 //
@@ -736,6 +742,17 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 	if f.hooks.closing != nil {
 		f.hooks.closing(ev)
 	}
+	// A REFUSAL ON THE CALL'S OWN ARGUMENTS IS NOT THE FAILURE THIS CLOSE WAS
+	// WRITTEN FOR. A bash that failed out in the world is the one row whose
+	// detail is the reason the person is looking at the screen; a call the
+	// schema refused never reached the world at all, and the sentence it
+	// carries — field names, the offending argument quoted back — is a repair
+	// instruction addressed to the model, which lands on the person as
+	// somebody else's mail beside a card that already says the call was
+	// refused. So the row keeps the one fact a person can act on and stays
+	// shut, and the schema's sentence stays where it already is: in the tool
+	// result the model reads, and in the transcript behind ctrl+o.
+	refused := status == toolFailed && session.ArgumentRefusal(firstNonEmpty(why, ev.Output))
 	if at := claimRunning(f.entries, ev); at >= 0 {
 		e := &f.entries[at]
 		e.status = status
@@ -755,6 +772,12 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 			// and A FAILURE OPENS ITSELF is not a law worth losing silently.
 			e = &f.entries[at]
 		}
+		if refused {
+			// The row says the one fact a person can act on; the schema's own
+			// sentence is already in the detail, where ctrl+o still reads
+			// exactly what the model read and repaired.
+			why = refusedCallWord
+		}
 		if why != "" && status == toolFailed {
 			e.text = strings.TrimSpace(e.text + " — " + why)
 		}
@@ -762,8 +785,11 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 		// asked, because a quiet line is a success and success has nothing to
 		// read; a call that failed is the one row whose detail is the reason the
 		// person is looking at the screen, and making them click for it is
-		// making them click for the only thing that happened.
-		if status == toolFailed {
+		// making them click for the only thing that happened. A refusal on the
+		// call's own arguments is the one failure that stays shut, for the
+		// reason stated above: nothing ran, and the sentence it carries is
+		// addressed to the model, not to the person.
+		if status == toolFailed && !refused {
 			e.open = true
 		}
 		f.follow()
@@ -771,12 +797,17 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 		return
 	}
 	// A close with no open line still deserves to be seen rather than
-	// silently dropped: the session said something happened.
+	// silently dropped: the session said something happened. A refused call
+	// keeps that law too, seen in the person's words rather than the schema's.
 	if status == toolFailed {
+		sentence := firstNonEmpty(ev.Output, why)
+		if refused {
+			why = refusedCallWord
+		}
 		f.entries = append(f.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: why, turn: f.turn, status: toolFailed,
-			open:   true,
-			detail: toolDetail{Args: ev.Args, Output: firstNonEmpty(ev.Output, why)},
+			open:   !refused,
+			detail: toolDetail{Args: ev.Args, Output: sentence},
 		})
 		f.follow()
 		f.touch()

@@ -103,6 +103,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
+	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 }
 
