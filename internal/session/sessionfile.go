@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
@@ -160,6 +161,11 @@ type sessionEntry struct {
 	// differently on Tuesday than it did on Monday. Absent from every line that
 	// is not one, and from every file written before it existed.
 	Caption *journalCaption `json:"caption,omitempty"`
+
+	// Answer is an `answer` line: what became of one answer another window
+	// left on this session's doorstep ([journalAnswer]). Absent from every
+	// other line, and from every file written before it existed.
+	Answer *journalAnswer `json:"answer,omitempty"`
 
 	// Deliveries names the durable deliveries this line is the record of
 	// ([durableDelivery]): a landing's news, identified by session, task,
@@ -947,6 +953,10 @@ type sessionFile struct {
 	file   *os.File
 	locked bool
 	closed bool
+	// syncFailed is what the first failed sync said, kept for the life of the
+	// file: nothing is settled from a journal whose lines may not be on disk
+	// ([sessionFile.sync]).
+	syncFailed error
 	// title is the name replayed from the file at open, so a resumed session
 	// keeps the one it was given instead of paying to be named again.
 	title      string
@@ -1950,6 +1960,14 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// holds. A failure line is the boundary's reading of a call that
 			// already has its own error line above it.
 			// Replaying them would put machinery into somebody's conversation.
+		case "answer":
+			// NOT A MESSAGE, and nothing is rebuilt from it: the lane the answer
+			// reached already wrote whatever the conversation shows. Only its
+			// delivery id is carried forward, so a drain replayed after a crash
+			// knows the answer was taken ([journalAnswer]).
+			if entry.Answer != nil && strings.TrimSpace(entry.Answer.Delivery) != "" {
+				rememberDeliveries(delivered, []string{string(answerDeliveryID(entry.Answer.Delivery))})
+			}
 		case "created":
 			// KEPT, and it is the ONE non-message line this replay carries
 			// forward. The others in this switch are the record of a decision or
@@ -2857,6 +2875,60 @@ func (s *sessionFile) appendAbandoned(turn journalAbandoned) {
 	s.writeLine(sessionEntry{Type: "abandoned", Abandoned: &turn, Timestamp: stamp()})
 }
 
+// journalAnswer is an `answer` line: one answer left on the doorstep by
+// another window, and what became of it — taken by its lane, or refused and
+// why (answers.go's [drainAnswersInto]).
+//
+// IT IS THE RECORD THE DOORSTEP WAITS FOR. The doorstep is cleared only once
+// this line is on the disk, and the line carries the answer's delivery id, so
+// a drain replayed after a crash between the two finds the answer already
+// taken and does not hand it over twice ([sessionFile.recorded]). It is NOT a
+// message and replay does not rebuild one from it: the lane the answer reached
+// already wrote whatever the conversation shows.
+type journalAnswer struct {
+	Delivery string       `json:"delivery"`
+	Kind     QuestionKind `json:"kind"`
+	// Question is the token the answer named: the lane's id, or its ref.
+	Question string   `json:"question"`
+	Picked   []string `json:"picked,omitempty"`
+	From     string   `json:"from,omitempty"`
+	// Refused is what the lane said when it did not take the answer. Empty is
+	// an answer the lane took — or one nobody was waiting on any more, which
+	// every lane takes as a late answer and ignores.
+	Refused string `json:"refused,omitempty"`
+}
+
+// journalAnswerOf is the line one drained answer leaves.
+func journalAnswerOf(answer Answer, refused error) journalAnswer {
+	line := journalAnswer{
+		Delivery: answer.Delivery, Kind: answer.Kind, Question: answerToken(answer),
+		Picked: answer.Keys(), From: answer.From,
+	}
+	if refused != nil {
+		line.Refused = oneLine(refused.Error())
+	}
+	return line
+}
+
+// appendAnswer writes down one drained answer and answers whether the line
+// reached the file. Its delivery id is indexed only once it has, as a note's
+// is: this index is what a replayed drain trusts to say an answer was taken.
+func (s *sessionFile) appendAnswer(answer journalAnswer) bool {
+	if s == nil || strings.TrimSpace(answer.Delivery) == "" {
+		return false
+	}
+	if !s.writeLine(sessionEntry{Type: "answer", Answer: &answer, Timestamp: stamp()}) {
+		return false
+	}
+	s.mu.Lock()
+	if s.delivered == nil {
+		s.delivered = make(map[string]bool, 1)
+	}
+	rememberDeliveries(s.delivered, []string{string(answerDeliveryID(answer.Delivery))})
+	s.mu.Unlock()
+	return true
+}
+
 // appendCreated writes down one file the session made (see [journalCreated]). A
 // line with no path on it writes nothing, for [sessionFile.appendMark]'s reason.
 func (s *sessionFile) appendCreated(made journalCreated) {
@@ -2897,18 +2969,44 @@ func (s *sessionFile) writeLine(entry any) bool {
 // beyond this file is told a line is recorded — a delivery settling, which may
 // consume the inbox that line came from ([Agent.settleDeliveries]) — and once
 // at each turn's end ([Agent.sealTurn]), not on every line.
-func (s *sessionFile) sync() {
+//
+// IT ANSWERS WHETHER IT WORKED, AND A FAILURE IS FOR GOOD (the third review,
+// B4). The settlement that consumes an inbox used to run whether the sync had
+// worked or not, so an I/O error followed by a power cut could leave the inbox
+// gone and its record never written. And a failure is remembered for the life
+// of the file rather than retried: once a sync has failed, the kernel may have
+// dropped the lines it could not write, and a later sync that succeeds says
+// nothing about them. So nothing is settled from this journal again; the next
+// open reads the record the disk actually holds and settles from that.
+//
+// A file with nothing under it that can sync — a pipe, a device — answers the
+// call as unsupported, and has already done all it can, as it always has.
+func (s *sessionFile) sync() error {
 	if s == nil {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
-		return
+	if s.syncFailed != nil || s.closed {
+		// A closed file was synced by Close, which kept what that sync said.
+		return s.syncFailed
 	}
-	// A filesystem that cannot sync (a tmpfs, a pipe) has already done all it
-	// can, as Close says.
-	_ = s.file.Sync()
+	s.syncFailed = syncOrUnsupported(s.file)
+	return s.syncFailed
+}
+
+// syncJournal is the one call that makes a journal's lines durable. It is a
+// variable so a test can make the disk refuse.
+var syncJournal = func(file *os.File) error { return file.Sync() }
+
+// syncOrUnsupported syncs file, reading a file that cannot be synced at all as
+// done rather than failed.
+func syncOrUnsupported(file *os.File) error {
+	err := syncJournal(file)
+	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) {
+		return nil
+	}
+	return err
 }
 
 // Close flushes the file, releases the claim, and closes the descriptor.
@@ -2927,10 +3025,11 @@ func (s *sessionFile) Close() error {
 		return nil
 	}
 	s.closed = true
-	if err := s.file.Sync(); err != nil {
-		// Sync failing on a tmpfs or a pipe is not a lost transcript; the
-		// close below is the one that matters.
-		_ = err
+	if s.syncFailed == nil {
+		// Sync failing on a pipe is not a lost transcript; the close below is
+		// the one that matters. What it said is kept, because a settlement
+		// asked after the close reads it ([sessionFile.sync]).
+		s.syncFailed = syncOrUnsupported(s.file)
 	}
 	if s.locked {
 		s.locked = false
