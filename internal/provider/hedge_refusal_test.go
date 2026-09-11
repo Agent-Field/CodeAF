@@ -19,17 +19,18 @@ import (
 // sixty milliseconds against a ceiling of fifty, the claim rested on ten
 // milliseconds of wall clock: a loaded machine spends that before the ceiling's
 // timer fires, the first token arrives first, and the row then says nothing was
-// done at all — `action = ""`, measured one run in three hundred on this commit's
-// own parent under twelve busy cores ([laneRig.answersAfterTheWord]).
+// done at all — `action = ""`, measured one run in three hundred on this
+// commit's own parent under twelve busy cores. So the primary holds its first
+// word on the controller's own word ([theControllersWord]).
 func TestARescueTheCallCouldNotPayForSaysSoOnTheRow(t *testing.T) {
 	read := loggingTo(t)
+	spoken := theControllersWord(t)
 	rig := newLaneRig(t, "row/budget-refusal",
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 60 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 60 * time.Millisecond, Rate: 2000, Tokens: 24, FirstTokenUntil: spoken}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 20, 2000)
 	rig.patience(t, 50*time.Millisecond)
-	rig.answersAfterTheWord(t)
 	noRescues(t)
 
 	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))

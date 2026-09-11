@@ -192,26 +192,25 @@ func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 	r.ceiling.Store(int64(ceiling))
 }
 
-// answersAfterTheWord makes this scenario's router spend no wait sooner than the
-// waiting controller has spoken: said the wait out loud, or switched.
+// theControllersWord is a signal that closes once the waiting controller has
+// spoken: said the wait out loud, reported the pace, or started a rescue. A
+// lane given it as its [lanestub.Profile.FirstTokenUntil] answers no sooner.
 //
-// IT IS lanestub's StallUntil RULE FOR A FIRST TOKEN, which StallUntil cannot
-// hold. A scripted arm must order itself by a signal and never by elapsed time,
-// because a primary timed to answer "a little after the ceiling" asserts only
-// the slack between two wall-clock figures, and a starved machine eats it: the
+// IT IS THE STUB'S SIGNAL RULE APPLIED TO A FIRST TOKEN, and it exists because
+// a primary scripted to answer a little after the ceiling asserts nothing but
+// the slack between two wall-clock figures, which a starved machine eats: the
 // ceiling's timer fires late, the first token arrives first, and the row says
-// nothing was done at all. So the primary's first token still waits as long as
-// it was scripted to, and then waits for the controller's word as well. The
-// clock is the stub's own seam ([lanestub.Server.SetClock]); a switch releases
-// it too, so a regression that sends the rescue fails on the rescue rather than
-// hanging.
-func (r *laneRig) answersAfterTheWord(t *testing.T) {
+// nothing was done at all. Every rung of the ladder releases it, not only the
+// one a given test is about, so a regression that acts differently fails on
+// its assertion rather than hanging here.
+func theControllersWord(t *testing.T) <-chan struct{} {
 	t.Helper()
 	spoken := make(chan struct{})
 	var once sync.Once
 	var previous func(PhaseNews)
 	previous = OnPhase(func(news PhaseNews) {
-		if news.Phase == PhaseAllSlow || news.Phase == PhaseSwitching {
+		switch news.Phase {
+		case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
 			once.Do(func() { close(spoken) })
 		}
 		if previous != nil {
@@ -219,26 +218,7 @@ func (r *laneRig) answersAfterTheWord(t *testing.T) {
 		}
 	})
 	t.Cleanup(func() { OnPhase(previous) })
-	r.server.SetClock(afterTheWord{Clock: lanestub.Real(), spoken: spoken})
-}
-
-// afterTheWord is a clock whose every wait ends no sooner than it was scripted
-// to AND no sooner than the controller has spoken. See [laneRig.answersAfterTheWord].
-type afterTheWord struct {
-	lanestub.Clock
-	spoken <-chan struct{}
-}
-
-func (c afterTheWord) Wait(ctx context.Context, d time.Duration) bool {
-	if !c.Clock.Wait(ctx, d) {
-		return false
-	}
-	select {
-	case <-c.spoken:
-		return true
-	case <-ctx.Done():
-		return false
-	}
+	return spoken
 }
 
 // rigScale is how much shorter every bound a scenario is judged against is than

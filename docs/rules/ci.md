@@ -176,9 +176,11 @@ SCHEDULER and called it the road:
   (`watchReadings`) answers only once none is in flight. The product carries no
   watch, and a law test fails the build if it ever does.
 - **A scripted arm orders itself by a signal.** `internal/lane/lanestub`'s
-  `StallUntil` holds a stalled answer on a channel, and a first token is held by
-  giving the stub a clock of the scenario's own (`Server.SetClock`) — for
-  instance one whose waits end no sooner than the waiting controller has spoken.
+  `StallUntil` holds a stalled answer on a channel and `FirstTokenUntil` holds
+  the first word the same way, both after the scripted wait is spent — so a
+  primary that must answer *after* the caller has acted says exactly that,
+  rather than being scripted a few milliseconds past a bound a busy machine
+  eats.
 - **Never `t.Skip`, never a retry, never a wider timeout.** A bound is for
   failing honestly when the fact never arrives, not for passing.
 
