@@ -70,6 +70,49 @@ func TestGoverningPlacementIsExplicitAndKeepsAlternatePaths(t *testing.T) {
 	}
 }
 
+// WHAT A PROPOSAL SAYS WILL GOVERN IS WHAT GOVERNS ONCE IT IS PLACED. A card
+// names the folders its work will be placed in before anything exists to place,
+// so it reads GoverningIfPlaced; the run reads GoverningCollections of the
+// placed reference. The two must be the same answer, ancestry included.
+func TestGoverningIfPlacedIsWhatAPlacementThereGoverns(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "scope.db"))
+	company := createTestCollection(t, s, "Company")
+	launch := createTestCollection(t, s, "Launch")
+	marketing := createTestCollection(t, s, "Marketing")
+	if err := s.AddPlacement(ctx, company.ID, Ref{Kind: CollectionKind, ID: launch.ID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range [][]string{{launch.ID}, {launch.ID, marketing.ID}, {marketing.ID}} {
+		work := Ref{Kind: StandingKind, ID: fmt.Sprintf("work%d", len(seed))}
+		if len(seed) == 1 && seed[0] == marketing.ID {
+			work.ID = "marketing-only"
+		}
+		for _, id := range seed {
+			if err := s.AddPlacement(ctx, id, work); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before, err := s.GoverningIfPlaced(ctx, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		placed, err := s.GoverningCollections(ctx, work)
+		if err != nil || !reflect.DeepEqual(before, placed) {
+			t.Fatalf("seed %v: before placing %v, placed %v (%v)", seed, before, placed, err)
+		}
+	}
+	if got, err := s.GoverningIfPlaced(ctx, []string{launch.ID}); err != nil || !reflect.DeepEqual(got, []GoverningCollection{{launch, 0}, {company, 1}}) {
+		t.Fatalf("Launch brings %v, %v; want Launch and its parent Company", got, err)
+	}
+	if _, err := s.GoverningIfPlaced(ctx, []string{launch.ID, "no-such-folder"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an unknown folder was dropped from the seed instead of refused: %v", err)
+	}
+	if got, err := s.GoverningIfPlaced(ctx, nil); err != nil || len(got) != 0 {
+		t.Fatalf("no folder governs nothing: %v, %v", got, err)
+	}
+}
+
 func TestConcurrentGoverningParentsCannotCreateACycle(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "scope.db")

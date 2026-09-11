@@ -1972,6 +1972,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"get rid of a standing order", "standing-orders"},
 		{"how do I set up ongoing work from the terminal without the chat", "standing-orders"},
 		{"watch a folder and keep a report current", "standing-orders"},
+		// The chat door onto the same work: asked the ways somebody meets it —
+		// saying it in a conversation, reading the card's new lines, wondering
+		// which folder it went in, and reading the receipt afterwards.
+		{"can I ask in the chat to keep a report file current", "standing-orders"},
+		{"the card says aforge publishes this file, what does that mean", "standing-orders"},
+		{"which folder does work I set up in chat go in", "standing-orders"},
+		{"standing show says set up by person through the chat", "standing-orders"},
+		{"the card says no background checks on this machine", "keeping-an-eye"},
+		{"the card says report none no file is kept current", "standing-orders"},
+		{"the model picked a spending limit I never asked for", "keeping-an-eye"},
+		{"I said no more than 3 runs a day, does the card keep it", "keeping-an-eye"},
+		{"the card says at most 10 runs a day (the default)", "keeping-an-eye"},
+		{"work placed in two folders from the chat", "standing-orders"},
 		{"what woke this run and what did it make", "standing-orders"},
 		{"a standing order run was killed midway, is it retried", "standing-orders"},
 		{"does the report keep my folder's rules before it is published", "standing-orders"},

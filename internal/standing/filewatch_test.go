@@ -202,3 +202,25 @@ func TestAReportDeepInsideARecursiveWatchIsRefused(t *testing.T) {
 		t.Fatalf("a report outside the watch was refused: %v", err)
 	}
 }
+
+// AN ITEM ANSWERS WHAT ITS WATCH REACHES BY THE PASS'S OWN READING, recursive
+// and absolute patterns included, and a waking that is not a file watch reaches
+// nothing.
+func TestAnItemWatchesWhatItsPassReads(t *testing.T) {
+	item := Item{Workspace: "/tmp/project", When: When{Kind: WhenFile, Glob: "inbox/**/*.md"}}
+	for path, want := range map[string]bool{
+		"inbox/today.md": true, "inbox/a/b/today.md": true, "reports/inbox-report.md": false, "inbox/today.txt": false,
+	} {
+		if got := item.Watches(path); got != want {
+			t.Errorf("Watches(%q) = %v, want %v", path, got, want)
+		}
+	}
+	item.When.Glob = "/tmp/project/inbox/*"
+	if !item.Watches("inbox/today.md") || item.Watches("reports/today.md") {
+		t.Error("an absolute pattern is not read against the workspace")
+	}
+	item.When = When{Kind: WhenEvery, Every: "0 9 * * *"}
+	if item.Watches("inbox/today.md") {
+		t.Error("a rhythm claims to watch a file")
+	}
+}

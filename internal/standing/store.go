@@ -636,6 +636,14 @@ var syncFolder = func(folder *os.File) error { return folder.Sync() }
 // newID is 16 random hex characters, the same shape and the same reasoning as a
 // session id: enough to name every item a machine will ever hold with nobody
 // coordinating.
+// NewItemID mints an item id before the item is written, for a door that must
+// bind something to the item first: a chat card places its work in a folder
+// BEFORE the item exists, so there is never a moment when the work stands
+// outside the rules the person agreed to ([Store.Create] keeps an id it is
+// handed). A binding left by a crash between the two names an item that never
+// existed, and governs nothing.
+func NewItemID() string { return newID() }
+
 func newID() string {
 	var raw [8]byte
 	if _, err := rand.Read(raw[:]); err != nil {

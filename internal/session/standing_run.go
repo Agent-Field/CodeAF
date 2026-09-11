@@ -1185,19 +1185,11 @@ func standingReportBlock(item standing.Item, report string) string {
 // program's write, and no portable call replaces a file only if its contents
 // are still what they were.
 func publishStandingReport(fence effectFence, workspace, report, text, last string) (*standing.Publication, reportWithheld, error) {
-	root, err := filepath.EvalSymlinks(workspace)
+	root, target, err := reportTarget(workspace, report)
 	if err != nil {
 		return nil, notWithheld, err
 	}
-	target := filepath.Join(root, filepath.Clean(report))
 	dir := filepath.Dir(target)
-	// THE CHECK COMES BEFORE THE FOLDERS ARE MADE. The deepest part of the
-	// report's folder that already exists is resolved first, so a symlinked
-	// parent pointing out of the project refuses the write before a single
-	// folder is created on the far side of it.
-	if err := insideProject(root, deepestExisting(dir)); err != nil {
-		return nil, notWithheld, err
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, notWithheld, err
 	}
@@ -1248,6 +1240,50 @@ func publishStandingReport(fence effectFence, workspace, report, text, last stri
 		return nil, held, err
 	}
 	return &standing.Publication{Path: report, SHA256: sha256Hex(body), Bytes: len(body), At: time.Now().UTC()}, notWithheld, nil
+}
+
+// reportTarget resolves where a report would be written — the project's real
+// root and the target inside it — or refuses a report whose folder leads out of
+// the project through the filesystem as it is NOW.
+//
+// THE CHECK COMES BEFORE ANY FOLDER IS MADE. The deepest part of the report's
+// folder that already exists is resolved, so a symlinked parent pointing out of
+// the project refuses the write before a single folder is created on the far
+// side of it.
+func reportTarget(workspace, report string) (root, target string, err error) {
+	root, err = filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return "", "", err
+	}
+	target = filepath.Join(root, filepath.Clean(report))
+	if err := insideProject(root, deepestExisting(filepath.Dir(target))); err != nil {
+		return "", "", err
+	}
+	return root, target, nil
+}
+
+// CheckStandingReport refuses, at setup, a report that could never be
+// published where it is declared: a folder that leads out of the project
+// through a symbolic link, or a report path that is itself one. It is the same
+// resolution the publish makes ([reportTarget]) asked early, so every door that
+// sets up ongoing work — the chat's card and `aforge standing add` alike —
+// refuses exactly what the run would later refuse. The lexical rules (inside
+// the workspace, never inside its own watch) are [standing.Item.Validate]'s.
+//
+// It does not replace the check at the write: a link planted after setup is
+// still refused there, because the filesystem can change in between.
+func CheckStandingReport(workspace, report string) error {
+	if strings.TrimSpace(report) == "" {
+		return nil
+	}
+	_, target, err := reportTarget(workspace, report)
+	if err != nil {
+		return err
+	}
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("the report path is a symbolic link")
+	}
+	return nil
 }
 
 // reportFile is what the report path held when aforge looked, under the lock.

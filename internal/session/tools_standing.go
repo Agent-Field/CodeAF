@@ -130,11 +130,26 @@ type standingWatchAnswer struct {
 // they cannot miss and never have to read twice — and the cadence in it is
 // [standing.IntervalWords] rather than a typed figure, because a sentence that
 // spelled out five minutes would be the second place that number lived.
+//
+// AND WHEN THERE IS NO TIMER, THE LINE SAYS HOW CHECKS HAPPEN INSTEAD. A host
+// this build cannot arrange a timer for, and an install the host refused, are
+// both machines where nothing checks with every window shut — and a person who
+// just said yes to work that runs is owed that, and the two things that DO
+// check it, rather than silence that reads as "it is taken care of".
 var (
 	standingBackgroundLine = "checks every " + standing.IntervalWords() +
 		", window or not · background checks under /settings"
 	standingBackgroundFailed = "could not install the background check · "
 	standingBackgroundWhere  = " · background checks under /settings"
+	// standingChecksHow is what checks ongoing work when no timer does. It is
+	// the terminal door's own account of itself (`aforge standing add`): an
+	// open window's pass, or the one pass a person runs by hand.
+	standingChecksHow = "checked only while an aforge window is open, or when you run aforge standing check"
+	// standingNoTimerLine is a host with no timer to install at all.
+	standingNoTimerLine = "no background checks on this machine · " + standingChecksHow
+	// standingBackgroundOff is a timer that is not installed now: the row
+	// turned off, or an install that did not take.
+	standingBackgroundOff = "background checks are not running · " + standingChecksHow + standingBackgroundWhere
 )
 
 // standingBackgroundUpdate is the update word that line travels under. It is
@@ -158,6 +173,8 @@ type standingStore interface {
 	FileExchange(string, string, string) (standing.Item, error)
 	Get(id string) (standing.Item, error)
 	ForWorkspace(workspace string) ([]standing.Item, error)
+	// Log adds one line to the item's own log, the one `standing show` prints.
+	Log(id, line string) error
 	Root() string
 	// ExchangeDir is where a home-made item's origin exchange ends up. It is
 	// asked for rather than assembled here for the reason the rest of this
@@ -226,13 +243,14 @@ func (a *Agent) standingWatch() standing.Watch {
 var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
 	"THE DISCHARGE TEST decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing: \"make sure the tests never break\".\n\n" +
 	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses, and what anchors it is the GRAMMAR: a demonstrative pointing at the thing in front of you (\"this website you're building\"), or a present tense about work already under way (\"what you're doing\"). An \"always\", a \"never\" or an \"ensure\" inside such a sentence is EMPHASIS ON THIS WORK — a quality bar for the thing being built is acceptance, and acceptance is never a card.\n\n" +
-	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle). One that names none of them — a rule, a convention, a preference — is when.kind hold.\n\n" +
+	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle, \"keep an eye on my inbox folder and keep reports/inbox.md current\" is file with does.kind task and does.report). One that names none of them — a rule, a convention, a preference — is when.kind hold.\n\n" +
 	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line of prose at the end of your reply. NEVER a card on a guess: a card they did not want costs their trust in every card after it.\n\n" +
 	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work you do now, \"run the tests whenever I push\" is one of these. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there.\n\n" +
 	"Nothing stands until the person says yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate — omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"folder_scope":{"type":"object","description":"Explicit folder scope for a hold only; replaces altitude. Use existing collection IDs, never infer from shortcuts. Requires a person's answer to the proposal.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when the person includes subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
+	`"placement":{"type":"string","description":"Work that runs (does.kind task) only: the id of an existing folder to place it in, so that folder's rules reach every run. Send it only when they named a folder. Omitted, the work is placed where this conversation is placed, or in no folder."},` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose a new one, list what stands here, or pause, resume or stop one that does."},` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it. On pause, resume and stop it names an item instead of its id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
@@ -251,9 +269,10 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
-	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs a brief in its own session, with a copy of its own and a cost row, the way propose_task's work runs."},` +
+	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs its instructions in a session of its own, unattended, with a cost row."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
+	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: its final answer is published. {{evidence}} is replaced by what the probe found."},` +
+	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it. Never inside what when.glob watches."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
@@ -264,7 +283,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
-	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; aforge quotes the shared allowance."},` +
+	`"cost_words":{"type":"string","description":"When the person named a limit — money, or how many runs — quote it in their words: \"at most a dollar a run\", \"no more than 3 a day\". A rail sent without it is dropped. Omit when they named none; aforge quotes the shared allowance."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
@@ -299,13 +318,22 @@ type standArguments struct {
 		ProbeEvery string `json:"probe_every"`
 		Hint       string `json:"hint"`
 	} `json:"when"`
-	Does struct {
-		Kind       string `json:"kind"`
-		Say        string `json:"say"`
-		Brief      string `json:"brief"`
-		Acceptance string `json:"acceptance"`
-		Model      string `json:"model"`
-		MaxSteps   int    `json:"max_steps"`
+	Placement string `json:"placement"`
+	Does      struct {
+		Kind         string `json:"kind"`
+		Say          string `json:"say"`
+		Instructions string `json:"instructions"`
+		// Report is a pointer because an omitted report and a report sent
+		// empty are two different answers: omitted, a file the person named
+		// is asked about ([standingNamedReport]); empty, it is only read.
+		Report     *string `json:"report"`
+		Acceptance string  `json:"acceptance"`
+		Model      string  `json:"model"`
+		MaxSteps   int     `json:"max_steps"`
+		// Retired holds the one old spelling of instructions, read ONLY so a
+		// call that still sends it is refused by name rather than having its
+		// work silently dropped (see [standingRetiredBrief]).
+		Retired json.RawMessage `json:"brief"`
 	} `json:"does"`
 	Rails struct {
 		PerRunUSD *float64 `json:"per_run_usd"`
@@ -459,6 +487,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	// moment that has passed and the refusal of an expiry that has passed all
 	// measure against the SAME instant; two readings a microsecond apart would
 	// be two answers to one question in a function whose whole subject is when.
+	parsed, limits := standingNamedLimits(parsed)
 	item, problem := a.standingItem(parsed, time.Now())
 	if problem != "" {
 		return problem, true, nil
@@ -473,7 +502,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return err.Error(), true, nil
 	}
 	if item.Scope != nil {
-		if a.steward() != nil {
+		// COLLECTIONS' LAW, asked where it is decided ([Agent.mayBindFolders]):
+		// a rule over folders is a governing binding like a placement.
+		if !a.mayBindFolders() {
 			return "folder rules need the person's answer in a conversation", true, nil
 		}
 		if a.config.Organization == nil {
@@ -510,6 +541,19 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 			item.When.Words += " (directly placed work only)"
 		}
 	}
+	// THE REPORT IS REFUSED HERE IF IT COULD NEVER BE PUBLISHED, by the same
+	// resolution the publish will make, so a card never promises a file a run
+	// would only be refused at.
+	if err := CheckStandingReport(item.Workspace, item.Does.Report); err != nil {
+		return "Invalid arguments: does.report " + err.Error(), true, nil
+	}
+	if problem := standingNamedReport(parsed, item); problem != "" {
+		return problem, true, nil
+	}
+	place, problem := a.standingPlacementFor(ctx, parsed, item)
+	if problem != "" {
+		return problem, true, nil
+	}
 
 	notice := StandingNotice{
 		Item: item,
@@ -518,8 +562,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
 		WhenWords: item.When.Words,
-		CostWords: a.standingCostWords(item, parsed),
+		CostWords: a.standingCostWords(item, limits),
 		Guessed:   parsed.Guessed,
+		Terms:     a.standingTerms(ctx, item, place),
 		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
 		// from this one list, so `once, not standing` is absent from a one-off
 		// reminder's card everywhere at once (answers.go's [StandingOptions]).
@@ -556,21 +601,34 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return "nothing was set up: the person said no.", false, nil
 	}
 
-	item.Adoption = &standing.Adoption{Actor: answer.answeredBy, ProposalID: notice.ID, At: time.Now().UTC()}
+	item.Adoption = &standing.Adoption{Actor: answer.answeredBy, ProposalID: notice.ID, At: time.Now().UTC(), Via: standing.DoorChat}
+	// THE FOLDER IS BOUND BEFORE THE WORK EXISTS (standing_placement.go), so no
+	// crash between the two writes can leave work running outside the rules
+	// the card quoted.
+	if err := a.standingPlaceWork(ctx, &item, place); err != nil {
+		return "nothing was set up: " + err.Error(), true, nil
+	}
 	created, err := store.Create(item)
 	if err != nil {
+		a.standingUnplace(ctx, item.ID, place)
 		// SAID PLAINLY AND NOT SWALLOWED. The person answered yes to a card, so
 		// the one thing that must never happen is the conversation carrying on
 		// as though something now stands.
 		return "nothing was set up: " + err.Error(), true, nil
 	}
+	// The door's own lines in the item's log, in the terminal door's grammar
+	// ("set up at the terminal"), so `standing show` says the same thing of
+	// the same item whichever door made it.
+	_ = store.Log(created.ID, "set up in the chat")
+	if len(place.folders) > 0 {
+		_ = store.Log(created.ID, place.logLine())
+	}
 	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
-	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. It
-	// is said to the person and not to the model: the line goes on the screen
-	// as its own dim row, and the model's whole reply is still the one sentence
-	// about what now stands ([standingRatifiedLine]).
-	a.standingBackgroundOn(store, created)
+	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. The
+	// line goes on the screen as its own dim row, and the model's whole reply
+	// is still the one sentence about what now stands ([standingRatifiedLine]).
+	checks := a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		if created.Scope != nil {
@@ -578,6 +636,31 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		} else {
 			line += "\nit wakes: " + when
 		}
+	}
+	if report := created.Does.Report; report != "" {
+		line += "\nreport: " + report + " — " + standingReportWho
+	}
+	if len(place.folders) > 0 {
+		line += "\nplaced in: " + place.names()
+	}
+	// AND WHAT BINDS ITS SPENDING, from the item, and every limit the call sent
+	// that did not stand ([standingNamedLimits]). A model told only "set up"
+	// quoted the number it had sent (the second live measurement, run 01: "over
+	// $0.50 a run won't proceed" over a limit that was never kept).
+	if costs := notice.CostWords; costs != "" {
+		line += "\ncosts: " + costs
+	}
+	if len(limits.dropped) > 0 {
+		line += "\nlimits not kept, because cost_words quoted no limit the person named: " +
+			strings.Join(limits.dropped, ", ") + " — say only what costs: says"
+	}
+	// THE MODEL IS TOLD WHAT THE PERSON WAS TOLD ABOUT CHECKS. The live chat
+	// door (2026-09-11) replied "with background checks active" on a host whose
+	// dim row had just said there are none: a model that never sees that row
+	// fills the gap with the reassuring guess, and its one line is the part the
+	// person reads.
+	if checks != "" {
+		line += "\n" + checks
 	}
 	line += "\n" + standingRatifiedLine
 	return line, false, nil
@@ -707,6 +790,12 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		}
 	case standing.WhenFile:
 		when.Glob = strings.TrimSpace(parsed.When.Glob)
+		// The terminal door's own words for the same watch, as a fallback the
+		// model's when_words replace: a card and a record that said nothing
+		// about when a watch wakes are a watch nobody can check.
+		if when.Glob != "" {
+			when.Words = standing.WatchWords(when.Glob)
+		}
 	case standing.WhenIdle:
 		idle, err := time.ParseDuration(strings.TrimSpace(parsed.When.IdleFor))
 		if err != nil {
@@ -747,10 +836,17 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 // because ONE SHAPE HAS NO FIRING. A hold never wakes, so there is no moment for
 // an action to be the content of; every other kind must say what it does.
 func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Action, string) {
+	if len(parsed.Does.Retired) > 0 {
+		return standing.Action{}, standingRetiredBrief
+	}
+	// THE REPORT PATH IS TAKEN AS SENT. Trimming it here would let a path the
+	// store refuses ([standing.Item.Validate]: a report path is written
+	// exactly) stand on a card under a different spelling than the call's.
 	does := standing.Action{
 		Kind:       standing.ActionKind(strings.ToLower(strings.TrimSpace(parsed.Does.Kind))),
 		Say:        strings.TrimSpace(parsed.Does.Say),
-		Brief:      strings.TrimSpace(parsed.Does.Brief),
+		Brief:      strings.TrimSpace(parsed.Does.Instructions),
+		Report:     standingSent(parsed.Does.Report),
 		Acceptance: strings.TrimSpace(parsed.Does.Acceptance),
 		Model:      strings.TrimSpace(parsed.Does.Model),
 		MaxSteps:   parsed.Does.MaxSteps,
@@ -766,7 +862,11 @@ func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Acti
 		return standing.Action{}, ""
 	}
 	switch does.Kind {
-	case standing.ActionSay, standing.ActionTask:
+	case standing.ActionSay:
+	case standing.ActionTask:
+		if does.Brief == "" {
+			return does, "Invalid arguments: does.instructions is required for work that runs — the work one run does, written whole"
+		}
 	case "":
 		return does, "Invalid arguments: does.kind is required — say or task"
 	default:
@@ -777,6 +877,14 @@ func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Acti
 	}
 	return does, ""
 }
+
+// standingRetiredBrief is the refusal `does.brief` earns. INSTRUCTIONS IS THE
+// ONE SPELLING of the work a run does — `aforge standing add --instructions`,
+// `standing show`'s `instructions (version N)`, and this schema — and a call
+// still carrying the old field (a conversation resumed from before the rename)
+// is told where the work goes rather than having it dropped on the floor and
+// refused for a missing field it believes it sent.
+const standingRetiredBrief = "Invalid arguments: does.brief is now does.instructions — send the work one run does as does.instructions"
 
 // standingRails fills what the model left out. THE DEFAULTS ARE THIS FILE'S
 // CONSTANTS and never a second set of numbers: the schema quotes them and the
@@ -898,24 +1006,120 @@ func standingFirstFiring(when standing.When, now time.Time) (moment time.Time, n
 	return time.Time{}, "", false
 }
 
-// standingCostWords keeps person-named money word for word and otherwise says
-// the one allowance that protects every standing item on this machine.
+// standingCostWords is the card's costs line, written from the item's own
+// limits and never from the model's words about them: every limit the call
+// sent — the one the person named, or the default standing where one was
+// dropped — then the allowance every standing item on this machine shares. A
+// limit that will bind a run because of what was said is always on the card
+// the person says yes to, even when it equals the default.
 //
 // A HOLD SAYS NOTHING ABOUT MONEY, which is the emptiness law reaching a whole
 // band of the card: nothing wakes a rule, so nothing about it is ever bought,
 // and quoting the day's allowance under one would be asking a person to weigh a
 // figure that can never be drawn on ([standing.Item.Spends]).
-func (a *Agent) standingCostWords(item standing.Item, parsed standArguments) string {
+func (a *Agent) standingCostWords(item standing.Item, limits standingLimits) string {
 	if !item.Spends() {
 		return ""
 	}
-	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
-		return strings.TrimSpace(parsed.CostWords)
+	var words []string
+	if limits.perRun != limitUnsent {
+		words = append(words, standingPerRunWords(item.Rails.PerRunUSD)+limits.perRun.said())
+	}
+	if limits.perDay != limitUnsent {
+		words = append(words, "at most "+standingRunsWords(item.Rails.MaxPerDay)+" a day"+limits.perDay.said())
 	}
 	if a.config.Standing != nil && a.config.Standing.DailyRailUSD > 0 {
-		return "shares the day's $" + strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64) + " allowance"
+		return strings.Join(append(words, "shares the day's $"+strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64)+" allowance"), " · ")
 	}
-	return "shares the day's allowance"
+	return strings.Join(append(words, "shares the day's allowance"), " · ")
+}
+
+// standingPerRunWords is a per-run limit as a person reads it. ZERO IS NO
+// LIMIT ([standing.Rails.PerRunUSD]), so it is said as none and never as $0.00.
+func standingPerRunWords(usd float64) string {
+	if usd == 0 {
+		return "no per-run limit"
+	}
+	return "up to $" + strconv.FormatFloat(usd, 'f', 2, 64) + " a run"
+}
+
+// standingRunsWords is a count of runs as a person says it.
+func standingRunsWords(n int) string {
+	if n == 1 {
+		return "1 run"
+	}
+	return strconv.Itoa(n) + " runs"
+}
+
+// limitFate is what became of one limit a call may send.
+type limitFate int
+
+const (
+	// limitUnsent is a limit the call left out; the quiet default stands and
+	// the card does not mention it.
+	limitUnsent limitFate = iota
+	// limitKept is a limit that stands as sent — named by the person, or
+	// negative and so left for the item's own validation to refuse.
+	limitKept
+	// limitDropped is a limit sent with nothing quoting the person; the
+	// default stands in its place, and the card says it is the default.
+	limitDropped
+)
+
+// said is what the costs line adds after a limit, by its fate.
+func (f limitFate) said() string {
+	if f == limitDropped {
+		return " (the default)"
+	}
+	return ""
+}
+
+// standingLimits is what became of a call's two limits, and the ones dropped,
+// spelled as the call sent them so the tool's answer can name each.
+type standingLimits struct {
+	perRun, perDay limitFate
+	dropped        []string
+}
+
+// standingNamedLimits keeps each limit a call sends only on the person's own
+// words for a limit — cost_words, which covers money and a count of runs
+// alike, so "no more than 3 runs a day" stands as surely as "a dollar a run".
+// The schema says to send rails only then; a limit with nothing quoting the
+// person is a model choosing a number nobody said, and one nobody asked for
+// can cut their work short — so it is dropped, the default stands, the card
+// says so, and the tool's answer names it.
+//
+// A NEGATIVE LIMIT IS NOT DROPPED. It is kept for [standing.Item.Validate] to
+// refuse, because a call that sends -1 has an error to fix, and dropping it
+// would be answering a question the model got wrong with a silence.
+func standingNamedLimits(parsed standArguments) (standArguments, standingLimits) {
+	var limits standingLimits
+	named := strings.TrimSpace(parsed.CostWords) != ""
+	if v := parsed.Rails.PerRunUSD; v != nil {
+		limits.perRun = limitKept
+		if !named && *v >= 0 {
+			limits.perRun = limitDropped
+			limits.dropped = append(limits.dropped, "rails.per_run_usd "+strconv.FormatFloat(*v, 'f', -1, 64))
+			parsed.Rails.PerRunUSD = nil
+		}
+	}
+	if v := parsed.Rails.MaxPerDay; v != nil {
+		limits.perDay = limitKept
+		if !named && *v > 0 {
+			limits.perDay = limitDropped
+			limits.dropped = append(limits.dropped, "rails.max_per_day "+strconv.Itoa(*v))
+			parsed.Rails.MaxPerDay = nil
+		}
+	}
+	return parsed, limits
+}
+
+// standingSent is a string the call may have left out, as the store keeps it.
+func standingSent(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // standingAtMoment answers the one moment of an `at`, from either of the two
@@ -1274,7 +1478,9 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 // ── background checks, on by default, said once ─────────────────────────────
 
 // standingBackgroundOn installs this machine's timer the first time anything
-// ever stands, and says the one dim line about it.
+// ever stands, says the one dim line about it, and returns what checks the item
+// now — that line, or after it has been said, [Agent.standingChecksNow] — so
+// the tool's result always carries the fact.
 //
 // NOBODY IS ASKED, AND IT HAPPENS ONCE, EVER. There used to be a question here
 // — keep checking when no window is open? — and it had one sensible answer:
@@ -1287,29 +1493,61 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 // the person's machine; a marker written afterwards would be lost by exactly
 // the failure that makes remembering worth doing, and they would be told all
 // over again tomorrow.
-func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
-	if store == nil || a.config.Standing == nil || a.config.Standing.Watch == nil {
-		return
+func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) string {
+	if store == nil || a.config.Standing == nil {
+		return ""
+	}
+	if a.config.Standing.Watch == nil {
+		// NO TIMER HERE, SAID EVERY TIME SOMETHING THAT WAKES IS SET UP. It is
+		// not the once-ever notice below: that one announces a switch thrown
+		// on the person's machine, and this is a fact about each thing they
+		// just agreed to — it will be checked only while somebody is here. A
+		// rule never wakes, so there is nothing for it to say about one.
+		if !item.Spends() {
+			return ""
+		}
+		return a.standingSayBackground(item, standingNoTimerLine)
 	}
 	if _, told := standingWatchAsked(store.Root()); told {
-		return
+		return a.standingChecksNow(item)
 	}
 	// THE ROW OUTRANKS THE DEFAULT. Somebody who turned background checks off
 	// before anything ever stood has answered this already, and installing a
 	// timer over that answer would make the switch a suggestion.
 	if !config.BackgroundChecksWantedAt(a.config.ProfileDir) {
 		standingRememberWatch(store.Root(), false)
-		return
+		return a.standingChecksNow(item)
 	}
 	standingRememberWatch(store.Root(), true)
 	if err := a.config.Standing.Watch.Install(context.Background()); err != nil {
 		// SAID HONESTLY AND NOT SWALLOWED. The person is about to walk away from
 		// a machine they think is watching something for them.
-		a.emitStandingUpdate(standingBackgroundUpdate, item,
-			standingBackgroundFailed+oneLine(err.Error())+standingBackgroundWhere)
-		return
+		return a.standingSayBackground(item,
+			standingBackgroundFailed+oneLine(err.Error())+" · "+standingChecksHow+standingBackgroundWhere)
 	}
-	a.emitStandingUpdate(standingBackgroundUpdate, item, standingBackgroundLine)
+	return a.standingSayBackground(item, standingBackgroundLine)
+}
+
+// standingChecksNow is what checks this item now, said to the MODEL and not
+// the person, once the person has already had their one line (or answered the
+// row themselves). The row on the screen is said once ever; the model is told
+// every time, because without it the one line it writes about the new item is a
+// guess — and the reassuring guess is "background checks are on".
+func (a *Agent) standingChecksNow(item standing.Item) string {
+	if !item.Spends() {
+		return ""
+	}
+	if status, err := a.config.Standing.Watch.Status(); err == nil && status.Installed {
+		return standingBackgroundLine
+	}
+	return standingBackgroundOff
+}
+
+// standingSayBackground puts one line about checks on the screen and hands the
+// same line back for the tool's result.
+func (a *Agent) standingSayBackground(item standing.Item, line string) string {
+	a.emitStandingUpdate(standingBackgroundUpdate, item, line)
+	return line
 }
 
 // oneLine flattens whatever the operating system said into the single row this

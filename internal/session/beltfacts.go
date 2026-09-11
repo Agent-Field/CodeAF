@@ -425,10 +425,10 @@ var standingFacts = []beltFact{{
 		"YES, and an unanswered card declines. Say what now stands and what it costs, and\n" +
 		"never re-ask an answered card.\n" +
 		"\n" +
-		"BACKGROUND CHECKS ARE ON AND NOBODY IS ASKED: the first thing that ever stands\n" +
-		"turns on this machine's own timer, so items are checked with no aforge window\n" +
-		"open. Never promise otherwise, and turn the `background checks` row in /settings\n" +
-		"if they ask.\n" +
+		"BACKGROUND CHECKS: where this machine has a timer, the first thing that ever\n" +
+		"stands turns it on unasked, so items are checked with no aforge window open. The\n" +
+		"line under the card says whether it did; never promise more, and turn the\n" +
+		"`background checks` row in /settings if they ask.\n" +
 		"\n" +
 		"A LINE THAT OPENS `[something you set up fired]` IS NEWS AND NOT A REQUEST: the\n" +
 		"thing already ran, so relay it to the person in one line and never call `stand`\n" +

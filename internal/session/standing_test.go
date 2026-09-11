@@ -31,6 +31,7 @@ type fakeStanding struct {
 	items   map[string]standing.Item
 	fail    error
 	next    int
+	logged  []string
 }
 
 func newFakeStanding(t *testing.T) *fakeStanding {
@@ -97,6 +98,11 @@ func (f *fakeStanding) FileExchange(id, directory, transcript string) (standing.
 	}
 	item.Origin.Exchange, item.Origin.Transcript = directory, transcript
 	return item, f.Save(item)
+}
+
+func (f *fakeStanding) Log(id, line string) error {
+	f.logged = append(f.logged, id+"  "+line)
+	return nil
 }
 
 func (f *fakeStanding) Get(id string) (standing.Item, error) {
@@ -288,9 +294,13 @@ func TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem(t *testing.T) {
 	if len(store.created) != 1 || store.created[0].Rails.PerRunUSD != 1 || store.created[0].Rails.MaxPerDay != 2 {
 		t.Fatalf("created rails = %+v, want the person's 1 and 2", store.created)
 	}
+	// THE CARD STATES THEM FROM THE ITEM, not from the model's words about
+	// them (since the chat door's measurement, 2026-09-11): a costs line that
+	// quoted cost_words could say "a dollar" over a limit of fifty cents, or
+	// nothing at all over one it never mentioned.
 	card, found := firstOfKind(collected, EventStandingProposal)
-	if !found || card.Standing.CostWords != "at most a dollar a run, twice today" {
-		t.Fatalf("card cost = %+v, want the person's words verbatim", card.Standing)
+	if want := "up to $1.00 a run · at most 2 runs a day · shares the day's $20.00 allowance"; !found || card.Standing.CostWords != want {
+		t.Fatalf("card cost = %q, want %q", card.Standing.CostWords, want)
 	}
 }
 
@@ -377,7 +387,7 @@ func TestStandingValidateRefusesANegativeRailAndNotAnExplicitZero(t *testing.T) 
 	args := json.RawMessage(`{"op":"propose","words":"remind me later",` +
 		`"when":{"kind":"at","at":` + strconv.Quote(at) + `},` +
 		`"does":{"kind":"say","say":"time to leave"},` +
-		`"rails":{"per_run_usd":-1}}`)
+		`"rails":{"per_run_usd":-1},"cost_words":"minus a dollar a run"}`)
 
 	text, isError, err := agent.standTool(context.Background(), args)
 	if err != nil || !isError || !strings.Contains(text, "a per-run budget cannot be negative") {
@@ -855,6 +865,12 @@ func TestABackgroundInstallThatFailedSaysSo(t *testing.T) {
 	line := backgroundLine(events)
 	if !strings.HasPrefix(line, standingBackgroundFailed) || !strings.HasSuffix(line, standingBackgroundWhere) {
 		t.Fatalf("a failed install said %q", line)
+	}
+	// AND WHAT DOES CHECK IT MEANWHILE, since nothing does with the windows
+	// shut: the person is not left to find out that "could not install" meant
+	// "checked only while you are here".
+	if !strings.Contains(line, " · "+standingChecksHow+" · ") {
+		t.Fatalf("a failed install does not say how checks happen now: %q", line)
 	}
 	if strings.Contains(line, "\n") {
 		t.Fatalf("the reason came through in more than one line: %q", line)

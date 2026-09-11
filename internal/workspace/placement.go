@@ -1,6 +1,9 @@
 package workspace
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // Placements are explicit governing bindings. Reference memberships remain a
 // separate graph: filing or following a link never grants governing reach.
@@ -98,14 +101,62 @@ func (s *Store) GoverningCollections(ctx context.Context, ref Ref) ([]GoverningC
 	if err := ref.Validate(); err != nil {
 		return nil, err
 	}
+	return s.governing(ctx, "SELECT collection_id,0 FROM placements WHERE kind=? AND ref_id=? AND session_id=?", ref.Kind, ref.ID, ref.SessionID)
+}
+
+// GoverningIfPlaced answers what [Store.GoverningCollections] would answer for
+// a reference placed directly in the given collections and nowhere else.
+//
+// IT EXISTS FOR WORK THAT DOES NOT EXIST YET. A proposal for ongoing work names
+// the folder it will be placed in, and the person is owed the rules that folder
+// brings BEFORE saying yes — but nothing may be placed until the yes, so there
+// is no reference to ask about. It is the same walk seeded with the folders
+// themselves, which is exactly what a placement in them would seed it with, so
+// the two readings cannot disagree about ancestry. A collection that does not
+// exist is refused rather than silently dropped from the seed.
+func (s *Store) GoverningIfPlaced(ctx context.Context, collectionIDs []string) ([]GoverningCollection, error) {
+	if len(collectionIDs) == 0 {
+		return []GoverningCollection{}, nil
+	}
+	seen := make(map[string]bool, len(collectionIDs))
+	args := make([]any, 0, len(collectionIDs))
+	marks := make([]string, 0, len(collectionIDs))
+	for _, id := range collectionIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		args = append(args, id)
+		marks = append(marks, "?")
+	}
+	result, err := s.governing(ctx, "SELECT id,0 FROM collections WHERE id IN ("+strings.Join(marks, ",")+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	direct := 0
+	for _, collection := range result {
+		if collection.Depth == 0 {
+			direct++
+		}
+	}
+	if direct != len(args) {
+		return nil, ErrNotFound
+	}
+	return result, nil
+}
+
+// governing is the ONE walk up the placement graph, from whichever seed the
+// caller names: the rows `seed` selects are depth zero, and every collection a
+// placement chain reaches from them follows at its shortest depth.
+func (s *Store) governing(ctx context.Context, seed string, args ...any) ([]GoverningCollection, error) {
 	rows, err := s.db.QueryContext(ctx, `WITH RECURSIVE governing(id,depth) AS (
- SELECT collection_id,0 FROM placements WHERE kind=? AND ref_id=? AND session_id=?
+ `+seed+`
  UNION
  SELECT p.collection_id,g.depth+1 FROM placements p JOIN governing g ON p.ref_id=g.id
  WHERE p.kind='collection'
 )
 SELECT c.id,c.name,MIN(g.depth) FROM governing g JOIN collections c ON c.id=g.id
-GROUP BY c.id,c.name,c.seq ORDER BY MIN(g.depth),c.seq`, ref.Kind, ref.ID, ref.SessionID)
+GROUP BY c.id,c.name,c.seq ORDER BY MIN(g.depth),c.seq`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,13 @@ invalidates:
   - "Report delimiters were matched anywhere: a `</report>` inside a code fence cut the report short, and an inline mention refused an undelimited answer. They are now whole lines outside fenced code blocks, a leading byte-order mark is ignored, and a closing tag glued to other words is not a closing line."
   - "Standing run folders were numbered from the highest folder on disk plus one and read newest-first by string order, so a reaped newest run's number was reissued and past run 9999 recovery read the wrong records. Numbers now come from a recorded per-item counter (`last-run`), new folders are six digits, and runs are ordered by number; older four-digit folders read unchanged."
   - "A session's and a project's inbox, and a session's answers file, were deleted the moment they were read, and a staged `*.draining` file left by a crash was never read again. Inbox notes now carry an id and are removed only once the conversation's journal records the fold; answers are removed only once the journal records them (round 3b, below); staged files are re-read at the next open."
+  - "Ongoing work that keeps a report current could only be set up whole at the terminal; the chat's `stand` card could not name a report or a folder. A conversation now makes the same item after one card — the same instructions version, owner-published report, placement, rules check, receipts and withheld codes — and `aforge standing show` says `set up by: person, through the chat`."
+  - "The `stand` tool's work field was `does.brief`. It is `does.instructions`, the terminal's one spelling; a call still sending `does.brief` is refused with a line naming `does.instructions`. `does.report` and a top-level `placement` (a folder id) are new."
+  - "Chat-made work was placed in no folder. Work that runs now goes in the folder its conversation is placed in unless the call names one, and in none when the conversation is in none; the folder is bound after the yes and before the item is written, so no failure or crash leaves work running outside it. `aforge standing add --place` now binds in the same order; it used to create the item first and could leave it standing unplaced (`stands, but could not be placed`)."
+  - "The standing card for work that runs said only when, where and what it costs. It now also says what one run does, the report path and `aforge publishes this file; the run never writes it`, the folder, and the rules that reach it now, resolved as the run resolves them (`StandingNotice.Terms`, drawn verbatim by the chat surface). A file watch proposed with no words of its own said nothing about when it wakes; it now says `when <glob> changes`, the terminal's spelling (`standing.WatchWords`)."
+  - "A report folder leading out of the project through a symbolic link was refused only at each publish. `aforge standing add|edit --report` and the card now refuse it at setup with `the report folder resolves outside the project`."
+  - "`aforge standing show` listed the rules reaching an item as if it had no conversation. It now reads them with the item's own conversation, as its runs do, and a terminal-made item's log records its placement (`placed in folder …`) as the chat's does."
+  - "On a host with no background timer nothing was said when something was set up, and a failed install did not say what checks things meanwhile. Both now say `checked only while an aforge window is open, or when you run aforge standing check`; the prompt no longer promises background checks unconditionally, and the `stand` result now carries the same line to the model, which had replied \"with background checks active\" on a host that has none."
   - "A torn last line in a conversation's journal swallowed the next line written after it, and the journal was synced only on close. A torn tail is now moved to `transcript.jsonl.torn` on open, and the journal is synced at each turn's end and before a delivery settles. Standing documents, receipts and the run counter are written with a file and folder sync."
   - "An unattended standing run carried every tool and was refused the ones the approval rules did not allow, and any such refusal (`refused in a task: default — nobody to ask`) turned a finished report into a question no door answers. A run that fires with nobody watching now carries only the tools the rules grant without asking — no `write`, `edit` or `bash` under the default rules — and its prompt says so; a call to an absent tool answers `Unknown tool`."
   - "An unattended standing run's `read`, `ls`, `grep`, `find`, `read_document` and `view_image` reached the whole machine, including aforge's own home and other conversations' transcripts. They now reach only the item's workspace (symlinks resolved), refusing anything else with `… is outside this work's project (…)` while the run goes on."
@@ -47,6 +54,11 @@ invalidates:
   - "Round 3b: the set of inbox notes an agent had folded grew for the life of the session and was walked under the agent's lock on every surface attach; it now holds only folds whose record has not settled. `Store.LastPublication` read every run record an item ever kept; it now reads the item's `published.json` receipt, falling back to the newest 64 runs by number from the run counter."
   - "Round 3b: tools a connected account arms through `use_service` bypassed the unattended grant filter. Arriving tools are now asked for their grant like the rest of the belt, and an account whose tools are all ungranted says so instead of loading nothing silently."
   - "`aforge collections show --json` printed an array of references and `find --json` an array of collections. Both now print `{\"references\": [...], \"placed\": [...]}`, and the text output lists work placed in a folder (show) and the folders whose rules reach a record (find) under their own labels."
+  - "A stand card's costs line quoted the model's cost_words, so a model that sent limits the person never named ($0.50 a run, 24 a day — 8 of 10 live calls) showed an empty costs line over a limit that would bind. Unnamed limits are now dropped before the card, and the costs line is written from the item: `up to $1.00 a run · at most 2 runs a day · shares the day's allowance`; the stand result tells the model the same line."
+  - "cost_words spoke only of money, so a count the person named (\"no more than 3 runs a day\") sent as max_per_day with no cost_words was dropped as unnamed and silently became the default 10. cost_words now covers a count of runs as well as money; a limit dropped for lack of it shows on the card as the default that stands (`at most 10 runs a day (the default)`) and is named in the stand result (`limits not kept, …: rails.max_per_day 3`); a named limit shows even at the default; a per-run limit of 0 reads `no per-run limit`, never `$0.00`; and a negative limit is refused, not dropped."
+  - "Work that runs and keeps no file drew no report line, and a call that left does.report out while the person's sentence named a file made work that keeps nothing (1 of 10 live runs). The card now says `report · none — no file is kept current`, and such a call is refused with the file named and both answers (`does.report \"<path>\"` or `\"\"`)."
+  - "A stand card placed work in the conversation's own folders even when a delegated principal was answering, bypassing collections' law. Any placement, named or inherited, now needs `mayBindFolders` (the person, in a conversation), the same predicate `collections place` asks."
+  - "After the once-ever background notice, the stand result said nothing about checks, so the model's reply about a later item was a guess. The result now always carries what checks the item (`checks every 5 minutes, window or not · …` or `background checks are not running · …`); the person's row is still said once."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -164,3 +176,30 @@ has each change with its regression, the old-logic proof and the live tables.
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No
 connector or account is used.
+
+The chat door wave makes the conversation a second door onto the same ongoing work
+the terminal sets up. The `stand` tool spells the work `does.instructions`, names a
+`does.report` and an optional `placement`; the card states what one run does, who
+writes the report, the folder and the rules that reach it before the yes, and the yes
+records `via: chat`, places the work and runs it through the unchanged publish path.
+A workspace method, `GoverningIfPlaced`, answers which folders would govern work not
+yet placed, from the same walk as `GoverningCollections`. `TestChatDoorJourney` drives
+a scripted conversation and a terminal-made twin through `bin/aforge standing check`
+and `show` to identical records; `TestRealChatDoorJourney` is the same road with a real
+model. `docs/design/workspace-foundation/grooming/BUILD-CHATDOOR.md` has the evidence.
+
+After wave 4 merged, a ten-run live measurement of the chat door
+(summarized in `grooming/BUILD-CHATDOOR.md`, *Round 2*) drove four seam fixes: unnamed spending
+limits are dropped and the card's costs line is written from the item; a file the
+person named is asked about as `does.report` before any card, and a card for work that
+keeps no file says `report · none — no file is kept current`; an inherited folder
+placement is written only under collections' law; and the stand result always tells
+the model what checks the work. The card also names two folders in the plural and
+warns when the rules reaching a placement are more than a run can carry (64).
+
+The third pass closes the review's blocker — a named count of runs dropped because
+cost_words covered only money — and its non-blocking items: the named-report refusal
+lists every file the sentence names that could be the report by the report's own law (a
+home, absolute, `..` or watched path never is); a rule over folders is bound under
+`mayBindFolders` like a placement; and the card previews the 64 KiB governing gate beside
+the 64-rule one.
