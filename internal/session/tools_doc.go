@@ -211,16 +211,24 @@ var documentMediaTypes = map[string]struct {
 // readDocumentDescription is prompt text billed on EVERY request of every turn —
 // the whole tool-schema block rides in front of each one — so it is written for
 // density: one imperative clause per rule, and each rule said once. What it must
-// still teach is unchanged, and it is the same four things: which files this
-// hand is for, that it COSTS MONEY where read does not, that read is the rung
-// below it for anything with a text layer, and pi's truncation law.
+// still teach is three things: which files this hand is for, that it COSTS MONEY
+// where read does not, and pi's truncation law.
 //
-// THE TRUNCATION FIGURES ARE INTERPOLATED, not typed. They are [pdfMaxLines] and
-// [pdfMaxBytes], the same constants piReadLaw actually applies below, because a
-// description promising one budget while the body enforces another is the exact
-// drift one-source-of-truth exists to stop (they were bare digits here until
-// this pass). That is what makes this a var rather than a const.
-var readDocumentDescription = fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page); use read for plain text, source and PDFs that have a text layer. Truncates to %d lines or %dKB; offset continues.", pdfMaxLines, pdfMaxBytes/1024)
+// THE TRUNCATION FIGURES ARE INTERPOLATED, not typed. They are the belt's own
+// [bare.Caps] — the same pair piReadLaw actually applies below, and the same
+// pair read quotes — because a description promising one budget while the body
+// enforces another is the exact drift one-source-of-truth exists to stop (they
+// were bare digits here until this pass). That is what makes this a function
+// rather than a const: the caps follow the model's window.
+// AND THE RUNG-BELOW SENTENCE LEFT (2026-09-10, the prompt diet). "use read for
+// plain text, source and PDFs that have a text layer" is a WHICH-TOOL rule, and
+// it is already stated from the other side by `read`'s own description (the
+// scanned-PDF clause names this tool) and by the page's routing table. The cost
+// clause stays: it is a LIMIT rather than a routing rule, and it is the whole
+// reason a model should hesitate before reaching here.
+func readDocumentDescription(caps bare.Caps) string {
+	return fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page). Truncates to %d lines or %dKB; offset continues.", caps.MaxLines, caps.MaxBytes/1024)
+}
 
 const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file, workspace-relative or absolute"},"question":{"type":"string","description":"What you need from it; default all of it. Shapes the native rung only"},"offset":{"type":"integer","description":"Line to start from (1-based). Paging is free"},"limit":{"type":"integer","description":"How many lines to return"}},"required":["path"],"additionalProperties":false}`
 
@@ -229,7 +237,7 @@ const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"s
 func (a *Agent) documentTool() bare.Tool {
 	return bare.Tool{
 		Name:        "read_document",
-		Description: readDocumentDescription,
+		Description: readDocumentDescription(a.resultCaps()),
 		Schema:      json.RawMessage(readDocumentSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
@@ -293,7 +301,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 	// law as the plain-text guard above, one file type along.
 	if entry.kind == documentPDF && setting == docEngineAuto {
 		if text, err := pdfx.Extract(absolute); err == nil && !documentThin(text) {
-			return documentNote("local", question, false) + piReadLaw(strings.TrimSpace(text), offset, limit), false, nil
+			return documentNote("local", question, false) + piReadLaw(a.resultCaps(), strings.TrimSpace(text), offset, limit), false, nil
 		}
 	}
 
@@ -309,7 +317,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 	digest := sha256.Sum256(data)
 	key := hex.EncodeToString(digest[:]) + "|" + setting + "|" + question
 	if cached, ok := a.documentMemo(key); ok {
-		return documentNote(cached.rung, question, cached.rung != docEngineNative) + piReadLaw(cached.text, offset, limit), false, nil
+		return documentNote(cached.rung, question, cached.rung != docEngineNative) + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
 	client, err := a.documentParser()
@@ -362,7 +370,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 			continue
 		}
 		a.storeDocumentMemo(key, documentExtraction{rung: string(rung), text: text})
-		return documentNote(string(rung), question, rung != provider.DocumentParseNative) + piReadLaw(text, offset, limit), false, nil
+		return documentNote(string(rung), question, rung != provider.DocumentParseNative) + piReadLaw(a.resultCaps(), text, offset, limit), false, nil
 	}
 
 	// Every rung named, in the order they were tried, because "which one broke"

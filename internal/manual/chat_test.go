@@ -118,6 +118,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed esc on the allow question and nothing happened", "permissions"},
 		{"the allow question turned into a card on my narrow terminal", "permissions"},
 		{"what does always this command write down", "permissions"},
+		// AND THE MARK AFORGE LEAVES ON WORK IT DID FOR YOU, asked the five ways
+		// somebody meets it: reading their own git log, reading a pull request
+		// they did not write the last line of, looking up a name they have never
+		// seen, and wanting it gone.
+		{"why is there a co-author on my commit", "permissions"},
+		{"does aforge sign my commits", "permissions"},
+		{"who is agentfield-bot", "permissions"},
+		{"what is the drafted with line at the bottom of my pull request", "permissions"},
+		{"stop adding a co-author trailer to my commits", "permissions"},
+		{"does it sign every comment it leaves on my pull request", "permissions"},
+		{"what is the small drafted with line under its comment", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed
@@ -186,6 +197,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// go round again and want the sentence that says what ended it.
 		{"why was my work picked up again", "adaptive-runs"},
 		{"whose model context window is used over host", "models-and-cost"},
+		// The lean profile, asked the two ways it is met: somebody on a local
+		// model wondering why the answer got worse, and somebody on an
+		// open-weight model wondering whether they are being given the small
+		// version. The second is the one the ruling of 2026-09-10 turned around.
+		{"why does my local model get fewer tools", "models-and-cost"},
+		{"when does aforge use the lean profile", "models-and-cost"},
+		{"is deepseek given a shorter page than claude", "models-and-cost"},
+		{"does an open weight model get the lean prompt", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},

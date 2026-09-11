@@ -280,6 +280,19 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			if lastErr == nil {
 				lastErr = errEmptyAnswer
 			}
+			// A CANCELLED ERRAND IS NOT A FAILED ONE, and it leaves no row. When a
+			// turn ends, the captions and titles it started die with `context
+			// canceled`, and each was journaled as an error and then read by the
+			// boundary as `class: work, the work did not come back done` — a
+			// failure in every autopsy for an errand nobody was waiting on any more
+			// (the 2026-09-10 transcript carries one per turn). The turn loop has
+			// never journaled a request its own context cancelled (loop.go); an
+			// errand keeps the same rule. A DEADLINE is still a failure and still
+			// written, below: that is the caller running out of patience, which is
+			// news, where a cancel is the caller walking away.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil, rung.Model, ctx.Err()
+			}
 			// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
 			// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
 			// errand that cannot be reached is silent by design — the caller reads

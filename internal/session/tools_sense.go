@@ -66,7 +66,16 @@ import (
 // instruction that pays for itself: the failure this whole file exists to
 // prevent is `bash: python3 -c "import whisper"`, and a model told plainly that
 // read already does this never writes that line.
-const senseSentence = " Images, audio and video are read the same way — as a description: a picture comes back with its text transcribed and its layout described, a recording as its speech transcribed or, when it is not speech, as an account of the sound, and a video as what happens in it. Never write a script to decode any of them."
+//
+// THE PROMPT DIET CUT IT TO A QUARTER (2026-09-10) AND KEPT BOTH RULES. What
+// went was the worked example — a paragraph enumerating what a picture, a
+// recording and a video each come back as, which is three tellings of one fact
+// the first clause states. `described, never as bytes` is the whole of the
+// decoder ban: a model that knows the answer is prose does not reach for a
+// codec. The scanned-PDF pointer stays because it is the one file this rung
+// genuinely cannot take, and a model that meets one needs the name of the tool
+// that can.
+const senseSentence = " Images, audio and video come back described, never as bytes; a scanned PDF needs read_document."
 
 // ── what kind of file is this ───────────────────────────────────────────────
 
@@ -449,7 +458,7 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	key := senseKey(data, "image", seer)
 	if cached, ok := memo.get(key); ok {
-		return cached.note + piReadLaw(cached.text, offset, limit), false, nil
+		return cached.note + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
 	answer, err := a.senseOneShot(ctx, seer, senseImagePrompt, ai.ContentPart{
@@ -460,7 +469,7 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("vision", seer), text: answer}
 	memo.put(key, reading)
-	return reading.note + piReadLaw(reading.text, offset, limit), false, nil
+	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 
 // ── the audio ladder ────────────────────────────────────────────────────────
@@ -510,7 +519,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	key := senseKey(data, "audio", scribe, listener)
 	if cached, ok := memo.get(key); ok {
-		return cached.note + piReadLaw(cached.text, offset, limit), false, nil
+		return cached.note + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
 	var failures []string
@@ -548,7 +557,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 			default:
 				reading := senseReading{note: senseNote("transcript", scribe), text: text}
 				memo.put(key, reading)
-				return reading.note + piReadLaw(reading.text, offset, limit), false, nil
+				return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 			}
 		}
 	}
@@ -562,14 +571,14 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 		if err == nil {
 			reading := senseReading{note: senseNote("audio", listener), text: answer}
 			memo.put(key, reading)
-			return reading.note + piReadLaw(reading.text, offset, limit), false, nil
+			return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 		}
 		failures = append(failures, listener+": "+oneLineReason(err.Error()))
 	}
 
 	if thin.text != "" {
 		memo.put(key, thin)
-		return thin.note + piReadLaw(thin.text, offset, limit), false, nil
+		return thin.note + piReadLaw(a.resultCaps(), thin.text, offset, limit), false, nil
 	}
 	// Every rung named, in the order they were tried, because "which one broke"
 	// is the difference between a model that retries forever and a person who
@@ -651,7 +660,7 @@ func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	key := senseKey(data, "video", watcher)
 	if cached, ok := memo.get(key); ok {
-		return cached.note + piReadLaw(cached.text, offset, limit), false, nil
+		return cached.note + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
 	answer, err := a.senseOneShot(ctx, watcher, senseWatchPrompt, ai.ContentPart{
@@ -662,7 +671,7 @@ func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 	reading := senseReading{note: senseNote("video", watcher), text: answer}
 	memo.put(key, reading)
-	return reading.note + piReadLaw(reading.text, offset, limit), false, nil
+	return reading.note + piReadLaw(a.resultCaps(), reading.text, offset, limit), false, nil
 }
 
 // The four words this file hands Config.MediaModel. They are constants because

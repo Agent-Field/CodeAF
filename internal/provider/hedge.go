@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,7 +206,22 @@ type hedgeRace struct {
 	// switch path. One notice per question: a second line about the same stall
 	// is nagging.
 	firstPromptTold bool
+	// ladderOwed says an arm's refusal door handed a ROUTING refusal to the walk
+	// rather than climbing the endpoint ladder itself (client.go's
+	// [Client.sendRecovered]), and ladderFirst is what the router said, kept so
+	// the ladder's last words can quote it. ladderRan says some door — or this
+	// race — has climbed it, which is what stops a question climbing it twice.
+	// See [hedgeRace.exhausted] for why the race holds these at all.
+	ladderOwed  bool
+	ladderRan   bool
+	ladderFirst []byte
 }
+
+// ladderArms is how many requests beyond [maxArms] one question may become: the
+// one arm the race starts itself to climb a ladder its doors deferred
+// ([hedgeRace.exhausted]). It is not a walk and not a hedge, so it is not
+// counted against either; it is the ladder the first door would have climbed.
+const ladderArms = 1
 
 // raceFor builds the watched call, which is every call.
 //
@@ -240,7 +256,7 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		winner:   -1,
 		held:     map[int][]StreamEvent{},
 		tried:    map[string]bool{},
-		results:  make(chan armResult, maxArms),
+		results:  make(chan armResult, maxArms+ladderArms),
 		wake:     make(chan struct{}, 1),
 		decided:  make(chan struct{}),
 	}
@@ -338,12 +354,21 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 						return r.settle(candidate, seen)
 					}
 				}
-				// Nobody committed and everybody is done. For failures that never
-				// became an accepted stream, retain the primary's error: it is the
-				// request the caller actually made and preserves the existing
-				// authentication, connection and refusal semantics.
-				if primary, ok := seen[0]; ok {
-					return r.settle(primary, seen)
+				// NOBODY COMMITTED AND EVERYBODY IS DONE — WHICH IS EXHAUSTION, AND
+				// EXHAUSTION HAS AN OWNER NOW. A door that handed a routing refusal
+				// to the walk did so on a prediction; if nothing the walk started
+				// answered, the ladder that prediction deferred is climbed here,
+				// once, before anything is settled ([hedgeRace.exhausted]).
+				if r.exhausted() {
+					continue
+				}
+				// AND THE ERROR HANDED BACK IS THE MOST ACTIONABLE ONE ANY ARM
+				// PRODUCED ([hedgeRace.mostActionable]). It used to be the
+				// primary's, always, which on 2026-09-10 was a routing 404 the
+				// walk had already acted on — while the last arm's 429 named a
+				// pool and a wait the layer above knows how to spend.
+				if chosen, ok := r.mostActionable(seen); ok {
+					return r.settle(chosen, seen)
 				}
 				return r.settle(result, seen)
 			}
@@ -400,7 +425,18 @@ func (r *hedgeRace) drainArms(seen map[int]armResult) {
 // start puts one arm in flight. lane is empty for the primary and names the
 // machine for a rescue, which demands it outright.
 func (r *hedgeRace) start(index int, lane string) {
+	r.startArm(index, lane, nil)
+}
+
+// startArm is [hedgeRace.start] with the one thing only the race's own ladder
+// arm carries: the refusal its doors deferred, which sends that arm's request
+// straight into the endpoint ladder instead of paying the same refusal again
+// (client.go's [Client.sendRecovered]).
+func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 	armCtx, cancel := context.WithCancel(r.base)
+	if ladder != nil {
+		armCtx = withLadderOwed(armCtx, ladder)
+	}
 	now := waitNow()
 	plan := r.plan
 	plan.Began = now
@@ -1290,6 +1326,111 @@ func (r *hedgeRace) canWalk() bool {
 	return false
 }
 
+// deferLadder records that an arm's door handed a routing refusal to the walk
+// ([streamWatch.deferLadder]). The latest body is kept: it is the router's most
+// recent account of this question, which is what a ladder that runs out quotes.
+func (r *hedgeRace) deferLadder(body []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ladderOwed = true
+	r.ladderFirst = append([]byte(nil), body...)
+}
+
+// ranLadder records that a door climbed the ladder itself.
+func (r *hedgeRace) ranLadder() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ladderRan = true
+}
+
+// exhausted is the one owner of "this question is not yet given up on", asked
+// at the one moment it can be answered: every arm has ended, nobody committed,
+// and no accepted stream was cut. It reports whether it put another request on
+// the wire.
+//
+// ── THE MEASURED FAILURE (2026-09-10 19:32 EDT) ─────────────────────────────
+//
+// Three arms. The primary's door and the first rescue's door each saw a routing
+// refusal, each asked [hedgeRace.canWalk], each heard yes — there was an
+// untried, serving, affordable machine — and each handed its refusal to the
+// walk instead of climbing the ladder. The third arm accepted, went silent and
+// died of a 429, which is not a routing refusal and never reaches that door.
+// So the ladder — relax the endpoint filter, let the router choose, drop the
+// ceiling, then the fallback models — was deferred twice and run by nobody, and
+// the race settled on the primary's 404. The person sent the same words again
+// by hand, the door found nowhere to walk, climbed, and was answered at once.
+//
+// THE LAW: A LADDER A DOOR DEFERRED IS CLIMBED BEFORE THE QUESTION IS SETTLED.
+// The walk, the ladder and the session's retry are three controllers, and the
+// handoffs between them were predictions. This makes the one between the first
+// two a guarantee: the race ends a question in an answer or in exhaustion, and
+// exhaustion climbs what was deferred. ONCE — [hedgeRace.ranLadder] is set by a
+// door that climbed it itself and by this — and never on a dead context, where
+// nothing is waiting for the answer.
+func (r *hedgeRace) exhausted() bool {
+	if r == nil || r.base == nil || r.base.Err() != nil {
+		return false
+	}
+	r.mu.Lock()
+	if !r.ladderOwed || r.ladderRan || r.winner >= 0 {
+		r.mu.Unlock()
+		return false
+	}
+	r.ladderRan = true
+	first := r.ladderFirst
+	index := len(r.arms)
+	r.mu.Unlock()
+	r.startArm(index, "", first)
+	// THE LADDER ARM TAKES THE VOICE AT ONCE. Every other arm has ended, so
+	// there is nobody it could be talking over, and its retry lines are the
+	// only thing a person watching this question has to read.
+	r.mu.Lock()
+	if r.winner < 0 {
+		r.flip(index)
+	}
+	r.mu.Unlock()
+	return true
+}
+
+// mostActionable is the error a question that ended with no answer hands back:
+// the one that tells the layer above the most about what to do next.
+//
+// THREE RANKS, AND THE ORDER IS THE ARGUMENT. An ordinary failure — a 429 that
+// named its pool, a 5xx, an upstream's own refusal, an authentication failure —
+// is a fact the session's taxonomy knows how to spend (a wait, a rotation, a
+// person's key), so it ranks first. The ladder's own end ([RefusalError]) is a
+// diagnosis for a person, which ranks above a bare routing refusal because it
+// says what was tried. A ROUTING refusal ranks last: it is a fact about a lane
+// or a list that the walk and the ladder have already acted on, and handing it
+// up as the verdict is what made the measured turn say "the request itself was
+// refused". Ties go to the EARLIEST arm, so a question whose primary failed on
+// its own account keeps exactly the answer it always had.
+func (r *hedgeRace) mostActionable(seen map[int]armResult) (armResult, bool) {
+	best, rank := armResult{}, -1
+	for index := 0; index < r.count(); index++ {
+		result, ok := seen[index]
+		if !ok || result.err == nil {
+			continue
+		}
+		if weight := actionability(result.err); weight > rank {
+			best, rank = result, weight
+		}
+	}
+	return best, rank >= 0
+}
+
+// actionability is one error's rank for [hedgeRace.mostActionable].
+func actionability(err error) int {
+	var spent *RefusalError
+	switch {
+	case errors.As(err, &spent):
+		return 1
+	case RoutingRefusal(err):
+		return 0
+	}
+	return 2
+}
+
 // hears reports whether this arm is the one the person is listening to.
 func (r *hedgeRace) hears(arm int) bool {
 	r.mu.Lock()
@@ -1505,6 +1646,25 @@ func (r *hedgeRace) estimateLocked(lane string, tokens int) float64 {
 		return scored.Price * float64(tokens) / float64(r.expected)
 	}
 	return 0
+}
+
+// ── THE LADDER A RACE OWES ──────────────────────────────────────────────────
+
+type ladderOwedContextKey struct{}
+
+// withLadderOwed marks the race's own ladder arm, carrying the refusal its
+// doors deferred ([hedgeRace.exhausted]).
+func withLadderOwed(ctx context.Context, first []byte) context.Context {
+	return context.WithValue(ctx, ladderOwedContextKey{}, first)
+}
+
+// ladderOwedFrom is that refusal, and whether this request is that arm.
+func ladderOwedFrom(ctx context.Context) ([]byte, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	first, ok := ctx.Value(ladderOwedContextKey{}).([]byte)
+	return first, ok
 }
 
 // ── THE LANE A RESCUE DEMANDS ───────────────────────────────────────────────

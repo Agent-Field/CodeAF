@@ -1031,6 +1031,13 @@ var OperatorEnvPins = []string{
 	// give the page real questions. A row offering to persist it would be
 	// offering to open a fixture over somebody's conversation every launch.
 	"AFORGE_QUESTION_DEMO",
+	// AFORGE_PROMPT_PROFILE pins the prompt profile (internal/session's
+	// promptprofile.go) to `lean` or `full` for one launch: a bench or a test
+	// measuring one arm against the other. The profile is DERIVED from the
+	// model's window in ordinary use, so this is an operator's pin and not a
+	// preference; the row a person would choose lean with is owed and is not
+	// this variable.
+	"AFORGE_PROMPT_PROFILE",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
@@ -2350,8 +2357,14 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
-			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
-				"A change lands on the next job.",
+			// THE ROW GOVERNS BOTH SURFACES NOW, so the hint says both. The chat
+			// resolves it once when it starts (cmd/aforge's applyV3Governance) and a
+			// job resolves it when the job begins, which is why a change lands at two
+			// different moments and the person is told which.
+			Hint: "signs the commits, pull requests, issues and comments aforge writes for " +
+				"you — one commit trailer, one footer line on a body, one small line on the " +
+				"first comment in a thread, and nothing anywhere else. A change lands on the " +
+				"next job, and in a conversation the next time aforge starts.",
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
 		},

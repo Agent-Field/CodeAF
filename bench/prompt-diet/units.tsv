@@ -1,0 +1,40 @@
+# The law units the ablation asks about, largest first.
+#
+# TAB-SEPARATED, SIX COLUMNS: id, key sentence, what it is, where it lives,
+# approximate bytes, pinned.
+#
+# THE KEY SENTENCE IS A LOCATOR AND NOT A QUOTE OF THE WHOLE LAW. ablate.sh
+# finds the blank-line-delimited block it sits in and removes that block, so the
+# sentence only has to be unique on the page — but it MUST be verbatim, because
+# a sentence that no longer matches makes the script exit rather than silently
+# ablate nothing and report a null result.
+#
+# `where` decides which road ablate.sh can take. A unit in `system.md` can be
+# cut by patching a throwaway worktree. A unit rendered from `beltfacts.go` is a
+# Go string chosen by a predicate, and there is no honest way to cut one out of
+# a Markdown file — those units need the AFORGE_PROMPT_ABLATE hook lane C or
+# lane G may add. Until it exists, they are listed here and cannot be run, which
+# is the state of the world and not an omission.
+#
+# `pinned` names a law a substring test holds in place (the wave brief's list,
+# DESIGN.md §6). A pinned law DOES NOT MOVE ON THIS SCRIPT'S EVIDENCE. It is
+# still worth ablating — knowing what a law is worth is useful even when the law
+# is staying — but the result is a note in BENCH.md, never a deletion.
+#
+# The bytes are DESIGN.md §1's audit figures for the family, not a measurement
+# this file made. They order the list; they do not appear in any table.
+#
+#id	key sentence	what it is	where	bytes	pinned
+standing	standing	the standing-order section: existence, when.in/when.at grammar, and what to do when one fires	beltfacts.go	2500	no
+landed-task	A LANDED TASK SAYS ONE OF FOUR WORDS	the four landing words, said back verbatim	system.md	900	no
+your-call	IS A QUESTION AND YOU MAY BE THE ONE ASKED	what `your call` means and which verbs answer it	system.md	600	no
+woken-turn	A turn can also start with nobody having typed	a turn opened by work landing rather than by a person	system.md	700	no
+carry-on	IS THE HARNESS AND NOT THE PERSON	how to read a `[carry on]` line	system.md	536	no
+interrupt	A person's message arriving mid-turn means the generation before it was cut	steering against interrupting, and what survives each	system.md	400	no
+accounts	accounts	connected-account etiquette	beltfacts.go	1100	no
+media-essay	When you MAKE media the prompt decides the quality	medium-anchor and positive-spec prompting law	system.md	853	no
+ask-ladder	Before asking, climb the decision ladder	the five rungs before a question is asked at all	system.md	450	no
+ask-through-ask	ASK THROUGH `ask` AND NEVER IN PROSE	a question is a tool call, never numbered options in prose	system.md	420	no
+stop-verb	DOES NOT STOP IT	saying stop to a task is a message, not an ending	system.md	400	no
+one-breath	ASK FOR EVERYTHING YOU NEED IN ONE BREATH	independent calls go out as one batch	system.md	300	yes
+discipline	WORKING_DISCIPLINE	the working discipline — THE CONTROL, and the only unit that already has ablation evidence (3/3 against 0/5 over twelve unattended runs)	system.md	1200	yes

@@ -2339,6 +2339,29 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 		if !ok || door == nil {
 			return nil
 		}
+		// THE SENDING IS REMEMBERED BEFORE THE DOOR IS ASKED, AND THAT ORDER IS
+		// THE WHOLE POINT. The engine runs in its own process even on this
+		// machine, so this call crosses a wire: it applies the answer, emits
+		// [session.EventQuestionAnswered], and only then writes its reply back.
+		// A reply that never arrives — a deadline spent while the engine was
+		// busy, a pipe that went — leaves this window holding a question the
+		// engine has already settled, and the news of that settling then comes
+		// down the questions lane looking exactly like somebody else's answer.
+		// MEASURED, ON A REAL TERMINAL AND TO THE MILLISECOND. Six copies of the
+		// ordinary road's own e2e at once on 2026-09-10, and the one that failed
+		// logged this and nothing else:
+		//
+		//	19:41:57.279  sending token=ask:1 keys=[1] by=person
+		//	19:42:07.279  REFUSED  err=the connection to the engine is gone
+		//	19:42:07.280  the lane's news, with the question still open here
+		//
+		// Ten seconds to the millisecond is [remote.callDeadline], and the engine
+		// had applied the answer regardless — the model's next sentence was
+		// `They picked "delete it"`. The five that passed round-tripped in one
+		// millisecond. So the receipt said `decided … · another window ·` over a
+		// key pressed on that very screen, and it is the box being busy that
+		// decides which run it happens on.
+		a.markQuestionSent(q.token(), answer.Keys())
 		if err := door.ResolveQuestion(answer); err != nil {
 			return nil
 		}
@@ -2368,6 +2391,10 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 // it again.
 func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	token := q.token()
+	// AND THE SENT STAMP GOES WITH IT. It is only ever about a question still
+	// open here with an answer of this window's unaccounted for, and this is
+	// where both of those stop being true ([app.markQuestionSent]).
+	delete(a.questionSent, token)
 	// AND HOME'S OWN CARD GOES WITH IT (homeconfirm.go). A question answered is a
 	// question gone from wherever it was drawn, and home is the one place that
 	// holds one outside the queue below.
@@ -2987,6 +3014,7 @@ func (a *app) forgetQuestions() {
 	a.questions = nil
 	a.questionRecords = nil
 	a.questionBands, a.questionSpans = nil, nil
+	a.questionSent = nil
 	a.qroom = nil
 	a.touch()
 }
@@ -3476,6 +3504,16 @@ const questionRaceFor = time.Second
 func (a *app) foldOthersAnswer(q session.Question, answer session.Answer) {
 	shown := questionShown{question: q}
 	if a.questionIsOpen(shown.token()) {
+		// UNLESS IT IS THIS WINDOW'S OWN ANSWER COMING BACK, which is a
+		// question still open here only because the door never said whether it
+		// took it ([app.markQuestionSent] holds the reason). The keys have to
+		// match: an answer this window sent and LOST to another window's is
+		// somebody else's decision and wears their name, exactly as it did
+		// before.
+		if a.questionSentHere(shown.token(), answer.Keys()) {
+			a.closeQuestion(shown, answer)
+			return
+		}
 		if answer.DecidedBy == "" || answer.DecidedBy == session.DecidedByPerson {
 			answer.DecidedBy = session.DecidedByWindow
 		}
@@ -3530,6 +3568,32 @@ func (a *app) questionAnswerHere(q session.Question) (questionRecord, bool) {
 		}
 	}
 	return questionRecord{}, false
+}
+
+// markQuestionSent remembers the answer this window has just handed to the
+// engine's door for one question, before the door has said anything about it.
+//
+// IT IS THE ONE FACT THE LANE'S NEWS CANNOT CARRY. [session.EventQuestionAnswered]
+// says a question was answered by a person; it does not and cannot say WHICH
+// SCREEN the key was pressed on, and [app.foldOthersAnswer]'s whole reading of
+// "somebody else answered it" is that the question is still open here. That
+// reading is right for every window that did nothing and wrong for the one that
+// answered and was not told, so this is what tells the two apart.
+func (a *app) markQuestionSent(token string, keys []string) {
+	if token == "" {
+		return
+	}
+	if a.questionSent == nil {
+		a.questionSent = map[string][]string{}
+	}
+	a.questionSent[token] = append([]string(nil), keys...)
+}
+
+// questionSentHere reports whether this window sent exactly this answer to this
+// question and has not seen it close since.
+func (a *app) questionSentHere(token string, keys []string) bool {
+	sent, ok := a.questionSent[token]
+	return ok && sameAnswer(sent, keys)
 }
 
 // sameAnswer reports whether two answers picked the same keys, in the same

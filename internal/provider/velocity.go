@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -300,10 +301,18 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 		return nil
 	}
 	const perMillion = 1_000_000
-	return &maxPrice{
+	ceiling := &maxPrice{
 		Prompt:     prompt * perMillion * latencyPriceCeiling,
 		Completion: completion * perMillion * latencyPriceCeiling,
 	}
+	// AND A CEILING ONLY A MACHINE THIS ACCOUNT CANNOT REACH FITS UNDER IS A
+	// DEMAND FOR THAT MACHINE, so it is not sent (accountset.go). The list price
+	// is the cheapest machine's tariff, and the cheapest machine is often the
+	// first-party one an account's privacy switch takes away.
+	if ceilingOnlyAdmitsTheUnserved(model, ceiling) {
+		return nil
+	}
+	return ceiling
 }
 
 // providerPreferences builds the object one request will carry, nil when none
@@ -553,7 +562,9 @@ func (l *velocityLedger) reachableLanes(model string) []string {
 	unreachable := l.unreachable[normalizeModel(model)]
 	reachable := make([]string, 0, len(known))
 	for _, name := range known {
-		if !unreachable[name] {
+		// A machine the account excludes is outside every model's set, and the
+		// router has said so once already (internal/lane's account.go).
+		if !unreachable[name] && !lanes.AccountExcludes(name) {
 			reachable = append(reachable, name)
 		}
 	}
@@ -752,6 +763,11 @@ func ServedEndpointFrom(ctx context.Context) *ServedEndpoint {
 func noteServed(ctx context.Context, served, asked string) {
 	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
 	slot.note(served, asked)
+	// AN ANSWER FROM A MACHINE IS PROOF THE ACCOUNT CAN REACH IT, which is what
+	// a person switching a privacy setting back looks like from here; the
+	// exclusion is taken back at once rather than at the end of its hold
+	// (internal/lane's account.go).
+	lanes.ClearAccountExclusion(served)
 }
 
 // noteVelocity folds one timed answer into this client's ledger.
@@ -943,7 +959,9 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error,
 	// it, and the ledger below, [RefusalFrom]'s callers and the journal's error
 	// row all see one fact instead of two ([nameServed]).
 	err = nameServed(err, served)
-	return c.refuseLane(c.modelFor(request), c.refusalObject(request, knobs, err), wait)
+	refusal := c.refusalObject(request, knobs, err)
+	markRouting(err, refusal)
+	return c.refuseLane(c.modelFor(request), refusal, wait)
 }
 
 // refuseLane is THE ONE REFUSAL DOOR: everything this client does to the ledger
@@ -1000,6 +1018,14 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		// with and wait as they always did.
 		c.notePacedProvider(model, refusal.Lane, wait)
 		return true
+	}
+	// AN ACCOUNT'S EXCLUSION IS WRITTEN FOR EVERY MODEL, and it is written here
+	// because this is the one door every refusal passes (see above). The machine
+	// was never asked, so nothing below strikes it — [laneRefusal.struck] reads
+	// Unasked — but the next demand of it, on any model, in this process or the
+	// next, is a 404 already paid for (internal/lane's account.go).
+	if refusal.Account {
+		lanes.ExcludeForAccount(refusal.Lane, "the account's own settings exclude it")
 	}
 	if !refusal.struck() {
 		return false

@@ -112,6 +112,12 @@ type laneRefusal struct {
 	// machine and widen the very list that caused the refusal. So the pin path
 	// reads `Terminal` and the ledger reads this.
 	Unasked bool
+	// Account says the ACCOUNT'S OWN SETTINGS keep the demanded machine from
+	// every model — a fact about the account and the machine, not about this
+	// model, which is why it is filed where every model's frontier reads it
+	// (internal/lane's account.go) rather than on the per-model serving set. It
+	// is only ever true beside Unasked: the machine was never asked.
+	Account bool
 }
 
 // struck reports whether there is a lane here for the ledger to WRITE OFF — a
@@ -208,6 +214,22 @@ func nameServed(err error, served string) error {
 	return err
 }
 
+// markRouting stamps the classifier's answer onto the error a caller will read,
+// so that "the router emptied the set" travels as a fact rather than being
+// re-derived from a sentence three packages away ([APIError.Routing]).
+//
+// It runs inside the refusal door beside [nameServed], for the same reason:
+// every refusal a caller can see passes that door once, on either transport,
+// and a mark written anywhere else would be a second place that decides it.
+func markRouting(err error, refusal laneRefusal) {
+	if refusal.Kind != refusalRouting {
+		return
+	}
+	if marked, ok := RefusalFrom(err); ok {
+		marked.Routing = true
+	}
+}
+
 // refusalObject is THE classifier. Everything this process does about a refusal
 // is decided here, once, from the request that earned it.
 //
@@ -273,11 +295,21 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	// account cannot use is one to stand down, so a person's pin is retired and
 	// they are told (lanepin.go, issues #456 and #533). Only the machine is
 	// spared, which is what [laneRefusal.Unasked] carries.
+	//
+	// AND A LIST MAY BE THE ACCOUNT'S OWN. "0 endpoints out of 1 requested …
+	// Paid model training violation (account settings)" is the same fact as "all
+	// providers have been ignored" — a list emptied the set and nobody answered —
+	// and it was read as the demanded machine's own refusal, so that machine was
+	// struck for one model and demanded again on the next (the 2026-09-10 race).
+	// It is Unasked like any other list, and it is ALSO a fact about every model,
+	// which is what Account carries to the ledger.
+	body := []byte(refusal.Body)
 	return laneRefusal{
 		Kind:     refusalRouting,
 		Lane:     demanded,
 		Terminal: demanded != "",
-		Unasked:  ignoredEverything([]byte(refusal.Body)),
+		Unasked:  listEmptied(body),
+		Account:  demanded != "" && accountExcluded(body),
 	}
 }
 

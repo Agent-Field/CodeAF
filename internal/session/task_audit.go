@@ -785,6 +785,24 @@ type auditPace struct {
 	until time.Time
 }
 
+// auditNow is the clock every sentence about the checking window is measured
+// against, and it is ONE DOOR so that a test can move it ([Config.auditClock]).
+//
+// The window is read four times on the way to a second call — when the node's
+// window opens, when a call starts, when a stalled call is cut, and again before
+// a fresh checker is asked for — and what those readings decide between them is
+// which sentence a person ends up reading. THE GAP BETWEEN THE LAST TWO IS THE
+// ONE THAT MATTERS: the harness asks whether a retry is worth building, builds
+// one, and asks again with the clock in hand, and a window that closes in
+// between is a retry nobody made. On a real clock that gap is microseconds wide
+// and opens only when the box is loaded, which is no way to prove anything.
+func (a *Agent) auditNow() time.Time {
+	if a.config.auditClock != nil {
+		return a.config.auditClock()
+	}
+	return time.Now()
+}
+
 // newAuditPace opens one node's window.
 func newAuditPace(window time.Duration, now time.Time) auditPace {
 	return auditPace{
@@ -1016,7 +1034,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
-	pace := newAuditPace(a.auditWindowFor(door), time.Now())
+	pace := newAuditPace(a.auditWindowFor(door), a.auditNow())
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
@@ -1041,7 +1059,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// what the first attempt found is the only account there is of where the time
 	// went: a retry that answered `nobody could check it` in its place would tell
 	// a person nobody was asked, when somebody was asked and abandoned.
-	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
@@ -1137,7 +1155,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// call that ran, or the landing claims two asks when only one happened (#803).
 	// The bound is read again after the build for the timeout itself, so a call
 	// that does go out is still measured against the time it actually has.
-	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
 
@@ -1163,7 +1181,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// something to run gets the time a run takes, one whose only remaining move is
 	// a refused command gets the time reading takes ([auditDoor.window]) — and
 	// what is decided here is only how much of it one call may hold.
-	bound, worthAsking := pace.bound(time.Now())
+	bound, worthAsking := pace.bound(a.auditNow())
 	if !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
@@ -1208,7 +1226,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
 		// the case it is true of: no call stalled, and the window simply ran out.
 		stalled := noVerdict(checkerStalled(bound), said)
-		if pace.left(time.Now()) > 0 {
+		if pace.left(a.auditNow()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
 			return stalled, true
 		}
@@ -2632,7 +2650,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail, refusal := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 	if refusal == refusedByYourFiles {
 		// AND THE ROAD IS MARKED HERE TOO. An accept is the second time a node's
 		// branch is offered to the ground, and it can be refused by the person's
@@ -2793,7 +2811,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail, refusal := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
