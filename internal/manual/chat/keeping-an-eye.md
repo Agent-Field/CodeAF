@@ -513,9 +513,12 @@ them and does not quote them on an ordinary card. The real protection is the
 shared allowance and the approval rules you already banked. If you said "spend at
 most a dollar" or named a daily firing limit yourself, that is different: the item
 keeps it and the costs line leads with it, written from the item —
-`up to $1.00 a run · at most 2 runs a day · shares the day's allowance`. A limit
-the model picked that you never named is dropped before the card, so a number you
-did not choose never cuts your work short unseen.
+`up to $1.00 a run · at most 2 runs a day · shares the day's allowance`, even when
+your number is the default, and `no per-run limit` when you said there is none. A
+limit the model picked that you never named is dropped before the card, and the card
+says the default that stands in its place — `at most 10 runs a day (the default)` —
+so a number you did not choose never cuts your work short unseen, and one you did is
+never quietly replaced.
 
 A check that fires nothing still costs the look and the one small judgement call,
 so it shares the allowance even when it has nothing to say.

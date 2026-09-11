@@ -49,6 +49,7 @@ invalidates:
   - "A file touched or rewritten with identical contents woke a paid run. When a file's size or time moves its contents are hashed and compared with the last reading (files up to 4 MiB); the same contents are not a change. Readings kept before hashes existed are read quietly."
   - "`aforge collections show --json` printed an array of references and `find --json` an array of collections. Both now print `{\"references\": [...], \"placed\": [...]}`, and the text output lists work placed in a folder (show) and the folders whose rules reach a record (find) under their own labels."
   - "A stand card's costs line quoted the model's cost_words, so a model that sent limits the person never named ($0.50 a run, 24 a day — 8 of 10 live calls) showed an empty costs line over a limit that would bind. Unnamed limits are now dropped before the card, and the costs line is written from the item: `up to $1.00 a run · at most 2 runs a day · shares the day's allowance`; the stand result tells the model the same line."
+  - "cost_words spoke only of money, so a count the person named (\"no more than 3 runs a day\") sent as max_per_day with no cost_words was dropped as unnamed and silently became the default 10. cost_words now covers a count of runs as well as money; a limit dropped for lack of it shows on the card as the default that stands (`at most 10 runs a day (the default)`) and is named in the stand result (`limits not kept, …: rails.max_per_day 3`); a named limit shows even at the default; a per-run limit of 0 reads `no per-run limit`, never `$0.00`; and a negative limit is refused, not dropped."
   - "Work that runs and keeps no file drew no report line, and a call that left does.report out while the person's sentence named a file made work that keeps nothing (1 of 10 live runs). The card now says `report · none — no file is kept current`, and such a call is refused with the file named and both answers (`does.report \"<path>\"` or `\"\"`)."
   - "A stand card placed work in the conversation's own folders even when a delegated principal was answering, bypassing collections' law. Any placement, named or inherited, now needs `mayBindFolders` (the person, in a conversation), the same predicate `collections place` asks."
   - "After the once-ever background notice, the stand result said nothing about checks, so the model's reply about a later item was a guess. The result now always carries what checks the item (`checks every 5 minutes, window or not · …` or `background checks are not running · …`); the person's row is still said once."
@@ -189,3 +190,10 @@ keeps no file says `report · none — no file is kept current`; an inherited fo
 placement is written only under collections' law; and the stand result always tells
 the model what checks the work. The card also names two folders in the plural and
 warns when the rules reaching a placement are more than a run can carry (64).
+
+The third pass closes the review's blocker — a named count of runs dropped because
+cost_words covered only money — and its non-blocking items: the named-report refusal
+lists every file the sentence names that could be the report by the report's own law (a
+home, absolute, `..` or watched path never is); a rule over folders is bound under
+`mayBindFolders` like a placement; and the card previews the 64 KiB governing gate beside
+the 64-rule one.

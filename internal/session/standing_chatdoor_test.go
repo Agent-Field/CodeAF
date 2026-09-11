@@ -528,20 +528,35 @@ func TestAFileTheSentenceNamesIsAskedAboutAsTheReport(t *testing.T) {
 // reaches is what wakes the work, never its report.
 func TestOnlyAFileOutsideTheWatchIsAskedAbout(t *testing.T) {
 	for word, want := range map[string]bool{
-		"reports/inbox-report.md": true, "notes.txt": true, "data/2026.csv": true,
-		"e.g": false, "v1.2": false, "3.5": false, "inbox/*.md": false, "https://example.com/a.md": false, "inbox": false,
+		"reports/inbox-report.md": true, "notes.txt": true, "data/2026.csv": true, "a.md": true,
+		"e.g": false, "i.e": false, "x.c": false, "v1.2": false, "3.5": false, "inbox/*.md": false, "https://example.com/a.md": false, "inbox": false,
 	} {
 		if got := standingLooksLikeFile(word); got != want {
 			t.Errorf("standingLooksLikeFile(%q) = %v, want %v", word, got, want)
 		}
 	}
-	var parsed standArguments
-	if err := json.Unmarshal([]byte(inboxWork(map[string]any{"words": "keep an eye on inbox/today.md, e.g. new decisions", "does": map[string]any{"report": nil}})), &parsed); err != nil {
-		t.Fatal(err)
+	d := newChatDoor(t, nil, nil)
+	asked := func(words string) string {
+		var parsed standArguments
+		if err := json.Unmarshal([]byte(inboxWork(map[string]any{"words": words, "does": map[string]any{"report": nil}})), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		item, problem := d.agent.standingItem(parsed, time.Now())
+		if problem != "" {
+			t.Fatal(problem)
+		}
+		return standingNamedReport(parsed, item)
 	}
-	item := standing.Item{When: standing.When{Kind: standing.WhenFile, Glob: "inbox/*"}, Does: standing.Action{Kind: standing.ActionTask}}
-	if problem := standingNamedReport(parsed, item); problem != "" {
-		t.Fatalf("a watched file was asked about as a report: %q", problem)
+	// NONE OF THESE COULD BE THE REPORT, by the report's own law: a file the
+	// watch reaches, one in a folder it watches, a home path, an absolute path
+	// and one out of the project.
+	if problem := asked("keep an eye on inbox/today.md and inbox/sub/notes.md, e.g. ~/notes.md /etc/hosts.txt ../elsewhere.md"); problem != "" {
+		t.Fatalf("a file that could never be the report was asked about: %q", problem)
+	}
+	// AND EVERY FILE THAT COULD BE IS LISTED, once each.
+	want := `Invalid arguments: their sentence names reports/a.md, notes/b.md — send does.report with the one each run keeps current, or does.report "" if the work only reads them`
+	if problem := asked("keep reports/a.md and notes/b.md current, reports/a.md first"); problem != want {
+		t.Fatalf("two named files = %q, want %q", problem, want)
 	}
 }
 
@@ -559,11 +574,13 @@ func TestLimitsThePersonDidNotNameAreDroppedAndTheCardSaysWhatBinds(t *testing.T
 	if rails := unasked.only(t).Rails; rails.PerRunUSD != standDefaultPerRunUSD || rails.MaxPerDay != standDefaultMaxPerDay {
 		t.Fatalf("unnamed limits stood: %+v", rails)
 	}
-	if card.CostWords != "shares the day's allowance" {
-		t.Fatalf("the card's costs line = %q", card.CostWords)
+	defaults := fmt.Sprintf("up to $%.2f a run (the default) · at most %d runs a day (the default) · shares the day's allowance", standDefaultPerRunUSD, standDefaultMaxPerDay)
+	if card.CostWords != defaults {
+		t.Fatalf("the card's costs line = %q, want %q", card.CostWords, defaults)
 	}
-	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\ncosts: shares the day's allowance\n") {
-		t.Fatalf("the model was not told what binds: %q", out)
+	out := toolOutput(t, events, "stand")
+	if !strings.Contains(out, "\ncosts: "+defaults+"\n") || !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.per_run_usd 0.5, rails.max_per_day 24 — say only what costs: says\n") {
+		t.Fatalf("the model was not told what binds and what was dropped: %q", out)
 	}
 
 	named := newChatDoor(t, &scriptedCompleter{steps: []step{
@@ -692,4 +709,142 @@ func toolOutputs(events []Event, tool string) []string {
 		}
 	}
 	return out
+}
+
+// A NAMED COUNT OF RUNS STANDS ON ITS OWN WORDS, AND A DROPPED LIMIT IS NAMED.
+// The review of round 2 found "no more than 3 runs a day" silently becoming the
+// default 10: cost_words spoke only of money, so a model that followed the
+// schema sent max_per_day with no cost_words, the count was dropped as
+// unnamed, and neither the card nor the model heard about it. cost_words now
+// covers a count of runs as well as money; a count quoted there stands and
+// leads the costs line; and a count sent with nothing quoting the person is
+// dropped with the card saying the default that stands and the tool's answer
+// naming exactly what was not kept.
+func TestANamedCountOfRunsStandsOnItsOwnWordsAndADroppedOneIsNamed(t *testing.T) {
+	var schema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(standSchemaJSON), &schema); err != nil {
+		t.Fatal(err)
+	}
+	if words := schema.Properties["cost_words"].Description; !strings.Contains(words, "how many runs") {
+		t.Fatalf("cost_words still speaks only of money, so a named count has no words to stand on: %q", words)
+	}
+
+	named := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"rails": map[string]any{"max_per_day": 3}, "cost_words": "no more than 3 runs a day"})),
+		finalText("set up"),
+	}}, nil)
+	card, _ := named.proposeInbox(t, named.yes)
+	if n := named.only(t).Rails.MaxPerDay; n != 3 {
+		t.Fatalf("a named count became %d a day", n)
+	}
+	if card.CostWords != "at most 3 runs a day · shares the day's allowance" {
+		t.Fatalf("a named count's costs line = %q", card.CostWords)
+	}
+
+	unquoted := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"rails": map[string]any{"max_per_day": 3}})),
+		finalText("set up"),
+	}}, nil)
+	card, events := unquoted.proposeInbox(t, unquoted.yes)
+	if n := unquoted.only(t).Rails.MaxPerDay; n != standDefaultMaxPerDay {
+		t.Fatalf("an unquoted count stood at %d a day", n)
+	}
+	if want := fmt.Sprintf("at most %d runs a day (the default) · shares the day's allowance", standDefaultMaxPerDay); card.CostWords != want {
+		t.Fatalf("the card hides the default that replaced the count: %q, want %q", card.CostWords, want)
+	}
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.max_per_day 3 — say only what costs: says\n") {
+		t.Fatalf("the model was not told the count was dropped: %q", out)
+	}
+}
+
+// A NAMED LIMIT IS ON THE CARD EVEN AT THE DEFAULT, AND NO CAP IS NEVER $0.00.
+// The person who said "at most 10 a day" sees 10 a day, not silence that reads
+// as "nothing was said"; and a per-run limit of 0 — the store's "no limit" —
+// reads as no per-run limit rather than a figure of nothing.
+func TestANamedLimitShowsEvenAtTheDefaultAndNoCapIsNeverZeroDollars(t *testing.T) {
+	for _, c := range []struct {
+		rails map[string]any
+		words string
+		want  string
+	}{
+		{map[string]any{"max_per_day": standDefaultMaxPerDay}, "at most ten a day", fmt.Sprintf("at most %d runs a day · shares the day's allowance", standDefaultMaxPerDay)},
+		{map[string]any{"per_run_usd": 0}, "no limit per run", "no per-run limit · shares the day's allowance"},
+	} {
+		d := newChatDoor(t, &scriptedCompleter{steps: []step{
+			standCall("s1", inboxWork(map[string]any{"rails": c.rails, "cost_words": c.words})),
+			finalText("set up"),
+		}}, nil)
+		if card, _ := d.proposeInbox(t, d.yes); card.CostWords != c.want {
+			t.Fatalf("%v said %q reads %q, want %q", c.rails, c.words, card.CostWords, c.want)
+		}
+	}
+}
+
+// A NEGATIVE LIMIT IS REFUSED, NOT DROPPED, WHATEVER THE WORDS. A call that
+// sends -1 has an error to fix, and dropping it as unnamed would answer the
+// model's mistake with a silence.
+func TestANegativeLimitWithNoWordsIsRefusedNotDropped(t *testing.T) {
+	for rails, want := range map[string]string{
+		`{"per_run_usd":-1}`: "a per-run budget cannot be negative",
+		`{"max_per_day":-2}`: "an item needs a max per day",
+	} {
+		var extra map[string]any
+		if err := json.Unmarshal([]byte(rails), &extra); err != nil {
+			t.Fatal(err)
+		}
+		d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"rails": extra})), finalText("no")}}, nil)
+		events, err := d.agent.Submit(context.Background(), "set it up")
+		if err != nil {
+			t.Fatal(err)
+		}
+		collected := drainAnsweringStanding(t, events, func(Event) { t.Fatal("a card was drawn for a negative limit") })
+		if out := toolOutput(t, collected, "stand"); !strings.Contains(out, want) {
+			t.Fatalf("%s answered %q, want %q", rails, out, want)
+		}
+	}
+}
+
+// A RULE OVER FOLDERS IS BOUND UNDER COLLECTIONS' LAW TOO. folder_scope asked
+// only whether a steward was answering; a session with nobody to ask reached
+// the folder database before being refused elsewhere. Both are now refused by
+// the one predicate `collections place` asks, in the folder law's own words.
+func TestAFolderRuleIsBoundOnlyWhereFoldersMayBeBound(t *testing.T) {
+	call := func(folder string) json.RawMessage {
+		return json.RawMessage(`{"op":"propose","words":"inbox reports never quote email addresses","when":{"kind":"hold"},"folder_scope":{"collection_ids":["` + folder + `"]}}`)
+	}
+	for name, mutate := range map[string]func(*chatDoor){
+		"nobody to ask": func(d *chatDoor) { d.agent.config.AskConsent = false },
+		"a steward":     func(d *chatDoor) { d.agent.principal = &Steward{} },
+	} {
+		d := newChatDoor(t, nil, nil)
+		launch := d.folder(t, "Launch")
+		mutate(d)
+		text, isError, err := d.agent.standTool(context.Background(), call(launch.ID))
+		if err != nil || !isError || !strings.HasPrefix(text, "folder rules need the person's answer in a conversation") {
+			t.Fatalf("%s: a folder rule answered %q isError=%v err=%v", name, text, isError, err)
+		}
+	}
+}
+
+// THE 64 KiB GATE IS ON THE CARD BESIDE THE 64-RULE ONE. Twenty rules is well
+// under the count a run may carry, but their words rendered as the run renders
+// them are more than it may carry, and every run would stop; the card says so
+// in the gate's own measure.
+func TestACardSaysWhenItsRulesAreMoreWordsThanARunCanCarry(t *testing.T) {
+	d := newChatDoor(t, nil, nil)
+	launch := d.folder(t, "Launch")
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"placement": launch.ID})), finalText("set up")}}
+	long := strings.Repeat("keep every inbox report plain and cite the source file for each line ", 60)
+	for n := 0; n < 20; n++ {
+		d.rule(t, fmt.Sprintf("RULE-%d: %s", n, long), launch.ID)
+	}
+	card, _ := d.proposeInbox(t, d.yes)
+	got := card.Terms[len(card.Terms)-1]
+	if !strings.HasPrefix(got, "rules · their words come to ") || !strings.HasSuffix(got, fmt.Sprintf(" KiB, more than the %d KiB a run can carry — every run would stop until they are narrowed", governingPromptBytes/1024)) || len(card.Terms) != 4 {
+		t.Fatalf("the card's terms end %q (%d terms)", got, len(card.Terms))
+	}
 }
