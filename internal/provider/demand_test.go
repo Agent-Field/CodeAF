@@ -160,25 +160,38 @@ func TestADemandWithNothingLeftInItComesOffTheBody(t *testing.T) {
 	}
 }
 
-// TestAPersonsPinIsNarrowedByNobody keeps the other demand whole. A one-wide
-// `only` is somebody's instruction — "and nowhere else" — and what happens when
-// the machine it names refuses is [control.Next]'s to decide and the ladder's to
-// act on, never this object's to quietly widen.
-func TestAPersonsPinIsNarrowedByNobody(t *testing.T) {
+// TestADemandSomebodyAskedForIsNarrowedByNobody keeps the other demand whole. A
+// demand a person pinned, and the one machine a rescue's arm exists to try, are
+// instructions — "and nowhere else" — and what happens when the machine refuses
+// is [control.Next]'s to decide and the ladder's to act on, never this object's
+// to quietly widen.
+func TestADemandSomebodyAskedForIsNarrowedByNobody(t *testing.T) {
 	client, _, model := pacedPair(t, "deepinfra")
 
-	knobs := callKnobs{intent: IntentInteractive}
-	knobs.refused = &refusedHere{}
-	knobs.refused.add("deepinfra")
-	choice := lanes.Choice{Only: []string{"deepinfra"}}
-	knobs.laneChoice = &choice
-
-	prefs := composedFor(t, client, model, knobs)
-	if len(prefs.Only) != 1 || prefs.Only[0] != "deepinfra" {
-		t.Fatalf("only = %v, want a person's pin left exactly as it stands", prefs.Only)
+	pin := lanes.Choice{Only: []string{"deepinfra"}}
+	belief := lanes.Choice{
+		Only:  []string{"deepinfra", "fireworks"},
+		Order: []string{"deepinfra", "fireworks"},
 	}
-	if prefs.AllowFallbacks == nil || *prefs.AllowFallbacks {
-		t.Fatalf("a pin that had been refused was quietly allowed to fall back: %+v", prefs)
+	for _, asked := range []struct {
+		what   string
+		knobs  callKnobs
+		demand string
+	}{
+		{"a person's strict pin", callKnobs{intent: IntentInteractive, laneChoice: &pin}, "deepinfra"},
+		{"a rescue's own arm", callKnobs{intent: IntentInteractive, laneChoice: &belief, hedgeLane: "deepinfra"}, "deepinfra"},
+	} {
+		knobs := asked.knobs
+		knobs.refused = &refusedHere{}
+		knobs.refused.add("deepinfra")
+
+		prefs := composedFor(t, client, model, knobs)
+		if len(prefs.Only) != 1 || prefs.Only[0] != asked.demand {
+			t.Errorf("%s: only = %v, want it left exactly as it stands", asked.what, prefs.Only)
+		}
+		if prefs.AllowFallbacks == nil || *prefs.AllowFallbacks {
+			t.Errorf("%s: a refused demand was quietly allowed to fall back: %+v", asked.what, prefs)
+		}
 	}
 }
 

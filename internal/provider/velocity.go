@@ -464,12 +464,15 @@ func (c *Client) wirePreferences(model string, knobs callKnobs) *providerPrefs {
 // `order` and `ignore` are RANKINGS AND VETOES and both are ours, so a refusing
 // machine is simply struck from the first and added to the second.
 //
-// `only` IS A DEMAND AND IT DEPENDS WHOSE. A demand of ONE machine is a person's
-// strict pin or a rescue's own arm — somebody's instruction, "and nowhere else"
-// — and it is left exactly as it stands, whatever has refused it: the one legal
-// same-machine repeat is [control.Next]'s to authorize and the ladder's first
-// rung is what takes the field off (`demandedLane` is the one reading of "whose
-// demand is this", and it answers strict for exactly that shape).
+// `only` IS A DEMAND AND IT DEPENDS HOW WIDE. A request that demanded ONE
+// machine — a person's strict pin, or the machine a rescue's arm exists to try —
+// is left exactly as it stands, whatever has refused it: there is no other
+// machine for the next body to go to, so the one legal same-machine repeat is
+// [control.Next]'s to authorize and the ladder's first rung is what takes the
+// field off. That question is [demandedLane]'s and it is asked of it here rather
+// than answered again: it is the same door the veto law's exemption reads and
+// the same reading [requestSet] confines the plan to, so the set this narrows,
+// the set the plan walks and the machine the law exempts cannot disagree.
 //
 // A DEMAND THE BELIEF MADE IS OURS, AND IT EMPTIES. It is the admitted set
 // (internal/lane's demandOf), so a machine in it that has refused this call is a
@@ -503,9 +506,9 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 		return &providerPrefs{Ignore: refused}
 	}
 	narrowed := *prefs
-	_, asked := demandedLane(knobs)
+	alone, _ := demandedLane(knobs)
 	for _, name := range refused {
-		if !asked {
+		if alone == "" {
 			narrowed.Only = withoutEndpoint(narrowed.Only, name)
 		}
 		narrowed.Order = withoutEndpoint(narrowed.Order, name)
