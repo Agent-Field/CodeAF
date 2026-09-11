@@ -1353,6 +1353,9 @@ func (f *feed) retry(ev session.Event) {
 // person's, and a status number is the one part of that answer nobody can act
 // on.
 func (f *feed) failureNote(err error, service string) string {
+	if paused, ok := provider.PlanPauseFrom(err); ok {
+		return provider.PlanPauseSentence(paused.Reset, paused.OverflowDoor)
+	}
 	if said, ok := cannotPayWords(err); ok && strings.TrimSpace(service) != "" {
 		return serviceCannotPayWord(service, said)
 	}

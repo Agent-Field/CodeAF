@@ -174,7 +174,7 @@ func TestAnUndocumentedListingGetsAListingServicesPickerAndCacheImmediately(t *t
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[4]
+	source := modelsource.Vendored()[6]
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -209,7 +209,7 @@ func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
 	dir := t.TempDir()
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
-	source := modelsource.Vendored()[4]
+	source := modelsource.Vendored()[6]
 	source.Listing = modelsource.ListingNone
 	source.ProbeModel = "probe-model"
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
@@ -342,6 +342,14 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 		want    string
 	}{
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 6}, "deepseek is connected · 6 models"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 1}, "deepseek is connected · 1 model"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 10, Door: modelsource.Door{Name: "coding plan"}}, "deepseek is connected · coding plan · 10 models"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 10, Door: modelsource.Door{Name: "pay-as-you-go"}}, "deepseek is connected · pay-as-you-go · 10 models"},
+		{modelsource.Outcome{
+			Kind: modelsource.OutcomeConnected, Listed: true, Models: 4,
+			Door: modelsource.Door{Name: "coding plan"}, PlanPaused: true, PlanReset: "18:30 UTC",
+			Overflow: &modelsource.Door{Name: "pay-as-you-go", Metered: true},
+		}, "deepseek is connected · coding plan · 4 models · plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected}, "deepseek is connected"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: "Authentication Fails, Your api key is invalid"}, "deepseek refused that key — Authentication Fails, Your api key is invalid"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: "Insufficient balance or no resource package. Please recharge."}, "deepseek accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge."},
@@ -352,6 +360,14 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	for _, testCase := range tests {
 		if got := serviceOutcomeWord("deepseek", testCase.outcome); got != testCase.want {
 			t.Errorf("word = %q, want %q", got, testCase.want)
+		}
+	}
+	for service, want := range map[string]string{
+		"ollama":          "ollama is connected · 1 model",
+		"something-local": "something-local is connected · 1 model",
+	} {
+		if got := serviceConnectedWord(service, modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 1}); got != want {
+			t.Errorf("one-door word = %q, want %q", got, want)
 		}
 	}
 	if got := serviceAnsweringWord("deepseek"); got != "deepseek is answering right now · try again in a moment" {
@@ -370,6 +386,44 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	got := truncateVendorWords(words, 120)
 	if len(got) > 120 || strings.HasSuffix(got, "wor") {
 		t.Fatalf("vendor words were not cut at a word boundary: %q", got)
+	}
+}
+
+func TestThePlanCatalogDoesNotBelieveTheWiderListing(t *testing.T) {
+	plan := sourcestub.New("glm-5.3", "glm-5.3-flash", "metered-only")
+	metered := sourcestub.New("metered-only")
+	defer plan.Close()
+	defer metered.Close()
+	var source modelsource.Source
+	for _, candidate := range modelsource.Vendored() {
+		if candidate.ID == "z-ai" {
+			source = candidate
+			break
+		}
+	}
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	a := modelServiceTestApp(t, t.TempDir(), "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("default-test-key")), nil)
+	refreshed := false
+	a.serviceModelRefresh = func(context.Context, modelsource.Connected, []Model) ([]Model, error) {
+		refreshed = true
+		return nil, nil
+	}
+	message, ok := a.beginModelConnect(modelConnectDraft{
+		source: source,
+		row: config.PersistedSource{
+			ID: source.ID, Written: source.Written, Key: "plan-test-key", Order: 1,
+		},
+	})().(modelConnectResultMsg)
+	want := []string{"glm-5.3", "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"}
+	if !ok || message.err != nil || message.outcome.Door.ID != "coding-plan" ||
+		!reflect.DeepEqual(message.outcome.ModelIDs, want) || refreshed {
+		t.Fatalf("fixed plan catalog: message=%T door=%s models=%v refreshed=%t",
+			message, message.outcome.Door.ID, message.outcome.ModelIDs, refreshed)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 {
+		t.Fatalf("catalog connection requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
 	}
 }
 
@@ -495,7 +549,7 @@ func TestACustomServiceUsesItsWrittenNameOnRefusalAndSuccess(t *testing.T) {
 	defer agent.Close()
 	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.Model(), modelsource.NewSet(base), []Model{{ID: agent.Model()}}, agent)
 	draft := modelConnectDraft{
-		source: modelsource.Vendored()[4],
+		source: modelsource.Vendored()[6],
 		row:    config.PersistedSource{ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1},
 	}
 	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
@@ -676,5 +730,51 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	}
 	if keyAt < 0 || headAt != keyAt+1 || rowAt != headAt+1 {
 		t.Fatalf("the services section is not immediately under the openrouter key: key=%d head=%d row=%d", keyAt, headAt, rowAt)
+	}
+}
+
+func TestThePlanDoorSaysItsPositionAndDefaultsToWait(t *testing.T) {
+	dir := t.TempDir()
+	row := config.PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "plan-test-key", Door: "coding-plan", Order: 1,
+	}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	var source modelsource.Source
+	for _, candidate := range modelsource.Vendored() {
+		if candidate.ID == "z-ai" {
+			source = candidate
+			break
+		}
+	}
+	if len(source.Doors) != 2 {
+		t.Fatal("the z-ai billing doors are missing")
+	}
+	overflow := source.Doors[1]
+	connected := modelsource.Connected{
+		Source: source, Key: row.Key, Address: source.Doors[0].Address,
+		Door: source.Doors[0], Overflow: &overflow, PlanPaused: config.PlanPausedWait,
+	}
+	sources := modelsource.NewSet(testDefaultService("default-test-key"), connected)
+	rows := modelServiceRows(dir, sources)
+	if len(rows) != 2 || rows[0].name != "z-ai" ||
+		!strings.Contains(rows[0].value, "coding plan") ||
+		!strings.Contains(rows[0].value, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.") ||
+		rows[1].name != "when the plan is paused" || rows[1].value != config.PlanPausedWait {
+		t.Fatalf("the plan rows do not say their billing position: count=%d", len(rows))
+	}
+
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, nil)
+	a.raiseSettings()
+	a.cyclePlanPause("z-ai")
+	written := config.PersistedSources(dir)
+	if len(written) != 1 || written[0].PlanPaused != config.PlanPausedUseMeter {
+		t.Fatal("the plan-pause setting did not opt in to metered overflow")
+	}
+	a.cyclePlanPause("z-ai")
+	written = config.PersistedSources(dir)
+	if len(written) != 1 || written[0].PlanPaused != "" {
+		t.Fatal("the default wait value was not stored as the default")
 	}
 }

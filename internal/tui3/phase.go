@@ -143,7 +143,7 @@ var phases = phaseDesk{latest: map[string]PhaseNews{}, waits: map[string]time.Ti
 // long the turn has.
 func phaseWaiting(phase provider.Phase) bool {
 	switch phase {
-	case provider.PhaseConnecting, provider.PhaseConnectionLost, provider.PhaseFirstWord, provider.PhasePaced,
+	case provider.PhaseConnecting, provider.PhaseConnectionLost, provider.PhaseFirstWord, provider.PhasePaced, provider.PhasePlanPaused,
 		provider.PhaseRetrying, provider.PhaseSwitching, provider.PhaseSwitchingModel,
 		session.PhaseAsking, session.PhaseAllSlow:
 		return true
@@ -460,6 +460,12 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 			}
 		}
 		return []rowField{rowSay(word), rowSay(clock)}
+	case provider.PhasePlanPaused:
+		fields := []rowField{rowSay(word)}
+		if detail := strings.TrimSpace(news.Detail); detail != "" {
+			fields = append(fields, rowSay(detail))
+		}
+		return fields
 	case provider.PhaseRetrying:
 		// The rung of the ladder is better than the clock when the ladder said
 		// which rung it is on: "2 of 6" answers "is this going anywhere?" and a
@@ -580,6 +586,12 @@ func phaseWaitFields(news PhaseNews, clock string, consequence bool) []rowField 
 			rowSay(phaseJoinWord(string(news.Phase), full), short, clock),
 		}
 	}
+	if door := strings.ToLower(strings.TrimSpace(news.Door)); door != "" {
+		return []rowField{
+			rowSay(door),
+			rowSay(phaseJoinWord(string(news.Phase), full), short, clock),
+		}
+	}
 	return []rowField{rowSay(string(news.Phase)), rowSay(full, short, clock)}
 }
 
@@ -606,6 +618,9 @@ func phaseJoinWord(word, detail string) string {
 // and this row is a decision about a person's eye.
 func phaseServing(news PhaseNews) rowField {
 	served := strings.ToLower(news.Lane)
+	if served == "" {
+		served = strings.ToLower(strings.TrimSpace(news.Door))
+	}
 	rate := laneRateWord(news.Rate)
 	switch {
 	case served != "" && rate != "":

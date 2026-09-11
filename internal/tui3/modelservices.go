@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Model-service rows share the connection panel's row grammar without sharing
@@ -378,7 +379,17 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			// a Connected here would create a second, subtly different account door.
 			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
 			if found {
-				if refresh != nil {
+				fixedDoorCatalog := len(outcome.Door.Models) > 0
+				if fixedDoorCatalog {
+					seed := make([]modelcatalog.Model, 0, len(models))
+					for _, model := range models {
+						seed = append(seed, modelcatalog.Model{ID: model.ID})
+					}
+					_ = modelcatalog.Remember(modelcatalog.Options{
+						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+					}, seed)
+					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
@@ -529,10 +540,20 @@ func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 
 func serviceConnectedWord(service string, outcome modelsource.Outcome) string {
 	line := service + " is connected"
-	if !outcome.Listed || outcome.Models <= 0 {
-		return line
+	if door := strings.TrimSpace(outcome.Door.Name); door != "" {
+		line += " · " + door
 	}
-	return line + " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+	if outcome.Listed && outcome.Models > 0 {
+		line += " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+	}
+	if outcome.PlanPaused {
+		overflow := ""
+		if outcome.Overflow != nil {
+			overflow = outcome.Overflow.Name
+		}
+		line += " · " + provider.PlanPauseSentence(outcome.PlanReset, overflow)
+	}
+	return line
 }
 
 // serviceCannotPayWord is the ONE sentence for an authenticated account with no
@@ -709,7 +730,10 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 		if !ok {
 			continue
 		}
-		parts := make([]string, 0, 3)
+		parts := make([]string, 0, 5)
+		if service.Door.Name != "" {
+			parts = append(parts, service.Door.Name)
+		}
 		switch {
 		case persisted.KeyEnv != "":
 			parts = append(parts, "$"+persisted.KeyEnv)
@@ -720,15 +744,59 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 			parts = append(parts, persisted.Region)
 		}
 		parts = append(parts, "order "+itoa(persisted.Order))
+		if persisted.ID == "z-ai" && service.Door.ID == "coding-plan" {
+			parts = append(parts, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.")
+		}
 		out = append(out, &modelServiceRow{
 			id: persisted.ID, name: service.Source.Written, value: strings.Join(parts, " · "),
 		})
+		if service.Overflow != nil && !service.Door.Metered {
+			out = append(out, &modelServiceRow{
+				id: persisted.ID, name: "when the plan is paused", value: service.PlanPaused, planPause: true,
+			})
+		}
 	}
 	return out
 }
 
 type modelServiceRow struct {
-	id    string
-	name  string
-	value string
+	id        string
+	name      string
+	value     string
+	planPause bool
+}
+
+func (a *app) cyclePlanPause(id string) {
+	rows := config.PersistedSources(a.profileDir)
+	for index := range rows {
+		if !strings.EqualFold(rows[index].ID, id) {
+			continue
+		}
+		if strings.TrimSpace(rows[index].PlanPaused) == config.PlanPausedUseMeter {
+			rows[index].PlanPaused = config.PlanPausedWait
+		} else {
+			rows[index].PlanPaused = config.PlanPausedUseMeter
+		}
+		if err := config.WriteSources(a.profileDir, rows); err != nil {
+			a.modelServiceMessage(err.Error())
+			return
+		}
+		a.reloadModelSources()
+		a.sheet.sources = a.sources
+		a.sheet.build()
+		return
+	}
+}
+
+func (a *app) reconnectModelService(id string) tea.Cmd {
+	source, ok := a.modelSource(id)
+	if !ok {
+		return nil
+	}
+	for _, row := range config.PersistedSources(a.profileDir) {
+		if strings.EqualFold(row.ID, id) {
+			return a.beginModelConnect(modelConnectDraft{source: source, row: row, sheet: a.at(pageSettings)})
+		}
+	}
+	return nil
 }

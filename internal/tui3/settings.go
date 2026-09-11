@@ -1816,6 +1816,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter", " ", "space":
 		return a.activate(), true
+	case "ctrl+r":
+		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause {
+			return a.reconnectModelService(item.service.id), true
+		}
 
 	case "delete":
 		// The one key on this sheet that only one kind of row answers, and it
@@ -1874,6 +1878,10 @@ func (a *app) activate() tea.Cmd {
 		return a.connAct(item.conn)
 	}
 	if item.service != nil {
+		if item.service.planPause {
+			a.cyclePlanPause(item.service.id)
+			return nil
+		}
 		source, ok := a.modelSource(item.service.id)
 		if !ok {
 			return nil

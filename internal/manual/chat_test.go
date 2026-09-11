@@ -35,6 +35,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't it make pictures any more", "services"},
 		{"how do I remove a key", "services"},
 		{"can I use ollama", "services"},
+		{"does z-ai use my coding plan first", "services"},
+		{"what happens when my plan runs out", "services"},
+		{"will it spend pay as you go automatically", "services"},
+		{"why are only four glm models listed", "services"},
+		{"is aforge supported by zhipu", "services"},
+		{"how do I reconnect a model service", "services"},
 		// The questions object (docs/design/questions/DESIGN.md), asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
@@ -2466,6 +2472,10 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 		"a **Something else** service must provide the compatible chat path",
 		"tries `GET <base>/models` first",
 		"When that address is absent, aforge connects the service without inventing rows",
+		"z-ai is connected · coding plan · 4 models",
+		"z-ai is connected · pay-as-you-go · 10 models",
+		"when the plan is paused",
+		"Aforge is not currently listed; a request has been\ndrafted but has not been sent.",
 	} {
 		if !strings.Contains(page, sentence) {
 			t.Errorf("services page does not state %q", sentence)
