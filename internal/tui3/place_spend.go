@@ -467,24 +467,24 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.spend.woke = false
 			a.rebuildSpend()
 			a.touch()
+			return nil
 		}
-		return nil
 	case "c":
 		if a.spend.lens == spendLensModels || a.spend.lens == spendLensDays {
 			a.spend.sort = spendSortCost
 			a.spend.woke = false
 			a.rebuildSpend()
 			a.touch()
+			return nil
 		}
-		return nil
 	case "t":
 		if a.spend.lens == spendLensModels || a.spend.lens == spendLensDays {
 			a.spend.sort = spendSortTokens
 			a.spend.woke = false
 			a.rebuildSpend()
 			a.touch()
+			return nil
 		}
-		return nil
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()
