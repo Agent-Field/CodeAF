@@ -145,7 +145,7 @@ func TestTheDiagnosticLineSkipsThePackageHeaderAndTheWrapper(t *testing.T) {
 
 func testStore(t *testing.T, at time.Time) *fixStore {
 	t.Helper()
-	store := newFixStore(filepath.Join(t.TempDir(), fixesFileName))
+	store := settledFixStore(t, filepath.Join(t.TempDir(), fixesFileName))
 	store.now = func() time.Time { return at }
 	return store
 }
@@ -158,14 +158,14 @@ func TestAStoreRemembersAFixAcrossAReopen(t *testing.T) {
 	// Twice, because one watched pairing is an adjacency and is never offered
 	// (fixremedy.go). What this test is about is that the count crosses the
 	// process boundary.
-	first := newFixStore(path)
+	first := settledFixStore(t, path)
 	first.confirm(signature, "grep -F '(sub)' .")
 	first.confirm(signature, "grep -F '(sub)' .")
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("the store should be on disk: %v", err)
 	}
-	second := newFixStore(path)
+	second := settledFixStore(t, path)
 	found := second.consult(signature)
 	if len(found) != 1 {
 		t.Fatalf("a reopened store should still know the fix; got %d", len(found))
@@ -226,7 +226,7 @@ func TestCountsAreHalvedOnTheIntervalAndStaleFixesFallOut(t *testing.T) {
 	path := filepath.Join(directory, fixesFileName)
 	monday := time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC)
 
-	early := newFixStore(path)
+	early := settledFixStore(t, path)
 	early.now = func() time.Time { return monday }
 	signature, _ := fixSignature("bash", "ld: symbol(s) not found for architecture arm64")
 	for i := 0; i < 8; i++ {
@@ -235,7 +235,7 @@ func TestCountsAreHalvedOnTheIntervalAndStaleFixesFallOut(t *testing.T) {
 	thin, _ := fixSignature("bash", "dyld: Library not loaded somewhere")
 	early.confirm(thin, "brew reinstall openssl")
 
-	later := newFixStore(path)
+	later := settledFixStore(t, path)
 	later.now = func() time.Time { return monday.Add(fixDecayInterval + time.Hour) }
 	found := later.consult(signature)
 	if len(found) != 1 {
@@ -248,7 +248,10 @@ func TestCountsAreHalvedOnTheIntervalAndStaleFixesFallOut(t *testing.T) {
 		t.Fatalf("a fix confirmed once and never again should be gone; got %q", gone[0].Fix)
 	}
 
-	// And the halving is on the file, not only in this session's head.
+	// And the halving is on the file, not only in this session's head — once
+	// what the read path owed has been settled, which is the exit door's job and
+	// this test's ([fixStore.consult]).
+	later.settle()
 	written := readFixDocument(path)
 	if len(written.Entries) != 1 || written.Entries[0].OK != 4 {
 		t.Fatalf("the halved counts should be on disk: %+v", written.Entries)
@@ -260,7 +263,7 @@ func TestCountsAreHalvedOnTheIntervalAndStaleFixesFallOut(t *testing.T) {
 func TestTheStoreCountsWhatItWasAskedAndWhatItAnswered(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, fixesFileName)
-	store := newFixStore(path)
+	store := settledFixStore(t, path)
 
 	known, _ := fixSignature("bash", "ugrep: error at position 5 (empty (sub)expression)")
 	unknown, _ := fixSignature("bash", "something nobody has ever seen before here")
@@ -291,7 +294,7 @@ func TestTheStoreCountsWhatItWasAskedAndWhatItAnswered(t *testing.T) {
 func TestTheWriteIsAtomicAndLeavesNoLitter(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, fixesFileName)
-	store := newFixStore(path)
+	store := settledFixStore(t, path)
 	signature, _ := fixSignature("bash", "permission denied while opening the port")
 	store.confirm(signature, "sudo lsof -i :8080")
 
@@ -324,7 +327,7 @@ func TestAnUnwritableStoreIsSilent(t *testing.T) {
 	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("write the wall: %v", err)
 	}
-	store := newFixStore(filepath.Join(blocked, "under", fixesFileName))
+	store := settledFixStore(t, filepath.Join(blocked, "under", fixesFileName))
 	signature, _ := fixSignature("bash", "some error worth keying on here")
 	store.confirm(signature, "go build ./...")
 	store.confirm(signature, "go build ./...")
@@ -340,7 +343,7 @@ func TestAMangledStoreStartsEmpty(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json at all"), 0o600); err != nil {
 		t.Fatalf("write the mangled store: %v", err)
 	}
-	store := newFixStore(path)
+	store := settledFixStore(t, path)
 	signature, _ := fixSignature("bash", "an error that keys on something")
 	if found := store.consult(signature); len(found) != 0 {
 		t.Fatal("a mangled store should know nothing")
@@ -362,7 +365,7 @@ func TestTwoSessionsOnOneProjectStoreBothKeepTheirCounts(t *testing.T) {
 
 	// Both load the same (empty) file before either writes, which is the losing
 	// interleaving for a whole-file last-writer-wins.
-	left, right := newFixStore(path), newFixStore(path)
+	left, right := settledFixStore(t, path), settledFixStore(t, path)
 	left.mu.Lock()
 	left.loadLocked()
 	left.mu.Unlock()
@@ -402,7 +405,7 @@ func TestConcurrentWritersKeepTheStoreWhole(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			store := newFixStore(path)
+			store := settledFixStore(t, path)
 			store.confirm(signature, "make clean && make build")
 		}()
 	}
@@ -426,7 +429,7 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("AFORGE_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "some-workspace")
-	shelf := newFixShelf(bucket)
+	shelf := settledFixShelf(t, bucket)
 
 	signature, _ := fixSignature("bash", "ld: symbol(s) not found for architecture arm64")
 	shelf.confirm(signature, "make clean && make build", false)
@@ -440,12 +443,12 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 
 	// A patch only the machine knows is still found, which is what makes the
 	// first failure in a fresh checkout cheap.
-	global := newFixStore(filepath.Join(root, "v3", fixesFileName))
+	global := settledFixStore(t, filepath.Join(root, "v3", fixesFileName))
 	elsewhere, _ := fixSignature("bash", "dyld: Library not loaded libssl")
 	for i := 0; i < 2; i++ {
 		global.confirm(elsewhere, "go mod download")
 	}
-	fresh := newFixShelf(filepath.Join(root, "v3", "projects", "another-workspace"))
+	fresh := settledFixShelf(t, filepath.Join(root, "v3", "projects", "another-workspace"))
 	advice := fresh.consult(elsewhere)
 	if len(advice) != 1 || advice[0].patch != "go mod download" {
 		t.Fatalf("the machine store should answer where the project cannot: %+v", advice)
@@ -455,7 +458,7 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	}
 
 	// And the project's answer wins where both have one.
-	project := newFixShelf(bucket)
+	project := settledFixShelf(t, bucket)
 	both, _ := fixSignature("bash", "some error both stores know about")
 	for i := 0; i < 2; i++ {
 		project.project.confirm(both, "go test ./internal/...")
@@ -470,7 +473,7 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 // A conversation with no project directory still gets the machine's store.
 func TestAShelfWithNoProjectStillHasTheMachineStore(t *testing.T) {
 	t.Setenv("AFORGE_HOME", t.TempDir())
-	shelf := newFixShelf("")
+	shelf := settledFixShelf(t, "")
 	if shelf.project != nil {
 		t.Fatal("a session with no bucket should have no project store")
 	}
@@ -525,4 +528,21 @@ func TestAPatchIsCleanedOnTheWayIn(t *testing.T) {
 	if got := fixCleanPatch("cat <<EOF\nhello\nEOF"); got != "cat <<EOF hello EOF" {
 		t.Fatalf("a multi-line command should survive as one line: %q", got)
 	}
+}
+
+// settledFixStore and settledFixShelf are the constructors with the one thing a
+// TEST owes a store that writes behind the path: a settle before the tempdir
+// under it goes away. A session owes the same at its exit door.
+func settledFixStore(t *testing.T, path string) *fixStore {
+	t.Helper()
+	store := newFixStore(path)
+	t.Cleanup(store.settle)
+	return store
+}
+
+func settledFixShelf(t *testing.T, bucket string) *fixShelf {
+	t.Helper()
+	shelf := newFixShelf(bucket)
+	t.Cleanup(shelf.settle)
+	return shelf
 }

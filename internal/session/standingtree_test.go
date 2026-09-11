@@ -9,6 +9,7 @@ package session
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,6 +138,9 @@ func TestAFolderSaidToBeWorkedInDirectlyIsWrittenDirectly(t *testing.T) {
 	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "straight in\n" {
 		t.Fatalf("the folder says %q — a said mode was overruled", got)
 	}
+	// The head start is owed work, so the count below is asked once it has all
+	// happened. Winning a race against `git worktree add` is not a proof.
+	agent.SettleWrites()
 	if trees := agent.StandingTrees(); len(trees) != 0 {
 		t.Fatalf("a copy was made anyway: %+v", trees)
 	}
@@ -164,8 +168,72 @@ func TestTheFolderYouAreStandingInIsWrittenDirectly(t *testing.T) {
 	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "here, directly\n" {
 		t.Fatalf("the workspace says %q", got)
 	}
+	agent.SettleWrites()
 	if trees := agent.StandingTrees(); len(trees) != 0 {
 		t.Fatalf("the standing workspace was staged: %+v", trees)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", "chat/*"); strings.TrimSpace(branches) != "" {
+		t.Fatalf("a branch was cut in the person's own repository: %q", branches)
+	}
+}
+
+// SAYING "IN PLACE" AFTER THE COPY HAS ALREADY BEEN CUT TAKES IT BACK. The mode
+// is a fact about a place, so it can only be said once the place is referred —
+// by which time the head start has run — and a person's word about their own
+// folder that arrives second still has to win completely.
+func TestSayingInPlaceAfterTheCopyWasCutTakesItBack(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _, _ := standingLab(t, repo) // refers the folder, which starts the cut
+	agent.SettleWrites()
+	if trees := agent.StandingTrees(); len(trees) != 1 {
+		t.Fatalf("the head start made no copy to take back: %+v", trees)
+	}
+	cut := agent.StandingTrees()[0]
+
+	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
+		t.Fatalf("SetPlaceMode: %v", err)
+	}
+	if trees := agent.StandingTrees(); len(trees) != 0 {
+		t.Fatalf("the copy outlived the word that retired it: %+v", trees)
+	}
+	if _, err := os.Stat(cut.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the working copy is still on disk at %s", cut.Dir)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", cut.Branch); strings.TrimSpace(branches) != "" {
+		t.Fatalf("the branch outlived the copy: %q", branches)
+	}
+
+	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "straight in\n")
+	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "straight in\n" {
+		t.Fatalf("the folder says %q — the word did not take", got)
+	}
+	agent.SettleWrites()
+	if trees := agent.StandingTrees(); len(trees) != 0 {
+		t.Fatalf("a copy was made after the word: %+v", trees)
+	}
+}
+
+// A COPY SOMETHING HAS BEEN WRITTEN INTO IS NEVER TAKEN BACK, even by the word
+// that would have stopped it being made. The work is in that copy and nowhere
+// else, and [Agent.Land] is the only door that moves it out.
+func TestSayingInPlaceKeepsACopyThatAlreadyHoldsWork(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _, _ := standingLab(t, repo)
+	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "written into the copy\n")
+	agent.SettleWrites()
+
+	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
+		t.Fatalf("SetPlaceMode: %v", err)
+	}
+	trees := agent.StandingTrees()
+	if len(trees) != 1 {
+		t.Fatalf("the work was thrown away with the copy: %+v", trees)
+	}
+	if got := readFile(t, filepath.Join(trees[0].Dir, "shared.txt")); got != "written into the copy\n" {
+		t.Fatalf("the copy says %q", got)
+	}
+	if waiting := agent.UnlandedChanges(); len(waiting) != 1 {
+		t.Fatalf("the chip lost the way back to the work: %+v", waiting)
 	}
 }
 

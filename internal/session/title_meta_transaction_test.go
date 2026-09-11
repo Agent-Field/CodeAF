@@ -123,6 +123,11 @@ func TestAMetadataPatchFinishesWhileAUserStampOwnsTheAgentLock(t *testing.T) {
 	close(release)
 	waitMetaPatch(t, firstDone)
 	waitMetaPatch(t, userDone)
+	// THE STAMP IS OWED ON THE PATH AND WRITTEN BEHIND IT (placemeta.go), so the
+	// door that says it landed is the one an exit uses. What the test still pins
+	// is the serialization: the patch and the stamp each keep their own fields,
+	// whichever order the two transactions reach the file in.
+	a.SettleWrites()
 	meta, err := LoadMeta(dir)
 	if err != nil || meta.Title != "parser migration failures" || meta.LastUserAt.IsZero() {
 		t.Fatalf("serialized user stamp lost committed title: %+v %v", meta, err)
@@ -135,6 +140,7 @@ func TestAnAcceptedUserMessageStillRefreshesTheStoredModel(t *testing.T) {
 	a.mu.Lock()
 	a.stampUserLocked("check the integration regression using this model")
 	a.mu.Unlock()
+	a.SettleWrites()
 	meta, err := LoadMeta(dir)
 	if err != nil || meta.Model != "test/replacement-model" {
 		t.Fatalf("new user message retained the previous model: %+v %v", meta, err)
