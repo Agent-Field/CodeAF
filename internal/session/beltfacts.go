@@ -394,9 +394,11 @@ var standingFacts = []beltFact{{
 	// the anchoring rule used to be `stand`'s own description at greater length,
 	// and before that a second copy here; now the page says them once and
 	// [standDescription] points at this heading, which it can do because both
-	// are built from [Config.mayStand]. The line of limits, reach and grant is
-	// here for the same reason: it is one law the schema used to repeat under
-	// five fields.
+	// are built from [Config.mayStand]. The line of limits, reach and grant
+	// states that law once as a law; the six schema fields it governs (`rails`,
+	// `cost_words`, `altitude`, `placement`, `grant`, `model`) each still say
+	// "only when they named it" in a clause, because a field is where the model
+	// is when it decides whether to fill one.
 	present: "# Things that keep working after this window\n" +
 		"Some of what a person says is not work for now but something to leave behind\n" +
 		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\", \"every Monday\n" +
@@ -418,7 +420,7 @@ var standingFacts = []beltFact{{
 		"with `does.report` when a file is kept current). One naming none, a rule or\n" +
 		"preference (\"always ...\", \"we use X here\"), is `when.kind: hold`: it never\n" +
 		"fires and never spends, riding into every conversation and task it reaches, and\n" +
-		"is sent with no `does` and no `rails`.\n" +
+		"is sent with no `does`; its one rail is `expires`, for a rule with a last day.\n" +
 		"\n" +
 		"UNSURE MEANS INSTRUCTION PLUS AN OFFER: bind it to the work in front\n" +
 		"of you AND offer the standing version in one line at the end of your reply.\n" +

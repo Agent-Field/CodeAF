@@ -97,6 +97,8 @@ import (
 // [standDescription], which owns all three by name). A belt without `stand`
 // loses nothing either — that section opens by saying it is about the tool. The
 // prompt went 21,495 → 20,712 and the prefix is 47,531, which is 469 under.
+// (INVERTED ON 2026-09-11: the page section owns all three now and
+// [standDescription] points at it — see the entry that set the budget below.)
 // THE HANDOFF LAW PAID FOR ITSELF OUT OF A SENTENCE SAID TWICE (2026-09-04). A
 // live run ended a turn that had handed its work to a task and was told the ask
 // was not finished, so the page now says a handed-off outcome is not work that
@@ -146,15 +148,18 @@ import (
 // above weighed a conversation without `stand`, `collections`,
 // `shared_context`, `context_trace`, `services`, `use_service`, `remember` or
 // `search_conversations` — eight tools the interactive door carries on every
-// request. It reported 47,942 while the door sent 67,029. It builds through
+// request. It reported 47,942 while the door sent 67,034. It builds through
 // [conversationDoor] now, which is chatv3.go's list and no second copy of it.
 //
-// What that first honest measurement was paid down with: `stand` held its rules
-// twice — the discharge test, anchoring, waking or holding and the passed-moment
-// recomputation in its own description AND on the page section built from the
-// same predicate, and the limits law under five fields — so each is now said
-// once (tools_standing.go's [standSchemaJSON]). `stand` went 11,008 → 5,749 and
-// the page 23,898 → 24,607.
+// What that first honest measurement was paid down with: `stand` held its
+// recognition twice — the discharge test, anchoring, waking or holding and the
+// passed-moment recomputation in its own description AND on the page section
+// built from the same predicate — so those are now said once, on the page, and
+// the description points at them (tools_standing.go's [standDescription]). The
+// limits law is NOT said once: the page states it as a law and each of the six
+// fields it governs keeps its own "only when they named it" clause, because the
+// field is where the model decides. `stand` went 11,008 → 5,749 and the page
+// 23,898 → 24,607.
 //
 // The door then measured 62,484 bytes: 24,607 of page and 37,877 of tool block
 // over 26 tools, of which the eight above are 13,825 (`stand` 5,749,
@@ -164,11 +169,21 @@ import (
 // founding rule of this constant, applied to the shape it was always meant to
 // bound. THIS IS A SHAPE CORRECTION AND NOT A LANE RAISING THE NUMBER: 48,000
 // bounded a belt this door never had, and the bytes it did not see were already
-// being sent. The next failure against 69,000 is paid for out of a second copy
-// and not raised, exactly as every entry above was.
+// being sent. The review's two restorations then put 113 bytes back — `altitude`
+// maps "everywhere" to machine again, and a hold's one rail is `expires` — for
+// 62,597, which the same rule still rounds to 69,000. The next failure against
+// it is paid for out of a second copy and not raised, exactly as every entry
+// above was.
 //
-// ONE CONDITIONAL IS UNWEIGHED: the web tools, which the door carries only where
-// a search provider is configured (chatv3.go's `v3Search`).
+// 69,000 BOUNDS THE SHIPPING DEFAULT DOOR, NOT EVERY DOOR. The fixture carries
+// what the door carries on every machine; these it carries only on some, and
+// they are unweighed: `web_search` and `web_fetch` (a search provider is
+// configured, chatv3.go's `v3Search`), `view_image` (a media client and a vision
+// model), furrow's `workspace_snapshots`, `workspace_restore`, `workspace_fork`
+// and `workspace_merge` (a folder attached to furrow), `workspace` (an owned
+// conversation with no project yet), and the longer `load_capability` lines a
+// media group and saved programs add. Together they are several kilobytes, so a
+// fully configured door likely spends the tenth of headroom and may pass it.
 //
 // AND THE FIRST PLACE TO LOOK WHEN IT FAILS. These rules are still said more
 // than once on this prefix, in other lanes' tools, and were left for them:

@@ -85,9 +85,10 @@ var prefixShapes = []prefixShape{{
 // memory store (`remember`, `search_conversations`). chatv3.go fills every one
 // of them for a door that is a conversation.
 //
-// THE ONE SEAM LEFT OUT IS WEB SEARCH, because the door fills it only when a
-// search provider is configured (chatv3.go's `v3Search`); a tool that is on
-// some machines' belts and not others is not what every request carries.
+// WHAT IT LEAVES OUT IS WHAT THE DOOR CARRIES ONLY ON SOME MACHINES — web
+// search, `view_image`, furrow's verbs, `workspace` — because a tool on some
+// belts and not others is not what every request carries; prefixbudget_test.go's
+// ledger names each and what it means for the number.
 //
 // IT IS THE ONE DEFINITION OF THAT SHAPE. [v3ShapedAgent] and so the prefix
 // budget build through it, because the budget weighed a hand-assembled belt
