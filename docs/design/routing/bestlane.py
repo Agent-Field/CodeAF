@@ -111,6 +111,12 @@ def main():
     if not key:
         sys.exit("OPENROUTER_API_KEY is not set")
     rows = log_rows()
+    tariffs = {}
+    try:
+        for b in json.load(open(os.path.join(HOME, "v3", "lanes.json")))["beliefs"]:
+            tariffs[(b["ID"]["Model"], b["ID"]["Lane"])] = b["Facts"].get("PriceOut", 0)
+    except (OSError, ValueError, KeyError):
+        pass
     failed = 0
     for model in args.models:
         print(f"\n=== {model} ===")
@@ -151,13 +157,22 @@ def main():
             realized = r["ms"] / 1000 if r.get("ms") else float("inf")
             oracle = best["ttft"] + tokens / best["rate"]
             ratio = realized / oracle if oracle else None
-            ceiling_beside_order = any(p and p.get("order") and p.get("max_price") for p in prefs)
+            # A ceiling may ride beside an order, but it must cover the lane that
+            # served: a ceiling under the served lane's own tariff is the veto the
+            # assessment recorded, paid for by a rescue.
+            ceiling_beside_order = False
+            for p in prefs:
+                if not (p and p.get("order") and p.get("max_price")):
+                    continue
+                tariff = tariffs.get((model, served))
+                if tariff and p["max_price"].get("completion", 0) < tariff * 1_000_000:
+                    ceiling_beside_order = True
             ok = served == best["lane"] or realized <= 1.5 * oracle + 1.0
             verdict = "PASS" if ok and not ceiling_beside_order else "FAIL"
             if verdict == "FAIL":
                 failed += 1
             print(f"  run {i+1}: {verdict} asked={asked} served={served} ttft={r.get('ttft_ms')}ms tok/s={tps} tokens={tokens} "
-                  f"felt={realized:.1f}s best-lane-would-take={oracle:.1f}s calls={len(calls)} max_price-beside-order={ceiling_beside_order}")
+                  f"felt={realized:.1f}s best-lane-would-take={oracle:.1f}s calls={len(calls)} ceiling-under-served-lane={ceiling_beside_order}")
     print(f"\n{'ALL PASS' if not failed else str(failed) + ' FAILED'}")
     sys.exit(1 if failed else 0)
 
