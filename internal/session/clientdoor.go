@@ -13,15 +13,20 @@ import (
 )
 
 type modelAccount struct {
-	id       string
-	key      string
-	address  string
-	optional bool
+	id         string
+	key        string
+	address    string
+	door       string
+	overflow   string
+	planPaused string
+	optional   bool
 }
 
 // modelClientPool is the account boundary shared by a conversation and every
 // production child it creates. The whole account is the key: source identity,
-// bearer, address, and whether a blank bearer is an explicit capability.
+// bearer, bound billing door, overflow answer, and whether a blank bearer is
+// an explicit capability. The policy fields make a live settings change mint
+// a client with the new spending answer instead of reusing the old adapter.
 // Sharing the pool keeps a task worker from falling back to whichever adapter
 // its parent happened to be using when the worker was constructed.
 type modelClientPool struct {
@@ -123,9 +128,14 @@ func accountFor(config Config, model string) modelAccount {
 }
 
 func accountForService(service modelsource.Connected) modelAccount {
+	overflow := ""
+	if service.Overflow != nil {
+		overflow = strings.TrimSpace(service.Overflow.Address)
+	}
 	return modelAccount{
 		id: strings.ToLower(strings.TrimSpace(service.Source.ID)), key: service.Key,
-		address: strings.TrimSpace(service.Address), optional: service.Source.KeyOptional,
+		address: strings.TrimSpace(service.Address), door: strings.TrimSpace(service.Door.ID),
+		overflow: overflow, planPaused: strings.TrimSpace(service.PlanPaused), optional: service.Source.KeyOptional,
 	}
 }
 

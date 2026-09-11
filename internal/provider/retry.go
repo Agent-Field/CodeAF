@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -98,6 +99,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
+	currentBase := c.config.BaseURL
+	currentDoor := c.config.BillingDoor
+	switchedDoor := false
+	usingOverflow := false
+	planPaused := false
+	planReset := ""
 	// providerWait is the provider's own comeback instruction from the last
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.
@@ -149,7 +156,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 && !reconnected {
+		if attempt > 0 && !reconnected && !switchedDoor {
 			delay := backoffFor(attempt, providerWait)
 			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
 			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
@@ -167,12 +174,16 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// the honest reading of "this call is being paced", where the
 			// header's own figure is spent after one attempt.
 			paced := PhaseRetrying
-			if !pacedSince.IsZero() {
+			detail := ordinalOf(attempts, patienceOf(patient))
+			if planPaused {
+				paced = PhasePlanPaused
+				detail = planPauseDetail(planReset, c.config.PlanOverflowDoor)
+			} else if !pacedSince.IsZero() {
 				paced = PhasePaced
 			}
 			now := c.clock()
 			notePhase(ctx, c.modelFor(request), paced,
-				ordinalOf(attempts, patienceOf(patient)), now, now.Add(delay), "")
+				detail, now, now.Add(delay), "")
 			// Spent. It described one moment to come back at, and coming back
 			// is what we are doing; carrying it forward made a single 429 set
 			// the floor for every remaining attempt of the call.
@@ -182,7 +193,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 		}
 		reconnected = false
-		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
+		switchedDoor = false
+		if waited, err := c.waitConnection(ctx, c.modelFor(request), currentBase, false); err != nil {
 			return nil, err
 		} else if waited && knobs.trace != nil {
 			knobs.trace.connectionRecovered = true
@@ -198,7 +210,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
 		})
 
-		httpRequest, err := c.newHTTPRequest(attemptCtx, request, body, stream)
+		httpRequest, err := c.newHTTPRequestAt(attemptCtx, request, body, stream, currentBase)
 		if err != nil {
 			cancelAttempt()
 			return nil, err
@@ -297,8 +309,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// cannot distinguish a busy queue from an authenticated account that cannot
 		// pay, and only the former should narrow the shared limiter or be retried.
 		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-		payment := paymentrefusal.Matches(response.StatusCode, peek)
-		rateLimited := potentialRateLimit && !payment
+		classification := paymentrefusal.Classify(response.StatusCode, peek)
+		payment := classification == paymentrefusal.Payment
+		windowPaused := classification == paymentrefusal.WindowExhausted
+		useOverflow := windowPaused && c.config.OverflowOnPlanPause &&
+			strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow
+		rateLimited := potentialRateLimit && !payment && !useOverflow
 		if !rateLimited {
 			named = 0
 		}
@@ -327,6 +343,22 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
 		})
+		if useOverflow {
+			currentBase = strings.TrimRight(strings.TrimSpace(c.config.PlanOverflow), "/")
+			currentDoor = strings.TrimSpace(c.config.PlanOverflowDoor)
+			if phase := phaseClockFrom(ctx); phase != nil {
+				phase.useDoor(currentDoor)
+			}
+			usingOverflow = true
+			switchedDoor = true
+			planPaused = false
+			pacedSince = time.Time{}
+			continue
+		}
+		if windowPaused {
+			planPaused = true
+			planReset = paymentrefusal.ResetAt(peek)
+		}
 		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
 		// done about it is decided there from what the refusal says rather than
 		// here from the status this loop happens to be holding (velocity.go's
@@ -366,10 +398,70 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	if lastErr == nil {
 		lastErr = errors.New("request failed")
 	}
+	if planPaused {
+		return nil, &PlanPauseError{
+			Reset: planReset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
+		}
+	}
 	// The count is what this call actually spent rather than the constant it
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// PlanPauseError is the typed end of a request whose fixed-price window remains
+// unavailable after bounded retries. Cause preserves the vendor refusal for
+// the journal; surfaces read this type so the person sees only the actionable
+// pause sentence rather than a generic API error after that sentence.
+type PlanPauseError struct {
+	Reset        string
+	OverflowDoor string
+	Cause        error
+}
+
+func (e *PlanPauseError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return PlanPauseSentence(e.Reset, e.OverflowDoor)
+}
+
+func (e *PlanPauseError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// PlanPauseFrom recovers a plan-pause ending through the wrappers added by the
+// provider and session loops.
+func PlanPauseFrom(err error) (*PlanPauseError, bool) {
+	var paused *PlanPauseError
+	if errors.As(err, &paused) && paused != nil {
+		return paused, true
+	}
+	return nil, false
+}
+
+// PlanPauseSentence is the one person-facing sentence for a temporarily spent
+// subscription window, shared by live status, the final row, and connection.
+func PlanPauseSentence(reset, overflowDoor string) string {
+	detail := planPauseDetail(reset, overflowDoor)
+	if detail == "" {
+		return string(PhasePlanPaused)
+	}
+	return string(PhasePlanPaused) + " · " + detail
+}
+
+func planPauseDetail(reset, overflowDoor string) string {
+	parts := make([]string, 0, 2)
+	if reset = strings.TrimSpace(reset); reset != "" {
+		parts = append(parts, "resets at "+reset)
+	}
+	if overflowDoor = strings.TrimSpace(overflowDoor); overflowDoor != "" {
+		parts = append(parts, "/connect can switch to "+overflowDoor)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // demandedPoolIsFull reports that a 429 names the one machine this request

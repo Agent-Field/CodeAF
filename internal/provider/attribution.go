@@ -26,6 +26,11 @@ import (
 // one.
 
 const (
+	// DirectUserAgent is the identity aforge gives a vendor it reaches without
+	// the routed service. It is deliberately the product's own name, never the
+	// user agent of a client a billing plan already lists.
+	DirectUserAgent = "aforge"
+
 	// AppURL is the HTTP-Referer OpenRouter groups this binary's usage under,
 	// and it is the app's identity: a request without it is attributed to
 	// nobody, whatever else it carries.

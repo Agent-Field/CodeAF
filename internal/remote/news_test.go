@@ -249,7 +249,7 @@ func TestNewsGoesOnlyToTheConnectionOfTheConversationItNames(t *testing.T) {
 
 	session.TellPhase(session.PhaseNews{
 		Phase: provider.PhaseWriting, Model: "openai/gpt-5", Role: lane.RoleTalk,
-		Lane: "friendli", Rate: 38, Session: "conversation-one", At: time.Now(),
+		Lane: "friendli", Door: "pay-as-you-go", Rate: 38, Session: "conversation-one", At: time.Now(),
 	})
 
 	frame := here.await(func(f Frame) bool { return f.Kind == "phase" })
@@ -257,8 +257,11 @@ func TestNewsGoesOnlyToTheConnectionOfTheConversationItNames(t *testing.T) {
 	if err := json.Unmarshal(frame.Payload, &wire); err != nil {
 		t.Fatalf("the phase frame did not parse: %v", err)
 	}
-	if wire.Lane != "friendli" || wire.Rate != 38 {
+	if wire.Lane != "friendli" || wire.Door != "pay-as-you-go" || wire.Rate != 38 {
 		t.Fatalf("the phase crossed as %+v, want friendli at 38 tok/s", wire)
+	}
+	if got := phaseNewsOf(wire, time.Now()); got.Door != "pay-as-you-go" {
+		t.Fatalf("the billing door did not survive the read back: %+v", got)
 	}
 	// AND THE OTHER CONVERSATION HEARD NOTHING. Its own turn is what its row is
 	// about, and a clock from somebody else's window is worse than no clock.
