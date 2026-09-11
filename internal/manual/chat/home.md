@@ -1977,6 +1977,11 @@ The chips are the ones the question has:
   text box, and a card in a column has no box. To say a different time or place, open the
   conversation: the card is still waiting there, because this card never times out.
 
+**An answer is not lost if aforge is killed.** It stays on that conversation's doorstep
+until the conversation has written it into its saved record on disk, taken or not taken
+and why; if it dies first, the next time the conversation opens it is answered then — if
+it is still asking — and an answer already recorded is never taken twice.
+
 `2 always` means what it means in the window: **that session stops asking about that
 tool** for the rest of its life. It does not write a permission rule into your settings —
 the card in the window writes that from the command it has in front of it, and home has
