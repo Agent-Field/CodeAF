@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,6 +48,7 @@ import (
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
 	startCmdProfile()
+	surfaceTick = harnessTick
 	code := runTests(m)
 	writeCmdProfile()
 	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
@@ -55,6 +57,46 @@ func TestMain(m *testing.M) {
 	// printed rather than asserted: it moves with which tests ran.
 	fmt.Fprintf(os.Stderr, "tui3: %d goroutines still parked at the end of the run\n", runtime.NumGoroutine())
 	os.Exit(code)
+}
+
+// harnessTick turns the surface clock into a command the harness can settle
+// without starting a real timer. Ticks beyond [tickBudget] are the same ticks
+// the old harness dropped; shorter callbacks are pure messages and can be
+// delivered deterministically. The callback time is deliberately zero: the AST
+// law below guarantees callbacks only construct messages and never read it.
+//
+//go:noinline
+func harnessTick(after time.Duration, callback func(time.Time) tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		if after > tickAdmits {
+			return nil
+		}
+		return callback(time.Time{})
+	}
+}
+
+// tickAdmits is the longest delay [harnessTick] delivers. It is [tickBudget]
+// for every command the harness runs, and it is lifted only inside [waitOut].
+//
+// A plain variable is safe here because a harness tick is only ever called on
+// the test's own goroutine: [harnessDriver.run] resolves it synchronously
+// rather than overlapping it, and this package runs no test in parallel.
+var tickAdmits = tickBudget
+
+// waitOut runs one delayed command as though its whole delay had passed, and
+// returns the message it delivers. It is for the test whose claim IS a beat —
+// "the key arms the panel's next beat", "the reader re-arms after the job
+// ends" — which the harness clock otherwise answers with nothing, because a
+// beat longer than [tickBudget] is a poll the harness never waits for.
+//
+// IT COSTS NO WALL TIME EITHER: the harness clock starts no timer, so waiting
+// out a 250ms beat is one function call. A command that is not a tick is
+// simply called.
+func waitOut(cmd tea.Cmd) tea.Msg {
+	was := tickAdmits
+	tickAdmits = math.MaxInt64
+	defer func() { tickAdmits = was }()
+	return cmd()
 }
 
 // runTests is TestMain's body as a function with a return value, so the
@@ -85,17 +127,19 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns   [][]session.Event
-	turn    int
-	live    chan session.Event
-	model   string
-	window  int
-	usage   session.Usage
-	sent    []string
-	stops   int
-	closes  int
-	packs   int
-	failing error
+	turns  [][]session.Event
+	turn   int
+	live   chan session.Event
+	model  string
+	window int
+	usage  session.Usage
+	sent   []string
+	stops  int
+	// stopDoor is the door the last stop named (internal/session's stopcause.go).
+	stopDoor session.StopDoor
+	closes   int
+	packs    int
+	failing  error
 	// past is what a resumed session already holds — what [app.replay] draws.
 	past            []session.DisplayEntry
 	transcriptReads int
@@ -212,7 +256,11 @@ func (f *fakeAgent) finish() {
 	}
 }
 
-func (f *fakeAgent) Interrupt()                       { f.stops++ }
+func (f *fakeAgent) Interrupt() { f.stops++ }
+func (f *fakeAgent) InterruptFor(door session.StopDoor) {
+	f.stopDoor = door
+	f.stops++
+}
 func (f *fakeAgent) Compact(context.Context) error    { f.packs++; return nil }
 func (f *fakeAgent) Close() error                     { f.closes++; return nil }
 func (f *fakeAgent) Model() string                    { return f.model }
@@ -391,8 +439,9 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // goes on waiting for on its own, and the package gets slower by 150ms a call
 // with nothing failing.
 //
-// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all. A
-// tick is a real timer, so the surface's own constants decide it: the shortest
+// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all.
+// [surfaceTick] is replaced by [harnessTick] for this binary, so the surface's
+// own constants decide it without starting a real timer: the shortest
 // are the paint clock and [resizeGrace] at 80ms and taskmention's at 100ms, and
 // every tick at 150ms or longer — the polls, [homeEvery], [farRoomEvery],
 // [hostPingEvery] and their kind — is dropped today and would be dropped whatever
@@ -414,6 +463,10 @@ const (
 // builds a real tick and fails if an upgrade moves the symbol.
 const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
 
+// harnessTickSymbol is the closure behind the test clock. The driver executes
+// it synchronously; a symbol check below catches compiler or refactor drift.
+const harnessTickSymbol = "github.com/Agent-Field/aforge-v2/internal/tui3.harnessTick.func1"
+
 // blockingCommands is THE ONE TABLE. It names every command in this package that
 // parks on a channel a test's fakes usually never write to and never close.
 //
@@ -432,7 +485,9 @@ var blockingCommands = []string{
 	"waitDesign",
 	"waitEvent",
 	"waitGuestNotices",
+	"waitGuestQuestions",
 	"waitPilot",
+	"waitQuestion",
 	"waitRoom",
 	"waitRun",
 	"waitSteerLane",
@@ -443,6 +498,7 @@ var blockingCommands = []string{
 	"watchDesigns",
 	"watchDriving",
 	"watchFollowing",
+	"watchQuestions",
 	"watchRuns",
 	"watchTasks",
 	"watchTitles",
@@ -503,10 +559,8 @@ func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
 		for path, file := range pkg.Files {
 			ast.Inspect(file, func(n ast.Node) bool {
 				if call, ok := n.(*ast.CallExpr); ok {
-					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Tick" {
-						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "tea" {
-							ticks++
-						}
+					if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "surfaceTick" {
+						ticks++
 					}
 					return true
 				}
@@ -523,7 +577,7 @@ func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
 		}
 	}
 	if ticks == 0 {
-		t.Errorf("nothing in the package calls tea.Tick any more, so teaTickSymbol and tickBudget are dead — delete them")
+		t.Errorf("nothing in the package calls surfaceTick any more, so the harness clock and tickBudget are dead — delete them")
 	}
 	var stale []string
 	for _, name := range blockingCommands {
@@ -593,6 +647,71 @@ func labLedger() string {
 	return labLedgerPath
 }
 
+// resolveThroughLanes is [session.Agent.applyToLane] in miniature, for the fakes
+// in this package that are answered through THE ONE DOOR.
+//
+// EVERY QUESTION ON THE BLOCK GOES THROUGH [questionResolver] and never through
+// the lane's own method (question.go's [app.answerQuestion]), which is the whole
+// point of there being one object — so a fake that carries only
+// `ResolveHarness` or `ResolveStanding` is a session no key on the block can
+// reach. This gives one to any fake that embeds it, by asking which lanes the
+// fake actually has: a real engine does the same switch over its own resolvers.
+func resolveThroughLanes(agent any, answer session.Answer) error {
+	key := answer.FirstKey()
+	switch answer.Kind {
+	case session.QuestionHarness:
+		door, ok := agent.(interface {
+			ResolveHarness(id uint64, run bool, model string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		if !session.AnswerResolves(answer) {
+			// `change it` on a design touches nothing (session's HarnessChangeKey).
+			return nil
+		}
+		door.ResolveHarness(answer.ID, key == session.HarnessSaveKey, answer.Comments[session.HarnessModelNote])
+		return nil
+	case session.QuestionConnect:
+		door, ok := agent.(interface {
+			ResolveConnect(id string, approve bool)
+			ResolveConnectKey(id string, key string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER
+		// (session's applyToLane says it first): words go through the typed door
+		// and a bare pick through the other one.
+		if words := strings.TrimSpace(answer.Words()); words != "" {
+			door.ResolveConnectKey(answer.Ref, words)
+			return nil
+		}
+		door.ResolveConnect(answer.Ref, key == "1")
+		return nil
+	case session.QuestionStanding:
+		door, ok := agent.(standingAgent)
+		if !ok {
+			return errNoSuchLane
+		}
+		if words := strings.TrimSpace(answer.Words()); words != "" && key == "" {
+			door.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
+			return nil
+		}
+		action, found := session.AnswerFromKey(session.QuestionStanding, key)
+		if !found {
+			return errNoSuchLane
+		}
+		door.ResolveStanding(answer.ID, action.Standing)
+		return nil
+	}
+	return errNoSuchLane
+}
+
+// errNoSuchLane is what a fake answers about a lane it does not carry, which is
+// the engine's own refusal said in one word (session's errAnswerUnknownLane).
+var errNoSuchLane = errors.New("no such lane on this fake")
+
 func newTestApp(agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
@@ -612,6 +731,16 @@ func newTestApp(agent Agent) *app {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
+	// AND IT PINS THE GLYPH REPERTOIRE, for the fifth time for the same reason.
+	// [tokens.DetectGlyphSet] turns the nerd-font tier ON for any terminal it
+	// cannot rule out, and the pinned TERM above is one of those — so every mark
+	// in the suite would be a private-use codepoint, invisible in the frames
+	// these tests log and impossible to write down in an assertion. The plain
+	// floor is what the suite asserts against; the tests that are ABOUT the tier
+	// set [app.actionAuto] themselves and call [app.settleIcons]
+	// (actionicon_test.go).
+	a.actionAuto = tokens.Plain
+	a.settleIcons()
 	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
 	// [newApp] reads the profile to decide whether the column stands (task.go's
 	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
@@ -932,7 +1061,7 @@ func TestAFailedToolIsMarkedAndSaysWhy(t *testing.T) {
 	runTurn(t, a, agent, "build it")
 
 	got := plain(frame(a))
-	if !strings.Contains(got, "✗") || !strings.Contains(got, "exit 2") {
+	if !strings.Contains(got, glyphBad) || !strings.Contains(got, "exit 2") {
 		t.Fatalf("a failed tool has to say so:\n%s", got)
 	}
 }
@@ -1153,7 +1282,9 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 
 	list := plainRows(a)
 	page := strings.Join(list, "\n")
-	if !strings.Contains(page, "reading 5 files") {
+	// The turn is over and all five reads came back, so the floor caption is in
+	// the past (caption.go's [captionPast]).
+	if !strings.Contains(page, "read 5 files") {
 		t.Fatalf("the caption is missing:\n%s", page)
 	}
 	if strings.Contains(page, "earlier tool calls") {
@@ -1819,23 +1950,31 @@ func TestTheSurfaceBootsAndQuitsHeadlessly(t *testing.T) {
 		})
 	}()
 
-	// THE STATUS ROW NAMES THE MODEL WITHOUT ITS VENDOR, and that row is what
-	// this test is waiting for. It used to wait for the full routing address,
-	// which reached the frame twice — once on the status row and once on the
-	// greeting's own model line — and the greeting's copy went when the first
-	// conversation stopped repeating what the setup screen had just asked
-	// (welcome.go). The status row is the surface's own claim that it is up.
-	shown := agent.model[strings.LastIndex(agent.model, "/")+1:]
-	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), shown) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the surface never drew its status line:\n%q", out.String())
+	// THE ALT SCREEN IS THE FIRST CLAIM THAT IT IS UP, and the seam under the
+	// box is the second: the model's name, without its vendor, on the legend
+	// line above the prompt (foot.go's [app.seamIdentity]).
+	//
+	// A first sentence is sent before that second claim is waited for, because
+	// an untouched conversation draws neither the seam nor any model at all —
+	// the greeting holds the box, and the status row under it carries only
+	// `idle` (welcome.go, and the empty-screen page). Until 2026-09-09 the model
+	// was on the status row under the greeting too, and this test waited for it
+	// there without typing anything.
+	waitFor := func(what, needle string) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(out.String(), needle) {
+			if time.Now().After(deadline) {
+				t.Fatalf("the surface never drew %s:\n%q", what, out.String())
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	if wire := out.String(); !strings.Contains(wire, "\x1b[?1049h") {
-		t.Fatal("the surface did not enter the alt screen")
+	waitFor("the alt screen", "\x1b[?1049h")
+	if _, err := keyboard.Write([]byte("hi\r")); err != nil {
+		t.Fatalf("write to the surface: %v", err)
 	}
+	waitFor("the model on its seam", agent.model[strings.LastIndex(agent.model, "/")+1:])
 
 	if _, err := keyboard.Write([]byte("/quit\r")); err != nil {
 		t.Fatalf("write to the surface: %v", err)

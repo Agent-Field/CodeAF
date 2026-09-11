@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -24,8 +27,10 @@ import (
 //
 // Three properties are the whole design:
 //
-//   - It never fetches. The list was resolved before it opened (models.go), so
-//     the first frame after /model is a list and never a spinner.
+//   - It never fetches on its own. The list was resolved before it opened
+//     (models.go), so the first frame after /model is a list and never a
+//     spinner; the one fetch it makes is asked for with a key, and the list
+//     stays usable while it runs (modelrefresh.go).
 //   - It is bottom-anchored and takes the input line's place. The conversation
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
@@ -134,6 +139,14 @@ type picker struct {
 	// cancelled list is the next /model retargeting a task nobody was looking at.
 	task uint64
 
+	// refresh is whether this list may ask the door for today's list, and
+	// fetching whether that ask is out (modelrefresh.go). Both are set by the
+	// app that opened it and read by what it draws: a list with no refresh
+	// behind it — the settings panel's, home's, a door with none — never names
+	// the key.
+	refresh  bool
+	fetching bool
+
 	filter editor
 }
 
@@ -150,19 +163,43 @@ func (p *picker) startFor(models []Model, current string, keep modelFilter) {
 
 // start opens the picker over models with current marked.
 func (p *picker) start(models []Model, current string) {
-	*p = picker{open: true, all: models, current: current}
+	*p = picker{open: true, current: current}
+	p.restock(models)
+}
+
+// restock puts a new list under an open picker and keeps everything else it
+// holds — the filter text, the subject, the pin, the rows it has already drawn
+// — which is what a refreshed list needs and what [picker.start] would forget.
+// The list is ranked against the filter as typed.
+func (p *picker) restock(models []Model) {
+	p.all = models
 	p.shared = sharedSlugs(models)
 	p.lower = make([]string, len(models))
 	for i, model := range models {
-		p.lower[i] = strings.ToLower(model.ID)
+		label := model.ID
+		if model.Unavailable {
+			label = model.Notice
+		}
+		p.lower[i] = strings.ToLower(label)
 	}
 	p.score = make([]int, len(models))
+	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
+	// only does that for an empty box, because a keystroke that narrows the list
+	// must not yank the cursor away from the row a person was walking towards —
+	// but a landed list is not a keystroke, and the row they were on may no
+	// longer exist. The model in use is the one row that is always there to land
+	// on (the same rule [picker.start] opens with).
 	p.rank()
-	// The cursor opens ON the model in use. A picker that opened on row zero
-	// would make enter — the key a person presses to confirm — a model change
-	// they did not ask for.
+	p.cursorToCurrent()
+}
+
+// cursorToCurrent puts the cursor on the model in use. A picker that opened on
+// row zero would make enter — the key a person presses to confirm — a model
+// change they did not ask for; and a box emptied back out with ctrl+u is the
+// list the picker opened on, so it is the same rule again.
+func (p *picker) cursorToCurrent() {
 	for at, row := range p.list {
-		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == current {
+		if row.lane == laneNone && p.all[p.hits[row.hit]].ID == p.current {
 			p.cursor = at
 			break
 		}
@@ -194,6 +231,9 @@ func (p *picker) relist() {
 	p.list = p.list[:0]
 	for at, hit := range p.hits {
 		p.list = append(p.list, pickRow{hit: at, lane: laneNone})
+		if p.all[hit].Unavailable {
+			continue
+		}
 		if p.unfold == "" || p.all[hit].ID != p.unfold {
 			continue
 		}
@@ -265,7 +305,13 @@ func (p *picker) rank() {
 		p.hits = append(p.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] < p.score[p.hits[b]] })
+		sort.SliceStable(p.hits, func(a, b int) bool {
+			left, right := p.all[p.hits[a]], p.all[p.hits[b]]
+			if left.GroupOrder != right.GroupOrder {
+				return left.GroupOrder < right.GroupOrder
+			}
+			return p.score[p.hits[a]] < p.score[p.hits[b]]
+		})
 	}
 	p.orderByLanes(terms, now)
 	// A changed query is a changed list, and a cursor left at row nine of the
@@ -279,6 +325,13 @@ func (p *picker) rank() {
 		p.unfoldAt(0, word, now)
 	}
 	p.relist()
+	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
+	// cursor goes back to where it opened: on the model in use. Emptying the
+	// box with ctrl+u used to leave it on row zero, which made the enter that
+	// followed a switch to whatever sorted first.
+	if len(tokens) == 0 && len(terms) == 0 {
+		p.cursorToCurrent()
+	}
 }
 
 // splitQuery divides what is typed into the words that rank and the terms that
@@ -400,8 +453,38 @@ func subsequenceAt(id, token string) (int, bool) {
 // move walks the list, clamping at both ends rather than wrapping: a list that
 // wraps makes "hold ↓ until it stops" an infinite gesture.
 func (p *picker) move(delta int) {
-	p.cursor = moveCursor(p.cursor, delta, len(p.list))
+	if len(p.list) == 0 {
+		return
+	}
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	at := p.cursor
+	for n := 0; n < abs(delta); n++ {
+		next := at
+		for {
+			next += step
+			if next < 0 || next >= len(p.list) {
+				next = at
+				break
+			}
+			if !p.rowUnavailable(next) {
+				break
+			}
+		}
+		at = next
+	}
+	p.cursor = at
 	p.follow(pickerRows)
+}
+
+func (p *picker) rowUnavailable(at int) bool {
+	if at < 0 || at >= len(p.list) {
+		return true
+	}
+	row := p.list[at]
+	return p.all[p.hits[row.hit]].Unavailable
 }
 
 // follow scrolls the window by the least that keeps the cursor inside it.
@@ -416,10 +499,24 @@ func (p *picker) follow(height int) { p.top = listTop(p.cursor, p.top, len(p.lis
 // answering the second somewhere else would make a person leave the list to ask
 // it and come back to find their filter gone.
 //
-// A MODEL WHOSE LANES NOBODY HAS MEASURED DOES NOT OPEN. There is nothing
-// truthful to put under it, and a fold that opened onto one dim line saying so
-// would be a gesture that punishes the person for trying it (design-law-v2 §16
-// EMPTINESS).
+// A FOLD ALWAYS HAS ITS TWO ANSWERS. `auto` and `openrouter` are real, writable
+// choices for every model whether or not a single machine behind it has been
+// measured — they are the two ways of declining to name one — so a model nobody
+// has measured opens onto exactly those two, with one dim line in the machines'
+// place saying why there are none yet ([laneUnmeasured]). It draws no number:
+// the emptiness law is about figures nobody took, and it is kept.
+//
+// It used to refuse to open at all, on the argument that a fold with one dim
+// line in it punishes the person for trying. The gesture that punished was the
+// one that did NOTHING: the row said `via together` and the key that should
+// have shown that machine was dead, while the settings panel's `lane` row
+// offered `auto` and `openrouter` for the very same model — two doors onto one
+// list disagreeing about what it could do. Owner's report, 2026-09-10.
+//
+// AND OPENING ONE ASKS FOR ITS SHEET. [lane.WantSheet] hands the name to the
+// beat that already runs and returns at once — the same door [Agent.SetModel]
+// knocks on — so the machines are on the way while the person is still looking
+// at the two answers. The picker still fetches nothing itself.
 
 // unfoldAt unfolds the model at hit `at`, with `first` — a lane an `@` filter asked
 // about — lifted to the top of the lanes. It reports whether anything opened.
@@ -428,9 +525,12 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 		return false
 	}
 	model := p.all[p.hits[at]]
+	if model.Unavailable || model.Direct {
+		return false
+	}
 	views := laneViews(model.ID, now)
 	if len(views) == 0 {
-		return false
+		lane.WantSheet(model.ID)
 	}
 	if first != "" {
 		if named, ok := laneNamed(views, first); ok {
@@ -457,9 +557,18 @@ func (p *picker) fold() bool {
 	return true
 }
 
-// unfoldHere is `→` and `tab`: open the model the cursor is on, or — when the
-// cursor is already inside an open block — leave it open and do nothing, which
-// is what a person pressing the key again means.
+// unfoldHere is `→` and `tab` on a model's row: open its machines and WALK IN.
+// Inside an open block it does nothing and answers false, so `tab` can fall
+// through to closing it.
+//
+// THE CURSOR MOVES INTO THE FOLD, onto the row that is true right now
+// ([picker.cursorToPin]), and the window scrolls until the model and every row
+// under it are in view ([picker.revealFold]). It used to stay on the model and
+// append the rows below it — and since the picker opens with the model in use on
+// the LAST row of its window, the first `→` anybody pressed changed nothing on
+// the screen at all. A tree you press `→` on and nothing moves is a tree you
+// believe is a list. This is [picker.start]'s own law one level down: the list
+// opens ON what you are on, so enter with nothing typed confirms.
 func (p *picker) unfoldHere() bool {
 	if p.laneSlot == "" || p.cursor < 0 || p.cursor >= len(p.list) {
 		return false
@@ -468,24 +577,46 @@ func (p *picker) unfoldHere() bool {
 	if row.lane != laneNone {
 		return false
 	}
-	if p.all[p.hits[row.hit]].ID == p.unfold {
-		return false
+	// A model whose block an `@` filter already opened is walked into rather
+	// than opened twice.
+	if p.all[p.hits[row.hit]].ID != p.unfold {
+		if !p.unfoldAt(row.hit, "", timeNow()) {
+			return false
+		}
+		p.relist()
 	}
-	if !p.unfoldAt(row.hit, "", timeNow()) {
-		return false
-	}
-	p.relist()
-	// THE CURSOR STAYS ON THE MODEL IT OPENED. The rows appeared under it, so
-	// the row a person was looking at is still the row they are on, and `↓`
-	// walks into what they just asked to see.
-	for at, drawn := range p.list {
-		if drawn.hit == row.hit && drawn.lane == laneNone {
-			p.cursor = at
-			break
+	p.cursorToPin()
+	p.revealFold(pickerRows)
+	return true
+}
+
+// revealFold scrolls by the least that puts the open block — the model's own
+// row and every row under it, with the dim lines they carry — inside a window
+// of height lines. Where the block is taller than the window the cursor wins,
+// because the row enter would act on is the one that may never be off screen.
+func (p *picker) revealFold(height int) {
+	from, to, extra := -1, -1, 0
+	for at, row := range p.list {
+		if row.hit != p.list[p.cursor].hit {
+			continue
+		}
+		if from < 0 {
+			from = at
+		}
+		to = at
+		if p.lineUnder(at) != "" {
+			extra++
 		}
 	}
-	p.follow(pickerRows)
-	return true
+	if from >= 0 {
+		if to >= p.top+height-extra {
+			p.top = to - (height - extra) + 1
+		}
+		if from < p.top {
+			p.top = from
+		}
+	}
+	p.follow(height)
 }
 
 // foldHere is `←` and `tab` on an open block: close it and put the cursor back
@@ -515,16 +646,31 @@ func (p *picker) foldHere() bool {
 //
 // It is [picker.start]'s rule applied one level down: a list opened AT a
 // setting opens ON that setting's value, so enter with nothing typed confirms
-// rather than changes. The panel's `lane` row is the only caller — /model opens
-// on the MODEL in use and walks into the fold from there.
+// rather than changes. Every way into a fold comes through here — `→` and
+// `tab` from either door ([picker.unfoldHere]), and the panel's `lane` row.
+//
+// A FOLD WITH NOTHING MARKED IN IT LANDS ON `auto`. That is every model but the
+// one in use — a pin is this conversation's, and says nothing about a model it
+// is not talking to (see [picker.rowText]) — so the true answer for that model
+// right now is the one that chooses for you.
 func (p *picker) cursorToPin() {
+	land := -1
 	for at, row := range p.list {
-		if row.lane != laneNone && p.marked(at) {
-			p.cursor = at
-			p.follow(pickerRows)
-			return
+		if row.lane == laneNone || p.all[p.hits[row.hit]].ID != p.unfold {
+			continue
+		}
+		if p.marked(at) {
+			land = at
+			break
+		}
+		if row.lane == laneAutoAt && land < 0 {
+			land = at
 		}
 	}
+	if land >= 0 {
+		p.cursor = land
+	}
+	p.follow(pickerRows)
 }
 
 // foldKey is `tab`, `→` and `←` over this list — the fold's whole key map, in
@@ -813,6 +959,9 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	// lifted is whether this row wears a ground at all, which is the one thing
 	// the note's ink turns on: dim grey on a raised ground is grey on grey.
 	lifted := oncursor || hovered || marked == markFront
+	// ON A PLACE THE POINTER'S ROW IS THE CURSOR'S ROW, word for word: the
+	// same ground, the same bold subject (styles.go's [palette.placeRows]).
+	lit := oncursor || (hovered && pal.placeRows)
 
 	var painted string
 	switch {
@@ -833,12 +982,12 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 		// row's ink, so a person's eye reads "this terminal has these" as one
 		// group rather than as two unrelated paints.
 		painted = pal.muted(label)
-	case oncursor:
+	case lit || pal.placeRows:
 		painted = pal.ink(label)
 	default:
 		painted = pal.dim(label)
 	}
-	if oncursor {
+	if lit {
 		painted = pal.bold(painted)
 	}
 	line := lead + painted
@@ -874,6 +1023,13 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 // way, so the label starts in the same column on both.
 func overlayLead(selected, hovered bool, pal palette) string {
 	switch {
+	case pal.placeRows:
+		// A PLACE'S ROW WEARS NO MARK. The ground says which row a hand is on and
+		// the bold subject says it again; an accent `›` beside them was a second
+		// accent on a screen whose one accent belongs to the live thing. The one
+		// cell left is the place's own edge ([placeLead]), where the row's own
+		// glyph stands.
+		return placeLead
 	case selected:
 		return pal.accent("› ")
 	case hovered:
@@ -935,15 +1091,16 @@ func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hove
 	}
 	head := overlayLead(selected, hovered, pal)
 	painted := fit(label, width-2)
+	lit := selected || (hovered && pal.placeRows)
 	switch {
 	case marked:
 		painted = pal.accent(painted)
-	case selected:
+	case lit || pal.placeRows:
 		painted = pal.ink(painted)
 	default:
 		painted = pal.dim(painted)
 	}
-	if selected {
+	if lit {
 		painted = pal.bold(painted)
 	}
 	head += painted
@@ -952,9 +1109,12 @@ func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hove
 	// because dim grey on the selection band is grey on grey — and the tail is
 	// the half of the row a person stopped on the row to read.
 	tail := strings.Repeat(" ", overlayIndent) +
-		paintNote(tint, pal, fit(note, width-overlayIndent), selected)
+		paintNote(tint, pal, fit(note, width-overlayIndent), lit)
 
 	switch {
+	case lit && pal.placeRows:
+		// ONE GROUND FOR BOTH HANDS ON A PLACE, the one the single-line row wears.
+		return []string{pal.cursor(head, width), pal.cursor(tail, width)}
 	case selected:
 		return []string{pal.selected(head, width), pal.selected(tail, width)}
 	case hovered:
@@ -1096,7 +1256,8 @@ func (p *picker) choice() (Model, bool) {
 	if !p.open || p.cursor < 0 || p.cursor >= len(p.list) {
 		return Model{}, false
 	}
-	return p.all[p.hits[p.list[p.cursor].hit]], true
+	model := p.all[p.hits[p.list[p.cursor].hit]]
+	return model, !model.Unavailable
 }
 
 // height is how many LIST rows the picker wants, not counting the filter box —
@@ -1116,12 +1277,17 @@ func (p *picker) height(width int) int {
 		return 1
 	}
 	// The why line rides with the row it explains, so it is counted the same
-	// way: one line, inside the ceiling, and never half of a pair.
-	lines := 0
+	// way: one line, inside the ceiling, and never half of a pair. The fetching
+	// line is counted inside the same ceiling, so the overlay does not grow
+	// while a refresh is out.
+	lines := p.headLines()
 	for at := p.top; at < len(p.list) && lines < pickerRows; at++ {
+		if p.groupBefore(at) != "" {
+			lines++
+		}
 		_, note := p.entryText(at, width, nil)
 		take := overlayItemLines(width, note)
-		if p.whyAt(at) != "" {
+		if p.lineUnder(at) != "" {
 			take++
 		}
 		if lines+take > pickerRows {
@@ -1153,11 +1319,26 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		return nil, nil
 	}
 	if len(p.list) == 0 {
-		return []string{pal.dim("  no model matches")}, []int{-1}
+		return []string{pal.dim("  " + p.emptyLine())}, []int{-1}
 	}
-	p.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
+	if p.headLines() > 0 {
+		fill.plain(pal.dim("  " + modelsFetching))
+	}
+	p.follow(overlayItems(n-p.headLines(), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
+		if group := p.groupBefore(at); group != "" {
+			if !fill.plain(pal.dim(fit("  "+group, width))) {
+				break
+			}
+		}
+		if p.rowUnavailable(at) {
+			model := p.all[p.hits[p.list[at].hit]]
+			if !fill.plain(pal.dim(fit("  "+model.Notice, width))) {
+				break
+			}
+			continue
+		}
 		label, note := p.entryText(at, width, level)
 		if !fill.add(at, label, note, at == p.cursor, p.marked(at)) {
 			break
@@ -1165,8 +1346,10 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		// THE WHY LINE IS UNDER THE CURSOR AND NOWHERE ELSE. One sentence about
 		// the row a person has stopped on is an explanation; the same sentence
 		// under every row is a wall, and the numbers above it stop being read.
-		if why := p.whyAt(at); why != "" {
-			if !fill.plain(pal.dim(fit(strings.Repeat(" ", overlayIndent+2)+why, width))) {
+		// It is indented to where a machine's name starts, which is also where
+		// a fold with no machines says why ([picker.lineUnder]).
+		if under := p.lineUnder(at); under != "" {
+			if !fill.plain(pal.dim(fit(strings.Repeat(" ", overlayIndent+2)+under, width))) {
 				break
 			}
 		}
@@ -1194,6 +1377,9 @@ func (p *picker) pinnedLane() string {
 // — inside an open fold — the lane this conversation is actually held to, which
 // is the pin when there is one and the `auto` row when there is not.
 func (p *picker) marked(at int) bool {
+	if p.rowUnavailable(at) {
+		return false
+	}
 	row := p.list[at]
 	model := p.all[p.hits[row.hit]]
 	switch {
@@ -1207,6 +1393,31 @@ func (p *picker) marked(at int) bool {
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
 	return strings.EqualFold(p.pin, p.lanes[row.lane].Name)
+}
+
+// groupBefore is the dim service heading before a model row. Folded lane rows
+// stay under their model, and a scrolled window repeats the heading at its top
+// so a service name is never left above the viewport.
+func (p *picker) groupBefore(at int) string {
+	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
+		return ""
+	}
+	model := p.all[p.hits[p.list[at].hit]]
+	if model.Group == "" {
+		return ""
+	}
+	if at == p.top || at == 0 {
+		return model.Group
+	}
+	previous := p.list[at-1]
+	if previous.lane != laneNone {
+		return ""
+	}
+	before := p.all[p.hits[previous.hit]]
+	if before.Group != model.Group {
+		return model.Group
+	}
+	return ""
 }
 
 // entryText is one drawn row as the row's two halves. level may be nil, which
@@ -1273,15 +1484,35 @@ func (p *picker) mark(filled bool) string {
 	case p.ascii:
 		return "o"
 	case filled:
-		return "●"
+		return tokens.GlyphStepDone
 	}
-	return "○"
+	return tokens.GlyphStepPending
 }
 
 // laneAutoNote is what the auto row says it does. It is a sentence and not a
 // word because it is the row a person will land on first and the one they will
 // leave alone: what it is FOR has to be on it.
 const laneAutoNote = "weighs speed against price each answer"
+
+// laneUnmeasured is the one line a fold draws in the machines' place when
+// nothing behind the model has been measured. It is a sentence a person would
+// say, it draws no number, and it says when that changes — which is the whole
+// of what somebody who pressed `→` on the model needs to know about the gap.
+const laneUnmeasured = "no machine has been measured for this model yet — machines show up after its first answer"
+
+// lineUnder is the dim line drawn under one row, and empty under nearly all of
+// them: the why of the lane the cursor is on ([picker.whyAt]), or — under the
+// `auto` row of a fold with no machines in it — [laneUnmeasured], standing
+// exactly where the machines would.
+func (p *picker) lineUnder(at int) string {
+	if at < 0 || at >= len(p.list) {
+		return ""
+	}
+	if p.list[at].lane == laneAutoAt && len(p.lanes) == 0 {
+		return laneUnmeasured
+	}
+	return p.whyAt(at)
+}
 
 // whyAt is the dim sentence under the cursor's lane row, empty everywhere else.
 func (p *picker) whyAt(at int) string {
@@ -1411,18 +1642,19 @@ func (a *app) cycleReasoning() {
 // pickerHint is the placeholder in the empty filter box. It is the only place
 // this overlay explains itself, and it costs no row of its own.
 //
-// THE LINE IS BUDGETED. It is drawn WHOLE inside the box on a sixty-cell frame
-// — a hint cut off at "e…" is a hint that has to be guessed at — which leaves
-// about fifty-five cells for it. The fold earned its seven, and what paid for
-// them are the two verbs a modal list does not have to explain: enter commits
-// and esc leaves, everywhere on this surface and in every other program.
+// THE LINE IS BUDGETED. A hint cut off at "e…" is a hint that has to be guessed
+// at, so it is the same RANKED TAIL every row is (rowfit.go): the keys go from
+// the right, whole, and the box never draws a key spelled `es…`. Which is why
+// the written order is also the order they are given up in — `filter` is what
+// the box IS and survives every width, and the two universal verbs at the end
+// are the two a person already knows without being told: enter commits and esc
+// leaves, everywhere on this surface and in every other program.
 //
-// UNDER SIXTY IT IS THE SAME RANKED TAIL EVERY ROW IS (rowfit.go): the keys go
-// from the right, whole, and the box never draws a key spelled `es…`. Which is
-// why the written order is also the order they are given up in — `filter` is
-// what the box IS and survives every width, and the two universal verbs at the
-// end are the two a person already knows without being told.
-const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · enter · esc"
+// So on a sixty-cell frame, with about fifty-eight cells in the box, the line
+// is WHOLE where the door offers no refresh and gives up exactly `enter · esc`
+// where it does — the refresh key earned its fourteen cells from the two verbs
+// nobody has to be taught, the way the fold earned its seven.
+const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
@@ -1430,11 +1662,77 @@ const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · enter · e
 // list read by the fitter would otherwise drift).
 var pickerHintFields = []rowField{
 	rowSay("filter"), rowSay("↑↓"), rowSay("→ lanes"),
-	rowSay("ctrl+t effort"), rowSay("enter"), rowSay("esc"),
+	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
 }
 
-// pickerHintAt is the hint in the cells the box actually has.
-func pickerHintAt(room int) string { return rowTail(pickerHintFields, room) }
+// pickerHintFieldsBare is the line for a list that cannot be refreshed: the
+// same fields with the refresh key taken out, since a key that does nothing is
+// a key that must not be named.
+var pickerHintFieldsBare = slices.DeleteFunc(slices.Clone(pickerHintFields),
+	func(field rowField) bool { return field.full == refreshModelsHint })
+
+// pickerHintAt is the hint in the cells the box actually has, naming the
+// refresh key only when refresh says the list answers it.
+func pickerHintAt(room int, refresh bool) string {
+	if refresh {
+		return rowTail(pickerHintFields, room)
+	}
+	return rowTail(pickerHintFieldsBare, room)
+}
+
+// hintAt is this list's own placeholder: the refresh key is named while the
+// list answers it and not while a fetch is already out.
+func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRefresh()) }
+
+// The hint slot's words while this list is open, by where the cursor is
+// ([picker.keysHint]). They are written out whole rather than assembled, so the
+// manual and the tests quote what the frame draws.
+const (
+	// pickerKeysModel is a model's row on a list that folds: `→` opens the
+	// machines behind it and walks in, enter switches.
+	pickerKeysModel = "→ lanes · enter switch · esc"
+	// pickerKeysModelTab is the same row with the caret somewhere inside what is
+	// typed, where `→` steps over a character instead ([picker.foldKey]) and
+	// only `tab` opens.
+	pickerKeysModelTab = "tab lanes · enter switch · esc"
+	// pickerKeysFold is a row inside an open fold: enter chooses that machine,
+	// `←` walks back out to the model.
+	pickerKeysFold = "enter choose · ← back · esc"
+	// pickerKeysFoldTab is the same with characters before the caret, where
+	// `←` edits the box and `tab` is the way out.
+	pickerKeysFoldTab = "enter choose · tab back · esc"
+	// pickerKeysSwitch is a list with no fold at all — a task's model, an
+	// empty result — where the keys are the two every list has.
+	pickerKeysSwitch = "enter switch · esc"
+)
+
+// keysHint is what the hint slot says this list's keys do RIGHT NOW, read off
+// the row the cursor is on and the caret in the box — the two things
+// [picker.foldKey] reads before it decides what `→`, `←` and `tab` mean.
+//
+// IT IS CURSOR-AWARE BECAUSE THE FOLD WAS INVISIBLE WITHOUT IT. The slot used to
+// read `enter switch · esc` wherever the cursor stood, and the only mention of
+// `→ lanes` was the filter box's placeholder — which vanishes on the first
+// typed character, exactly when a person has found their model and wants its
+// machines. The owner opened /model, pressed `←` and `→`, and asked how anybody
+// changes the provider of a model (2026-09-10).
+func (p *picker) keysHint() string {
+	row, ok := pickRow{}, p.cursor >= 0 && p.cursor < len(p.list)
+	if ok {
+		row = p.list[p.cursor]
+	}
+	switch {
+	case !ok || p.laneSlot == "":
+		return pickerKeysSwitch
+	case row.lane != laneNone && p.filter.cursor > 0:
+		return pickerKeysFoldTab
+	case row.lane != laneNone:
+		return pickerKeysFold
+	case p.filter.cursor < len(p.filter.value):
+		return pickerKeysModelTab
+	}
+	return pickerKeysModel
+}
 
 // ── the app's side of the overlay ───────────────────────────────────────────
 
@@ -1448,6 +1746,7 @@ func (a *app) openPicker() {
 	// row inside an open fold, and what the row in use says `via`, and neither
 	// of those can change while a modal overlay owns the keyboard.
 	a.armLanes(&a.pick, laneSlotFor(a.model))
+	a.armRefresh()
 	a.touch()
 }
 
@@ -1478,10 +1777,11 @@ func (a *app) openPickerFiltered(query string) {
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
-		current = node.model
+		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
+	a.armRefresh()
 	a.touch()
 }
 
@@ -1510,6 +1810,43 @@ func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
 // model at all falls through to the cache, exactly as a catalog with no chat
 // model falls through for /model.
 func (a *app) modelsFor(keep modelFilter) []Model {
+	services := a.sources.All()
+	if len(services) < 2 {
+		return a.modelsForDefault(keep)
+	}
+	grouped := make([]Model, 0)
+	for order, service := range services {
+		var models []Model
+		if order == 0 {
+			models = a.modelsForDefault(keep)
+		} else {
+			models = keepModels(a.modelsForConnectedService(service), keep)
+		}
+		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(service.Source.Name))
+		}
+		if len(models) == 0 {
+			grouped = append(grouped, Model{
+				Notice: noServiceModelListWord, Group: group, GroupOrder: order, Unavailable: true,
+			})
+			continue
+		}
+		for _, model := range models {
+			if order > 0 {
+				model.ID = service.Qualify(model.ID)
+				model.Direct = true
+			}
+			model.Group, model.GroupOrder = group, order
+			grouped = append(grouped, model)
+		}
+	}
+	return grouped
+}
+
+// modelsForDefault is the exact pre-service ladder. Keeping it whole makes the
+// one-service path and each slot's fallback byte-for-byte what they were.
+func (a *app) modelsForDefault(keep modelFilter) []Model {
 	if a.models != nil {
 		if list := keepModels(a.models(), keep); len(list) > 0 {
 			return list
@@ -1649,7 +1986,11 @@ func (a *app) rememberModel(id string) {
 // esc means the overlay here and not the turn: a modal that cannot be dismissed
 // by the dismiss key is a trap. A turn is still interruptible the moment the
 // picker closes.
-func (a *app) pickerKey(msg tea.KeyPressMsg) {
+//
+// It returns a command for the one key that has to leave the loop — the
+// refresh — and nil for every other.
+func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
+	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
 		a.pick.close()
@@ -1677,7 +2018,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 			}
 			a.applyLaneChoice(chosen.ID, row, lanes)
 			a.touch()
-			return
+			return nil
 		}
 		if ok {
 			// One list, two subjects, decided where the list was opened: a node when
@@ -1696,6 +2037,11 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 	case "ctrl+t":
 		a.cycleReasoning()
 
+	// Today's list, asked of the door (modelrefresh.go). Where the door has no
+	// refresh, or one is already out, the key does nothing at all.
+	case refreshModelsKey:
+		cmd = a.fetchModels()
+
 	// THE FOLD IS ITS OWN KEY MAP and it is the list's, not this door's
 	// ([picker.foldKey]) — the settings panel's model row reads the very same
 	// three keys, and a fold that opened from one door and not the other would
@@ -1706,6 +2052,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 		}
 	}
 	a.touch()
+	return cmd
 }
 
 // navigate is EVERY KEY THE PICKER OWNS that is not a decision: the walk, the
@@ -1850,8 +2197,8 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	room := height - 2 - a.inputHeight() - a.questionHeight() -
+		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
 		want = a.menu.height(width, room)
 	}

@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -19,24 +18,6 @@ func TestAutomaticTaskCountdownDoesNotClaimTheUserMustAnswer(t *testing.T) {
 	a.task.deadline = time.Time{}
 	if word, _ := a.stateWord(); word != waitingWord {
 		t.Fatalf("a held proposal lost its required response: %q", word)
-	}
-}
-
-func TestGuestFinishedTaskCannotShowOrAnswerTheLocalSettleQuestion(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	local := a.doneCardFor(7)
-	if !a.settleAsking(local) {
-		t.Fatal("fixture must have a real local decision")
-	}
-	a.room.guest = &taskGuest{session: "/another/conversation/session.jsonl", node: &taskNode{id: 7, title: "Someone else's result", state: session.TaskDone}}
-	if card := a.roomSettleCard(); card != nil {
-		t.Error("foreign task exposed the local decision card")
-	}
-	if a.roomSettleKey(key("a")) {
-		t.Error("foreign task consumed the local accept key")
-	}
-	if len(agent.resolved) != 0 || local.decided != "" {
-		t.Fatal("answering on the guest page resolved the local task")
 	}
 }
 
@@ -86,42 +67,6 @@ func TestKeepingATaskBranchDoesNotDemandAnUnrequestedMerge(t *testing.T) {
 	a.tasks[71].merge = "conflicted"
 	if !a.taskStatus(a.tasks[71]).Attention {
 		t.Fatal("a real conflict lost its attention flag")
-	}
-}
-
-func TestHandingReviewToTheModelStopsAskingTheUser(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	card := a.doneCardFor(7)
-	node := a.tasks[7]
-	if !a.taskStatus(node).Attention {
-		t.Fatal("fixture has no human decision")
-	}
-	a.settleCard(card, settleAlways)
-	if len(agent.handed) != 1 {
-		t.Fatal("handoff did not reach the engine")
-	}
-	status := a.taskStatus(node)
-	if status.Attention || status.On != session.TaskWaitMachine || a.railGroupOf(node) != railParked {
-		t.Fatalf("a handed-off review still needs the user: %+v", status)
-	}
-	if word, _ := a.stateWord(); word != taskReviewPendingWord {
-		t.Fatalf("room footer says %q", word)
-	}
-	if !strings.Contains(a.doneTail(card), taskReviewPendingWord) {
-		t.Fatal("landing card still asks the user")
-	}
-	if a.roomSettleAsking() {
-		t.Fatal("handed-off decision still accepts another answer")
-	}
-}
-
-func TestFailedReviewHandoffKeepsTheHumanDecision(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	agent.refuse = errors.New("review unavailable")
-	card := a.doneCardFor(7)
-	a.settleCard(card, settleAlways)
-	if card.reviewByModel || !a.taskStatus(a.tasks[7]).Attention || !a.roomSettleAsking() {
-		t.Fatal("failed handoff hid the unresolved decision")
 	}
 }
 

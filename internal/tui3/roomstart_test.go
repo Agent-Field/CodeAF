@@ -78,10 +78,10 @@ func TestAStartingRoomSaysWhatTheWorkIsDoingWithoutRepeatingTheHeader(t *testing
 	if !strings.Contains(text, "rate limited") {
 		t.Fatalf("the page did not say why the work is not moving:\n%s", text)
 	}
-	// The header spends its one word on the state and collapses this to
-	// `waiting`; the body says the reason and not that word again.
-	if strings.Count(text, taskHeldWord) != 0 {
-		t.Fatalf("the body repeated the header's own state word:\n%s", text)
+	// The empty page uses the roster's complete explanation, including its
+	// state, because some reasons are noun fragments such as "its parts".
+	if !strings.Contains(text, a.taskStatus(node).RowWord()) {
+		t.Fatalf("the body omitted the shared waiting explanation:\n%s", text)
 	}
 	// AND A LANDED PAGE SAYS NONE OF IT. These are reports of right now.
 	a.room.done = true

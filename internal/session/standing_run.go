@@ -622,7 +622,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// agent's lock a thousand times to learn the same figure.
 				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
 					capped = true
-					agent.Interrupt()
+					agent.InterruptFor(StopByWorkStopped)
 				}
 			case EventToolFailed:
 				if line := standingRefusal(event); line != "" && needs == "" {
@@ -1021,13 +1021,12 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			if built != nil {
 				return
 			}
-			client, built = provider.NewClient(provider.Config{
-				APIKey:  parent.APIKey,
-				BaseURL: parent.BaseURL,
-				Model:   model,
-				Timeout: providerTimeout,
-				Routing: provider.StaticRouting(parent.Routing),
-			})
+			settings := parent.clientConfig(model, providerTimeout)
+			// The request carries the chosen model explicitly, so keep the bare id
+			// the service door resolved instead of restoring its service prefix.
+			model = settings.Model
+			settings.Routing = provider.StaticRouting(parent.Routing)
+			client, built = provider.NewClient(settings)
 		})
 		if built != nil {
 			return false, "", 0, built
@@ -1064,6 +1063,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			Role: effort.RoleSentinel,
 		}); rung != effort.None {
 			callCtx = provider.WithConfiguredEffortRung(callCtx, rung)
+			recordEffort(callCtx, model, rung)
 		}
 		response, err := client.CompleteWithMessages(
 			// WithoutStream for the reason the guardian and the route judge use
@@ -1073,8 +1073,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			[]ai.Message{
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),
-			},
-			ai.WithModel(model))
+			})
 		if err != nil {
 			return false, "", 0, err
 		}
@@ -1183,9 +1182,16 @@ func StandingIdle() standing.Idle {
 // six separate things to read before the first sentence they came for.
 //
 // THE AMBIENT LANE AND NOT THE WAKING ONE ([Agent.enqueueAmbientNote]). This
-// runs at construction, before anybody has said anything, and an account of
-// what happened while they were gone is context for whatever they type next —
-// not a reason for the session to start talking to itself about last night.
+// runs before anybody has said anything, and an account of what happened while
+// they were gone is context for whatever they type next — not a reason for the
+// session to start talking to itself about last night.
+//
+// IT RUNS TWICE OVER AND THAT IS THE POINT. Construction is one of the two
+// moments a person arrives at a conversation; a SURFACE ATTACHING to one this
+// process never let go of is the other, and since #653 the second is the
+// ordinary one — the session host outlives the window and hands the next one
+// the same agent. So [Agent.WatchTaskUpdates] asks for this too, and the drain
+// is idempotent by construction: it empties the files it reads.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return

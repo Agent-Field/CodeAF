@@ -27,7 +27,7 @@ What shipped is the headline. What is no longer true is the payload.
 ```markdown
 ---
 kind: changed          # added changed renamed fixed removed internal
-title: dev is the trunk, staging is a pointer, and nothing publishes by itself
+title: dev is the trunk and staging is a tested promotion pointer
 pr: 82
 surface: [build, docs] # optional: chat engine resident remote build docs
 invalidates:           # optional, and the reason the file exists

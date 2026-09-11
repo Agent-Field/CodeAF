@@ -46,11 +46,12 @@ a measured thing is about the thing that was measured.
 ## Auto, and which lanes it is choosing between — how it picks a provider on the very first message, and whether aforge do routes too
 
 Left alone, aforge is on **auto**. Before each request it drops every endpoint
-that cannot do the job at all — no tool calls when you sent tools, too small an
-answer, weights served at a coarser precision than the model is meant to run at,
-one the router itself has marked down — and then ranks what is left by the only
-thing you actually feel: how long you will be sitting there, plus what it costs,
-with the money converted into seconds by how much your waiting is worth.
+that cannot do the job at all — too small an answer for what you asked for, not
+enough room for the conversation, weights served at a coarser precision than the
+model is meant to run at, a share of usable answers below what this kind of work
+needs — and then ranks what is left by the only thing you actually feel: how long
+you will be sitting there, plus what it costs, with the money converted into
+seconds by how much your waiting is worth.
 
 Nothing is waiting on this when nobody is waiting on you. A background errand is
 ranked on price, because a second saved for a machine is a second nobody spends.
@@ -70,6 +71,37 @@ a *company* — that this one is quick, that one queues — carries across every
 model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
+
+## When the provider list says a machine cannot take tool calls, or is half down — why aforge tries it anyway
+
+The public sheet carries three claims about each machine that aforge used to
+treat as final: whether it honours a tool call, what share of the last five
+minutes it was answering, and whether the router's own operators have marked it
+down. A machine failing any of them was removed from the candidate set outright.
+
+**They are opinions now, not doors.** A machine the sheet doubts is **ranked
+last** — behind every machine nothing is doubted about, never asked first while
+something better can serve you — and it is still there when the machines in
+front of it are busy or refuse. About **one request in ten** is sent to it first
+on purpose, because a machine nobody ever asks can never show the sheet was
+wrong about it.
+
+This changed because the sheet was measurably wrong. On 2026-09-10 a task was
+answered three times in a row, six seconds each, by a machine the sheet flags as
+unable to take tool calls — while the same task sat on a busy machine collecting
+nine refusals, because the one that was working had been removed from every
+request carrying tools.
+
+**What a machine's own answers say beats what the sheet says about it.** Once
+aforge has seen a machine return usable answers to this kind of work, the sheet's
+doubt stops applying to it and it is ranked on its numbers like anything else.
+That belief fades over about an hour if the machine stops answering well, so
+nothing learned here is learned forever.
+
+One claim is still a closed door, and it is not the sheet's: when the **router
+itself** answers that a machine cannot serve this model, that machine is not a
+candidate at any rank. That is an answer to a request aforge really made, not a
+page published some minutes ago.
 
 ## Learning which provider finishes my work faster — why the first message does not go to the most expensive provider
 
@@ -104,12 +136,28 @@ endpoint, that endpoint is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
 
-## Pinning one lane yourself — does aforge do use the lane I pinned, and is my pinned provider used from a terminal
+## Pinning one lane yourself — how to change the provider for a model, left and right arrows in the model picker, the @ after the model name, and whether aforge do uses the lane I pinned
 
-You can name the lane yourself. In the model picker, the lanes under a model are
-its endpoints; picking one pins it, and every request for that model goes
-there until you say otherwise. There is a plain `openrouter` row too, which
-means "no opinion from me — let the router balance it".
+You can name the lane yourself. Open `/model` and press `→` (or `tab`) on the model:
+its lanes — the endpoints serving it — open under it, the cursor **moves into them**,
+onto the lane you pinned or onto `auto` when you have not, and the list scrolls so the
+model and every lane are in view. `enter` pins the lane under the cursor — every request
+for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
+The hint slot says which: `→ lanes · enter switch · esc` on a model,
+`enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
+"no opinion from me — let the router balance it".
+
+**A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
+line where the machines would be:
+`no machine has been measured for this model yet — machines show up after its first answer`.
+Opening it asks for that model's list of machines in the background. With the routing
+row at `off` nothing opens at all.
+
+**The lane you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
+on the line above the box and on a phone's status deck — with the same `@` you would
+type in `/model @cloudflare`. `/status` says it on a `lane` line under `model`. On `auto`
+and `openrouter` there is no `@`, and none once a pin has been retired. Pressing the
+name opens the picker with the cursor on the pinned lane.
 
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
@@ -201,6 +249,134 @@ that model's thinking, and only the ceiling on silence can end a hung one. That
 is why a model you have been using feels quicker to rescue than one you have
 just picked.
 
+**The ceiling on silence is a ceiling on a still wire.** A model writing
+reasoning is writing, so the clock the ceiling runs on is the time since the
+endpoint last sent anything at all — readable or not. A thought that has been
+arriving steadily for two minutes has never been silent for one second of it,
+and nothing acts on it. The moment the deltas stop, the ceiling starts from
+there and fires exactly where it always did.
+
+Keepalives buy nothing. A router that holds the connection open by saying
+nothing in a well-formed way is proof about the path and about nothing else, so
+a lane that has stopped writing reaches the ceiling however politely it keeps
+the line open.
+
+Before 2026-09-09 that clock ran from the last word you could READ, which is
+none at all during a thought — so every model that thought for longer than the
+ceiling was reported as a stall at exactly the ceiling while it was writing at
+full rate, and one measured turn wrote 6,174 tokens of reasoning in 108 seconds
+and was called slow ten seconds in.
+
+## How long aforge waits before it does something — is it ten seconds, five, two minutes, and why the line is never blank
+
+Two different clocks, and mixing them up is why waiting used to feel slow.
+
+**The first is speech, and it is one second.** Any wait aforge is holding you in
+says what it is waiting for within a second of starting. Nothing is cut at one
+second and nothing is retried; it is the moment the line has to stop being
+blank. So `connecting`, `first word`, `thinking`, `paced`, `waiting for
+connection` — one of those is on the status line the whole time, with the clock
+counting up under it.
+
+**The second is action, and it is ten seconds.** Ten seconds of nothing arriving
+is when aforge stops waiting and does something about it: a second request to
+another machine, and the line changes to `switching`. That is a ceiling, not a
+target — a machine aforge has timed is acted on at its own measured pace, which
+for a fast one is a second or two.
+
+Ten seconds is measured, not chosen. Across ten days of real calls the first
+word of a conversation turn arrives in 1.6 seconds at the middle, 8.4 seconds
+for nine turns in ten, and 13 seconds for nineteen in twenty. Acting at five
+seconds would touch twice as many calls and rescue a smaller share of them,
+because under ten seconds almost everything still quiet is an ordinary call in
+progress. Of the calls still silent at ten seconds, more than three quarters
+answer perfectly well.
+
+**Work nobody is watching waits longer, on purpose.** A task node gets thirty
+seconds and a standing pass sixty, because nobody is sitting in front of them
+and a second request costs money. They are never silent either — the same
+sentence is on their row.
+
+**Ten seconds always does something, even when a second request is too
+expensive.** aforge only runs a small number of rescues — a second request to
+another machine costs real money, so it keeps a small allowance and spends it
+where it helps most. When the allowance is gone and the machine has sent nothing
+at all, not one byte, aforge stops that attempt instead and asks somewhere else.
+Before 2026-09-10 it did neither: four tasks that evening sat on one machine for
+six and seven minutes after the ten seconds were up, because the only way to act
+was the one aforge could not afford. If the machine IS sending something — the
+router is talking, or the model is writing where you cannot see it — nothing is
+stopped, because nine such calls in ten turn out to be seconds from an answer.
+
+**A conversation turn gives up after ninety seconds** of not reaching any model
+at all, and tells you so in one line. It is the point where every model in the
+chain has had one fair try with a move between them: of the calls that recovered
+in ten days of logs, two thirds had landed by then, and the ones that took
+longer were spending the time asking the same machine again — which aforge no
+longer does.
+
+**And that one number is the whole of how long a failed call goes on trying.**
+There is no separate allowance for how many times to ask, how long to wait out a
+busy machine, how many machines to walk, or how many things to take off the
+request — each of those was its own number until 2026-09-11, and together they
+came to a total nobody could have told you. Now there is a clock, it scales with
+who the work is for, and it is the same clock for every kind of failure:
+
+| whose work | gives up after |
+| --- | --- |
+| a turn you are watching, or a task node with its room open | 90 seconds |
+| a task node nobody is watching, a memory pass, a side errand | 4 minutes 30 |
+| a standing order, a check, a design pass | 9 minutes |
+| the one-token measurement behind the model list | 45 seconds |
+
+While it is trying, the status row counts the machines rather than the tries:
+`2 of 5` means the second of five machines that can serve this model, and when
+aforge cannot tell how many there are it shows no number instead of a made-up
+one.
+
+## How long aforge keeps trying, and the one setting that changes it
+
+The table above is the whole answer, and **`response.attempts` is the one thing
+you can turn about it**. It is a multiplier on those times, not a number of
+requests: `3` means three times as long — four and a half minutes on a turn you
+are watching instead of ninety seconds — and the default is `1`, which is exactly
+the table. Set it on the **Providers** tab of `/settings`, or with
+`AFORGE_RESPONSE_ATTEMPTS`.
+
+```
+response.attempts: 3      # every give-up above, three times as long
+```
+
+**It used to be a count of sends, and it is not any more.** Until 2026-09-11 it
+said how many times one request would be repeated — so asking for more patience
+bought more identical requests inside the same deadline, which ended the call
+anyway. The intent behind the setting was always "try harder before you tell me
+you could not", and trying harder is time: more machines walked, more shapes of
+the request tried, longer waited out of a busy pool. **What it will never buy is
+the same bytes sent to the same machine again.** If you had written a number into
+this row when it meant sends, it now means that many times the patience — a `3`
+you set to get three tries is three times ninety seconds.
+
+**Nothing else in aforge counts attempts.** Not the turn, not a task's worker,
+not the naming errand, not the side calls that write a title or judge a route.
+Each of them runs until its own clock above is gone, and the one number in a
+failure sentence — `after 4 attempts` — is what that call actually spent, never a
+ceiling it was allowed.
+
+**Nothing waits behind a busy moment in silence.** When every request aforge is
+allowed to have in the air at once is already in the air — which happens when
+several windows and a task are working at the same time, or a machine has been
+pacing the account — the next call queues. It says `connecting` while it does,
+with no countdown, because nothing in aforge knows which of the calls ahead of it
+will finish first, and a countdown to a moment nobody can name is worse than
+none.
+
+**A reply that is arriving is never cut for taking a long time.** The clocks
+above are all clocks on SILENCE. A model writing steadily is left alone however
+long the answer is; the only bound on a reply that is still arriving is twenty
+minutes, which no healthy reply in ten days of logs has come close to — the
+longest was twelve minutes.
+
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
 A stream does not have to stop completely to need rescuing. Once aforge has
@@ -215,9 +391,11 @@ One slow gap is still only one slow gap. The judgment comes from the run of
 visible gaps, fades over the same time as the ceiling, and clears when the
 stream recovers. A batch containing several visible tokens is counted at its
 per-token rate, so ordinary batching does not look like a crawl.
-Hidden thinking does not count as a visible word; a model that
-interleaves long thoughts between single words can therefore be rescued after
-a ceiling of text arriving too slowly.
+Hidden thinking does not count as a visible word, so a model that interleaves
+long thoughts between single words can still be rescued this way — but only
+once its MEASURED visible rate has collapsed. A pause between words is not
+enough on its own, however long, as long as the endpoint is still writing
+something.
 
 If aforge has never measured a visible rate for that lane, it invents none and
 cannot judge a crawl this way. Only a period with no visible progress long
@@ -248,6 +426,7 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
+| `deepseek-v4-flash@cloudflare` | you pinned cloudflare, and every request for the model goes there |
 | `slow · trying parasail…` | a machine was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
 | `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
 | `parasail refused` | the machine that second request went to said no as well |
@@ -275,7 +454,77 @@ A refusal is final for that machine, immediately:
   so it is not picked again later in the session;
 - if there is nowhere left to move to, the request itself is widened — the
   demand for one machine is the first thing dropped — and the answer usually
-  arrives from wherever the router picks.
+  arrives from wherever the router picks. This happens even when the last
+  machine tried failed some other way (busy, or went quiet): a widening that was
+  put off for a move is always done before you are shown anything, with its
+  `Retry 1/N: relaxed the endpoint filter` lines. If nothing lands, the error you
+  see is the most useful one — a machine's rate limit and its wait before an
+  earlier machine's refusal.
+
+**A machine refusing your request is a move too, not the end of the turn.** When
+the answer carries the name of the machine that produced it — a `400`, a `404`,
+an account policy, a model that machine will not serve — that is one machine's
+answer about this request and the others have said nothing about it, so aforge
+sends the next one straight to a different machine with that one left off. It is
+the same walk a busy machine gets, and until 2026-09-11 it was not: the turn
+ended there, and the move only happened on your *next* message, after aforge had
+remembered the refusal. What still ends a turn is a refusal that names **nobody**
+— that is the router reading the request itself and saying no, and every machine
+alive would say the same thing.
+
+If a later machine accepts the request and starts writing but that stream is
+cut, the cut is the failure aforge acts on. The partial reply is cleared and the
+existing bounded call retry routes around the machine that failed. An earlier
+`No endpoints found` answer is not shown as the final error after another
+machine demonstrably accepted the request.
+
+## When a machine is too busy — a rate limit, too many requests, a 429, and how long aforge stays away from it
+
+**Too many requests is not a refusal.** A machine that answers
+`API error (429): Provider returned error (via Io Net)` has not said anything
+about your request — its queue is full for the moment. So it is not written off
+the way a refusal is. It is **stepped around for a while**, and it comes back on
+its own.
+
+- **When the answer names the machine, aforge stops sending there.** Every
+  request after it goes to a different machine for as long as that one asked to
+  be left alone, and for **five minutes** when it named no time.
+- **And that includes the request that collected it.** Its next try is written
+  fresh, with the busy machine left off, so it walks on to another one instead
+  of queueing behind the same full queue. Before 2026-09-10 it did not: the
+  request was written once and sent again unchanged, which is how a single ask
+  spent seventeen tries on one machine over eleven minutes and still ended
+  `too many requests`. You see the walk as `2 of 6` on the status row while it
+  happens.
+- **The same machine is only ever asked twice when it is the only one there
+  is** — a lane you pinned yourself, or a model with one machine behind it —
+  and then aforge waits exactly as long as that machine asked for before trying
+  again. That wait is shown as what it is: `waiting for coreweave · 12s`,
+  counting down to the moment the machine named.
+- **Moving to another machine costs no wait at all.** A pause between tries is
+  what aforge pays to ask the *same* machine again; going somewhere else is a
+  different request and it goes out immediately.
+- **You never have to switch models to get past this.** When every machine
+  behind the model is busy at once, aforge stops waiting and moves your turn to
+  the next model instead, because another model is always quicker than a window.
+  Work running inside a task has no other model to move to, so that is the one
+  place aforge waits the window out — and it tells you which machine it is
+  waiting for and how long is left.
+- **It counts wherever the message arrived.** A rate limit can come back before
+  a single word is written, or in the middle of a reply that had already started
+  arriving. The machine is stepped around either way. Before 2026-09-10 only the
+  first kind counted, so a busy machine that said "too many requests" halfway
+  through a reply was handed the next request, and the one after that — three
+  times in a minute and a half, on one measured turn.
+- **A rate limit that names nobody is your whole account**, not one machine, and
+  nothing is stepped around: there is nowhere better to go. aforge waits it out
+  for as long as that kind of work is given — **ninety seconds** on a turn you
+  are sitting in front of, four and a half minutes inside a task, nine for a
+  standing order — and then hands you what the provider said. Sending the same
+  request to a second machine would only spend the account's allowance faster.
+  (Before 2026-09-11 these were separate numbers of their own, two minutes and
+  ten; there is one clock now and it is the same one everything else on this
+  page is measured against.)
 
 ## What all providers have been ignored means — a refusal from nobody
 
@@ -334,6 +583,17 @@ request.
 If a machine later answers, aforge counts it again immediately. Switching a
 provider back on needs nothing from you.
 
+The **privacy switch for providers that may train on paid prompts** is the same
+kind of list, and OpenRouter names it: `0 endpoints out of 1 requested are
+available matching your guardrail restrictions and data policy … Paid model
+training violation (account settings)`. When that answer is about a machine
+aforge asked for by name, the machine is remembered as out of reach for your
+account — for **every model**, for **a day**, and across restarts
+(`~/.aforge/v3/account-exclusions.json`) — so no later request names it and it
+costs one refused round trip, once. A strict pin on it is stood down on every
+model with the usual `cannot serve this model` line. Nothing about its speed is
+written; an answer from it, or pinning it again, takes it back at once.
+
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
@@ -373,6 +633,10 @@ not honoured there, and you know rather than guess.
 Neither question costs an extra call of its own, and pointing `AFORGE_BASE_URL`
 somewhere else asks the new address afresh about both.
 
+A directly connected service is simpler: it has one lane, so there is nothing to choose
+between and no lane sheet to open. That is not a fault. The service name carried by the
+model id is already the whole route.
+
 ## Turning lane routing off
 
 Set routing off (`/settings`, or the `routing` row) and aforge sends every
@@ -382,9 +646,18 @@ steering, it is the promise this surface makes — but it stops choosing endpoin
 for you, stops sending second requests, and stops spending anything on speed.
 
 **The row has three answers, not two, and the third is not off.** Left alone, aforge asks
-for the fastest machine on the turns you are waiting through and the cheapest on the work
-you are not — the split the rest of this page describes. Writing a word in the row
+for the fastest machine on the turns you are waiting through, and on the work you are not
+watching it still weighs speed, at a quarter of that weight — a task ends when its slowest
+call ends, and a machine that refuses four requests in five costs five sends for one answer,
+so its seconds are never free. That is the split the rest of this page describes. Writing a word in the row
 overrides that everywhere: `latency` asks for the fastest one on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
-`price` still measures machines and still chooses between them. Only `off` stops both.
+`price` still measures machines and still chooses between them. `off` stops the choosing.
+
+**`off` does not stop the remembering, and that is deliberate.** aforge still writes down
+which machine answered and which one refused, because that is what lets a request that
+has just been refused go somewhere else instead of back to the same place — recovery is
+not steering, and a build that forgot a refusal the moment you switched routing off would
+be a build that could only ever retry into it. Nothing it remembers reaches the wire:
+with `off`, every request goes out with no preference on it at all.

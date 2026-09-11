@@ -114,10 +114,16 @@ waiting.
 So a long piece of work you left running does not fail four hours ago because nobody was
 there to say yes. It is sitting where it stopped.
 
-Four kinds of question wait this way: a permission question about a tool call, a reminder
-or watch asking to stand, an offer to run a saved harness, and a request to connect an
-account. Answer it exactly as you would have answered it live — it is not a different kind
-of card, it is the card you would have seen, with the same keys and the same offer.
+Five kinds of question wait this way: a permission question about a tool call, a reminder
+or watch asking to stand, an offer to run a saved harness, a request to connect an
+account, and a question the model asked you itself. Answer it exactly as you would have
+answered it live — it is not a different kind of card, it is the card you would have seen,
+with the same keys and the same offer.
+
+The last of the five waits by a different route and you cannot tell them apart: the engine
+simply says what it is still waiting on the moment a window attaches, so a question raised
+into an empty room draws the same block when you arrive that it would have drawn while you
+were sitting there. See **questions** for what that block does.
 
 **It tells you how long it sat there**, on a line of its own just above the card:
 
@@ -157,8 +163,8 @@ The rest of what you should know about sharing one:
 
 - **A question is answered once.** Say yes to a permission card on the phone and the
   conversation has its answer. A second window may still have that card drawn, but
-  pressing it decides nothing — a late answer to a question that has been settled is
-  dropped, which is what the same card does locally when a turn has moved on.
+  pressing it decides nothing — the engine's own refusal is said on screen, which is
+  what the same card does locally when a turn has moved on.
 - **Ending the conversation ends it for everybody.** Quitting deliberately closes the
   conversation and flushes the file, and that is a statement about the conversation rather
   than about your window. Simply closing a window — or losing its connection — leaves
@@ -409,6 +415,28 @@ already did.
 
 Nothing here half-works: a capability a road cannot carry is absent rather than present and
 failing, which is why the model is not given a verb it could not finish.
+
+## Is the tok/s and the via name still right when a session host is holding the conversation
+
+Yes, and there is nothing to turn on. A plain `aforge` in a folder does not run the
+conversation inside the window you are looking at — the session host holds it, in a
+process of its own, so that closing the terminal does not end the work. Everything the
+status row says about a request in flight is measured in that process and pushed to your
+window as it changes: the live `38 tok/s` at the right edge, `via <machine>` beside the
+model as soon as the machine writing the answer has named itself, the phase words
+(`connecting · 1.2s`, `first word …`, `thinking`, `writing`), and the `served` row in
+`/status`. They are filed under the conversation rather than under its model, so a
+model change in the middle of a turn, a fallback, or a change made from another window
+cannot hide them.
+
+A host started by an **older aforge** may not send them at all. The window then says so
+once, after an answer — `this conversation's engine is an older aforge, so the provider
+and tok/s are not shown — they come back once it picks up this build` — and the host
+retires as soon as it is holding nothing, so the next one runs this build.
+
+The host sends each window only its own conversation's readings, so two terminals on two
+different chats never show each other's clocks. *Running on another machine* has the same
+answer for `--host`, where the engine is on a different computer entirely.
 
 ## What does --no-host do — make one window not use the session host
 

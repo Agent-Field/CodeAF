@@ -18,14 +18,14 @@ import (
 //
 // The words below are NOT a third vocabulary either. They are exactly the
 // labels the settings page already shows on its landed role-model rows
-// (internal/config's roleWords), so one slot has one spelling on the sheet, in
-// this picker, and on the palette row that opens either. word_test.go walks
-// [store.ModelRoles] against the settings registry and fails the build if the
-// two ever disagree or if a sixth role arrives with no word here.
+// (internal/config's roleWords), so one slot has one spelling wherever it is
+// shown. word_test.go walks [store.ModelRoles] against the settings registry
+// and fails the build if the two ever disagree or if a sixth role arrives with
+// no word here.
 //
 // [store.ModelRole.Word] keeps its own answer and keeps its own job: it is the
-// journal's name for a slot, at the store's altitude, and no v2 surface draws
-// it any more.
+// journal's name for a slot, at the store's altitude, and no surface draws it
+// directly.
 var roleWords = map[store.ModelRole]string{
 	store.RoleOrchestrate: "conversation",
 	store.RolePlan:        "planning",
@@ -48,7 +48,7 @@ func RoleWord(role store.ModelRole) string {
 }
 
 // Model words, never provider ids (5.10). "anthropic/claude-sonnet-4-20250514"
-// is provenance; "claude-sonnet-4" is what a person says out loud, and a chip
+// is provenance; "claude-sonnet-4" is what a person says out loud, and a row
 // that spent eleven cells on a vendor prefix would be spending them on the one
 // part of the string nobody reads.
 //
@@ -62,7 +62,7 @@ func RoleWord(role store.ModelRole) string {
 // effortWords is the closed set of reasoning-effort words a slug may carry, in
 // the vocabulary internal/provider already speaks ([provider.Effort]). It is a
 // closed list because an open one would read "claude-sonnet-4:free" as an
-// effort of "free" and put a lie on the chip.
+// effort of "free" and put a lie on the row.
 var effortWords = [...]string{"off", "low", "medium", "high"}
 
 // variantSeparator is what a provider hangs a variant off. OpenRouter's slugs
@@ -77,7 +77,7 @@ const variantSeparator = ':'
 //	the vendor prefix   "anthropic/claude-sonnet-4" → "claude-sonnet-4"
 //	the alias marker    OpenRouter's leading "~"
 //	the variant suffix  ":free", ":high" — including the effort words, which
-//	                    the chip renders separately (see [Effort])
+//	                    a caller can render separately (see [Effort])
 //	the date suffix     a trailing "-YYYY-MM-DD", which is a release stamp
 //	the alias suffix    a trailing "-latest", which is a POINTER at a release
 //	                    rather than the name of one — the same kind of fact as
@@ -120,7 +120,7 @@ func dropAliasSuffix(word string) string {
 // variantWord is the variant a slug carries after [variantSeparator], lowered,
 // or the empty string for a plain slug. It is deliberately open where
 // [Effort]'s list is closed: Effort must not misread ":free" as a reasoning
-// effort, but a picker row must show WHATEVER the provider hung off the slug —
+// effort, but a model row must show WHATEVER the provider hung off the slug —
 // an unshown variant is how two rows wear the same word and only one of them
 // works.
 func variantWord(slug string) string {
@@ -137,9 +137,8 @@ func variantWord(slug string) string {
 // Effort has no axis of its own in the journal (12.3.5): there is no
 // Provenance field and no column, so a role binding's value is exactly one
 // string and the effort is inside it. That is why this is a READER and there is
-// no writer beside it — the chip shows what the slug says, and 5.10's "effort
-// rides the chip" stays a display promise until the doc is amended and the
-// axis exists.
+// no writer beside it. A caller shows what the slug says, and 5.10's effort
+// display stays a promise until the doc is amended and the axis exists.
 func Effort(slug string) string {
 	word := strings.TrimSpace(slug)
 	index := strings.LastIndexByte(word, variantSeparator)

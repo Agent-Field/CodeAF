@@ -290,7 +290,9 @@ func marginRoomFor(avail, work int) int { return max(0, avail-min(work, railWork
 // then is the page the door beneath them types the command for. The rest are
 // counted on the label rather than dropped in silence.
 func marginStandFit(orders, room int) int {
-	return min(orders, min(marginStandMax, room-marginStandCost))
+	// An empty section can still show its door in fewer rows than a populated
+	// section needs. Its item count must never become a negative slice bound.
+	return max(0, min(orders, min(marginStandMax, room-marginStandCost)))
 }
 
 // marginJobsFit is how many finished jobs the jobs section draws in the rows

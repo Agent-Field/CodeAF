@@ -250,7 +250,10 @@ type connGroup struct {
 	// first whatever the filter ranks, because "what I have" is not a search
 	// result.
 	held bool
-	rows []connect.Status
+	// models marks the one model-service group. It is pinned before held
+	// accounts because /connect names model services first by design.
+	models bool
+	rows   []connect.Status
 }
 
 // ── building the rows ───────────────────────────────────────────────────────
@@ -343,12 +346,14 @@ func (s *sheet) appendConnService(row connect.Status) {
 	if !open {
 		return
 	}
-	for _, may := range s.conns.Capabilities(row.ID) {
-		s.items = append(s.items, sheetItem{conn: &connRow{
-			kind: connCapability, service: row.ID,
-			capID: may.ID, phrase: may.Phrase,
-			state: s.conns.CapabilityState(row.ID, may.ID),
-		}})
+	if _, model := modelConnectionSource(row.ID); !model && s.conns != nil {
+		for _, may := range s.conns.Capabilities(row.ID) {
+			s.items = append(s.items, sheetItem{conn: &connRow{
+				kind: connCapability, service: row.ID,
+				capID: may.ID, phrase: may.Phrase,
+				state: s.conns.CapabilityState(row.ID, may.ID),
+			}})
+		}
 	}
 	s.items = append(s.items, sheetItem{conn: &connRow{
 		kind: connDisconnect, service: row.ID, name: name, armed: s.conn.armed,
@@ -406,10 +411,12 @@ func (s *sheet) connBrowsing() bool { return s.filterWorth() }
 // readConnections asks the engine once and groups what it said.
 func (s *sheet) readConnections() {
 	s.conn.catalog, s.conn.groups, s.conn.loaded = nil, nil, true
-	if s.conns == nil {
-		return
+	if s.modelRows != nil {
+		s.conn.catalog = append(s.conn.catalog, s.modelRows()...)
 	}
-	s.conn.catalog = s.conns.Services()
+	if s.conns != nil {
+		s.conn.catalog = append(s.conn.catalog, s.conns.Services()...)
+	}
 	s.conn.groups = groupConnections(s.conn.catalog)
 }
 
@@ -442,11 +449,16 @@ const otherWord = "other"
 // existed — so the merge order between this branch and the one that fills the
 // field cannot break anything.
 func groupConnections(rows []connect.Status) []connGroup {
+	models := connGroup{head: "models", models: true}
 	held := connGroup{held: true}
 	byCategory := map[string][]connect.Status{}
 	categorized := false
 	var loose []connect.Status
 	for _, row := range rows {
+		if _, ok := modelConnectionSource(row.ID); ok {
+			models.rows = append(models.rows, row)
+			continue
+		}
 		if row.Connected {
 			held.rows = append(held.rows, row)
 			continue
@@ -457,6 +469,9 @@ func groupConnections(rows []connect.Status) []connGroup {
 		}
 	}
 	out := make([]connGroup, 0, 8)
+	if len(models.rows) > 0 {
+		out = append(out, models)
+	}
 	if len(held.rows) > 0 {
 		out = append(out, held)
 	}
@@ -541,13 +556,16 @@ func filterConnections(groups []connGroup, query string) []connGroup {
 			}
 			return hits[i].order < hits[j].order
 		})
-		narrowed := connGroup{head: group.head, held: group.held, rows: make([]connect.Status, 0, len(hits))}
+		narrowed := connGroup{head: group.head, held: group.held, models: group.models, rows: make([]connect.Status, 0, len(hits))}
 		for _, one := range hits {
 			narrowed.rows = append(narrowed.rows, one.row)
 		}
 		kept = append(kept, ranked{group: narrowed, best: best, order: at})
 	}
 	sort.SliceStable(kept, func(i, j int) bool {
+		if kept[i].group.models != kept[j].group.models {
+			return kept[i].group.models
+		}
 		if kept[i].group.held != kept[j].group.held {
 			return kept[i].group.held
 		}
@@ -997,7 +1015,8 @@ func (s *sheet) connKeysLine() string {
 // same thing.
 func (a *app) connAct(row *connRow) tea.Cmd {
 	s := &a.sheet
-	if s.conns == nil {
+	_, modelRow := modelConnectionSource(row.service)
+	if s.conns == nil && !modelRow {
 		return nil
 	}
 	switch row.kind {
@@ -1008,6 +1027,10 @@ func (a *app) connAct(row *connRow) tea.Cmd {
 	}
 
 	if !row.connected {
+		if _, model := modelConnectionSource(row.service); model {
+			status := connect.Status{Service: connect.Service{ID: row.service, Name: row.name}}
+			return a.startModelConnect(status, true)
+		}
 		if row.keyed || row.asks {
 			// THE BOX OPENS ON THE ROW, which is the whole of what this service
 			// needed from this tab and did not have. Nothing leaves the process
@@ -1080,6 +1103,9 @@ func (a *app) connEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 			s.rebuildConnAt(back)
 			return nil
 		}
+		if _, model := modelConnectionSource(id); model {
+			return a.modelEntryAnswer(entry)
+		}
 		// The row says it is being checked from here until the answer lands on
 		// [app.connTabSettled], which is the same bargain the sign-in makes with
 		// the same two fields.
@@ -1134,6 +1160,12 @@ func (a *app) disconnectService(row *connRow) tea.Cmd {
 		return nil
 	}
 	s.conn.armed = false
+	if id, model := modelConnectionSource(row.service); model {
+		a.disconnectModelService(id)
+		s.reloadConnections()
+		s.rebuildConnAt(&connRow{kind: connService, service: row.service})
+		return nil
+	}
 	if err := s.conns.Disconnect(row.service); err != nil {
 		s.msg = err.Error()
 		s.rebuildConnAt(row)

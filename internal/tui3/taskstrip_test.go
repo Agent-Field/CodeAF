@@ -403,3 +403,34 @@ func TestAFamilysNodesLandOnTheRosterAndNotInTheConversation(t *testing.T) {
 		t.Fatalf("the run's own landing wrote %d cards, want one", cards)
 	}
 }
+
+// AND A PART THAT ASKED HERE IS ANSWERED HERE. A node one level down that
+// landed `your call` wrote its card into the conversation; when somebody
+// decides it, the engine lands it again, and that second landing is the
+// conversation's only record of the decision — so it is written too, and the
+// card that says where the work stands now carries the report's own lead.
+// Found by the tmux suite's nested-landing subtest: after `a` the part read
+// `your call` for ever, because the re-landing of a child was roster-only.
+func TestAPartThatAskedHereLandsItsAnswerHereToo(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Rebuild the index", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "Port the parser", session.TaskRunning, session.TaskNotice{Parent: 1}))
+	a.taskUpdate(update(2, "Port the parser", session.TaskUnverified, session.TaskNotice{
+		Parent: 1, Report: "finished, but needs your look — nobody could check it in 5m0s",
+	}))
+	if a.doneEntryFor(2) < 0 {
+		t.Fatalf("a nested part that needs a person wrote no card:\n%s", taskText(a))
+	}
+
+	took := "you took this as done"
+	a.taskUpdate(update(2, "Port the parser", session.TaskDone, session.TaskNotice{
+		Parent: 1, Report: took + "\nfinished, but needs your look — nobody could check it in 5m0s",
+	}))
+	card := a.doneCardFor(2)
+	if card == nil || card.status.State != session.TaskDone {
+		t.Fatalf("the decided part left its latest card at %+v, want done", card)
+	}
+	if text := taskText(a); !strings.Contains(text, took) {
+		t.Fatalf("the conversation does not say the part was decided:\n%s", text)
+	}
+}

@@ -118,10 +118,10 @@ func sequenceOnce(ctx context.Context, client Completer, goal string) ([]Stage, 
 	if len(stages) == 0 {
 		// Schema-valid and useless, exactly as the spine reads it: the reply
 		// parsed, so nothing upstream could have caught it.
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return nil, usageOf(response), annotate(errors.New("stages: no stages returned"), response)
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return orderedStages(stages), usageOf(response), nil
 }
 

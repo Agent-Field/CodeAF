@@ -55,7 +55,7 @@ func TestALandingThatCouldNotSaveTheWorkKeepsIt(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 	readOnlyGitDir(t, tree)
 
-	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"}, false)
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a landing that saved nothing to refuse", merge, detail)
@@ -104,7 +104,7 @@ func TestALandingThatCouldSaveTheWorkStillComesHome(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 
-	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"}, false)
 
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it merged", merge, detail)
@@ -152,7 +152,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
 	readOnlyGitDir(t, tree)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	if !strings.HasPrefix(report, keptWhereItIsLead) {
 		t.Fatalf("the report leads with %q, want the words a person reads for work that stayed where it is", report)
 	}
-	if strings.Contains(report, needsLookLead) {
+	if strings.Contains(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report still asks somebody to look at a decision they already made:\n%s", report)
 	}
 	if !strings.Contains(report, tree.dir) {
@@ -206,7 +206,7 @@ func TestAFolderLandingThatCannotBeLaidInFullLaysNothing(t *testing.T) {
 	writeFile(t, filepath.Join(folder, "sub"), "not a directory\n")
 	before := folderContents(t, folder)
 
-	merge, detail, _, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"}, false)
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a half-lay to refuse", merge, detail)
@@ -237,7 +237,7 @@ func TestAnOrdinaryFolderLandingStillLaysEveryFile(t *testing.T) {
 	writeFile(t, filepath.Join(parent.dir, "a.md"), "the first half\n")
 	writeFile(t, filepath.Join(parent.dir, "sub", "b.md"), "the second half\n")
 
-	merge, detail, _, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"}, false)
 
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q (%s), want an ordinary lay saying nothing", merge, detail)
@@ -265,7 +265,7 @@ func TestAcceptingAFolderFamilyThatCannotBeLaidSettlesWhereItStands(t *testing.T
 	node.setTree(parent)
 	node.finish("wrote the report", []string{"a.md", "sub/b.md"}, parent.branch, parent.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -467,7 +467,7 @@ func TestALandingRefusesWhenOnePathOfTheLedgerCouldNotBeStaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	merge, detail, _, _ := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
+	merge, detail, _, _ := tree.comeHome("write both halves", []string{"open.md", "closed.md"}, false)
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over the path it could not take", merge, detail)
@@ -495,7 +495,7 @@ func TestAKeptBranchThatCouldNotBeCommittedKeepsItsWorkingCopy(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "main.go"), "package main\n")
 	readOnlyGitDir(t, tree)
 
-	merge, _ := keptWork(tree, "build it", []string{"main.go"})
+	merge, _ := keptWork(tree, "build it", []string{"main.go"}, false)
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want the branch kept", merge)
@@ -524,7 +524,7 @@ func TestASettledLandingThatSavedNothingSaysSoInTheJobLog(t *testing.T) {
 
 	var log strings.Builder
 	state := agent.landConflicted(context.Background(), node, tree, []string{"parser.py"},
-		"it wrote the parser", mergeAborted, detail, &log)
+		"it wrote the parser", mergeAborted, detail, refusedByTheWork, &log)
 
 	if state != TaskUnverified {
 		t.Fatalf("state = %q, want it to need a look", state)
@@ -559,7 +559,7 @@ func TestALandingWhoseCommitGitRefusedKeepsTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py"}, false)
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse a commit git would not write", merge, detail)
@@ -662,7 +662,7 @@ func TestALandingRefusesWhenATrackedDeletionCouldNotBeStaged(t *testing.T) {
 	}
 	readOnlyGitDir(t, tree)
 
-	merge, detail, _, _ := tree.comeHome("take the file out", []string{"shared.txt"})
+	merge, detail, _, _ := tree.comeHome("take the file out", []string{"shared.txt"}, false)
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over a deletion it could not stage", merge, detail)

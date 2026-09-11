@@ -108,8 +108,18 @@ func SetLanePin(pin LanePin) {
 // compared rows here would answer a person who had just re-pinned coreweave
 // with silence, and go on routing their model on auto — which is the sentence
 // on their screen made into a lie.
+//
+// AND IT FORGETS WHAT THE ACCOUNT WAS BELIEVED TO EXCLUDE about that machine
+// (internal/lane's account.go), for the same reason and before the lock is
+// taken — a neighbouring package is never called under this file's lock. A
+// person who has just re-chosen the machine the router said their account
+// cannot reach may have changed the setting, and the next request is how to
+// find out.
 func RepinLane(pin LanePin) {
 	pin.Lane = strings.TrimSpace(pin.Lane)
+	if pin.Lane != "" {
+		lanes.ClearAccountExclusion(pin.Lane)
+	}
 	lanePinMu.Lock()
 	defer lanePinMu.Unlock()
 	retiredPins = map[string]struct{}{}
@@ -122,6 +132,27 @@ func CurrentLanePin() LanePin {
 	lanePinMu.RLock()
 	defer lanePinMu.RUnlock()
 	return lanePin
+}
+
+// PinnedFor is the machine a request for model is held to RIGHT NOW, and empty
+// when it is held to none — `auto`, `openrouter`, a pin the wire has already
+// retired for this model ([retirePinnedLane]), or a pin on a base that has said
+// it will not carry a routing preference at all ([BaseTakesLaneChoice]).
+//
+// It is the pin as the transport will act on it, which is the only thing a
+// surface naming the pin may say: a status line still reading `@coreweave`
+// after coreweave refused the model would be the chrome promising a machine the
+// next request does not ask for. It is memory only and cheap when nothing is
+// pinned, because the chrome asks it on every frame.
+func PinnedFor(model string) string {
+	if CurrentLanePin().pinned() == "" || !BaseTakesLaneChoice() {
+		return ""
+	}
+	pin, retired := lanePinFor(model)
+	if retired {
+		return ""
+	}
+	return pin.pinned()
 }
 
 // SetLaneGuard turns the speed guard on or off, and it is the ONE switch: it

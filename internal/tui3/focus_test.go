@@ -40,7 +40,7 @@ func headPanel(a *app) string { return headRow(a) + "\n" + headFactsRow(a) }
 // tabsRowOf reads the tab labels inside the header's optional vertical padding.
 func tabsRowOf(a *app) string {
 	rows := strings.Split(frame(a), "\n")
-	at := a.tabsLineRow()
+	at := placeTabRow
 	if at >= len(rows) {
 		return ""
 	}
@@ -74,9 +74,9 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
 	// the room's last row under the input box. The tab strip and the room's
-	// trail and facts are pinned here, with their breathing room. The task
-	// strip stands down wherever this header is drawn.
-	wantHead := a.tabsHeight(a.width) + a.roomHeadHeight(a.width)
+	// trail and facts are pinned here, under the whole head, with their
+	// breathing room. The task strip stands down wherever this header is drawn.
+	wantHead := a.roomHeadRow() + a.roomHeadHeight(a.width)
 	if a.headHeight() != wantHead || a.stripHeight() != 0 || a.bodyTop() != wantHead {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
 			a.headHeight(), a.stripHeight(), a.bodyTop())
@@ -87,10 +87,10 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// room's — the task's name, its state and its exit.
 	drive(t, a, key("esc"))
 	head = plain(tabsRowOf(a))
-	// What is left over a conversation is the strip and the low-contrast rule
-	// under it, which is the seam between the header panel and the transcript
-	// (chattabs.go's [app.chatRuleHeight]).
-	if a.headHeight() != a.tabsHeight(a.width)+a.chatRuleHeight(a.width) || !strings.Contains(head, a.chatDisplayName()) {
+	// What is left over a conversation is the places' head — the pulse, the
+	// strip, the rule and the blank — which is the seam between the head and the
+	// transcript (head.go).
+	if a.headHeight() != placeHeadRows || !strings.Contains(head, a.chatDisplayName()) {
 		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
 	}
 	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {
@@ -181,6 +181,10 @@ func TestTheRailIsStillTheDoorUnderTheHeader(t *testing.T) {
 
 // PRESSING THE MODEL'S NAME OPENS THE PICKER, and the sentence being written
 // survives the whole round trip: opening it, and switching with it.
+//
+// THE NAME IS ON THE SEAM from 2026-09-09 — the rule above the box — and so is
+// its door (foot.go's [app.legendModelPress]). It was the left of the status
+// row until then, where a long title pushed the numbers off the frame.
 func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
 	a := newTestApp(agent)
@@ -188,12 +192,12 @@ func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	a.input.setText("half a sentence")
 	a.touch()
 
-	// The name's own columns, as the row that drew it recorded them.
+	// The name's own columns, as the line that drew it recorded them.
 	_ = frame(a)
-	if !a.modelSpan.pressable() {
-		t.Fatal("the status row recorded no columns for the model")
+	if !a.seamModelSpan.pressable() {
+		t.Fatal("the seam recorded no columns for the model")
 	}
-	x, y := a.modelSpan.from+1, a.height-1
+	x, y := a.seamModelSpan.from+1, markedRowY(a, chromeLegend, 0)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 

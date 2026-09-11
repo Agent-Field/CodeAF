@@ -49,13 +49,25 @@ import (
 // delivered and never move the cursor. A client must not go quiet because the
 // far end declined to count.
 //
-// EVERY CALL HAS A DEADLINE. The surface asks half of these questions from its
-// update loop — Model, Usage, ContextTokens, Title — and an update loop that
-// blocks is a terminal that has stopped repainting. A pipe whose far end died
-// without closing (a laptop that slept, a network that went away) would hang
-// there forever, so a call that has waited [callDeadline] gives up and says the
-// connection is gone. That is a true sentence: a round trip to a healthy engine
-// is milliseconds, and one that has taken ten seconds is not coming back.
+// EVERY CALL HAS ONE DEADLINE, AND IT IS SHORT BECAUSE OF WHERE IT IS ASKED
+// FROM. The surface asks these from its update loop — Model, Usage,
+// ContextTokens, Title, and a person's keystroke on a question too — and an
+// update loop that blocks is a terminal that has stopped repainting. That is
+// true of an act as much as of a getter, which is why an act does not get a
+// longer window than a getter and why callclass.go states the measurement that
+// settled it. A pipe whose far end died without closing (a laptop that slept, a
+// network that went away) would hang there forever, so a call that has waited
+// [callDeadline] gives up.
+//
+// AND GIVING UP IS NOT THE CONNECTION DYING, WHICH IS THE HALF THIS FILE USED
+// TO GET WRONG. A deadline that ran out answered with [Client.gone] — "the
+// connection to <machine> is gone — run the same command to pick the
+// conversation back up" — about a link that was carrying that turn's events at
+// that very moment. It buried nothing (only the reader ever calls [Client.bury],
+// on a pipe that actually failed), so the sentence was the whole of the damage,
+// and it was enough: the surface believed it, and the person read that their
+// keystroke had missed an engine that had already applied it. A timeout now says
+// [lateCallTail] instead, and [Client.gone] is kept for a pipe that broke.
 //
 // NO GETTER MEASURES ANYTHING EXTRA. Every getter is one frame out and one
 // frame back. [Client.Ping] is the explicit exception: one empty call on the
@@ -134,6 +146,11 @@ type Client struct {
 	// collide even though both are uint64.
 	seq atomic.Uint64
 
+	// newsHeard is set the first time a "phase" or "lane" frame arrives, and it
+	// is half of how [Client.NewsSilent] answers: an engine that has sent one
+	// has the news whether or not its welcome said so ([Welcome.News]).
+	newsHeard atomic.Bool
+
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
@@ -170,6 +187,17 @@ type Client struct {
 	// draw the conversation's name or a connection that has ended
 	// (clientlanes.go).
 	titles *stream
+
+	// questions is version 14's questions lane, held on exactly the terms
+	// designs is: one at a time, replaced rather than added to, and nil for a
+	// surface that draws no questions or a connection that has ended
+	// (questionlane.go).
+	questions *stream
+
+	// asked is what this surface believes is still open on that lane, kept so
+	// [Agent.OpenQuestions] can be answered from memory rather than from a
+	// round trip (questionlane.go says why a replica and not a call).
+	asked questionsOpen
 
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
@@ -765,6 +793,13 @@ func (c *Client) read() {
 			}
 		case string(laneTitle):
 			c.titleFrame(frame.Payload)
+		case string(laneQuestion):
+			// One event off the questions lane: a question raised, withdrawn or
+			// answered, whole. The replica is moved on THIS goroutine, before
+			// the surface is handed the event, so [Agent.OpenQuestions] and the
+			// block a person is looking at can never disagree about what is
+			// still open (questionlane.go).
+			c.questionFrame(frame.Payload)
 		case string(laneDesign):
 			// One event off the harness lane: a design card, a subharness intake
 			// card, or a note about one. Queued for the surface's loop for the
@@ -778,6 +813,27 @@ func (c *Client) read() {
 			// from it, so it is queued onto the lane and drained by the surface's
 			// loop, exactly as a turn's events are (tasklane.go).
 			c.taskFrame(frame.Payload)
+		case "moved":
+			// ANOTHER WINDOW HAS OPENED THIS CONVERSATION and this one is being
+			// told so it can step back (driver.go's [Session.tellMoved]). It is
+			// turned into an event on the standing task lane rather than given a
+			// lane of its own, for the reason [session.EventMoved] states: that
+			// lane is the one subscription which outlives every turn, and a move
+			// happens most often in the middle of one.
+			c.movedFrame(frame.Payload)
+		case "phase":
+			// WHAT THE TURN IN FLIGHT IS DOING RIGHT NOW — connecting, waiting
+			// for the first word, thinking, writing, paced, switching — and how
+			// fast the machine answering is writing. It is handed to this
+			// process's own phase desk so the surface's registered reader fires
+			// exactly as it does for a turn measured in this process (news.go).
+			c.phaseFrame(frame.Payload)
+		case "lane":
+			// AND WHICH MACHINE ANSWERED, once one has. It is the sighting the
+			// `via <machine>` rider on the seam and the `served` row in
+			// /status are drawn from, and neither had anything to draw from on
+			// a conversation whose engine is another process (news.go).
+			c.laneNewsFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine before the surface is notified of a changed name.
@@ -803,8 +859,11 @@ func (c *Client) deliver(frame Frame) {
 	c.mu.Unlock()
 	if !ok {
 		// A result for a call that has already given up (its deadline passed).
-		// Dropping it is right: the caller has been told the connection is gone
-		// and nobody is holding the other end of that channel.
+		// Dropping it is right: the caller has been told this call was late and
+		// nobody is holding the other end of that channel. Arriving at all is
+		// the evidence that the sentence was the honest one — the far end was
+		// working the whole time, which is why it no longer says the connection
+		// has gone ([Client.late]).
 		return
 	}
 	if frame.Error != "" {
@@ -895,7 +954,7 @@ func (c *Client) bury(cause error) {
 	c.buryLanes()
 }
 
-// call is one round trip: a frame out, a result back, or the deadline.
+// call is one round trip: a frame out, a result back, or the class's deadline.
 func (c *Client) call(ctx context.Context, method string, args any) (json.RawMessage, error) {
 	return c.callWithin(ctx, method, args, callDeadline)
 }
@@ -985,10 +1044,34 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 		return nil, false, ctx.Err()
 	case <-timer.C:
 		// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
-		// this call right now; what ran out is this end's patience.
+		// this call right now; what ran out is this end's patience. A live
+		// connection is not declared gone for that — [Client.late] is the
+		// honest sentence, and the rest of the room stays up.
 		c.forget(id)
-		return nil, false, c.gone(errors.New("no answer"))
+		return nil, false, c.late()
 	}
+}
+
+// late is what a deadline says on a connection that is still here.
+//
+// THE CONNECTION IS NOT GONE, AND SAYING SO WAS THE MEASURED DEFECT. The engine
+// had applied the keystroke and the model's next sentence was already on screen
+// when this window told the person their link had died. A pipe that actually
+// broke still takes [Client.gone]; a redial in flight still says it is
+// reconnecting; and a client the reader has already buried keeps the reader's
+// own reason, because that one IS the connection being gone.
+func (c *Client) late() error {
+	c.mu.Lock()
+	dead := c.dead
+	roaming := c.reconnecting
+	c.mu.Unlock()
+	if dead != nil {
+		return dead
+	}
+	if roaming {
+		return errors.New(c.roamingRefusal())
+	}
+	return errors.New(c.where() + lateCallTail)
 }
 
 // forget drops a call nobody is waiting for any more.
@@ -1516,7 +1599,38 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 // the interface says so, and a key that is pressed to stop something must not
 // itself become a thing that blocks. A dead connection swallows it, which is
 // exactly what a dead connection does to the turn as well.
-func (a *Agent) Interrupt() { _, _ = a.c.call(nil, MethodInterrupt, nil) }
+func (a *Agent) Interrupt() { a.InterruptFor(session.StopByPerson) }
+
+// InterruptFor is the same stop with the door on it, for the machinery stops
+// that are not a person. An engine too old to read the argument sees the stop it
+// always saw.
+func (a *Agent) InterruptFor(door session.StopDoor) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
+}
+
+// AnswerLaneOffer answers the question a stalled PINNED lane raises: the
+// machine this person named has gone quiet, there is somewhere else to go, and
+// a pin is asked rather than overridden. The `y` they pressed takes this road
+// home (wire.go's [MethodAnswerLaneOffer]).
+//
+// FALSE IS A REAL ANSWER AND NOT A FAILURE — the lane came good while the
+// person was reaching for the key, the request finished, or the question aged
+// out ([provider.AnswerOffer] states it) — so a call that could not be made at
+// all reads as false too, and the surface draws nothing either way. That is
+// what lets this door ride a wire version that predates it: an older engine
+// answers "no such method" and the key does what it did before the door
+// existed, which is nothing.
+func (a *Agent) AnswerLaneOffer(yes bool) bool {
+	out, err := a.c.call(nil, MethodAnswerLaneOffer, yes)
+	if err != nil {
+		return false
+	}
+	var answered bool
+	if json.Unmarshal(out, &answered) != nil {
+		return false
+	}
+	return answered
+}
 
 // StopWork asks the engine to end all work in this conversation and suppress wakes.
 func (a *Agent) StopWork() error {
@@ -1655,6 +1769,35 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.Cons
 // of the difference.
 func (a *Agent) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	_, _ = a.c.call(nil, MethodStandingResolve, StandingArgs{ID: id, Answer: answer})
+}
+
+// ResolveQuestion answers ONE QUESTION OF ANY LANE, whole, over the wire.
+//
+// IT IS THE METHOD THAT MAKES A QUESTION ANSWERABLE FROM A SURFACE AT ALL, and
+// [Agent.ResolveStanding]'s note above says why in the older case: internal/tui3
+// asserts an OPTIONAL interface on whatever agent it is holding and draws a page
+// that can be READ and not answered for one that does not implement it. Every
+// local chat surface holds this type — the engine runs in its own process even
+// on this machine — so without this the question page was a page nobody could
+// answer anywhere.
+//
+// THE ERROR COMES BACK. Every other resolver here drops it, because their
+// answers cannot be refused: an approval either applies or the question is
+// already gone. A question CAN be refused with something a person needs to read
+// — the work it was about finished, somebody else answered it first — and the
+// page draws exactly that sentence where its foot was.
+func (a *Agent) ResolveQuestion(answer session.Answer) error {
+	_, err := a.c.call(nil, MethodQuestionResolve, QuestionArgs{Answer: answer})
+	return err
+}
+
+// SetAutonomy is `D`: it says which shape of question may be answered without
+// asking, from now on, in this project. It carries the refusal back for
+// [Agent.ResolveQuestion]'s reason — "clarification always waits for an answer"
+// and "this conversation has no project" are both sentences a person has to read.
+func (a *Agent) SetAutonomy(kind session.AskKind, policy session.Policy) error {
+	_, err := a.c.call(nil, MethodSetAutonomy, AutonomyArgs{Kind: kind, Policy: policy})
+	return err
 }
 
 // ResolveHarness answers one sub-harness offer.
