@@ -94,22 +94,25 @@ func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {
 	a.taskSheet.regroup(a)
 	a.taskSheet.cursor = a.tasksSettle(0)
 	for i := 0; i < 20; i++ {
-		if item, ok := a.taskSheetCurrent(); ok && item.entry.Label == "reading the gauge" {
+		if item, ok := a.taskSheetCurrent(); ok && item.entry.Label == "widening the sluice" {
 			break
 		}
 		a.taskSheetMove(1)
 	}
 	item, ok := a.taskSheetCurrent()
-	if !ok || item.entry.Label != "reading the gauge" {
+	if !ok || item.entry.Label != "widening the sluice" {
 		t.Fatalf("the walk never reached the second running row: %+v", item.entry)
 	}
 	was := a.taskSheet.cursor
 
-	// The row ABOVE it lands, which re-files it into another section.
+	// The row ABOVE it lands, which re-files it into another section. WHICH ROW IS
+	// ABOVE IS THE SORT'S ANSWER and not the order they arrived in: the list is
+	// sorted by age, newest first, so the gauge — asked for second — is the row
+	// over the sluice (tassort.go).
 	a.taskUpdate(session.Event{
 		Kind: session.EventTaskUpdate,
 		Tool: "propose_task",
-		Task: &session.TaskNotice{ID: 41, Title: "widening the sluice", State: session.TaskDone},
+		Task: &session.TaskNotice{ID: 42, Title: "reading the gauge", State: session.TaskDone},
 	})
 	a.taskSheet.regroup(a)
 
@@ -117,9 +120,9 @@ func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {
 	if !ok {
 		t.Fatalf("the cursor came off the page entirely:\n%s", pageRows(t, a))
 	}
-	if now.entry.Label != "reading the gauge" {
+	if now.entry.Label != "widening the sluice" {
 		t.Fatalf("the cursor moved from %q to %q while a different task landed:\n%s",
-			"reading the gauge", now.entry.Label, pageRows(t, a))
+			"widening the sluice", now.entry.Label, pageRows(t, a))
 	}
 	// AND IT REALLY MOVED, so the assertion above is about the row being followed
 	// and not about a list that happened to stay still.

@@ -3547,7 +3547,9 @@ func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
 	if got := box.String(); got != " " {
 		t.Fatalf("the first space did not land in the filter: %q", got)
 	}
-	drive(t, a, key("down"))  // the child task below its main chat
+	// `→` opens the conversation the work is under — every fold on this page
+	// opens shut now ([tasksReading.opens]) — and the cursor walks to the work.
+	tasksPointAt(t, a, "Port the thing")
 	drive(t, a, key("enter")) // into the room, over the roster
 	if !a.taskSheet.detailOn {
 		t.Fatalf("the record did not open; frame:\n%s", plain(frame(a)))
