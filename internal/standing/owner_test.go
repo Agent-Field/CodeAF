@@ -105,11 +105,20 @@ func TestTheOwnersBeforeTheRecordAreRecordedOnce(t *testing.T) {
 // watch to `{inbox/*,notes/*}` to add a folder; the matcher reads braces as
 // the characters, so the watch matched nothing and never fired, silently. It
 // is refused where both doors ask, naming what to do instead.
+//
+// AND IT ASKS, TOO. Its first wording told the model to "tell the person" one
+// order cannot watch those folders into one report, and in the one-path live
+// run of f927481f3 the model planned two orders instead and stopped the
+// person's first one to make room. Its remedy is the owner refusal's own.
 func TestAWatchWithBracesIsRefused(t *testing.T) {
 	item := ownedItem(t.TempDir(), "reports/r.md")
 	item.When.Glob = "{inbox/*,notes/*}"
-	if err := item.CheckWatch(); err == nil || !strings.Contains(err.Error(), "braces") {
+	err := item.CheckWatch()
+	if err == nil || !strings.Contains(err.Error(), "braces") {
 		t.Fatalf("a watch with braces was taken: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ask the person") || !strings.Contains(err.Error(), "a stop is permanent") {
+		t.Fatalf("the brace refusal does not ask, or sends the model to a stop: %v", err)
 	}
 }
 
