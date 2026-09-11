@@ -109,7 +109,8 @@ good. (On the standing orders page, press `→` on the row and the same two verb
 
 Every one of them arrives as a card in the conversation, and **nothing is created until
 you answer it**. The card carries your sentence, when it wakes, where it reaches, and
-that it shares the day's allowance. `esc` or `0` declines, and a card left unanswered
+that it shares the day's allowance — and, for work that runs, what one run does, the
+report file and who writes it, the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
@@ -665,7 +666,7 @@ Honest limits, so you do not rely on something that is not built:
   else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width before it starts;
   an order that fires is not, and is armed to split itself only off the items its own
-  brief already names. Asking a model every night whether a sentence that has not changed
+  instructions already name. Asking a model every night whether a sentence that has not changed
   is wide would be a bill you never agreed to. (What splitting is, and everything that
   decides it, are on the tasks page.)
 - **Approval has an owner.** Ordinary proposals wait for your answer. An active delegated goal owner can answer existing bounded proposals; folder-scoped rules require your answer. New receipts preserve the difference.
@@ -709,7 +710,7 @@ placement later, while `aforge collections add` only files a reference.
 **An edit is a new version of the instructions.** `edit` prints `revised <id> to
 version N: instructions`; the next run uses
 it, a run already under way keeps what it started with, and each run's record keeps the
-brief it ran on. `--version N` refuses the edit if someone changed the instructions
+instructions it ran on. `--version N` refuses the edit if someone changed the instructions
 since you read version N. A stopped order cannot be resumed or edited: `a stopped item
 must be set up afresh`.
 
@@ -720,6 +721,12 @@ not yet written is not written and no note is sent: `stopped while it ran`.
 This door never turns on the background timer. Its orders are checked when a window
 is open, when the timer is already on, or when you run `aforge standing check`. News
 from an order with no conversation behind it waits in its project's inbox.
+
+Saying the same thing in a conversation makes **the same order**: the same instructions,
+version 1, the same report aforge publishes, the same folder and rules, the same check and
+the same receipts. `aforge standing show` then says `set up by: person, through the chat`,
+and its log opens `set up in the chat` where a terminal-made one says `set up at the
+terminal`. An edit to either is `aforge standing edit`, whichever door made it.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
@@ -744,10 +751,40 @@ that report is published; if not, nothing is. **Only a run that came back clean
 publishes** — the next section lists every reason a report is not.
 
 A report inside its own watch, or inside a folder the watch matches (`*` watching
-`reports`), is refused when you set it up, because every report would wake it again.
+`reports`), is refused when you set it up, because every report would wake it again. So
+is a report whose folder leads out of the project through a symbolic link — `the report
+folder resolves outside the project` — at the terminal and on the card alike, and it is
+checked again at every write.
+
 A run that failed or was held back does not use up its changes: the next run is told
 about them again. Nothing here uses an account or a connector: the order reads local
 files and writes one local file.
+
+## Keep a report current from the chat — the card's does, report, folder and rule lines
+
+In a conversation, just say it: "keep an eye on my inbox folder and keep
+reports/inbox-report.md current". It is the same order `aforge standing add --watch
+--report --place` makes. The card for work that runs has four more lines under
+`where ·`, and they are what a yes agrees to:
+
+```
+does · Read the changed files in inbox/ and write a short report of new decisions …
+report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+folder · Launch, where this conversation is placed — its rules reach every run
+rule · Inbox reports never quote email addresses; write [redacted] instead.
+```
+
+**Which folder.** A folder you name goes on the card. Otherwise the work goes in the folder
+this conversation is placed in (`, where this conversation is placed`), and a conversation
+in no folder makes work in none — `folder · none — it can be placed in one later`; you are
+never asked for a folder first. The `rule ·` lines are the rules that reach it now, read the
+way its runs will read them (`rules · none reach this work yet` when there are none), up to
+five and then `rules · and N more`. The folder is bound after your yes and before the work
+exists — at the terminal too — so the work never runs outside it; if binding fails nothing
+is set up: `nothing was set up: could not be placed in …`. A line to say and a rule are
+never placed — a rule names its folders itself. After the yes, `aforge standing
+show` says `set up by: person, through the chat` and runs it exactly as it runs a
+terminal-made order.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 

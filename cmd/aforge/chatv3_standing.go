@@ -95,8 +95,9 @@ func v3StandingDailyRail(profileDir string) float64 {
 // launchd agent or a systemd user timer running `aforge tick` every
 // [standing.Interval] (internal/standing's watch.go). Nil is the honest answer
 // on a host the package cannot arrange one for, and every caller reads nil as
-// "there are no background checks here" — nothing is installed, nothing is
-// said, and the settings row that would turn it is absent.
+// "there are no background checks here" — nothing is installed, the settings
+// row that would turn it is absent, and each thing set up that wakes says so
+// in one line and names what does check it.
 func standingWatch(store *standing.Store) standing.Watch {
 	watch, err := standing.NewWatch(standing.WatchOptions{WakeLog: store.WakeLogPath()})
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -78,16 +79,38 @@ func (a *Agent) governingItemsLocked() ([]standing.Item, error) {
 				if err != nil {
 					return nil, err
 				}
-				for _, place := range places {
-					if depth, exists := collections[place.ID]; !exists || place.Depth < depth {
-						collections[place.ID] = place.Depth
-					}
-				}
+				nearestDepths(collections, places)
 			}
 		}
 	}
 	a.governingCollections = collections
 	return g.Reader.ApplicableScope(g.Workspace, g.SessionID, collections)
+}
+
+// nearestDepths folds governing folders into the depth map the standing owner
+// reads, keeping each folder's nearest path when several reach it.
+func nearestDepths(collections map[string]int, places []workspace.GoverningCollection) {
+	for _, place := range places {
+		if depth, exists := collections[place.ID]; !exists || place.Depth < depth {
+			collections[place.ID] = place.Depth
+		}
+	}
+}
+
+// GoverningRules is the ONE reading of which of the orders that apply to a
+// piece of work are rules over it: the holds that carry words. A turn's
+// <standing> block and a firing's report check read it here, the card that
+// proposes ongoing work quotes it before the yes, and `aforge standing show`
+// prints it — four readers of one question, so they cannot come to disagree
+// about what governs.
+func GoverningRules(items []standing.Item) []standing.Item {
+	var rules []standing.Item
+	for _, item := range items {
+		if item.When.Kind == standing.WhenHold && strings.TrimSpace(item.Prompt()) != "" {
+			rules = append(rules, item)
+		}
+	}
+	return rules
 }
 
 // workOrganizationRefLocked keeps repair/checking runs attached to the task
