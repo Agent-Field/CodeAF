@@ -390,6 +390,11 @@ var programFacts = []beltFact{{
 var standingFacts = []beltFact{{
 	tools: []string{"stand"},
 	holds: Config.mayStand,
+	// A HOLD'S RAILS ARE NOT SAID HERE. This page used to say a hold is sent
+	// with "no `rails`", which was false — the code keeps `expires` on a hold
+	// ([standingRails]) — and `rails`' own schema description already says so
+	// ("Only expires means anything on one"), so the page says nothing about it
+	// rather than a second copy.
 	present: "# Things that keep working after this window\n" +
 		"Some of what a person says is not work for now but something to leave behind\n" +
 		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\",\n" +
@@ -401,7 +406,7 @@ var standingFacts = []beltFact{{
 		"gets the waking kind it names: `at`, `every`, `file`, `idle`, `probe`. One\n" +
 		"naming none of them, a rule or preference (\"always ...\", \"we use X here\"), is\n" +
 		"`when.kind: hold`: it never fires and never spends, riding into every\n" +
-		"conversation and task it reaches, and is sent with no `does` and no `rails`.\n" +
+		"conversation and task it reaches, and is sent with no `does`.\n" +
 		"\n" +
 		"UNSURE MEANS INSTRUCTION PLUS AN OFFER: bind it to the work in front\n" +
 		"of you AND offer the standing version in one line at the end of your reply.\n" +

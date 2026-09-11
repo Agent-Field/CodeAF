@@ -140,7 +140,76 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // widestPage weighs the larger direct/deferred wording for each fact.
-const fixedPrefixBudget = 48_000
+// THE BELT WAS NOT THE DOOR'S, AND THE BUDGET IS NOW SET ON THE DOOR (2026-09-11).
+// [v3ShapedAgent] was a hand list with no standing store, no collections
+// database, no journal, no accounts hub and no memory store, so every figure
+// above weighed a conversation without `stand`, `collections`,
+// `shared_context`, `context_trace`, `services`, `use_service`, `remember` or
+// `search_conversations` — eight tools the interactive door carries on every
+// request. It reported 47,942 while the door sent 67,034. It builds through
+// [conversationDoor] now, which is chatv3.go's list and no second copy of it.
+//
+// AND `stand` WAS NOT TRIMMED, WHICH WAS MEASURED. A lane cut its schema to one
+// line a field and moved recognition — the discharge test, anchoring, the
+// inbox-report recipe — out of [standDescription] onto the page, on the reading
+// that the page section built from the same predicate says it anyway. Ten live
+// chat-door journeys per text, same model, same day:
+//
+//	text                                    journey  wrote the report itself
+//	both trimmed                             3/10         7/10
+//	+ five field sentences put back          4/10         6/10
+//	+ description and page put back          7/10         2/10
+//	the text as it was (05c8aec12)          10/10         0/10
+//
+// "Wrote the report itself" is the conversation doing the work — creating the
+// file before proposing — which is exactly what the tool exists to replace, and
+// the pass then rightly refused to write over it. A model reads recognition AT
+// THE CALL: the recipe for the very sentence and "doing it once instead of
+// proposing it" in the description are what it has in front of it when it
+// chooses between proposing and doing, and the page paragraph saying the same
+// thing was not enough. So the description and the schema are the measured text
+// byte for byte, the ~2.5 KB the trim would have saved is paid knowingly, and a
+// lane that wants it back pays for it with a live journey, not with this test
+// (docs/design/workspace-foundation/grooming/validation/prefix-live10.md).
+//
+// The door then measured 67,019 bytes: 23,883 of page and 43,136 of tool block
+// over 26 tools, of which the eight above are 19,084 (`stand` 11,008,
+// `shared_context` 1,792, `search_conversations` 1,613, `collections` 1,456,
+// `use_service` 999, `remember` 994, `services` 695, `context_trace` 527). The
+// budget is that measurement plus a tenth, rounded up to the thousand — the
+// founding rule of this constant, applied to the shape it was always meant to
+// bound. THIS IS A SHAPE CORRECTION AND NOT A LANE RAISING THE NUMBER: 48,000
+// bounded a belt this door never had, and the bytes it did not see were already
+// being sent. The next failure against 74,000 is paid for out of a second copy
+// and not raised, exactly as every entry above was.
+//
+// 74,000 BOUNDS THE SHIPPING DEFAULT DOOR, NOT EVERY DOOR. The fixture carries
+// what the door carries on every machine; these it carries only on some, and
+// they are unweighed: `web_search` and `web_fetch` (a search provider is
+// configured, chatv3.go's `v3Search`), `view_image` (a media client and a vision
+// model), furrow's `workspace_snapshots`, `workspace_restore`, `workspace_fork`
+// and `workspace_merge` (a folder attached to furrow), `workspace` (an owned
+// conversation with no project yet), and the longer `load_capability` lines a
+// media group and saved programs add. Together they are several kilobytes, so a
+// fully configured door likely spends the tenth of headroom and may pass it.
+//
+// AND THE FIRST PLACE TO LOOK WHEN IT FAILS. These rules are still said more
+// than once on this prefix, in other lanes' tools, and were left for them:
+//   - a line into a task does not stop it — 4: [tasksDescription], `tasks`'
+//     `say`, the belt's `tasks` bullet (beltfacts.go) and prompts/system.md's
+//     `SAYING "STOP" TO A TASK DOES NOT STOP IT`;
+//   - a landed task's four words and the `your call` verbs — 2:
+//     prompts/system.md's `A LANDED TASK SAYS ONE OF FOUR WORDS` and
+//     `your call IS A QUESTION` against the belt's `A LANDED TASK SAYS` bullet;
+//   - wide work is one task, never split — 3: `propose_task`'s description, the
+//     `WIDE WORK` handoff row and prompts/system.md's `THERE IS NO PLANNER`;
+//   - what you learned goes with the brief — 2: `propose_task`'s `brief` and
+//     prompts/system.md's `AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT`;
+//   - never wait or poll for what was handed off — 4: `propose_task`, `fork`,
+//     `jobs` and `tasks`, each in its own description.
+//
+// A second copy inside `stand` is NOT on this list: see the table above.
+const fixedPrefixBudget = 74_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).

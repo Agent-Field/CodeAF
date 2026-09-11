@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -31,19 +30,13 @@ import (
 // runner, and a surface that answers questions.
 
 // v3ShapedAgent is a conversation configured the way the interactive door
-// configures one.
+// configures one, which is [conversationDoor]'s list and no second copy of it:
+// this is also the belt prefixbudget_test.go weighs, and a hand list here is how
+// that budget went on measuring a door without eight of the tools it carries.
 func v3ShapedAgent(t *testing.T) *Agent {
 	t.Helper()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.AskConsent = true
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
+		conversationDoor(t, config)
 	})
 	return agent
 }

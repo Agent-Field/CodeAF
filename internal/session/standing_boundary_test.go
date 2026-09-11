@@ -40,6 +40,27 @@ func TestTheStandToolSaysWhichOfTheTwoOutlivesTheWindow(t *testing.T) {
 	}
 }
 
+// AND RECOGNITION IS SAID WHERE THE CALL IS MADE. The discharge test, the
+// anchoring rule, the inbox-report recipe and "doing it once instead of
+// proposing it" are the reasoning that keeps an acceptance criterion off a card
+// and keeps the conversation from doing the work itself; ten live journeys with
+// them moved onto the page passed 3 of 10 (tools_standing.go's
+// [standDescription]), so each is pinned in the description.
+func TestTheStandToolCarriesRecognitionWhereTheCallIsMade(t *testing.T) {
+	for _, want := range []string{
+		"THE DISCHARGE TEST",
+		"ANCHORING",
+		"acceptance is never a card",
+		"Doing a standing sentence once instead of proposing it answers a request they did not make",
+		"\"keep an eye on my inbox folder and keep reports/inbox.md current\" is file with does.kind task and does.report",
+		"Money is not yours to negotiate",
+	} {
+		if !strings.Contains(standDescription, want) {
+			t.Errorf("the stand description no longer says %q", want)
+		}
+	}
+}
+
 // AND THE CLOSING LINE IS THE WHOLE REPLY.
 //
 // The second defect a real model found. "say in ONE line what now stands and
