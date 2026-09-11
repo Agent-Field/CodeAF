@@ -683,6 +683,7 @@ var paiScenarios = map[string]func(c *cv){
 	"rails":       scenRails,
 	"rules-held":  scenRulesHeld,
 	"move":        scenMove,
+	"one-path":    scenOnePath,
 	"two-folders": scenTwoFolders,
 	"descendants": scenDescendants,
 	"recall":      scenRecall,
@@ -1153,6 +1154,59 @@ func scenMove(c *cv) {
 	c.t.Logf("REPORT 2:\n%s", report)
 	c.expect(tag, "moved-report-follows-work-only", len(runs) == 2 && has(report, "FILED-WORK") && !has(report, "FILED-PERSONAL"), fmt.Sprintf("runs across the item and its successor=%d", len(runs)))
 	c.expect(tag, "record-shows-work-not-personal", has(show, "work (placed directly)") && !has(show, "personal (placed directly)"), "")
+}
+
+// scenOnePath is ONE LIVE OWNER PER REPORT PATH through both doors (the review
+// of 417fa43a3, B1): two live orders at one file used to take turns replacing
+// each other's report. The terminal's add of a second order on the chat's
+// report is refused; the chat, asked for a second order on the same file,
+// ends with one live order keeping it (an edit of the first, or a refusal it
+// explains); and the one that keeps it publishes, never held `report-owned`.
+func scenOnePath(c *cv) {
+	tag := []string{"R2", "B1"}
+	ch := c.chat("chat-onepath")
+	c.mkdir("inbox")
+	c.mkdir("notes")
+	t := c.say(ch, "keep an eye on inbox/ and keep reports/digest.md current with a short digest of what came in")
+	c.flagReply(t)
+	if _, ok := c.firstWork(tag, t); !ok {
+		return
+	}
+	out, code := c.aforge(time.Minute, "standing", "add", "--words", "keep reports/digest.md current from notes",
+		"--instructions", "Summarise the changed files in notes/.", "--watch", "notes/*", "--report", "reports/digest.md")
+	c.expect(tag, "terminal-second-owner-refused", code != 0 && has(out, "is already the report of"), fmt.Sprintf("exit=%d %s", code, pclip(out, 300)))
+	t = c.say(ch, "also keep an eye on notes/ and keep reports/digest.md current with a summary of the notes too")
+	c.flagReply(t)
+	var keepers []standing.Item
+	for _, it := range c.items() {
+		if it.Status != standing.StatusRetired && it.Does.Report == "reports/digest.md" {
+			keepers = append(keepers, it)
+			c.note("  keeps the digest: %s", c.describe(it))
+		}
+	}
+	c.expect(tag, "one-live-owner-after-the-chat", len(keepers) == 1, fmt.Sprintf("live keepers=%d", len(keepers)))
+	if len(keepers) == 0 {
+		return
+	}
+	c.check()
+	c.write("inbox/a.md", "Request: Sam to send the Q3 numbers by Monday.\n")
+	c.write("notes/n.md", "Note: the offsite moves to Lisbon.\n")
+	c.check()
+	var owned []string
+	for _, it := range c.items() {
+		for _, r := range c.logRuns(it.ID) {
+			if r.Withheld == "report-owned" {
+				owned = append(owned, r.line())
+			}
+		}
+	}
+	runs := c.logRuns(keepers[0].ID)
+	okp, why := false, fmt.Sprintf("runs=%d", len(runs))
+	if len(runs) > 0 {
+		okp, why = c.published(runs[0], "reports/digest.md")
+	}
+	c.expect(tag, "the-owner-publishes", okp, why)
+	c.expect(tag, "no-report-owned-hold", len(owned) == 0, strings.Join(owned, " | "))
 }
 
 func scenTwoFolders(c *cv) {
