@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A conversation's anchor writes a whole identity, so an older snapshot cannot undo it
-pr: 903
+pr: 904
 surface: [chat, engine]
 invalidates:
   - "`/workspace` and the model's `workspace` tool wrote meta.json by reading it, replacing two fields and saving what came back. Since #876 deferred the opening message's stamp, that read can be of a file that does not exist yet — and the anchor then saved an identity-less meta.json, which [LoadMeta] answers with a blank Meta exactly as it answers a missing file. The anchoring was on disk in a record nothing could read. The anchor now fills the identity whole when its read came back blank."
