@@ -1907,6 +1907,8 @@ func (a *app) activate() tea.Cmd {
 			keep: roleFilter(item.role.role), role: item.role.role,
 		}
 		sel.pick.startFor(a.modelsFor(sel.keep), item.role.pin, sel.keep)
+		a.armSpendHistory(&sel.pick)
+		sel.pick.rank()
 		s.sel = sel
 		return nil
 	}
@@ -1967,6 +1969,8 @@ func (a *app) activate() tea.Cmd {
 		// nothing and folds nothing, which is the emptiness law and not a
 		// second, plainer list.
 		a.armLanes(&sel.pick, laneSlotForRow(item.row.Key))
+		a.armSpendHistory(&sel.pick)
+		sel.pick.rank()
 		s.sel = sel
 
 	default:
@@ -2012,6 +2016,8 @@ func (a *app) openLaneList() bool {
 	}
 	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
 	a.armLanes(&sel.pick, slot)
+	a.armSpendHistory(&sel.pick)
+	sel.pick.rank()
 	// THE FOLD HAS TO BE THE ONE THIS ROW IS ABOUT. [picker.start] leaves the
 	// cursor on row zero when the model in use is not in the list at all — a
 	// catalog that has not loaded, a model nobody publishes — and unfolding

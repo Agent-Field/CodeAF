@@ -60,7 +60,7 @@ var commands = []command{
 	// (render.go's [app.identityParts]). It is worth saying because a surface
 	// with the mouse turned off (config's ui.mouse) does not have it, and this
 	// row is then the only one there is.
-	{name: "model", desc: "pick a model · or press its name above the message box"},
+	{name: "model", desc: "pick a model · used lately · or press its name above the message box"},
 	// `<slug>` is the whole of what this row offers a person scanning the list,
 	// and the three other shapes it takes — `@lane`, `auto`, a filter query —
 	// are NOT four more rows here. The list is how somebody finds a command,
@@ -138,7 +138,7 @@ var commands = []command{
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
-	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
+	{name: "spend", desc: "what this machine has cost · models · days · year · export · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do

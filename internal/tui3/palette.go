@@ -130,6 +130,11 @@ type picker struct {
 	// reading — the same snapshot law as current and pin.
 	held map[string][]rowField
 
+	// spent is what this machine paid each model over the last fortnight,
+	// frozen when the list opened (pickerspend.go). Empty when the ledger has
+	// nothing or cannot be read — and then no chip and no "used lately" fold.
+	spent map[string]session.ModelSpend
+
 	// task is the NODE this list is being chosen for, and 0 is the conversation —
 	// which is every /model, every press on the status row out in the thread, and
 	// every settings row. It is set only by [app.openTaskPicker], and what it
@@ -286,6 +291,11 @@ func (p *picker) rank() {
 		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
 			continue
 		}
+		if hasUsedTerm(terms) {
+			if _, ok := p.spendOf(p.all[i].ID); !ok {
+				continue
+			}
+		}
 		if len(tokens) == 0 {
 			p.hits = append(p.hits, i)
 			continue
@@ -315,6 +325,7 @@ func (p *picker) rank() {
 		})
 	}
 	p.orderByLanes(terms, now)
+	p.promoteUsed()
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
@@ -354,6 +365,12 @@ func splitQuery(query string) ([]string, []laneTerm) {
 func keepsLanes(model Model, terms []laneTerm, now time.Time) bool {
 	views := laneViews(model.ID, now)
 	for _, term := range terms {
+		if term.kind == termUsed {
+			// `used` is answered on the picker that holds the spend snapshot —
+			// keepsLanes has no ledger. A true here lets the row through; the
+			// picker's own rank drops models with no spend when the term is set.
+			continue
+		}
 		if !term.keeps(model, views) {
 			return false
 		}
@@ -1403,6 +1420,9 @@ func (p *picker) groupBefore(at int) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
 		return ""
 	}
+	if used := p.usedSectionBefore(at); used != "" {
+		return used
+	}
 	model := p.all[p.hits[p.list[at].hit]]
 	if model.Group == "" {
 		return ""
@@ -1574,6 +1594,23 @@ func (p *picker) rowFields(model Model, pin string) []rowField {
 		return fields
 	}
 	fields := modelFields(model, pin)
+	if row, ok := p.spendOf(model.ID); ok {
+		if chip := spendChipField(row); chip.full != "" {
+			// AFTER THE CATALOG PRICE: a person comparing two rows already has
+			// the tariff; the chip says what they actually paid.
+			out := make([]rowField, 0, len(fields)+1)
+			for i, field := range fields {
+				out = append(out, field)
+				if i == 2 {
+					out = append(out, chip)
+				}
+			}
+			if len(fields) < 3 {
+				out = append(out, chip)
+			}
+			fields = out
+		}
+	}
 	p.held[model.ID] = fields
 	return fields
 }
@@ -1746,6 +1783,8 @@ func (a *app) openPicker() {
 	// of those can change while a modal overlay owns the keyboard.
 	a.armLanes(&a.pick, laneSlotFor(a.model))
 	a.armRefresh()
+	a.armSpendHistory(&a.pick)
+	a.pick.rank()
 	a.touch()
 }
 
@@ -1781,6 +1820,8 @@ func (a *app) openTaskPicker(id uint64) {
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
 	a.armRefresh()
+	a.armSpendHistory(&a.pick)
+	a.pick.rank()
 	a.touch()
 }
 

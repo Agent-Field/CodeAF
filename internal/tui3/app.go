@@ -6819,12 +6819,9 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.showPage(pageSearch)
 
 	case "spend":
-		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
-		// was an alias of /cost until this wave, so the one guess a developer makes
-		// for "what has this cost" printed one conversation's figures and never
-		// mentioned the machine-wide ledger. /cost still answers this conversation
-		// and says so on its own row (commands.go).
-		return a.showPage(pageSpend)
+		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. Words
+		// after it are lenses and exports (spendcmd.go) — never a second /cost.
+		return a.runSpendCommand(rest)
 
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
