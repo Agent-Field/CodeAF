@@ -2288,7 +2288,12 @@ func taskCopyFor(tree taskTree) taskCopy {
 		// It is empty for a borrowed session, which keeps no work/ at all, and
 		// for the legacy layout, whose tree carries the zero Place — both of
 		// which are the same document this composed before.
-		return newTaskCopy(tree.ground, tree.dir, tree.place.Work())
+		//
+		// THE FOURTH IS WHERE ITS COPIES LIVE, from the same [Place.Trees] the
+		// copy was cut from, so a contract that names an earlier tree of this
+		// conversation is bound to this one rather than left pointing at
+		// somebody else's (#839).
+		return newTaskCopyOf(tree.ground, tree.dir, tree.place.Work(), tree.place.Trees())
 	}
 	return taskCopy{}
 }

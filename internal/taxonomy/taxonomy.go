@@ -278,6 +278,21 @@ type Evidence struct {
 	// docs/design/recovery/DESIGN.md §5 is written about.
 	Spent bool
 
+	// OutOfTime says the CALLER'S OWN DEADLINE is gone: the plan's give-up, in
+	// the person's time (`lane.Role.GiveUp` scaled by [Limits.Patience]), which
+	// is the one thing that bounds how long a failing request may go on
+	// recovering (docs/design/recovery/DESIGN.md §4).
+	//
+	// IT IS THE COUNT'S REPLACEMENT AND NOT THE LADDER'S. `TransportAttempts`
+	// used to answer "is there another try in this" from a number; the number is
+	// gone, because the transport under every caller was already bounded by the
+	// same deadline and two budgets on one axis multiply. What is NOT said here
+	// is anything about the failure: the reason a person reads stays the shape
+	// that actually failed — a refusal, a reset, a reply that arrived empty —
+	// where [Spent] would say "no shape of this request could be served", which
+	// is a different claim and usually a false one.
+	OutOfTime bool
+
 	// Unserved says THE ACCOUNT could not be served at all: no key, a key this
 	// model or bound plan door is not permitted, or a balance that ran out. It
 	// arrives as a 401, 402 or 403, or as a vendor's structured payment/no-plan

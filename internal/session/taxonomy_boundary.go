@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -50,6 +51,13 @@ import (
 func (a *Agent) failureLimits() taxonomy.Limits {
 	a.limitsOnce.Do(func() {
 		a.limits = config.ResponseLimitsAt(a.config.ProfileDir).Floored()
+		// AND RESOLVING THEM PUBLISHES THE PERSON'S PATIENCE, because this is the
+		// one place in the build that reads `response.attempts` and the two
+		// places that build a deadline cannot read a profile at all (lane's
+		// [lane.UsePatience], and internal/provider's dispatcher under it). It is
+		// stated here rather than hidden inside the resolver so that "who told
+		// the deadline how patient to be" has one answer and one line.
+		lanes.UsePatience(a.limits.Patience)
 	})
 	return a.limits
 }
@@ -204,6 +212,12 @@ type transportLadder struct {
 	// fallback says the caller has a next model to ask. It is the whole
 	// difference between moving on and giving up, and it is the caller's fact.
 	fallback bool
+	// outOfTime says the caller's own deadline is gone — the plan's give-up, in
+	// the person's time — which is the whole of what bounds a failing request
+	// (docs/design/recovery/DESIGN.md §4). It is the caller's fact for the same
+	// reason `fallback` is: this package knows the clock it started, and the
+	// boundary decides what running out of it MEANS.
+	outOfTime bool
 }
 
 // mark writes the ladder onto the evidence the wire already answered for.
@@ -213,6 +227,7 @@ func (l transportLadder) mark(evidence *taxonomy.Evidence) {
 	evidence.Degenerate = l.degenerate
 	evidence.Rerouted = l.rerouted
 	evidence.FallbackAvailable = l.fallback
+	evidence.OutOfTime = l.outOfTime
 }
 
 // readCallFailure is what the errand ladder and every caller with one model asks
@@ -235,6 +250,43 @@ func (a *Agent) readLadderFailure(err error, model, role string, ladder transpor
 	evidence := wireEvidence(err, ladder.attempt)
 	ladder.mark(&evidence)
 	return a.readWireEvidence(evidence, model, role)
+}
+
+// weighLadder is the classification WITHOUT the record: one failure read into a
+// verdict, and nothing written down about it.
+//
+// IT EXISTS FOR ONE CALLER AND ONE REASON (loop.go). The turn's ladder cannot
+// know whether it has time for another request until it knows what the verdict
+// asks it to WAIT — and if it has not, the same failure has to be read again
+// with that fact on it. Two reads are one failure, so the line is written once,
+// afterwards, carrying the verdict that was actually acted on: a row per read
+// would make a ladder of three read as four, and the first row would name a
+// retry that never happened.
+func (a *Agent) weighLadder(err error, ladder transportLadder) (taxonomy.Verdict, taxonomy.Evidence) {
+	evidence := wireEvidence(err, ladder.attempt)
+	ladder.mark(&evidence)
+	return taxonomy.Classify(evidence, a.failureLimits()), evidence
+}
+
+// writeLadderVerdict is the other half of [Agent.weighLadder]: the journal line
+// and the wire failure against the piece of work, written once the verdict is
+// settled.
+func (a *Agent) writeLadderVerdict(verdict taxonomy.Verdict, evidence taxonomy.Evidence, model, role string) {
+	a.file.appendFailure(journalFailure{
+		Class:    string(verdict.Class),
+		Reason:   verdict.Reason,
+		Action:   string(verdict.Action),
+		Model:    strings.TrimSpace(model),
+		Role:     strings.TrimSpace(role),
+		Attempt:  evidence.Attempt,
+		Status:   evidence.Status,
+		Provider: strings.TrimSpace(evidence.Upstream),
+		Refuted:  evidence.Refuted,
+		SpentUSD: evidence.SpentUSD,
+	})
+	if verdict.Class == taxonomy.Transport {
+		a.config.failures.Wire()
+	}
 }
 
 // readWireEvidence is the last step both readings share: classify, journal, and
@@ -340,8 +392,13 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 // run ended the entire thing eighteen minutes in. An endpoint that answered
 // nothing is an endpoint that did not answer, and the answer to that is to ask
 // again.
-func (a *Agent) readEmptyReply(model string, attempt int) taxonomy.Verdict {
-	verdict := a.classify(taxonomy.Evidence{Empty: true, Attempt: attempt}, model, "")
+// AND IT IS BOUNDED BY THE CALLER'S CLOCK, NOT BY A COUNT OF EMPTY ANSWERS.
+// `outOfTime` is the turn's own give-up, spent on going nowhere; the count that
+// used to bound this was the person's `response.attempts` walked a second time,
+// under a transport already bounded by the same deadline
+// (docs/design/recovery/DESIGN.md §4).
+func (a *Agent) readEmptyReply(model string, attempt int, outOfTime bool) taxonomy.Verdict {
+	verdict := a.classify(taxonomy.Evidence{Empty: true, Attempt: attempt, OutOfTime: outOfTime}, model, "")
 	if verdict.Class == taxonomy.Transport {
 		a.config.failures.Wire()
 	}
@@ -391,8 +448,13 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 	if !terminalProviderFailure(runErr) {
 		return false
 	}
-	verdict := a.classify(wireEvidence(runErr, a.failureLimits().TransportAttempts),
-		node.runModel(), "")
+	// THE WORKER UNDER THIS HAS ALREADY SPENT WHATEVER IT HAD, which is what the
+	// boundary is being told: a run that ended on the wire ended because its own
+	// deadline did, so the reading is of a failure with nothing left rather than
+	// of the first attempt of a ladder nobody is going to walk.
+	evidence := wireEvidence(runErr, 1)
+	evidence.OutOfTime = true
+	verdict := a.classify(evidence, node.runModel(), "")
 	if verdict.Class == taxonomy.Transport {
 		// The wire failures are ALREADY on the node's tally: the worker that just
 		// died carried the same pointer and recorded every one of them as it went

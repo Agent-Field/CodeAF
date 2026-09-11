@@ -122,6 +122,11 @@ func TestOverflowGoesToTheMeteredDoorAndSaysSo(t *testing.T) {
 	if !ok || writing.Door != "pay-as-you-go" {
 		t.Fatalf("writing phase = %+v, found %t", writing, ok)
 	}
+	for _, news := range told.all() {
+		if news.Phase == PhaseRetrying || news.Phase == PhaseConnectionLost {
+			t.Fatalf("billing-door switch was narrated as recovery: %+v", news)
+		}
+	}
 }
 
 func TestOverflowCanNameASecondDoorOnTheSameHost(t *testing.T) {
@@ -187,5 +192,46 @@ func TestPlanOverflowHappensAtMostOnce(t *testing.T) {
 	}
 	if len(plan.Requests()) != 1 || len(metered.Requests()) != 1 {
 		t.Fatalf("overflow was not one-shot: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+}
+
+func TestPlanOverflowCannotRepeatAcrossARepair(t *testing.T) {
+	oldLimiter := sharedLimiter
+	sharedLimiter = newAdaptiveLimiter()
+	defer func() { sharedLimiter = oldLimiter }()
+
+	var planCalls, meteredCalls atomic.Int32
+	plan := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		planCalls.Add(1)
+		writer.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(writer, `{"code":"1316","message":"plan window exhausted"}`)
+	}))
+	defer plan.Close()
+	metered := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		meteredCalls.Add(1)
+		writer.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(writer, `{"error":{"message":"Reasoning is mandatory for this endpoint; do not send effort: none","code":400}}`)
+	}))
+	defer metered.Close()
+
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: plan.URL, Model: "plan-repair-overflow/model", Direct: true,
+		BillingDoor: "coding plan", PlanOverflow: metered.URL, PlanOverflowDoor: "pay-as-you-go",
+		OverflowOnPlanPause: true,
+		SupportsParameter:   func(string, string) (bool, bool) { return true, true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithRequiredReasoningEffort(context.Background(), EffortOff)
+	response, err := client.CompleteWithMessages(ctx, userMessages("hello"), ai.WithMaxTokens(1_000))
+	if response != nil {
+		t.Fatalf("a second overflow became an answer: %+v", response)
+	}
+	if _, ok := PlanPauseFrom(err); !ok {
+		t.Fatalf("repair re-entry ended as %T %v, want PlanPauseError", err, err)
+	}
+	if planCalls.Load() != 2 || meteredCalls.Load() != 1 {
+		t.Fatalf("repair repeated overflow: plan=%d metered=%d, want plan=2 metered=1", planCalls.Load(), meteredCalls.Load())
 	}
 }

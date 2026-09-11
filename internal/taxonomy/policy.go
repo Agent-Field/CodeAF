@@ -132,7 +132,24 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 		}
 		return Verdict{Action: ActionGiveUp, Reason: ReasonUnservable, Attempts: spent}
 	}
-	if spent < allowed {
+	// AND A CALLER WITH NO TIME LEFT HAS NOTHING TO SPEND EITHER. It is the
+	// count's replacement: the plan's deadline is what bounds a failing request
+	// now, and a caller whose deadline is gone says so
+	// ([Evidence.OutOfTime]) rather than arriving with a number that has run
+	// out. The REASON is still the failure's own — nothing about running out of
+	// time tells anybody what went wrong — which is the whole of why this is not
+	// [Evidence.Spent].
+	if e.OutOfTime {
+		if e.FallbackAvailable {
+			return Verdict{Action: ActionHop, Reason: transportReason(e), Attempts: spent, Rotate: true}
+		}
+		return Verdict{Action: ActionGiveUp, Reason: transportReason(e), Attempts: spent}
+	}
+	// AND AN ORDINARY FAILURE ASKS AGAIN FOR AS LONG AS THE CALLER HAS. `allowed`
+	// is zero for one — the deadline is what bounds it, and it arrives above this
+	// line — so a count is compared only where there really is one, which is a
+	// reply that came apart ([transportBudget]).
+	if allowed == 0 || spent < allowed {
 		return Verdict{
 			Action:   ActionRetry,
 			Reason:   transportReason(e),
@@ -162,10 +179,12 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 // transportBudget is how much of this model's budget is gone and how much it
 // had, and the two kinds of spending are the whole of it.
 //
-// A REQUEST THAT FAILED spends an ordinary attempt off [Limits.TransportAttempts]
-// — the ladder the person configured, with its doubling wait in front of each
-// rung — because a refusal, a reset or a deadline is evidence that the endpoint
-// is failing and time is the thing that mends it.
+// A REQUEST THAT FAILED SPENDS NOTHING HERE. A refusal, a reset or a deadline is
+// evidence that the endpoint is failing and TIME is the thing that mends it, so
+// what bounds asking again is the caller's own deadline and not a count kept in
+// this file (the paragraph at the foot of this comment has the measurement).
+// What is left of the old pair is the WAIT that goes in front of each rung,
+// which is [Limits.TransportBackoff] and is still the person's to lengthen.
 //
 // A STREAM THE GUARD CUT spends a shorter allowance, because it is not that
 // evidence: the request was served, at once, and the REPLY came apart. Nothing
@@ -185,28 +204,38 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 //     very often a bad draw out of a pool, and the asks after it are genuinely
 //     served by somebody else.
 //
-// The allowance is stated as a TOTAL — attempts, not retries — so that it reads
-// the same way [Limits.TransportAttempts] does and a caller comparing the two is
-// comparing like with like.
+// The allowance is stated as a TOTAL — attempts, not retries — so that a caller
+// comparing two of them is comparing like with like.
+//
+// ── AND AN ORDINARY FAILURE HAS NO ALLOWANCE HERE AT ALL ────────────────────
+//
+// It had one until 2026-09-11: `Limits.TransportAttempts`, a count of sends,
+// walked by a caller whose transport was ALREADY bounded by the plan's deadline
+// (docs/design/recovery/DESIGN.md §4). Two budgets on one axis multiply, and the
+// person could be told neither. So the deadline is the whole bound and it
+// reaches this policy the way every other fact does — as evidence: a caller
+// whose plan is spent says so ([Evidence.Spent]), which is answered above this
+// line as the hop or the ending it is. `allowed` of zero means UNBOUNDED HERE
+// and is never compared against; a cut keeps its own allowances, because those
+// count a SHAPE OF REPLY that came apart rather than a length of patience.
 func transportBudget(e Evidence, l Limits) (spent, allowed int) {
+	spent = e.Attempt
 	if e.Cut {
 		spent = e.Cuts
-		if spent < 1 {
-			spent = 1
-		}
-		switch {
-		case e.Degenerate:
-			return spent, DegenerateCutAttempts
-		case !e.Rerouted:
-			return spent, BlindCutAttempts
-		}
-		return spent, SilentCutAttempts
 	}
-	spent = e.Attempt
 	if spent < 1 {
 		spent = 1
 	}
-	return spent, l.TransportAttempts
+	if !e.Cut {
+		return spent, 0
+	}
+	switch {
+	case e.Degenerate:
+		return spent, DegenerateCutAttempts
+	case !e.Rerouted:
+		return spent, BlindCutAttempts
+	}
+	return spent, SilentCutAttempts
 }
 
 // The cut allowances. They are constants rather than [Limits] rows because the

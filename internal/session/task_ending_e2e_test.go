@@ -98,10 +98,17 @@ func TestATaskWhoseStreamResetOnceIsRetriedAndLandsDone(t *testing.T) {
 func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	completer := &routedCompleter{
 		parent: []step{proposeCall("Add the greeting", "write greet.go with a greeting"), finalText("handed off")},
-		child: []step{wireError(), wireError(), wireError(), wireError(),
-			wireError(), wireError(), wireError(), wireError(), wireError(), wireError()},
+		// LONG ENOUGH THAT THE LADDER CANNOT WALK OFF THE END OF IT. What ends a
+		// worker is the node's own give-up rather than a count of failures, so
+		// the fixture cannot be sized from one: it is sized to outlast the
+		// deadline the test's clock spends below.
+		child: repeatedStep(64, wireError()),
 	}
 	agent, graph := endingAgent(t, completer)
+	// THE LADDER IS SPENT ON THE TEST'S CLOCK. A node's give-up is four and a
+	// half minutes of wire failures now rather than a count of them, and the
+	// waits between them are what this moves ([onATestClock]).
+	onATestClock(t)
 	notice := landedNode(t, agent, graph)
 	if notice.State != TaskFailed || notice.Ending != TaskEndingWire {
 		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
@@ -109,14 +116,20 @@ func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	if !strings.HasPrefix(notice.Report, "lost the connection to the model: ") {
 		t.Fatalf("report = %q, want it to lead with the connection", notice.Report)
 	}
-	// THE LADDER WAS WALKED TWICE PER ATTEMPT, AND THE NODE GETS TWO ATTEMPTS.
-	// Two calls for the first worker and two for the second built in the same
-	// working copy is one attempt; the wire is then an ending that says nothing
-	// about the work, so the engine buys the node its one rerun from the branch
-	// before landing it (task_continue.go's [Agent.rerunsFromItsBranch]) and the
-	// second attempt spends the same four.
-	if asked := completer.seen.child; asked != 8 {
-		t.Fatalf("the model was asked %d times, want 8 (two attempts × two workers × two runs)", asked)
+	// FOUR LADDERS WERE WALKED, AND THE LENGTH OF ONE IS THE DEADLINE'S ANSWER.
+	// Two workers built in the same working copy is one attempt; the wire is
+	// then an ending that says nothing about the work, so the engine buys the
+	// node its one rerun from the branch before landing it (task_continue.go's
+	// [Agent.rerunsFromItsBranch]) and the second attempt spends the same two.
+	//
+	// The figure this used to assert was 8 — two calls per worker, because the
+	// ladder was a COUNT of two. It is a length of time now
+	// (docs/design/recovery/DESIGN.md §4), so what is checked is the structure:
+	// four ladders of equal length, each of them longer than a single call.
+	// Writing the length out here would be this test asserting the backoff
+	// schedule, which is not what it is about.
+	if asked := completer.seen.child; asked%4 != 0 || asked <= 4 {
+		t.Fatalf("the model was asked %d times, want four equal ladders (two workers × two runs), each longer than one call", asked)
 	}
 	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· lost the connection") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))

@@ -1112,8 +1112,10 @@ repeating advice already taken:
 error: nothing came back from the model in 1m30s, three times. openai/gpt-5-mini and anthropic/claude-sonnet-4 could not finish it either — /model to pick another one yourself
 ```
 
-These retries are **their own budget**. A request nobody answered is not evidence that the
-endpoint is failing, so it does not spend the three retries a real provider error gets.
+These retries are **their own budget**, and they are the only count left in the request
+path. A request nobody answered is not evidence that the endpoint is failing, so it does
+not spend the patience a real provider error gets — which is a length of time rather than a
+number of tries (see *How long aforge keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
@@ -1229,9 +1231,12 @@ conversation, and the retry starts the reply from the beginning.
 ## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
 
 A provider that answers `429` is pacing aforge, not failing. That is not an error, so the
-call waits and comes back rather than giving up: up to **six attempts** or **two minutes**,
-whichever runs out first, for a turn you are sitting in front of. Work that left the
-conversation gets far more — see *How a task actually runs*.
+call moves rather than giving up: the machine that said "not yet" is taken off the next
+request and another machine serving the same model is asked at once, for as long as the
+turn's own patience lasts — **90 seconds** for a turn you are sitting in front of. Work
+that left the conversation gets far more: four and a half minutes for a task's own call,
+nine for a standing pass. There is no count of attempts anywhere in this; see *How long
+aforge keeps trying*.
 
 Two things happen while it waits. If the refusal names *which* endpoint hit its limit —
 routers often do, when the limit is one provider's shared pool rather than your account —
@@ -1239,9 +1244,8 @@ that endpoint is avoided on every request after it, so the next attempt queues s
 else. And the wait itself is capped at a minute however long the provider asked for, so a
 provider naming tomorrow morning does not park your turn.
 
-**When that patience runs out, the refusal goes back to your turn**, which spends its own
-four tries and then moves to the next model in your `fallback models` row — the next
-section is what that looks like.
+**When that patience runs out, the refusal goes back to your turn**, which moves to the
+next model in your `fallback models` row — the next section is what that looks like.
 
 There used to be a second, quieter move here: the call itself would switch models and say
 `Retry 1/1: Falling back to openai/gpt-5-mini`. That is gone. **Your model is changed in
@@ -1253,10 +1257,12 @@ across to the new model, which the router then refused.
 With no chain to move to, you get the provider's own words and the status:
 
 ```
-error: after 6 attempts: API error (429): rate limit exceeded
+error: after 4 attempts: API error (429): rate limit exceeded
 ```
 
-That patience is the *call's* own, inside one request. What happens when the whole request
+The number in that sentence is what the call actually spent, not a ceiling it was allowed:
+there is no ceiling, only the deadline. That patience is the *call's* own, inside one
+request. What happens when the whole request
 keeps failing — several 429s in a row, a `502` between them — is the next section.
 
 ## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models

@@ -869,6 +869,7 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // and answers one whole JSON completion — and [Client.unstreamable] remembers it
 // from what actually happened, so the fallback is a memo rather than a guess.
 func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	ctx = WithPlanOverflowGuard(ctx)
 	observer := streamObserverFrom(ctx)
 	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 	if err != nil {
@@ -2143,6 +2144,7 @@ func observeToolCallForming(observer StreamObserver, session string, tools *tool
 // It mirrors the SDK's channel contract exactly so the harness's stream pump is
 // unchanged.
 func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...ai.Option) (<-chan ai.StreamChunk, <-chan error) {
+	ctx = WithPlanOverflowGuard(ctx)
 	chunks := make(chan ai.StreamChunk)
 	errs := make(chan error, 1)
 

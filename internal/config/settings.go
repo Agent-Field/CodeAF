@@ -3767,26 +3767,43 @@ const (
 // the count.
 func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 	return taxonomy.Limits{
-		TransportAttempts: ResponseAttemptsAt(profileDir),
-		TransportBackoff:  taxonomy.DefaultTransportBackoff,
-		SemanticFailures:  ResponseLiftAfterAt(profileDir),
-		TierCapUSD:        ResponseLiftCapAt(profileDir),
+		Patience:         ResponseAttemptsAt(profileDir),
+		TransportBackoff: taxonomy.DefaultTransportBackoff,
+		SemanticFailures: ResponseLiftAfterAt(profileDir),
+		TierCapUSD:       ResponseLiftCapAt(profileDir),
 	}
 }
 
 // ResponseAttemptsAt resolves N. A pin below one is nonsense — a request that is
 // never sent — and reads as the default rather than as an instruction.
-func ResponseAttemptsAt(profileDir string) int {
+//
+// ── WHAT N MEANS CHANGED, AND THE ROW DID NOT ───────────────────────────────
+//
+// It was a count of sends and it is a MULTIPLIER ON THE DEADLINE
+// (docs/design/recovery/DESIGN.md §4, [taxonomy.Limits.Patience]): `3` is three
+// times the role's own give-up — four and a half minutes on a conversation's
+// turn rather than ninety seconds — and never three identical requests. The key
+// keeps its name because the QUESTION a person is answering when they turn it is
+// unchanged: how hard should this try before it tells me it could not. What it
+// no longer buys is the one thing that never helped, which is the same bytes
+// sent again to the machine that has just refused them.
+//
+// The default is one, where it was three: three was the count this build shipped
+// with, and one is the measured give-up with nothing multiplied on top. A person
+// who had written `3` into their profile when three was the default is asking
+// for three times the patience now — which is a reading of their row this change
+// cannot avoid and says so in its change entry.
+func ResponseAttemptsAt(profileDir string) float64 {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_ATTEMPTS")); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 1 {
 			return value
 		}
-		return taxonomy.DefaultTransportAttempts
+		return taxonomy.DefaultPatience
 	}
-	if value, ok := persistedInt(profileDir, KeyResponseAttempts); ok && value >= 1 {
+	if value, ok := persistedFloat(profileDir, KeyResponseAttempts); ok && value >= 1 {
 		return value
 	}
-	return taxonomy.DefaultTransportAttempts
+	return taxonomy.DefaultPatience
 }
 
 // ResponseLiftAfterAt resolves K, the same way.
