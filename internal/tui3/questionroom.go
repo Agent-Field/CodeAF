@@ -1876,15 +1876,17 @@ func (a *app) questionRoomScroll(delta int) {
 //
 // DESIGN.md gives this two seams — "sent to the asker through ResolveQuestion's
 // AskedBack seam (E1) or the ordinary turn with the question still open" — and
-// the ordinary turn is the one that exists today: there is no engine door that
-// takes a question about a question and answers it without resolving anything.
-// So the sentence goes in as a message, the question stays up, and the reply
-// lands back on the row it was asked from ([app.questionDrainReplies]).
+// BOTH now exist. [app.askBack] is the one place that chooses between them, and
+// it chooses by asking [session.AnswerResolves] rather than by listing lanes, so
+// the page and the block cannot end up sending the same gesture two ways.
 //
-// THE ROW REMEMBERS WHERE THE TRANSCRIPT WAS. That is the whole of how the reply
-// is found: everything the model says after the sentence went in is a candidate,
-// and the first settled thing it says is the answer. Nothing is parsed and
-// nothing is guessed — a person can read both rows and see for themselves.
+// THE ROW REMEMBERS WHERE THE TRANSCRIPT WAS, down either road. That is the
+// whole of how the reply is found: everything the model says after the sentence
+// went in is a candidate, and the first settled thing it says is the answer.
+// Nothing is parsed and nothing is guessed — a person can read both rows and see
+// for themselves. The seam does not change that, because what it returns is the
+// parked call's RESULT: the model answers in its ordinary reply, in the
+// transcript, where this was already looking (tools_ask.go's `askedBackLead`).
 func (a *app) askBackCmd(part, text string) tea.Cmd {
 	room := a.qroom
 	if room == nil {
@@ -1893,7 +1895,7 @@ func (a *app) askBackCmd(part, text string) tea.Cmd {
 	if ask := room.asks[part]; ask != nil {
 		ask.after = len(a.entries)
 	}
-	return a.submit(text)
+	return a.askBack(room.head, part, text)
 }
 
 // questionDrainReplies fills in any ask-back whose answer has since arrived. It
