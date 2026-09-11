@@ -26,7 +26,7 @@ import (
 // asks for (CLAUDE.md). What can be done is this: read the other number out of
 // the tree and fail when the relationship breaks, so the day somebody raises the
 // surface's count the build says which other file has to move. The reason is
-// lane A's (#914): the constant's own doc states the constraint, names this
+// lane A's (#954): the constant's own doc states the constraint, names this
 // figure, and says which half of its own value is the rule and which half is a
 // guess.
 func TestTheEngineKeepsAtLeastAsManyReceiptsAsTheSurfaceDraws(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 kind: added
 title: an answer is a message to the conversation, so the work carries on while you decide
-pr: 914
+pr: 954
 surface: [engine, chat, remote]
 invalidates:
   - "An answer to `ask` was the return value of the call that asked, and existed for the model only while that call was parked. It is now delivered: to the call parked on it where there is one, and otherwise onto the conversation's own queue through `Agent.accept` — the same road a background job's ending takes, landing at the next step boundary or waking an idle conversation. What the model reads is one rendering either way: a sentence saying what happened (`answered · question 3 · …`) and the whole `Answer` under it. A model or a test that expected bare JSON from `ask` reads a sentence first now."

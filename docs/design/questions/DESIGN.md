@@ -308,7 +308,7 @@ for good, and both taking the offer (`recommend then go`) and declining it (`ask
 write one. Never for a shape the door itself refuses (a confirmation always asks; a
 clarification never runs on a clock), and never on irreversible stakes.
 
-**This is not built.** It was written and then taken out of #914 rather than shipped
+**This is not built.** It was written and then taken out of #954 (opened as #914, which GitHub closed with its base branch) rather than shipped
 with nothing calling it: the dim line on the receipt and its keys are the surface's, and
 that surface reads no decision record yet — so the whole of it would have been a
 function nobody could reach. Two things it needs when somebody builds it: the record
