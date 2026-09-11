@@ -192,6 +192,11 @@ const (
 	// reads ([questionAxes]). THE EMPTINESS LAW: `x` on a question with nothing
 	// to compare would open a table with no rows in it.
 	needCompare
+	// needBeside is a page drawn as two panes with the pointer on an answer and
+	// the arrows still the list's: `→` has a pane to move into.
+	needBeside
+	// needReading is the arrows handed to the evidence pane (`→`).
+	needReading
 	// needScope is a question that offered more than one LIFETIME for its answer
 	// and can be taken back (questionscope.go). A question with one lifetime has
 	// nothing to cycle, and an irreversible one is asked every time.
@@ -264,6 +269,12 @@ const (
 	// [questionWalkKey]'s reason: `shift+↑↓ order them` is one affordance. The
 	// routing reads `shift+up` and `shift+down` individually.
 	questionOrderKey = "shift+↑↓"
+	// questionDetailKey and questionAnswersKey are the page's two side arrows
+	// SPELLED ALONE, for [questionBackKey]'s reason: on a page of two panes `→`
+	// goes into the evidence and `←` comes back out, which are two different
+	// acts rather than one pair. The routing reads `right` and `left`.
+	questionDetailKey  = "→"
+	questionAnswersKey = "←"
 )
 
 // questionKeys IS THE TABLE. Order is the order the answers row prints them in,
@@ -394,12 +405,18 @@ var questionKeys = []questionVerb{
 	// [needMoves] states: `pick` walks a cursor between two answers and `move it`
 	// changes the answer itself, and the two are never true at once.
 	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves, tier: keyPrimary},
-	// INSIDE THE ROOM `o` OPENS AN ANSWER RATHER THAN THE PAGE, which is why it
-	// is a second row rather than a second word: `[o] open it` on a card is a
-	// promise about a page, and repeating that promise on the page itself would
-	// be an offer to go where somebody already is. It is the first thing a narrow
-	// row gives up, because every answer already wears its own ▸/▾.
-	{key: questionOpenKey, word: "open this answer", forms: formsRoom, needs: needOptions, giveUp: 9},
+	// THE PAGE'S SIDEWAYS WALK (questionpage.go). `→` hands the arrows to the
+	// evidence beside the list, so a diagram taller than the page is read to its
+	// end; while they are the pane's, `↑↓` scroll it and `←` hands them back.
+	// They are rows of their own rather than second words on the walk for the
+	// reason [needMoves] states: `choose` moves a pointer and `scroll` moves a
+	// window, and a row that said one while the keys did the other is the defect
+	// a key row exists to prevent. `→` is offered only where there IS a pane
+	// beside the list — a page of one column unfolds the evidence under the
+	// pointer and has nothing to move into.
+	{key: questionDetailKey, word: "detail", forms: formsRoom, needs: needBeside, tier: keyPrimary, giveUp: 3},
+	{key: questionWalkDownKey, word: "scroll", forms: formsRoom, needs: needReading, tier: keyPrimary},
+	{key: questionAnswersKey, word: "back to the answers", forms: formsRoom, needs: needReading, tier: keyPrimary},
 }
 
 // ── the one key row ─────────────────────────────────────────────────────────
@@ -599,10 +616,14 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		// EVERY QUESTION WITH ANSWERS HAS A POINTER AND ENTER TAKES IT
 		// ([questionPointerStart]); a question with none written down offers
 		// enter only when the asker recommended something.
-		if room := a.qroom; room != nil && room.head.token() == q.token() {
-			// THE ROOM'S ENTER SENDS WHAT THE ROOM HAS PICKED, and its foot
-			// says `nothing chosen yet` until something is; enter is offered
-			// there only when there is something for it to send.
+		if room := a.questionPageOf(q); room != nil {
+			// THE PAGE'S ENTER SENDS WHAT ITS FOOT SAYS ([app.questionRoomSends]),
+			// and is offered only where that is something. A shape is sent
+			// whole when it reads right, and says so in the foot instead.
+			if room.input.kind == session.InputNone {
+				keys, words := a.questionRoomSends()
+				return len(keys) > 0 || words != ""
+			}
 			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
 		}
 		if q.question.Input.Kind == session.InputText {
@@ -627,7 +648,19 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	case needDial:
 		return q.question.Kind != "" && q.question.Asker.Kind != session.AskerSurface &&
 			a.questionOffers(q, needHands)
+	case needBeside:
+		room := a.questionPageOf(q)
+		return room != nil && !room.reading && room.focus < len(q.question.Options) &&
+			a.questionRoomBeside(a.bodyWidth())
+	case needReading:
+		room := a.questionPageOf(q)
+		return room != nil && room.reading
 	case needWalk:
+		// WHILE THE ARROWS ARE THE EVIDENCE PANE'S they scroll it, and the row
+		// that says so is [needReading]'s.
+		if room := a.questionPageOf(q); room != nil && room.reading {
+			return false
+		}
 		// Every question with answers has the pointer ([questionPointerStart]);
 		// a checklist walks its own ticks with the same keys and says so on
 		// its `next row` line instead, and where `←→` move a hole
@@ -684,6 +717,16 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return false
 	}
 	return true
+}
+
+// questionPageOf is the page, where the page is open over THIS question, and nil
+// everywhere else — a condition about the page's pointer is a condition about
+// no other drawing of the question.
+func (a *app) questionPageOf(q questionShown) *questionRoom {
+	if room := a.qroom; room != nil && room.head.token() == q.token() {
+		return room
+	}
+	return nil
 }
 
 // questionHandsOnly reports whether this is a decision NOBODY BUT A PERSON MAY

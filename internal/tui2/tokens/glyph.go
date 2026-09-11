@@ -101,6 +101,12 @@ const (
 	GlyphFrameBottomRight = "╯"
 	GlyphFrameEdge        = "─"
 	GlyphFrameSide        = "│"
+	// The two junctions are where a frame's rule meets the seam between two
+	// panes laid side by side (internal/tui3/panes.go): the rule above the panes
+	// drops into the seam and the rule below closes it. They are the same
+	// geometry as the rest of the frame, so they are drawn at the same floor.
+	GlyphFrameTeeDown = "┬"
+	GlyphFrameTeeUp   = "┴"
 
 	// GlyphTarget is WHERE THE NEXT THING GOES, and it is the one mark in this
 	// vocabulary about a destination rather than about a state. Home's rule wears
@@ -430,6 +436,8 @@ func Glyphs() []GlyphInfo {
 		{"FrameBottomRight", GlyphFrameBottomRight, '╯', true},
 		{"FrameEdge", GlyphFrameEdge, '─', true},
 		{"FrameSide", GlyphFrameSide, '│', true},
+		{"FrameTeeDown", GlyphFrameTeeDown, '┬', true},
+		{"FrameTeeUp", GlyphFrameTeeUp, '┴', true},
 		{"Target", GlyphTarget, '→', true},
 		{"Truncated", GlyphTruncated, '⋯', false},
 		{"Ellipsis", GlyphEllipsis, '…', true},
