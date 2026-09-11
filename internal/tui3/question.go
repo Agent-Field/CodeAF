@@ -2300,9 +2300,12 @@ func questionDropClause(clauses []session.DecisionClause) ([]session.DecisionCla
 // surface raised about itself. There is no third path and no place that knows
 // what "yes" means twice.
 //
-// A REFUSED ANSWER LEAVES THE QUESTION OPEN. The engine's door returns an error
-// for an answer that names nothing and for a lane it does not take; neither is
-// a decision, so neither closes anything and neither writes a receipt.
+// A REFUSED ANSWER LEAVES THE QUESTION OPEN, AND SAYS SO. The engine's door
+// returns an error for an answer that names nothing and for a lane it does not
+// take; neither is a decision, so neither closes anything and neither writes a
+// receipt. Swallowing that sentence was the other half of the measured defect:
+// the engine applied the key, this window was told the connection was gone,
+// and nothing on screen said so.
 func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 	answer.Kind = q.question.Kind
 	answer.ID = q.question.ID
@@ -2363,6 +2366,12 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 		// decides which run it happens on.
 		a.markQuestionSent(q.token(), answer.Keys())
 		if err := door.ResolveQuestion(answer); err != nil {
+			// A REFUSED ACT IS SAID IN THE DOOR'S OWN WORDS. [app.note] is the
+			// same door every other refused act on this surface uses — rewind,
+			// autonomy, a connect, a permission — so a question does not grow
+			// a second composer. The words are the engine's; this surface does
+			// not invent a sentence around them.
+			a.note(err.Error())
 			return nil
 		}
 	}

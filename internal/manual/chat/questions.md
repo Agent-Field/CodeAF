@@ -171,7 +171,7 @@ The page draws only questions belonging to the conversation you are in — a tas
 from another conversation wearing the same number shows its record and no
 question; open that conversation to answer.
 
-## Answer from home or another window
+## Answer from home or another window, or over --host
 
 Home lists what a conversation is waiting on and lets you answer it there, and so
 does another window on the same machine. **The keys are the ones that question
@@ -183,9 +183,9 @@ Every lane can be answered this way, not a chosen few: the session leaves the
 whole question in the file another window reads, and the answer goes back through
 the one door that knows which lane it belongs to.
 
-A window attached over `--host` draws a question the far machine raises, but
-cannot yet answer one — answering across the link is not built (see *What is not
-built yet*). Answer it in a window on the machine holding the conversation.
+A window attached over `--host` answers the same way a local one does: the key
+crosses to the engine that owns the work, and a refusal comes back in that
+engine's own words. See *The answer I pressed was refused*.
 
 ## The row on home shows the question but my key does nothing over it
 
@@ -213,6 +213,25 @@ both lines stay on screen and one sentence says which counted:
 
 Nothing is merged. A later answer than that is simply late; it is ignored, and
 nothing is said about it.
+
+## The answer I pressed was refused, or the engine did not answer in time
+
+An answer the engine turned down is said on screen in the engine's own words —
+the work finished, somebody else answered first, the conversation moved.
+Nothing is invented here. The question stays open unless the news of a
+decision arrives afterwards.
+
+If the connection is still up but this window did not hear back, it says:
+
+```
+the engine did not answer in time
+```
+
+or, when the machine has a name, `devbox did not answer in time`. That is not
+the connection dying. The engine may already have taken the answer; the
+receipt still closes as yours when the news arrives. The connection itself
+says `the connection to <machine> is gone` only when the link has actually
+dropped — see *when the connection drops*.
 
 ## It asked while I was away
 

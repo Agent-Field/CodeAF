@@ -163,8 +163,8 @@ The rest of what you should know about sharing one:
 
 - **A question is answered once.** Say yes to a permission card on the phone and the
   conversation has its answer. A second window may still have that card drawn, but
-  pressing it decides nothing — a late answer to a question that has been settled is
-  dropped, which is what the same card does locally when a turn has moved on.
+  pressing it decides nothing — the engine's own refusal is said on screen, which is
+  what the same card does locally when a turn has moved on.
 - **Ending the conversation ends it for everybody.** Quitting deliberately closes the
   conversation and flushes the file, and that is a statement about the conversation rather
   than about your window. Simply closing a window — or losing its connection — leaves
