@@ -87,6 +87,17 @@ func TestCleanTaskNameCutsToThreeWordsAndRefusesWhatIsNotAName(t *testing.T) {
 		{"", ""},
 		{"   ", ""},
 		{"/var/folders/j7/59f75dnd", ""},
+		// THE OBSERVED ANSWERS OF #942. A reasoning namer answered its plan instead
+		// of a label, and the reader used to take the first three words of it. A
+		// sentence about the speaker or the plan is refused BY ITS SHAPE and at ANY
+		// LENGTH — the refusal runs before the cut to three words, so the cut can
+		// never manufacture a label out of the front of a sentence.
+		{"I'll start by creating the four bakery landing pages one at a time.", ""},
+		{"Let me first look at the brief.", ""},
+		{"First, I will write the four pages.", ""},
+		{"I will write the four pages.", ""},
+		{"We'll begin with the first page.", ""},
+		{"Okay so first we look at the brief.", ""},
 	} {
 		if got := cleanTaskName(c.raw); got != c.want {
 			t.Errorf("cleanTaskName(%q) = %q, want %q", c.raw, got, c.want)
