@@ -462,7 +462,10 @@ field in an answer aforge was already paying for and already waiting on.
 all — only the sentence it was started from: a `/task` whose shaping could not run, work
 that started on its own after a words-only turn, an adaptive run's own row. That title is
 handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
-Empty replies, instruction echoes and placeholders such as `nothing to name` are refused.
+Empty replies, instruction echoes and placeholders such as `nothing to name` are refused. An answer
+that is a sentence about what the model is about to do — `I'll start by …`, `Let me first …`,
+`First, I will …` — is refused too: a name is a label for the work, not the front of a plan, so
+the row keeps the fallback instead of being titled after somebody's opening words.
 The next configured naming model may answer within the same time limit; if it cannot,
 the existing fallback stays. A previously saved placeholder such as `nothing to name`
 is named again from its saved brief when you reopen the conversation; the work itself
