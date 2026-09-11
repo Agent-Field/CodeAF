@@ -146,10 +146,11 @@ func TestTheCallClassKeepsAKeystrokeOffTheReader(t *testing.T) {
 	if !staysOnReader(MethodSubmit) || !staysOnReader(MethodCompact) || !staysOnReader(MethodSetModel) {
 		t.Fatal("a stream or a shape change left the reader")
 	}
-	if deadlineFor(MethodTranscript) != callDeadline {
-		t.Fatalf("a getter waited %s, want %s", deadlineFor(MethodTranscript), callDeadline)
-	}
-	if deadlineFor(MethodQuestionResolve) != actDeadline {
-		t.Fatalf("an act waited %s, want %s", deadlineFor(MethodQuestionResolve), actDeadline)
+	// AND AN ACT IS NOT A CLASS OF ITS OWN ON THE CLOCK, which is a law with a
+	// measurement behind it (callclass.go): a longer window for a keystroke buys
+	// a terminal that stops drawing, because the question block asks its door
+	// from the update loop. Both classes leave the reader; neither waits longer.
+	if classify(MethodQuestionResolve) != classAct || classify(MethodTranscript) != classGetter {
+		t.Fatal("the two off-reader classes are no longer told apart")
 	}
 }

@@ -49,14 +49,15 @@ import (
 // delivered and never move the cursor. A client must not go quiet because the
 // far end declined to count.
 //
-// EVERY CALL HAS A DEADLINE, AND THE CLASS DECIDES WHICH AND WHAT IT MAY SAY.
-// The surface asks getters from its update loop — Model, Usage, ContextTokens,
-// Title — and an update loop that blocks is a terminal that has stopped
-// repainting, so those wait [callDeadline]. A person's small act waits
-// [actDeadline], which is longer for the reason written where that constant is.
-// [classify] is the one predicate. A pipe whose far end died without closing
-// (a laptop that slept, a network that went away) would hang there forever, so
-// a call that has waited its class's window gives up.
+// EVERY CALL HAS ONE DEADLINE, AND IT IS SHORT BECAUSE OF WHERE IT IS ASKED
+// FROM. The surface asks these from its update loop — Model, Usage,
+// ContextTokens, Title, and a person's keystroke on a question too — and an
+// update loop that blocks is a terminal that has stopped repainting. That is
+// true of an act as much as of a getter, which is why an act does not get a
+// longer window than a getter and why callclass.go states the measurement that
+// settled it. A pipe whose far end died without closing (a laptop that slept, a
+// network that went away) would hang there forever, so a call that has waited
+// [callDeadline] gives up.
 //
 // AND GIVING UP IS NOT THE CONNECTION DYING, WHICH IS THE HALF THIS FILE USED
 // TO GET WRONG. A deadline that ran out answered with [Client.gone] — "the
@@ -74,7 +75,7 @@ import (
 // surface asks Model() on frames it repaints, so a measurement there would have
 // doubled the cost of drawing a status line.
 
-// callDeadline is how long a getter waits for its result. See the law above.
+// callDeadline is how long any one call waits for its result. See the law above.
 const callDeadline = 10 * time.Second
 
 // taskCallDeadline is the shaper's own bounded wait plus room for the two wire
@@ -950,7 +951,7 @@ func (c *Client) bury(cause error) {
 
 // call is one round trip: a frame out, a result back, or the class's deadline.
 func (c *Client) call(ctx context.Context, method string, args any) (json.RawMessage, error) {
-	return c.callWithin(ctx, method, args, deadlineFor(method))
+	return c.callWithin(ctx, method, args, callDeadline)
 }
 
 func (c *Client) callWithin(ctx context.Context, method string, args any, deadline time.Duration) (json.RawMessage, error) {
