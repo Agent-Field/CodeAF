@@ -296,7 +296,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly (\"Mondays at 9am\"), never cron: the card quotes it."},` +
 	`"cost_words":{"type":"string","description":"A limit they named — money, or how many runs — in their words: \"no more than 3 a day\". A rail sent without it is dropped; omit when they named none."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence; the card then asks."},` +
-	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"Reach: this chat, every conversation and task here, or everything on this computer. Only from their scope words (\"just this chat\", \"everywhere\"); omit otherwise."},` +
+	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"conversation: this chat. project: every conversation and task here. machine: everything on this computer. Only from their scope words: \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine; omit otherwise."},` +
 	`"title":{"type":"string","description":"Three or four words for a narrow row (\"weekly update\")."},` +
 	`"grant":{"type":"string","description":"Only when they said it: what acting on this may do unasked, in their words (\"open a pull request but never merge it\"). Without it, it may only tell them."},` +
 	`"id":{"type":"string"}` +
