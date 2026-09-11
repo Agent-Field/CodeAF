@@ -763,7 +763,9 @@ edit, which is the same revision.
 A `--watch` order reads the files its glob matches on every pass. `*` stays inside one
 folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
-followed). A watch that reaches more than **10000** files and folders is refused when
+followed). Braces are not expanded, so `{inbox/*,notes/*}` is refused (`… uses braces,
+which a watch does not expand …`): watch a folder both are under, or set up one order for
+each. A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
 watch reads every one of them on every pass; watch a narrower pattern`. **The baseline is
 taken the moment you say yes** (or `add` runs, or `edit` changes the pattern): each file's

@@ -93,6 +93,12 @@ func watched(workspace, glob string) ([]string, error) {
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(workspace, pattern)
 	}
+	// BRACES ARE NOT EXPANDED, SO THEY ARE REFUSED. `{inbox/*,notes/*}` reads
+	// as those characters and matches nothing, and a watch that can never fire
+	// says nothing about it (the live one-path case, 2026-09-11).
+	if strings.Contains(glob, "{") && strings.Contains(glob, ",") && strings.Contains(glob, "}") {
+		return nil, fmt.Errorf("standing: the pattern %q uses braces, which a watch does not expand — watch one pattern: a folder both are under with a whole ** segment, or one order for each folder", glob)
+	}
 	segments := strings.Split(filepath.ToSlash(pattern), "/")
 	for _, segment := range segments {
 		if _, err := filepath.Match(segment, ""); err != nil {
