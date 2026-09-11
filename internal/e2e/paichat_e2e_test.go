@@ -934,6 +934,9 @@ func scenLifecycle(c *cv) {
 	if cur.ID != item.ID {
 		c.note("the edit made a new item %s; stop follows it", cur.ID)
 	}
+	// Ruling R1: stand op edit revises the SAME item, as the terminal's edit
+	// does, rather than a stop and a fresh card.
+	c.expect([]string{"X2", "J02"}, "edit-revised-the-same-item", cur.ID == item.ID && cur.SpecRevision > item.SpecRevision, c.describe(cur))
 	item = cur
 
 	// ── stop ─────────────────────────────────────────────────────────────
