@@ -194,38 +194,67 @@ Recorded and not ruled on: total spend $0.0372 → $0.0085, summed cell wall 947
 `TestQuestionsE2E/ASentenceWithHolesIsFilledIn` fails on **both** sides — a
 pre-existing red on `dev`, not this wave's, and not a regression.
 
-Two are regressions, and **neither was visible in layer C**:
+One is a regression and one was flake, and **neither was visible in layer C**.
+Each was rerun twice more a side before either word was used — #176's rule, and
+the reason this section now reads differently from the draft that first landed
+here.
 
-- **`TestTUIE2E/space_in_the_task_room_pages_the_card`** — passed on `dev` in
-  71.7s, failed on the diet in 249.3s. The trace says why and it is not the
-  feature the subtest is named for: the task landed
-  `your call · landed 1m ago · ran 2m 8s` where on `dev` it landed
-  `done · landed moments ago · ran 10s`, so two 30-second waits ahead of the
-  paging assertion blew before the thing under test was ever reached. Twelve
-  times slower and escalating to `your call` where it used to finish is a
-  behaviour difference; it may equally be the model taking a different road on a
-  nondeterministic flash model.
-- **`TestQuestionsE2E/TheOrdinaryRoadCarriesAQuestionAndItsAnswer`** — passed on
-  `dev`, failed on the diet asserting `the screen never said " · you · "`. The
-  captured screen says `· another window ·` in that position — and contains
-  `· you ·` elsewhere in the same dump — while the road itself plainly worked:
-  `They picked "delete it" (key 1). The build directory will be deleted.` This
-  is a **person-facing string**, which makes it lane I's neighbourhood (the
-  attribution row) rather than a byte-cut anywhere, and it may be a frame race
-  rather than a respelling.
+**`TestTUIE2E/space_in_the_task_room_pages_the_card` — CLEARED, it was flake.**
+It failed once on the diet (249.3s against dev's 71.7s) because the task landed
+`your call · landed 1m ago · ran 2m 8s` where dev's landed
+`done · landed moments ago · ran 10s`, so two 30-second waits blew before the
+paging assertion was ever reached. On two further runs a side it passed 2/2 on
+both. The model took a slow road once on a nondeterministic flash model; the
+build did not change. **That is what a single red on a live-model suite is worth
+on its own, and it is why the repeats are not optional.**
 
-**Both are candidates, not verdicts.** One red on a suite that drives a real
-model against a real provider is not yet a regression, and this bench's own rule
-is #176's: reproduce it, do not rerun it in isolation and move on. Two more runs
-a side of each are queued (`~/bench-diet-repeat.sh`, results at
-`~/bench-diet-out/repeat-<name>-<side>-<n>.log`).
+**`TestQuestionsE2E/TheOrdinaryRoadCarriesAQuestionAndItsAnswer` — CONFIRMED.**
+3/3 pass on the `dev` baseline, 3/3 fail on the diet, the same assertion and the
+same wrong word every time: `questions_e2e_test.go:1021`, *the answer crossed
+back and was recorded: the screen never said " · you · "*. The decided row reads
+
+```
+decided delete the build directory? → delete it · another window · 19:29 · c change
+```
+
+where the baseline puts `· you ·`. The question road itself works — the answer
+crosses back and is recorded, and the reply says `They picked "delete it"
+(key 1)`. What changed is the **attribution**: a person who answered their own
+question in their own window is told somebody else did. That is not cosmetic,
+and it is `internal/exec/linear.go` and the attribution row rather than a
+byte-cut anywhere on the page.
+
+**It did NOT reach `dev`, and that was checked rather than assumed.** The
+confirmation above is against `prompt-diet/integrate` at `2a90be7e8`. The same
+subtest against `dev` at `c9f24f2b6`, after the wave merged as #844, passes
+**3/3** — so whatever spelled the decided row `· another window ·` on the
+integration branch was fixed before the merge landed. The finding stands as a
+record of what the bench caught and where; there is nothing to fix on the trunk.
+
+### What the draft that landed here got wrong
+
+The first version of this section said both subtests were regressions, and said
+the failing screen "contains `· you ·` elsewhere in the same dump" and might
+therefore be a frame race. **Neither is true**, and the correction matters in
+both directions.
+
+The task-room red was flake and would have cost somebody a day hunting a
+behaviour change that never happened. And the `· you ·` "elsewhere in the dump"
+was the **test's own error text** — `never said " · you · "` — being counted as
+though it were screen content. The screen carries `· another window ·` twice and
+`· you ·` nowhere, which makes that finding stronger rather than weaker: there
+is no race, the word is simply wrong.
+
+Both errors came from reading a grep count instead of the lines it matched. It
+is the same shape as the 94% figure in §1b, one layer up.
 
 ### The ruling
 
-**Parity: NO.** Two subtests that pass on `dev` fail on the diet — both in layer
-B, neither reachable by any cell in layer C. That is the whole reason layer B is
-in this bench, and it is the reason a wave cannot be signed off on the cells
-alone.
+**Parity: NO — on one subtest, confirmed over three runs a side.**
+`TestQuestionsE2E/TheOrdinaryRoadCarriesAQuestionAndItsAnswer` passes on the
+baseline and fails on the diet, every time, on an attribution string. It is
+reachable from no cell in layer C, which is the whole reason layer B is in this
+bench and the reason a wave cannot be signed off on the cells alone.
 
 **Efficiency: yes.** Median prompt tokens per turn 17,815 → 13,962, −21.6%, with
 every layer-C outcome equal or better.
