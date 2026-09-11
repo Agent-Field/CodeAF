@@ -516,11 +516,7 @@ func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 		}
 		return line
 	case modelsource.OutcomeAccountCannotPay:
-		line := service + " accepted the key but the account cannot pay"
-		if said := truncateVendorWords(outcome.VendorSaid, 120); said != "" {
-			line += " — " + said
-		}
-		return line
+		return serviceCannotPayWord(service, outcome.VendorSaid)
 	case modelsource.OutcomeUnanswered:
 		return service + " did not answer · nothing was saved"
 	case modelsource.OutcomeWrongShape:
@@ -537,6 +533,34 @@ func serviceConnectedWord(service string, outcome modelsource.Outcome) string {
 		return line
 	}
 	return line + " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+}
+
+// serviceCannotPayWord is the ONE sentence for an authenticated account with no
+// funds, and it is shared by the two moments a person meets it: the connect
+// row, and a turn that a vendor refused for the same reason.
+//
+// IT NAMES THE SERVICE AND NEVER THE STATUS. `error: API error (429): …` is
+// what the turn drew before this existed — three pieces of machinery vocabulary
+// on a line a person reads, and a number that tells them nothing they can act
+// on. The vendor's own words are the only part that says what to do, and they
+// go through verbatim.
+func serviceCannotPayWord(service, vendorSaid string) string {
+	line := strings.TrimSpace(service) + " accepted the key but the account cannot pay"
+	if said := truncateVendorWords(vendorSaid, 120); said != "" {
+		line += " — " + said
+	}
+	return line
+}
+
+// serviceWordFor is the name a person calls the service that serves model —
+// its written segment, and the default service's own name for an unqualified
+// id. Empty only when no service can be resolved at all.
+func (a *app) serviceWordFor(model string) string {
+	if a.sources.Empty() {
+		return ""
+	}
+	service, _ := a.sources.For(model)
+	return strings.TrimSpace(service.Source.Written)
 }
 
 func serviceAnsweringWord(service string) string {

@@ -5186,7 +5186,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// arithmetic and the provider's sentence, one inside the other, with
 		// nothing in it that reads as an ending. [feed.failureNote] composes it
 		// from the tries this page watched go past.
-		a.note(a.failureNote(ev.Err))
+		a.note(a.failureNote(ev.Err, a.serviceWordFor(a.model)))
 		// A turn that failed still paid for the steps it took, and its cache
 		// reads are as real as a completed turn's.
 		a.cacheNote(ev.Usage)
