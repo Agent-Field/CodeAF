@@ -110,18 +110,20 @@ import (
 // graph read the other's visible memory as covering part of its own — and both
 // are issue #907.
 //
-// So THE COUNT THIS FILE IS HANDED IS THE PROCESS'S, NEVER ONE GRAPH'S. Both
+// So THE COUNT THIS FILE IS HANDED COVERS EVERY LANE THE READING DOES, never
+// one graph's. Both
 // halves of `share = visible / running` and of `running × footprint − visible`
 // are then read over the same population: every lane the process is running,
 // and every byte the process holds above rest. Another conversation's build is
 // counted as exactly what it is — memory held by lanes — against a divisor
 // that already counts the lanes holding it, and no conversation can move
-// another's per-node weight. The count comes from [laneAccount], which every
-// `TaskGraph.running` mutation writes through one door
+// another's per-node weight. The count comes from [TaskLanes] — one account,
+// handed to every conversation the process opens ([Config.TaskLanes]) and
+// written by every `TaskGraph.running` mutation through one door
 // ([TaskGraph.takeLaneLocked], [TaskGraph.giveLaneLocked]). There is no clamp
 // to a fraction of MemTotal, no timer decay and no per-graph correction,
-// because the attribution gap is a fact about the process and the process is
-// where it is closed.
+// because the attribution gap is a fact about the machine the reading is of,
+// and the account is kept where that machine is known.
 
 const (
 	// taskPressureTTL bounds how often the host is asked. Load average is a
@@ -208,26 +210,36 @@ type admissionGovernor struct {
 	peakShareMB int
 }
 
-// laneAccount is THE PROCESS'S COUNT OF RUNNING LANES, and the one divisor the
-// governor's reading is shared over. Every task graph in the process writes
-// its own starts and hand-backs into one of these, so the count beside a
-// reading of the whole process tree is drawn from the same population the
-// reading is (#907).
+// TaskLanes is THE COUNT OF RUNNING LANES ON ONE MACHINE, and the one divisor
+// the governor's reading is shared over. Every task graph that belongs to the
+// same running aforge writes its own starts and hand-backs into one of these,
+// so the count beside a reading of the whole process tree is drawn from the
+// same population the reading is (#907).
+//
+// WHICH GRAPHS SHARE ONE IS SAID, NOT ASSUMED. The process's own door builds
+// one and hands it to every conversation it opens ([Config.TaskLanes]); a graph
+// given none is alone in its process and keeps one of its own ([newTaskGraph]).
+// A package-level variable would have been the same claim made silently, and it
+// is a claim no library can make for its caller — a test binary is one process
+// and a hundred unrelated machines.
 //
 // It is one mutex and one int, and that is the whole design. IT IS THE
 // INNERMOST LOCK here: every caller either holds a graph's lock already or
 // holds nothing, and nothing inside it calls back out, so it cannot be half of
 // a cycle. It is nil-safe throughout, because a graph assembled field by field
 // in a test has no account and a count of nothing is the truth about it.
-type laneAccount struct {
+type TaskLanes struct {
 	mu sync.Mutex
 	n  int
 }
 
-func newLaneAccount() *laneAccount { return &laneAccount{} }
+// NewTaskLanes builds the account one machine's conversations share. The door
+// that opens conversations builds one for the life of the process and puts it
+// on every [Config] it hands out.
+func NewTaskLanes() *TaskLanes { return &TaskLanes{} }
 
 // take records one lane taken anywhere in the process.
-func (a *laneAccount) take() {
+func (a *TaskLanes) take() {
 	if a == nil {
 		return
 	}
@@ -237,7 +249,7 @@ func (a *laneAccount) take() {
 }
 
 // give records one lane handed back anywhere in the process.
-func (a *laneAccount) give() {
+func (a *TaskLanes) give() {
 	if a == nil {
 		return
 	}
@@ -250,7 +262,7 @@ func (a *laneAccount) give() {
 
 // running is how many lanes the whole process is running, which is the
 // divisor the visible half is shared over.
-func (a *laneAccount) running() int {
+func (a *TaskLanes) running() int {
 	if a == nil {
 		return 0
 	}
@@ -258,13 +270,6 @@ func (a *laneAccount) running() int {
 	defer a.mu.Unlock()
 	return a.n
 }
-
-// taskLanes is the process's own account, and every graph a session builds
-// takes it ([newTaskGraph]). One variable, because the process is one: tabs
-// share the binary, so they share the tree every reading measures and must
-// share the count it is divided by. A test that wants a process of its own
-// states one instead.
-var taskLanes = newLaneAccount()
 
 // newAdmissionGovernor builds the gate over the real host, and returns nil
 // when both halves are off — a governor with nothing to check is not a

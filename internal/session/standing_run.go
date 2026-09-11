@@ -884,6 +884,9 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 	// this firing leaves behind lands.
 	graph.limit = cfg.TaskParallel
 	graph.governor = newAdmissionGovernor(cfg.TaskMaxLoad, cfg.TaskMinFreeMB)
+	if cfg.TaskLanes != nil {
+		graph.lanes = cfg.TaskLanes
+	}
 	graph.store = newTaskStore(taskCheckpointPath(cfg.SessionFile))
 	graph.run = graph.runOwned
 	graph.report = graph.reportHome

@@ -316,13 +316,24 @@ conversation's build read here as that build over *this* conversation's node
 count — and the measured footprint only rises, so one such reading narrowed
 every later fan in this conversation for the rest of the session. The same gap
 ran the other way on the reservation, each graph reading the other's visible
-memory as covering part of its own. Both close with `laneAccount` in
-`task_pressure.go`: one int, written by every graph in the process through the
-one door every `TaskGraph.running` mutation now goes through
-(`takeLaneLocked`/`giveLaneLocked`), read back by `TaskGraph.lanesTaken` for
-`observe` and by `holdOnStartingLocked` for `admits`. No clamp to a fraction of
-`MemTotal`, no timer decay and no per-graph correction: the gap was a fact about
-the process, so the account is the process's.
+memory as covering part of its own. Both close with `session.TaskLanes`: one mutex and one int,
+written by every graph through the one door every `TaskGraph.running` mutation
+now goes through (`takeLaneLocked`/`giveLaneLocked`), read back by
+`TaskGraph.lanesTaken` for `observe` and by `holdOnStartingLocked` for `admits`.
+No clamp to a fraction of `MemTotal`, no timer decay and no per-graph
+correction.
+
+**Which graphs share one is said, not assumed.** `cmd/aforge`'s `v3OpenSession`
+— the one door every conversation is built through, launch, relaunch, `/new`
+and `/resume` — builds one account for the life of the process and puts it on
+every `session.Config` it hands out; `Agent.graph` and `standingWideWork` read
+it off the config. A graph handed none is **alone in its process** and keeps an
+account of its own (`newTaskGraph`), which is the truth about an embedder with
+one conversation and about every scripted graph in the tests. A package-level
+variable would have been the same claim made silently, and it is a claim a
+library cannot make for its caller: a test binary is one process and a hundred
+unrelated machines, and a lane one scene left running would have narrowed the
+next scene's fan.
 `TestEveryLaneMovesThroughTheOneDoor` (`go/ast`, so it is on the pull-request
 gate) is what keeps there being one door, and the two graphs of
 `task_pressure_account_test.go` are the scene itself.

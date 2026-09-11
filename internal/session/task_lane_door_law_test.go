@@ -22,7 +22,7 @@ var theLaneDoor = map[string]string{
 // COUNTS IN STEP.
 //
 // Two numbers say how much work is running: this graph's, which the person's
-// task.parallel cap is measured against, and the process's ([laneAccount]),
+// task.parallel cap is measured against, and the process's ([TaskLanes]),
 // which the machine reading is divided by — and the reading is of the whole
 // process tree, so a start written to one and not the other is exactly the
 // attribution gap #907 closed. It was open in the first place because there

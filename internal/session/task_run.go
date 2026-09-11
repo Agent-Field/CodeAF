@@ -989,14 +989,15 @@ type TaskGraph struct {
 	order   []uint64
 	seq     uint64
 	running int
-	// lanes is THE PROCESS'S account of running lanes, which this graph shares
-	// with every other graph in the process ([taskLanes]) and writes through
+	// lanes is the account of running lanes this graph shares with every other
+	// graph of the same running aforge ([Config.TaskLanes]), written through
 	// [TaskGraph.takeLaneLocked] and [TaskGraph.giveLaneLocked]. The governor's
 	// reading is of the whole process tree, so the count it divides that
-	// reading by has to be the whole process's too (task_pressure.go's ONE
-	// ACCOUNT FOR THE WHOLE PROCESS, #907). It is nil on a graph a test
-	// assembled field by field, and the account is nil-safe for exactly that.
-	lanes *laneAccount
+	// reading by has to cover the same work (task_pressure.go's ONE ACCOUNT FOR
+	// THE WHOLE PROCESS, #907). A graph that was handed none gets one of its
+	// own from [newTaskGraph] and is alone in its process, which is the truth
+	// about a lone embedder and about every scripted graph in the tests.
+	lanes *TaskLanes
 
 	// quickGate serialises the ADMISSION of quick nodes, and it is the one lock
 	// in this file that is not `mu` (task_quick.go).
@@ -1181,9 +1182,12 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 }
 
 func newTaskGraph() *TaskGraph {
-	// EVERY GRAPH THIS PROCESS BUILDS SHARES ONE ACCOUNT, because the machine
-	// reading they are all judged against is one reading of one process tree.
-	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1), lanes: taskLanes}
+	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
+	// that knows several conversations share one machine says so by putting its
+	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]
+	// and [standingWideWork]); until then the only lanes this graph's reading
+	// can be divided by are its own.
+	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1), lanes: NewTaskLanes()}
 }
 
 // graph is the session's graph, built on first use. Most conversations never
@@ -1210,6 +1214,11 @@ func (a *Agent) graph() *TaskGraph {
 		// mid-run would be a run whose rules changed under it.
 		graph.limit = a.config.TaskParallel
 		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
+		// AND THE MACHINE'S OWN ACCOUNT, if this process opened more than one
+		// conversation onto the same machine (task_pressure.go, #907).
+		if a.config.TaskLanes != nil {
+			graph.lanes = a.config.TaskLanes
+		}
 		// The checkpoint is per-journal, so a session with no file gets a graph
 		// with no disk behind it rather than a session that refuses to run tasks
 		// (task_store.go).
@@ -1634,7 +1643,7 @@ func (g *TaskGraph) lanesTaken() int {
 // reopened by hand.
 //
 // The lock is the caller's, as the name says, and the account's own lock is
-// taken under it — always that way round, never the other (see [laneAccount]).
+// taken under it — always that way round, never the other (see [TaskLanes]).
 func (g *TaskGraph) takeLaneLocked() {
 	g.running++
 	g.lanes.take()

@@ -38,6 +38,17 @@ import (
 // in the one the person is looking at, or the room that draws its graph would
 // ask the wrong session for a snapshot.
 
+// v3MachineLanes is THE ACCOUNT OF THIS MACHINE'S RUNNING TASK LANES, and there
+// is one for the life of the process because there is one machine under it.
+// /new and /resume each build a conversation of their own, and the memory half
+// of the reading each one's admission governor takes is of this whole process
+// and everything it started — /proc cannot say which conversation started which
+// compiler. So what that reading is divided by has to be every conversation's
+// lanes and never one conversation's, or a neighbour's build becomes this
+// conversation's per-node weight for the rest of the session (internal/session's
+// task_pressure.go, issue #907).
+var v3MachineLanes = session.NewTaskLanes()
+
 // v3OpenSession builds one v3 conversation with its adaptive runner wired to
 // itself.
 //
@@ -47,6 +58,9 @@ import (
 // session that could start a run the surface cannot then find is worse than a
 // session that cannot start one.
 func v3OpenSession(cfg session.Config) (*session.Agent, error) {
+	// Every conversation this process opens counts its task lanes in one
+	// account, because they are all running on one machine.
+	cfg.TaskLanes = v3MachineLanes
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {

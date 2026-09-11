@@ -30,7 +30,7 @@ func TestAnotherConversationsBuildIsNotThisOnesPerNodeWeight(t *testing.T) {
 		overProcess = build / 3
 		overMine    = build / 2
 	)
-	process := newLaneAccount()
+	process := NewTaskLanes()
 	machine := &fakeMachine{}
 	machine.set(roomFor(12), true)
 	mine, _ := fanGraphIn(t, machine, process)
@@ -86,7 +86,7 @@ func TestAnotherConversationsBuildIsNotThisOnesPerNodeWeight(t *testing.T) {
 // this conversation's own reservations and all three started, which is a part
 // running in memory the machine does not have.
 func TestAnotherConversationsMemoryDoesNotCoverThisOnesReservation(t *testing.T) {
-	process := newLaneAccount()
+	process := NewTaskLanes()
 	machine := &fakeMachine{}
 	machine.set(roomFor(3), true)
 	mine, log := fanGraphIn(t, machine, process)
