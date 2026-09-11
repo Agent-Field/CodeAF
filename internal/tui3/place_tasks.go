@@ -1463,10 +1463,7 @@ func (p *tasksPlace) hint(a *app) string {
 		if word := a.taskSheetFoldWord(); word != "" {
 			parts = append(parts, word)
 		}
-		if a.taskSheetFiltering() {
-			parts = append(parts, tasksClearFilterWord)
-		}
-		return strings.Join(parts, railSep)
+		return strings.Join(a.tasksPageKeys(parts), railSep)
 	}
 	item, ok := a.taskSheetCurrent()
 	switch {
@@ -1507,29 +1504,36 @@ func (p *tasksPlace) hint(a *app) string {
 		}
 		parts = append(parts, tasksVerbsWord+strings.Join(words, tasksVerbGap))
 	}
-	// AND LAST, THE TWO THINGS THE KEYBOARD DOES TO THE WHOLE PAGE. They are last
-	// because every clause before them is about the row under the cursor and
-	// these two are about the page; they are here AT ALL because of the ruling of
-	// 2026-09-11, which is worth stating in full.
-	//
-	// THE FILTER OWNS EVERY PRINTABLE KEY ON THIS PAGE, so sorting cannot be `s`
-	// — a bare `s` would cost `sweep`, `stop` and `site` — and it is `alt+s`. A
-	// chord nobody can find is a chord that does not exist, so the foot names it
-	// and names the key it is on. And the other half has to be named beside it:
-	// the control row draws the box and the arrow, but nothing on the frame says
-	// that a letter goes INTO that box rather than to the page's own keys.
-	//
-	// WHILE A FILTER IS ON, THE SECOND CLAUSE IS THE ONE THAT MOVED — that esc
-	// now means the filter and not the page, which is the one fact the box
-	// itself cannot show — and inviting somebody to type a filter they have
-	// already typed would be the frame naming one thing twice on one screen.
+	return strings.Join(a.tasksPageKeys(parts), railSep)
+}
+
+// tasksPageKeys puts THE TWO THINGS THE KEYBOARD DOES TO THE WHOLE PAGE on the
+// end of the foot's row clauses. They are last because every clause before them
+// is about the row under the cursor and these two are about the page.
+//
+// IT IS ONE FUNCTION BECAUSE THE FOOT HAS TWO ROADS THROUGH IT. A conversation's
+// row returns early — its clauses are its own — and with every fold now opening
+// shut the cursor's FIRST resting place is a conversation, so a page key named
+// only on the other road would be named on no frame a person meets first. The
+// tmux drive is what found that: the page as it opens said neither key.
+//
+// THE FILTER OWNS EVERY PRINTABLE KEY ON THIS PAGE, so sorting cannot be `s` — a
+// bare `s` would cost `sweep`, `stop` and `site` — and it is `alt+s` (the ruling
+// of 2026-09-11). A chord nobody can find is a chord that does not exist, so the
+// foot names it. And the other half has to be named beside it: the control row
+// draws the box, but nothing else on the frame says that a letter goes INTO that
+// box rather than to the page's own keys.
+//
+// WHILE A FILTER IS ON, THE SECOND CLAUSE IS THE ONE THAT MOVED — that esc now
+// means the filter and not the page, which is the one fact the box itself cannot
+// show — and inviting somebody to type a filter they have already typed would be
+// the frame naming one thing twice on one screen.
+func (a *app) tasksPageKeys(parts []string) []string {
 	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	if a.taskSheetFiltering() {
-		parts = append(parts, tasksClearFilterWord)
-	} else {
-		parts = append(parts, tasksFilterHint)
+		return append(parts, tasksClearFilterWord)
 	}
-	return strings.Join(parts, railSep)
+	return append(parts, tasksFilterHint)
 }
 
 func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }

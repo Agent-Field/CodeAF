@@ -330,6 +330,33 @@ func TestAPressOnTheCostLabelSortsTheListByCost(t *testing.T) {
 	}
 }
 
+// THE PAGE'S OWN TWO KEYS ARE NAMED ON EVERY FRAME, INCLUDING THE ONE IT OPENS
+// ON. The foot has two roads through it — a conversation's row returns early
+// with its own clauses — and with every fold opening shut the cursor's first
+// resting place IS a conversation, so a page key named only on the other road
+// would be named on no frame a person meets first. The tmux drive found this:
+// the tasks place as it opens said neither key.
+func TestTheTasksFootNamesThePagesKeysOverAConversationToo(t *testing.T) {
+	a := tasksTableApp(t)
+	if _, ok := a.taskSheetChat(); !ok {
+		t.Fatalf("the page did not open with the cursor on a conversation: %d", a.taskSheet.cursor)
+	}
+	got := a.taskSheetKeysLine()
+	for _, want := range []string{tasksSortHint(a.taskSheet.order), tasksFilterHint} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("over a conversation the foot reads\n  %q\nand never names %q", got, want)
+		}
+	}
+	// AND THE CLAUSE THAT MOVES WITH A FILTER MOVES ON THIS ROAD TOO.
+	a.taskSheet.query.setText("pages")
+	a.taskSheetTyped()
+	a.taskSheet.cursor = tasksPointAtRoot(t, a, "the pricing page")
+	if got := a.taskSheetKeysLine(); !strings.Contains(got, tasksClearFilterWord) ||
+		strings.Contains(got, tasksFilterHint) {
+		t.Fatalf("a filtered foot over a conversation reads %q", got)
+	}
+}
+
 // ── the folds ───────────────────────────────────────────────────────────────
 
 // EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (owner, 2026-09-11), `→` opens
