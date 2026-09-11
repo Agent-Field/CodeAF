@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Two cold questions reach their page first instead of fourth, so the retrieval floor has margin
-pr: 975
+pr: 978
 surface: [chat, docs]
 invalidates:
   - "The held-out retrieval floor in internal/manual/plainquestions_test.go had NO margin anywhere, not one thin probe: on a green tree 8 of the 22 cold questions reached their page first, 9 reached it only within the top four, and the floor is 17 — so all nine of those were simultaneously load-bearing and any one slipping out of fourth place reddened every open pull request. Two of the three fourth-place probes are now first, so it is 12 first of 22 rather than 10 and the floor has room."
