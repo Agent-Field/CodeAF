@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -110,6 +111,22 @@ func placementDepths(places []workspace.GoverningCollection) map[string]int {
 		depths[place.ID] = place.Depth
 	}
 	return depths
+}
+
+// GoverningRules is the ONE reading of which of the orders that apply to a
+// piece of work are rules over it: the holds that carry words. A turn's
+// <standing> block and a firing's report check read it here, the card that
+// proposes ongoing work quotes it before the yes, and `aforge standing show`
+// prints it — four readers of one question, so they cannot come to disagree
+// about what governs.
+func GoverningRules(items []standing.Item) []standing.Item {
+	var rules []standing.Item
+	for _, item := range items {
+		if item.When.Kind == standing.WhenHold && strings.TrimSpace(item.Prompt()) != "" {
+			rules = append(rules, item)
+		}
+	}
+	return rules
 }
 
 // workOrganizationRefLocked keeps repair/checking runs attached to the task

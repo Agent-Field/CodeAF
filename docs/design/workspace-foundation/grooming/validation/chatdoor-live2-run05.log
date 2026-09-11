@@ -1,0 +1,53 @@
+RUN 05 start 2026-09-11T05:37:58Z rev 3dd2eeb32
+=== RUN   TestMeasureChatDoorLive
+    zz_chatdoor_measure_e2e_test.go:104: LIVE CHAT said: 
+        
+        Let me first look at the inbox folder structure and any existing reports.
+        
+        Inbox folder is empty, no report exists yet. This is a standing file watch — track changes to the inbox folder and keep a report current.
+        
+        Set up. It watches `inbox/` for any file changes and keeps `reports/inbox-report.md` current. Each run builds a fresh report with file table and summary. Shares the daily allowance — no extra cost.
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS stood · 
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    zz_chatdoor_measure_e2e_test.go:129: LIVE CARD
+        when · when inbox/**/* changes
+        costs · shares the day's allowance
+        does · List the inbox/ folder contents. Build a markdown report at reports/inbox-report.md with a table of files (name, size, modified time). Include a summary of n…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    zz_chatdoor_measure_e2e_test.go:172: check: 2 checked
+    zz_chatdoor_measure_e2e_test.go:179: LIVE CHECK exit 4: 2 checked · 1 ran · 1 need you
+          keep an eye on my inbox folder and keep reports/inbox-report…: report held back, not published: reports/inbox-report.md is not what aforge last published there — it was changed, or it was there before aforge wrote it — so aforge did not write over it; the draft is in /tmp/opus-localwork/chatdoor-li…
+        not finished: aforge standing show d8066294bd446160 says why; its last good report is unchanged
+    zz_chatdoor_measure_e2e_test.go:181: LIVE SHOW:
+        d8066294bd446160  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/**/* changes
+          workspace: /tmp/opus-localwork/chatdoor-live2-run05/project
+          instructions (version 1): List the inbox/ folder contents. Build a markdown report at reports/inbox-report.md with a table of files (name, size, modified time). Include a summary of new/…
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 63d0ddb58e27b5e2f4cfefc83b235b59 Launch (placed directly)
+          rule reaching it: 2257f6277e23d9f5 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+          waiting on you: report held back, not published: reports/inbox-report.md is not what aforge last published there — it was changed, or it was there before aforge wrote it — …
+          ran 1 time(s); last came to needs-you · spent $0.0027
+        runs, newest first:
+          000001  finished · needs-you · instructions v1 · Sep 11 01:38:15
+              woken: the files you are watching changed
+              added inbox/today.md
+              came to: report held back, not published: reports/inbox-report.md is not what aforge last published there — it was changed, or it was there before aforge wrote it — … · withheld: report-changed
+              checked against 1 rule(s): 1 kept
+                rule 2257f6277e23d9f5 “Inbox reports never quote email addresses or phone numbers; write [redacted] instead.” (obligation): kept — the report says “Request: Priya ([redacted]) to confirm the venue.”
+              cost $0.0027
+              journal: /tmp/opus-localwork/chatdoor-live2-run05/home/v3/standing/d8066294bd446160/runs/000001/transcript.jsonl
+        log:
+          2026-09-11T01:38:13-04:00  set up in the chat
+          2026-09-11T01:38:13-04:00  placed in folder 63d0ddb58e27b5e2f4cfefc83b235b59; its rules reach this work
+          2026-09-11T01:40:59-04:00  the files you are watching changed — needs-you: report held back, not published: reports/inbox-report.md is not what aforge last published there — it was changed, or it was there before aforge wrote it — so aforge did not write over it; the dra…
+    zz_chatdoor_measure_e2e_test.go:92: MEASURE {"card":true,"item":"d8066294bd446160","whenKind":"file","glob":"inbox/**/*","whenWords":"when inbox/**/* changes","cardWhen":"when inbox/**/* changes","doesKind":"task","report":"reports/inbox-report.md","instructions":"List the inbox/ folder contents. Build a markdown report at reports/inbox-report.md with a table of files (name, size, modified time). Include a summary of new/changed files since the last run. Remember: never quote email addresses or phone numbers — write [redacted] instead. The report replaces the previous one entirely.","asksToWrite":false,"costWords":"shares the day's allowance","rails":"{\"perRunUsd\":5,\"maxPerDay\":10,\"expires\":\"0001-01-01T00:00:00Z\"}","terms":["does · List the inbox/ folder contents. Build a markdown report at reports/inbox-report.md with a table of files (name, size, modified time). Include a summary of n…","report · reports/inbox-report.md — aforge publishes this file; the run never writes it","folder · Launch, where this conversation is placed — its rules reach every run","rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead."],"itemOK":true,"cardOK":true,"twinDiff":null,"twinShowOK":true,"checkExit":4,"runs":1,"outcome":"needs-you","withheld":"report-changed","ruleCheck":"kept","published":"","receiptOK":false,"rawContact":false,"showOK":true,"pass":false,"failed":["check-exit","run-landed","published"],"spend":"$0.0048 over 9 calls (this home's usage ledger)"}
+    zz_chatdoor_measure_e2e_test.go:94: failed stages: [check-exit run-landed published]
+--- FAIL: TestMeasureChatDoorLive (180.98s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/e2e	181.004s
+FAIL
+exit=1 end 2026-09-11T05:40:59Z

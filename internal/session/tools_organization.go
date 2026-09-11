@@ -89,7 +89,7 @@ func (a *Agent) collectionsTool(ctx context.Context, raw json.RawMessage) (strin
 	if !read && a.config.InTask {
 		return organizationResult(nil, errors.New("task workers can inspect collections but cannot reorganize them"))
 	}
-	if (p.Action == "place" || p.Action == "unplace") && (!a.config.AskConsent || a.steward() != nil) {
+	if (p.Action == "place" || p.Action == "unplace") && !a.mayBindFolders() {
 		return organizationResult(nil, errors.New("governing folder bindings can only change in a conversation with the person"))
 	}
 	if p.Action == "find" && p.Name != "" && p.Ref.Kind != "" {
@@ -314,4 +314,13 @@ func contextSummaries(records []workspace.ContextRecord) []contextSummary {
 		out = append(out, contextSummary{r.ID, r.Title, r.Revision, r.Source, r.Withdrawn, r.Targets})
 	}
 	return out
+}
+
+// mayBindFolders is collections' law for a governing binding: it changes only
+// in a conversation with the person — somebody can be asked, and no delegated
+// principal is answering for them. `collections place` and the placement a
+// stand card writes (standing_placement.go) both ask it here, so the two roads
+// to one binding cannot come to disagree.
+func (a *Agent) mayBindFolders() bool {
+	return a.config.AskConsent && a.steward() == nil
 }

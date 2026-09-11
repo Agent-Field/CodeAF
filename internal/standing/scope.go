@@ -19,12 +19,22 @@ type Adoption struct {
 	Actor      string    `json:"actor"`
 	ProposalID uint64    `json:"proposal_id"`
 	At         time.Time `json:"at"`
-	// Via names the door when it was not a card in a conversation: "terminal"
-	// for an item the person wrote whole with `aforge standing add`, where
-	// there was no proposal to answer and ProposalID stays zero. Empty is the
-	// card, which is every item made before a second door existed.
+	// Via names the door the yes came through: [DoorTerminal] for an item the
+	// person wrote whole with `aforge standing add`, where there was no
+	// proposal to answer and ProposalID stays zero, and [DoorChat] for a card
+	// answered in a conversation. Empty is an item made before doors were
+	// named, and it stays unknown rather than being guessed at.
 	Via string `json:"via,omitempty"`
 }
+
+// The doors an item can be set up through, as [Adoption.Via] records them and
+// `aforge standing show` says them back ("set up by: person, through the
+// chat"). ONE SPELLING EACH: the two doors make the same item, and the receipt
+// is the one place that says which of them the yes came through.
+const (
+	DoorTerminal = "terminal"
+	DoorChat     = "chat"
+)
 
 func (it Item) validateScope() error {
 	if it.Scope == nil {

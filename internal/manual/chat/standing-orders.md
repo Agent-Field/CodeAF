@@ -109,7 +109,8 @@ good. (On the standing orders page, press `→` on the row and the same two verb
 
 Every one of them arrives as a card in the conversation, and **nothing is created until
 you answer it**. The card carries your sentence, when it wakes, where it reaches, and
-that it shares the day's allowance. `esc` or `0` declines, and a card left unanswered
+that it shares the day's allowance — and, for work that runs, what one run does, the
+report file and who writes it (or that it keeps none), the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
@@ -672,8 +673,10 @@ Honest limits, so you do not rely on something that is not built:
   (*Does the report keep my folder's rules*).
 - **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
-  machine-wide `daily_budget_usd` setting everything standing uses. If you named a
-  per-run or per-day limit yourself, the card says your limit back instead.
+  machine-wide `daily_budget_usd` setting everything standing uses. A per-run or per-day
+  limit you named yourself leads the costs line (`up to $1.00 a run · …`, or `at most 3
+  runs a day · …`); one you never named is not kept, and the card says the default that
+  stands instead (`… (the default)`).
 - **There is no outward lane.** No phone, no email, no desktop notification. News lands
   in a chat you have open, or waits — the keeping-an-eye page has the order it is
   delivered in.
@@ -685,7 +688,7 @@ Honest limits, so you do not rely on something that is not built:
   else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width before it starts;
   an order that fires is not, and is armed to split itself only off the items its own
-  brief already names. Asking a model every night whether a sentence that has not changed
+  instructions already name. Asking a model every night whether a sentence that has not changed
   is wide would be a bill you never agreed to. (What splitting is, and everything that
   decides it, are on the tasks page.)
 - **Approval has an owner.** Ordinary proposals wait for your answer. An active delegated goal owner can answer existing bounded proposals; folder-scoped rules require your answer. New receipts preserve the difference.
@@ -729,7 +732,7 @@ placement later, while `aforge collections add` only files a reference.
 **An edit is a new version of the instructions.** `edit` prints `revised <id> to
 version N: instructions`; the next run uses
 it, a run already under way keeps what it started with, and each run's record keeps the
-brief it ran on. `--version N` refuses the edit if someone changed the instructions
+instructions it ran on. `--version N` refuses the edit if someone changed the instructions
 since you read version N. A stopped order cannot be resumed or edited: `a stopped item
 must be set up afresh`.
 
@@ -740,6 +743,12 @@ not yet written is not written and no note is sent: `stopped while it ran`.
 This door never turns on the background timer. Its orders are checked when a window
 is open, when the timer is already on, or when you run `aforge standing check`. News
 from an order with no conversation behind it waits in its project's inbox.
+
+Saying it in a conversation makes **the same order as far as a run can tell**
+(*Keep a report current from the chat*); its log opens `set up in the chat` and `show`
+says `through the chat`. Its record also keeps the conversation it came from, writes its
+reach `project` where the terminal leaves it empty (read as project), and may word when
+it wakes the chat's way. `aforge standing edit` edits either.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
@@ -768,10 +777,44 @@ came back clean publishes** — the next section lists every reason a report is 
 What an unattended run may do is in *What an unattended run is given*.
 
 A report inside its own watch, or inside a folder the watch matches (`*` watching
-`reports`), is refused when you set it up, because every report would wake it again.
+`reports`), is refused when you set it up, because every report would wake it again. So
+is a report whose folder leads out of the project through a symbolic link — `the report
+folder resolves outside the project` — at the terminal and on the card alike, and it is
+checked again at every write.
+
 A run that failed or was held back does not use up its changes: the next run is told
 about them again. Nothing here uses an account or a connector: the order reads local
 files and writes one local file.
+
+## Keep a report current from the chat — the card's does, report, folder and rule lines
+
+In a conversation, just say it: "keep an eye on my inbox folder and keep
+reports/inbox-report.md current". It is the order `aforge standing add --watch
+--report --place` makes — the record also keeps the conversation it came from. The card
+for work that runs has more lines under `where ·`, and they are what a yes agrees to:
+
+```
+does · Read the changed files in inbox/ and write a short report of new decisions …
+report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+folder · Launch, where this conversation is placed — its rules reach every run
+rule · Inbox reports never quote email addresses; write [redacted] instead.
+```
+
+Work that keeps no file says so: `report · none — no file is kept current`. If your
+sentence names a file and the setup left the report out, it is asked again before any card.
+
+**Which folder.** A folder you name goes on the card. Otherwise the work goes in the
+folders this conversation is placed in (`, where this conversation is placed`; with two,
+`their rules reach every run`), and a conversation in no folder makes work in none —
+`folder · none — it can be placed in one later`; you are never asked for a folder first.
+Only you can bind a folder: a delegated run is refused (`placing work in a folder needs
+the person's answer in a conversation`). The `rule ·` lines are the rules that reach it
+now, read as its runs read them (`rules · none reach this work yet`), up to five, then
+`rules · and N more`; past 64 rules or 64 KiB of their words the card warns every run
+would stop. The folder is bound
+after your yes and before the work exists — at the terminal too; if that fails nothing
+is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
+show` says `set up by: person, through the chat`.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 

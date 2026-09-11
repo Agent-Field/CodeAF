@@ -150,6 +150,56 @@ func TestAStandingProposalDrawsWhenAndCost(t *testing.T) {
 	}
 }
 
+// WORK THAT RUNS SAYS WHAT A YES AGREES TO, IN THE ENGINE'S WORDS. The report
+// file and who writes it, the folder and the rules that reach it are read off
+// the readings the run will make, so the card draws the engine's lines verbatim
+// and in order, between where it reaches and what it costs — and a card whose
+// notice carried none draws none.
+func TestAStandingCardDrawsTheTermsTheEngineSent(t *testing.T) {
+	a, _, _ := standApp(t)
+	// The lines the engine sends for the chat door's journey
+	// (internal/e2e's TestChatDoorJourney), word for word.
+	terms := []string{
+		"does · Read the changed files in inbox/ and write a short report of new decisions and requests. FOCUS: decisions",
+		"report · reports/inbox-report.md — aforge publishes this file; the run never writes it",
+		"folder · Launch, where this conversation is placed — its rules reach every run",
+		"rule · RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.",
+	}
+	item := standItem()
+	item.Words = "keep an eye on my inbox folder and keep reports/inbox-report.md current"
+	item.When = standing.When{Kind: standing.WhenFile, Glob: "inbox/*", Words: "when inbox/* changes"}
+	item.Does = standing.Action{Kind: standing.ActionTask, Brief: "Read the changed files", Report: "reports/inbox-report.md"}
+	a.width = 100
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		Item: item, WhenWords: "when inbox/* changes", CostWords: "shares the day's allowance", Terms: terms,
+	})})
+	drawn := standText(a)
+	t.Logf("the card as drawn:\n%s", drawn)
+	// Read as one run of words, since a term wider than the card wraps.
+	var words []string
+	for _, line := range strings.Split(drawn, "\n") {
+		words = append(words, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), strings.TrimSpace(a.blockStem()))))
+	}
+	text := strings.Join(words, " ")
+	at := strings.Index(text, standWhereTag)
+	for _, term := range terms {
+		next := strings.Index(text, term)
+		if next < 0 || next < at {
+			t.Fatalf("the card lost or reordered %q:\n%s", term, text)
+		}
+		at = next
+	}
+	if cost := strings.Index(text, standCostTag); cost < at {
+		t.Fatalf("the terms are not between where it reaches and what it costs:\n%s", text)
+	}
+
+	bare, _, _ := standApp(t)
+	drive(t, bare, streamEventMsg{gen: bare.gen, ev: standProposal(bare, session.StandingNotice{WhenWords: "Mondays at 9am"})})
+	if strings.Contains(standText(bare), "report · ") {
+		t.Fatalf("a card with no terms drew some:\n%s", standText(bare))
+	}
+}
+
 // A CADENCE THE MODEL INVENTED IS SAID OUT LOUD AND ASKED ABOUT. A guess
 // presented as a fact is the one thing on this block a person cannot audit
 // afterwards, because it reads exactly like something they said.

@@ -579,6 +579,11 @@ type scriptedModel struct {
 	checks  atomic.Int64
 	hang    atomic.Bool
 	hanging chan struct{}
+	// converse scripts a CONVERSATION's turn (chatdoor_e2e_test.go): asked with
+	// the person's words, whether the turn's last tool answered yet, and the
+	// belt's tool names, it answers a tool call or a reply, or ok=false to
+	// leave the request to the firing script below.
+	converse func(ask, answered string, tools []string) (tool, args, text string, ok bool)
 }
 
 var changeLine = regexp.MustCompile(`(?m)^(added|modified|removed)  (\S+)$`)
@@ -714,6 +719,23 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		m.reply(w, body.Stream, "", "", previous)
 		return
+	}
+	if m.converse != nil && len(body.Tools) > 0 && !strings.Contains(ask, reportMarker) {
+		var names []string
+		for _, raw := range body.Tools {
+			var tool struct {
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			}
+			if json.Unmarshal(raw, &tool) == nil {
+				names = append(names, tool.Function.Name)
+			}
+		}
+		if tool, args, said, ok := m.converse(ask, answered, names); ok {
+			m.reply(w, body.Stream, tool, args, said)
+			return
+		}
 	}
 	// Only the firing's own turn is scripted: it carries tools and the report
 	// instruction. Everything else a session asks for gets a plain answer.

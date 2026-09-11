@@ -1,0 +1,41 @@
+RUN 06 start 2026-09-11T05:40:59Z rev 3dd2eeb32
+=== RUN   TestMeasureChatDoorLive
+    zz_chatdoor_measure_e2e_test.go:104: LIVE CHAT said: Watching `inbox/**/*` — report written to `reports/inbox-report.md` on each change. Costs from the daily allowance, no background checks on this machine.
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS stood · 
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    zz_chatdoor_measure_e2e_test.go:129: LIVE CARD
+        when · when inbox/**/* changes
+        costs · shares the day's allowance
+        does · Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with: - **Last updated:** timesta…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    zz_chatdoor_measure_e2e_test.go:158: TWIN does differs:
+         chat {"kind":"task","brief":"Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with:\n\n- **Last updated:** timestamp\n- **Files:** for each file, its name, size, and first line of content\n- **Summary:** one line about what's in the inbox right now\n\nIf inbox/ is empty, say so. Use ls -la for listing and head for first lines.","acceptance":"reports/inbox-report.md exists and matches the current state of inbox/","maxSteps":15,"report":"reports/inbox-report.md"}
+         term {"kind":"task","brief":"Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with:\n\n- **Last updated:** timestamp\n- **Files:** for each file, its name, size, and first line of content\n- **Summary:** one line about what's in the inbox right now\n\nIf inbox/ is empty, say so. Use ls -la for listing and head for first lines.","report":"reports/inbox-report.md"}
+    zz_chatdoor_measure_e2e_test.go:172: check: 2 checked
+    zz_chatdoor_measure_e2e_test.go:179: LIVE CHECK exit -1: 
+    zz_chatdoor_measure_e2e_test.go:181: LIVE SHOW:
+        248ae86e680594ea  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/**/* changes
+          workspace: /tmp/opus-localwork/chatdoor-live2-run06/project
+          instructions (version 1): Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with: - **Last updated:** timestamp …
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 66678cc92c79723e43795c20a6fa0b75 Launch (placed directly)
+          rule reaching it: 4a6d9b470bc1d212 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+        runs, newest first:
+          000001  admitted · instructions v1 · Sep 11 01:41:18
+              woken: the files you are watching changed
+              added inbox/today.md
+              journal: /tmp/opus-localwork/chatdoor-live2-run06/home/v3/standing/248ae86e680594ea/runs/000001/transcript.jsonl
+        log:
+          2026-09-11T01:41:16-04:00  set up in the chat
+          2026-09-11T01:41:16-04:00  placed in folder 66678cc92c79723e43795c20a6fa0b75; its rules reach this work
+    zz_chatdoor_measure_e2e_test.go:92: MEASURE {"card":true,"item":"248ae86e680594ea","whenKind":"file","glob":"inbox/**/*","whenWords":"when inbox/**/* changes","cardWhen":"when inbox/**/* changes","doesKind":"task","report":"reports/inbox-report.md","instructions":"Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with:\n\n- **Last updated:** timestamp\n- **Files:** for each file, its name, size, and first line of content\n- **Summary:** one line about what's in the inbox right now\n\nIf inbox/ is empty, say so. Use ls -la for listing and head for first lines.","asksToWrite":true,"costWords":"shares the day's allowance","rails":"{\"perRunUsd\":5,\"maxPerDay\":10,\"expires\":\"0001-01-01T00:00:00Z\"}","terms":["does · Read everything under inbox/ (files, subfolders). Write reports/inbox-report.md (creating the reports/ directory if needed) with: - **Last updated:** timesta…","report · reports/inbox-report.md — aforge publishes this file; the run never writes it","folder · Launch, where this conversation is placed — its rules reach every run","rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead."],"itemOK":true,"cardOK":true,"twinDiff":["does"],"twinShowOK":true,"checkExit":-1,"runs":1,"outcome":"","withheld":"","ruleCheck":"","published":"","receiptOK":false,"rawContact":false,"showOK":true,"pass":false,"failed":["twin-json","check-exit","run-landed","published"],"spend":"$0.0093 over 9 calls (this home's usage ledger)"}
+    zz_chatdoor_measure_e2e_test.go:94: failed stages: [twin-json check-exit run-landed published]
+--- FAIL: TestMeasureChatDoorLive (198.76s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/e2e	198.775s
+FAIL
+exit=1 end 2026-09-11T05:44:18Z

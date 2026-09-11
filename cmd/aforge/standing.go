@@ -17,7 +17,7 @@ package main
 // Here the person writes the item WHOLE — the words, the brief, what wakes it,
 // where its report goes — so there is no proposal to answer and no model's
 // reading of their sentence to ratify. The command itself is the yes, and the
-// item's adoption receipt says so (`via: terminal`, [standing.Adoption.Via]).
+// item's adoption receipt says so (`via: terminal`, [standing.DoorTerminal]).
 // Nothing in this file calls a model except `check`, which runs the same pass
 // the operating system's timer runs.
 //
@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
@@ -245,7 +246,7 @@ func standingAdd(out io.Writer, store *standing.Store, f standingFlags) error {
 		Words:     words,
 		Workspace: dir,
 		Brief:     standing.Brief{Title: strings.TrimSpace(*f.title)},
-		Adoption:  &standing.Adoption{Actor: "person", Via: "terminal", At: time.Now().UTC()},
+		Adoption:  &standing.Adoption{Actor: "person", Via: standing.DoorTerminal, At: time.Now().UTC()},
 	}
 	if *f.hold {
 		if *f.watch != "" || *f.every != "" || *f.instructions != "" || *f.report != "" || *f.place != "" || *f.model != "" || *f.acceptance != "" {
@@ -299,15 +300,33 @@ func standingAdd(out io.Writer, store *standing.Store, f standingFlags) error {
 	if err := item.Validate(); err != nil {
 		return err
 	}
+	// THE SAME REFUSAL THE CHAT'S CARD MAKES, from the same reading the publish
+	// makes: a report folder that leads out of the project is refused here
+	// rather than at every run.
+	if err := session.CheckStandingReport(item.Workspace, item.Does.Report); err != nil {
+		return fmt.Errorf("--report %s: %w", item.Does.Report, err)
+	}
+	// THE FOLDER IS BOUND BEFORE THE WORK EXISTS, the order the chat's card
+	// uses too: the id is minted and placed first, so no failure or crash
+	// between the two writes leaves work running outside its folder's rules.
+	if place != "" {
+		item.ID = standing.NewItemID()
+		if err := standingPlace(place, item.ID); err != nil {
+			return fmt.Errorf("nothing was set up: could not be placed in %s: %w", place, err)
+		}
+	}
 	created, err := store.Create(item)
 	if err != nil {
+		if place != "" {
+			_ = standingUnplace(place, item.ID)
+		}
 		return err
 	}
 	_ = store.Log(created.ID, "set up at the terminal")
 	if place != "" {
-		if err := standingPlace(place, created.ID); err != nil {
-			return fmt.Errorf("%s stands, but could not be placed in %s: %w", created.ID, place, err)
-		}
+		// The same line the chat's card writes for the same placement, so the
+		// item's log reads the same whichever door made it.
+		_ = store.Log(created.ID, "placed in folder "+place+"; its rules reach this work")
 	}
 	if *f.asJSON {
 		return json.NewEncoder(out).Encode(created)
@@ -342,7 +361,7 @@ func standingWhenFlags(watch, every string) (standing.When, error) {
 		if _, err := filepath.Match(watch, "probe"); err != nil {
 			return standing.When{}, fmt.Errorf("--watch %q is not a pattern this can read: %w", watch, err)
 		}
-		return standing.When{Kind: standing.WhenFile, Glob: watch, Words: "when " + watch + " changes"}, nil
+		return standing.When{Kind: standing.WhenFile, Glob: watch, Words: standing.WatchWords(watch)}, nil
 	case every != "":
 		if _, err := standing.ParseEvery(every); err != nil {
 			return standing.When{}, err
@@ -395,6 +414,16 @@ func standingPlace(folder, id string) error {
 	return org.AddPlacement(context.Background(), folder, workspace.Ref{Kind: workspace.StandingKind, ID: id})
 }
 
+// standingUnplace takes back the binding of work that was never created.
+func standingUnplace(folder, id string) error {
+	org, err := standingOrganization()
+	if err != nil {
+		return err
+	}
+	defer org.Close()
+	return org.RemovePlacement(context.Background(), folder, workspace.Ref{Kind: workspace.StandingKind, ID: id})
+}
+
 // ── edit ────────────────────────────────────────────────────────────────────
 
 func standingEdit(out io.Writer, store *standing.Store, id string, f standingFlags, set map[string]bool) error {
@@ -425,6 +454,9 @@ func standingEdit(out io.Writer, store *standing.Store, id string, f standingFla
 		}
 		if set["report"] {
 			item.Does.Report = strings.TrimSpace(*f.report)
+			if err := session.CheckStandingReport(item.Workspace, item.Does.Report); err != nil {
+				return fmt.Errorf("--report %s: %w", item.Does.Report, err)
+			}
 		}
 		if set["watch"] || set["every"] {
 			if item.When.Kind == standing.WhenHold {
@@ -653,12 +685,16 @@ func standingShow(out io.Writer, store *standing.Store, id string, limit int, as
 		}
 	}
 	if record.RulesError == "" {
-		rules, err := store.ApplicableScope(item.Workspace, "", collections)
+		// THE RUN'S OWN READING: its workspace, the conversation it was set up
+		// in (none for a terminal-made item), its folders, and the holds with
+		// words among what applies — so what show lists is what the run's
+		// check reads, whichever door made the item.
+		rules, err := store.ApplicableScope(item.Workspace, item.Origin.SessionID, collections)
 		if err != nil {
 			record.RulesError = err.Error()
 		}
-		for _, rule := range rules {
-			if rule.When.Kind != standing.WhenHold || rule.ID == id {
+		for _, rule := range session.GoverningRules(rules) {
+			if rule.ID == id {
 				continue
 			}
 			record.Rules = append(record.Rules, standingRule{ID: rule.ID, Words: rule.Prompt(), Scope: rule.Scope, Spec: rule.SpecRevision})

@@ -275,3 +275,12 @@ func CostPerRunWord(spend Spend) string {
 func moneyWord(usd float64) string {
 	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
+
+// WatchWords is how a file watch's waking is said when nobody said it in their
+// own words: `when inbox/* changes`.
+//
+// ONE SPELLING FOR BOTH DOORS. `aforge standing add --watch` writes it, and the
+// chat's card falls back to it when the model sent no words of its own — a
+// watch whose card and record said nothing about when it wakes (the chat door's
+// first live run, 2026-09-11) is a watch nobody can check.
+func WatchWords(glob string) string { return "when " + glob + " changes" }
