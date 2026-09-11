@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -41,6 +42,7 @@ type Report struct {
 	TestsSkipped    int       `json:"tests_skipped"`
 	PackageFailures int       `json:"package_failures"`
 	Incomplete      []string  `json:"incomplete_packages,omitempty"`
+	Truncated       bool      `json:"truncated,omitempty"`
 	Packages        []Package `json:"packages"`
 	Tests           []Test    `json:"tests"`
 }
@@ -49,23 +51,42 @@ type Report struct {
 // streams because a timing artifact that silently omitted a compiler failure is worse
 // than no artifact.
 func Read(r io.Reader, progress io.Writer, now time.Time) (Report, error) {
-	report := Report{Schema: 1, GeneratedAt: now.UTC(), Packages: []Package{}, Tests: []Test{}}
+	// Schema 2 adds truncated and narrows cached to Go's own package summary,
+	// because readers must be able to distinguish both changes from schema 1.
+	report := Report{Schema: 2, GeneratedAt: now.UTC(), Packages: []Package{}, Tests: []Test{}}
 	started := map[string]bool{}
 	finished := map[string]bool{}
 	cached := map[string]bool{}
-	s := bufio.NewScanner(r)
-	// Build errors can contain generated lines much larger than Scanner's default.
-	s.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	for s.Scan() {
+	// ReadString distinguishes a final cut line from a complete event and removes
+	// Scanner's old 4 MB ceiling, which a long generated build error could cross.
+	reader := bufio.NewReader(r)
+	for {
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil {
+			if readErr == io.EOF {
+				// A LAST LINE WITH NO NEWLINE IS A RUN THAT WAS CUT, NOT A BROKEN ONE.
+				// go test writes one whole event per line, so anything left over when
+				// the pipe closes is half an event somebody killed. Trailing whitespace
+				// is not half an event and must not be read as one.
+				if strings.TrimSpace(line) != "" {
+					report.Truncated = true
+				}
+				break
+			}
+			return report, fmt.Errorf("read go test JSON: %w", readErr)
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
 		var event Event
-		if err := json.Unmarshal(s.Bytes(), &event); err != nil {
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			return report, fmt.Errorf("go test JSON event %d: %w", report.Events+1, err)
 		}
 		report.Events++
 		if event.Package != "" {
 			started[event.Package] = true
 		}
-		if event.Output != "" && containsCached(event.Output) {
+		if summarySaysCached(event) {
 			cached[event.Package] = true
 		}
 		if event.Test != "" && terminal(event.Action) {
@@ -92,9 +113,6 @@ func Read(r io.Reader, progress io.Writer, now time.Time) (Report, error) {
 			fmt.Fprintf(progress, "test-report: package %s %s (%.3fs)\n", event.Package, event.Action, event.Elapsed)
 		}
 	}
-	if err := s.Err(); err != nil {
-		return report, fmt.Errorf("read go test JSON: %w", err)
-	}
 	if report.Events == 0 {
 		return report, fmt.Errorf("go test produced no JSON events")
 	}
@@ -109,11 +127,16 @@ func Read(r io.Reader, progress io.Writer, now time.Time) (Report, error) {
 }
 
 func terminal(action string) bool { return action == "pass" || action == "fail" || action == "skip" }
-func containsCached(s string) bool {
-	for i := 0; i+8 <= len(s); i++ {
-		if s[i:i+8] == "(cached)" {
-			return true
-		}
+
+// GO ITSELF IS THE ONLY WITNESS TO THE BUILD CACHE. A package finishes with the
+// summary line `ok  <package>  (cached)`, and that line is the whole evidence; the
+// same characters inside a test's own log say nothing about whether anything ran.
+// Scanning every output event marked a package that had just executed under
+// -count=1 as cached, which is the kind of lie this package exists not to tell (#735).
+func summarySaysCached(event Event) bool {
+	if event.Test != "" || event.Package == "" {
+		return false
 	}
-	return false
+	fields := strings.Fields(event.Output)
+	return len(fields) >= 3 && fields[0] == "ok" && fields[1] == event.Package && fields[2] == "(cached)"
 }

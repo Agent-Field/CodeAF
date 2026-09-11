@@ -15,6 +15,10 @@ __pycache__/
 *.aux
 harnesses/
 bench/swarm/results/
+# The timing report is diagnostic evidence for one run. Several sessions share
+# this checkout, and an untracked file at its root is what another lane's
+# `git add` sweeps up.
+/test-report.json
 # The prompt-diet bench writes its evidence and its builds OUTSIDE any checkout
 # (~/bench-diet-out and ~/bench-diet-build), because a cell's workspace nested
 # inside this repository hands the model the harness instead of its fixture.
