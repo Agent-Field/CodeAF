@@ -518,6 +518,12 @@ func TestAdapterErrorsKeepTheStatusCodeTheHarnessClassifiesOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// THE SCHEDULE IS NOT WHAT THIS IS ABOUT. A call that names no role is bounded
+	// by `lane.RoleUnknown`'s give-up — the conservative background reading, four
+	// and a half minutes — and a provider that answers 429 forever really will
+	// spend it. The waits are stubbed so this proves what it is about (the status
+	// survives to the harness) rather than how long a backoff ladder is.
+	client.wait = func(context.Context, time.Duration) error { return nil }
 	_, err = client.CompleteWithMessages(context.Background(), userMessages("a"))
 	if err == nil || !strings.Contains(err.Error(), "API error (429)") {
 		t.Fatalf("error = %v, want a status the provider taxonomy can read", err)

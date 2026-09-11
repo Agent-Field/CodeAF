@@ -210,7 +210,7 @@ func (p *memoryPlace) remeasure(width int) {
 // land somebody on a memory they never chose, with `f forget it` one keypress
 // away.
 func (p *memoryPlace) followStop(was memoryStop) {
-	if was.shelf == "" && was.line == nil {
+	if was.shelf == "" && was.line == nil && was.fold == "" {
 		return
 	}
 	for i := range p.reading.lines {
@@ -222,7 +222,10 @@ func (p *memoryPlace) followStop(was memoryStop) {
 		case was.line != nil && stop.line != nil && stop.line.ID == was.line.ID:
 			p.cursor = i
 			return
-		case was.line == nil && stop.line == nil && stop.shelf == was.shelf:
+		case was.fold != "" && stop.fold == was.fold:
+			p.cursor = i
+			return
+		case was.line == nil && was.fold == "" && stop.line == nil && stop.fold == "" && stop.shelf == was.shelf:
 			p.cursor = i
 			return
 		}
@@ -298,7 +301,7 @@ func (p *memoryPlace) choice() (store.Memory, bool) {
 // its own door.
 func (p *memoryPlace) shelfUnder() (string, bool) {
 	stop, ok := p.reading.at(p.cursor)
-	if !ok || stop.line != nil {
+	if !ok || stop.line != nil || stop.fold != "" {
 		return "", false
 	}
 	return stop.shelf, true
@@ -492,11 +495,10 @@ func (a *app) openMemory() tea.Cmd {
 	// refuse twice — once when this build was not remembering anything, once when
 	// the store would not answer — and both refusals put the person back on the
 	// page they came from, so `alt+4` on a fresh machine was a key that did
-	// nothing. SCREEN 1f'S PREAMBLE is the law: the place opens on its own three
-	// sentences ([memoryTeaching]), which is exactly the reading somebody who has
-	// never seen this page needs, and the one fact those sentences cannot carry —
-	// that there is no store here to hold any of it — is said once on the note
-	// line under them ([memoryOffNote], [memoryPlace.footer]).
+	// nothing. SCREEN 1f'S PREAMBLE is the law: the place opens on its heading
+	// and whisper ([placeWhisper]), and the one fact those cannot carry — that
+	// there is no store here to hold any of it — is said once on the note
+	// ([memoryOffNote], [memoryPlace.footer]).
 	shelves, why := a.memorySnapshot()
 	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
 	// ([app.standDownFullscreen]).
@@ -685,9 +687,14 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	var body []string
 	switch {
 	case p.expanded != "":
-		body = p.card(width, a.pal)
+		// The card stands on the place's one left edge, as the list does.
+		for _, line := range p.card(width-len(placeLead), a.pal) {
+			body = append(body, placeLead+line)
+		}
+	case p.reading.bare():
+		return placeWhisperRows(pageMemory, width, room, a.pal)
 	default:
-		body = p.reading.rows(width, a.pal)
+		body = p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor || i == p.hover })
 	}
 	// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
 	// it is one line's provenance, drawn from its top, so it has no cursor to
@@ -704,7 +711,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 		}
 		text := body[i]
 		if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
-			text = a.pal.selected(text, width)
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}
@@ -752,6 +759,12 @@ func (placeMemory) enter(a *app) tea.Cmd {
 	p := &a.mem
 	if scope, ok := p.shelfUnder(); ok {
 		p.toggleShelf(scope)
+		return nil
+	}
+	// A FOLD LINE OPENS WHERE IT STANDS and the cursor stays on it, now
+	// reading `fewer`, so the next `enter` undoes it.
+	if stop, ok := p.reading.at(p.cursor); ok && stop.fold != "" {
+		p.toggleShelf(stop.fold)
 		return nil
 	}
 	memory, ok := p.choice()
@@ -878,13 +891,16 @@ func (placeMemory) hint(a *app) string {
 	// there are shelves and was drawn over a bare page too — so a machine that
 	// has remembered nothing read `enter open a shelf · type to filter · alt+s
 	// walk the shelves` under a body with nothing to open, nothing to filter and
-	// no shelves to walk. What is true there is the way out and the sentence the
-	// body already gave ([memoryEmptyWord]).
+	// no shelves to walk. What is true there is the way out, under the whisper
+	// the body already gave ([placeWhisper]).
 	if a.mem.reading.bare() {
 		return memoryBareHint
 	}
 	if _, ok := a.mem.shelfUnder(); ok {
 		return memoryShelfHint
+	}
+	if stop, ok := a.mem.reading.at(a.mem.cursor); ok && stop.fold != "" {
+		return foldEnterWord(a.mem.shelfOpen[stop.fold]) + " · type to filter · alt+s walk the shelves"
 	}
 	if _, ok := a.mem.choice(); ok {
 		return memoryLineHint
@@ -894,19 +910,35 @@ func (placeMemory) hint(a *app) string {
 
 func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }
 
-func (placeMemory) press(a *app, y int) bool {
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
-		if _, stop := a.mem.reading.at(at); stop {
-			a.mem.cursor = at
-			a.touch()
-		}
+// press is enter on the row it lands on, with the one exception [place.press]
+// names: a line's `enter` asks the model about it, so a press on a line opens
+// its card, and the card's own `enter` and `esc` take it from there. A card
+// standing open is not the list, so a press over it lands on no row of it.
+func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
+	p := &a.mem
+	if p.expanded != "" || p.edit != nil {
+		return nil, true
 	}
-	return true
+	at, ok := placeBodyLine(y, p.top, p.shown)
+	if !ok {
+		return nil, true
+	}
+	stop, ok := p.reading.at(at)
+	if !ok {
+		return nil, true
+	}
+	p.cursor = at
+	a.touch()
+	if stop.line != nil {
+		p.openMemoryCard(a, *stop.line)
+		return nil, true
+	}
+	return placeMemory{}.enter(a), true
 }
 
 func (placeMemory) hover(a *app, y int) bool {
 	next := -1
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
+	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
 		if _, stop := a.mem.reading.at(at); stop {
 			next = at
 		}

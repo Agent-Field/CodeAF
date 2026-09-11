@@ -218,7 +218,17 @@ type watchState struct {
 // The concurrency limit is INTERPOLATED, never typed: [watchMaxConcurrent] is
 // what claimWatch actually enforces and a digit here would be the second copy
 // that drifts.
-var watchDescription = "Run a command on a timer and hear only when there is news, instead of polling it every turn. A background job (jobs lists, kills and prints every tick); updates batch at the turn boundary, never mid-turn, and its ENDING comes back on its own. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
+// AND THE ARRIVES-ON-ITS-OWN CLAUSE LEFT (2026-09-10, the prompt diet). "instead
+// of polling it every turn" and "its ENDING comes back on its own" were this
+// tool's copies of a law that `jobs` stated twice more and `propose_task` once
+// again: ANYTHING HANDED OFF REPORTS ITSELF. Four tools each paying for the same
+// sentence on every request of every turn is four bills for one rule, so it is
+// stated once on the page (prompts/system.md) and nowhere on the belt. What
+// stays here is the contract: the timer, the batching, the ceiling, and the
+// boundary with `stand`. The silent first tick moved UP from the `on` field
+// because it is true of every mode but one and belongs to the tool rather than
+// to the choice of mode.
+var watchDescription = "Run a command on a timer and hear only when there is news. A background job (jobs lists, kills and prints every tick); updates batch at the turn boundary, never mid-turn, and tick one is a silent baseline except on always. At most " + strconv.Itoa(watchMaxConcurrent) + " at once. A WATCH DIES WITH THIS CONVERSATION; what must keep looking AFTER this window is closed is `stand`'s."
 
 // Every bound in the schema is INTERPOLATED from the constant the parser clamps
 // against ([parseWatchArguments]), for the one-source-of-truth law's reason: a
@@ -227,7 +237,7 @@ var watchDescription = "Run a command on a timer and hear only when there is new
 var watchSchemaJSON = `{"type":"object","properties":{` +
 	`"command":{"type":"string","description":"Command run each tick in the workspace."},` +
 	`"every_seconds":{"type":"integer","description":"Seconds per tick (default: ` + strconv.Itoa(watchDefaultEvery) + `, min: ` + strconv.Itoa(watchMinEvery) + `, max: ` + strconv.Itoa(watchMaxEvery) + `)"},` +
-	`"on":{"type":"string","description":"News, one mode only. change: new lines when output differs. match: new lines matching pattern. always: the last ` + strconv.Itoa(watchTailLines) + ` lines each tick. quiet: unchanged for quiet_ticks ticks running, which catches a silent finish and ends the watch. Tick one is a silent baseline, except always.","enum":["change","match","always","quiet"]},` +
+	`"on":{"type":"string","description":"News, one mode only. change: new lines when output differs. match: new lines matching pattern. always: the last ` + strconv.Itoa(watchTailLines) + ` lines each tick. quiet: unchanged for quiet_ticks in a row, which ends the watch.","enum":["change","match","always","quiet"]},` +
 	`"quiet_ticks":{"type":"integer","description":"Ticks for on=quiet (default: ` + strconv.Itoa(watchDefaultQuietTicks) + `, min: ` + strconv.Itoa(watchMinQuietTicks) + `, max: ` + strconv.Itoa(watchMaxQuietTicks) + `); refused in other modes."},` +
 	`"pattern":{"type":"string","description":"Lines to report, as a regex; required when on is match."},` +
 	`"until":{"type":"string","description":"Regex ending the watch; its first match is the last note."},` +

@@ -529,3 +529,58 @@ func ObservationBytes(contextTokens int) int {
 	}
 	return MinObservationBytes
 }
+
+// The wire caps: how much of ONE tool result a model may be handed at once.
+
+// ToolResultWindowShare is the denominator of that law — a result may be at
+// most a TENTH of the window it has to fit in.
+//
+// The number is not invented here, it is read off the caps that were already in
+// force. pi's 2000 lines / 50KB were measured against a 128,000-token window,
+// which is the window this program assumes when a model card says nothing
+// (internal/session's defaultContextWindow), and 50KB is exactly a tenth of
+// 128,000 tokens in transport bytes. So a tenth reproduces today's numbers
+// wherever the window is 128k or wider and shrinks them below it, which is the
+// whole correction: a flat 50KB was 78% of everything a 16k model could hold,
+// and one read of one file left it no room to think about what it had read.
+const ToolResultWindowShare = 10
+
+// ToolResultBytes is how many bytes of a single tool result a model with this
+// window may be handed: a share of the window, never more than the caller's own
+// default and never less than [MinObservationBytes].
+//
+// The ceiling is the caller's default rather than a number of this package's
+// own because the default is a measured contract — the figure the tool's
+// description quotes and the model reasons from — and a big window is not a
+// reason to hand a model more of a file than the tool ever promised. The floor
+// is the same arithmetic protection [ObservationBytes] takes: below it the
+// result is too small to carry a useful fragment and the model would page
+// forever.
+//
+// An unknown window spends nothing and takes the caller's default, which is the
+// [BytesOr] law and what keeps behaviour without a catalog byte-for-byte what
+// it was.
+//
+// IT IS A SHARE OF THE WINDOW AND NOT OF THE WORKING SET, which is the one way
+// it differs from internal/exec's toolBudgetsFor, and the difference is the two
+// questions rather than two answers to one. That function bounds what a leaf
+// CARRIES turn after turn, so it is rightly taken of the material a leaf holds
+// in front of itself ([WithinWorkingSet]). This one bounds what ONE call may
+// put on the wire, which is a claim about the single request the result has to
+// fit inside. Both live here so that neither is a formula somebody has to find.
+func ToolResultBytes(contextTokens, defaultBytes int) int {
+	if defaultBytes <= 0 || contextTokens <= 0 {
+		return defaultBytes
+	}
+	share := contextTokens * BytesPerToken / ToolResultWindowShare
+	if share > defaultBytes {
+		return defaultBytes
+	}
+	if share < MinObservationBytes {
+		if MinObservationBytes > defaultBytes {
+			return defaultBytes
+		}
+		return MinObservationBytes
+	}
+	return share
+}

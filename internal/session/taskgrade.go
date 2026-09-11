@@ -171,7 +171,7 @@ type taskGradeRecord struct {
 	Model   string
 	Kind    string
 	Outcome string
-	Verdict provider.Verdict
+	Verdict provider.Reading
 
 	Retries  int
 	Cost     float64
@@ -490,7 +490,7 @@ func (g *TaskGraph) grade(node *TaskNode) {
 // many rounds it took to get there. THE FIRST ANSWER DOES NOT WIN HERE, unlike
 // [TaskNode.end]: a node that lands needing a look and is judged again later has
 // genuinely been answered twice, and the later answer is the one that stands.
-func (n *TaskNode) checkSaid(verdict provider.Verdict, repairs int) {
+func (n *TaskNode) checkSaid(verdict provider.Reading, repairs int) {
 	if n == nil {
 		return
 	}
@@ -507,7 +507,7 @@ func (n *TaskNode) checkSaid(verdict provider.Verdict, repairs int) {
 
 // checkAnswer is what the check said, from outside the lock. "" is a node no
 // check ever read, and it grades nothing.
-func (n *TaskNode) checkAnswer() provider.Verdict {
+func (n *TaskNode) checkAnswer() provider.Reading {
 	if n == nil {
 		return ""
 	}
@@ -524,16 +524,16 @@ func (n *TaskNode) checkAnswer() provider.Verdict {
 // about the model — an auditor that died on the wire would otherwise teach the
 // store that the model it was judging is weak, which is the provider-failure
 // mistake internal/provider's verdict.go names outright.
-func auditGrade(verdict auditVerdict) provider.Verdict {
+func auditGrade(verdict auditVerdict) provider.Reading {
 	switch {
 	case !verdict.answered:
 		return ""
 	case verdict.verified:
-		return provider.VerdictVerifiedSuccess
+		return provider.ReadingVerifiedSuccess
 	default:
 		// The work parsed, ran, and was wrong in a way somebody could point at,
 		// which is exactly what a semantic failure is: the reply the model gave
 		// against the job it was handed did not hold.
-		return provider.VerdictSemanticFailure
+		return provider.ReadingSemanticFailure
 	}
 }

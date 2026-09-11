@@ -13,8 +13,8 @@ func TestMeasureReportsObservedSpread(t *testing.T) {
 	measured.Add(
 		Record{Title: "largest", Size: "atomic", Turns: 9, Tokens: 9_000},
 		Record{Title: "legacy overrun", Size: "borderline", Turns: 1, Tokens: 1_000, Stop: "budget"},
-		Record{Title: "verdict overrun", Size: "oversized", Turns: 5, Tokens: 5_000, Verdict: provider.VerdictTurnCap},
-		Record{Title: "direct", Size: BucketDirect, Turns: 100, Tokens: 100_000, Verdict: provider.VerdictBudgetStop},
+		Record{Title: "verdict overrun", Size: "oversized", Turns: 5, Tokens: 5_000, Verdict: provider.ReadingTurnCap},
+		Record{Title: "direct", Size: BucketDirect, Turns: 100, Tokens: 100_000, Verdict: provider.ReadingBudgetStop},
 	)
 
 	got := measured.Measure()
@@ -33,15 +33,15 @@ func TestNeedsRecalibrationBranches(t *testing.T) {
 	}{
 		{
 			name:       "nearly every task overran refuses",
-			records:    repeatedRecords(8, 10, provider.VerdictBudgetStop),
+			records:    repeatedRecords(8, 10, provider.ReadingBudgetStop),
 			want:       false,
 			wantReason: "points at the budget",
 		},
 		{
 			name: "one quarter overran recalibrates",
 			records: append(
-				repeatedRecords(2, 10, provider.VerdictBudgetStop),
-				repeatedRecords(6, 10, provider.VerdictVerifiedSuccess)...,
+				repeatedRecords(2, 10, provider.ReadingBudgetStop),
+				repeatedRecords(6, 10, provider.ReadingVerifiedSuccess)...,
 			),
 			want:       true,
 			wantReason: "ruler is too generous",
@@ -87,10 +87,10 @@ func TestOverranUsesStopOnlyForLegacyRecords(t *testing.T) {
 		{name: "legacy budget", record: Record{Stop: "budget"}, want: true},
 		{name: "legacy turn cap", record: Record{Stop: "turn-cap"}, want: true},
 		{name: "legacy completion", record: Record{Stop: "done"}, want: false},
-		{name: "verdict overrun", record: Record{Verdict: provider.VerdictBudgetStop}, want: true},
+		{name: "verdict overrun", record: Record{Verdict: provider.ReadingBudgetStop}, want: true},
 		{
 			name:   "verdict overrides stale stop",
-			record: Record{Stop: "budget", Verdict: provider.VerdictVerifiedSuccess},
+			record: Record{Stop: "budget", Verdict: provider.ReadingVerifiedSuccess},
 			want:   false,
 		},
 	}
@@ -106,7 +106,7 @@ func TestOverranUsesStopOnlyForLegacyRecords(t *testing.T) {
 
 func TestDirectBucketDoesNotBecomeRulerEvidence(t *testing.T) {
 	measured := &Profile{}
-	measured.Add(repeatedRecords(8, 40, provider.VerdictBudgetStop)...)
+	measured.Add(repeatedRecords(8, 40, provider.ReadingBudgetStop)...)
 	for index := range measured.Records {
 		measured.Records[index].Size = BucketDirect
 	}
@@ -233,7 +233,7 @@ func TestAddTimestampsNewRecordsAndSnapshotsAreIndependent(t *testing.T) {
 	}
 }
 
-func repeatedRecords(count, turns int, verdict provider.Verdict) []Record {
+func repeatedRecords(count, turns int, verdict provider.Reading) []Record {
 	records := make([]Record, count)
 	for index := range records {
 		records[index] = Record{
@@ -249,9 +249,9 @@ func repeatedRecords(count, turns int, verdict provider.Verdict) []Record {
 func TestReflexBucketRecordsSuccessPromotionAndCost(t *testing.T) {
 	measured := &Profile{}
 	measured.Add(
-		Record{Title: "clean", Size: BucketReflex, Turns: 1, Tokens: 100, Cost: 0.01, Verdict: provider.VerdictVerifiedSuccess},
-		Record{Title: "quick", Size: BucketReflex, Turns: 2, Tokens: 200, Cost: 0.02, Verdict: provider.VerdictUnverifiedSuccess},
-		Record{Title: "promoted", Size: BucketReflex, Turns: 4, Tokens: 400, Cost: 0.04, Promoted: true, Verdict: provider.VerdictBudgetStop},
+		Record{Title: "clean", Size: BucketReflex, Turns: 1, Tokens: 100, Cost: 0.01, Verdict: provider.ReadingVerifiedSuccess},
+		Record{Title: "quick", Size: BucketReflex, Turns: 2, Tokens: 200, Cost: 0.02, Verdict: provider.ReadingUnverifiedSuccess},
+		Record{Title: "promoted", Size: BucketReflex, Turns: 4, Tokens: 400, Cost: 0.04, Promoted: true, Verdict: provider.ReadingBudgetStop},
 	)
 	stats := measured.MeasureReflex()
 	if stats.Samples != 3 || stats.Successes != 2 || stats.Promotions != 1 ||

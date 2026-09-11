@@ -6,22 +6,20 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// iconvocab_test.go holds THE ICON LAW and the words the tests read it with.
+// iconvocab_test.go holds the words this surface's tests read the shared
+// vocabulary with, and the one law that is about THIS package's names.
 //
-// One vocabulary draws every mark a person sees on this surface — the task
-// states, the action families in the step gutter, the chrome — and it lives in
-// internal/tui2/tokens with three spellings per slot: the Font Awesome 4 icon a
-// patched font draws, the geometric floor every terminal draws, and the one
-// ASCII character a screen reader can name. docs/design/icons/DESIGN.md is the
-// law's own page; what follows is the part a build can fail on.
+// THE PRODUCT-WIDE LAW MOVED. The sweep that refuses a mark spelled as a
+// literal used to live here and covered internal/tui3 alone, which left the
+// older window and the resident free to spell their own — and they did.
+// internal/iconlaw is where it lives now, walking every surface package on one
+// list; docs/design/icons/DESIGN.md is the law's own page.
 
 // The task-state marks as the PLAIN tier spells them, which is the tier a test
 // palette draws in ([newPalette] leaves [palette.icons] at [tokens.Plain]).
@@ -51,95 +49,6 @@ var (
 // palOf is a test palette at a glyph floor, for the drawing functions that are
 // handed a palette and nothing else.
 func palOf(ascii bool) palette { return newPalette(tokens.TrueColor, ascii) }
-
-// iconLawRunes are the marks this surface may not spell for itself, with the
-// slot each one belongs to. They are the SHAPES — the vocabulary gives up its
-// claim on its ASCII slots ("?", "=", "+", "$", "/") because those are
-// characters a line carries for a hundred honest reasons, and a gate that
-// failed on them would be a gate people learn to ignore.
-//
-// The four at the end are RETIRED: they were this surface's own spellings for
-// states the vocabulary already had a mark for, and a build that finds one has
-// found a surface drawing outside the table again.
-var iconLawRunes = map[rune]string{
-	'○': "tokens.GQueued",
-	'◐': "tokens.GWorking",
-	'✓': "tokens.GSettled",
-	'✕': "tokens.GFailed",
-	'■': "tokens.GStopped",
-	'⚑': "tokens.GWaitsOn",
-	'▤': "tokens.GActionRead",
-	'◎': "tokens.GActionTest",
-	'↗': "tokens.GActionBrowse",
-	'⇄': "tokens.GActionTransfer",
-	'⇉': "tokens.GActionCoordinate",
-	'◷': "tokens.GActionWait",
-	'▪': "tokens.GActionWork",
-	'⌕': "tokens.GSearch",
-	'✎': "tokens.GWrite",
-	'◌': "tokens.GQueued (retired: the surface's own queued circle)",
-	'⊘': "tokens.GStopped (retired: the surface's own stop mark)",
-	'✗': "tokens.GFailed (retired: the surface's own cross)",
-	'⏸': "tokens.GPaused (retired, and BANNED by tokens.BannedGlyphs)",
-}
-
-// TestNoSurfaceSpellsAnIconItself is the law, enforced rather than remembered.
-//
-// A MARK SPELLED AS A LITERAL DRAWS THE PLAIN FLOOR FOREVER. It cannot know
-// which repertoire the terminal is on, so the day somebody writes `✓` into a row
-// is the day that row stops upgrading with the rest of the surface — which is
-// exactly how a person with a patched font came to see proper icons beside their
-// tool calls and bare geometric shapes beside their tasks. The private-use range
-// is refused for the other half of the same reason: an icon spelled here is one
-// the width gate never measured and the pinned Nerd Fonts release never
-// verified.
-//
-// It reads string and character literals only. A comment may draw all the marks
-// it likes — several do, because a table in prose is how this codebase explains
-// itself.
-func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
-	fset := token.NewFileSet()
-	err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return err
-		}
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Errorf("parse %s: %v", path, err)
-			return nil
-		}
-		ast.Inspect(file, func(n ast.Node) bool {
-			lit, ok := n.(*ast.BasicLit)
-			if !ok || (lit.Kind != token.STRING && lit.Kind != token.CHAR) {
-				return true
-			}
-			text, ok := iconLiteralText(lit)
-			if !ok {
-				return true
-			}
-			for _, r := range text {
-				if r >= 0xE000 && r <= 0xF8FF {
-					t.Errorf("%s: the literal %s spells %U, a private-use codepoint. Every icon "+
-						"is a binding in internal/tui2/tokens with its Font Awesome name pinned "+
-						"against the release; ask for the SLOT through palette.glyph or app.icon",
-						fset.Position(lit.Pos()), lit.Value, r)
-					continue
-				}
-				if slot, owned := iconLawRunes[r]; owned {
-					t.Errorf("%s: the literal %s spells %U, which is %s. Ask for the slot through "+
-						"palette.glyph or app.icon so the line gets this terminal's repertoire "+
-						"(docs/design/icons/DESIGN.md)",
-						fset.Position(lit.Pos()), lit.Value, r, slot)
-				}
-			}
-			return true
-		})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk internal/tui3: %v", err)
-	}
-}
 
 // TestTheStateMarksAreDeclaredOnceAndComeFromTheTable is the other half: the
 // names, not the bytes. A surface that reintroduced `glyphStopped = "⊘"` as a
@@ -183,24 +92,4 @@ func TestTheStateMarksAreDeclaredOnceAndComeFromTheTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk internal/tui3: %v", err)
 	}
-}
-
-// iconLiteralText unquotes a literal, reporting false for one it cannot read —
-// a malformed literal is the compiler's business, not this test's.
-func iconLiteralText(lit *ast.BasicLit) (string, bool) {
-	if lit.Kind == token.CHAR {
-		r, _, _, err := strconv.UnquoteChar(strings.Trim(lit.Value, "'"), '\'')
-		if err != nil {
-			return "", false
-		}
-		return string(r), true
-	}
-	s, err := strconv.Unquote(lit.Value)
-	if err != nil {
-		return "", false
-	}
-	if !utf8.ValidString(s) {
-		return "", false
-	}
-	return s, true
 }

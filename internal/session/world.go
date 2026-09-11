@@ -376,6 +376,49 @@ type TaskRollup struct {
 // Total is how many rows this session owns.
 func (r TaskRollup) Total() int { return len(r.Rows) }
 
+// LandedTask is one piece of work that finished, with the conversation that
+// ran it — the pair a "since you left" line is drawn from.
+type LandedTask struct {
+	Entry   TaskIndexEntry
+	Session SessionRow
+}
+
+// LandedSince is every task in the world that LANDED after since, newest first:
+// a row whose landing instant is past the stamp and whose status is neither
+// running nor queued.
+//
+// IT READS NOTHING. The rows are the world's own ([SessionRow.Tasks], one index
+// read per bucket already paid for by [ReadWorld]), so this is a filter a
+// surface may call on a draw.
+//
+// EVERY LANDED ROW IS HERE, a task's parts and an adaptive run's workers
+// included: [TaskIndexEntry.Parent] says which rows are, and a surface that
+// wants one line per piece of work drops those itself rather than this deciding
+// for every caller what counts as one.
+//
+// A ZERO STAMP ANSWERS NOTHING, for [ArtifactsSince]'s reason: a machine with no
+// look yet has no origin, and the first look marks nothing as news (look.go).
+func LandedSince(w *World, since time.Time) []LandedTask {
+	if w == nil || since.IsZero() {
+		return nil
+	}
+	var out []LandedTask
+	for _, project := range w.Projects {
+		for _, row := range project.Sessions {
+			for _, entry := range row.Tasks.Rows {
+				if entry.Live() || !entry.EndedAt.After(since) {
+					continue
+				}
+				out = append(out, LandedTask{Entry: entry, Session: row})
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Entry.EndedAt.After(out[j].Entry.EndedAt)
+	})
+	return out
+}
+
 // ReadWorld is [ReadHome] over a named places root, which is what a test hands
 // a directory it built.
 //

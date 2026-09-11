@@ -4,10 +4,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── CLOSING A TAB THAT IS STILL DOING SOMETHING ─────────────────────────────
@@ -22,9 +20,17 @@ import (
 // surface already asks about ending work (stop.go, whose card this one is a
 // sibling of and whose slot it shares):
 //
-//	 ? Close this tab? the tree walk is working · 2 tasks running
-//	   ▌[keep running]   [stop work]   [cancel]
-//	   it keeps going here; find it under Chats, ctrl+shift+t brings the tab back
+//	 ?  Close this tab? the tree walk is working · 2 tasks running
+//	      nothing here is deleted
+//	      1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+//	      2  stop work     the reply, tasks and jobs stop; nothing is deleted
+//	      3  cancel        nothing changes
+//	    [enter] take the pick · [esc] cancel · [←→] pick
+//
+// The block draws those rows (question.go) and this file owns the words in them.
+// EACH ANSWER SAYS WHAT IT DOES ON ITS OWN ROW, which is the one line that used
+// to change under the cursor: a sentence that moved was a promise about the
+// answer you were passing over rather than about the one you were reading.
 //
 // ── THE THREE ANSWERS ARE THREE DIFFERENT ACTS AND THE CARD SAYS SO ─────────
 //
@@ -74,15 +80,18 @@ type tabCloseCard struct {
 	here  bool
 	tasks int
 	jobs  int
-	// pick indexes [tabCloseAnswers], and spans are where they landed, written by
-	// the layout and read by the press — stop.go's own bargain.
-	pick  int
-	spans []hudSpan
 }
 
 // The three answers, in the order they are drawn, and where the cursor starts.
 // The words are the owner's, in the lowercase the rest of this surface's answers
 // are spelled in ([stopAnswers] beside them).
+//
+// THE ORDER IS TWO LAWS AT ONCE on the block that draws them (question.go). The
+// FIRST is where the cursor starts — `keep running` wears the SAFE mark, because
+// a card whose destructive answer is under the enter key is a card that ends work
+// when somebody presses enter to make a question go away. The LAST is what `esc`
+// gives — `cancel`, which changes nothing at all, because the dismiss key on this
+// surface takes questions away and must not also let a tab go.
 var tabCloseAnswers = [...]string{"keep running", "stop work", "cancel"}
 
 const (
@@ -90,6 +99,10 @@ const (
 	tabCloseStopAt   = 1
 	tabCloseCancelAt = 2
 )
+
+// tabCloseQuestionKind is the lane this file's question travels under, and it is
+// not one of internal/session's for [stopQuestionKind]'s reason exactly.
+const tabCloseQuestionKind session.QuestionKind = "surface-tab-close"
 
 // closingTab reports whether the card owns the keyboard.
 func (a *app) closingTab() bool { return a.tabClose != nil }
@@ -113,15 +126,78 @@ func (a *app) tabCloseAsks(tab chatTab) bool {
 func (a *app) askTabClose(tab chatTab) {
 	here := tab.key == a.frontTabKey()
 	count := a.tabCloseWork(tab, here)
-	a.tabClose = &tabCloseCard{
+	card := &tabCloseCard{
 		tab: tab, sig: a.tabSignalFor(tab.key, here), here: here,
 		tasks: count.tasks, jobs: count.jobs, clauses: tabCloseClauses(count),
-		pick: tabCloseKeepAt,
 	}
+	a.tabClose = card
 	// The typed lists follow the draft, and the draft is spoken for while a
 	// question is up — [app.raiseStop]'s own line, for its own reason.
 	a.closeLists()
+	a.raiseQuestion(a.tabCloseShown(card))
 	a.touch()
+}
+
+// tabCloseShown is the question the block puts up, and the closure that answers
+// it.
+//
+// IT IS A CONFIRMATION for [app.stopShown]'s reason and keeps this card's laws
+// in that shape's own grammar: the cursor opens on `keep running`, a key that
+// NAMES an answer moves the cursor onto it, `enter` takes what the cursor is on,
+// and `esc` is `cancel`. NOTHING IS DECIDED BY ONE KEYSTROKE, and there is still
+// no bypass key and no don't-ask-me-again.
+//
+// THE ANSWER IT CARRIES IS WHAT THE CURSOR WAS ON, and not what the card was
+// raised with: every answer is decided against the world as it is now
+// ([app.tabCloseTake] says the whole of it).
+func (a *app) tabCloseShown(card *tabCloseCard) questionShown {
+	return questionShown{
+		question: session.Question{
+			Kind:    tabCloseQuestionKind,
+			Ref:     card.tab.key,
+			Ask:     session.AskConfirmation,
+			Form:    session.FormCard,
+			Asker:   session.Asker{Kind: session.AskerSurface},
+			Head:    card.question(),
+			Reason:  tabCloseReason,
+			Options: a.tabCloseOptions(card),
+			Stakes:  session.StakesIrreversible,
+			Asked:   a.now(),
+		},
+		local: func(answer session.Answer) tea.Cmd { return a.tabCloseAnswered(answer.FirstKey()) },
+	}
+}
+
+// tabCloseReason is the one sentence under the head: what nothing here does to
+// the conversation itself. It stands in for the line that used to change under
+// the cursor — the block says what each answer does on the answer's OWN row
+// (question.go's [session.AnswerOption.Consequence]), where it cannot be read as
+// a promise about a different one.
+const tabCloseReason = "nothing here is deleted"
+
+// tabCloseOptions is the three answers as the block takes them, each with what
+// taking it does. The `keep running` answer wears the SAFE mark, which is the
+// one place the cursor's home is decided.
+func (a *app) tabCloseOptions(card *tabCloseCard) []session.AnswerOption {
+	return []session.AnswerOption{
+		{Key: "1", Label: tabCloseAnswers[tabCloseKeepAt], Safe: true, Consequence: tabCloseKeepSays},
+		{Key: "2", Label: tabCloseAnswers[tabCloseStopAt], Consequence: a.tabCloseStopSays(card)},
+		{Key: "3", Label: tabCloseAnswers[tabCloseCancelAt], Consequence: tabCloseCancelSays},
+	}
+}
+
+// tabCloseAnswered turns one answer key back into the card's own index and
+// takes it. A key this card does not know is `cancel`, which is the reading that
+// cannot close a tab nobody meant to close.
+func (a *app) tabCloseAnswered(key string) tea.Cmd {
+	at := tabCloseCancelAt
+	switch key {
+	case "1":
+		at = tabCloseKeepAt
+	case "2":
+		at = tabCloseStopAt
+	}
+	return a.tabCloseTake(at)
 }
 
 // dropTabClose takes the question down and changes nothing else. It is `esc`,
@@ -130,6 +206,13 @@ func (a *app) askTabClose(tab chatTab) {
 func (a *app) dropTabClose() {
 	if a.tabClose == nil {
 		return
+	}
+	// AND THE QUESTION GOES WITH THE CARD, for [app.dropStop]'s reason.
+	for _, open := range a.questions {
+		if open.question.Kind == tabCloseQuestionKind {
+			a.closeQuestion(open, session.Answer{})
+			break
+		}
 	}
 	a.tabClose = nil
 	a.touch()
@@ -204,7 +287,7 @@ func (a *app) stopConversation(tab chatTab) error {
 		return nil
 	}
 	if held := a.behind[tab.key]; held != nil && held.conv.Agent != nil {
-		held.conv.Agent.Interrupt()
+		held.conv.Agent.InterruptFor(session.StopByLeaving)
 		if doors, ok := held.conv.Agent.(stopAgent); ok {
 			tasks, jobs := held.watch.workIDs()
 			for _, id := range append(tasks, jobs...) {
@@ -284,22 +367,15 @@ func tabCloseClauses(count quitWorkCount) string {
 	return ""
 }
 
-// tabCloseSays is the line under the answers: what the one the cursor is on will
-// ACTUALLY DO. It is pickrow.go's convention — walking the row is a way of
-// reading the question — and every sentence in it is built from what this
-// conversation has rather than written once and left to go stale.
-func (a *app) tabCloseSays(card *tabCloseCard) string {
-	switch card.pick {
-	case tabCloseKeepAt:
-		return tabCloseKeepSays
-	case tabCloseCancelAt:
-		return tabCloseCancelSays
-	}
-	said := "the reply stops where it is; nothing is deleted"
+// tabCloseStopSays is what `stop work` does, and it is the one consequence on
+// this card that is BUILT rather than written down: what stops depends on what
+// this conversation has running, and a sentence that named tasks and jobs on a
+// conversation with neither would be promising to end work that is not there.
+func (a *app) tabCloseStopSays(card *tabCloseCard) string {
 	if card.tasks > 0 || card.jobs > 0 {
-		said = "the reply, tasks and jobs stop; nothing is deleted"
+		return "the reply, tasks and jobs stop; nothing is deleted"
 	}
-	return said
+	return "the reply stops where it is; nothing is deleted"
 }
 
 const (
@@ -307,6 +383,10 @@ const (
 	// because "where did it go" is the one question this answer raises.
 	tabCloseKeepSays   = "it keeps going here; find it under Chats, and " + reopenTabChord + " brings the tab back"
 	tabCloseCancelSays = "nothing changes"
+	// tabCloseStopSaysFloor is what `stop work` says on a conversation with
+	// nothing but a reply in flight. It is the floor [app.tabCloseStopSays]
+	// falls back to and the words the question is built with.
+	tabCloseStopSaysFloor = "the reply stops where it is; nothing is deleted"
 )
 
 // ── the keyboard ────────────────────────────────────────────────────────────
@@ -319,168 +399,40 @@ func (a *app) tabCloseKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.closingTab() {
 		return nil, false
 	}
-	switch key := msg.String(); key {
-	case "ctrl+c":
+	if msg.String() == "ctrl+c" {
 		// Leaving is never modal (quitarm.go), and the card goes on its way past.
 		a.dropTabClose()
 		return nil, false
-	case "left":
-		a.moveTabClose(-1)
-	case "right":
-		a.moveTabClose(1)
-	case "k":
-		return a.tabCloseTake(tabCloseKeepAt), true
-	case "enter":
-		return a.tabCloseTake(a.tabClose.pick), true
-	case "esc":
-		a.dropTabClose()
-	case tabCloseStopKey:
-		// The one answer with a letter of its own, for the hand that already
-		// knows it. The smallest frame shows k, s and esc as its complete
-		// answers; those same shortcuts work at every width.
-		return a.tabCloseTake(tabCloseStopAt), true
+	}
+	// EVERY KEY THAT ANSWERS THIS CARD IS THE BLOCK'S (question.go): ←/→ walk
+	// the three answers, a digit moves the cursor onto the answer it names,
+	// `enter` takes what the cursor is on and `esc` is `cancel`. It is offered
+	// the key HERE rather than at its own rung because this rung is read first,
+	// and what the block hands back is SWALLOWED rather than passed on — this
+	// card is raised over a tab row whose own keys would otherwise act
+	// underneath a question about closing it.
+	//
+	// `k` AND `s` ARE NOT KEYS ANY MORE. They were shortcuts that answered
+	// outright, which is the bypass this card was built to not have; the answers
+	// carry their own keys on their own rows now, and a key that names one moves
+	// the cursor onto it so `enter` is still what decides.
+	if cmd, took := a.questionKey(msg); took {
+		return cmd, true
 	}
 	return nil, true
 }
 
-// tabCloseStopKey is the letter on the one answer that ends work. It is `s`, and
-// it is safe to bind because this card owns the keyboard while it is up — there
-// is no box on the frame for it to be a letter of.
-const tabCloseStopKey = "s"
-
-// moveTabClose walks the answers and STOPS at the ends rather than wrapping, for
-// [app.moveStop]'s reason: a cursor that reappeared at the far end would put
-// `stop work` under a key pressed to reach `cancel`.
-func (a *app) moveTabClose(delta int) {
-	card := a.tabClose
-	if card == nil {
-		return
-	}
-	at := card.pick + delta
-	switch {
-	case at < 0:
-		at = 0
-	case at >= len(tabCloseAnswers):
-		at = len(tabCloseAnswers) - 1
-	}
-	card.pick = at
-	a.touch()
-}
-
 // ── the card, drawn ─────────────────────────────────────────────────────────
-
-// tabCloseHeight is what the card costs the frame: the question, the answers,
-// and the line saying what the answer under the cursor does.
-func (a *app) tabCloseHeight() int {
-	if !a.closingTab() {
-		return 0
-	}
-	return 3
-}
-
-// tabCloseRows draws it, in the question hue everything on this surface that is
-// blocked on a keystroke wears. It shares [app.guardRows]' slot with the stop
-// card, and the two can never be up together: this one is raised from the tab
-// row and that one from a key taken over an empty box, and each owns the keyboard
-// while it stands.
-func (a *app) tabCloseRows(width int) []string {
-	card := a.tabClose
-	if card == nil || width < 4 {
-		return nil
-	}
-	head := card.question()
-	ask := a.icon(tokens.GNeedsHuman)
-	rows := []string{a.pal.askBold(ask) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(ask)))}
-
-	card.spans = card.spans[:0]
-	words, pad, gap, cursor := a.tabCloseLayout(width)
-	line, at := pad, len(pad)
-	for i, word := range words {
-		if i > 0 {
-			line += gap
-			at += len(gap)
-		}
-		lead := ""
-		if cursor {
-			lead = a.orchLead(i == card.pick)
-		}
-		text := lead + "[" + word + "]"
-		cols := ansi.StringWidth(text)
-		painted := a.pal.ask(text)
-		if i == card.pick {
-			painted = a.pal.askBold(text)
-		}
-		// THE POINTER LIGHTS THE ANSWER AND NOT THE ROW, [app.stopRows]' own law:
-		// three presses share this line and they are three ends of one decision.
-		if a.hoveringTabClose(i) {
-			painted = a.pal.cursor(painted, 0)
-		}
-		line += painted
-		card.spans = append(card.spans, hudSpan{from: at, to: at + cols})
-		at += cols
-	}
-	rows = append(rows, fit(line, width))
-	return append(rows, a.pal.dim(fit(stopAnswerPad+a.tabCloseSays(card), width)))
-}
-
-// tabCloseLayout shortens complete answers before giving up their spacing.
-// Every answer remains visible and clickable on a narrow terminal; truncating
-// the painted row would leave invisible hit targets for destructive actions.
-func (a *app) tabCloseLayout(width int) ([]string, string, string, bool) {
-	words := tabCloseAnswers[:]
-	pad, gap, cursor := stopAnswerPad, stopAnswerGap, true
-	cells := func() int {
-		n := len(pad) + (len(words)-1)*len(gap)
-		for _, word := range words {
-			n += ansi.StringWidth(word) + 2
-		}
-		if cursor {
-			n += len(words) * ansi.StringWidth(a.orchLead(false))
-		}
-		return n
-	}
-	if cells() > width {
-		words = []string{"keep", "stop", "cancel"}
-	}
-	if cells() > width {
-		pad, gap = "", ""
-	}
-	if cells() > width {
-		words = []string{"k", "s", "esc"}
-	}
-	if cells() > width {
-		cursor = false
-	}
-	return words, pad, gap, cursor
-}
 
 // ── the pointer ─────────────────────────────────────────────────────────────
 
-// tabClosePress answers a press on the raised card.
+// tabClosePress reports whether a press belongs to the raised card.
 //
-// A PRESS ANYWHERE ON THE ANSWERS ROW IS THE ROW'S, whether or not it landed on
-// an answer, for [app.stopCardPress]'s reason: the gaps between three answers are
-// places people miss, and a miss falling through to the box under them would put
-// a caret in a sentence instead of answering a question about somebody's work.
+// THE CARD'S OWN ANSWERS ARE THE BLOCK'S TARGETS NOW (question.go's
+// [app.questionPress], which the frame offers a press to before this). What is
+// left here is the refusal: while this card is up, a press that reached this far
+// was aimed at the tab row underneath it, and letting it through would close a
+// second tab while a question about the first is on screen.
 func (a *app) tabClosePress(x, y int, took *tea.Cmd) bool {
-	card := a.tabClose
-	if card == nil {
-		return false
-	}
-	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeTabClose {
-		return false
-	}
-	if mark.index != 1 {
-		// The question's own row and the line under the answers. Neither has
-		// anything on it to press, and both are the card's rather than the box's.
-		return true
-	}
-	for at, span := range card.spans {
-		if span.holds(x) {
-			*took = a.tabCloseTake(at)
-			return true
-		}
-	}
-	return true
+	return a.closingTab()
 }

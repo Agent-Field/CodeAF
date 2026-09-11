@@ -35,6 +35,11 @@ type reflexScript struct {
 
 	routes, extracts, decides, turns int
 	systems                          []string
+	// requests is the WHOLE of what each call was sent, every message joined.
+	// The routed memory block rides at the tail of the transcript rather than in
+	// message[0] (agent.go's memoryNoteOpening), so a test asking whether a turn
+	// carried it has to read the request and not just its head.
+	requests []string
 	// routeInputs is what each router call was actually SHOWN, which is the
 	// half of the request that changed: the shortlist is the thing under test.
 	routeInputs []string
@@ -45,9 +50,15 @@ func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Mes
 	if len(messages) > 0 {
 		system = messageText(messages[0])
 	}
+	var whole strings.Builder
+	for _, message := range messages {
+		whole.WriteString(messageText(message))
+		whole.WriteString("\n")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.systems = append(r.systems, system)
+	r.requests = append(r.requests, whole.String())
 	switch {
 	case strings.Contains(system, "memory router"):
 		r.routes++
@@ -198,9 +209,13 @@ func TestTheRoutedMemoriesAreRenderedIntoTheBlock(t *testing.T) {
 }
 
 // AND IT REACHES THE ACTUAL REQUEST. The block is decided inside the turn — the
-// router is a provider call and the prompt refresh runs under the session lock —
-// so the thing worth asserting is what message[0] said when the turn went out.
-func TestTheBlockIsInTheSystemPromptTheTurnRidesOn(t *testing.T) {
+// router is a provider call and the landing runs under the session lock — so the
+// thing worth asserting is what the turn actually sent. It rides at the TAIL of
+// the transcript now rather than in message[0], which this wave made byte-stable
+// for the life of a session (memory.go's refreshSystemLocked), so the assertion
+// is over the whole request; the base prompt is still checked so a request that
+// somehow carried the block without the page could not pass.
+func TestTheBlockIsInTheRequestTheTurnRidesOn(t *testing.T) {
 	script := &reflexScript{answer: "reformatted"}
 	agent, brain := brainAgent(t, script, nil)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
@@ -211,14 +226,14 @@ func TestTheBlockIsInTheSystemPromptTheTurnRidesOn(t *testing.T) {
 
 	var found bool
 	script.mu.Lock()
-	for _, system := range script.systems {
-		if strings.Contains(system, "SYSTEM") && strings.Contains(system, "prefers tabs over spaces in Go") {
+	for _, request := range script.requests {
+		if strings.Contains(request, "SYSTEM") && strings.Contains(request, "prefers tabs over spaces in Go") {
 			found = true
 		}
 	}
 	script.mu.Unlock()
 	if !found {
-		t.Fatal("no request carried the routed memory in its system prompt")
+		t.Fatal("no request carried the routed memory")
 	}
 }
 
@@ -680,9 +695,14 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	// The block rides at the TAIL, in its own note, and lands on the drain
+	// immediately before the first request (agent.go's memoryNoteOpening) — so
+	// what a node opens with is read out of the transcript rather than out of
+	// message[0], which the wave that moved it made byte-stable for the session.
 	child.mu.Lock()
-	opening := messageText(child.messages[0])
+	child.landVolatileLocked()
 	child.mu.Unlock()
+	opening := transcriptText(child)
 	if !strings.Contains(opening, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node did not open with the block:\n%s", opening)
 	}
@@ -690,9 +710,7 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	// refresh has nothing to replace the block with — clearing it would take
 	// away the one thing the node was given.
 	collect(t, mustSubmit(t, child, "start on the first file"))
-	child.mu.Lock()
-	working := messageText(child.messages[0])
-	child.mu.Unlock()
+	working := transcriptText(child)
 	if !strings.Contains(working, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node's first turn dropped the block:\n%s", working)
 	}

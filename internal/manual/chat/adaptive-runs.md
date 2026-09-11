@@ -26,18 +26,23 @@ the run's own page — is how a run behaves where one exists, and is left here b
 machinery is still in aforge. See also *Should this be a run, or one worker that splits
 itself*.
 
-## Should this be a run, or one worker that splits itself — when I use a run instead of a task, why didn't you start an adaptive run for this
+## Should this be a run, or one worker that splits itself — when I use a run instead of a task, why didn't you start an adaptive run for this, how it knows the work is too big for one worker
 
 **I cannot start one, and that is the answer to why I did not.** The tool that opened a
 planned run is off my belt entirely — not refused, not gated: I do not have the verb — so
 whatever you ask for, work that leaves this conversation leaves it as a **task**.
 
-Work that is simply wide — a sweep across many files, research across many sources, the same
-change over many separate items — starts as **one task**, and the worker hands the parts out
-itself once it has opened the material and can see how many there are. Each part becomes a
-worker in a working copy of its own, and the first worker stays and folds their reports
-into one deliverable. That is *When a task turns out to be too wide for one worker*, in *work
-that runs on its own*.
+A wide **change** — the same edit over many separate items, a sweep that writes across many
+files — starts as **one task**, and the worker hands the parts out itself once it has opened
+the material and can see how many there are. Each part becomes a worker in a working copy of
+its own, and the first worker stays and folds their reports into one deliverable. That is
+*When a task turns out to be too wide for one worker*, in *work that runs on its own*.
+
+A wide **read** takes the other road entirely. A survey, a comparison, research across many
+files or packages — anything whose answer comes back for this conversation to read and carry
+on with — is **quick tasks**, one per independent part, started in one breath and folded into
+one answer here. No working copy, no branch, no check. *Quick task or a proper task*, on the
+tasks page, is where that line is drawn.
 
 The reason is that nobody can see the parts from the request. A planner asked to cut up
 "audit every package for this pattern" is guessing at how many packages there are and what
@@ -1820,12 +1825,15 @@ order they were started, each still a family with its nodes hanging under it.
 
 - Work that can be done in the conversation is done in the conversation.
 - One self-contained piece of work is a **task** (`propose_task`) — one brief, one branch.
-- **So is wide work**, and this is the one people expect to be a run. A broad sweep, an
-  audit across many packages, research across many sources: all of them are one task. It
-  usually runs as one worker, but it is not fixed to one — a task that opens the material
-  and finds many separate items in it splits into parts and stays to fold them back
-  together. See *Work that runs on its own*, under *When a task turns out to be too wide for
-  one worker*.
+- **So is a wide change**, and this is the one people expect to be a run. A broad sweep
+  that writes, an audit that lands fixes across many packages: one task. It usually runs as
+  one worker, but it is not fixed to one — a task that opens the material and finds many
+  separate items in it splits into parts and stays to fold them back together. See *Work
+  that runs on its own*, under *When a task turns out to be too wide for one worker*.
+- **A wide read is neither** — not a run and not a task. A survey, a comparison, research
+  across many packages or sources: those are **quick tasks**, one per part, started
+  together in the conversation's own folder, and the answer is written here from what they
+  bring back. *Quick task or a proper task*, on the tasks page.
 - A shape of work that will recur is a **sub-harness**: built once, saved, and offered
   again. See *Saved shapes of work*.
 

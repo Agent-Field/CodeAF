@@ -131,7 +131,7 @@ func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
 	if !strings.Contains(got, "model · openai/gpt-4.1-mini") {
 		t.Fatalf("the switch has to be said out loud:\n%s", got)
 	}
-	if strings.Contains(got, pickerHint) {
+	if strings.Contains(got, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the overlay is still on screen:\n%s", got)
 	}
 }
@@ -181,8 +181,10 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 			t.Fatalf("row %d is %q, want %s", i, tail[i], model.ID)
 		}
 	}
+	// The foot keeps no blank under the box (view.go's [app.footClearance]), so
+	// the filter box is the row directly above the list.
 	box := lines[len(lines)-len(pickerCatalog)-2]
-	if !strings.Contains(box, pickerHint) {
+	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
 	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {

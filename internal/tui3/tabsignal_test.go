@@ -202,7 +202,7 @@ func TestTheConversationInFrontReadsItsOwnState(t *testing.T) {
 	if got := a.tabSignalFor(a.file, true); got != tabWorking {
 		t.Fatalf("a conversation running a turn reads %v", got)
 	}
-	a.asks = []ask{{id: 7, tool: "bash"}}
+	raiseAsk(a, 7, "bash")
 	if got := a.tabSignalFor(a.file, true); got != tabNeedsPerson {
 		t.Fatalf("a conversation holding a question reads %v", got)
 	}

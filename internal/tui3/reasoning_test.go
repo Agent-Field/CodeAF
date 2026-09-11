@@ -179,14 +179,26 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 	if agent.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("model is %q, want the sonnet row", agent.model)
 	}
-	// The status line carries the BASENAME and the level (render.go's HUD): the
-	// vendor is a routing address and it stays where the model is CHOSEN.
-	if got := plain(frame(a)); !strings.Contains(got, "claude-sonnet-4.5:medium") {
-		t.Fatalf("the status line has to carry <model>:<level>:\n%s", got)
+	// The level is held against THIS model id, and the sheet — where an id is
+	// recorded whole — spells it as `<id>:<level>` (statusdeck.go).
+	//
+	// THE SEAM DOES NOT, SINCE 2026-09-09. That line carries one thinking rung
+	// and it is the RESOLVED one, which a level dialled here is folded into
+	// (foot.go's [app.seamIdentity], effortchip.go). A colon there said only this
+	// scope while the cell beside it said the answer, which was one ladder spelled
+	// two ways on one line.
+	if got := agent.ReasoningFor("anthropic/claude-sonnet-4.5"); got != "medium" {
+		t.Fatalf("the level is %q on the model it was dialled on, want medium", got)
+	}
+	if got := plain(frame(a)); strings.Contains(got, "claude-sonnet-4.5:medium") {
+		t.Fatalf("the seam still spells a level onto the model id:\n%s", got)
 	}
 
 	// Away: the other model has a level of its own, which is none.
 	typeLine(t, a, "/model moonshotai/kimi-k3")
+	if got := agent.ReasoningFor("moonshotai/kimi-k3"); got != "" {
+		t.Fatalf("a model nobody dialled carries %q", got)
+	}
 	got := plain(frame(a))
 	if strings.Contains(got, "kimi-k3:") {
 		t.Fatalf("a model nobody dialled must show no level:\n%s", got)
@@ -197,8 +209,16 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 
 	// And back: the level was the sonnet's, and it is still the sonnet's.
 	typeLine(t, a, "/model anthropic/claude-sonnet-4.5")
-	if got := plain(frame(a)); !strings.Contains(got, "claude-sonnet-4.5:medium") {
-		t.Fatalf("the level has to survive a switch away and back:\n%s", got)
+	if got := agent.ReasoningFor("anthropic/claude-sonnet-4.5"); got != "medium" {
+		t.Fatalf("the level has to survive a switch away and back: %q", got)
+	}
+	// And the picker's own row, which is where an id and its level are read
+	// together, says so.
+	typeLine(t, a, "/model")
+	typeInto(t, a, "sonnet")
+	settleLevels(a, "anthropic/claude-sonnet-4.5")
+	if got := strings.Join(pickerLines(a), "\n"); !strings.Contains(got, "anthropic/claude-sonnet-4.5:medium") {
+		t.Fatalf("the row lost the level across the switch:\n%s", got)
 	}
 }
 

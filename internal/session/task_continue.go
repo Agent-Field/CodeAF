@@ -121,6 +121,14 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	node.carried = directionIDs(said)
 	node.finding = withReport(composeContinueFinding(node.deliveredLocked(), words, latestDirectionID(said, words)),
 		directionBlock(otherDirections(said, words)))
+	if node.nextModel != "" {
+		node.retargetLocked(node.nextModel)
+		node.nextModel = ""
+	}
+	if node.nextEffort != nil {
+		node.spec.effort = restoredRung(*node.nextEffort)
+		node.nextEffort = nil
+	}
 	node.publishing = false
 	node.continuing = true
 	node.state = TaskQueued
@@ -410,6 +418,14 @@ func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
 	// beside it: nobody asked for this attempt, so there is nothing said to
 	// carry into it ([composeContinueFinding]).
 	node.finding = composeContinueFinding(node.deliveredLocked(), "", 0)
+	if node.nextModel != "" {
+		node.retargetLocked(node.nextModel)
+		node.nextModel = ""
+	}
+	if node.nextEffort != nil {
+		node.spec.effort = restoredRung(*node.nextEffort)
+		node.nextEffort = nil
+	}
 	node.publishing = false
 	node.continuing = true
 	node.state = TaskQueued

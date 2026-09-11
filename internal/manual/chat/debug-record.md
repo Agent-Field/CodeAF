@@ -74,9 +74,12 @@ Every record carries the run it belongs to, and — where the work it came from 
 the piece of work, so a long run reads as the plan it was rather than a pile of calls in
 time order.
 
-**The pieces that write those are being added one at a time**, and this build ships the
-switch, the run, its header, the folder and its size law; the call bodies, the tool calls
-and the choices a run made arrive with the changes that record them.
+**With the switch on, those files fill as the run happens.** Each model call writes its
+request and its answer under `calls/`. Each tool call — including one a door refused
+before it ran — appends a line to `events.jsonl`. So does each choice the run made: which
+machine was asked first, whether a slow answer got a second machine, and how hard the
+model was asked to think. A run that called nothing still has `run.json`, so a folder you
+found afterwards still says which run it was.
 
 Each of the three doors also prints one line to the error output when it finishes, and
 only when there is something to go and look at:
@@ -88,21 +91,28 @@ debug record: ~/.aforge/logs/trace/52dfbdde3f1a7c04
 **With the switch off, nothing is created at all** — no folder, no line, nothing to clean
 up afterwards.
 
-## Why did that call fail — what answers it today, and what the record will
+## Why did that call fail — the request, the answer and the choice
 
-The record is being built to answer exactly that from the files alone; today it holds the
-run's header and the pieces that fill in the rest are landing one at a time. Until they
-have, the answer is in the **model-call log**, which is always on and needs nothing
-switched: `aforge logs` prints the last calls with the status each came back with,
-the endpoint's own first sentence on a failure, how long it took and what it cost. The
-models-and-cost page has how to read one of those lines.
+With the debug record on, the answer is in the run's folder. `calls/<id>.json` is that
+one model call whole: the request that went out, the answer that came back, the
+endpoint's own sentence if it failed, and the thinking text where the endpoint sent it
+separately. `events.jsonl` is the rest of the turn in order — each tool that ran, failed
+or was refused, and each routing, hedge and effort choice, with the reason it was made.
 
-What the log holds is the **shape** of a call — how many messages, how many tools, which
-ceiling, which lane — and not what you wrote. The one exception is the old
-`AFORGE_CALL_LOG_BODIES` pin, which still adds the whole request and reply to each line of
-`calls.jsonl` as well as turning the debug record on. With that pin on, the live file is
-allowed 256 MB (32 MB without it) so a long session keeps the bodies; the bodies are still
-moving out of the log and into the record, so that the file you grep stays small.
+A tool a door refused is recorded as refused, not as failed, and the line names who
+said no — `approval`, `write-scope`, `task-ground` — in their own words. A hedge that did
+not fire is recorded as loudly as one that did: both are the same choice answered two
+ways, and a turn that waited ninety seconds with nothing saying why is the folder this
+exists to prevent.
+
+The **model-call log** is still there and still always on: `aforge logs` prints the last
+calls with the status each came back with, the endpoint's own first sentence on a
+failure, how long it took and what it cost. What the log holds is the **shape** of a
+call — how many messages, how many tools, which ceiling, which lane — and not what you
+wrote. The old `AFORGE_CALL_LOG_BODIES` pin still adds the whole request and reply to each
+line of `calls.jsonl` as well as turning the debug record on. With that pin on, the live
+file is allowed 256 MB (32 MB without it). The bodies also live in the run's folder now,
+which is where they were always meant to live, so the file you grep can stay small.
 
 ## Is my key in the debug record — what it never holds
 

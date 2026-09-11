@@ -149,8 +149,10 @@ func TestCtrlWInATaskRoomClosesTheTabAndLeavesTheTaskRunning(t *testing.T) {
 	if !a.closingTab() {
 		t.Fatal("ctrl+w over a running task did not ask before closing the tab")
 	}
-	if a.tabClose.pick != tabCloseKeepAt {
-		t.Fatalf("the card opened on %q rather than on keep running", tabCloseAnswers[a.tabClose.pick])
+	showCard(a)
+	head, ok := a.questionHead()
+	if !ok || head.pick != tabCloseKeepAt {
+		t.Fatalf("the card opened on answer %d rather than on keep running (open=%v)", head.pick, ok)
 	}
 	drive(t, a, key("enter"))
 	if !a.at(pageHome) {

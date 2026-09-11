@@ -26,13 +26,25 @@ import (
 // backgroundSentence is the one sentence the wrapper adds to pi's bash
 // description. One sentence, not a paragraph: the tool is pi's, and a model
 // that has read pi's description already knows what bash is.
-// AND WHAT THE PERSON GETS OUT OF IT, because that is the fact that decides
-// whether this door is the right one. A job leaves a log and an exit code; a
-// task leaves a room, a row that says what the work is, and a report. A model
-// that only knows background:true exists will reach for it for any long thing,
-// which is how a multi-part research sweep became a shell command nobody could
-// watch.
-const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and query them with the jobs tool. A background job gives the person a quiet row on the right while it runs and leaves them its log and an exit code, and nothing else — work whose outcome is a deliverable somebody reads belongs to propose_task instead, which leaves them a room to watch and a report."
+//
+// IT STATES THE CONTRACT AND NOT THE ROUTING. What a job leaves behind — a log
+// and an exit code, and nothing else — is this tool's own contract, and it is
+// still here because it is the fact that decides whether a long thing belongs
+// on this door at all. Which road a piece of work belongs on is the page's
+// table, stated once (beltfacts.go's `## Work or words`, and at length in the
+// manual's own "A job is the wrong door for work whose result is a
+// deliverable"); it used to be repeated here, in front of every request of
+// every turn, which is 200 bytes of routing policy billed sixty times a task.
+//
+// AND THE ARRIVAL IS NOT SAID HERE AT ALL. That a finished job reports itself
+// and must never be polled for was in this sentence, in the timeout sentence
+// and in the background argument's own description — three copies of one law,
+// all three billed on every request. The page now states it once for the whole
+// family (prompts/system.md's `Anything handed off — a job, a watch, a task, a
+// quick task — reports itself into this conversation; never sleep, tail or poll
+// for it`, registered as `handoff.reports-itself`), so this tool states only
+// what is its own.
+const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else."
 
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
@@ -41,7 +53,8 @@ const backgroundSentence = " Run long-lived commands (servers, watchers, long bu
 // AND WHAT REACHING THE BOUND ACTUALLY DOES, because that changed and a model
 // reasoning from "it will be killed" reasons wrongly: it hedges, splits the
 // command, or starts again from nothing when the answer was already running
-// (promote.go).
+// (promote.go). What the promoted job then does — report itself, unpolled — is
+// the page's own law for the whole family and is not repeated here.
 //
 // The figure is interpolated from [BashCeilingSeconds] rather than typed, on
 // this codebase's one-source-of-truth law: a number in a description is read by
@@ -49,12 +62,12 @@ const backgroundSentence = " Run long-lived commands (servers, watchers, long bu
 // from.
 func timeoutSentence(backgroundAfter int) string {
 	if backgroundAfter <= 0 {
-		return " bash WAITS for the command. A foreground call runs for as long as your own timeout argument says, up to " +
-			strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. A call that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Its exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
+		return " bash WAITS for the command: a foreground call runs for as long as your own timeout argument says, up to " +
+			strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. One that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Background calls never time out."
 	}
-	return " bash WAITS for the command. A foreground call runs for up to " + strconv.Itoa(backgroundAfter) +
+	return " bash WAITS for the command: a foreground call runs for up to " + strconv.Itoa(backgroundAfter) +
 		" seconds and is then kept running as a background job while you get its output so far and the job id. Its own timeout can move that handoff sooner and is capped at " +
-		strconv.Itoa(BashCeilingSeconds) + " seconds. The job's exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
+		strconv.Itoa(BashCeilingSeconds) + " seconds. Background calls never time out."
 }
 
 // BashCeilingSeconds is THE bound on a foreground bash call — one number, read
@@ -158,9 +171,9 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 // IT SPELLS OUT THE SPAWN SEMANTICS, because that is the whole difference
 // between the two doors and the model has to be able to choose between them: a
 // foreground call WAITS and hands back the output, a background one FORKS and
-// hands back an id, and either way the ending reaches the conversation without
-// being asked for.
-const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns immediately with a job id, and the job's exit and closing output arrive in the conversation on their own when it ends (default: false — the call waits and returns the output)"}`
+// hands back an id. What happens when the job ends is the page's law for
+// everything handed off, and is not a third copy of it here.
+const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns a job id at once (default: false — the call waits and returns the output)"}`
 
 // backgroundBash wraps bare's bash: the same tool, with one optional argument.
 //
@@ -259,12 +272,23 @@ const (
 // intermediate look at a job somebody asked about, but the sentence that used to
 // invite a poll loop is gone and replaced by the fact that makes polling
 // pointless: A FINISHED JOB REPORTS ITSELF. Every outstanding job's state also
-// rides at the foot of every tool result (jobfooter.go), so "is it still going,
-// and what did it last say" is answered without a call at all. The measured cost
+// rides at the foot of a tool result whenever it has moved since the last one
+// this turn carried (jobfooter.go), so "is it still going, and what did it last
+// say" is answered without a call at all. The measured cost
 // of the old wording was a model that answered `sleep 30 && tail` nine times to
 // an empty log and then killed the work.
-var jobsDescription = "Background work: bash background:true commands and watches. Completions come to you: when a job ends, its exit code and closing output arrive in the conversation on their own, and every running job's elapsed time and last line ride at the foot of every tool result — so never sleep, tail or poll to wait for one. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
-	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks), for an intermediate look and not for waiting. kill: SIGTERM the process group, SIGKILL " +
+//
+// AND THAT LAW IS NOW STATED ON THE PAGE AND NOT HERE (2026-09-10, the prompt
+// diet). This description carried it TWICE — once as "completions come to you"
+// and once as "for an intermediate look and not for waiting" — while `watch` and
+// `propose_task` each carried a third and a fourth copy. It is one law about
+// everything handed off, so prompts/system.md states it once for all of them and
+// the belt states none of it; the manual's own page answers it at length ("Does
+// aforge poll a background job, or does it get told", what-i-can-do.md). What
+// this description keeps is the contract: which two kinds of work are here, what
+// each op does, what comes back, and where the whole log lives.
+var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
+	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
 	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
 
 var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"integer","description":"Job id (output and kill need one)"},"tail":{"type":"integer","description":"Lines returned (default: ` +

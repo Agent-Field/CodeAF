@@ -343,8 +343,8 @@ func TestTheTasksWindowUsesTheSharedArrowGrammar(t *testing.T) {
 
 func TestTheEmptyTasksPlaceTeachesWithoutInventingRows(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
-	if got := tasksTeach(pal); len(got) != 4 || !strings.Contains(strings.Join(got, "\n"), "enter opens") {
-		t.Fatalf("teaching rows = %#v", got)
+	if got := placeWhisperLines(pageTasks, 120, pal); len(got) != 2 || !strings.Contains(got[1], "/task") {
+		t.Fatalf("whisper rows = %#v", got)
 	}
 	empty := readTasks(session.World{}, tasksMine{}, session.UsageWindow{}, time.Time{}, time.Time{})
 	for _, width := range tasksWidths {
@@ -620,7 +620,7 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	// row, because a row that has already spent the one thing it was drawn to
 	// say may not spend cells on a figure as well.
 	item := reading.items[0]
-	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false)))
+	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false), false))
 	if strings.Contains(narrow, "$") || strings.Contains(narrow, rowSep) {
 		t.Fatalf("a frame too narrow for the name alone drew\n  %s\nwant the cut name and no facts beside it", narrow)
 	}

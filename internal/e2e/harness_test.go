@@ -54,10 +54,17 @@ const e2eModel = "deepseek/deepseek-v4-flash"
 // directory, and on every other machine the whole lane — families, standing,
 // the phase clock — skipped with "no provider credentials", which reads as a
 // key that was never set rather than as a path that was never yours. Resolving
-// through [home.Dir] honours the same override the binary does, so a person
-// who runs aforge out of AFORGE_HOME runs this lane out of it too.
+// through [home.InheritedDir] honours the same override the binary does, so a
+// person who runs aforge out of AFORGE_HOME runs this lane out of it too.
+//
+// It is the INHERITED root and not [home.Dir], which hands a test binary a
+// throwaway root of its own so that a suite cannot write into a person's state
+// (internal/home/undertest.go). Reading a credential the person already has is
+// the one thing this lane genuinely wants from that root, and Dir would have
+// pointed it at an empty directory — every model-driven subtest skipping with
+// "no provider credentials" on a machine that has them.
 func personConfig() string {
-	return filepath.Join(home.Dir(), "config.json")
+	return filepath.Join(home.InheritedDir(), "config.json")
 }
 
 // ── the throwaway machine ───────────────────────────────────────────────────
@@ -81,9 +88,11 @@ type world struct {
 // under a directory the test owns.
 func newWorld(t *testing.T) *world {
 	t.Helper()
-	if strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) == "" {
-		t.Skip("no OPENROUTER_API_KEY: this lane drives a real model")
-	}
+	// THE KEY IS RESOLVED THE WAY THE PRODUCT RESOLVES IT (#576): the two
+	// variables and then the profile's own `api_key` row, which is where a key
+	// pasted into the first-run setup lives and the one road a gate on a single
+	// variable could not see.
+	key := liveKey(t)
 	// The person's own profile is located BEFORE the override lands: after the
 	// Setenv below, home.Dir is the throwaway.
 	profile := personConfig()
@@ -94,12 +103,21 @@ func newWorld(t *testing.T) *world {
 	// answers <dir>/config.json — the file copied one line down.
 	t.Setenv("AFORGE_PROFILE_DIR", "")
 
-	raw, err := os.ReadFile(profile)
-	if err != nil {
-		t.Skipf("no provider credentials at %s: %v", profile, err)
+	// A PROFILE THAT IS NOT THERE IS NO LONGER A SKIP. It was, and that made a
+	// second way for this lane to go green without running: a machine whose key
+	// is exported in the shell and has never written a profile file is a machine
+	// the product runs on perfectly well.
+	if raw, err := os.ReadFile(profile); err == nil {
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
+			t.Fatalf("copy the profile: %v", err)
+		}
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("read the profile at %s: %v", profile, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
-		t.Fatalf("copy the profile: %v", err)
+	// And the throwaway home carries the key itself, whichever road it came
+	// down, so every door this lane opens under it authenticates the same way.
+	if err := config.WriteAPIKey("", key); err != nil {
+		t.Fatalf("write the key into the throwaway profile: %v", err)
 	}
 
 	// The model, chosen the way a person chooses one: the model.talk row, which
