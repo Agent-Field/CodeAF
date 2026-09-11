@@ -1,0 +1,14 @@
+MUTATION CHECK — the two repaired tests still fail when the product really loses the note/report.
+Each mutation was applied to the working tree, the one test run (GOMAXPROCS=4 GOFLAGS=-p=2, -count=1), and the source restored.
+
+MUTATION 1: internal/session/task_run.go taskNoteReaders — the conversation fallback removed
+  return []mailbox{roomSeat{...}, a}  ->  return []mailbox{roomSeat{...}}
+RESULT: --- FAIL: TestAReportThatRacesTheWithdrawalIsNotSwallowed (10.05s)
+    mailbox_test.go:200: the conversation never recorded the report that lost the race; it holds []string(nil) queued
+
+MUTATION 2: internal/session/fork.go handIsHome — the slow hand's report dropped
+  a.enqueueSteering(handReport(...)) only when the report does not name "the slow one"
+RESULT: --- FAIL: TestEachHandsReportArrivesWhenThatHandFinishes (10.01s)
+    fork_test.go:508: 2 hand reports reached the caller, want 3:
+
+Unmutated: both tests passed 30/30 (-count=30) at the working tree.

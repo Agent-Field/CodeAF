@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Ten serial live local-file demos at the round-3 head. One call at a time;
+# stops early if cumulative spend passes the guard. Never prints the key.
+set -uo pipefail
+cd /home/santosh/src/aforge-personal-e2e
+guard=1.00
+total=0
+summary=/tmp/opus-localwork/live8-summary.txt
+: > "$summary"
+echo "BINARY $(bin/aforge version | head -1)" >> "$summary"
+for n in 01 02 03 04 05 06 07 08 09 10; do
+  dir=/tmp/opus-localwork/live8-run$n
+  log=/tmp/opus-localwork/live8-run$n.log
+  start=$(date -u +%FT%TZ)
+  DEMO_DIR="$dir" scripts/demo-local-work.sh > "$log" 2>&1 < /dev/null
+  code=$?
+  spend=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'spend: \$[0-9.]+' | tail -1 | tr -dc '0-9.')
+  calls=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'model calls: [0-9]+' | tail -1 | tr -dc '0-9')
+  verdict=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'DEMO (PASSED|FAILED)' | tail -1)
+  total=$(python3 -c "print(round($total + ${spend:-0}, 4))")
+  echo "run$n start=$start exit=$code verdict=${verdict:-none} calls=${calls:-?} spend=\$${spend:-?} cumulative=\$$total" >> "$summary"
+  if python3 -c "import sys; sys.exit(0 if $total > $guard else 1)"; then
+    echo "STOPPED: cumulative spend \$$total passed the \$$guard guard" >> "$summary"; break
+  fi
+done
+echo "FINISHED $(date -u +%FT%TZ) total=\$$total" >> "$summary"

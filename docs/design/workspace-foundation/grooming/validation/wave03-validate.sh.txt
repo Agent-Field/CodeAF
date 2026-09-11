@@ -18,7 +18,7 @@ step() {
 step vet go vet ./internal/standing/ ./internal/session/ ./cmd/aforge/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/
 step vet-e2e go vet -tags e2e ./internal/e2e/ ./internal/session/
 step small-suites go test -count=1 ./internal/standing/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/
-step session-selected go test -count=1 -timeout 15m -run 'Standing|Stand|ContextTrace|Governing|Organization|Trace|Firing|Inbox|Manual|Answer|Report|Rule|Finding|StopWhile|Publish|Correction|Withheld|Truncat|Digest' ./internal/session/
+step session-selected go test -count=1 -timeout 15m -run 'Standing|Stand|ContextTrace|Governing|Organization|Trace|Firing|Inbox|Manual|Answer|Report|Rule|Finding|StopWhile|Publish|Correction|Withheld|Truncat|Digest|Hand|Journal|Torn|Session|Question|Mailbox|Fork|Deliver|Settle' ./internal/session/
 step cmd-selected go test -count=1 -timeout 15m -run 'Help|Usage|Collections|Width|Tick|Command|Unknown|Doors|Vocabulary|Plain|Standing|Emptiness|Launch|Concept|Flag' ./cmd/aforge/
 step e2e-untagged go test -count=1 ./internal/e2e/
 step laws make test-laws
