@@ -78,6 +78,9 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	if problem != "" {
 		return problem, true, nil
 	}
+	if strings.TrimSpace(parsed.Placement) != "" {
+		return a.standingMoveRefusal(ctx, current), true, nil
+	}
 	parsed, limits, problem := standingNamedLimits(parsed)
 	if problem != "" {
 		return problem, true, nil
@@ -205,14 +208,31 @@ func standingEditRefusal(current standing.Item, parsed standArguments) string {
 	switch {
 	case len(parsed.Does.Retired) > 0:
 		return standingRetiredBrief
-	case strings.TrimSpace(parsed.Placement) != "":
-		return "Invalid arguments: an edit does not move work — collections place and unplace do, with ref {kind: standing, id: " + current.ID + "}, and the work, what it has read and its report stay"
 	case parsed.FolderScope != nil || strings.TrimSpace(parsed.Altitude) != "":
 		return "Invalid arguments: an edit keeps how far it reaches — stop it and propose it with the new reach"
 	case kind != "" && kind != current.Does.Kind:
 		return "Invalid arguments: an edit keeps what the work is — " + standingKindOf(current) + " — so stop it and propose the other"
 	}
 	return ""
+}
+
+// standingMoveRefusal is an edit asked to move work: the road that moves it,
+// and the folders the work is in now.
+//
+// A MOVE IS TWO ACTS. Told only that `collections place and unplace` move
+// work, a model placed a watch in its new folder and left it in the old one,
+// so every run kept both folders' rules (the live move case, 2026-09-11).
+func (a *Agent) standingMoveRefusal(ctx context.Context, current standing.Item) string {
+	refusal := "Invalid arguments: an edit does not move work — collections place and unplace do, with ref {kind: standing, id: " + current.ID + "}, and the work, what it has read and its report stay"
+	place := a.standingPlacedNow(ctx, current)
+	if len(place.folders) == 0 {
+		return refusal
+	}
+	var folders []string
+	for _, folder := range place.folders {
+		folders = append(folders, folder.Name+" ("+folder.ID+")")
+	}
+	return refusal + ". It is placed in " + strings.Join(folders, ", ") + ": a move places it in the new folder and unplaces it from the one it leaves."
 }
 
 // standingKindOf is what an item is, as a refusal names it.
