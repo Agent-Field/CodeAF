@@ -23,7 +23,7 @@ import (
 // beatWatch collects what the pulse said at each moment somebody looked.
 type beatWatch struct {
 	mu   sync.Mutex
-	rows []taskBeatRow
+	rows []TaskBeatRow
 	// named is what the CHECKPOINT said about the pulse while the node ran. The
 	// row names the sidecar, so a reader that already has tasks.json open never
 	// has to guess at a path (task_store.go's taskRecord.Beat).
@@ -36,7 +36,7 @@ type beatWatch struct {
 // looked".
 func (w *beatWatch) look(agent *Agent, id uint64) {
 	store := agent.graph().store
-	row, _ := readTaskBeat(store.beatPath(id))
+	row, _ := ReadTaskBeat(store.beatPath(id))
 	named := ""
 	if document, ok := loadTaskCheckpoint(store.path); ok {
 		for _, record := range document.Nodes {
@@ -53,10 +53,10 @@ func (w *beatWatch) look(agent *Agent, id uint64) {
 	}
 }
 
-func (w *beatWatch) seen() []taskBeatRow {
+func (w *beatWatch) seen() []TaskBeatRow {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	out := make([]taskBeatRow, len(w.rows))
+	out := make([]TaskBeatRow, len(w.rows))
 	copy(out, w.rows)
 	return out
 }
@@ -137,7 +137,7 @@ func TestARunningNodesHeartbeatAdvancesAcrossItsCalls(t *testing.T) {
 		if row.Node != 1 {
 			t.Fatalf("reading %d is about node %d, want the node that is running", index, row.Node)
 		}
-		if !row.working() {
+		if !row.Working() {
 			t.Errorf("reading %d, taken INSIDE a request, does not show one in flight: %+v", index, row)
 		}
 	}

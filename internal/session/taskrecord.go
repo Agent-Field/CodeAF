@@ -64,6 +64,16 @@ type TaskRecord struct {
 	// it — because a torn first line is a line the reader throws away and a
 	// caller cannot tell that from a line that was never written.
 	Journal []byte `json:"journal,omitempty"`
+	// Beat is the node's pulse sidecar as the record itself names it
+	// (task_store.go's taskRecord.Beat, written by task_beat.go), and "" for
+	// every node that is not running one. IT IS THE RECORD'S OWN NAME FOR THE
+	// FILE AND NEVER A PATH THIS SIDE COULD BUILD: a reader that recomputed it
+	// from an id would be a second spelling of where the pulse lives, and the
+	// whole bargain of the field is that whoever holds the record never has to
+	// guess. Over a connection the file is on the machine that ran the work, so
+	// the path crosses as data and is opened by whoever can reach it; empty on
+	// the far reader is the honest answer and not a failure.
+	Beat string `json:"beat,omitempty"`
 }
 
 // TaskRecordPath is the LOCAL FILE a row's URI names, or "" for a URI that names

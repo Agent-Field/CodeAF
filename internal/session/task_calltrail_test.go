@@ -157,12 +157,12 @@ func TestASizingRequestLeavesItsTrailOnTheJournalThePulseAndTheRow(t *testing.T)
 	}
 
 	// THE PULSE: one request, out and back.
-	row, ok := readTaskBeat(beatAt)
+	row, ok := ReadTaskBeat(beatAt)
 	if !ok {
 		t.Fatal("the node's pulse was never written")
 	}
-	if row.Requests != 1 || row.working() {
-		t.Fatalf("the pulse says %d requests, in flight %v; want the one reading, answered", row.Requests, row.working())
+	if row.Requests != 1 || row.Working() {
+		t.Fatalf("the pulse says %d requests, in flight %v; want the one reading, answered", row.Requests, row.Working())
 	}
 }
 
@@ -330,12 +330,12 @@ func TestAWalkedRequestIsOnePairOfLinesOnePulseAndItsOwnLength(t *testing.T) {
 
 	// THE PULSE: one request, out and back, exactly as a worker's own retry
 	// ladder moves it once.
-	row, ok := readTaskBeat(beatAt)
+	row, ok := ReadTaskBeat(beatAt)
 	if !ok {
 		t.Fatal("the node's pulse was never written")
 	}
-	if row.Requests != 1 || row.working() {
-		t.Fatalf("the pulse says %d requests, in flight %v; want one, answered", row.Requests, row.working())
+	if row.Requests != 1 || row.Working() {
+		t.Fatalf("the pulse says %d requests, in flight %v; want one, answered", row.Requests, row.Working())
 	}
 }
 
@@ -376,8 +376,8 @@ func TestAQuestionsEndingClosesTheRescueRacingBesideIt(t *testing.T) {
 	if got := ends[0].End; got != string(provider.CallEndCancelled) {
 		t.Fatalf("the arm the winner cut is written down as %q, want it left", got)
 	}
-	if row, _ := readTaskBeat(beatAt); row.Requests != 2 || row.working() {
-		t.Fatalf("the pulse says %d requests, in flight %v; want both, answered", row.Requests, row.working())
+	if row, _ := ReadTaskBeat(beatAt); row.Requests != 2 || row.Working() {
+		t.Fatalf("the pulse says %d requests, in flight %v; want both, answered", row.Requests, row.Working())
 	}
 }
 

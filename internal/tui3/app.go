@@ -5687,6 +5687,13 @@ type usageMsg struct {
 	roomWeight int
 	roomID     uint64
 	roomGen    int
+	// roomBeat is the open room's node pulse, read beside the rest for the room
+	// its id and generation name — and only where the file is on THIS machine,
+	// which the path's being carried at all is the test for. Empty beatPath means
+	// the node is not writing one, and empty is the honest answer.
+	roomBeatPath string
+	roomBeat     session.TaskBeatRow
+	roomBeatRead bool
 }
 
 // usageKick asks the session what it has spent, off the update loop. See the

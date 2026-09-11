@@ -857,6 +857,25 @@ func (a *Agent) TaskJournal(id uint64) string {
 	return path
 }
 
+// TaskBeat is where a running node's pulse sidecar lives, as the node itself
+// named it — the same field the checkpoint's own row carries (task_store.go's
+// taskRecord.Beat) — and "" for every node that is not writing one: an unknown
+// id, a finished node whose pulse was taken away (task_beat.go's stop), or a
+// session with no journal and therefore no store to name it.
+//
+// IT IS ASKED FOR AND NOT RECOMPUTED, for the same reason the record carries
+// the name at all: a reader that built the path from an id would be a second
+// spelling of where the pulse lives, and the two would drift the day the
+// layout moved. A surface over a connection asks the engine for it with the
+// record itself, so the file's name crosses the wire as data.
+func (a *Agent) TaskBeat(id uint64) string {
+	node := a.taskNode(id)
+	if node == nil || node.graph == nil {
+		return ""
+	}
+	return node.graph.store.beatPath(node.id)
+}
+
 // TaskContextTokens is what one node's worker weighs right now — the request it
 // has in flight, the figure a node's page draws as ↑ — or zero when nobody is
 // working the node: an unknown id, a node that has not started or has ended,
