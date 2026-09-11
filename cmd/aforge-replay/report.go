@@ -175,7 +175,7 @@ func theMomentsThatHurt(out io.Writer, light *spotlight) {
 		return
 	}
 	for _, one := range light.worst {
-		fmt.Fprintf(out, "### %s · %s · %s · %s\n\n", stamp(one.at), one.model, one.role, one.class)
+		fmt.Fprintf(out, "### %s · %s · %s · %s\n\n", stamp(one.at), one.model, named(one.role), one.class)
 		fmt.Fprintf(out, "Asked for `%s`, served by `%s` at %s. The best machine then was `%s` at %s — %s of it was avoidable.\n\n",
 			blankOr(one.asked), one.machine, seconds(one.servedAt), one.best, seconds(one.bestAt), seconds(one.regret))
 		fmt.Fprintln(out, "| policy | would have demanded | expected wait |")
@@ -211,11 +211,7 @@ func whatTheRolesWere(out io.Writer, requests []asked) {
 	}
 	sort.SliceStable(names, func(i, j int) bool { return counted[names[i]] > counted[names[j]] })
 	for _, name := range names {
-		shown := name
-		if shown == "" {
-			shown = "(nothing said)"
-		}
-		fmt.Fprintf(out, "| %s | %s |\n", shown, count(counted[name]))
+		fmt.Fprintf(out, "| %s | %s |\n", named(lane.Role(name)), count(counted[name]))
 	}
 	fmt.Fprintln(out)
 }
@@ -307,6 +303,17 @@ func plainly(value time.Duration) string {
 		return fmt.Sprintf("%.1fh", value.Hours())
 	}
 	return fmt.Sprintf("%.1f days", value.Hours()/24)
+}
+
+// named is a role in words. THE ROLE WITH NO NAME HAS ONE HERE, because a
+// heading that renders it as nothing reads as a bug rather than as a call whose
+// site never said what it was for — which is what it is, and is the commonest
+// thing in the table after the two that do say.
+func named(role lane.Role) string {
+	if role == lane.RoleUnknown {
+		return "(nothing said)"
+	}
+	return string(role)
 }
 
 func blankOr(value string) string {
