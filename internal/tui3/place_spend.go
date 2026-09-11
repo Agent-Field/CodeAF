@@ -456,11 +456,15 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.leavePlace()
 		return nil
 	case "]":
-		a.cycleSpendLens(1)
-		return nil
+		if box := a.placeBox(); box == nil || box.empty() {
+			a.cycleSpendLens(1)
+			return nil
+		}
 	case "[":
-		a.cycleSpendLens(-1)
-		return nil
+		if box := a.placeBox(); box == nil || box.empty() {
+			a.cycleSpendLens(-1)
+			return nil
+		}
 	case "g":
 		if a.spend.lens == spendLensModels {
 			a.spend.group = a.spend.group.next()
