@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -183,6 +184,39 @@ func TestEveryToolResultCarriesTheStateOfEveryRunningJob(t *testing.T) {
 	}
 }
 
+// AND IT IS SAID ONCE PER CHANGE, NOT ONCE PER RESULT. A turn with one job out
+// and a batch of calls used to pay for the same three facts on every one of
+// them; an identical footer tells the model nothing it is not already reading
+// further up the same turn.
+func TestAnUnchangedJobFooterIsNotSaidTwiceInOneTurn(t *testing.T) {
+	agent, _ := jobsAgent(t)
+	id := startJob(t, agent, "sleep 5")
+	defer agent.jobs.kill(context.Background(), id)
+
+	ep := agent.newEpisode()
+	first := agent.withJobState(ep, toolResult{text: "one"})
+	if !strings.Contains(first.text, fmt.Sprintf("[job %d] running ", id)) {
+		t.Fatalf("the first result of the turn did not carry the job:\n%q", first.text)
+	}
+	// The same turn, the same second, the same three facts: nothing to add.
+	if second := agent.withJobState(ep, toolResult{text: "two"}); second.text != "two" {
+		t.Fatalf("the footer was repeated unchanged:\n%q", second.text)
+	}
+
+	// A CHANGE BRINGS IT STRAIGHT BACK, and the elapsed second is a change like
+	// any other, so the footer is rewritten the moment the reading moves.
+	waitFor(t, "the job's elapsed time to move a second", func() bool {
+		return agent.withJobState(ep, toolResult{text: "three"}).text != "three"
+	})
+
+	// AND EVERY TURN STARTS WITH NOTHING REMEMBERED, so a person's next message
+	// never finds the state of their work missing from the first result.
+	next := agent.withJobState(agent.newEpisode(), toolResult{text: "four"})
+	if !strings.Contains(next.text, fmt.Sprintf("[job %d] running ", id)) {
+		t.Fatalf("a new turn did not carry the job on its first result:\n%q", next.text)
+	}
+}
+
 // ── the strip, which is what keeps the footer out of every comparison ───────
 
 // THE FOOTER IS NOT INFORMATION ABOUT THE WORK. It carries an elapsed time, so
@@ -212,6 +246,44 @@ func TestTheJobFooterComesOffAgainExactly(t *testing.T) {
 		if got := stripJobFooter(grown); got != body {
 			t.Fatalf("a %v footer stripped to %q", elapsed, got)
 		}
+	}
+}
+
+// ── the cap, which the footer is budgeted inside rather than on top of ──────
+
+// A FOOTER NEVER GROWS A RESULT PAST THE CAP THE RESULT ALREADY RESPECTED. A
+// tool cuts its own output to fit [bare.MaxResultBytes]; the job footer and the
+// error→fix line are appended after that, and for as long as they were appended
+// on top of it every result the model read while a job was out was over the
+// bound the person was promised.
+func TestTheFootersAreBudgetedInsideTheResultCapAndNotOnTopOfIt(t *testing.T) {
+	t.Parallel()
+	footer := "\n\n[job 1] running 3m12s · last: case 41/120 scored"
+
+	// A result already at the cap gives up the room the footer needs.
+	full := strings.Repeat("x", bare.MaxResultBytes)
+	fitted := footersInsideTheCap(full, full+footer)
+	if len(fitted) > bare.MaxResultBytes {
+		t.Fatalf("a capped result plus a footer is %d bytes, want at most %d", len(fitted), bare.MaxResultBytes)
+	}
+	if !strings.HasSuffix(fitted, footer) {
+		t.Fatalf("the footer was the half that got cut:\n%.200q", fitted[len(fitted)-200:])
+	}
+	if !strings.Contains(fitted, "more bytes)") {
+		t.Fatalf("the cut was made silently: %.200q", fitted[:200])
+	}
+
+	// A result with room to spare is not touched at all.
+	small := "ok"
+	if grown := footersInsideTheCap(small, small+footer); grown != small+footer {
+		t.Fatalf("a small result was cut: %q", grown)
+	}
+
+	// AND A RESULT THAT WAS ALREADY OVER THE CAP ON ITS OWN IS LEFT ALONE: the
+	// footer is not what busted it, and this seam is not a second cap.
+	over := strings.Repeat("y", bare.MaxResultBytes*2)
+	if grown := footersInsideTheCap(over, over+footer); grown != over+footer {
+		t.Fatalf("an already-oversized result was cut here, at %d bytes", len(grown))
 	}
 }
 

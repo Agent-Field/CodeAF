@@ -16,11 +16,26 @@ import (
 //
 // Every question this surface asks is the same shape underneath: a short row of
 // answers, one of which the keyboard is on, each with a key that takes it
-// outright. The stand card is the first caller and deliberately not the last —
-// the consent gate, the connect offer and the subharness offers all draw a row of
-// answers of their own today, each with its own layout loop — so the arithmetic
-// (what fits, what is dropped, where each answer landed in screen columns) lives
-// here once.
+// outright, and the arithmetic of what fits and where each answer landed in
+// screen columns lives here once rather than in each caller's own layout loop.
+//
+// ── IT IS DOWN TO ONE CALLER, AND THAT IS THE POINT ──
+//
+// It was written for the standing card and was meant to be spread. What happened
+// instead is that every question on this surface moved onto ONE RENDERER
+// (question.go, docs/design/questions/DESIGN.md), which draws its answers in the
+// block's own spelling — `[1] allow once · [2] always` on a line, and one answer
+// per row with its consequence beside it on a card. The standing card, the
+// approval gate, the task proposal and both of the harness lane's questions have
+// all been through that door; none of them draws a chip any more.
+//
+// What is left here is the INTAKE CARD raised for a saved program
+// (subharness.go's [subCard]), which is a fullscreen page with a form on it
+// rather than a question above the box — so the block is not on the frame for it
+// to be drawn by, and the answers stay a walkable chip row at the foot of the
+// page until that lane moves. THIS FILE GOES WITH IT. Nothing new may be built on
+// it: a third spelling of one row of answers is exactly what the one-renderer
+// wave exists to end.
 //
 // ── TWO WAYS IN, AND THE SLOW ONE IS NOT SECOND CLASS ──
 //
@@ -58,7 +73,7 @@ import (
 // window is where a person is most likely to be missing an answer they need, and
 // the choice a row makes there is between saying every answer briefly and saying
 // some of them fully — the consent gate settled that question first
-// ([app.consentOffer]) and settled it the same way. A choice with no short
+// ([app.questionOffer]) and settled it the same way. A choice with no short
 // spelling simply keeps its word at both lengths.
 type pickChoice struct{ key, word, short string }
 

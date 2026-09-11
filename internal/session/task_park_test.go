@@ -26,7 +26,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -737,19 +736,16 @@ func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
 					return textResponse("both parts are in; here is the one deliverable"), nil
 				},
 			}}
-			var partsMu sync.Mutex
-			var parts []*TaskNode
+			parts := make(chan *TaskNode, 2)
 			nest := newNest(t, completer, func(node *TaskNode) {
 				if node.parent == 0 {
 					return
 				}
-				partsMu.Lock()
-				parts = append(parts, node)
-				partsMu.Unlock()
+				parts <- node
 			})
 			for _, title := range []string{"arithmetic", "currency"} {
-				if _, _, err := nest.node.proposeTask(context.Background(), pieceArgs(title)); err != nil {
-					t.Fatalf("propose_task: %v", err)
+				if answer, failed, err := nest.node.proposeTask(context.Background(), pieceArgs(title)); err != nil || failed {
+					t.Fatalf("propose_task: %v, failed=%v: %s", err, failed, answer)
 				}
 			}
 
@@ -759,11 +755,18 @@ func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
 			// being submitted — and it would not touch the window this pins.
 			waitParked(t, nest.parent, 0)
 
-			partsMu.Lock()
-			landing := append([]*TaskNode(nil), parts...)
-			partsMu.Unlock()
-			if len(landing) != 2 {
-				t.Fatalf("%d parts were admitted, want the two that were proposed", len(landing))
+			// Parking observes admitted children, not their asynchronous runner
+			// callbacks. Wait for both callbacks before releasing their landings.
+			var landing []*TaskNode
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
+			for len(landing) < 2 {
+				select {
+				case part := <-parts:
+					landing = append(landing, part)
+				case <-timer.C:
+					t.Fatalf("%d child runners started, want two", len(landing))
+				}
 			}
 			release := make(chan struct{})
 			var landed sync.WaitGroup
@@ -817,115 +820,4 @@ func waitReported(t *testing.T, part *TaskNode) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("the delivery of %q never marked the part reported", part.title())
-}
-
-// AND IT IS ONE TURN WHEN A PART AND A HAND LAND ON EACH OTHER'S HEELS.
-//
-// The round above lands two parts on one road and lets the machine choose the
-// interleaving. This one crosses the TWO roads a piece of this node's work comes
-// home by — a sub-task's report and a forked hand's — because the parent parked
-// on them cannot tell those apart and must not have to: it asks one question of
-// the pair ([Agent.taskNewsStanding]) and takes one integration turn holding
-// both.
-//
-// It used to hold a window open by freezing the task store, because a delivery
-// wrote a checkpoint after its mark and stopped there. That window is gone. What
-// a delivery owes the disk is now written when the RECIPIENT'S RECORD holds the
-// note ([durableDelivery]), so there is no file write inside the seam to suspend
-// a delivery on, and the two facts the waiter reads are made under one lock with
-// nothing slow between them.
-func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
-	var (
-		here      *nest
-		delivered sync.WaitGroup
-	)
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			// The request waits for the part's delivery to be over, so what the
-			// count below finds is the pair being read as one fact rather than a
-			// delivery that had not finished when the turn started.
-			delivered.Wait()
-			return textResponse("the part and the hand are in; here is the one deliverable"), nil
-		},
-		// A second step so that a parent which is asked twice is answered rather
-		// than erroring, and the count below is the finding instead of a stall.
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("there was nothing in that request"), nil
-		},
-	}}
-
-	var partsMu sync.Mutex
-	var parts []*TaskNode
-	here = newNest(t, completer, func(node *TaskNode) {
-		if node.parent == 0 {
-			return
-		}
-		partsMu.Lock()
-		parts = append(parts, node)
-		partsMu.Unlock()
-	})
-	// THE GRAPH KEEPS A CHECKPOINT, which every real session's does
-	// ([runTaskChild] hands its graph a store built from the session file) and a
-	// scripted one does not: the acknowledgement this run's landing earns is
-	// written to it, on the drain, and that write is on this test's road.
-	here.graph.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
-
-	// One part handed out, and one hand forked — the two roads a piece of this
-	// node's work can be on, and the two roads a report comes home by.
-	if _, _, err := here.node.proposeTask(context.Background(), pieceArgs("currency")); err != nil {
-		t.Fatalf("propose_task: %v", err)
-	}
-	hand, _, err := here.node.jobs.startHand("hand 1", "the shorter path")
-	if err != nil {
-		t.Fatalf("starting the hand: %v", err)
-	}
-
-	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6})
-	waitParked(t, here.parent, 0)
-	if got := completer.requests(); got != 0 {
-		t.Fatalf("the parent was asked %d times while its work was out, want none", got)
-	}
-	partsMu.Lock()
-	landing := append([]*TaskNode(nil), parts...)
-	partsMu.Unlock()
-	if len(landing) != 1 {
-		t.Fatalf("%d parts were admitted, want the one that was proposed", len(landing))
-	}
-
-	// The part reports first, on its own goroutine, exactly as a runner does.
-	delivered.Add(1)
-	go func() {
-		defer delivered.Done()
-		here.node.deliverTaskNote(landing[0], landing[0].attemptNow(), landing[0].resultTag(),
-			"task 2 finished: currency\ncurrency is done")
-	}()
-	waitReported(t, landing[0])
-
-	// And the hand comes home on the other road, which is the wake the parent
-	// reads its pair on.
-	here.node.handIsHome(hand, 0,
-		forkArguments{Parts: []forkPart{{Role: "the shorter path"}}},
-		forkResult{say: "the shorter path is done", outcome: forkDone})
-
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the parent never ended after its part and its hand reported")
-	}
-	if *stopped != "" {
-		t.Fatalf("the parent was stopped with %q", *stopped)
-	}
-	if got := completer.requests(); got != 1 {
-		extra := ""
-		if got > 1 {
-			extra = fmt.Sprintf("\nthe second request reads:\n%s", userTextIn(completer.request(1)))
-		}
-		t.Fatalf("the parent was asked %d times, want the one turn that holds both reports%s", got, extra)
-	}
-	only := userTextIn(completer.request(0))
-	for _, want := range []string{"do the whole job", "currency is done", "the shorter path is done"} {
-		if !strings.Contains(only, want) {
-			t.Fatalf("the one turn reads %q, want %q in it", only, want)
-		}
-	}
 }

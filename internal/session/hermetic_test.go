@@ -51,10 +51,13 @@ func TestMain(m *testing.M) { os.Exit(runTests(m)) }
 // call, and a package that leaks a directory per run to stop leaking files per
 // run has not fixed anything.
 func runTests(m *testing.M) int {
-	// Resolved BEFORE anything moves, so the guard watches wherever this machine
-	// actually keeps its state: the real home, or the AFORGE_HOME a developer had
-	// already pointed somewhere else.
-	real := home.Dir()
+	// The guard watches wherever this machine actually keeps its state: the real
+	// home, or the AFORGE_HOME a developer had already pointed somewhere else.
+	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a
+	// test binary a throwaway root of its own (internal/home/undertest.go), and
+	// a guard watching that would be watching the very directory it exists to
+	// keep the files out of.
+	real := home.InheritedDir()
 	before := journalTrees(real)
 	// AND THE CHECKOUT THIS BINARY IS RUNNING IN, for the same reason and at the
 	// same moment: a node commits as well as journals, and a git command with no

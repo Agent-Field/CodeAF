@@ -50,7 +50,7 @@ func TestAFolderLandingRefusesToWriteOverThePersonsOwnEdit(t *testing.T) {
 	writeFile(t, filepath.Join(ground, "notes.md"), "the line the person typed\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	ledger, merge, detail, _ := landHome(node, tree, []string{"notes.md"})
+	ledger, merge, detail, _ := landHome(node, tree, []string{"notes.md"}, false)
 	node.finish("tidied the notes", ledger, "", merge)
 
 	if merge != mergeConflicted {
@@ -83,7 +83,7 @@ func TestAFolderLandingOverAnUntouchedFolderSaysNothingExtra(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "under", "deeper.md"), "and the one under it\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	_, merge, detail, _ := landHome(node, tree, []string{"notes.md", "under/deeper.md"})
+	_, merge, detail, _ := landHome(node, tree, []string{"notes.md", "under/deeper.md"}, false)
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want an ordinary folder landing", merge, detail)
 	}
@@ -145,7 +145,7 @@ func TestAFileTheFamilyRemovedIsStillTakenOutOfTheFolder(t *testing.T) {
 	}
 
 	node := loneTestNode(t, "tidy the notes")
-	_, merge, detail, _ := landHome(node, tree, []string{"stale.md"})
+	_, merge, detail, _ := landHome(node, tree, []string{"stale.md"}, false)
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want the removal to land", merge, detail)
 	}
@@ -165,10 +165,10 @@ func TestAFolderThatAlreadyHoldsTheFamilysWorkLandsAgainQuietly(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the line the task wrote\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
+	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}, false); merge != mergeInPlace {
 		t.Fatalf("the first landing answered %q", merge)
 	}
-	if _, merge, detail, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace || detail != "" {
+	if _, merge, detail, _ := landHome(node, tree, []string{"notes.md"}, false); merge != mergeInPlace || detail != "" {
 		t.Fatalf("the second landing answered %q / %q, want it to lay the same bytes again", merge, detail)
 	}
 }
@@ -184,7 +184,7 @@ func TestADirectoryInTheLedgerIsMeasuredAsAWhole(t *testing.T) {
 
 	// Untouched, the whole directory lands.
 	node := loneTestNode(t, "write the section")
-	if _, merge, detail, _ := landHome(node, tree, []string{"under"}); merge != mergeInPlace || detail != "" {
+	if _, merge, detail, _ := landHome(node, tree, []string{"under"}, false); merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want the directory to land", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(ground, "under", "written.md")); got != "what the task wrote\n" {
@@ -194,7 +194,7 @@ func TestADirectoryInTheLedgerIsMeasuredAsAWhole(t *testing.T) {
 	// And a note the person drops into it afterwards is inside what the next
 	// landing would remove, so the next landing stands back and names it.
 	writeFile(t, filepath.Join(ground, "under", "theirs.md"), "the line the person typed\n")
-	if _, merge, detail, _ := landHome(node, tree, []string{"under"}); merge != mergeConflicted ||
+	if _, merge, detail, _ := landHome(node, tree, []string{"under"}, false); merge != mergeConflicted ||
 		!strings.Contains(detail, "under changed there while this ran") {
 		t.Fatalf("merge = %q, detail = %q, want the directory refused", merge, detail)
 	}
@@ -218,7 +218,7 @@ func TestAFamilyWithNoBaselineLandsTheWayItAlwaysDid(t *testing.T) {
 	}
 
 	node := loneTestNode(t, "tidy the notes")
-	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
+	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}, false); merge != mergeInPlace {
 		t.Fatalf("merge = %q, want the old road for a folder with no record", merge)
 	}
 	if got := readFile(t, filepath.Join(ground, "notes.md")); got != "the line the task wrote\n" {
@@ -270,7 +270,7 @@ func TestARunningFolderFamilyLandsNeedingALookWhenTheFolderMoved(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) {
+	if !strings.HasPrefix(notice.Report, yourCallLead(notice.StatusFacts())) {
 		t.Fatalf("the report does not lead with the person's look: %q", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "notes.md changed there while this ran") {
@@ -336,7 +336,7 @@ func TestARunningFolderFamilyOverAnUntouchedFolderStillLands(t *testing.T) {
 		t.Fatalf("merge = %q, want a folder landing to stay in place", notice.Merge)
 	}
 	if strings.Contains(notice.Report, "changed there while this ran") ||
-		strings.Contains(notice.Report, needsLookLead) {
+		strings.Contains(notice.Report, yourCallLead(notice.StatusFacts())) {
 		t.Fatalf("the report gained a sentence over an untouched folder: %q", notice.Report)
 	}
 	if got := readFile(t, filepath.Join(ground, "notes.md")); got != "the line the task wrote\n" {
@@ -369,8 +369,8 @@ func TestAnAcceptedFolderFamilyRefusesAFolderThatMovedUnderIt(t *testing.T) {
 	family.setTree(tree)
 
 	// IT LANDS NEEDING A LOOK, WHICH LAYS NOTHING.
-	kept, ledger := keepHome(family, tree, []string{"notes.md"})
-	family.finish(needsLookLead+"nobody could judge this", ledger, "", kept)
+	kept, ledger := keepHome(family, tree, []string{"notes.md"}, false)
+	family.finish(yourCallLead(TaskFacts{Merge: kept})+"nobody could judge this", ledger, "", kept)
 	graph.complete(family, TaskUnverified)
 
 	// AND THE PERSON SPENDS THE MORNING IN THE SAME FILE.
@@ -383,7 +383,7 @@ func TestAnAcceptedFolderFamilyRefusesAFolderThatMovedUnderIt(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("the accepted family is %q: %s", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) ||
+	if !strings.HasPrefix(notice.Report, yourCallLead(notice.StatusFacts())) ||
 		!strings.Contains(notice.Report, "notes.md changed there while this ran") {
 		t.Fatalf("the accept did not say which file moved: %q", notice.Report)
 	}

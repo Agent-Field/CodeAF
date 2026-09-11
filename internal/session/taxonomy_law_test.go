@@ -129,11 +129,18 @@ func TestOnlyTheBoundaryBuysAStrongerModel(t *testing.T) {
 	}
 }
 
-// TestEveryClassHasExactlyOnePolicy holds the registry to its own shape: three
-// classes, three policies, and no class answered by a branch somebody wrote at a
-// call site because the registry had nothing for it.
+// TestEveryClassHasExactlyOnePolicy holds the registry to its own shape: one
+// policy per class, and no class answered by a branch somebody wrote at a call
+// site because the registry had nothing for it.
+//
+// [taxonomy.Shape] joined on 2026-09-10, for the class whose move is neither a
+// machine nor a model but the REQUEST — a transcript longer than the window, a
+// body the router read and refused. It had no policy because it had no class,
+// and what stood where a policy belongs was a pair of regexes in
+// internal/session's turn loop that ran after the verdict and returned before it
+// could be read.
 func TestEveryClassHasExactlyOnePolicy(t *testing.T) {
-	want := []taxonomy.Class{taxonomy.Capability, taxonomy.Transport, taxonomy.Work}
+	want := []taxonomy.Class{taxonomy.Capability, taxonomy.Shape, taxonomy.Transport, taxonomy.Work}
 	got := taxonomy.Registered()
 	if len(got) != len(want) {
 		t.Fatalf("registered classes = %v, want %v", got, want)

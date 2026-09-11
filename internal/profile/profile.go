@@ -82,7 +82,7 @@ type Record struct {
 	// its budget mid-edit as much as of one that finished — and the flag was
 	// never read, because a ruler calibrated against it would have been
 	// calibrated against the budget rather than against the work.
-	Verdict provider.Verdict `json:"verdict,omitempty"`
+	Verdict provider.Reading `json:"verdict,omitempty"`
 }
 
 // BucketDirect labels work dispatched without a planner size judgment. Keeping
@@ -141,7 +141,7 @@ func FanInOf(count int) *int { return &count }
 // records written before verdicts existed, so an old profile still calibrates.
 func (r Record) Overran() bool {
 	switch r.Verdict {
-	case provider.VerdictBudgetStop, provider.VerdictTurnCap:
+	case provider.ReadingBudgetStop, provider.ReadingTurnCap:
 		return true
 	case "":
 		return r.Stop == "budget" || r.Stop == "turn-cap"
@@ -437,8 +437,8 @@ func (p *Profile) MeasureReflex() ReflexStats {
 		cost += record.Cost
 		if record.Promoted {
 			stats.Promotions++
-		} else if record.Verdict == provider.VerdictVerifiedSuccess ||
-			record.Verdict == provider.VerdictUnverifiedSuccess {
+		} else if record.Verdict == provider.ReadingVerifiedSuccess ||
+			record.Verdict == provider.ReadingUnverifiedSuccess {
 			stats.Successes++
 		}
 	}

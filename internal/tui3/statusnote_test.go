@@ -153,14 +153,17 @@ func TestCostNamesTheReflexCallsThatSpentTheirCeilingOnNoAnswer(t *testing.T) {
 }
 
 // THE CACHE LINE IS WHAT WAS READ, AND WHAT THAT WAS WORTH — and the money half
-// appears only when a price was published while the reads were happening
-// (app.go's [app.cacheSaved], which is not derivable afterwards).
+// appears only where the model publishes BOTH a prompt price and a cache-read
+// price to work the difference out from (app.go's [app.repriceCache]).
 func TestCostSaysWhatTheCacheGaveBackOnlyWhenItIsPriced(t *testing.T) {
-	agent := &fakeAgent{model: "m", usage: session.Usage{
+	agent := &fakeAgent{model: "vendor/priced", usage: session.Usage{
 		Input: 50_000, Output: 1_000, CostUSD: 0.2, CacheRead: 31_200,
 	}}
 	a := newTestApp(agent)
+	a.model = "vendor/priced"
 
+	// Nobody has published a price for this id, so the line is the count alone:
+	// "saved $0.0000" is not a true thing this surface knows.
 	a.slash("/cost")
 	unpriced := lastNote(t, a)
 	if !strings.Contains(unpriced, "31.2k read") {
@@ -170,10 +173,19 @@ func TestCostSaysWhatTheCacheGaveBackOnlyWhenItIsPriced(t *testing.T) {
 		t.Fatalf("an unpriced session claimed a saving:\n%s", unpriced)
 	}
 
-	a.cacheSaved = 0.018
+	// With a published pair the same reads are worth 31,200 × $0.0000006, which
+	// the command works out for itself — it is derived from the totals rather
+	// than banked by whichever turn happened to land while the surface was up,
+	// so a session resumed between two turns says it too.
+	a.models = func() []Model {
+		return []Model{{
+			ID: "vendor/priced", ContextLength: 128_000,
+			PromptPrice: 0.000001, CacheReadPrice: 0.0000004,
+		}}
+	}
 	a.slash("/cost")
 	priced := lastNote(t, a)
-	if !strings.Contains(priced, "31.2k read · saved $0.0180") {
+	if !strings.Contains(priced, "31.2k read · saved $0.0187") {
 		t.Fatalf("the priced answer reads:\n%s", priced)
 	}
 }

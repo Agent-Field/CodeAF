@@ -46,6 +46,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -535,7 +536,13 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("`aforge manual \"who can see my files\"` exited %d:\n%s", code, shorten(out, 400))
 		}
-		label := "[" + manualPrivacyPage + " · "
+		// THE PERSON'S DOOR, NOT THE MODEL'S. `aforge manual "…"` prints
+		// [manual.RenderWhole], whose labels are Markdown headings
+		// (`## permissions · …`). The belt tool still uses bracketed labels
+		// ([manual.Render]); a test that looked for `[permissions · ` here
+		// reported `[]` on a correct answer the day the person's door grew its
+		// own spelling.
+		label := manual.PersonSectionOpen(manualPrivacyPage)
 		if !strings.Contains(out, label) {
 			t.Errorf("nothing in the answer is labelled %s, so a person cannot trace a sentence back to the page that authorized it; what came back was labelled %v",
 				label, labelsOf(renderedSections(out)))
@@ -863,26 +870,47 @@ type labelled struct {
 	Body  string
 }
 
-// sectionLabel matches the label [manual.Render] writes over every section. It
-// is anchored to the start of a line, because a body may well contain brackets
-// and a middle dot of its own.
-var sectionLabel = regexp.MustCompile(`(?m)^\[([a-z0-9][a-z0-9\-]*) · (.+)\]$`)
+// sectionLabel matches the label [manual.Render] writes over every section for
+// the model. personSectionLabel is the Markdown heading [manual.RenderWhole]
+// writes for a person on the command line. Both are anchored to the start of a
+// line, because a body may well contain brackets, hashes and a middle dot of
+// its own.
+var (
+	sectionLabel       = regexp.MustCompile(`(?m)^\[([a-z0-9][a-z0-9\-]*) · (.+)\]$`)
+	personSectionLabel = regexp.MustCompile(`(?m)^## ([a-z0-9][a-z0-9\-]*) · (.+)$`)
+)
 
-// renderedSections reads a tool result back into the sections it was built from.
-// This is the assertion the whole lane rests on: the labels are how a person —
-// and this test — traces a sentence to the page that authorized it.
+// renderedSections reads a tool result — or a person's command-line answer —
+// back into the sections it was built from. This is the assertion the whole
+// lane rests on: the labels are how a person — and this test — traces a
+// sentence to the page that authorized it. Both spellings are accepted because
+// the belt tool and `aforge manual "…"` share the corpus and disagree only on
+// the label shape ([manual.PersonSectionOpen], [manual.ModelSectionOpen]).
 func renderedSections(text string) []labelled {
-	spans := sectionLabel.FindAllStringSubmatchIndex(text, -1)
-	found := make([]labelled, 0, len(spans))
-	for at, span := range spans {
+	type hit struct {
+		start, labelEnd, pageLo, pageHi, titleLo, titleHi int
+	}
+	var hits []hit
+	for _, re := range []*regexp.Regexp{sectionLabel, personSectionLabel} {
+		for _, span := range re.FindAllStringSubmatchIndex(text, -1) {
+			hits = append(hits, hit{
+				start: span[0], labelEnd: span[1],
+				pageLo: span[2], pageHi: span[3],
+				titleLo: span[4], titleHi: span[5],
+			})
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].start < hits[j].start })
+	found := make([]labelled, 0, len(hits))
+	for at, one := range hits {
 		end := len(text)
-		if at+1 < len(spans) {
-			end = spans[at+1][0]
+		if at+1 < len(hits) {
+			end = hits[at+1].start
 		}
 		found = append(found, labelled{
-			Page:  text[span[2]:span[3]],
-			Title: text[span[4]:span[5]],
-			Body:  strings.TrimSpace(text[span[1]:end]),
+			Page:  text[one.pageLo:one.pageHi],
+			Title: text[one.titleLo:one.titleHi],
+			Body:  strings.TrimSpace(text[one.labelEnd:end]),
 		})
 	}
 	return found

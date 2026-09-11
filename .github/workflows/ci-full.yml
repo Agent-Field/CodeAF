@@ -1,10 +1,8 @@
 name: Full check
 
-# THE HEAVY GATE, AND IT SITS BETWEEN `dev` AND `staging` ON PURPOSE. Work
-# reaches `dev` fast and lightly checked, which is the right trade while people
-# are building; the price of that trade is that `dev` is not trustworthy on its
-# own. This is where the price is paid — before a commit is promoted to the
-# branch other people install and use.
+# THE HEAVY GATE SITS ON BOTH PROMOTION POINTERS. Work reaches `dev` fast and
+# lightly checked, which is the right trade while people are building; the
+# price is paid before a commit reaches `staging` or the release branch `main`.
 #
 # It also runs nightly against `dev`, because the failure this repository
 # actually suffers is not "the pull request was bad" but "the merge of two good
@@ -17,9 +15,11 @@ on:
   pull_request:
     branches:
       - staging
+      - main
   push:
     branches:
       - staging
+      - main
   schedule:
     # 09:00 UTC, which is the small hours in California and the morning in India
     # — a result waiting on both desks rather than a run nobody sees finish.

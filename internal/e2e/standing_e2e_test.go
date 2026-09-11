@@ -28,9 +28,7 @@ import (
 )
 
 func TestStandingE2E(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) == "" {
-		t.Skip("no OPENROUTER_API_KEY: this lane drives a real model")
-	}
+	liveKey(t)
 
 	t.Run("1 a reminder is proposed, ratified and written down", standingReminderStands)
 	t.Run("2 a tick fires it into the live conversation", standingFiresIntoTheRoom)

@@ -17,8 +17,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+func advanceSteerAge(agent *Agent, age time.Duration) {
+	agent.mu.Lock()
+	agent.steerAge = func(*bare.BashCall) time.Duration { return age }
+	agent.mu.Unlock()
+}
 
 // A YOUNG BASH THAT TURNS OUT TO BE A LONG ONE. The steer is sent while the
 // command is far too young to adopt, the command then runs well past
@@ -105,8 +112,8 @@ func TestASteerGraceLeavesAQuickBashAlone(t *testing.T) {
 	steered := mustSteer(t, agent, "then read the result")
 	collect(t, turn)
 	collect(t, steered)
-	// Past the moment the watch was armed for, with the turn long over.
-	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	// The turn cleanup itself cancels the watch; no wall-clock wait is needed to
+	// prove a timer the agent no longer holds cannot act.
 	if list := agent.jobs.list(); list != "No background jobs." {
 		t.Fatalf("a command that finished on its own became a job: %q", list)
 	}
@@ -239,8 +246,8 @@ func TestASteerGraceOnlyActsForWhatItWasArmedFor(t *testing.T) {
 	// The timer is taken off the clock so that every firing below is one this
 	// test made, in the order it wrote them.
 	watch.timer.Stop()
-	// It fires late enough that the age itself is no longer what refuses it.
-	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	// Advance the command-age seam so age itself is no longer what refuses it.
+	advanceSteerAge(agent, steerBashAge+2*steerGraceMargin)
 
 	// Each is INSTALLED before it is fired, so what refuses it is the identity
 	// under test and not the guard that answers a watch the agent let go of
@@ -299,8 +306,8 @@ func TestASteerGraceDoesNotOutliveAnInterruptedTurn(t *testing.T) {
 			t.Fatal("a steer landed inside a turn the person stopped")
 		}
 	}
-	// Past the moment the watch was armed for, with the turn already gone.
-	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	// The interrupted turn has already released its watch; no timer may revive
+	// an object the agent no longer holds.
 	agent.mu.Lock()
 	armed, running := agent.steerGrace, agent.running
 	agent.mu.Unlock()
@@ -349,7 +356,7 @@ func TestAReplacedSteerGraceIsInertInItsOwnTurn(t *testing.T) {
 	// made, and it is made late enough that the age is not what refuses it.
 	replaced.timer.Stop()
 	current.timer.Stop()
-	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	advanceSteerAge(agent, steerBashAge+2*steerGraceMargin)
 
 	agent.steerGraceFired(replaced)
 	if list := agent.jobs.list(); list != "No background jobs." {
@@ -402,10 +409,10 @@ func TestASteerGraceCannotDetachWorkInsideAnInterrupt(t *testing.T) {
 	real := agent.cancel
 	// Close cancels too, so both sides are once-only: the gate is about the ONE
 	// pass Interrupt makes through here.
-	agent.cancel = func() {
+	agent.cancel = func(cause error) {
 		arrived.Do(func() { close(entered) })
 		<-release
-		real()
+		real(cause)
 	}
 	agent.mu.Unlock()
 	if watch == nil {
@@ -422,7 +429,7 @@ func TestASteerGraceCannotDetachWorkInsideAnInterrupt(t *testing.T) {
 	}
 	// Interrupt is past its lock boundary and the turn it is stopping is still
 	// alive: this is the interval, and the grace is now behind us.
-	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	advanceSteerAge(agent, steerBashAge+2*steerGraceMargin)
 	if len(agent.inFlightBash.snapshot()) != 1 {
 		t.Fatal("the command was already gone, so this is not the window under test")
 	}
