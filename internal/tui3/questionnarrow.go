@@ -125,8 +125,12 @@ func (a *app) questionNarrowRows(q questionShown, width int) []string {
 	}
 	band := func(key, word string, i int) {
 		row := len(out)
-		out = append(out, a.questionBandRow(row, key, word, width, i == at))
-		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: i})
+		// THE BAND IS RECORDED BEFORE IT IS PAINTED, because the paint asks the
+		// bands which answer this row is ([app.questionBandMarks]) — the marks
+		// belong to the answer and not to the row's position.
+		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: at})
+		a.questionBands = bands
+		out = append(out, a.questionBandRow(row, key, word, width))
 	}
 	if len(q.beat) > 0 {
 		// THE BEAT IS BANDS HERE TOO. The wide form replaces the answers row with
@@ -154,10 +158,29 @@ func (a *app) questionNarrowRows(q questionShown, width int) []string {
 		band(key, a.questionBandWord(word, key, width), i)
 	}
 	a.questionBands = bands
+	// AND THE KEYS ARE SAID, from the ONE key table, even here. A phone tier has
+	// no keyboard, which is why the bands are targets — but this tier is every
+	// frame under sixty columns, and most of them are terminals on a laptop with
+	// a window dragged narrow. A sheet that named no key at all was the one view
+	// where `esc` was a secret ([app.questionKeyRow] is the one composer).
+	if keys := a.questionNarrowKeys(q, width); keys != "" {
+		out = append(out, keys)
+	}
 	if foot := a.questionNarrowFoot(q, width); foot != "" {
 		out = append(out, foot)
 	}
 	return out
+}
+
+// questionNarrowKeys is that row: the keys that ANSWER, dropped by rank until
+// they fit, and nothing else — the second tier the panel draws under its frame
+// is rows this tier does not have to spend.
+func (a *app) questionNarrowKeys(q questionShown, width int) string {
+	keys := questionKeysOnTier(a.questionAnswerKeys(q, formsCard), keyPrimary)
+	if len(keys) == 0 {
+		return ""
+	}
+	return questionBandPad + a.questionKeyRow(q, keys, max(width-len(questionBandPad), 1))
 }
 
 // questionBandBack is the band index the beat's way out carries. It is not an
@@ -248,30 +271,82 @@ func (a *app) questionNarrowBody(body string, width int) []string {
 // consequence the card draws beside it is dropped here: a band is a target and
 // reads at a glance, and a word cut off mid-reach says less than a short one.
 func (a *app) questionBandWord(word, key string, width int) string {
-	if room := width - len(questionBandPad) - len("  ") - len("["+key+"] "); ansi.StringWidth(word) > room {
+	if room := width - len(questionBandPad) - ansi.StringWidth(key) - 4; ansi.StringWidth(word) > room {
 		return fit(word, room)
 	}
 	return word
 }
 
-// questionBandRow is one answer, drawn as a row: the key it also answers to,
-// then the word. Under the pointer it takes the background every pressable row
-// on this surface takes (hover.go) — which is an affordance for a mouse and a
-// no-op for a thumb, so the row says what it is in WORDS as well.
-func (a *app) questionBandRow(row int, key, word string, width int, cursored bool) string {
-	// AND THE MARK IS THE CARD'S OWN, for the card's own reason: the band is a
-	// background colour, and a person on a plain screen — or reading a capture —
-	// was left to guess which row the arrows had reached ([app.questionCardRows]
-	// says the same thing where it draws this glyph).
+// questionBandRow is one answer, drawn as a row: the pointer where the pointer
+// is, the key it also answers to, its word, and `◆ recommended` at the right
+// edge where the asker named this one.
+//
+// IT IS THE PANEL'S ROW GRAMMAR ON A PHONE (owner ruling 2026-09-11, colour
+// pick C and recommended pick A): the marks are amber, the key is the payload
+// hue, the word is ordinary ink, and the row the pointer stands on takes the
+// GROUND ladder rather than a colour. The sheet used to paint every band in the
+// question hue with its key in brackets, which was the one surface still
+// shouting — and it was the one surface where the pick was not said at all.
+//
+// Under the mouse it takes the hover background every pressable row on this
+// surface takes (hover.go) — an affordance for a mouse and a no-op for a thumb,
+// so the row says what it is in WORDS as well.
+func (a *app) questionBandRow(row int, key, word string, width int) string {
+	pointed, picked := a.questionBandMarks(row)
 	mark := "  "
-	if cursored {
-		mark = a.icon(tokens.GCollapsed) + " "
+	if pointed {
+		mark = a.pal.warnBold(a.icon(tokens.GPointer)) + " "
 	}
-	text := a.pal.ask(questionBandPad) + a.pal.ask(mark) + a.pal.askBold("["+questionKeySpelling(key)+"]") + a.pal.ask(" "+word)
-	if a.hot.kind == hoverChoices && a.hot.index == row {
+	text := " " + mark + a.pal.data(questionKeySpelling(key)) + "  " + a.pal.ink(word)
+	if picked {
+		aside := a.pal.warnBold(a.icon(tokens.GRecommended)) + a.pal.dim(" "+questionRecommendedWord)
+		if gap := width - ansi.StringWidth(text) - ansi.StringWidth(ansi.Strip(aside)) - 2; gap > 0 {
+			text += strings.Repeat(" ", gap) + aside
+		}
+	}
+	switch {
+	case a.hot.kind == hoverChoices && a.hot.index == row:
 		return a.pal.cursor(text, width)
+	case pointed:
+		return a.pal.background(text, width, a.pal.ramp.selected)
 	}
 	return text
+}
+
+// questionBandMarks answers the two marks one band may wear: whether the pointer
+// is on it, and whether the asker picked it. It reads the open question rather
+// than taking them as arguments, so one reading serves the row's paint and the
+// press that lands on it.
+//
+// THE BEAT WEARS THE POINTER AND NEVER THE RECOMMENDATION. Its bands are the
+// widening answer's SHAPES rather than the question's answers, so no asker ever
+// picked one and `◆ recommended` on a shape would be a recommendation nobody
+// made — but the cursor is as real there as anywhere, and a beat drawn without
+// it ate every arrow aimed at it (#919). That defect is the same one on both
+// tiers; this is the phone's half of the fix and [app.questionBeatRow] is the
+// wide one.
+func (a *app) questionBandMarks(row int) (bool, bool) {
+	head, ok := a.questionHead()
+	if !ok {
+		return false, false
+	}
+	if len(head.beat) > 0 {
+		for _, band := range a.questionBands {
+			if band.row == row && band.at >= 0 && band.at < len(head.beat) {
+				return band.at == head.beatAt, false
+			}
+		}
+		return false, false
+	}
+	for _, band := range a.questionBands {
+		if band.row != row || band.at < 0 || band.at >= len(head.question.Options) {
+			continue
+		}
+		picked := head.question.Pick != nil &&
+			strings.TrimSpace(head.question.Pick.Key) == questionOptionKeyAt(head.question, band.at)
+		return band.at == head.pick, picked
+	}
+	return false, false
 }
 
 // questionNarrowFoot is the sheet's bottom line: what is still queued behind this

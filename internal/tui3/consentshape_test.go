@@ -241,7 +241,7 @@ func TestThePhoneSheetLaysTheShapesOutAsBands(t *testing.T) {
 	drive(t, a, key("2"))
 
 	rows := strings.Join(askRows(a), "\n")
-	for _, want := range []string{"[1] git status*", "[2] git *", "[3] just this line", "[esc] never mind"} {
+	for _, want := range []string{"1  git status*", "2  git *", "3  just this line", "esc  never mind"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("the sheet has no band for %q:\n%s", want, rows)
 		}

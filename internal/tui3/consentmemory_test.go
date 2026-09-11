@@ -216,7 +216,7 @@ func TestThePhoneBandNamesTheCommandToo(t *testing.T) {
 	typeLine(t, a, "check the tree")
 	settleAsk(a)
 	rows := strings.Join(askRows(a), "\n")
-	if !strings.Contains(rows, "[2] always, this command") {
+	if !strings.Contains(rows, "2  always, this command") {
 		t.Fatalf("the band does not name the command:\n%s", rows)
 	}
 }

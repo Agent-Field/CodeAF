@@ -84,9 +84,9 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 		"? bash",                  // the title rule names what is asking
 		"rm -rf build",            // the command, in the region of its own
 		`bash pattern "rm -rf *"`, // the policy's own words for why
-		"[1] allow once",
-		"[3] deny",
-		"[2] always",
+		"1  allow once",
+		"3  deny",
+		"2  always",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the sheet is missing %q:\n%s", want, joined)
@@ -95,7 +95,7 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 	// The line of words the wider frames draw is NOT on it — that is the whole
 	// of this wave: one offer sentence at forty-four columns is the shape that
 	// did not fit.
-	if strings.Contains(joined, "allow? [1] allow once") {
+	if strings.Contains(joined, "allow? ") {
 		t.Fatalf("the phone frame still drew the one-line offer:\n%s", joined)
 	}
 	// Nothing on it is wider than the frame.
@@ -212,7 +212,7 @@ func TestATapOnABandAnswersTheQuestion(t *testing.T) {
 			rows := askRows(a)
 			at := -1
 			for i, row := range rows {
-				if strings.Contains(row, tc.word) && strings.Contains(row, "[") {
+				if strings.Contains(plain(row), "  "+tc.word) {
 					at = i
 				}
 			}
