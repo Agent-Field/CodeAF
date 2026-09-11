@@ -195,7 +195,7 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 		return nil, err
 	}
 	return enginehost.Attach(workspace, func() error {
-		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", workspace)
+		return enginehost.Spawn(workspace, self, "engine", "--daemon", "--workspace", workspace)
 	})
 }
 
