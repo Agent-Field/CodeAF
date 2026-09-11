@@ -5224,6 +5224,11 @@ changes with the cursor:
 - `enter about that window` over work this machine cannot reach at all, which opens the card
   naming where it is.
 - `→ verbs: stop it` **only while the row has that verb** — see below.
+- A row whose work has raised something for you answers on the same line, behind the door:
+  the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+a`,
+  with the page's own clauses — the fold, the verbs, the filter, the way out — giving way
+  first when the width runs short. The row keeps its door, and the question keeps its way
+  in, on the one line the foot draws them on.
 - `→ what ran under it` or `← fold it back up` over a fold, whichever the fold is not.
 
 The last two clauses are about the **page** rather than the row, and they are always there:
