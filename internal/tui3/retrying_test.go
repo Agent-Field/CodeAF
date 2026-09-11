@@ -103,6 +103,32 @@ func TestACutAttemptLeavesNothingOnThePage(t *testing.T) {
 	}
 }
 
+// A hedge replacement takes the dead lane's words off the page before the
+// rescuing lane continues. The one line explaining the switch stays where the
+// withdrawn answer was, and the two answers never become one glued paragraph.
+func TestAHedgeReplacementLeavesOnlyTheRescuedAnswerOnThePage(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state, a.turn, a.linear = stateWorking, 1, true
+	a.event(session.Event{Kind: session.EventTextDelta, Text: "PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT"})
+	a.event(session.Event{Kind: session.EventRetrying, Text: "that lane went quiet — this answer is coming from another one"})
+	a.event(session.Event{Kind: session.EventTextDelta, Text: "STUBANSWER the link is back."})
+	a.event(session.Event{Kind: session.EventAssistantDone})
+
+	page := livePage(a)
+	if !strings.Contains(page, "STUBANSWER the link is back.") {
+		t.Fatalf("the rescuing lane's answer is missing:\n%s", page)
+	}
+	if strings.Contains(page, "PARTIALTEXT") {
+		t.Fatalf("the dead lane's answer stayed on the page:\n%s", page)
+	}
+	if got := strings.Count(page, "that lane went quiet"); got != 1 {
+		t.Fatalf("the replacement line appears %d times, want once:\n%s", got, page)
+	}
+	if !strings.Contains(page, "this answer is coming from") || !strings.Contains(page, "another one") {
+		t.Fatalf("the replacement line is incomplete:\n%s", page)
+	}
+}
+
 // TestARetryDoesNotDisturbWhatCameBeforeIt: only the CURRENT attempt is void.
 // Everything the turn already finished — the person's own message, an earlier
 // answer — is untouched.
