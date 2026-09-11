@@ -333,15 +333,26 @@ func retryNewsOf(t *testing.T, events []Event) []*RetryNews {
 // and the answer arrives on the fallback with every row naming who did what.
 func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	completer := chained([]string{"other/model"},
+	// THE STORM IS EXACTLY AS LONG AS THE BUDGET, and it is built from the
+	// budget rather than written out beside it. Four refusals were spelled here
+	// while [taxonomy.DefaultTransportAttempts] was four, so lowering the budget
+	// left one refusal over for the fallback to trip on and the test failed
+	// about a number it was not asking about. Every other assertion below
+	// already interpolates; this is the fixture catching up with them.
+	refusals := []step{
 		refusedStep(502, "Bad gateway", "Together"),
 		refusedStep(429, "rate limited", "DeepInfra"),
 		refusedStep(429, "rate limited", "Fireworks"),
 		refusedStep(429, "rate limited", "Novita"),
-		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
-			return textResponse("the whole answer"), nil
-		},
-	)
+	}
+	steps := make([]step, 0, taxonomy.DefaultTransportAttempts+1)
+	for i := 0; i < taxonomy.DefaultTransportAttempts; i++ {
+		steps = append(steps, refusals[i%len(refusals)])
+	}
+	steps = append(steps, func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+		return textResponse("the whole answer"), nil
+	})
+	completer := chained([]string{"other/model"}, steps...)
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
 	impatient(t, agent, taxonomy.DefaultTransportAttempts)
 	collected := collect(t, mustSubmit(t, agent, "go on"))
@@ -396,8 +407,9 @@ func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) 
 		}
 	}
 
-	// THE RECORD NAMES WHO FAILED AND WHO ANSWERED. Four classifications, all on
-	// the model that could not serve it, numbered the way a person counts.
+	// THE RECORD NAMES WHO FAILED AND WHO ANSWERED. One classification per spent
+	// attempt, all on the model that could not serve it, numbered the way a
+	// person counts.
 	rows := journaledFailures(t, path)
 	if len(rows) != taxonomy.DefaultTransportAttempts {
 		t.Fatalf("%d classification rows, want one per spent attempt: %+v", len(rows), rows)
