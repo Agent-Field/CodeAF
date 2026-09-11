@@ -1749,10 +1749,11 @@ func (placeTasks) box(a *app) *editor { return nil }
 // when they wonder what typing here will do.
 func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
-// tasksFilterHint is that same invitation on the FOOT'S KEY LINE, which the
-// ruling of 2026-09-11 asks for beside the sort chord: a chord nobody can find
-// is a chord that does not exist, and the filter is the other half of what the
-// keyboard does here.
+// tasksFilterHint is the short spelling of that invitation. It is the control
+// row's own placeholder ([tasksControlRow]) and it is repeated on the FOOT'S KEY
+// LINE, which the ruling of 2026-09-11 asks for beside the sort chord: a chord
+// nobody can find is a chord that does not exist, and the filter is the other
+// half of what the keyboard does here.
 const tasksFilterHint = "type to filter"
 
 // bar is the phone lane's foot: the key legend becomes a `‹ back` band a thumb

@@ -58,7 +58,7 @@ func tasksFixture() (session.World, session.UsageWindow, time.Time) {
 
 func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now))
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
 	wants := []string{tierYourCallWord, "waiting"}
@@ -96,17 +96,23 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	if strings.Contains(page, "adaptive") || !strings.Contains(page, "read 40 filings") {
 		t.Fatalf("the row still spells its kind:\n%s", page)
 	}
-	// AND WHAT THE WORK IS DOING OUTRANKS WHAT IT COST. The progress and the state
-	// are what a person acts on; the spend has a place of its own, and it used to
-	// be the loudest thing on the row because it is the only fact with an ink.
+	// AND WHAT THE WORK IS DOING IS ON THE ROW WHILE WHAT IT COST IS NOT. The
+	// spend used to be the loudest thing on the row because it is the only fact
+	// with an ink of its own; it is now a COLUMN, drawn only where a person has
+	// asked the list to be sorted by it (spec.md §2, [tasksKeyField]), and this
+	// reading is sorted by age. The progress stays, because it is the one figure
+	// on a running row that changes while somebody watches it.
 	running := ""
 	for _, line := range rows {
 		if strings.Contains(line, "read 40 filings") {
 			running = line
 		}
 	}
-	if at, money := strings.Index(running, "18 of 40"), strings.Index(running, "$0.92"); at < 0 || money < 0 || money < at {
-		t.Fatalf("the running row puts its cost ahead of its progress:\n\t%s", running)
+	if !strings.Contains(running, "18 of 40") {
+		t.Fatalf("the running row does not say where it has got to:\n\t%s", running)
+	}
+	if strings.Contains(page, "$0.92") {
+		t.Fatalf("a list sorted by age draws one row's money:\n%s", page)
 	}
 	// THE WINDOW'S EDGE IS SAID ONCE, in the sentence the page opens on. It used
 	// to be repeated on a fold at the foot of every section, which is one number
@@ -138,8 +144,8 @@ func TestNoTasksRowIsHiddenBehindAFold(t *testing.T) {
 			})
 		}
 	}
-	reading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}},
-		tasksMine{}, session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
+	reading := tasksOpen(readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}},
+		tasksMine{}, session.LastDays(now, 10), tasksSort{}, time.Time{}, now))
 	text := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
 	if strings.Contains(text, tokens.GlyphCollapsed) {
 		t.Fatalf("a section folded rows away behind a glyph no key opens:\n%s", text)
@@ -223,7 +229,7 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 
 func TestTheTasksCursorOnlyOpensTaskRows(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
 	pal := newPalette(tokens.NoColor, false)
 	lines := reading.lay(120)
 	rows := reading.rows(120, pal)
@@ -653,35 +659,42 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	}
 }
 
-// THE FACTS ARE JOINED BY ` · ` AND RANKED. `The Certificate Rotation
-// incomplete now` was three separate facts a reader had to re-parse into three,
-// and one row mixed a real ` · ` INSIDE a fact with bare spaces BETWEEN facts,
-// so the only separator on the row meant two different things.
-func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
+// A ROW IS A NAME AND TWO COLUMNS, and the columns are the same cells on every
+// row of the page.
+//
+// IT WAS A TAIL FOR AS LONG AS THIS PAGE EXISTED — `2 files · done · 5h · $0.27`,
+// a ranked prefix that gave up a fact at a time as the frame narrowed, so the
+// figure under a person's eye moved sideways on every row and meant something
+// different on each one. Now the state has a column and the sort key has a
+// column, and everything else that used to be in that tail is in the pane or on
+// the cursor's own line ([tasksReasonLine]).
+//
+// The ` · ` survives INSIDE a cell — `working · 18 of 40`, `done · holds 3` —
+// where it joins one fact to its own qualifier, which is the only thing it ever
+// meant.
+func TestATaskRowIsANameAndItsTwoColumns(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
 	const name = "Put the annual toggle on the pricing page"
-	// AND THEY DEGRADE BY SPELLING RATHER THAN BY ENDING THE TAIL (law 2): what
-	// the work came to is `2 files · done` at its longest and `done` at its
-	// shortest, and each width says the longest it has room for.
-	//
-	// THE SPEND IS LAST AND IS THEREFORE THE FIRST THING GIVEN UP. It used to sit
-	// second, in front of the conversation the work came out of and in front of
-	// what the work did — so a narrow frame kept the figure and dropped the two
-	// facts a person acts on, on the one row of the page with an ink of its own.
+
 	wide := tasksDrawnRow(tasksPage(reading, 160), name)
-	if !strings.HasSuffix(wide, "2 files · done · 5h · $0.27") {
-		t.Fatalf("at 160 columns the row reads\n  %s\nand the spend belongs after what the work did", wide)
+	if !strings.HasSuffix(wide, "done                    5h") {
+		t.Fatalf("at 160 columns the row reads\n  %s\nand it should end in the state column and the age", wide)
 	}
-	narrow := tasksDrawnRow(tasksPage(reading, 60), name)
-	if strings.Contains(narrow, "$0.27") {
-		t.Fatalf("at 60 columns the row kept its spend:\n  %s", narrow)
+	// THE SPEND IS NOT ON IT AT ALL. Money draws in one place on this page — the
+	// sort-key column, when somebody has asked to be sorted by it — and this
+	// reading is sorted by age.
+	if strings.Contains(wide, "$0.27") || strings.Contains(wide, "2 files") {
+		t.Fatalf("a row sorted by age drew a column nobody asked for:\n  %s", wide)
 	}
-	// AND THE WORD IS THE LAST THING IT GIVES UP. A list of work is read to find
-	// out whether anything needs a person, so the file count goes before the
-	// state does ([tasksMiddleField] ranks the spellings).
-	if !strings.Contains(narrow, "done") || strings.Contains(narrow, "2 files") {
-		t.Fatalf("at 60 columns the row reads\n  %s\nand the file count should have given way to the word", narrow)
+	// AND THE STATE COLUMN IS THE LAST THING THE ROW GIVES UP. Under ninety cells
+	// it goes and the key column stays; the name has the rest.
+	narrow := tasksDrawnRow(tasksPage(reading, 89), name)
+	if strings.Contains(narrow, "done") {
+		t.Fatalf("at 89 columns the state column is still drawn:\n  %s", narrow)
+	}
+	if !strings.HasSuffix(narrow, "5h") {
+		t.Fatalf("at 89 columns the row lost the column it is sorted by:\n  %s", narrow)
 	}
 	for _, width := range []int{120, 80} {
 		if !strings.Contains(plain(tasksPage(reading, width)), "The Annual Toggle") {
@@ -696,7 +709,7 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 // which is a fact about conversations and not about work.
 func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
 	want := []string{
 		"Port the picker onto the new list",
 		"Write the morning sweep down",

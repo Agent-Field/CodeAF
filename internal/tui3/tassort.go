@@ -73,21 +73,25 @@ func (k tasksSortKey) column() tasksSortKey {
 	return tasksByAge
 }
 
-// cells is how wide that column has to be to say its key's longest answer WHOLE.
+// tasksKeyCells is the sort-key column's width (spec.md §2), and it is the width
+// of the widest money this page draws — `$60.11`.
+const tasksKeyCells = 6
+
+// cells is how wide that column is: the rule's six, WIDENED WHERE SIX WOULD CUT
+// SOMETHING.
 //
-// IT IS SIZED BY WHAT IT HOLDS AND NOT BY ONE NUMBER THAT SUITS THREE OF THE
-// FIVE. A figure with its end cut off is a wrong number, which is the one thing
-// rowfit.go's law forbids anywhere on this surface: the widest money this page
-// draws needs six cells and `12 files` needs eight, so a single width would
-// either cut a price or leave four cells of air down every frame sorted by age.
+// Two things stand in these cells and both have to fit whole. The figure itself —
+// and a figure with its end cut off is a wrong number, which rowfit.go's law
+// forbids anywhere on this surface, so `12 files` takes the eight cells it needs
+// rather than becoming `12 fil…`. And the COLUMN'S OWN LABEL on the control row
+// one line above it ([tasksControlRow]), which wears the sort arrow: `files ↓` is
+// seven cells and `age ↓` is five, so six is the floor that keeps the narrowest
+// label and its arrow over the column they name.
 func (k tasksSortKey) cells() int {
-	switch k.column() {
-	case tasksByFiles:
+	if k.column() == tasksByFiles {
 		return len("12 files")
-	case tasksByCost:
-		return len("$60.11")
 	}
-	return len("11h")
+	return tasksKeyCells
 }
 
 // tasksRank is ONE ROW'S ANSWER TO EVERY SORT KEY AT ONCE, gathered once while

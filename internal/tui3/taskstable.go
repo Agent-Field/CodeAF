@@ -105,6 +105,13 @@ func tasksColumns(room int, key tasksSortKey) (state, second, name int) {
 //     disagree is worse than a row missing a fact ([tasksNote]).
 //   - A SHUT FOLD SAYS WHAT IT IS HOLDING after it. A mark with no count is a
 //     mark a person has to open to find out whether it was worth opening.
+//   - WORK THAT IS RUNNING RIGHT NOW SAYS WHERE IT HAS GOT TO after it
+//     ([session.TaskIndexEntry.Activity], `working · 18 of 40`). That figure is
+//     the one thing on a running row that CHANGES while somebody watches it, and
+//     a person watching a long run is watching for it and nothing else. It is a
+//     rung and not the cell: where twenty cells cannot hold both, the state word
+//     stays and the figure goes (rowfit.go law 2), because a row that has stopped
+//     saying what it IS has stopped being a row of this list.
 //
 // THE REASON IS NOT HERE. A row is a name and two facts now; WHY the work ended
 // as it did is the record's, and it is read in the pane beside the list or on the
@@ -122,6 +129,9 @@ func tasksStateField(line tasksLine) rowField {
 		// reading the mark in front of it is drawn from ([tasksItem.status]). The
 		// record's own row knows less than the node does.
 		word = item.live.Word
+	}
+	if doing := strings.TrimSpace(item.entry.Activity); doing != "" && !item.status().Settled() {
+		return rowSay(word+rowSep+doing, word)
 	}
 	if !line.folds || line.open || line.kids <= 0 {
 		return rowSay(word)
@@ -246,7 +256,10 @@ func tasksControlRow(query string, by tasksSort, room int, pal palette) string {
 	boxCells := max(nameCells-ansi.StringWidth(mark)-1, 1)
 	// WHAT IS TYPED IS IN THE READING INK AND THE INVITATION IS DIM. A person has
 	// to be able to tell the words they typed from the words the box came with.
-	said, ink := fit(tasksTypeWord, boxCells), pal.dim
+	// The invitation is [tasksFilterHint] and not the foot's longer sentence
+	// because the box is narrow at every width and a placeholder with its end cut
+	// off reads as a bug in the box rather than as words the box came with.
+	said, ink := fit(tasksFilterHint, boxCells), pal.dim
 	if query != "" {
 		said, ink = fit(query, boxCells), pal.ink
 	}

@@ -152,7 +152,7 @@ func TestTheRunningCountSurvivesAConversationsQuestion(t *testing.T) {
 	// The mark on a working row is the working one. A row filed under `needs your
 	// look` wears the steer mark ([tasksGlyph]), which is the half of this defect
 	// a person actually sees.
-	rows := reading.rows(120, newPalette(tokens.NoColor, false))
+	rows := tasksOpen(reading).rows(120, newPalette(tokens.NoColor, false))
 	line := ""
 	for _, drawn := range rows {
 		if strings.Contains(drawn, "read 40 filings") {
