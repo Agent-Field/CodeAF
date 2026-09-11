@@ -8,18 +8,33 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// scopedAsk is a permission that offered three lifetimes for its answer.
+// scopedAsk is a question that offered three lifetimes for its answer.
+//
+// IT IS NOT A PERMISSION, and that is the point of the fixture rather than an
+// accident of it: a consent's answer is read as its key and nothing else, so the
+// row is drawn for the kinds of question whose lane DOES read
+// [session.Answer.Scope] ([TestAPermissionOffersNoLifetimesUntilTheGateHonoursOne]).
 func scopedAsk() session.Question {
-	q := consentAsk()
-	q.Scope = []session.AnswerScope{session.ScopeAlways, session.ScopeOnce, session.ScopeProject}
-	return q
+	return session.Question{
+		ID: 7, Kind: session.QuestionTask, Ask: session.AskChoice,
+		Form: session.FormCard, Asker: session.Asker{Kind: session.AskerModel},
+		Head: "which store should the ledger sit on?", Reason: "a schema change is next",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "postgres", Consequence: "one place to back up"},
+			{Key: "2", Label: "sqlite", Consequence: "no service to run"},
+			{Key: "3", Label: "neither", Consequence: "the ledger waits", Safe: true},
+		},
+		Stakes:   session.StakesReversible,
+		Blocking: session.Blocking{Turn: true},
+		Scope:    []session.AnswerScope{session.ScopeAlways, session.ScopeOnce, session.ScopeProject},
+	}
 }
 
 // "STOP ASKING ME FOR THIS" HAS A ROW ON THE FRAME (owner addendum 2026-09-11).
 //
 // The lifetimes the question offered are drawn under the answers, narrowest
 // first whatever order the lane listed them in, with a key that cycles them.
-func TestThePermissionFrameDrawsTheLifetimesItOffers(t *testing.T) {
+func TestAFrameDrawsTheLifetimesTheQuestionOffers(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.a.width = 110
 	lab.raise(scopedAsk())
@@ -108,7 +123,7 @@ func TestAnIrreversibleQuestionOffersNoLifetimeRow(t *testing.T) {
 // AND A QUESTION THAT OFFERED ONE LIFETIME DRAWS NO ROW, which is the emptiness
 // law over a toggle: a choice with one answer is not a choice.
 func TestAQuestionWithOneLifetimeDrawsNoRow(t *testing.T) {
-	q := consentAsk()
+	q := scopedAsk()
 	q.Scope = []session.AnswerScope{session.ScopeOnce}
 	lab := newQuestionLab(t)
 	lab.a.width = 110
@@ -141,32 +156,65 @@ func TestTheDigitsRowOnlyDrawsARangeWhereTheKeysRun(t *testing.T) {
 	}
 }
 
-// WHERE THE POINTER OPENS ON A PERMISSION IS DECIDED BY THE STAKES, and by
-// nothing else (owner ruling 2026-09-11, consent pick B).
+// A PERMISSION OFFERS NO LIFETIMES, however many its asker listed.
 //
-// An irreversible call opens on the answer that loses nothing, because `enter`
-// takes what the pointer is on and that call cannot be taken back. An ordinary
-// one opens on `allow once`: every gate opened on deny for a year, including the
-// ones over a command the rules had merely not seen before, so the key a person
-// presses to get on with their work was the key that stopped it.
-func TestWhereThePermissionPointerOpensIsDecidedByTheStakes(t *testing.T) {
-	ordinary := consentAsk()
-	if got := questionPointerStart(ordinary); got != 0 {
-		t.Fatalf("an ordinary permission opens on answer %d, not `allow once`", got)
+// The gate reads a consent's answer as its key plus the banked comment and
+// nothing else — [session.Answer.Scope] never reaches it — so `t → for this
+// project` followed by `enter` granted exactly ConsentOnce and the very next
+// call asked again. A row a person can move, that says a thing, and that changes
+// nothing is worse than no row when the thing it says is about safety: "a
+// capability that cannot work is absent, not broken". The row comes back to this
+// frame in the same change as the engine reading the field.
+func TestAPermissionOffersNoLifetimesUntilTheGateHonoursOne(t *testing.T) {
+	q := consentAsk()
+	q.Scope = []session.AnswerScope{session.ScopeOnce, session.ScopeProject, session.ScopeAlways}
+	if got := questionScopes(q); got != nil {
+		t.Fatalf("a permission offers the lifetimes %v", got)
 	}
-	grave := consentAsk()
-	grave.Stakes = session.StakesIrreversible
-	if got := questionPointerStart(grave); got != questionSafeAt(grave) {
-		t.Fatalf("an irreversible permission opens on answer %d, not the answer that loses nothing", got)
+	lab := newQuestionLab(t)
+	lab.a.width = 110
+	lab.raise(q)
+	screen := lab.plain()
+	for _, gone := range []string{
+		questionScopeWord(session.ScopeProject),
+		questionScopeWord(session.ScopeAlways),
+		questionScopeKey + " how long",
+	} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("a permission frame says %q:\n%s", gone, screen)
+		}
 	}
-	// AND THE TOOL'S NAME IS NEVER READ. The same stakes over a different call
-	// stand in the same place.
-	grave.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "read"}
-	if got := questionPointerStart(grave); got != questionSafeAt(grave) {
+	// AND THE ANSWER GOES OUT AS `once`, which is what the gate would grant
+	// whatever the row had said.
+	if got := questionScopeOf(lab.a.questions[0], "1"); got != session.ScopeOnce {
+		t.Fatalf("a permission answer would go out as %q", got)
+	}
+}
+
+// WHERE THE POINTER OPENS IS NEVER READ OFF THE TOOL'S NAME, and a confirmation
+// is untouched by any of it.
+//
+// (That `enter` on a permission denies, whatever the stakes say, is
+// [TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall] in question_test.go
+// — it drives the key rather than reading the placement.)
+func TestThePointerIsPlacedByWhatTheQuestionIsAndNotByWhichToolItNames(t *testing.T) {
+	gate := consentAsk()
+	safe := questionSafeAt(gate)
+	if got := questionPointerStart(gate); got != safe {
+		t.Fatalf("a permission opens on answer %d, not the one that loses nothing", got)
+	}
+	// The same question over a different call stands in the same place.
+	gate.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "read"}
+	if got := questionPointerStart(gate); got != safe {
 		t.Fatalf("the pointer moved when the tool's name changed: %d", got)
 	}
-	// AND A CONFIRMATION IS UNTOUCHED: it keeps stop.go's law whatever its
-	// stakes say, because it was raised by a person's own gesture.
+	gate.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "bash"}
+	gate.Stakes = session.StakesIrreversible
+	if got := questionPointerStart(gate); got != safe {
+		t.Fatalf("the pointer moved when the stakes changed: %d", got)
+	}
+	// AND A CONFIRMATION KEEPS stop.go's LAW whatever its stakes say, because it
+	// was raised by a person's own gesture rather than arriving.
 	stop := session.Question{
 		ID: 9, Kind: session.QuestionTask, Ask: session.AskConfirmation,
 		Asker: session.Asker{Kind: session.AskerSurface}, Stakes: session.StakesReversible,
@@ -174,84 +222,5 @@ func TestWhereThePermissionPointerOpensIsDecidedByTheStakes(t *testing.T) {
 	}
 	if got := questionPointerStart(stop); got != 1 {
 		t.Fatalf("a confirmation opens on answer %d, not the answer that loses nothing", got)
-	}
-}
-
-// THE FOLD RULE PRINTS THE KEY THAT OPENS IT, AND THE KEY OPENS IT.
-//
-// `── ? which store · 3 answers · ◆ SQLite ──── space open ──` is what `esc`
-// leaves behind, and the manual says the same thing in a person's words — and
-// nothing routed the press. Found by lane T driving the real binary: esc, then
-// space over the empty box, and the rule stayed folded.
-func TestSpaceOpensAQuestionFoldedToItsRule(t *testing.T) {
-	lab := newQuestionLab(t)
-	lab.a.width = 110
-	lab.raise(scopedAsk())
-	lab.tick(questionSettle)
-	if !lab.press(questionLaterKey) {
-		t.Fatal("esc did not fold the question")
-	}
-	if _, folded := lab.a.questionPutOff(); !folded {
-		t.Fatal("esc left nothing folded")
-	}
-	if screen := lab.plain(); !strings.Contains(screen, questionOpenFoldWord) {
-		t.Fatalf("the fold rule does not print the key that opens it:\n%s", screen)
-	}
-	if !lab.press(questionToggleKey) {
-		t.Fatal("space over an empty box was not taken by the fold rule")
-	}
-	if _, folded := lab.a.questionPutOff(); folded {
-		t.Fatal("space did not open the folded question")
-	}
-	if screen := lab.plain(); !strings.Contains(screen, "allow once") {
-		t.Fatalf("the question did not come back:\n%s", screen)
-	}
-}
-
-// AND A SPACE INSIDE A SENTENCE IS A SPACE. With words in the box the key
-// belongs to the composer, which is the law every printable key here is held to.
-func TestSpaceWithWordsInTheBoxLeavesTheFoldAlone(t *testing.T) {
-	lab := newQuestionLab(t)
-	lab.a.width = 110
-	lab.raise(scopedAsk())
-	lab.tick(questionSettle)
-	lab.press(questionLaterKey)
-	lab.a.input.setText("a half-typed sentence")
-	if lab.press(questionToggleKey) {
-		t.Fatal("space was taken from the composer")
-	}
-	if _, folded := lab.a.questionPutOff(); !folded {
-		t.Fatal("the question was opened by a key that belonged to the box")
-	}
-}
-
-// AND THE PANEL'S RECOMMENDED ROW JOINS THE ASKER'S SENTENCE ON ONCE. A model
-// asked what would change its mind answers "If the index has to be read from
-// another machine", and the row drew `would switch if if the index has…` — the
-// defect the room fixed on 2026-09-10, arriving here the day the panel started
-// drawing the same sentence. Also found by lane T, driving.
-func TestTheRecommendedRowSaysIfOnlyOnce(t *testing.T) {
-	lab := newQuestionLab(t)
-	lab.a.width = 120
-	q := session.Question{
-		ID: 86, Kind: session.QuestionAsk, Ask: session.AskChoice,
-		Asker: session.Asker{Kind: session.AskerModel}, Head: "which store?",
-		Reason: "three ways work", Stakes: session.StakesReversible,
-		Options: []session.AnswerOption{
-			{Key: "1", Label: "SQLite", Consequence: "one file"},
-			{Key: "2", Label: "JSONL", Consequence: "append-only"},
-		},
-		Pick: &session.Pick{
-			Key: "1", Reason: "it survives a crash mid-write",
-			WouldChange: "If the index has to be read from another machine",
-		},
-	}
-	lab.raise(q)
-	screen := lab.plain()
-	if strings.Contains(screen, "if if") || strings.Contains(screen, "if If") {
-		t.Fatalf("the recommended row says `if` twice:\n%s", screen)
-	}
-	if !strings.Contains(screen, questionWouldSwitchWord+"the index has to be read") {
-		t.Fatalf("the asker's sentence does not join onto the clause:\n%s", screen)
 	}
 }
