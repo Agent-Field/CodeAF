@@ -2704,6 +2704,42 @@ func (a *app) questionPutOff() (questionShown, bool) {
 	return a.questions[at], true
 }
 
+// questionUnfoldKey is `space` over an empty box: the folded question comes back.
+//
+// THE RULE PRINTS THE KEY AND NOTHING ROUTED IT. `── ? which store · 3 answers ·
+// ◆ SQLite ──── space open ──` is what a folded question leaves behind, and
+// `internal/manual/chat/questions.md` says the same thing in a person's words —
+// and pressing space over the empty box did nothing at all. `alt+a` reopened it,
+// so the way out existed; what was missing was the one the screen offered.
+//
+// THREE GUARDS, AND EACH IS A WAY THIS KEY COULD BE WRONG:
+//
+//   - A SPACE INSIDE A SENTENCE IS A SPACE. Over a box with words in it the key
+//     belongs to the composer, which is the law every printable key on this
+//     surface is held to.
+//   - ONLY WHERE THE RULE IS ON THE SCREEN. A place, a page or the start screen
+//     has the frame and the rule is not drawn under it; a key that acts on
+//     something nobody can see is the defect the block's own law names.
+//   - AND ONLY WHERE SOMETHING IS ACTUALLY FOLDED, so a space over an empty
+//     conversation stays a space.
+func (a *app) questionUnfoldKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if msg.String() != questionToggleKey {
+		return nil, false
+	}
+	if strings.TrimSpace(a.input.String()) != "" {
+		return nil, false
+	}
+	if a.questionOffFrame() || a.startingChat() {
+		return nil, false
+	}
+	_, folded := a.questionPutOff()
+	if !folded && !(a.sheetOpen() > 0 && a.questionBatchFolded) {
+		return nil, false
+	}
+	a.raiseFolded()
+	return nil, true
+}
+
 // raiseFolded is the chip's own key: it unfolds the NEWEST open question and
 // puts it back above the box.
 //
@@ -2780,7 +2816,13 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if a.questionOffFrame() {
 			return nil, false
 		}
-		return a.questionSheetKey(msg)
+		if cmd, taken := a.questionSheetKey(msg); taken {
+			return cmd, taken
+		}
+		// AND WITH NEITHER, WHAT IS DRAWN IS THE FOLD RULE, which prints the key
+		// that opens it ([questionOpenFoldWord]) and until now was the only thing
+		// in this program that knew about it.
+		return a.questionUnfoldKey(msg)
 	}
 	// THE START PAGE TAKES EVERY KEY BEFORE THE CONVERSATION BEHIND IT. Unlike
 	// the other whole-frame places below, it has a composer of its own, so a

@@ -598,7 +598,13 @@ func questionPickCase(q session.Question, key string) string {
 	if sure := questionConfidenceWord(q.Pick.Confidence); sure != "" {
 		parts = append(parts, sure)
 	}
-	if would := strings.TrimSpace(q.Pick.WouldChange); would != "" {
+	if would := questionAfterIf(q.Pick.WouldChange); would != "" {
+		// THROUGH THE ROOM'S OWN JOINER ([questionAfterIf]), because this row is
+		// the same clause said shorter. Asked what would change its mind a model
+		// answers "If the index has to be read from another machine", and the row
+		// drew `would switch if if the index has…` — the defect the room already
+		// fixed on 2026-09-10, arriving here the day the panel started drawing
+		// the same sentence.
 		parts = append(parts, questionWouldSwitchWord+would)
 	}
 	return strings.Join(parts, " · ")

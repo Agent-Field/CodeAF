@@ -171,3 +171,82 @@ func TestWhereThePermissionPointerOpensIsDecidedByTheStakes(t *testing.T) {
 		t.Fatalf("a confirmation opens on answer %d, not the answer that loses nothing", got)
 	}
 }
+
+// THE FOLD RULE PRINTS THE KEY THAT OPENS IT, AND THE KEY OPENS IT.
+//
+// `── ? which store · 3 answers · ◆ SQLite ──── space open ──` is what `esc`
+// leaves behind, and the manual says the same thing in a person's words — and
+// nothing routed the press. Found by lane T driving the real binary: esc, then
+// space over the empty box, and the rule stayed folded.
+func TestSpaceOpensAQuestionFoldedToItsRule(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 110
+	lab.raise(scopedAsk())
+	lab.tick(questionSettle)
+	if !lab.press(questionLaterKey) {
+		t.Fatal("esc did not fold the question")
+	}
+	if _, folded := lab.a.questionPutOff(); !folded {
+		t.Fatal("esc left nothing folded")
+	}
+	if screen := lab.plain(); !strings.Contains(screen, questionOpenFoldWord) {
+		t.Fatalf("the fold rule does not print the key that opens it:\n%s", screen)
+	}
+	if !lab.press(questionToggleKey) {
+		t.Fatal("space over an empty box was not taken by the fold rule")
+	}
+	if _, folded := lab.a.questionPutOff(); folded {
+		t.Fatal("space did not open the folded question")
+	}
+	if screen := lab.plain(); !strings.Contains(screen, "allow once") {
+		t.Fatalf("the question did not come back:\n%s", screen)
+	}
+}
+
+// AND A SPACE INSIDE A SENTENCE IS A SPACE. With words in the box the key
+// belongs to the composer, which is the law every printable key here is held to.
+func TestSpaceWithWordsInTheBoxLeavesTheFoldAlone(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 110
+	lab.raise(scopedAsk())
+	lab.tick(questionSettle)
+	lab.press(questionLaterKey)
+	lab.a.input.setText("a half-typed sentence")
+	if lab.press(questionToggleKey) {
+		t.Fatal("space was taken from the composer")
+	}
+	if _, folded := lab.a.questionPutOff(); !folded {
+		t.Fatal("the question was opened by a key that belonged to the box")
+	}
+}
+
+// AND THE PANEL'S RECOMMENDED ROW JOINS THE ASKER'S SENTENCE ON ONCE. A model
+// asked what would change its mind answers "If the index has to be read from
+// another machine", and the row drew `would switch if if the index has…` — the
+// defect the room fixed on 2026-09-10, arriving here the day the panel started
+// drawing the same sentence. Also found by lane T, driving.
+func TestTheRecommendedRowSaysIfOnlyOnce(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 120
+	q := session.Question{
+		ID: 86, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "which store?",
+		Reason: "three ways work", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "SQLite", Consequence: "one file"},
+			{Key: "2", Label: "JSONL", Consequence: "append-only"},
+		},
+		Pick: &session.Pick{
+			Key: "1", Reason: "it survives a crash mid-write",
+			WouldChange: "If the index has to be read from another machine",
+		},
+	}
+	lab.raise(q)
+	screen := lab.plain()
+	if strings.Contains(screen, "if if") || strings.Contains(screen, "if If") {
+		t.Fatalf("the recommended row says `if` twice:\n%s", screen)
+	}
+	if !strings.Contains(screen, questionWouldSwitchWord+"the index has to be read") {
+		t.Fatalf("the asker's sentence does not join onto the clause:\n%s", screen)
+	}
+}
