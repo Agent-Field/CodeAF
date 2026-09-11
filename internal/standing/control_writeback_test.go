@@ -112,7 +112,9 @@ func TestControlWritebackPreservesControlDuringJudgment(t *testing.T) {
 		for _, result := range []string{"quiet", "ready", "failure"} {
 			t.Run(string(status)+"/"+result, func(t *testing.T) {
 				store, made, now := controlWritebackItem(t)
-				saveControlWriteback(t, store, made.ID, func(item *Item) { item.When.Hint = "if there is news" })
+				saveControlWriteback(t, store, made.ID, func(item *Item) {
+					item.When = When{Kind: WhenProbe, Probe: Probe{Command: "true"}, Hint: "if there is news"}
+				})
 				runner := &controlWritebackRunner{}
 				ticker := newTicker(store, runner, now)
 				ticker.Sentinel = func(context.Context, Judgment) (bool, string, float64, error) {

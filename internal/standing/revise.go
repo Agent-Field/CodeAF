@@ -63,6 +63,7 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			return ErrUnchanged
 		}
 		schedule := !reflect.DeepEqual(current.When, draft.When)
+		line := current.Does.Say != draft.Does.Say
 		current.Words = draft.Words
 		current.When = draft.When
 		current.Does = draft.Does
@@ -83,6 +84,12 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			}
 			current.NextDue = due
 			current.Fingerprint = ""
+		}
+		// A NEW WAKING OR A NEW LINE IS ASKED WHAT A NEW ITEM IS ASKED: whether
+		// its pattern can be read, whether its condition has anything to be
+		// judged against, and whether its line's placeholders are ones a firing
+		// fills ([Item.CheckWatch]).
+		if schedule || line {
 			if err := current.CheckWatch(); err != nil {
 				return err
 			}

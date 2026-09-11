@@ -98,19 +98,10 @@ func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refre
 	}
 }
 
-// changesSince compares the reading named previous with the files seen now.
-// The error is the honest answer when the previous reading is not on disk — an
-// item written before readings were kept, or a manifest that could not be
-// written — and the caller says the changes are unknown rather than "none".
-func (s *Store) changesSince(id, previous string, now map[string]fileEntry) ([]Change, error) {
-	before, err := s.reading(id, previous)
-	if err != nil {
-		return nil, err
-	}
-	return changesBetween(before, now), nil
-}
-
-// reading is the manifest kept under a digest.
+// reading is the manifest kept under a digest. The error is the honest answer
+// when that reading is not on disk — an item written before readings were
+// kept, or a manifest that could not be written — and a caller comparing
+// against it says the changes are unknown rather than "none".
 func (s *Store) reading(id, digest string) (map[string]fileEntry, error) {
 	if digest == "" {
 		return nil, errors.New("no previous reading")
