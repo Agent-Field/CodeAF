@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A bare launch draws the spend panel and the head's money on its first frame instead of three seconds later
+title: A bare launch draws the spend panel and the head's money on its first frame, not three seconds later
 pr: 842
 surface: [chat]
 invalidates:
