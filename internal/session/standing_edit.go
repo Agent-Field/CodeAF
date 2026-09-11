@@ -95,13 +95,14 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		return problem, true, nil
 	}
 	place := a.standingPlacedNow(ctx, current)
+	shownBefore, shownAfter := standingShownChange(current, draft)
 	notice := StandingNotice{
 		Item:      draft,
 		WhenWords: standingChange(current.When.Words, draft.When.Words),
 		CostWords: standingChange(a.standingCostWords(current, standingKnownLimits(current, standingLimits{})),
 			a.standingCostWords(draft, standingKnownLimits(draft, limits))),
 		Guessed: parsed.Guessed,
-		Terms:   standingEditTerms(changed, a.standingWorkTerms(ctx, current, place, standingReportFile{}), a.standingWorkTerms(ctx, draft, place, found)),
+		Terms:   standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, place, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, place, found)),
 		// A CHANGE HAS NO `just once`: doing it once is not a smaller version of
 		// changing work that keeps running.
 		Options: standingEditOptions(draft),
@@ -316,6 +317,52 @@ func (a *Agent) standingWorkTerms(ctx context.Context, item standing.Item, place
 		return []string{standingRuleTag + clip(oneLine(item.Prompt()), standingCardClip)}
 	}
 	return []string{"says · " + clip(oneLine(item.Does.Say), standingCardClip)}
+}
+
+// standingChangeContext is how many unchanged words an edit card keeps before
+// the first changed one, so the change is read in its sentence.
+const standingChangeContext = 3
+
+// standingShownChange is the two versions of an item as its edit card draws
+// them: each text the edit changes, from a few words before where the two
+// begin to differ.
+//
+// A CHANGE PAST THE CLIP IS STILL SHOWN. Instructions longer than a card line
+// that differ only after it clip to one identical line, and the card asked for
+// a yes on a change nobody could see (the live lifecycle run of 2026-09-11,
+// "also list who owns each request").
+func standingShownChange(before, after standing.Item) (standing.Item, standing.Item) {
+	before.Does.Brief, after.Does.Brief = standingFromTheChange(before.Does.Brief, after.Does.Brief)
+	before.Does.Say, after.Does.Say = standingFromTheChange(before.Does.Say, after.Does.Say)
+	before.Brief.Prompt, after.Brief.Prompt = standingFromTheChange(before.Brief.Prompt, after.Brief.Prompt)
+	return before, after
+}
+
+// standingFromTheChange is two texts that differ, each from
+// [standingChangeContext] words before the first difference and led by `…`
+// when that is not their start. Texts that do not differ, and two that each
+// fit a card line, are kept whole.
+func standingFromTheChange(before, after string) (string, string) {
+	if before == after || (len(before) <= standingCardClip && len(after) <= standingCardClip) {
+		return before, after
+	}
+	same := 0
+	for same < len(before) && same < len(after) && before[same] == after[same] {
+		same++
+	}
+	start, words := same, 0
+	for ; start > 0; start-- {
+		if before[start-1] == ' ' {
+			if words == standingChangeContext {
+				break
+			}
+			words++
+		}
+	}
+	if start == 0 {
+		return before, after
+	}
+	return "…" + before[start:], "…" + after[start:]
 }
 
 // standingEditTerms is the edit card's terms: the parts that change, then the
