@@ -259,7 +259,25 @@ func (a *app) retargetTask(id uint64, model string) {
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 	if a.room != nil && a.room.id == id {
-		timing := "its next turn takes it"
+		// AND THE TIMING IS WHAT IS TRUE. "Its next turn takes it" was true when
+		// it was written — the engine latched the model once per turn — and a
+		// turn is a whole step, so a person told it while a step was stuck waited
+		// for a boundary twenty minutes off and typed `continue` to try to force
+		// it — and it was ALSO the whole of what the room said, which is what made
+		// it read as "nothing happens until this finishes".
+		//
+		// SO IT SAYS THE HALF THAT ANSWERS THEM TOO, AND ONLY BECAUSE THAT HALF IS
+		// NOW TRUE. The very next move this step makes goes to the model chosen
+		// HERE — including when the step is being paced, which used to be the one
+		// failure that moved nothing (session's movesForFailure and
+		// nextNodeModel, both reading [TaskNode.standingModel]). So the wait ends
+		// at the pick rather than somewhere nobody named.
+		//
+		// IT IS A SENTENCE ABOUT THIS ROOM AND NOT ABOUT THE CONVERSATION. A
+		// `/model` typed out in the chat still lands on the next message; the
+		// standing pick is a fact on a NODE. Cutting the request in flight is a
+		// separate change to the turn loop's own law and is not this one.
+		timing := "the next turn takes it; a rescue goes to it first"
 		if taskSetupLater(a.roomNode()) {
 			timing = "saved for when you continue"
 		}

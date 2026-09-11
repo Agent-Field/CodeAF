@@ -4332,9 +4332,22 @@ read the model on the task's own card.
 
 What that does, exactly:
 
-- **It takes effect on the task's next turn.** The call the worker is in the middle of
-  finishes on the model it started on — killing a request in flight would throw away work
-  you have already paid and waited for — and everything after it is on the new model.
+- **It takes effect on the task's next turn — and if the step has to be rescued, it is
+  rescued onto your model.** The call the worker is in the middle of finishes on the model
+  it started on, and so does the rest of that step: killing a request in flight would throw
+  away work you have already paid and waited for. What changed on 2026-09-11 is where the
+  step goes when the model it is on stops answering — **the very next move goes to the one
+  you picked**, rather than to the next name in aforge's own fallback list, and the run's
+  log says `moving to <model>, which you chose`. That includes a step grinding on a machine
+  that keeps saying `temporarily rate-limited upstream`, which used to be the one failure
+  that moved nothing at all: aforge stayed on the machine pacing it and said `staying on`,
+  for the whole four and a half minutes a task's call is given. The room says both halves:
+  `model · <id> · the next turn takes it; a rescue goes to it first`.
+- **And nothing quietly takes it back.** When a task's model stops answering, aforge moves
+  the work to another one rather than failing it — but if you have picked a model in this
+  room, that pick is where it moves to, not the next name in aforge's own fallback list.
+  Until 2026-09-11 the fallback list won, so a task could finish on a model nobody had
+  chosen while the room showed the one you did.
 - **Unless the work is already being checked, in which case the pick is saved for the next
   run.** A running task is running across three lives: its own worker, the gate reading
   what that worker left, and any repair round. Once the gate is reading, the worker has
