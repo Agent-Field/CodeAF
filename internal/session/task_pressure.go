@@ -215,24 +215,33 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 // IT IS CALLED BEFORE THE GRAPH'S LOCK, once a pass, and it is the only
 // method here that touches /proc: the graph's lock is held by everything that
 // announces a node, and no file read belongs under it, however cheap.
+//
+// THE FILES ARE READ WITH NO LOCK HELD AT ALL, for the same reason one step
+// further out: [admissionGovernor.admits] IS called under the graph's lock, so
+// a reading held under this governor's lock would be a graph lock waiting on
+// /proc through the back door. Two passes that both find the sample stale both
+// read, which is a few file reads done twice and the later answer kept — far
+// cheaper than the hold it replaces.
 func (g *admissionGovernor) observe(running int) {
 	if g == nil {
 		return
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
 	now := time.Now
+	g.mu.Lock()
 	if g.now != nil {
 		now = g.now
 	}
 	at := now()
-	if g.known && at.Sub(g.at) < taskPressureTTL {
+	fresh := g.known && at.Sub(g.at) < taskPressureTTL
+	read := g.read
+	g.mu.Unlock()
+	if fresh || read == nil {
 		return
 	}
-	if g.read == nil {
-		return
-	}
-	sample, known := g.read()
+	sample, known := read()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	if !known {
 		// A host that cannot answer is not cached as an answer: a machine that
 		// grows a /proc between two passes should be believed on the second.
