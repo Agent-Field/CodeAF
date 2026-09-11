@@ -98,6 +98,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"same answer for all of these", "questions"},
 		{"the question disappeared", "questions"},
 		{"a question vanished without me answering", "questions"},
+		{"I typed a sentence instead of pressing a key and the question disappeared", "questions"},
+		{"can I answer a question in my own words instead of picking one", "questions"},
 		{"the other window answered it", "questions"},
 		{"two windows answered at the same time", "questions"},
 		{"what does /autonomy do", "questions"},

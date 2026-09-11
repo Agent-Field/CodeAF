@@ -123,17 +123,13 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	}
-	wait := make(chan Answer, 1)
 	a.mu.Lock()
-	if a.askWaits == nil {
-		a.askWaits = make(map[uint64]chan Answer)
-	}
-	a.askWaits[id] = wait
+	wait := a.asked.parkLocked(id)
 	a.mu.Unlock()
 	forget, err := a.AskQuestion(q)
 	if err != nil {
 		a.mu.Lock()
-		delete(a.askWaits, id)
+		a.asked.letGoLocked(id)
 		a.mu.Unlock()
 		return askRefusedLead + err.Error(), false, nil
 	}
@@ -145,7 +141,16 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		clock = timer.C
 	}
 	select {
-	case answer := <-wait:
+	case answer, answered := <-wait:
+		// A CLOSED WAIT IS THE PERSON TALKING PAST THE QUESTION, and it is the
+		// one ending here that is neither an answer nor a cancellation: they
+		// typed a sentence into the running turn instead of pressing a key, and
+		// the splice let go of this question so the turn could read it
+		// (steerquestion.go). Nothing was decided, so nothing is recorded as a
+		// decision — the result says what happened and the words follow it.
+		if !answered {
+			return askTalkedPast, false, nil
+		}
 		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	case <-clock:
 		answer := defaultAnswer(q, "")
@@ -153,7 +158,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	case <-ctx.Done():
 		a.mu.Lock()
-		delete(a.askWaits, id)
+		a.asked.letGoLocked(id)
 		a.mu.Unlock()
 		return "", false, ctx.Err()
 	}
