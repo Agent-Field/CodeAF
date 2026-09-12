@@ -97,15 +97,6 @@ type streamWatch struct {
 	// Recovery suspends the controller; recovered calls cannot teach lane timing.
 	recovering bool
 	recovered  bool
-	// taught is the moment up to which this attempt has already folded a
-	// partial sighting into the ledger, zero before the first one, and
-	// taughtTokens the count that partial was rated on. They are what make one
-	// stream a chain of NON-OVERLAPPING windows rather than a series of
-	// cumulative re-measurements: a partial covers the span since the one
-	// before it, and the settlement sighting is rebased to cover only what no
-	// partial claimed. See part below.
-	taught       time.Time
-	taughtTokens int
 	// guard is the silence watch over this same request, and free says the
 	// ceiling has decided to use it. See THE CEILING PICKS ONE OR THE OTHER,
 	// NEVER NEITHER below.
@@ -237,10 +228,6 @@ func (w *streamWatch) attempt(now time.Time) {
 	w.served = ""
 	w.acted, w.silence, w.fault = control.Act{}, 0, false
 	w.applied, w.appliedWord = 0, ""
-	// THE TEACHING WINDOWS START OVER WITH THE SEND. A partial filed under the
-	// previous attempt's clock is a measurement of a dead stream, and a window
-	// left open across two sends would time one machine and charge another.
-	w.taught, w.taughtTokens = time.Time{}, 0
 	w.deadline = w.control.Deadline()
 	if !w.deadline.IsZero() {
 		w.armed = w.deadline.Sub(now)
@@ -284,15 +271,7 @@ func (w *streamWatch) note(reading control.Reading) {
 	// so that nothing outside this package ever takes this lock. Hidden is the
 	// remainder because [streamWatch.tokens] is both channels together.
 	visible, hidden := w.visible, w.tokens-w.visible
-	// AND THE LEDGER LEARNS THE STREAM WHILE IT IS STILL RUNNING. A live reading
-	// is folded in under the same non-overlapping-window law the settlement
-	// sighting keeps (teach below), so the belief the NEXT pick ranks on is not
-	// still describing this morning while this machine writes for minutes.
-	lesson, learn := w.part()
 	w.mu.Unlock()
-	if learn {
-		w.noteLesson(lesson)
-	}
 	// AND WHOEVER ASKED TO WATCH THIS CALL HEARS THE SAME MOMENT. It is the one
 	// forwarding this seam needs: every streamed delta in the process reaches
 	// this method, so there is no second decoder and no second count
@@ -490,113 +469,14 @@ func (w *streamWatch) sighting(model string, tokens int) (lanes.Sighting, bool) 
 	if tokens <= 0 {
 		tokens = w.tokens
 	}
-	// REBASE THE SETTLEMENT ONTO WHAT NO PARTIAL CLAIMED. One stream is one
-	// chain of non-overlapping windows (teach below): the partials have already
-	// folded the spans up to w.taught, so the final sighting covers only the
-	// tail from there to the last token, rated on the tokens that tail carried.
-	// A stream that taught nothing yet settles exactly as it always did — the
-	// whole first-to-last window — and a stream that taught everything settles
-	// with an empty Gen, which the belief reads as "nothing new about the rate".
-	gen := w.last.Sub(w.first)
-	tokens = tailTokens(tokens, w.tokens, w.taughtTokens)
-	if !w.taught.IsZero() {
-		gen = w.last.Sub(w.taught)
-	}
 	return lanes.Sighting{
 		ID:     lanes.ID{Model: model, Lane: w.served},
 		TTFT:   w.first.Sub(w.began),
-		Gen:    gen,
+		Gen:    w.last.Sub(w.first),
 		Gap:    w.gap,
 		Tokens: tokens,
 		At:     w.last,
 	}, true
-}
-
-// partialSightingFloor is the shortest span of one stream a partial sighting
-// may claim. The read loop runs per delta, but a sighting is one timed answer —
-// not a running average — so a live stream teaches at most one window a minute.
-// That is often enough that the NEXT pick is not working from this morning, and
-// rare enough that successive windows of one stream stay the independent
-// observations the ledger's arithmetic assumes they are.
-const partialSightingFloor = time.Minute
-
-// part is the live window this stream has measured since the last teaching and
-// whether it is worth folding in now. It is [sighting]'s mid-stream half: the
-// same fields, the same refusals, and the same attribution law — but covering
-// only the span since the previous partial (or since the first token), so the
-// chain of windows of one stream never overlaps.
-//
-// Called with the lock held, from the read loop and from nowhere else.
-func (w *streamWatch) part() (lanes.Sighting, bool) {
-	if w.served == "" || w.first.IsZero() || w.recovered {
-		return lanes.Sighting{}, false
-	}
-	// THE CADENCE GATE. One stream teaches at most one window a minute, and the
-	// first window may not open until the stream has been writing at least that
-	// long — a lane that answers in nine seconds is measured once, at settle,
-	// exactly as it always was.
-	base := w.first
-	if !w.taught.IsZero() {
-		base = w.taught
-	}
-	if w.last.Sub(base) < partialSightingFloor {
-		return lanes.Sighting{}, false
-	}
-	// AND ONLY A RATED WINDOW TEACHES THE RATE. The span since the last partial
-	// must have carried enough new tokens to rate, or the reading is the
-	// handshake and the warm-up, which [ratedFloor] already refuses at settle.
-	if w.tokens-w.taughtTokens < ratedFloor {
-		return lanes.Sighting{}, false
-	}
-	model := ""
-	if w.race != nil {
-		model = w.race.model
-	}
-	return lanes.Sighting{
-		ID:     lanes.ID{Model: model, Lane: w.served},
-		TTFT:   w.first.Sub(w.began),
-		Gen:    w.last.Sub(base),
-		Gap:    w.gap,
-		Tokens: w.tokens - w.taughtTokens,
-		At:     w.last,
-	}, true
-}
-
-// noteLesson files one live window into the ledger and advances the stream's
-// teaching frontier past it. It runs OUTSIDE the lock, from the read loop, so
-// the ledger's own gate never sits inside the per-delta critical section — the
-// same reason [streamWatch.note] forwards to the controller after unlocking.
-func (w *streamWatch) noteLesson(s lanes.Sighting) {
-	if w == nil || w.race == nil || s.Gen <= 0 {
-		return
-	}
-	model := laneModel(s.ID.Model)
-	if model == "" {
-		return
-	}
-	s.ID.Model = model
-	lanes.Default().Ledger().Note(s)
-	// Advance the frontier to the moment this window closed, so the next
-	// partial and the settlement rebase both measure from here. The lock is
-	// taken for the two-field write only.
-	w.mu.Lock()
-	w.taught, w.taughtTokens = s.At, w.tokens
-	w.mu.Unlock()
-}
-
-// tailTokens is how many of the settlement's tokens belong to the window no
-// partial claimed. The count handed in is the wire's own completion figure and
-// the partials were rated on this process's count, so the tail is taken against
-// the smaller of the two and never below zero — a frame that under-counts must
-// not turn the last window negative.
-func tailTokens(settled, streamed, taught int) int {
-	if settled > streamed {
-		settled = streamed
-	}
-	if tail := settled - taught; tail > 0 {
-		return tail
-	}
-	return 0
 }
 
 // consequence is the moment this arm will be acted on and the lane the act
