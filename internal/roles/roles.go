@@ -212,6 +212,27 @@ const (
 	// internal/session/subharness_intake.go, which owns the call.
 	RoleIntake Role = "intake"
 
+	// RoleSpellOut expands a half-written request into what it obviously meant,
+	// for the person to read and keep or drop.
+	//
+	// IT SITS LOW, with the namer and the sentinel rather than with the shaper.
+	// The shaper writes the only document an autonomous worker will ever read, so
+	// a vague answer there costs a whole task's spend; this one writes three lines
+	// a person reads on screen before deciding whether to keep them, and a weak
+	// answer costs one esc. A person who wants it thought about harder pins it
+	// (`roles.spellout: <model>`). Registered from internal/session/spellout.go,
+	// which owns the call.
+	//
+	// THE WORD LIVES HERE AND NOT AT THE CALL SITE, which is the whole reason
+	// this constant moved. It was `const spellOutRole roles.Role = "spellout"` in
+	// internal/session, and every reader that asks this package what the role
+	// vocabulary IS — cmd/aforge-replay's roleWords, which parses this file — could
+	// not see it. So `spellout` reached the cost report as an unrecognised tag and
+	// was priced as a background errand with nobody waiting, when it is the one
+	// auxiliary a person sits and watches. A role declared anywhere else is a role
+	// that is invisible to everything that reads roles.
+	RoleSpellOut Role = "spellout"
+
 	// RoleDivision reviews a DIVISION as a plan. A worker halfway through its
 	// own work has named the parts it wants to hand out, and this is the one
 	// call that reads them TOGETHER — the evidence, the parent's own brief, and
