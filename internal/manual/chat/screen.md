@@ -946,7 +946,7 @@ and the rate, the connection and the state word are readings, not controls.
 While a task **room** is open the row's left grows the room chip, the room's model and the
 machine answering for it — `⠋ Ship the parser fix · task glm-5.2 · via friendli` — in
 front of the ledger, and **pressing that name moves the task**, not the conversation: the
-same picker opens aimed at that node, and the task switches from its next turn onward. One
+same picker opens aimed at that node, and the task switches from its next request onward. One
 `esc` restores the row. Where the pick could not land the name is drawn and simply does
 not react: a task that has finished, failed, been stopped or needs your look, one that has
 not started, an adaptive run's page, or a node inside a run. The tasks page says the whole

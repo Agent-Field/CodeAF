@@ -55,6 +55,39 @@ func waitingFunc(t *testing.T, file *ast.File, name string) *ast.FuncDecl {
 	return nil
 }
 
+// waitingCallsInFile is every function declared in this file that the given one
+// calls. It is how a law follows a door to the work it hands out without holding
+// a list of names, which would be behaviour derived from a name.
+func waitingCallsInFile(from *ast.FuncDecl, file *ast.File) []*ast.FuncDecl {
+	declared := map[string]*ast.FuncDecl{}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			declared[fn.Name.Name] = fn
+		}
+	}
+	var road []*ast.FuncDecl
+	seen := map[string]bool{from.Name.Name: true}
+	ast.Inspect(from, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name := ""
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			name = fun.Name
+		case *ast.SelectorExpr:
+			name = fun.Sel.Name
+		}
+		if fn, here := declared[name]; here && !seen[name] {
+			seen[name] = true
+			road = append(road, fn)
+		}
+		return true
+	})
+	return road
+}
+
 // waitingNames reports whether a node's subtree names an identifier.
 func waitingNames(node ast.Node, name string) bool {
 	found := false
@@ -257,9 +290,28 @@ func TestTheCallLogSaysWhyItWaitedAndWhatItDid(t *testing.T) {
 // prior the design rests on is absent for them.
 func TestSetModelReachesTheBeat(t *testing.T) {
 	_, agent := waitingFile(t, "internal/session/agent.go")
-	set := waitingFunc(t, agent, "SetModel")
-	if waitingNames(set, "laneBeat") || waitingNames(set, "noteLaneModel") || waitingNames(set, "startLaneBeat") {
-		return
+	// THE DOOR OR THE ONE FUNCTION IT HANDS TO. `SetModel` is the exported door
+	// and its body is one line — the work, and the answer to "when does this
+	// land", live in `setModel` beside it (internal/session's steer.go states why
+	// the door cannot carry that answer). A law that only ever looked at the
+	// exported name would have failed on a rename that changed nothing, and it
+	// still cannot be satisfied by a door that does nothing: the beat has to be
+	// named somewhere on the road the pick actually takes.
+	// AND THE ROAD IS FOLLOWED, NOT LISTED. A list of names here is behaviour
+	// derived from a name — a private half renamed reverts this to the one-function
+	// check it used to be, silently — so the road is read off the door's own body:
+	// every function in this file that the door calls is on it, whatever it is
+	// called. One hop is enough, because a door that hands the whole of its work
+	// two levels down is a door worth failing.
+	door := waitingFunc(t, agent, "SetModel")
+	road := []*ast.FuncDecl{door}
+	for _, handedTo := range waitingCallsInFile(door, agent) {
+		road = append(road, handedTo)
+	}
+	for _, fn := range road {
+		if waitingNames(fn, "laneBeat") || waitingNames(fn, "noteLaneModel") || waitingNames(fn, "startLaneBeat") {
+			return
+		}
 	}
 	t.Error("internal/session/agent.go: SetModel never tells the lane beat about the new model, " +
 		"so a model picked after launch never gets a sheet (lane W4)")

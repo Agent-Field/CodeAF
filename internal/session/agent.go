@@ -613,10 +613,19 @@ func (a *Agent) Model() string {
 	return a.model
 }
 
-// SetModel swaps the model for subsequent turns. A swap made while the agent is
-// working lands at the next Submit: runTurn latches the model once at the start
-// and every step and retry of that turn rides the latched value, so nothing a
-// person types mid-turn changes the model the turn in flight is talking to.
+// SetModel swaps the model, and A PERSON'S WORD WINS AT THE NEXT REQUEST.
+//
+// A swap made while the agent is working reaches the work through steer.go's one
+// door ([Agent.hearModelLocked], which states the law and the failure it was
+// measured against): the request in flight is cut and asked again on the new
+// model if nothing of it had reached the person, and otherwise the answer they
+// are reading finishes and the next request the work makes carries the new
+// model. It is never the next TURN — a task step is one turn and can run for
+// twenty minutes.
+//
+// Between two requests the latched value rides every step and retry, so a swap
+// arriving mid-stream cannot send one model the transcript another model was
+// half-way through writing (loop.go).
 //
 // THE TURN ITSELF MAY STILL MOVE, and this is the one thing that moves it. A
 // step whose stream is cut over and over spends a budget and then hops to the
@@ -632,15 +641,40 @@ func (a *Agent) Model() string {
 // this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
 // three deliberate limits — the journal is untouched, the swap is one-way, and a
 // model that CAN see is handed everything unchanged.
-func (a *Agent) SetModel(model string) {
+func (a *Agent) SetModel(model string) { a.setModel(model) }
+
+// setModel is SetModel with the answer to "when does this land", which the doors
+// inside this package that have somebody to tell need ([Agent.RetargetTask]) and
+// the exported one has nowhere to put. An empty model is no pick at all and
+// lands nothing.
+func (a *Agent) setModel(model string) ModelLanding {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return
+		return ModelLandsNextRequest
 	}
 	a.mu.Lock()
+	// A PICK THAT CHANGES NOTHING IS NOT A WORD. Re-choosing the model the work is
+	// already talking to is a person confirming, not redirecting, and letting it
+	// cut would spend their money reaching the same machine again for the same
+	// answer.
+	//
+	// AND THE COMPARISON IS AGAINST THE MODEL THE WORK IS ON, never against the
+	// session's own. The two differ exactly when a step has been rescued onto a
+	// fallback, and that is the case where getting it wrong costs something both
+	// ways: a person picking the SESSION's model while the step rides a fallback
+	// is redirecting — real news the old reading called none — and a person
+	// picking the FALLBACK the step already rides is confirming, which the old
+	// reading called a change and paid a whole cut request for, under a room line
+	// that said `switching now` and a step that changed nothing (steer.go's
+	// [Agent.ridingNowLocked]).
+	changed := a.ridingNowLocked() != model
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
+	}
+	landing := ModelLandsNextRequest
+	if changed {
+		landing = a.hearModelLocked(model)
 	}
 	if !a.running {
 		a.rebindClientLocked(model)
@@ -660,6 +694,7 @@ func (a *Agent) SetModel(model string) {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+	return landing
 }
 
 // SetSources replaces the live service set used by this conversation and by
@@ -780,13 +815,21 @@ func (a *Agent) ReasoningFor(model string) string {
 }
 
 // SetReasoning sets the level for the model now in use, for subsequent turns.
-// A turn in flight keeps the level it started with, exactly as it keeps the
-// model it started on: runTurn latches both once (loop.go), so a change made
-// while the agent is working lands at the next Submit. The one thing that moves
-// either mid-turn moves BOTH — a step that hops to a fallback model re-reads the
-// level held for that model, because a level is a choice about a model and
-// carrying one across would be asking the new model for something nobody set on
-// it (see [Agent.SetModel]).
+// A turn in flight keeps the level it started with: runTurn latches it once
+// (loop.go), so a change made while the agent is working lands at the next
+// Submit.
+//
+// AND THAT IS NO LONGER THE MODEL'S RULE. A model a person names reaches the
+// work at the next REQUEST, cutting the one in flight when it has produced
+// nothing they could use ([Agent.SetModel], steer.go's THE PERSON'S WORD WINS).
+// The two rules differ because the two acts do: a person changing models is
+// redirecting work they are watching go the wrong way, and a person turning the
+// thinking up is setting a level for the next thing they ask.
+//
+// WHAT MOVES THE MODEL STILL MOVES THIS. Whenever the step's model changes — a
+// rescue's hop, or the person's own word — the level is re-read for the model
+// now in hand, because a level is a choice about a model and carrying one across
+// would be asking the new model for something nobody set on it.
 //
 // An unrecognized level is ignored rather than cleared. The two callers are a
 // picker that can only produce the four it draws and a flag the door has
@@ -1448,6 +1491,18 @@ type SteerReceipt struct {
 	Again bool
 	// Landing is the engine's own sentence for what happened, drawn verbatim.
 	Landing string
+	// Heard is WHEN the words reach the work, by the same reading a model pick
+	// gets ([ModelLanding], steer.go): [ModelLandsNow] when the request in flight
+	// had put nothing in front of anybody and was let go of, so the very next
+	// request carries this line; [ModelLandsNextRequest] when an answer was
+	// already arriving and is being allowed to finish, or when there was no
+	// request out at all.
+	//
+	// IT IS THE SAME TYPE AS THE PICK'S ON PURPOSE. A person's word is one rule
+	// with one clock, and a surface that had to learn a second vocabulary for
+	// `continue` would be a surface that could say two different things about one
+	// law.
+	Heard ModelLanding
 }
 
 // The sentences a receipt can carry, and there is no other.

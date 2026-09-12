@@ -1154,42 +1154,57 @@ func TestSteeringSurvivesAnInterruptAndStaysInOrder(t *testing.T) {
 
 // ── the model latch ─────────────────────────────────────────────────────────
 
-// SetModel's contract is that a turn in flight finishes on the model it
-// started on. The swap lands at the next turn, not at the next step.
-func TestSetModelAppliesFromTheNextTurn(t *testing.T) {
-	entered := make(chan struct{})
+// THE LATCH HOLDS BETWEEN TWO REQUESTS AND THE BOUNDARY IS WHERE IT MOVES.
+//
+// This fixture used to assert the opposite half of the same sentence — that a
+// swap made while the agent was working landed at the next TURN — and that was
+// the defect: a task step is one turn and can run for twenty minutes
+// (steer.go's THE PERSON'S WORD WINS). What is still true, and is what this
+// pins, is the case where there is nothing in flight to let go of: the person
+// names a model while a TOOL is running, so no request is out, nothing is cut,
+// and the very next request the step makes carries the model they named.
+//
+// personsword_test.go holds the other two arms — a request that had produced
+// nothing, and an answer already arriving.
+func TestAWordSaidBetweenTwoRequestsNeedsNoCutAndRidesTheNextOne(t *testing.T) {
+	inTool := make(chan struct{})
 	release := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			close(entered)
-			<-release
-			return toolResponse("c1", "ls", `{"path":"."}`), nil
+			return toolResponse("c1", "hold", `{}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse("done"), nil
 		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("on the new one"), nil
-		},
 	}}
 	agent, _ := newTestAgent(t, completer, nil)
+	agent.tools = append(agent.tools, bare.Tool{
+		Name:        "hold",
+		Description: "holds the step open with no request out",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			close(inTool)
+			<-release
+			return "held", false, nil
+		},
+	})
 
-	events := mustSubmit(t, agent, "list it")
+	events := mustSubmit(t, agent, "hold it open")
 	select {
-	case <-entered:
+	case <-inTool:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the first step never started")
+		t.Fatal("the tool never ran, so the turn was never between two requests")
 	}
 	agent.SetModel("test/other")
 	close(release)
 	collect(t, events)
 
-	if got := completer.model(1); got != "test/model" {
-		t.Fatalf("step 2 of the turn rode %q, want the model the turn started on", got)
+	if got := completer.model(0); got != "test/model" {
+		t.Fatalf("the first request rode %q, want the model the turn started on", got)
 	}
-	collect(t, mustSubmit(t, agent, "again"))
-	if got := completer.model(2); got != "test/other" {
-		t.Fatalf("the next turn rode %q, want test/other", got)
+	if got := completer.model(1); got != "test/other" {
+		t.Fatalf("the request after the tool rode %q, want the model the person named "+
+			"— a word said between two requests needs no cut and must not wait for a turn", got)
 	}
 }
 

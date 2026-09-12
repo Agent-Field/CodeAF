@@ -3381,7 +3381,7 @@ local conversation the same page tails that log live.
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
-| clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next turn — and does nothing at all once the task has landed |
+| clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
 | scroll position | the conversation's | the room's own, kept separately |
 | attachments | the tray sends pictures | a room's box sends words only |
@@ -4367,26 +4367,35 @@ read the model on the task's own card.
 
 What that does, exactly:
 
-- **It takes effect on the task's next turn — and if the step has to be rescued, it is
-  rescued onto your model.** The call the worker is in the middle of finishes on the model
-  it started on, and so does the rest of that step: killing a request in flight would throw
-  away work you have already paid and waited for. What changed on 2026-09-11 is where the
-  step goes when the model it is on stops answering — **the very next move goes to the one
-  you picked**, rather than to the next name in aforge's own fallback list, and the run's
-  log says `moving to <model>, which you chose`. That includes a step grinding on a machine
-  that keeps saying `temporarily rate-limited upstream`, which used to be the one failure
-  that moved nothing at all: aforge stayed on the machine pacing it and said `staying on`,
-  for the whole four and a half minutes a task's call is given. The room says both halves:
-  `model · <id> · the next turn takes it; a rescue goes to it first`.
+- **It takes effect at the task's next request, not its next turn.** A task step is one
+  turn and can run for twenty minutes, so "next turn" would mean your pick does nothing
+  today. Which of two things happens depends only on whether the request the step is
+  inside has given you anything yet:
+  - **Nothing has come back** — it is still reaching a machine, waiting out a pace, or
+    walking away from a refusal — and that request is **let go of at once** and asked
+    again on the model you chose. The room says `switching now`. Nothing is lost,
+    because nothing had arrived.
+  - **Something has already come back**, including thinking you can see. It finishes on
+    the model it started on — killing a reply you are reading would throw away work you
+    have paid and waited for — and everything the step asks for after it is on the new
+    model. The room says `the next request takes it`.
+  Your word reaches the work within a second either way. A step already moving down its
+  own rescue chain starts that chain again from the model you named, so it never keeps
+  walking away from your choice.
+
 - **And nothing quietly takes it back.** When a task's model stops answering, aforge moves
   the work to another one rather than failing it — but if you have picked a model in this
-  room, that pick is where it moves to, not the next name in aforge's own fallback list.
+  room, that pick is where it moves to, not the next name in aforge's own fallback list,
+  and the run's log says `moving to <model>, which you chose`. That includes a step
+  grinding on a machine that keeps saying `temporarily rate-limited upstream`, which used
+  to be the one failure that moved nothing at all: aforge stayed on the machine pacing it
+  and said `staying on`, for the whole four and a half minutes a task's call is given.
   Until 2026-09-11 the fallback list won, so a task could finish on a model nobody had
   chosen while the room showed the one you did.
 - **Unless the work is already being checked, in which case the pick is saved for the next
   run.** A running task is running across three lives: its own worker, the gate reading
   what that worker left, and any repair round. Once the gate is reading, the worker has
-  stopped, so there is no next turn for the pick to reach. It is kept the way a finished
+  stopped, so there is no request left for the pick to reach. It is kept the way a finished
   task's pick is kept — the room reads `next model <id>`, the sidebar heads itself `Next
   run setup` — and it applies if you continue the work. The model on the row does not move,
   because that model is the one the work actually ran on.
@@ -4410,6 +4419,30 @@ everything as it was.
 
 There is still no command, key or setting for this: the model's name in the room is the
 only door. `/model` always means the conversation.
+
+## I typed continue into a running task and nothing happened — does typing into a running task reach it straight away, my correction into a task's page was ignored, telling a task to carry on
+
+**It reaches it straight away, on the same clock as a model pick.** Anything you type
+into a running task's page — `continue`, a correction, a fact it is missing — lands by
+the same rule:
+
+- If the request the step is inside has **given you nothing** — still reaching a
+  machine, waiting out a pace, walking away from a refusal — that request is **let go of
+  at once** and the step's very next one carries your words. Within a second.
+- If **something has already come back**, including thinking you can see, that request
+  finishes first and your words ride the step after it. Nothing you were reading is
+  taken away to hear you sooner.
+
+**It did not use to.** Until 2026-09-11 a line typed into a room was written down
+perfectly and only read when the request it interrupted ended **on its own** — so
+somebody watching a step sit on `waiting · rate limited · 13m 37s` could type `continue`
+and be answered thirteen minutes later. The words were never lost; they were just not
+heard. If you typed `continue` more than once while that was happening, each line is a
+line and each one arrives.
+
+**What it is not.** It does not stop the task, and it does not restart it: the step
+carries on with your words added to what it knows. To stop the work, use `/stop` or the
+Stop task button — *Stopping a task* below.
 
 ## Why can't I change the model here — the model's name is not pressable
 

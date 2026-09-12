@@ -51,12 +51,23 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 			finalText("handed off"),
 		},
 		child: []step{
-			func(context.Context, []ai.Message) (*ai.Response, error) {
+			// AND THIS ONE IS LET GO OF, because the person speaks into the room
+			// while it is out and it has produced nothing (steer.go's THE PERSON'S
+			// WORD WINS). It waits on the cut the way a real request does rather
+			// than on the release alone — a step that ignored its context would be
+			// a fixture asserting that a person's line waits for the request it
+			// interrupted, which is the defect #935 exists for.
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
 				close(working)
-				<-release
-				return toolResponse("call-write", "write",
-					`{"path":"hello.txt","content":"hi\n"}`), nil
+				select {
+				case <-release:
+					return textResponse("nobody cut this one"), nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 			},
+			// So the work happens on the request the person's line bought, and the
+			// line is IN it.
 			func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
 				var said string
 				for _, message := range messages {
@@ -68,6 +79,10 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 					}
 				}
 				heard <- said
+				return toolResponse("call-write", "write",
+					`{"path":"hello.txt","content":"hi\n"}`), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
 				return textResponse("Wrote hello.txt with the greeting."), nil
 			},
 		},

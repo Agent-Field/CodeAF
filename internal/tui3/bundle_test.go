@@ -4144,6 +4144,9 @@ type roomFake struct {
 	// frame and the press (internal/session's [Agent.RetargetTask]).
 	retargeted  []modelPick
 	retargetErr error
+	// retargetLanding is WHEN the engine said the pick landed, and the zero value
+	// is the landing every live node has when no request is out.
+	retargetLanding session.ModelLanding
 }
 
 type steerLine struct {
@@ -4228,15 +4231,15 @@ func (f *roomFake) steerLanding() string {
 }
 
 // RetargetTask is the room's fourth door: one running node moved onto another
-// model, from its next turn on. The real one publishes the change on a task
+// model, from its next request on. The real one publishes the change on a task
 // update of its own, which is why nothing here writes the node — a test that
 // wants the row to move drives the update the engine would have sent.
-func (f *roomFake) RetargetTask(id uint64, model string) error {
+func (f *roomFake) RetargetTask(id uint64, model string) (session.ModelLanding, error) {
 	if f.retargetErr != nil {
-		return f.retargetErr
+		return session.ModelLandsNextRequest, f.retargetErr
 	}
 	f.retargeted = append(f.retargeted, modelPick{id: id, model: model})
-	return nil
+	return f.retargetLanding, nil
 }
 
 // roomApp is [taskApp] with the doors open and one node already running, which

@@ -106,9 +106,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
 	// same live conversation model every other errand already passes as its own
 	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
-	// typed mid-turn lands at the next Submit either way ([Agent.SetModel]), so
-	// reading it here moves the crew-only rungs WITH the rest of the errands
-	// rather than one turn apart from them.
+	// typed mid-turn reaches the turn's own next request now ([Agent.SetModel]),
+	// so reading it live here moves the crew-only rungs WITH the work rather than
+	// leaving the errands beside a turn talking to a model they do not know about.
 	if a.config.OneModel {
 		sessionDefault = a.model
 	}

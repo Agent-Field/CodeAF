@@ -125,7 +125,10 @@ on its own while opening would be spending your money on a decision you did not 
 ## Change this task's model
 
 `/model` and the model row under Task setup target the open ordinary task.
-A running task changes on its next turn. A queued task takes the new model when
+A running task changes at its **next request**, within a second: if the request it
+is inside has given you nothing yet it is let go of and asked again on the model
+you chose (`switching now`), and if your answer is already arriving that answer
+finishes first (`the next request takes it`). A queued task takes the new model when
 it starts. A settled task saves the choice under `Next run setup`; continuing
 applies it to the next attempt. Choosing a model alone does not continue work.
 Once the gate is reading what a worker left, the choice is saved under `Next run

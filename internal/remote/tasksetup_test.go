@@ -11,9 +11,9 @@ type setupAgent struct {
 	model, rung string
 }
 
-func (a *setupAgent) RetargetTask(id uint64, value string) error {
+func (a *setupAgent) RetargetTask(id uint64, value string) (session.ModelLanding, error) {
 	a.id, a.model = id, value
-	return nil
+	return session.ModelLandsNow, nil
 }
 func (a *setupAgent) SetTaskEffort(id uint64, value string) error {
 	a.id, a.rung = id, value
@@ -34,7 +34,7 @@ func TestTaskSetupCrossesTheProductionHostConnection(t *testing.T) {
 	if !agent.TaskSetupSupported() {
 		t.Fatal("host hid task setup")
 	}
-	if err := agent.RetargetTask(17, "chosen-model"); err != nil {
+	if _, err := agent.RetargetTask(17, "chosen-model"); err != nil {
 		t.Fatal(err)
 	}
 	if far.id != 17 || far.model != "chosen-model" {
@@ -68,7 +68,7 @@ func TestTaskSetupCapabilityAndWatcherRefusal(t *testing.T) {
 		if !watch && loop.Client.Agent().TaskSetupSupported() {
 			t.Fatal("unsupported engine advertised setup")
 		}
-		if err := loop.Client.Agent().RetargetTask(17, "wrong"); err == nil {
+		if _, err := loop.Client.Agent().RetargetTask(17, "wrong"); err == nil {
 			t.Fatal("read-only setup accepted")
 		}
 		if far.model != "" {

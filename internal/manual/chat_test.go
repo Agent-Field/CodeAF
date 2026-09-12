@@ -227,7 +227,27 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The model-call log: the file every outbound call writes a line to.
 		// Both spellings people actually use — one asks for the file, the other
 		// asks what was on the wire.
+		// THE PERSON'S WORD ON A REQUEST ALREADY OUT. Somebody asking this has
+		// just pressed a model while something was running and wants to know
+		// whether they have to wait; they ask about "now", about "in the middle",
+		// and about the room's own two sentences.
+		{"can I change the model while it is replying", "models-and-cost"},
+		{"does switching the model take effect now or later", "models-and-cost"},
+		{"I changed the model in the middle of an answer", "models-and-cost"},
+		{"what does switching now mean", "models-and-cost"},
+		// AND WHETHER THE MODEL IS THE ONLY WORD THAT LANDS. Somebody watching a
+		// stuck step types `continue` before they think about the picker; the
+		// answer is that it is the same rule on the same clock, and it lives
+		// beside the model sentence because that is where they will be looking.
+		{"I typed continue into a task and nothing happened", "tasks"},
+		{"does typing into a running task reach it straight away", "tasks"},
+		// And the one the code's own comment used to get wrong: thinking on the
+		// screen is something you have read.
+		{"the model is showing its thinking, can I still switch", "models-and-cost"},
 		{"where are the logs", "models-and-cost"},
+		// AND THE ROW THE PERSON'S OWN WORD WRITES. Somebody reading a long step
+		// back hits this line and has to be able to tell it from a failure.
+		{"let go of because you chose another model", "models-and-cost"},
 		{"what did you send the model", "models-and-cost"},
 		// And the row that is short of a figure: the note names the number it
 		// left out, which is the first thing somebody greps for when a line has

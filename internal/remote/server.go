@@ -1947,7 +1947,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		switch call.Method {
 		case MethodTaskModel:
-			return nil, door.RetargetTask(args.ID, args.Value)
+			landing, err := door.RetargetTask(args.ID, args.Value)
+			if err != nil {
+				return nil, err
+			}
+			// WHEN THE PICK LANDED TRAVELS WITH THE ANSWER, so a hosted room says
+			// the same true sentence a local one does rather than guessing.
+			return json.Marshal(landing)
 		case MethodTaskSetEffort:
 			return nil, door.SetTaskEffort(args.ID, args.Value)
 		default:
