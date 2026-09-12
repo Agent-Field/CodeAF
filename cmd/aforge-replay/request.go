@@ -257,6 +257,16 @@ func roleOf(tag string) lane.Role {
 var callSiteRoles = map[string]lane.Role{
 	// internal/session/loop.go's laneRole: a conversation's own turn is talk.
 	"turn": lane.RoleTalk,
+	// internal/session/checkpoint.go's draft rung: the model that has just spent
+	// the turn, asked on the turn's own transcript for the document a worker will
+	// finish from. It is made with lane.RoleAuxiliary and billed to the turn, and
+	// it reached the log with NO TAG AT ALL until #996 — which made the dearest
+	// side-call on the ceiling road invisible to every reading of this file.
+	"handoff-draft": lane.RoleAuxiliary,
+	// internal/session/subharness_env.go: one AI step of a saved program, which
+	// runs on the program's own model rather than on any role's. Nobody is
+	// reading its stream and nobody is waiting on its first word.
+	"subharness": lane.RoleAuxiliary,
 	// The same function, in a task. WHICH LEAF ROLE IT IS CANNOT BE READ FROM
 	// THE ROW — laneRole asks `someoneIsWatching()` at the moment of the call
 	// and nothing records the answer — so the unattended reading is taken,
