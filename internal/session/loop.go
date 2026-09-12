@@ -1292,30 +1292,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// one boundary too late to move the mark it is pulling down.
 		a.routeTriage(race, meter)
 
-		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
-		// what handing it over would cost instead (checkpoint.go). The two prior
-		// answers to a grinding turn both decide BEFORE there is any evidence —
-		// the prompt teaches a judgement the model forgets under momentum, and the
-		// route judge reads a request nobody has worked on yet — so this is the
-		// one reading taken while the cost is a fact. At each geometric mark a
-		// sidecar on the tier that thinks is shown the transcript and asked to
-		// sketch what is left; a sketch with independent parts in it ends the turn
-		// there, and past the last mark the harness stops reading, ends the turn,
-		// and moves what is left onto the one road, where the work runs supervised.
-		//
-		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
-		// the turn and never inside it, which is the whole of the wave that measured
-		// it: a model deep in tool momentum answers a mid-turn question with a tool
-		// call up to half the time.
-		//
-		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
-		// the control plane's law is that pre-action is the only hook that may
-		// (hooks.go). It is the one seam left in this loop that can end a turn out
-		// of a judgement, and a false is the turn carrying on exactly as it would
-		// have.
 		// AND THE TRANSCRIPT IS BROUGHT DOWN BEFORE ITS WEIGHT IS PRICED. These
-		// two lines used to stand BELOW the rung above, and that order was the
-		// whole of a measured defect.
+		// two lines used to stand BELOW the reading under them, and that order was
+		// the whole of a measured defect.
 		//
 		// THE RUNAWAY NET ASKS A QUESTION ABOUT A QUANTITY THIS LOOP IS ABOUT TO
 		// REDUCE. "This turn can no longer work where it is" is read off the
@@ -1345,6 +1324,29 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
 		a.maybeCompact(ctx, hub)
 
+		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
+		// what handing it over would cost instead (checkpoint.go). The two prior
+		// answers to a grinding turn both decide BEFORE there is any evidence —
+		// the prompt teaches a judgement the model forgets under momentum, and the
+		// route judge reads a request nobody has worked on yet — so this is the
+		// one reading taken while the cost is a fact. At each geometric mark a
+		// sidecar on the tier that thinks is shown the transcript and asked to
+		// sketch what is left; a sketch with independent parts in it ends the turn
+		// there. NOTHING HERE COUNTS ROUNDS to a ceiling any more: what moves a
+		// turn is the runaway net — this answer can no longer work where it is,
+		// read off what the fold above could not get rid of — and the work then
+		// runs supervised on the one road.
+		//
+		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
+		// the turn and never inside it, which is the whole of the wave that measured
+		// it: a model deep in tool momentum answers a mid-turn question with a tool
+		// call up to half the time.
+		//
+		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
+		// the control plane's law is that pre-action is the only hook that may
+		// (hooks.go). It is the one seam left in this loop that can end a turn out
+		// of a judgement, and a false is the turn carrying on exactly as it would
+		// have.
 		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil, marked) {
 			return true
 		}
