@@ -1,25 +1,25 @@
- [1m[38;5;110maforge[0m                                                    [38;5;186m1 want you[39m · [38;5;115m$0.0036 / $500[39m · [38;5;243mfri 7:56pm[39m
-  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ batch reading  × [0m[38;5;243m  + [39m
+ [1m[38;5;110maforge[0m                                                   [38;5;186m1 want you[39m · [38;5;115m$0.0027 / $500[39m · [38;5;243mfri 10:33pm[39m
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ new conversation  × [0m[38;5;243m  + [39m
 [38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 [39m    [38;5;243m· still yours to set · [38;5;146m[48;5;237m/budget[38;5;243m[49m sets what aforge may spend · [38;5;146m[48;5;237m/model[38;5;243m[49m and [38;5;146m[48;5;237m/crew[38;5;243m[49m pick the models[39m
     [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
 
-  [38;5;146m› [38;5;110mRead [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/e.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-[0m]8;;\
-    [4m[38;5;110mgroup/e.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/f.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-[0m]8;;\
-    [4m[38;5;110mgroup/f.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/g.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-[0m]8;;\
-    [4m[38;5;110mgroup/g.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/h.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-[0m]8;;\
+  [38;5;146m› [38;5;110mRead [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/e.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-[0m]8;;\
+    [4m[38;5;110mgroup/e.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/f.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-[0m]8;;\
+    [4m[38;5;110mgroup/f.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/g.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-[0m]8;;\
+    [4m[38;5;110mgroup/g.txt[0m[38;5;110m, [4m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/h.txt\/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-[0m]8;;\
     [4m[38;5;110mgroup/h.txt[0m[38;5;110m with the read tool — all four read calls in the same message, at once, not one[39m
     [38;5;110mafter another — and run nothing else. Then tell me each file's first line.[39m
 
     [38;5;243m▾ [38;5;103mread 4 files in[39m                                                                      [38;5;243m4 calls[39m
-  [38;5;243m  [38;5;103m/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group[39m
-    [38;5;243m├─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/f.txt\/tmp/TestQuestionsE2EFourReadsInOn]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/f.txt\…Frame4267060148/002/q-group/f.txt[0m]8;;\ [38;5;243m1 line[39m · [38;5;243mallowed[39m [38;5;252m❮
-[39m    [38;5;243m├─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/g.txt\/tmp/TestQuestionsE2EFourReadsInOn]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/g.txt\…Frame4267060148/002/q-group/g.txt[0m]8;;\ [38;5;243m1 line[39m · [38;5;243mallowed[39m
-    [38;5;243m╰─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/h.txt\/tmp/TestQuestionsE2EFourReadsInO]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame4267060148/002/q-group/h.txt\…Frame4267060148/002/q-group/h.txt[0m]8;;\ [38;5;173m✕[39m [38;5;243m1 line[39m · [38;5;243mdenied[39m
+  [38;5;243m  [38;5;103m/tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group[39m
+    [38;5;243m├─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/f.txt\/tmp/TestQuestionsE2EFourReadsInOn…nFrame272754868/002/q-group/f.txt[0m]8;;\ [38;5;243m1 line[39m · [38;5;243mallowed[39m [38;5;252m❮
+[39m    [38;5;243m├─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/g.txt\/tmp/TestQuestionsE2EFourReadsInOn…nFrame272754868/002/q-group/g.txt[0m]8;;\ [38;5;243m1 line[39m · [38;5;243mallowed[39m
+    [38;5;243m╰─▶ [38;5;110mread[39m [4m[38;5;252m]8;;file:///tmp/TestQuestionsE2EFourReadsInOneBatchAreOnePermissionFrame272754868/002/q-group/h.txt\/tmp/TestQuestionsE2EFourReadsInO…nFrame272754868/002/q-group/h.txt[0m]8;;\ [38;5;173m✕[39m [38;5;243m1 line[39m · [38;5;243mdenied[39m
     [38;5;243m│ [38;5;102mdenied by the person: tool "read"[39m
-    [38;5;103m▪ [38;5;243m  13s[39m                                                                     [38;5;235m↑[38;5;243m 14.2k[39m  [38;5;235m↓[38;5;243m 1,161[39m
+    [38;5;103m▪ [38;5;243m  12s[39m                                                                       [38;5;235m↑[38;5;243m 14.2k[39m  [38;5;235m↓[38;5;243m 240[39m
 
 
 
@@ -29,8 +29,8 @@
 
 
 
-[38;5;243m─ batch reading four files an… · deepseek/deepseek-v4-flash · ⠿ auto · via wafer ─── [38;5;116mesc[38;5;243m interrupt ─
-  ✓ needs your ok to run read → allow once · you · 19:56 · c change · ⠹ working[39m
-[38;5;243m  ✓ needs your ok to run read → deny · you · 19:56 · c change · ⠹ working[39m
+[38;5;243m─ q-group · deepseek/deepseek-v4-flash · ⠿ auto · via wafer · main ───────────────── [38;5;116mesc[38;5;243m interrupt ─
+  ✓ needs your ok to run read → allow once · you · 22:33 · c change · ⠧ working[39m
+[38;5;243m  ✓ needs your ok to run read → deny · you · 22:33 · c change · ⠧ working[39m
  [38;5;243m› [39m
- [38;5;110m$0.0063[38;5;243m   14.2k/1M · 1%   [38;5;173mYOLO[39m                                                      [38;5;146m⠹[39m [38;5;146mworking[38;5;243m · [38;5;146m16s
+ [38;5;243m$0.0027   14.2k/1M · 1%   [38;5;173mYOLO[39m                                                      [38;5;146m⠧[39m [38;5;146mworking[38;5;243m · [38;5;146m14s
