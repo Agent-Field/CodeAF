@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the turn seals when the answer is done, and the route judge is spent when it lands
-pr: 997
+pr: 1011
 surface: [chat, engine]
 invalidates:
   - "The end of a turn waited for BOTH end-of-turn readers. It waits only for the one that can re-open the turn; the work-or-words judge no longer holds the seal, and a yes that lands after the turn ended starts its task then."
