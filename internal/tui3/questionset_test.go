@@ -370,6 +370,44 @@ func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 	}
 }
 
+// THE BEAT'S ROW IS WHERE THE BEAT IS DRAWN, at every length of head.
+//
+// [app.questionBeatRow]'s second argument is written straight into
+// [app.questionSpanRow], which is the screen row a click on the shapes resolves
+// against. It used to be the literal `2`, correct only while the head fitted the
+// frame's top edge: behind a head long enough to wrap, every press on the shapes
+// landed one row off per wrapped line. It is now measured from what the caller
+// has laid above the body, so the panel of one and the tab are both right.
+func TestTheBeatsRowIsWhereTheBeatIsDrawnUnderAHeadThatWraps(t *testing.T) {
+	lab := newQuestionLab(t)
+	long := "needs your ok to run a command that " + strings.Repeat("goes on and on and on ", 12) + "before it ends"
+	q := setPermission(lab, 1, "step:9", "bash", "git status --short", session.StakesCostly)
+	q.Head = long
+	lab.raise(q)
+	lab.a.questions[0].shapes = func() []string { return []string{"git *", "git status*", "git status --short"} }
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	lab.press("2")
+
+	rows := questionPlainRows(lab.rows())
+	if len(wrap(long, 1)) < 2 {
+		t.Fatal("the head under test does not wrap; the case it guards is not being exercised")
+	}
+	drawn := -1
+	for i, row := range rows {
+		if strings.Contains(row, "3 just this line") {
+			drawn = i
+		}
+	}
+	if drawn < 0 {
+		t.Fatalf("the beat was never drawn:\n%s", strings.Join(rows, "\n"))
+	}
+	if lab.a.questionSpanRow != drawn {
+		t.Fatalf("a press on the shapes resolves against row %d, but they are drawn on row %d:\n%s",
+			lab.a.questionSpanRow, drawn, strings.Join(rows, "\n"))
+	}
+}
+
 // A TAB PART-WAY THROUGH THE WIDENING ANSWER DRAWS THE BEAT, not the answers it
 // replaced. `always` on a tab opens the shapes, and from that moment the digits
 // pick a shape and `esc` backs out of the beat ([app.questionSetOwnsKey] hands
