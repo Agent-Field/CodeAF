@@ -105,15 +105,22 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 		return a.Submit(ctx, text)
 	}
 
-	// The gate reads the model the NEXT turn will ride, which is the model this
-	// message is about to be sent to. Reading it here rather than at assembly
-	// keeps the refusal cheap: nothing is read from disk for a model that could
-	// not have looked at it, and the fallback's own resolution is cheaper still.
-	model := a.Model()
+	// THE GATE READS THE MODEL THE WORK IS ON ([Agent.ridingNowLocked]), which is
+	// the model this picture is about to be sent to — the same model the request
+	// guard beside it asks about (blindswap.go) and the same one the chrome is
+	// naming. Reading the dial here instead meant that a picture attached while a
+	// turn ran on another model was graded against a model that was not going to
+	// see it, in both directions: refused for a blind dial while the work could
+	// see, and accepted for a seeing dial while the work could not.
+	//
+	// Reading it here rather than at assembly keeps the refusal cheap: nothing is
+	// read from disk for a model that could not have looked at it, and the
+	// fallback's own resolution is cheaper still.
+	model := a.ridingNow()
 	// A POSITIVE `sees` OR NOTHING. Unknown goes to the looking model exactly as
 	// blind does: neither is a model this build may hand base64 to
-	// ([ModelSight]).
-	if a.sightOf(model) != SightSees {
+	// ([Config.SeesImages]).
+	if sees, known := a.seesImages(model); !sees || !known {
 		return a.visionTurn(ctx, text, images, model)
 	}
 
@@ -410,7 +417,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	// names the model the engine is on ([Agent.TurnModel]), and for the length of
 	// a vision turn the engine is on the seer — which is also what the reply is
 	// prefixed with, so the line and the reply agree.
-	a.ridesOnLocked(seer)
+	a.riding = seer
 	hub := newEventHub()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)

@@ -1228,30 +1228,6 @@ func (s *sessionFile) imagePath(part ai.ContentPart) string {
 	return s.images[partKey(part)]
 }
 
-// rememberImagePath indexes one part under a path this file already knows, which
-// is what keeps a picture's NAME on a message whose bytes have been replaced by a
-// placeholder ([Agent.scrubBlindImagePartsLocked]). A replay does the same thing
-// by accident and for the same reason — [rememberParts] indexes whatever part
-// was rebuilt, placeholder or picture — so a scrubbed message and a replayed one
-// draw alike.
-//
-// An empty path records nothing: an index entry pointing nowhere would make
-// [sessionFile.imageRefs] claim a picture it cannot name.
-func (s *sessionFile) rememberImagePath(part ai.ContentPart, path string) {
-	if s == nil {
-		return
-	}
-	if path = strings.TrimSpace(path); path == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.images == nil {
-		s.images = make(map[string]string)
-	}
-	s.images[partKey(part)] = path
-}
-
 // isNote reports whether one message is a line the SESSION wrote — the answer
 // [shapeEntries] turns into the "note" role a surface draws in its own lane
 // rather than in the person's.

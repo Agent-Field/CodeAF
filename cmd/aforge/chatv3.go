@@ -2117,44 +2117,51 @@ func v3AnswersText(outputs []string) bool {
 // The file is read at most once per session: it is the same rows for the whole
 // warming window, and re-reading it per message would put I/O on the message
 // path to learn nothing new.
-// AND IT ANSWERS IN THREE STATES, NOT TWO ([session.ModelSight]). A row this
-// door has actually read is a `sees` or a `blind`; a catalog that has not
-// answered yet and a disk cache that does not carry the id are `unknown`, and
-// the difference decides whether a person's screenshot survives. Until the third
-// state existed a cold catalog said `blind` in the same breath a warm one said
-// `sees`, for one id, one conversation, a minute apart — and the scrub that read
-// it took the pictures out of the transcript for good (internal/session's
-// blindswap.go states what each caller does with which answer).
-func v3SeesImages(models v3Catalog) func(string) session.ModelSight {
+// AND IT SAYS WHETHER IT KNOWS, which is the shape the facts beside it use
+// ([session.Config.SeesImages]). The difference decides what happens to a
+// person's screenshot: until it existed a cold catalog said `cannot see` in the
+// same breath a warm one said `sees`, for one id, one conversation, a minute
+// apart.
+//
+// THREE ANSWERS OUT OF ONE ROW, and the third is not the same as the second. A
+// list that names `image` SEES. A non-empty list that does not name it is a row
+// that published its modalities and left image out, which is a model this door
+// KNOWS is blind. An EMPTY list is a row that published nothing at all — and
+// that is ignorance, not a no. The silence law (docs/MULTIMODAL.md Decision 6)
+// governs what is SENT, and the send gate honours it by refusing anything but a
+// positive `sees`; grading that silence as a known `cannot see` also handed it
+// to the guard that hides pictures, which is the opposite direction and the one
+// that used to be irreversible.
+func v3SeesImages(models v3Catalog) func(string) (bool, bool) {
 	var once sync.Once
 	var cached []tui3.Model
-	return func(model string) session.ModelSight {
+	return func(model string) (sees, known bool) {
 		model = strings.TrimSpace(model)
 		if model == "" {
-			return session.SightUnknown
+			return false, false
 		}
 		if models != nil {
 			if rows := models.ModelsNow(); len(rows) > 0 {
 				for _, row := range rows {
 					if strings.EqualFold(strings.TrimSpace(row.ID), model) {
-						return session.SightOf(v3ReadsImages(row.InputModalities))
+						return v3ReadsImages(row.InputModalities)
 					}
 				}
 				// The catalog HAS answered and does not carry this id — a
 				// hand-typed slug, a model this router never listed. Nothing has
 				// been READ about this model, so nothing is known about it: it is
-				// refused a picture like any unknown, and its pictures are left
-				// where they are like any unknown.
-				return session.SightUnknown
+				// refused a picture like any unknown, and its pictures are shown
+				// like any unknown's.
+				return false, false
 			}
 		}
 		once.Do(func() { cached = tui3.CachedModels() })
 		for _, row := range cached {
 			if strings.EqualFold(strings.TrimSpace(row.ID), model) {
-				return session.SightOf(v3ReadsImages(row.Input))
+				return v3ReadsImages(row.Input)
 			}
 		}
-		return session.SightUnknown
+		return false, false
 	}
 }
 
@@ -2171,13 +2178,16 @@ func v3SeesImages(models v3Catalog) func(string) session.ModelSight {
 // with a base64 photo in it, sent to a model that cannot read one, comes back as
 // a provider error about a content part, while an unknown modality is a refusal
 // the person can act on ("switch to a model with vision").
-func v3ReadsImages(inputs []string) bool {
+func v3ReadsImages(inputs []string) (sees, known bool) {
 	for _, modality := range inputs {
 		if strings.EqualFold(strings.TrimSpace(modality), "image") {
-			return true
+			return true, true
 		}
 	}
-	return false
+	// A ROW THAT PUBLISHED NOTHING HAS SAID NOTHING. An empty list is the shape a
+	// router uses for "no architecture block on this model", and reading it as a
+	// published `text only` was this door grading its own ignorance as a fact.
+	return false, len(inputs) > 0
 }
 
 // v3NearestModels is the last resort of the endpoint-refusal chain: when the
