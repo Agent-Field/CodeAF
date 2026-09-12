@@ -221,22 +221,44 @@ for it) and a sentence about assumptions — the row borrows the task proposal's
 ![one struck](screens/assumptions-stand-until-one-is-struck-struck.png)
 *`2`.*
 
-## Several at once — the sheet
+## Several at once — tabs
 
-![two questions raised together](screens/two-questions-in-one-step-arrive-as-a-sheet-raised.png)
-*Two `ask` calls in one step, grouped by shape, each row carrying that question's own
-keys. `▸` is the cursor, `?` is a row still waiting.*
+![two questions raised together](screens/two-questions-in-one-step-are-one-panel-with-tabs-raised.png)
+*Two `ask` calls in one step are one panel. The top edge is a tab per question — each
+called by the words that tell it apart, the words both heads share taken off — and the
+review last; the bottom edge adds `←→ question`.*
 
-![one answered](screens/two-questions-in-one-step-arrive-as-a-sheet-answered.png)
-*`1`. The row wears `✓` and the answer beside it, the cursor walks on, and `[g] same
-answer for all like this` is offered now that there is an answer to spread.*
+![the review, nothing held](screens/two-questions-in-one-step-are-one-panel-with-tabs-review-empty.png)
+*`→ →`. The review names each question with `not answered — ← to go back`, and with
+nothing held it offers no send at all — `enter` is off the edge.*
 
-![spread](screens/two-questions-in-one-step-arrive-as-a-sheet-spread.png)
-*`g`. Both rows answered, and `[s] send what is answered (2)`.*
+![the review, both held](screens/two-questions-in-one-step-are-one-panel-with-tabs-review-held.png)
+*`← ← 1 1`. `enter` (or a digit) on a tab holds the answer and moves on; nothing has
+gone to the engine yet. The review lists what is held and offers `send all 2`.*
 
-![sent](screens/two-questions-in-one-step-arrive-as-a-sheet-sent.png)
-*`s`. One record per row — which this wave added; before it, a batch you sent vanished
-without a line.*
+![sent](screens/two-questions-in-one-step-are-one-panel-with-tabs-sent.png)
+*`enter`. Both answers go through the one door in tab order, in one command, and each
+leaves its own receipt.*
+
+## Several approvals at once — one frame
+
+![four reads in one batch](screens/four-reads-in-one-batch-are-one-permission-frame-raised.png)
+*Four `read` calls the model asked for in one message are ONE frame: a row per thing
+wanted, then `allow all 4 · one by one · deny all`. The pointer opens on `deny all` and
+says `safe answer` — every permission opens on the answer that loses nothing until the
+calls are graded (#953). There is no lifetime row: a consent's answer scope never reaches
+the gate, so the frame offers only what it can honour.*
+
+![one by one](screens/four-reads-in-one-batch-are-one-permission-frame-one-by-one.png)
+*`2`. The same four open as tabs, each with its own keys, so a person who wants to read
+the files before granting can.*
+
+![the review, a mix held](screens/four-reads-in-one-batch-are-one-permission-frame-review.png)
+*`1 1 1 3`. Three allowed and one denied, held rather than sent; the review offers
+`send all 4`.*
+
+![sent](screens/four-reads-in-one-batch-are-one-permission-frame-sent.png)
+*`enter`. The deny goes through the same door as the allows, in one command.*
 
 ## Two windows
 

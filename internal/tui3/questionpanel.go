@@ -76,33 +76,18 @@ const (
 // one column.
 func (a *app) questionPanelRows(q questionShown, width int) []string {
 	inner := frameInner(width)
-	if len(q.beat) > 0 {
-		return a.questionPanelBeat(q, width, inner)
-	}
-	first := len(a.questionBands)
 	title, headRows := a.questionPanelHead(q, width, inner)
-	rows := append(headRows, a.questionPanelEvidenced(q, width, inner, len(headRows))...)
-	keys := a.questionAnswerKeys(q, formsCard)
-	keyRow := a.questionKeyRow(q, questionKeysOnTier(keys, keyPrimary), frameEdgeRoom(width))
-	if q.writing != "" {
-		// THE EDGE SAYS WHAT THE BOX MEANS while the composer is pointed at the
-		// question ([app.questionWritingRow]): every letter types, so an edge
-		// naming letters would be naming keys that do something else.
-		keyRow = a.pal.dim(fit(a.questionWritingRow(q), frameEdgeRoom(width)))
-	}
+	// THE FRAME'S TOP EDGE IS A ROW, and so is every row the head took when it
+	// would not fit into that edge: each of them puts the body one row further
+	// down the block. The marks are what a press resolves against, so the inside
+	// is told where it stands rather than left to guess.
+	rows, keyRow, keys := a.questionPanelInside(q, width, inner, 1+len(headRows), nil)
 	panel := framed{
 		title: title,
 		aside: a.questionPanelAside(q, width),
 		keys:  keyRow,
 	}
-	out, _ := panel.draw(a.pal, width, rows)
-	// THE FRAME'S TOP EDGE IS A ROW, and so is every row the head took when it
-	// would not fit into that edge: each of them puts the body one row further
-	// down the block. The bands are what a press resolves against, so they are
-	// shifted here rather than guessed at by the body.
-	for i := first; i < len(a.questionBands); i++ {
-		a.questionBands[i].row += 1 + len(headRows)
-	}
+	out, _ := panel.draw(a.pal, width, append(headRows, rows...))
 	// AND THE SECOND TIER STANDS UNDER THE FRAME, dim, in the same grammar. It
 	// is not written into the bottom edge because the edge is for the keys that
 	// ANSWER: a row that mixed `esc later` with `D decide these from now on` was
@@ -113,31 +98,64 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 	return out
 }
 
+// questionPanelInside is everything a question draws INSIDE its frame — the rows
+// under its head, and the keys on the bottom edge that answer them.
+//
+// THE BEAT IS BRANCHED ON HERE AND NOWHERE ELSE. A question part-way through the
+// widening answer ([app.questionPanelBeat]) replaces its answers with the shapes
+// and its edge with the two keys that mean anything while they are up, and it is
+// the same question whether it is alone above the box or one tab of the set its
+// step raised (questionset.go). A second place deciding that was a panel drawing
+// the answers while the digits picked shapes and `esc` backed out of the beat —
+// a person typing into a drawing that is not the one they are looking at.
+//
+// `above` is how many rows already stand inside the frame, counting the frame's
+// own top edge, so the marks a press resolves against are recorded where they
+// will be drawn. `edge` is what the caller puts in front of the answering keys —
+// the set's `←→ question`, and nothing at all for a panel of one.
+func (a *app) questionPanelInside(q questionShown, width, inner, above int, edge []questionVerb) (rows []string, keyRow string, keys []questionVerb) {
+	if len(q.beat) > 0 {
+		return a.questionPanelBeat(q, above, inner)
+	}
+	first := len(a.questionBands)
+	// THE BODY IS THE EVIDENCED ONE, so a tab reads exactly as the panel of one
+	// does: where the answers carry blocks, the pointer's own evidence stands
+	// beside them or unfolds under the row (#972). Everything the caller has
+	// already laid inside the frame is height the evidence may not have, which
+	// is what `above` less the frame's own top edge counts.
+	rows = a.questionPanelEvidenced(q, width, inner, above-1)
+	for i := first; i < len(a.questionBands); i++ {
+		a.questionBands[i].row += above
+	}
+	keys = a.questionAnswerKeys(q, formsCard)
+	keyRow = a.questionKeyRow(q, append(append([]questionVerb{}, edge...), questionKeysOnTier(keys, keyPrimary)...), frameEdgeRoom(width))
+	if q.writing != "" {
+		// THE EDGE SAYS WHAT THE BOX MEANS while the composer is pointed at the
+		// question ([app.questionWritingRow]): every letter types, so an edge
+		// naming letters would be naming keys that do something else.
+		keyRow = a.pal.dim(fit(a.questionWritingRow(q), frameEdgeRoom(width)))
+	}
+	return rows, keyRow, keys
+}
+
 // questionPanelBeat is the widening answer asking how far it goes, drawn in the
 // same frame rather than in a drawing of its own: the shapes take the rows the
 // answers had, and the bottom edge says the two keys that mean anything while
-// they are up.
+// they are up. It hands back no key table, so no second tier stands under it.
 //
 // IT IS ONE ROW OF SHAPES AND NOT A ROW EACH, because the shapes are one
 // question's answers ([app.questionBeatRow] holds the spans a click resolves
 // against, and they are a row's worth).
-func (a *app) questionPanelBeat(q questionShown, width, inner int) []string {
-	row := a.questionBeatRow(q, 2, inner)
+func (a *app) questionPanelBeat(q questionShown, above, inner int) (rows []string, keyRow string, keys []questionVerb) {
+	row := a.questionBeatRow(q, above+1, inner)
 	// The frame's side is one cell, so every span the beat recorded stands one
 	// column further right than the row itself counted it.
 	for i := range a.questionSpans {
 		a.questionSpans[i].from++
 		a.questionSpans[i].to++
 	}
-	title, headRows := a.questionPanelHead(q, width, inner)
-	panel := framed{
-		title: title,
-		aside: a.questionPanelAside(q, width),
-		keys: a.pal.data("1–"+itoa(len(q.beat))) + a.pal.dim(" shape") +
-			a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack),
-	}
-	out, _ := panel.draw(a.pal, width, append(headRows, "", row, ""))
-	return out
+	return []string{"", row, ""}, a.pal.data("1–"+itoa(len(q.beat))) + a.pal.dim(" shape") +
+		a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack), nil
 }
 
 // questionPanelEvidenced is the panel's body where its answers brought

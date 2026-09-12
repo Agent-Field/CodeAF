@@ -194,6 +194,14 @@ than pictographs, so they are geometry and neither tier swaps the byte.
 | it no longer needs answering | `GWithdrawn` | `⊘` | nf-fa-ban | `-` |
 | the answer your enter takes | `GPointer` | `▸` | *(geometry — same byte)* | *(the question draws `>`)* |
 | the asker's pick | `GRecommended` | `◆` | nf-fa-star_o | `*` |
+| the question of several the panel is showing | `GTabHere` | `●` | nf-fa-circle | `@` |
+| a question of several still waiting for its answer | `GTabOpen` | `○` | nf-fa-circle_o | `o` |
+
+The two tab slots are for several questions one step raised, drawn as one
+panel with a tab each (`internal/tui3/questionset.go`): `●` is the tab the panel
+is showing, `○` one still waiting, and a question already answered in the set
+wears `GSettled`. They share their plain bytes with the plan's step dots, and the
+test that allows that says why (`TestOneGlyphOneMeaning`).
 
 And the ONE frame a question hangs in (`internal/tui3/frame.go`, owner ruling
 2026-09-11): `GFrameTopLeft` `╭`, `GFrameTopRight` `╮`, `GFrameBottomLeft` `╰`,

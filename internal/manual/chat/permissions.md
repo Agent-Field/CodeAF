@@ -91,9 +91,41 @@ this question says so on **home**, with the same three answers on the row —
 not looking at can be answered from the dashboard (home's own page states the
 limits, and what `2 always` banks when it is pressed there).
 
-When more than one question is queued a `N more` line appears. Questions are
-answered oldest first, and each gets its own countdown when it reaches the
-front.
+When questions from different steps are waiting, a `N more` line appears under
+the one on screen; they are answered oldest first, and each gets its own
+countdown when it reaches the front. **Approvals the same step asked for are not
+a queue** — they are one frame (the next section).
+
+## Several approvals at once — approve all of these, allow all, deny all, one by one
+
+When one batch of calls needs your ok more than once — four reads outside the
+project, say — they arrive as **one frame**: what each call wants, then three
+answers.
+
+```
+╭─ ? allow these 4? ───────────────────────────────────────── read ─╮
+│ read  ~/notes/plan.md                                             │
+│ read  ~/notes/todo.md                                             │
+│ read  ~/notes/ideas.md                                            │
+│ read  ~/notes/log.md                                              │
+│                                                                   │
+│   1  allow all 4                                                  │
+│   2  one by one                                                   │
+│ ▸ 3  deny all                                       safe answer   │
+╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
+```
+
+- **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
+- **`3 deny all`** gives every one its own `deny`, and the pointer starts here,
+  marked `safe answer`, so `enter` on a frame you have not moved denies them all.
+- **`2 one by one`** answers nothing: it opens the same approvals as tabs, where
+  `←` `→` move between them and the last tab sends them all (questions.md,
+  *Several questions at once*).
+- **`esc`** puts all of them off; the work stays waiting.
+
+Each leaves its own receipt. There is no `how long` here, for the reason a
+single approval has none (*How long an answer lasts*). **An irreversible call
+never joins the frame**, and neither does an approval from another step.
 
 ## I pressed ctrl+t while it was asking — where did the question go, and did my typing answer it
 

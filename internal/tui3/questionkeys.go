@@ -101,10 +101,14 @@ const (
 	formsCard
 	formsRatify
 	formsRoom
-	// formsSheet is the batch form (questionsheet.go). Its two own keys are in
-	// this table for the reason every other key is: the manual's page and the
-	// row a person reads have to be spelt from one place.
-	formsSheet
+	// formsTabs, formsReview and formsGroup are the three drawings of a SET —
+	// several questions one step raised (questionset.go): a tab, the review that
+	// sends them, and the one permission frame. Their own keys are in this table
+	// for the reason every other key is: the manual's page and the row a person
+	// reads have to be spelt from one place.
+	formsTabs
+	formsReview
+	formsGroup
 )
 
 // formsBlock is the three forms THIS lane draws — the pinned block above the
@@ -218,9 +222,8 @@ const (
 	questionRuleKey    = "r"
 	questionUndoKey    = "u"
 	// questionScopeKey cycles HOW LONG the answer lasts (questionscope.go). It
-	// is `t` and not `s` because `s` is the sheet's send, and a key that sent a
-	// batch on one form and changed a lifetime on another is two keys as far as
-	// anybody learning it is concerned.
+	// is `t`, the initial of what it changes, and it is a letter a sentence can
+	// start with, so it waits for the block to be aimed at like every other.
 	questionScopeKey = "t"
 	questionBlankKey = "tab"
 	// questionToggleKey IS `space` AND NOT `" "`, which the table's own contract
@@ -230,18 +233,11 @@ const (
 	// the room became the first form to route this key, and a comparison against
 	// the byte matched nothing at all.
 	questionToggleKey = "space"
-	// questionSendKey and questionAlikeKey are the sheet's, and they are LETTERS
-	// where a question's answers are digits because a sheet's digits are already
-	// its answers: `1`-`9` answer the row the cursor is on, so the two acts that
-	// are about the WHOLE batch cannot also be digits.
-	//
-	// AND IT IS `g` RATHER THAN THE ROOM'S `=` ([questionSameKey]) because the
-	// two are not the same act. The room's `=` says "this pair keeps coming up,
-	// answer it the same way from now on" — a rule about the future. The sheet's
-	// `g` says "these rows in front of me take the answer I just gave" — one
-	// batch, now, nothing written down.
-	questionSendKey  = "s"
-	questionAlikeKey = "g"
+	// questionTabBackKey is the left arrow ALONE, on the review of a set: the
+	// review is the last tab, so there is nowhere to its right and `←` is not
+	// half of a pair there. The routing reads `left` ([app.questionReviewKey]);
+	// this is the SPELLING.
+	questionTabBackKey = "←"
 	// questionBackKey is the up arrow ALONE, which is the one place on this
 	// surface a single arrow is a key in its own right: from the box at the foot
 	// of a panel there is nowhere below to go, so `↑` is not half of a pair. The
@@ -309,21 +305,24 @@ var questionKeys = []questionVerb{
 	// open a section and fold it (questionroom.go). A row that names the keys
 	// that do nothing is worse than a row that names none: the owner pressed
 	// them, 2026-09-10, and reported "no arrow or click".
-	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, tier: keyPrimary, giveUp: 2},
+	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom | formsGroup, needs: needWalk, tier: keyPrimary, giveUp: 2},
+	// ON A SET `←→` MOVE BETWEEN QUESTIONS, and its edge says so first
+	// ([app.questionTabRows] puts it there), because it is the one thing a set
+	// does that a panel of one does not. It is never given up: a set whose edge
+	// lost it would be tabs nobody knew how to reach.
+	{key: questionWalkKey, word: questionTabWord, forms: formsTabs, tier: keyPrimary},
 	// `enter` IS NOT ON A RATIFY LINE. Nothing is waiting on it — the work
 	// already happened — so there is no pick for enter to take, and a line that
 	// offered `enter take it` beside `u undo` named a key that answers nothing.
-	{key: questionEnterKey, word: "take it", forms: formsLine | formsCard | formsRoom | formsSheet, needs: needPick, tier: keyPrimary, giveUp: 1},
-	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
-	// because answering a batch is open-one, answer, send — and only `g` is ever
-	// given up: `s` is the reason the sheet exists (a batch answered row by row
-	// and then not sent is a batch nobody answered), so it is ranked zero beside
-	// `esc`.
-	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet, tier: keyPrimary},
-	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
+	{key: questionEnterKey, word: "take it", forms: formsLine | formsCard | formsRoom | formsGroup, needs: needPick, tier: keyPrimary, giveUp: 1},
+	// THE REVIEW'S TWO ARE WHAT A REVIEW IS FOR: send what is held, or go back
+	// and change it. Neither is ever given up — a review whose edge lost `send`
+	// is a set nobody can finish.
+	{key: questionEnterKey, word: "send", forms: formsReview, tier: keyPrimary},
+	{key: questionTabBackKey, word: "back", forms: formsReview, tier: keyPrimary},
 	// AND NEITHER IS `esc later`: a line that says what was already done is not a
 	// question to come back to.
-	{key: questionLaterKey, word: "later", forms: formsLine | formsCard | formsRoom | formsSheet, tier: keyPrimary},
+	{key: questionLaterKey, word: "later", forms: formsLine | formsCard | formsRoom | formsReview | formsGroup, tier: keyPrimary},
 	// THE TWO KEYS OF THE `something else…` ROW. They are rows of their own
 	// rather than second words on `enter` and the walk, because a key that reads
 	// one way on one row and another way on the next is two keys as far as
@@ -516,22 +515,6 @@ func questionVerbFor(key string) (questionVerb, bool) {
 		}
 	}
 	return questionVerb{}, false
-}
-
-// questionSheetKeyWord is one key's word ON A SHEET, which is the table's word
-// for every key but `enter`.
-//
-// `enter` IS ONE KEY WITH ONE MEANING AND TWO SENTENCES. It always means "act on
-// what the cursor is on"; on the block that is the answer the asker recommends,
-// and on a sheet the cursor is on a ROW rather than an answer, so acting on it
-// opens that row. The substitution is done here for the same reason `r`'s is
-// done in [app.paintQuestionKeys] — the table holds one row per key, and a word
-// that depends on what is being drawn is filled in by the drawer.
-func questionSheetKeyWord(verb questionVerb) string {
-	if verb.key == questionEnterKey {
-		return questionSheetOpenWord
-	}
-	return verb.word
 }
 
 // questionKeyWord is one key's word, or "" where the table does not have it.

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"cmp"
 	"sort"
 	"strings"
 	"time"
@@ -240,6 +241,16 @@ type questionShown struct {
 	spans []choiceSpan
 	// row is which row of the block those spans are on.
 	row int
+	// staged is the answer held for this question while it is one tab of a SET
+	// (questionset.go), and nil otherwise. It is sent with its neighbours from
+	// the review, and until then it is only this window's: nothing has been
+	// told to the engine, and a question answered anywhere else simply leaves
+	// with its held answer.
+	//
+	// IT LIVES ON THE QUESTION for [questionShown.other]'s reason: a held answer
+	// belongs to one question, and a set that re-flows when a neighbour is
+	// withdrawn must never move it onto another.
+	staged *session.Answer
 	// shapes answers what this question's widening answer could be banked as,
 	// and it is the second beat's whole door.
 	//
@@ -357,7 +368,7 @@ func (q questionShown) token() string {
 // questionTokenOf names one question the way the whole product names it — the
 // lane it belongs to and that lane's own token ([session.Question.Token]) —
 // spelled once here because every place that holds a LIST of questions has to
-// agree about when two of them are the same one: the block, the sheet, and the
+// agree about when two of them are the same one: the block, a set of tabs, and the
 // page reading another conversation's work (taskowner.go).
 func questionTokenOf(q session.Question) string {
 	return string(q.Kind) + ":" + q.Token()
@@ -452,10 +463,17 @@ func questionRaisedHere(q session.Question) bool {
 }
 
 // questionHead is the question the block is drawing, and whether there is one.
+//
+// WHERE SEVERAL QUESTIONS FROM ONE STEP ARE UP, IT IS THE TAB ON SCREEN
+// (questionset.go), so every key, press and hint that reads the head reads the
+// question the person is actually looking at.
 func (a *app) questionHead() (questionShown, bool) {
 	open := a.questionOpen()
 	if len(open) == 0 {
 		return questionShown{}, false
+	}
+	if set := a.questionSetOf(open); set != nil {
+		return a.questionSetHead(set), true
 	}
 	return open[0], true
 }
@@ -485,7 +503,7 @@ func (a *app) questioning() bool {
 // across every page, not whether the row exists: a ratify is still shown, still
 // answerable, and still carries its own keys where it is drawn.
 func (a *app) questionCount() int {
-	n := a.sheetOpen()
+	n := 0
 	for _, q := range a.questions {
 		if q.question.Ask.Waits() {
 			n++
@@ -538,6 +556,7 @@ func (a *app) raiseQuestion(q questionShown) {
 		if a.questions[i].token() != q.token() {
 			continue
 		}
+		batch := q.question.Batch
 		// The SHOWN stamp survives the replay. A question re-sent by a
 		// reattaching watcher has not just arrived, and restamping it would
 		// hand it a fresh settle guard every few seconds — which is a question
@@ -600,6 +619,15 @@ func (a *app) raiseQuestion(q questionShown) {
 			q.question = a.questions[i].question
 			q.holes = a.questions[i].holes
 		}
+		if q.staged == nil {
+			q.staged = a.questions[i].staged
+		}
+		// AND WHICHEVER COPY ARRIVED SECOND, THE STEP STAYS. Only the engine's
+		// copy can know which step raised a question — a lane that dressed one
+		// from its own event has no batch to put on it — and the two copies race
+		// each other onto the block, so a set may not lose a member because the
+		// copy without a batch landed last (questionset.go).
+		q.question.Batch = cmp.Or(batch, a.questions[i].question.Batch)
 		q.clockHeld = q.clockHeld || a.questions[i].clockHeld
 		a.questions[i] = q
 		a.touch()
@@ -760,13 +788,8 @@ func questionSafeAt(q session.Question) int {
 // where it was.
 func (a *app) withdrawQuestion(q session.Question, reason string) {
 	token := questionToken(q)
-	// A QUESTION THAT NEVER REACHED A ROW IS STILL TAKEN BACK. It may be inside
-	// a step the rule is still gathering, in which case the boundary must not
-	// release a decision that stopped needing to be made
-	// (questiondelivery.go's [questionDeliveryRule.forget]).
-	a.questionReach.forget(q)
 	kept := a.questions[:0]
-	found := a.questionBatch != nil && a.questionBatch.withdraw(q)
+	found := false
 	for _, open := range a.questions {
 		if open.token() == token {
 			found = true
@@ -946,7 +969,7 @@ func questionRuleWord(q session.Question) string {
 // consent.go's reason: a block whose height and whose rows disagree puts the
 // caret a row off the box.
 func (a *app) questionHeight() int {
-	if len(a.questions) == 0 && len(a.questionRecords) == 0 && a.sheetOpen() == 0 {
+	if len(a.questions) == 0 && len(a.questionRecords) == 0 {
 		return 0
 	}
 	width, _ := a.size()
@@ -970,7 +993,7 @@ func (a *app) questionRows(width int) []string {
 		a.questionBands, a.questionSpans = nil, nil
 		return nil
 	}
-	if len(a.questions) == 0 && len(a.questionRecords) == 0 && a.sheetOpen() == 0 {
+	if len(a.questions) == 0 && len(a.questionRecords) == 0 {
 		// The empty block, on the empty path: no spans to clear because none
 		// were written, and nothing allocated (see [app.questionOpen]).
 		return nil
@@ -1003,13 +1026,13 @@ func (a *app) questionRows(width int) []string {
 		// the same question drawn twice, with `space open` offering what is
 		// already open.
 		if folded, has := a.questionPutOff(); has && a.questionQuieted() && !a.questionPageShows(folded) {
-			out = append(out, a.questionFoldedRow(folded, width))
-		}
-		// THE SHEET STANDS DOWN FOR A QUESTION BEING READ, and this is the
-		// other half of that: with nothing on the block, the batch one step
-		// gathered is what the rows are spent on (questionsheet.go).
-		if a.questionQuieted() && a.sheetShowing() {
-			out = append(out, a.questionSheetRows(a.questionBatch, width)...)
+			// A SET PUT OFF FOLDS TO ONE RULE, which says how many and what
+			// each is called (questionset.go).
+			if set := a.questionSetFolded(folded); set != nil {
+				out = append(out, a.questionSetFoldedRow(set, width))
+			} else {
+				out = append(out, a.questionFoldedRow(folded, width))
+			}
 		}
 		return out
 	}
@@ -1063,6 +1086,16 @@ func (a *app) questionRows(width int) []string {
 		// clock, so it takes the rows whole (questionnarrow.go).
 		out = append(out, a.questionNarrowRows(head, width)...)
 		a.shiftQuestionMarks(base)
+		return out
+	case viewTabs:
+		// SEVERAL QUESTIONS FROM ONE STEP ARE ONE PANEL, and the count under it
+		// is of what is waiting BEHIND the set rather than inside it.
+		set := a.questionSet()
+		out = append(out, a.questionSetRows(set, width)...)
+		a.shiftQuestionMarks(base)
+		if more := a.questionWaitingCount() - len(set); more > 0 {
+			out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+		}
 		return out
 	case viewRow:
 		if head.question.Ask == session.AskRatify {
@@ -1653,7 +1686,7 @@ func (a *app) questionBeatRow(q questionShown, row, width int) string {
 // printing it twice on two lines is the two-renderings defect this block exists
 // to avoid.
 //
-// IT IS NOT [questionShapeWord], which is the sheet's group heading and takes an
+// IT IS NOT [questionShapeWord], which is the autonomy sheet's row name and takes an
 // [session.AskKind]. The two words are about different things — a rule's shape
 // and a decision's shape — and sharing one name once cost a build.
 func questionBeatShapeWord(shapes []string, at int) string {
@@ -2413,7 +2446,18 @@ type questionAnswer struct {
 // receipt. Swallowing that sentence was the other half of the measured defect:
 // the engine applied the key, this window was told the connection was gone,
 // and nothing on screen said so.
+//
+// AND WHILE A KEY ON A SET IS BEING ROUTED, WHAT IT WOULD SEND IS HELD INSTEAD
+// ([app.stageAnswers]) — the one place a set's review differs from a panel of
+// one, said at the one door every key's answer reaches.
 func (a *app) answerQuestions(all []questionAnswer) tea.Cmd {
+	return a.sendAnswers(a.stageAnswers(all))
+}
+
+// sendAnswers is [app.answerQuestions] with nothing held back: the list goes
+// through the door now, in order, in one command. It is what a set's review
+// and its permission frame send with.
+func (a *app) sendAnswers(all []questionAnswer) tea.Cmd {
 	if len(all) == 0 {
 		return nil
 	}
@@ -2795,8 +2839,7 @@ func (a *app) questionUnfoldKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.questionOffFrame() || a.startingChat() {
 		return nil, false
 	}
-	_, folded := a.questionPutOff()
-	if !folded && !(a.sheetOpen() > 0 && a.questionBatchFolded) {
+	if _, folded := a.questionPutOff(); !folded {
 		return nil, false
 	}
 	a.raiseFolded()
@@ -2812,14 +2855,6 @@ func (a *app) questionUnfoldKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // thing that changed it. Answering the head of the queue instead would be the
 // surface deciding they meant something else.
 func (a *app) raiseFolded() {
-	// THE SHEET COMES BACK FIRST. It is the newest thing anybody put off — a
-	// batch arrives at a step's end, after every question already on the block
-	// — and it is what the chip's count is mostly made of when there is one.
-	if a.sheetOpen() > 0 && a.questionBatchFolded {
-		a.questionBatchFolded = false
-		a.touch()
-		return
-	}
 	if len(a.questions) == 0 {
 		return
 	}
@@ -2833,6 +2868,11 @@ func (a *app) raiseFolded() {
 		}
 	}
 	if at >= 0 {
+		// A SET COMES BACK WHOLE. `esc` folded every tab of it at once, so
+		// opening it again opens every tab, with every answer held still held.
+		for _, q := range a.questionSetFolded(a.questions[at]) {
+			delete(a.questionFolded, q.token())
+		}
 		delete(a.questionFolded, a.questions[at].token())
 	}
 	a.touch()
@@ -2870,21 +2910,14 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if cmd, taken := a.questionReceiptKey(msg); taken {
 			return cmd, true
 		}
-		// WHAT IS DRAWN IS WHAT TAKES THE KEY. With nothing on the block the
-		// sheet has the rows, so the sheet has the keyboard (questionsheet.go)
-		// — and the same off-frame guard stands in front of it, because a sheet
-		// behind a place or a page is as invisible as a block behind one. It
-		// had none of its own: ↑↓, tab and the digits were being taken from
-		// behind whatever the person was actually looking at.
+		// WHAT IS DRAWN IS WHAT TAKES THE KEY. With nothing on the block, what
+		// is drawn is the fold rule, which prints the key that opens it
+		// ([questionOpenFoldWord]) — and the same off-frame guard stands in
+		// front of it, because a rule behind a place or a page is as invisible
+		// as a block behind one.
 		if a.questionOffFrame() {
 			return nil, false
 		}
-		if cmd, taken := a.questionSheetKey(msg); taken {
-			return cmd, taken
-		}
-		// AND WITH NEITHER, WHAT IS DRAWN IS THE FOLD RULE, which prints the key
-		// that opens it ([questionOpenFoldWord]) and until now was the only thing
-		// in this program that knew about it.
 		return a.questionUnfoldKey(msg)
 	}
 	// THE START PAGE TAKES EVERY KEY BEFORE THE CONVERSATION BEHIND IT. Unlike
@@ -2916,6 +2949,11 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// or swallowed the letters they were typing into what they CAN see —
 		// would be modal in the one place nobody could tell.
 		return nil, false
+	}
+	// WHAT IS DRAWN IS WHAT TAKES THE KEY, and several questions from one step
+	// are drawn as one panel with keys of its own (questionset.go).
+	if set := a.questionSet(); set != nil {
+		return a.questionSetKey(set, head, msg)
 	}
 	return a.questionKeyOn(head, msg)
 }
@@ -3886,6 +3924,15 @@ func (a *app) questionPress(x, y int) (tea.Cmd, bool) {
 	if !ok || a.copy.on {
 		return nil, false
 	}
+	set := a.questionSet()
+	if set != nil {
+		if cmd, took, mine := a.questionSetPress(set, head, x, y); mine {
+			return cmd, took
+		}
+		// A PRESS ON A TAB'S ANSWER IS HELD like a key on it is.
+		a.questionStaging = head.question.Batch
+		defer func() { a.questionStaging = "" }()
+	}
 	if cmd, took, sheeted := a.questionBandPress(head, x, y); sheeted {
 		return cmd, took
 	}
@@ -3938,7 +3985,7 @@ func (a *app) questionRowMark(i int) chromeRow {
 //
 // THE EMPTINESS LAW. Nothing open is nothing drawn — never `0 questions`.
 func (a *app) questionSegment() string {
-	count := a.questionWaitingCount() + a.sheetOpen()
+	count := a.questionWaitingCount()
 	if count == 0 {
 		return ""
 	}

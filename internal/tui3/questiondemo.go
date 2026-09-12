@@ -53,6 +53,20 @@ func (a *app) openDemoQuestion(env func(string) string) {
 		}
 		return
 	}
+	if stage, known := setDemos[name]; known {
+		// AND SEVERAL QUESTIONS FROM ONE STEP, on the same terms: a set is
+		// raised by a model calling `ask` more than once in one batch, or by a
+		// batch of calls that each needs an approval — both of which cost a
+		// real turn to see.
+		for _, q := range stage(a) {
+			a.raiseQuestion(questionShown{question: q})
+		}
+		_ = a.questionRows(a.width)
+		for i := range a.questions {
+			a.questions[i].shown = a.questions[i].shown.Add(-questionSettle)
+		}
+		return
+	}
 	if build, known := blockDemos[name]; known {
 		// AND THE BLOCK'S OWN FIXTURES, on the same terms and for the same
 		// reason. The five lanes that moved onto it in the questions wave — the
@@ -385,6 +399,58 @@ func (a *app) demoConsent(tool, command string, stakes session.Stakes, scope []s
 		Blocking: session.Blocking{Turn: true},
 		Scope:    scope,
 	}
+}
+
+// setDemos are the fixtures for several questions one step raised
+// (questionset.go): the tabs and their review, and the one permission frame.
+var setDemos = map[string]func(*app) []session.Question{
+	"several":     demoSeveral,
+	"permissions": demoPermissions,
+}
+
+// demoSeveral is three questions a model asked in one batch — one drawing
+// they all share, a tab each and the review after them.
+func demoSeveral(a *app) []session.Question {
+	storage := demoWeighed(a)
+	storage.ID, storage.Batch = 21, "demo-step"
+	naming := session.Question{
+		ID: 22, Kind: session.QuestionAsk, Ask: session.AskChoice, Batch: "demo-step",
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   "what should the index file be called?",
+		Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "session-index.db", Consequence: "says what it is"},
+			{Key: "2", Label: "index.db", Consequence: "short, and there is only one"},
+		},
+		Pick: &session.Pick{Key: "1"},
+	}
+	tests := session.Question{
+		ID: 23, Kind: session.QuestionAsk, Ask: session.AskChoice, Batch: "demo-step",
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   "which tests should cover it?",
+		Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "a crash test", Consequence: "kills the write half-way and reopens"},
+			{Key: "2", Label: "round trip only", Consequence: "write, read back, compare"},
+		},
+	}
+	return []session.Question{storage, naming, tests}
+}
+
+// demoPermissions is four reads one batch asked approval for — the grouped
+// frame, with each call's row already in the transcript as a real gate's is.
+func demoPermissions(a *app) []session.Question {
+	out := make([]session.Question, 0, 4)
+	for i, target := range []string{"~/notes/plan.md", "~/notes/todo.md", "~/notes/ideas.md", "~/notes/log.md"} {
+		q := a.demoConsent("read", target, session.StakesCostly,
+			[]session.AnswerScope{session.ScopeOnce, session.ScopeAlways})
+		call := "demo-call-read-" + itoa(i)
+		a.entries[len(a.entries)-1].callID = call
+		q.ID, q.Batch, q.Subject.CallID = uint64(31+i), "demo-step", call
+		q.Head = "needs your ok to run read"
+		out = append(out, q)
+	}
+	return out
 }
 
 // demoWeighed is the ordinary panel: a choice whose answers carry what each one
