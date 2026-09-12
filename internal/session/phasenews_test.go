@@ -489,6 +489,33 @@ func TestNothingBeatsAfterTheConversationHasClosed(t *testing.T) {
 	}
 }
 
+// TestTheQuitJoinsTheBeatsItEnds is the other half of the close, and the half a
+// cancel on its own does not buy.
+//
+// Closing `stop` is what ENDS a beat; it is not what makes it gone. A beat armed
+// in the last instant before the quit may not have been scheduled at all yet —
+// it wakes afterwards, reads this package's own beat interval, finds the stop
+// closed and returns — and a goroutine that runs after the session has left is
+// one the session still owns however quickly it exits. Fifty arms and ends,
+// because the beat this is about is the one that never started: wait for none of
+// them and at least one of the fifty is still pending here.
+func TestTheQuitJoinsTheBeatsItEnds(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for round := 0; round < 50; round++ {
+		agent.tellPhase(provider.PhaseRunning, "a tool", time.Now())
+		// The two acts [Agent.Close] does, in its order.
+		agent.endPhase()
+		agent.waitForPhaseBeats()
+		agent.phase.mu.Lock()
+		left := len(agent.phase.beating)
+		agent.phase.mu.Unlock()
+		if left != 0 {
+			t.Fatalf("round %d: the quit ended the stage and left %d beat(s) still running behind it",
+				round, left)
+		}
+	}
+}
+
 // TestTheBeatIsComfortablyInsideTheWindowASurfaceDrops is the one-source-of-truth
 // law between two packages, checked rather than commented.
 //
