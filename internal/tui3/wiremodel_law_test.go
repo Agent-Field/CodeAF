@@ -154,7 +154,7 @@ func TestEveryDialReaderIsOneThatMeansTheDial(t *testing.T) {
 	}
 }
 
-// AND THE WIRE READING ITSELF KEEPS ITS TWO HALVES. [app.turnModel] must ask the
+// AND THE WIRE READING ITSELF KEEPS ITS TWO HALVES. [app.askTurnModel] must ask the
 // engine and must never infer a turn from the news desk: a phase entry is
 // deleted at the end of every request and every tool batch, so a reading taken
 // from its presence goes empty between two steps of one turn — the cell flipping
@@ -173,7 +173,7 @@ func TestTheWireReadingAsksTheEngineAndNotTheNewsDesk(t *testing.T) {
 	found := false
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil || fn.Name.Name != "turnModel" {
+		if !ok || fn.Body == nil || fn.Name.Name != "askTurnModel" {
 			continue
 		}
 		found = true
@@ -199,13 +199,13 @@ func TestTheWireReadingAsksTheEngineAndNotTheNewsDesk(t *testing.T) {
 			return true
 		})
 		if !asksEngine {
-			t.Error("turnModel no longer asks the engine for its latched model")
+			t.Error("askTurnModel no longer asks the engine for the model it is on")
 		}
 		if readsDesk {
-			t.Error("turnModel infers a turn from the news desk, whose entries are deleted at every request end and every tool batch end")
+			t.Error("askTurnModel infers a turn from the news desk, whose entries are deleted at every request end and every tool batch end")
 		}
 	}
 	if !found {
-		t.Fatal("turnModel is no longer in lanes.go, so this law is guarding nothing")
+		t.Fatal("askTurnModel is no longer in lanes.go, so this law is guarding nothing")
 	}
 }

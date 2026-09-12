@@ -980,6 +980,17 @@ type app struct {
 
 	state runState
 	model string
+	// wire is THE MODEL THE ENGINE IS ON as of the last reading, "" when nothing
+	// is in flight. It is a MEMO and never the source: [app.readWire] takes the
+	// reading — a lock on the engine, or a whole photograph over `--host` — and
+	// [app.frameBody] takes exactly one per frame, because the cells drawn beside
+	// the model are ten readings of one fact and thirty frames a second of them
+	// is a surface competing with the work it is drawing (PERF.md).
+	//
+	// It sits beside the dial deliberately: `model` is what the person picked and
+	// this is what is answering, and the two being one field apart is the whole
+	// of what this window has to keep straight.
+	wire string
 	// title is the name the session gave itself, shown left of the model. Empty
 	// until the session has one (session's title.go starts naming it with the
 	// first accepted message); a resumed session opens with the name it already had.
@@ -6728,10 +6739,14 @@ func (a *app) slash(line string) tea.Cmd {
 		// chrome is naming ([app.wireModel]): `/lane` is read beside the chip
 		// that spells `model@lane`, and pinning the dial while another model is
 		// answering would put the instruction on a model nobody is looking at.
+		// The reading is TAKEN here rather than read off the frame's memo,
+		// because a typed instruction writes something that outlives the frame.
 		case modelPinLane:
+			a.readWire()
 			a.pinLane(a.wireModel(), value)
 			return nil
 		case modelAutoLane:
+			a.readWire()
 			a.clearLanePin(a.wireModel())
 			return nil
 		case modelQuery:

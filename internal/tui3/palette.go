@@ -1745,6 +1745,7 @@ func (a *app) openPicker() {
 	// what the press acts on. A picker that opened with the cursor on the dial
 	// after a mid-turn pick would be a list about a model the person is not
 	// looking at.
+	a.readWire()
 	wire := a.wireModel()
 	a.pick.startFor(a.modelList(), wire, chatModel)
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
@@ -1920,13 +1921,19 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
-	// WHAT THE TURN IN FLIGHT IS ON, READ BEFORE THE DIAL MOVES. It is the
-	// engine's own answer and not a flag this surface keeps — [app.turnModel] is
+	// WHAT THE WORK IS ON, READ BEFORE THE DIAL MOVES. It is the engine's own
+	// answer and not a flag this surface keeps — [app.readWire] is
 	// [session.Agent.TurnModel] as it crossed the seam — so a model named here IS
 	// the engine saying there is work in flight and what it is talking to. It is
 	// read first because the dial is about to become the answer to a different
 	// question.
-	turnOn := a.turnModel()
+	//
+	// AND THE READING IS TAKEN RATHER THAN REMEMBERED. Everything drawn reads a
+	// memo refreshed once a frame, which is right for thirty frames a second of
+	// cells; a press is one act by a person and the sentence it writes into the
+	// conversation is permanent, so it is worth the one lock to have it be true
+	// at the moment they pressed rather than true a sixtieth of a second ago.
+	turnOn := a.readWire()
 	a.agent.SetModel(id)
 	a.model = a.agent.Model()
 	if a.model == "" {

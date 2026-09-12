@@ -1232,10 +1232,29 @@ func (a *app) pinnedNow() string {
 // use, which is what a person just picked; the emptiness law is about figures
 // nobody has, and this is a figure everybody has.
 func (a *app) wireModel() string {
-	if model := a.turnModel(); model != "" {
-		return model
+	if a.wire != "" {
+		return a.wire
 	}
 	return a.model
+}
+
+// readWire takes the reading and REMEMBERS IT, and it is the only thing that
+// asks the engine.
+//
+// A FRAME READS A MEMO (PERF.md). The cells drawn beside the model — the seam's
+// word, the waiting line, both `via` sightings, the rider, the deck's chip, the
+// rung — are ten readings of one fact in one frame, and each one is a lock taken
+// on the turn loop's own mutex, or over `--host` a whole [session.Facts] copied
+// out of the photograph. Thirty frames a second of that is a surface competing
+// with the work it is drawing. So [app.frameBody] takes ONE reading at the top
+// of every frame and every cell reads the memo.
+//
+// AND A PRESS TAKES ITS OWN, because a press is rare, is a person acting, and
+// wants the engine's answer rather than the answer the last frame happened to
+// draw ([app.switchModel] and the two picker doors).
+func (a *app) readWire() string {
+	a.wire = a.askTurnModel()
+	return a.wire
 }
 
 // turnModel is [session.Agent.TurnModel] as it reaches this surface: the model
@@ -1257,18 +1276,16 @@ func (a *app) wireModel() string {
 // is this window's answer to "is a turn in flight", kept by the stream it is
 // reading, and it is the same answer the composer's own hints are drawn from.
 //
-// AND A FAR ENGINE THAT DOES NOT KEEP THE FACT ANSWERS NOTHING, by the door it
-// stated at the welcome ([remote.Agent.TurnModelSupported]) — not by the empty
-// string, which is a real answer here. A capability that cannot work is absent
-// rather than broken: the seam names the dial, exactly as it did before this
-// existed, and the switch says nothing about a turn in flight.
-//
 // It is [app.wireModel] WITHOUT the fallback, and the two are kept apart for the
 // one caller that has to tell the difference: a switch mid-turn says what it did
 // not touch ([app.switchModel]), and a fallback to the dial would answer that
 // question with the model the person just picked — which is the sentence being
 // nothing at all.
-func (a *app) turnModel() string {
+//
+// THIS IS THE READING ITSELF and it is taken through [app.readWire], never
+// straight from a cell: it locks the engine, and a frame draws this fact ten
+// times.
+func (a *app) askTurnModel() string {
 	if a.state != stateWorking {
 		return ""
 	}
@@ -1287,18 +1304,20 @@ func (a *app) turnModel() string {
 // method added to that interface is a method thirty test doubles have to grow
 // before a model can be drawn.
 //
-// AND A CONNECTION ANSWERS FOR THE MACHINE AT THE OTHER END, exactly as it does
-// for the rung ([app.effortDial] states the whole argument): a *remote.Agent
-// always has the method, so the assertion alone says yes for every `--host`
-// session whatever the far engine can do.
+// AND THERE IS NO CAPABILITY FLAG BESIDE IT, which is worth saying because the
+// rung next to it has one ([app.effortDial]). A flag exists to tell "this engine
+// cannot answer" from "the answer is nothing", and those are only worth telling
+// apart when they look the same — an empty rung could be either. Here they
+// cannot be confused: "" already means NOTHING IS IN FLIGHT, and a surface that
+// is told nothing draws the dial, which is the right cell for a conversation
+// with no turn on it. The version handshake settles the rest — an unequal
+// [remote.Version] is refused at the door — so a connection that exists is a
+// connection to this build.
 func (a *app) turnModelDoor() (interface{ TurnModel() string }, bool) {
 	if a.agent == nil {
 		return nil, false
 	}
 	door, ok := a.agent.(interface{ TurnModel() string })
-	if host, hosted := a.agent.(interface{ TurnModelSupported() bool }); hosted {
-		ok = ok && host.TurnModelSupported()
-	}
 	return door, ok
 }
 

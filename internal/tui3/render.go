@@ -1535,6 +1535,9 @@ func (a *app) waitingWords() string {
 		return ""
 	}
 	word := waitBareWord
+	// Read once and named, because the case below wants it twice and it is a
+	// memo of the engine rather than a field ([app.wireModel]).
+	waiting := modelBase(a.wireModel())
 	switch {
 	case a.retrying:
 		// AND IT SAYS WHICH TRY, out of the struct the feed's own row was
@@ -1561,8 +1564,8 @@ func (a *app) waitingWords() string {
 	// on and not the one the picker last set ([app.wireModel]). `waiting for
 	// kimi-k3` under a seam reading `glm-5.3-flash` would be two models named on
 	// one screen about one wait.
-	case modelBase(a.wireModel()) != "":
-		word = waitForWord + modelBase(a.wireModel())
+	case waiting != "":
+		word = waitForWord + waiting
 	}
 	if clock := countUpWord(waited); clock != "" {
 		word += " · " + clock

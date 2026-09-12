@@ -174,13 +174,17 @@ type effortFlashMsg struct{}
 // simply has no chip — the design law that a capability which cannot work is
 // absent rather than broken.
 type effortDialer interface {
-	// ResolvedEffort is the rung the next turn will actually ask for, whichever
-	// scope decided it.
-	ResolvedEffort() string
-	// ResolvedEffortFor is that rung FOR ONE MODEL ID, which is the question the
-	// seam's cell actually asks: the rung is drawn beside a model and must be
-	// that model's, and the levels the picker sets live per model id. An empty id
-	// is the dial, which is what an idle conversation's cell names.
+	// ResolvedEffortFor is the rung one MODEL ID will actually ask for, whichever
+	// scope decided it, and it is the only question this surface asks: the rung
+	// is drawn beside a model and must be that model's, because the levels the
+	// picker sets live per model id. An empty id is the dial, which is what an
+	// idle conversation's cell names.
+	//
+	// THERE IS NO MODEL-LESS VERSION, deliberately. `ResolvedEffort()` — the rung
+	// for the dial — was what the chip's WHEEL started from while the chip DREW
+	// the rung of the model the engine is on, so after a mid-turn pick ctrl+t
+	// walked away from a word the person was not looking at. One question, asked
+	// of one model, by all four readers.
 	ResolvedEffortFor(model string) string
 	// ConversationEffort is the rung THIS conversation was set to, "" when
 	// nobody has set one.
@@ -231,7 +235,7 @@ func (a *app) effortWord() string {
 	if !ok {
 		return ""
 	}
-	return dial.ResolvedEffort()
+	return dial.ResolvedEffortFor(a.wireModel())
 }
 
 // effortChipText is the chip unpainted — the mark and the word beside it, which
@@ -243,8 +247,7 @@ func (a *app) effortWord() string {
 // states were one string until 2026-09-09 and the cell was therefore missing on
 // every conversation of a shipped install, which is the whole defect.
 func (a *app) effortChipText() string {
-	dial, ok := a.effortDial()
-	if !ok {
+	if _, ok := a.effortDial(); !ok {
 		return ""
 	}
 	// THE RUNG IS RESOLVED FOR THE MODEL THIS CELL SITS BESIDE, which is the
@@ -253,7 +256,7 @@ func (a *app) effortChipText() string {
 	// then picked another mid-turn had one model's name drawn next to the other
 	// model's level — and a fallback hop moved the turn's own rung (loop.go
 	// re-resolves for the model it hopped to) without moving the drawn one.
-	word := dial.ResolvedEffortFor(a.wireModel())
+	word := a.effortWord()
 	if word == "" {
 		word = effortAutoWord
 	}
@@ -346,7 +349,11 @@ func (a *app) cycleEffort() tea.Cmd {
 	// effortscope.go). A second copy here would be a second place for "and it
 	// wraps" to stop being true, and a person who learns the walk on the chip
 	// knows it on a task for exactly as long as the two agree.
-	return a.setEffortRung(dial, effortNext(effort.Rung(dial.ResolvedEffort())))
+	// AND IT STARTS FROM THE RUNG ON THE SCREEN. The chip draws the level of the
+	// model the engine is on, so a wheel that started from the dial's level would
+	// step off a word nobody is looking at the moment those two differ — which is
+	// every mid-turn pick.
+	return a.setEffortRung(dial, effortNext(effort.Rung(a.effortWord())))
 }
 
 // setEffortRung is the ONE path from the chord and from the menu to the session,
@@ -365,7 +372,7 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 	}
 	a.effortLit = effortMoved{where: effortScopeConversation, at: a.now()}
 	a.touch()
-	if got := dial.ResolvedEffort(); got != rung.String() {
+	if got := dial.ResolvedEffortFor(a.wireModel()); got != rung.String() {
 		// The note names the model whose own level is winning and the door that
 		// moves it, because "this did not take" without either is a message that
 		// leaves a person pressing the key harder. THE PAYLOAD RULE lifts the id

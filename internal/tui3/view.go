@@ -274,6 +274,11 @@ func (a *app) frame() (string, int, int) {
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
 	a.inlineWaitShowing = false
+	// THE MODEL THE ENGINE IS ON IS READ ONCE, HERE, and every cell that names it
+	// reads the memo ([app.readWire], lanes.go). A frame draws that fact about ten
+	// times — the seam's word, the waiting line, both `via` sightings, the rider,
+	// the deck chip, the rung — and each reading locks the turn loop's own mutex.
+	a.readWire()
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
