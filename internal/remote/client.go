@@ -78,11 +78,6 @@ import (
 // callDeadline is how long any one call waits for its result. See the law above.
 const callDeadline = 10 * time.Second
 
-// taskCallDeadline is the shaper's own bounded wait plus room for the two wire
-// frames around it. It is derived from the engine's limit so the connection
-// cannot declare a healthy shaping call dead before the engine gives up.
-const taskCallDeadline = session.TaskShapeWindow + 5*time.Second
-
 // Client is one connection to one engine. It is safe for concurrent use, which
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
@@ -1544,10 +1539,16 @@ func (a *Agent) Cancel(id string) (string, error) {
 }
 
 // StartTask commissions the work on the engine machine and returns its receipt:
-// id, title, and the fallback note the engine's shaper asked the surface to
-// carry on the started row (empty whenever nothing was cut).
-func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, string, error) {
-	payload, err := a.c.callWithin(ctx, MethodTaskStart, TaskStartArgs{Brief: brief}, taskCallDeadline)
+// id, title, and the engine's line about where the work stands (empty on every
+// ordinary start).
+//
+// IT IS AN ORDINARY CALL WITH THE ORDINARY DEADLINE. It used to be given the
+// engine's shaper window and five seconds more, because the engine held the
+// command while a model wrote the brief; the engine admits at once now and the
+// brief is written beside the work (internal/session's task_shape.go), so there
+// is nothing on the far side worth a longer wait.
+func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1560,7 +1561,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 
 // StartPlannerRun opens the adaptive form on the engine machine.
 func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string, string, error) {
-	payload, err := a.c.callWithin(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint}, taskCallDeadline)
+	payload, err := a.c.call(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint})
 	if err != nil {
 		return "", "", err
 	}
@@ -1569,20 +1570,6 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string
 		return "", "", err
 	}
 	return started.ID, started.Title, nil
-}
-
-// JudgeDecomposable asks the engine's model because the surface's model and
-// credentials are not facts about this conversation.
-func (a *Agent) JudgeDecomposable(ctx context.Context, brief string) (bool, []string, string) {
-	payload, err := a.c.call(ctx, MethodTaskJudge, TaskStartArgs{Brief: brief})
-	if err != nil {
-		return false, nil, ""
-	}
-	var judged TaskJudged
-	if json.Unmarshal(payload, &judged) != nil {
-		return false, nil, ""
-	}
-	return judged.Parallel, judged.Parts, judged.Why
 }
 
 // Agent is the handle onto the engine's current session.

@@ -383,22 +383,23 @@ func TestTheNamerIsRegisteredOnTheCheapClass(t *testing.T) {
 	}
 }
 
-// A `/task` WHOSE SHAPING COULD NOT RUN IS STILL NAMED. That is the exact case
-// the complaint arrived as: with no shaper, the row falls back to the person's
-// own first eight words, and the column shows the first three of them — "read
-// /Users/me/src" — which names the work after the path they pasted.
-func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
+// A PERSON'S `/task` IS NAMED THE MOMENT IT EXISTS. That is the exact case the
+// complaint arrived as: the row falls back to the person's own first eight words,
+// and the column shows the first three of them — "read /Users/me/src" — which
+// names the work after the path they pasted. The shaper used to name it, after a
+// wait in front of the node; the door asks no model now (task_person.go), so the
+// namer every unnamed node gets is the one that names this one too, and the
+// shaper — asked only beside a worker, which this stubbed runner never builds —
+// is not asked at all.
+func TestAPersonsTaskIsNamedTheMomentItExists(t *testing.T) {
 	const ask = "read /Users/me/src and say what the parser does and where it is weakest"
 	// THE PROVIDER ANSWERS BY WHAT IT WAS ASKED, NEVER BY HOW MANY CALLS CAME
 	// BEFORE IT. Admitting the node starts two things that both reach this one
 	// completer and neither of which the code orders against the other: the
 	// naming errand, and the node itself, whose finish posts `while you worked:
-	// task 1 finished` and wakes the conversation into a turn of its own. This
-	// test used to script three steps by index and assert that the third was
-	// the namer's; on a loaded machine the woken turn takes the third slot
-	// perhaps one run in ten, the namer falls off the end of the script, and
-	// the row is called "(unscripted)". The identity of a call is a fact about
-	// its messages, so it is read from its messages.
+	// task 1 finished` and wakes the conversation into a turn of its own. The
+	// identity of a call is a fact about its messages, so it is read from its
+	// messages.
 	var mu sync.Mutex
 	shaped, named := 0, 0
 	client := answeringCompleter(func(messages []ai.Message) string {
@@ -406,8 +407,6 @@ func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 		defer mu.Unlock()
 		switch {
 		case isShapeCall(messages):
-			// Prose where a brief was asked for, which is what shaping failing
-			// looks like: the shaper reads JSON and there is none.
 			shaped++
 			return "Sure! Here is a brief for you:"
 		case isNameCall(messages):
@@ -418,7 +417,7 @@ func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 	})
 	agent, ran := shapeAgent(t, client)
 
-	id, title, _, err := agent.StartTask(t.Context(), ask)
+	id, title, _, err := agent.StartTask(t.Context(), ask, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,11 +432,8 @@ func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	// The shaping really was tried and really did fail, and the name really did
-	// cost one call — which is the whole claim the discarded call-index script
-	// was standing in for.
-	if shaped != 2 {
-		t.Fatalf("the shaper was asked %d times, want the two attempts it is allowed", shaped)
+	if shaped != 0 {
+		t.Fatalf("the shaper was asked %d times with no worker to hand a brief to", shaped)
 	}
 	if named != 1 {
 		t.Fatalf("the namer was asked %d times, want exactly one", named)

@@ -504,7 +504,6 @@ const harnessTickSymbol = "github.com/Agent-Field/aforge-v2/internal/tui3.harnes
 // name here that the runtime spells differently is caught rather than quietly
 // paying the old price.
 var blockingCommands = []string{
-	"pumpShaping",
 	"waitDesign",
 	"waitEvent",
 	"waitGuestNotices",

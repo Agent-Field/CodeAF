@@ -157,9 +157,10 @@ type spellOutAgent interface {
 // spelledMsg is one answer to one chord.
 //
 // IT CARRIES THE DRAFT IT WAS MADE ABOUT rather than reading the box on the way
-// back (taskcommand.go's taskSizedMsg states the same rule): the person has had
-// ten seconds to keep typing, and an answer matched against whatever is in the
-// box now is how a stale expansion gets attached to a changed sentence.
+// back (taskcommand.go's taskStartedMsg carries its conversation for the same
+// reason): the person has had ten seconds to keep typing, and an answer matched
+// against whatever is in the box now is how a stale expansion gets attached to a
+// changed sentence.
 type spelledMsg struct {
 	draft string
 	block string

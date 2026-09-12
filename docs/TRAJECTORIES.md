@@ -88,9 +88,9 @@ are not suggestions" over a reminder (**M7**).
 
 | trajectory | door | road taken | armed? | verdict | evidence |
 | --- | --- | --- | --- | --- | --- |
-| `/task <brief>` bare | `internal/tui3/taskcommand.go:54` → sizing call `:96-101` → settle `internal/tui3/app.go:2371-2401` | **one worker, always** — judge yes and judge no both reach `startTaskDoor(…, "single", …)` | **yes**, by the sizing judge | as-intended | `rememberDivisible` `internal/session/task_person.go:216-218`; `StartTask` puts the *same* trimmed string on the spec as `request` `task_person.go:114`; `armDivision` matches it `internal/session/task_divide.go:198`. Byte-identical by construction: one `brief` variable feeds both `JudgeDecomposable` (`taskcommand.go:99`) and `StartTask` (`:134`). Pinned by `task_divide_test.go:144` |
-| …its dim line | `internal/tui3/taskcommand.go:162` | a fact, not a card | — | as-intended | `the work looks wide · one worker starts, and it can split as it goes`. A judge NO says nothing at all (`app.go:2382`) |
-| `/task solo <brief>` | `taskcommand.go:73-74`, `:83-84` | one worker, sizing call never made | enumeration only | as-intended | `armDivision`'s own bullet names this case (`task_divide.go:182-194`); the command row promises no more (`internal/tui3/commands.go:200`) |
+| `/task <brief>` bare | `internal/tui3/taskcommand.go` `startTaskDoor` → `internal/session/task_person.go` `StartTask`, which admits at once (#936) | **one worker, at once** — no forming block, no wait on a model | **no** at admission: `spec.armed` is frozen before anything is read; the judge reads the sentence BESIDE the worker and its parts are weighed as a division (`task_divide_sketch.go` `proposalBeside` → `judgedDivision`, asker `askedByJudge`) | as-intended | `TestThePersonsTaskDoorAsksNoModel` (go/ast), `TestTheWorkersFirstRequestGoesOutBeforeTheShaperOrTheJudgeAnswers`, `TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt` |
+| ~~…its dim line~~ | **RETIRED #936** — `the work looks wide` went with the surface's sizing call | — | — | closed | the judge's yes now arrives in the task's own room as the division receipt |
+| `/task solo <brief>` | `taskcommand.go` `runTaskCommand` → `StartTask(…, solo=true)` | one worker, the width is never read | enumeration only | as-intended | `spec.unsized` is false, so `proposalBeside` asks no judge |
 | ~~`/task adaptive <brief>`~~ | **RETIRED w44** — the word is off the command and off the slash menu, and `StartPlannerRun` was deleted with it (`task_person.go` says so where it stood) | — | — | closed | there is no `/orchestrate`, `/adaptive`, `/plan` or `/swarm` command either; the full table is `internal/tui3/commands.go` |
 | preset `sized` (default) | `internal/config/settings.go:1446`, resolver `:2772` | as `/task` bare | judge | as-intended | `settings.go:534` |
 | preset `adaptive` | **RETIRED w44** — off `TaskStartModes`, and the constant went with it | reads as `sized` | judge | closed, and by the same read-time fallback `ask` got | `TaskStartAt` returns `DefaultTaskStart` for any word this build does not know, so a profile written months ago loads clean and says nothing; pinned by `TestAProfileStillHoldingTheRetiredWordReadsAsSized` |
@@ -136,7 +136,7 @@ refuses when unwatched (`:940-943`), and unwatched doors never fill
 | # | call site | admits | can carry wide work? | armed by | verdict |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `task.go:412` `proposeTask` | the model's proposal | **yes** | `spec.wide`, else enumeration | as-intended |
-| 2 | `task_person.go:112` `StartTask` | a person's `/task <brief>` | **yes** | the sizing judge's yes, else enumeration | as-intended |
+| 2 | `task_person.go` `StartTask` | a person's `/task <brief>` | **yes** | enumeration at admission; the judge's parts beside the worker as a division | as-intended |
 | 3 | `task_divide.go:301` `divideWork` | one part of a division | bounded | inherited `request` matches the bank — **by accident** | drifted, inert (**m2**) |
 | 4 | `route_judge.go:413` `launchRouteTask` | the judge's carded task | **yes** | `verdict.wide`, else enumeration | as-intended (M1 fixed w42) |
 | 5 | `harness_task.go:463` `admitHarnessDesign` | a harness design | no — it is one page | **nothing: `armDivision` refuses any spec whose kind is not ordinary** | as-intended (M4 fixed w42) |

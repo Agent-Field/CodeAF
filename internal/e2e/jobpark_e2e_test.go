@@ -195,10 +195,10 @@ func TestATaskWaitsOutItsOwnLongCommand(t *testing.T) {
 	defer cancel()
 
 	// THE TASK IS STARTED AT THE PERSON'S OWN DOOR ([session.Agent.StartTask],
-	// which is what `/task` calls) rather than through a chat turn that hopes the
-	// model reaches for propose_task: the subject here is what happens AFTER a
+	// solo, which is what `/task solo` calls) rather than through a chat turn that
+	// hopes the model reaches for propose_task: the subject here is what happens AFTER a
 	// task starts, and the typed door takes one model's whim out of getting there.
-	id, title, _, err := agent.StartTask(ctx, jobParkAsk)
+	id, title, _, err := agent.StartTask(ctx, jobParkAsk, true)
 	if err != nil {
 		t.Fatalf("start the task: %v", err)
 	}
