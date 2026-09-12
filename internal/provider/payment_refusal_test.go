@@ -66,6 +66,9 @@ func TestAPayment429IsTerminalAndAPlain429StillPaces(t *testing.T) {
 			}
 			classified := client.laneRefusalFor(client.config.Model, "some-lane", err)
 			if testCase.wantPayment {
+				if evidence := Evidence(err); !evidence.Unserved || evidence.PlanPaused {
+					t.Fatalf("payment evidence = %+v, want an unserved account", evidence)
+				}
 				if classified.Kind != refusalPayment || !classified.Terminal || classified.paced() || classified.struck() {
 					t.Fatalf("payment classification = %+v", classified)
 				}
@@ -74,6 +77,8 @@ func TestAPayment429IsTerminalAndAPlain429StillPaces(t *testing.T) {
 				}
 			} else if classified.Kind != refusalPaced || classified.Terminal {
 				t.Fatalf("plain 429 classification = %+v", classified)
+			} else if evidence := Evidence(err); evidence.Unserved || evidence.PlanPaused {
+				t.Fatalf("ordinary pacing evidence = %+v", evidence)
 			}
 		})
 	}

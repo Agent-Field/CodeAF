@@ -60,6 +60,21 @@ func TestAnOrdinaryRefusalKeepsItsPlainLine(t *testing.T) {
 	}
 }
 
+func TestAPlanPauseEndingDrawsOnlyThePauseSentence(t *testing.T) {
+	refusal := &provider.APIError{
+		Status: 429, Message: "Usage limit reached", Body: `{"code":"1316","message":"Usage limit reached"}`,
+	}
+	ending := &provider.PlanPauseError{
+		Reset: "18:30 UTC", OverflowDoor: "pay-as-you-go", Cause: refusal,
+	}
+	note := (&feed{}).failureNote(fmt.Errorf("LLM call failed: %w", ending), "z-ai")
+	const want = "plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go"
+	if note != want {
+		t.Fatalf("pause ending = %q, want %q", note, want)
+	}
+	forbidden(t, note)
+}
+
 // forbidden is the vocabulary law for one line: a person-facing sentence may
 // not carry this program's words for its own machinery, nor a status number
 // that names nothing they can act on.

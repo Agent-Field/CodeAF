@@ -74,6 +74,9 @@ const (
 	// PhasePaced is a rate-limit wait. Its deadline is the router's own
 	// `Retry-After` and is therefore real.
 	PhasePaced Phase = "paced"
+	// PhasePlanPaused is a subscription window that will reset. It remains
+	// pacing, never a terminal account verdict.
+	PhasePlanPaused Phase = "plan paused"
 	// PhaseRetrying is the relax ladder: the same question asked again with
 	// something dropped from it. Detail carries "2 of 6".
 	PhaseRetrying Phase = "trying again"
@@ -200,6 +203,9 @@ type PhaseNews struct {
 	// measured", never "nothing".
 	Lane string
 	Rate float64
+	// Door is the billing road in use. It is distinct from Lane, which is the
+	// serving machine behind a router, and empty for every one-road service.
+	Door string
 	// Detail is the phase's own noun, already in a person's words: the tool
 	// being run, the rung of the ladder, how long a stall had gone on.
 	Detail string
@@ -269,7 +275,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseConnectionLost, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
+	case PhaseConnecting, PhaseConnectionLost, PhaseFirstWord, PhasePaced, PhasePlanPaused, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
 		return true
 	}
 	return false
@@ -359,6 +365,7 @@ type phaseClock struct {
 	// lane is who is answering, tokens how many deltas this phase has carried,
 	// and deadline/then the consequence in force.
 	lane     string
+	door     string
 	tokens   int
 	deadline time.Time
 	then     string
@@ -485,6 +492,25 @@ func (p *phaseClock) serve(lane string) {
 	p.say("", p.now())
 }
 
+// useDoor keeps the billing road on every later phase of this request. A plan
+// overflow changes it before the metered request goes out, so the spend is on
+// screen while it happens rather than reported after the fact.
+func (p *phaseClock) useDoor(door string) {
+	if p == nil || strings.TrimSpace(door) == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	door = strings.TrimSpace(door)
+	if p.door == door {
+		return
+	}
+	p.door = door
+	if p.phase != "" {
+		p.say("", p.now())
+	}
+}
+
 // wrote is one delta of progress in the current phase. It is what turns into a
 // rate, and it is the reason a phase says itself again while it lasts.
 func (p *phaseClock) wrote() {
@@ -526,6 +552,7 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Then:     p.then,
 		Ask:      p.ask,
 		Lane:     p.lane,
+		Door:     p.door,
 		Detail:   detail,
 		Model:    p.model,
 		Role:     p.role,

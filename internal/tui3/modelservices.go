@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Model-service rows share the connection panel's row grammar without sharing
@@ -59,12 +60,10 @@ func (a *app) prepareModelServices() {
 		// Local v3 launches always pass the resolved set; hosted and older seams
 		// pass nothing and must keep their connection surface byte-identical.
 		a.sourceModels = make(map[string][]Model)
-		a.modelSuggestions = make(map[string]string)
 		return
 	}
 	a.modelCatalog = modelsource.Vendored()
 	a.sourceModels = make(map[string][]Model)
-	a.modelSuggestions = make(map[string]string)
 	for _, service := range a.sources.All() {
 		if strings.EqualFold(service.Source.ID, modelsource.DefaultID) || service.Source.Listing != modelsource.ListingModels {
 			continue
@@ -210,19 +209,18 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
 	for _, existing := range config.PersistedSources(a.profileDir) {
 		if strings.EqualFold(existing.ID, source.ID) {
+			// A reconnect starts with the row that actually landed, so an automatic
+			// name such as z-ai-direct stays put instead of being suggested again.
 			persisted = existing
 			break
 		}
-	}
-	if suggestion := a.modelSuggestions[strings.ToLower(source.ID)]; suggestion != "" {
-		persisted.Written = suggestion
 	}
 	draft := &modelConnectDraft{source: source, row: persisted, sheet: fromSheet}
 	a.modelDraft = draft
 	switch {
 	case len(source.Regions) > 0:
 		draft.step = modelConnectRegion
-		a.showModelEntry(newModelEntry(row.ID, source.Name, "region", regionAnswers(source), false), fromSheet)
+		a.showModelEntry(newModelChoiceEntry(row.ID, source.Name, "region", regionChoices(source)), fromSheet)
 		return nil
 	case source.ID == "custom":
 		draft.step = modelConnectAddress
@@ -241,12 +239,16 @@ func newModelEntry(id, name, blank string, answers []string, secret bool) *keyEn
 	return &keyEntry{id: id, name: strings.ToLower(name), blank: blank, answers: answers, secret: secret}
 }
 
-func regionAnswers(source modelsource.Source) []string {
-	answers := make([]string, 0, len(source.Regions))
+func newModelChoiceEntry(id, name, blank string, choices []entryChoice) *keyEntry {
+	return &keyEntry{id: id, name: strings.ToLower(name), blank: blank, choices: choices}
+}
+
+func regionChoices(source modelsource.Source) []entryChoice {
+	choices := make([]entryChoice, 0, len(source.Regions))
 	for _, region := range source.Regions {
-		answers = append(answers, region.Name)
+		choices = append(choices, entryChoice{ID: region.ID, Name: region.Name})
 	}
-	return answers
+	return choices
 }
 
 func (a *app) showModelEntry(entry *keyEntry, inSheet bool) {
@@ -282,19 +284,9 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 	}
 	switch draft.step {
 	case modelConnectRegion:
-		region := ""
-		for _, candidate := range draft.source.Regions {
-			if strings.EqualFold(answer, candidate.ID) || strings.EqualFold(answer, candidate.Name) {
-				region = candidate.ID
-				break
-			}
-		}
-		if region == "" {
-			a.modelServiceMessage("pick one of: " + strings.Join(regionAnswers(draft.source), ", "))
-			a.showModelEntry(entry, draft.sheet)
-			return nil
-		}
-		draft.row.Region = region
+		// The answer is picked from this source's own region list, so there is
+		// nothing left to validate or refuse here.
+		draft.row.Region = answer
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
@@ -378,7 +370,17 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			// a Connected here would create a second, subtly different account door.
 			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
 			if found {
-				if refresh != nil {
+				fixedDoorCatalog := len(outcome.Door.Models) > 0
+				if fixedDoorCatalog {
+					seed := make([]modelcatalog.Model, 0, len(models))
+					for _, model := range models {
+						seed = append(seed, modelcatalog.Model{ID: model.ID})
+					}
+					_ = modelcatalog.Remember(modelcatalog.Options{
+						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+					}, seed)
+					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
@@ -483,26 +485,41 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	}
 	service = strings.ToLower(service)
 	line := ""
+	nextModel := ""
 	switch msg.outcome.Kind {
 	case modelsource.OutcomeConnected, modelsource.OutcomeAccountCannotPay:
 		a.reloadModelSources()
-		if connected, ok := a.sources.ByID(msg.service); ok {
+		connected, found := a.sources.ByID(msg.service)
+		if found {
 			service = strings.ToLower(connected.Source.Written)
 		}
 		if msg.outcome.Kind == modelsource.OutcomeConnected {
 			a.sourceModels[msg.service] = cleanModels(msg.models)
+			if found {
+				if modelUsesService(a.deferredModelServiceModel, connected.Source.Written) {
+					a.deferredModelServiceModel = ""
+				}
+				preferred := connected.Source.PreferredModel(connected.Door, listedModelIDs(a.sourceModels[msg.service]))
+				if next := connected.Qualify(preferred); next != "" && next != strings.TrimSpace(a.model) {
+					if a.state == stateWorking {
+						a.deferredModelServiceModel = next
+					} else {
+						nextModel = next
+					}
+				}
+			}
 		}
 		line = serviceOutcomeWord(service, msg.outcome)
 		if msg.outcome.Kind == modelsource.OutcomeConnected && a.engineRoad && strings.TrimSpace(msg.keyEnv) != "" {
 			line += " · " + engineVariableWord(msg.keyEnv)
 		}
-	case modelsource.OutcomeCollides:
-		a.modelSuggestions[strings.ToLower(msg.service)] = msg.outcome.Suggestion
-		line = serviceOutcomeWord(service, msg.outcome)
 	default:
 		line = serviceOutcomeWord(service, msg.outcome)
 	}
 	a.modelServiceMessage(line)
+	if nextModel != "" {
+		a.moveConversationToConnectedModel(nextModel)
+	}
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
@@ -512,6 +529,39 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		a.sheet.build()
 	}
 	a.touch()
+}
+
+// listedModelIDs keeps the ids in the service's own order for modelsource's
+// single preference rule. The surface metadata stays here; only ids cross the
+// package boundary that owns the ordering.
+func listedModelIDs(models []Model) []string {
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	return ids
+}
+
+// moveConversationToConnectedModel takes the same model-change road a person
+// takes through /model, then uses the disconnect receipt's sentence so the two
+// automatic moves cannot drift into two accounts of what happened.
+func (a *app) moveConversationToConnectedModel(next string) {
+	next = strings.TrimSpace(next)
+	if next == "" || next == strings.TrimSpace(a.model) {
+		return
+	}
+	was := a.model
+	a.switchModel(next, 0)
+	a.modelServiceFollowup(serviceMovedWord(was, next))
+}
+
+// applyDeferredModelServiceMove spends the one pending move only after the
+// answering turn has settled. Clearing it first makes the second settle event
+// free and prevents a failed later path from replaying an old connection.
+func (a *app) applyDeferredModelServiceMove() {
+	next := a.deferredModelServiceModel
+	a.deferredModelServiceModel = ""
+	a.moveConversationToConnectedModel(next)
 }
 
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
@@ -530,18 +580,26 @@ func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 		return service + " did not answer · nothing was saved"
 	case modelsource.OutcomeWrongShape:
 		return "that is not the shape of a " + service + " key — they start with sk-"
-	case modelsource.OutcomeCollides:
-		return service + " is a model author on openrouter · connect this as " + outcome.Suggestion
 	}
 	return ""
 }
 
 func serviceConnectedWord(service string, outcome modelsource.Outcome) string {
 	line := service + " is connected"
-	if !outcome.Listed || outcome.Models <= 0 {
-		return line
+	if door := strings.TrimSpace(outcome.Door.Name); door != "" {
+		line += " · " + door
 	}
-	return line + " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+	if outcome.Listed && outcome.Models > 0 {
+		line += " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+	}
+	if outcome.PlanPaused {
+		overflow := ""
+		if outcome.Overflow != nil {
+			overflow = outcome.Overflow.Name
+		}
+		line += " · " + provider.PlanPauseSentence(outcome.PlanReset, overflow)
+	}
+	return line
 }
 
 func engineVariableWord(name string) string {
@@ -652,6 +710,9 @@ func (a *app) disconnectModelService(id string) {
 		a.modelServiceMessage(err.Error())
 		return
 	}
+	if modelUsesService(a.deferredModelServiceModel, connected.Source.Written) {
+		a.deferredModelServiceModel = ""
+	}
 	delete(a.sourceModels, id)
 	a.reloadModelSources()
 	a.modelServiceMessage(serviceDisconnectedWord(written))
@@ -678,6 +739,31 @@ func (a *app) modelIsDirect(model string) bool {
 	}
 	service, _ := a.sources.For(model)
 	return service.Source.ID != "" && !strings.EqualFold(service.Source.ID, modelsource.DefaultID)
+}
+
+// defaultProviderNeeded is the ONE answer to "does this person still owe us an
+// OpenRouter key before they can say anything". A CONNECTED SERVICE THAT CAN
+// CARRY THE CONVERSATION IS THE PROVIDER: opening the default service's browser
+// door over it would stop a working turn in order to collect a key that turn
+// does not use. Blank is usable only when the service says so explicitly, which
+// is how a local Ollama seat remains a real seat rather than a broken key row.
+func (a *app) defaultProviderNeeded() bool {
+	if a.routerConnect == nil || config.APIKeyConfigured(a.profileDir) {
+		return false
+	}
+	return !a.connectedServiceCarriesModel()
+}
+
+// connectedServiceCarriesModel is the service half of the prerequisite: the
+// current model resolves away from the default service and that account can
+// answer. Keeping it named lets the non-browser setup seam describe its own
+// missing key without teaching that older seam a second version of this rule.
+func (a *app) connectedServiceCarriesModel() bool {
+	service, _ := a.sources.For(a.model)
+	if service.Source.ID == "" || strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return false
+	}
+	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
 }
 
 func modelUsesService(model, written string) bool {
@@ -722,7 +808,10 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 		if !ok {
 			continue
 		}
-		parts := make([]string, 0, 3)
+		parts := make([]string, 0, 5)
+		if service.Door.Name != "" {
+			parts = append(parts, service.Door.Name)
+		}
 		switch {
 		case persisted.KeyEnv != "":
 			parts = append(parts, "$"+persisted.KeyEnv)
@@ -733,15 +822,59 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 			parts = append(parts, persisted.Region)
 		}
 		parts = append(parts, "order "+itoa(persisted.Order))
+		if persisted.ID == "z-ai" && service.Door.ID == "coding-plan" {
+			parts = append(parts, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.")
+		}
 		out = append(out, &modelServiceRow{
 			id: persisted.ID, name: service.Source.Written, value: strings.Join(parts, " · "),
 		})
+		if service.Overflow != nil && !service.Door.Metered {
+			out = append(out, &modelServiceRow{
+				id: persisted.ID, name: "when the plan is paused", value: service.PlanPaused, planPause: true,
+			})
+		}
 	}
 	return out
 }
 
 type modelServiceRow struct {
-	id    string
-	name  string
-	value string
+	id        string
+	name      string
+	value     string
+	planPause bool
+}
+
+func (a *app) cyclePlanPause(id string) {
+	rows := config.PersistedSources(a.profileDir)
+	for index := range rows {
+		if !strings.EqualFold(rows[index].ID, id) {
+			continue
+		}
+		if strings.TrimSpace(rows[index].PlanPaused) == config.PlanPausedUseMeter {
+			rows[index].PlanPaused = config.PlanPausedWait
+		} else {
+			rows[index].PlanPaused = config.PlanPausedUseMeter
+		}
+		if err := config.WriteSources(a.profileDir, rows); err != nil {
+			a.modelServiceMessage(err.Error())
+			return
+		}
+		a.reloadModelSources()
+		a.sheet.sources = a.sources
+		a.sheet.build()
+		return
+	}
+}
+
+func (a *app) reconnectModelService(id string) tea.Cmd {
+	source, ok := a.modelSource(id)
+	if !ok {
+		return nil
+	}
+	for _, row := range config.PersistedSources(a.profileDir) {
+		if strings.EqualFold(row.ID, id) {
+			return a.beginModelConnect(modelConnectDraft{source: source, row: row, sheet: a.at(pageSettings)})
+		}
+	}
+	return nil
 }

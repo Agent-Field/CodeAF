@@ -99,6 +99,12 @@ func (transportPolicy) Class() Class { return Transport }
 // and a model is not the last thing there is.
 func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	spent, allowed := transportBudget(e, l)
+	// A PAUSED PLAN HAS NO AUTOMATIC MOVE. The dispatcher either uses the
+	// separately authorised metered door itself or returns the typed pause; an
+	// endpoint walk or model hop here would evade that billing decision.
+	if e.PlanPaused {
+		return Verdict{Action: ActionReport, Reason: ReasonPlanPaused, Attempts: spent}
+	}
 	// A MODEL THE ROUTER NO LONGER CARRIES HAS NO BUDGET TO SPEND. Every attempt
 	// buys the identical 404 — there is no machine to rotate to, because the id
 	// itself is gone — so the budget is declared spent at once and the move is
@@ -336,6 +342,7 @@ const (
 	ReasonRefused      = "the endpoint refused"
 	ReasonPaced        = "the account is being asked to slow down"
 	ReasonUnserved     = "the provider could not serve it"
+	ReasonPlanPaused   = "the plan is paused"
 	ReasonUnreached    = "the request did not reach anybody"
 	ReasonWithdrawn    = "the model is no longer carried"
 	ReasonUnauthorized = "this account could not be served"

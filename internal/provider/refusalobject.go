@@ -77,6 +77,13 @@ const (
 	// refusalPayment is an authenticated account that cannot fund the request.
 	// It is terminal for the whole account, not a wait and not one lane's fault.
 	refusalPayment
+	// refusalPlanPaused is a fixed-price window that will become usable again.
+	// It is neither ordinary pacing nor terminal account failure, and it must
+	// never earn an endpoint walk or a model hop.
+	refusalPlanPaused
+	// refusalNoPlan is a bound plan door that this key or model cannot use. It is
+	// a fact about the door, not about one endpoint behind it.
+	refusalNoPlan
 )
 
 // laneRefusal is one refusal as every reader of it needs it.
@@ -133,6 +140,10 @@ type laneRefusal struct {
 	// verdict downstream needs it to hop at once rather than spend a transport
 	// budget on three more identical 404s ([Client.withdrawnModel], #838).
 	Withdrawn bool
+	// Reset is the vendor's stated reset value for a paused plan window. It is
+	// carried from the one classification so the dispatcher and surface never
+	// have to parse the refusal a second time.
+	Reset string
 }
 
 // struck reports whether there is a lane here for the ledger to WRITE OFF — a
@@ -256,6 +267,9 @@ func markRefusal(err error, refusal laneRefusal) {
 	if refusal.Withdrawn {
 		marked.Withdrawn = true
 	}
+	marked.Payment = refusal.Kind == refusalPayment
+	marked.PlanPaused = refusal.Kind == refusalPlanPaused
+	marked.PlanUnavailable = refusal.Kind == refusalNoPlan
 }
 
 // refusalObject is THE classifier. Everything this process does about a refusal
@@ -284,8 +298,14 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !ok {
 		return laneRefusal{}
 	}
-	if paymentrefusal.Matches(refusal.Status, []byte(refusal.Body)) {
+	body := []byte(refusal.Body)
+	switch paymentrefusal.Classify(refusal.Status, body) {
+	case paymentrefusal.Payment:
 		return laneRefusal{Kind: refusalPayment, Terminal: true}
+	case paymentrefusal.WindowExhausted:
+		return laneRefusal{Kind: refusalPlanPaused, Reset: paymentrefusal.ResetAt(body)}
+	case paymentrefusal.NoPlan:
+		return laneRefusal{Kind: refusalNoPlan, Terminal: true}
 	}
 	demanded = strings.TrimSpace(demanded)
 	if refusal.Status == http.StatusTooManyRequests {
@@ -320,7 +340,6 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if refusal.FromUpstream() {
 		return laneRefusal{Kind: refusalUpstream, Lane: refusal.Provider}
 	}
-	body := []byte(refusal.Body)
 	// A MODEL THE ROUTER HAS PUT DOWN IS ASKED BEFORE AN EMPTIED SET, because
 	// the two arrive wearing the same 404 and very often the same sentence, and
 	// only one of them has a machine anywhere behind it. Nothing is struck and
@@ -485,7 +504,8 @@ func Evidence(err error) taxonomy.Evidence {
 	evidence.Spent = errors.As(err, &ladder)
 	evidence.Account = evidence.Routing && refusal.Account
 	evidence.Withdrawn = refusal.Withdrawn
-	evidence.Unserved = accountUnserved(refusal.Status)
+	evidence.PlanPaused = refusal.PlanPaused
+	evidence.Unserved = accountUnserved(refusal.Status) || refusal.Payment || refusal.PlanUnavailable
 	// OUR OWN BYTES ARE WHAT IS LEFT OVER, and the transport is the only layer
 	// that can say so: it is the 4xx that named no upstream, is not a list, is
 	// not an absent model and is not a key — which is [APIError.OurRequest]'s
@@ -494,8 +514,10 @@ func Evidence(err error) taxonomy.Evidence {
 	return evidence
 }
 
-// accountUnserved reports the three statuses that mean THE ACCOUNT could not be
-// served: no key, a key without permission, a balance that ran out.
+// accountUnserved reports the three generic statuses that mean THE ACCOUNT
+// could not be served: no key, a key without permission, a balance that ran
+// out. The vendor-specific payment and no-plan facts join it in [Evidence]
+// through the marks from [markRefusal].
 //
 // IT IS THE ONE STATUS COMPARISON LEFT IN THIS BUILD OUTSIDE internal/taxonomy,
 // and it is here rather than at a reader for exactly that reason: the law test

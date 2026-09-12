@@ -1594,6 +1594,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// deliberation salvaged into its place would start work off a sentence the
 	// model was still arguing with itself about.
 	ctx = provider.WithProseAnswer(ctx)
+	// MONEY MOVES AT MOST ONCE FOR ONE TURN. The provider keeps this guard across
+	// its own repairs, rungs and hedge arms; the session adds it outside the
+	// model ladder so a later model cannot buy the same metered overflow again.
+	ctx = provider.WithPlanOverflowGuard(ctx)
 	var lastErr error
 	// cuts counts the attempts the STREAM GUARD ended — a stall, or a reply that
 	// stopped being language. They are counted apart from the transport attempts
@@ -2195,7 +2199,10 @@ func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string
 	if a.config.OneModel {
 		return "", false
 	}
-	options := a.fallbackModels(origin)
+	options, ok := a.modelFallbackChain(origin)
+	if !ok {
+		return "", false
+	}
 	// AND THE CHAIN IS STILL BOUNDED BY ITS OWN LENGTH. A turn may move as many
 	// times as the chain is long and no further — the cap is the adapter's
 	// (internal/provider's maxFallbackModels) and is not re-decided here — so a

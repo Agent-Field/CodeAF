@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -442,8 +443,13 @@ func connectKeyHint(name, blank string) string {
 // inside a block whose height the session's question owns, and the two lines
 // this box can grow are two lines that block cannot spare.
 
-// keyEntry is one typed answer being given: which service it is for, the word a
-// person knows it by, what the service says about answering, and the box.
+// entryChoice is one row of a CLOSED answer: the value that is saved, and the
+// word a person reads and picks by.
+type entryChoice struct{ ID, Name string }
+
+// keyEntry is one answer being given: which service it is for, the word a
+// person knows it by, what the service says about answering, and either the
+// closed choices or the box.
 //
 // ask and link are copied off the [connect.Service] at the moment the box opens
 // rather than looked up while it is drawn: a paint runs many times a second, and
@@ -453,6 +459,11 @@ type keyEntry struct {
 	name string
 	// blank is the plain name of a visible answer. Empty means this is a key.
 	blank string
+	// choices makes this a PICKED answer. While it is non-empty there is no
+	// box at all and nothing can be typed into one.
+	choices []entryChoice
+	// at is the choice carrying the cursor.
+	at int
 	// answers is the service's closed list for blank. It is copied when the box
 	// opens so the question and the accepted values cannot drift apart.
 	answers []string
@@ -491,8 +502,41 @@ func (e *keyEntry) typeInto(msg tea.KeyPressMsg) {
 	listNavigate(msg, &e.box, func(int) {}, func() {}, 1)
 }
 
-// value is what has been typed, trimmed — an answer or nothing at all.
-func (e *keyEntry) value() string { return strings.TrimSpace(e.box.String()) }
+func (e *keyEntry) choosing() bool { return len(e.choices) > 0 }
+
+// value is the picked id for a closed answer, or what has been typed and
+// trimmed for an open one.
+func (e *keyEntry) value() string {
+	if e.choosing() {
+		return e.choices[e.at].ID
+	}
+	return strings.TrimSpace(e.box.String())
+}
+
+// walk moves the choice cursor by the surface's one clamped-list rule.
+func (e *keyEntry) walk(delta int) {
+	e.at = moveCursor(e.at, delta, len(e.choices))
+}
+
+// jumpTo moves to a choice whose name begins with one typed letter. The search
+// starts after the cursor and wraps, so equal first letters cycle in catalog
+// order instead of making every press land on the first one forever.
+func (e *keyEntry) jumpTo(msg tea.KeyPressMsg) bool {
+	typed := []rune(msg.Key().Text)
+	if len(typed) != 1 || !unicode.IsPrint(typed[0]) {
+		return false
+	}
+	want := unicode.ToLower(typed[0])
+	for offset := 1; offset <= len(e.choices); offset++ {
+		at := (e.at + offset) % len(e.choices)
+		name := []rune(strings.TrimSpace(e.choices[at].Name))
+		if len(name) > 0 && unicode.ToLower(name[0]) == want {
+			e.at = at
+			return true
+		}
+	}
+	return false
+}
 
 // keyHintLine is the one dim line under the box: where this key is to be found.
 //
@@ -520,13 +564,14 @@ func keyHintLine(link string, pal palette, width int) string {
 	return pal.dim(lead + linkify(fit(shown, width-ansi.StringWidth(lead)), link))
 }
 
-// keyBoxLines is the box as the lines it takes, and where the caret sits inside
-// them: the instruction where the service has one, the answer box, and either
-// the accepted values or the address where a key lives.
+// keyBoxLines is the answer as the lines it takes, and where the caret sits
+// inside them: either a closed choice, or the instruction, answer box, and
+// accepted values or address where a key lives.
 //
 // It answers a caret ROW as well as a column because the instruction can stand
 // above the box, and a caller that assumed the box was the first line would put
-// the caret on a sentence.
+// the caret on a sentence. A choice answers -1 because it has no box and a
+// caller that assumed every answer had a caret would park one on a name.
 //
 // indent is how far in the whole block sits, which is the one thing the two
 // surfaces disagree about: the panel's box takes the draft's own position at the
@@ -542,6 +587,33 @@ func keyBoxLines(entry *keyEntry, pal palette, width, indent, maxRows int) ([]st
 	}
 	lead := strings.Repeat(" ", indent)
 	width -= indent
+	if entry.choosing() {
+		question := lead + pal.dim(fit("  "+connectKeyHint(entry.name, entry.blank), width))
+		choiceRows := maxRows
+		showQuestion := len(entry.choices)+1 <= maxRows
+		if showQuestion {
+			choiceRows--
+		}
+		// THE QUESTION GIVES WAY FIRST, because these rows are what a person is
+		// answering. If even they do not fit, the ordinary list window keeps the
+		// cursor row drawn; two-region sources never need it, but the catalog is
+		// allowed to grow without turning the current answer invisible.
+		top := listTop(entry.at, 0, len(entry.choices), choiceRows)
+		bottom := min(len(entry.choices), top+choiceRows)
+		out := make([]string, 0, maxRows)
+		if showQuestion {
+			out = append(out, question)
+		}
+		for at := top; at < bottom; at++ {
+			name := entry.choices[at].Name
+			if at == entry.at {
+				out = append(out, lead+pal.accent("  › ")+pal.ink(fit(name, width-4)))
+				continue
+			}
+			out = append(out, lead+pal.dim(fit("    "+name, width)))
+		}
+		return out, 0, -1
+	}
 	askRows := make([]string, 0, 3)
 	if entry.ask != "" {
 		for _, line := range wrap(entry.ask, width-2) {

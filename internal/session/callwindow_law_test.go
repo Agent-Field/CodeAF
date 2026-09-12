@@ -89,7 +89,7 @@ func TestEveryCheckerCallIsSentUnderAToldWindow(t *testing.T) {
 	toldAtTheDoor := false
 	for _, decl := range door.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "completeWithModel" || fn.Body == nil {
+		if !ok || fn.Body == nil {
 			continue
 		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -97,14 +97,22 @@ func TestEveryCheckerCallIsSentUnderAToldWindow(t *testing.T) {
 			if !ok || calledName(call.Fun) != "CompleteWithMessages" || len(call.Args) == 0 {
 				return true
 			}
+			// EVERY COMPLETION THE DOOR MAKES IS TOLD ITS WINDOW, whichever function
+			// makes it. completeWithModel delegates to completeWithNamedModel so an
+			// errand receipt can name the model that answered, and the window has to
+			// ride along through that delegation rather than stop at the first name.
 			if told, ok := call.Args[0].(*ast.CallExpr); ok && calledName(told.Fun) == "toldItsWindow" {
 				toldAtTheDoor = true
+				return true
 			}
+			t.Errorf("%s: %s hands the completer a context it was not told its window on; "+
+				"an opened window would then bound the call and tell the model nothing",
+				fset.Position(call.Pos()), fn.Name.Name)
 			return true
 		})
 	}
 	if !toldAtTheDoor {
-		t.Error("clientdoor.go's completeWithModel no longer hands the completer toldItsWindow(ctx); " +
+		t.Error("clientdoor.go no longer hands any completer toldItsWindow(ctx); " +
 			"an opened window would then bound the call and tell the model nothing")
 	}
 

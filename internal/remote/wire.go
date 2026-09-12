@@ -1507,6 +1507,9 @@ type PhaseWire struct {
 	// never "nothing" — the emptiness law, carried across the wire intact.
 	Lane string  `json:"lane,omitempty"`
 	Rate float64 `json:"rate,omitempty"`
+	// Door is the billing road in use. It stays separate from Lane so a direct
+	// service is never presented as a router's serving machine.
+	Door string `json:"door,omitempty"`
 	// Detail is the phase's own noun, already in a person's words, and Then
 	// what will be done about the wait when a deadline is real.
 	Detail string `json:"detail,omitempty"`

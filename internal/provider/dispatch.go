@@ -18,7 +18,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
-	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -249,6 +248,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
+	// The address is part of the bound billing door. It changes only for the
+	// one separately authorised plan overflow below; every ordinary retry and
+	// endpoint move stays on the address the service was connected to.
+	currentBase := c.config.BaseURL
+	currentDoor := c.config.BillingDoor
+	usingOverflow := false
+	switchedDoor := false
 	// providerWait is the provider's own comeback instruction from the last
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.
@@ -394,17 +400,26 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if plan.Spent(spentAt()) {
 				break
 			}
-			// A reachability check that answered after a pre-send failure names no
-			// machine and earns no routing move. The next send stays on this road;
-			// after the first recovered pass it pays the ordinary fault backoff
-			// below. Everything else asks the one move generator as before.
-			if !reconnected {
+			// TWO PASSES ALREADY OWE THE MOVE THEY ARE MAKING, and neither may ask
+			// the generator for a second one.
+			//
+			// A billing-door switch is one: it must reach the authorised address
+			// before the endpoint controller is asked for another move, or a plan
+			// pause could be turned into a lane walk or an early end without ever
+			// trying the metered door.
+			//
+			// A reachability check that answered after a pre-send failure is the
+			// other: it names no machine and earns no routing move. The next send
+			// stays on this road; after the first recovered pass it pays the
+			// ordinary fault backoff below. Everything else asks the one move
+			// generator as before.
+			if !switchedDoor && !reconnected {
 				// What the last refusal asked us to wait, and whether it was the
-				// account's own ceiling rather than a machine's: the two inputs
-				// the move generator needs that change between moves. A ceiling
-				// over the whole key leaves nothing to put on the next body,
-				// which is what stops an open set pretending it has somewhere to
-				// go ([control.Plan.AccountRefused]).
+				// account's own ceiling rather than a machine's: the two inputs the
+				// move generator needs that change between moves. A ceiling over the
+				// whole key leaves nothing to put on the next body, which is what
+				// stops an open set pretending it has somewhere to go
+				// ([control.Plan.AccountRefused]).
 				plan.Comeback = providerWait
 				plan.AccountRefused = accountPaced
 				move = control.Next(plan, plan.Moves.List())
@@ -428,7 +443,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 && reconnected && connectionPasses > 1 {
+		if attempt > 0 && switchedDoor {
+			// A BILLING-DOOR SWITCH IS NEITHER A RECONNECTION NOR A RETRY. The
+			// person's opt-in already chose the next address, so it goes out at once
+			// and the phase clock's door is the only status change owed here. It is
+			// asked BEFORE the recovered-pass branch below for exactly that reason:
+			// a door switch that fell through to it would be narrated as recovering
+			// from a dropped connection and would sit out a backoff it does not owe.
+			providerWait = 0
+		} else if attempt > 0 && reconnected && connectionPasses > 1 {
 			// THE FIRST RECOVERED PASS IS IMMEDIATE. Every later one means the
 			// check answered while the request itself still could not leave, which
 			// is another fault and pays the same growing pause as every other one.
@@ -530,8 +553,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				owed += delay - took
 			}
 		}
-		reconnected, moved = false, false
-		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
+		reconnected, moved, switchedDoor = false, false, false
+		if waited, err := c.waitConnection(ctx, c.modelFor(request), currentBase, false); err != nil {
 			return nil, err
 		} else if waited && knobs.trace != nil {
 			knobs.trace.connectionRecovered = true
@@ -570,7 +593,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				knobs.trace.body = body
 			}
 		}
-		httpRequest, err := c.newHTTPRequest(attemptCtx, request, body, stream)
+		httpRequest, err := c.newHTTPRequestAt(attemptCtx, request, body, stream, currentBase)
 		if err != nil {
 			cancelAttempt()
 			return nil, err
@@ -687,23 +710,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if potentialRateLimit {
 			named = retryAfter(response)
 		}
-		var peek []byte
-		// A 429 IS CLASSIFIED BEFORE THE SHARED WINDOW IS NARROWED. Status alone
-		// cannot separate a busy queue from an authenticated account that cannot
-		// fund the request — both wear 429 — and only the queue is pacing. So the
-		// bounded prefix this loop reads anyway is read here instead of below, and
-		// an account that cannot pay narrows nothing and is told to come back at
-		// no time at all.
-		payment := false
-		if retryableStatus(response.StatusCode) {
-			peek, _ = io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-			payment = paymentrefusal.Matches(response.StatusCode, peek)
-		}
-		rateLimited := potentialRateLimit && !payment
-		if !rateLimited {
-			named = 0
-		}
-		sharedLimiter.release(rateLimited, named)
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
 		// HAVE SAID NOTHING ─────────────────────────────────────────────────
 		//
@@ -724,28 +730,20 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// adapter can repair by itself — a knob it guessed wrong about reaches
 		// [Client.sendRepaired] a layer up, and walking it would spend a machine
 		// to discover a fact the memo already answers.
+		var peek []byte
 		if !retryableStatus(response.StatusCode) {
 			if !relayedByAMachine(response.StatusCode) || c.repairable(c.modelFor(request), knobs) ||
 				len(knobs.reasoning) > 0 {
+				sharedLimiter.release(false, 0)
 				return response, nil
 			}
 			read, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 			if upstream, ok := routerErrorEnvelope(read); !ok || upstream == "" {
 				response.Body = rewound(read, response.Body)
+				sharedLimiter.release(false, 0)
 				return response, nil
 			}
 			peek = read
-		}
-		if rateLimited {
-			providerWait = named
-			if pacedSince.IsZero() {
-				pacedSince = time.Now()
-			}
-			// The park begins on the FIRST 429 this call draws, not on the
-			// first one it decides to wait out: by the time the backoff is
-			// computed the call is already not moving, and that is the fact
-			// anybody watching wants.
-			park(true)
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.
@@ -763,9 +761,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// instead. A wait we cannot see is a wait we replace with our own
 		// doubling, which is how a pool that asked for three seconds was asked
 		// again after seven hundred milliseconds.
-		if rateLimited && named <= 0 {
+		if potentialRateLimit && named <= 0 {
 			named = retryAfterIn(peek)
-			providerWait = named
 		}
 		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
 		// done about it is decided there from what the refusal says rather than
@@ -776,6 +773,26 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// is handed over rather than left in this loop; a 429 naming nobody is
 		// this account's own ceiling and writes nothing at all.
 		refusal := c.refuseUpstream(request, knobs, lastErr, "", named)
+		// ONLY ORDINARY PACING NARROWS THE SHARED LIMITER. A payment refusal, a
+		// plan pause and a door this key cannot use all arrive under 429 too, but
+		// none says the request rate is too high.
+		rateLimited := refusal.Kind == refusalPaced
+		if !rateLimited {
+			named = 0
+		}
+		sharedLimiter.release(rateLimited, named)
+		if rateLimited {
+			providerWait = named
+			if pacedSince.IsZero() {
+				pacedSince = time.Now()
+			}
+			// The park begins on the FIRST ordinary pacing refusal this call
+			// draws — and it is announced through [park], which is THE ONE SITE
+			// that tells both readers of that fact at once. Saying it by hand
+			// here would leave the call-watch seam believing this call never
+			// waited (#868).
+			park(true)
+		}
 		// AND THE MACHINE THAT REFUSED IS OFF THE NEXT BODY. This is the whole of
 		// "never repeat" (see THE BODY IS WRITTEN PER ATTEMPT above): the door
 		// above has already decided what the refusal MEANS for the process, and
@@ -841,13 +858,32 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
 			served: refusal.Lane, retryAfter: named,
 		})
-		// AND AN ACCOUNT THAT CANNOT PAY IS TERMINAL FOR THE WHOLE CALL. It is not
-		// one machine's fault and not a wait: every other endpoint and every other
-		// model on this account will say the same thing, so walking the roster
-		// would spend the deadline discovering one fact the refusal already
-		// carries. The reader above turns it into the one sentence a person can
-		// act on.
-		if payment {
+		// MONEY MOVES ONLY THROUGH THIS EXACT OPT-IN. A paused fixed-price window
+		// never reaches the endpoint walk or model chain: it either takes the one
+		// configured metered door, once, or returns its typed pause immediately.
+		if refusal.Kind == refusalPlanPaused {
+			useOverflow := c.config.OverflowOnPlanPause &&
+				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
+				claimPlanOverflow(ctx)
+			if useOverflow {
+				currentBase = strings.TrimRight(strings.TrimSpace(c.config.PlanOverflow), "/")
+				currentDoor = strings.TrimSpace(c.config.PlanOverflowDoor)
+				if phase := phaseClockFrom(ctx); phase != nil {
+					phase.useDoor(currentDoor)
+				}
+				usingOverflow = true
+				switchedDoor = true
+				pacedSince = time.Time{}
+				continue
+			}
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+			return nil, &PlanPauseError{
+				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
+			}
+		}
+		if refusal.Kind == refusalPayment || refusal.Kind == refusalNoPlan {
 			return nil, lastErr
 		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
@@ -940,6 +976,86 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// PlanPauseError is the typed end of a request whose fixed-price window is
+// temporarily unavailable. Cause preserves the vendor refusal for the journal;
+// surfaces read this type so the person sees only the actionable pause sentence
+// rather than a generic API error after it.
+type PlanPauseError struct {
+	Reset        string
+	OverflowDoor string
+	Cause        error
+}
+
+type planOverflowGuard struct{ used atomic.Bool }
+type planOverflowGuardKey struct{}
+
+// WithPlanOverflowGuard gives every request belonging to one turn the same
+// one-shot billing decision. Repair, relaxation, hedge and model-hop re-entry
+// all derive contexts from this one, so none can buy a second metered attempt
+// after another road has already taken the separately authorised overflow.
+func WithPlanOverflowGuard(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, held := ctx.Value(planOverflowGuardKey{}).(*planOverflowGuard); held {
+		return ctx
+	}
+	return context.WithValue(ctx, planOverflowGuardKey{}, &planOverflowGuard{})
+}
+
+func claimPlanOverflow(ctx context.Context) bool {
+	guard, _ := ctx.Value(planOverflowGuardKey{}).(*planOverflowGuard)
+	// send is package-private and its shipped callers install the guard before
+	// entering. Keeping the absent case usable preserves focused dispatcher rigs
+	// without turning a missing test harness value into a billing refusal.
+	return guard == nil || guard.used.CompareAndSwap(false, true)
+}
+
+func (e *PlanPauseError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return PlanPauseSentence(e.Reset, e.OverflowDoor)
+}
+
+func (e *PlanPauseError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// PlanPauseFrom recovers a plan-pause ending through the wrappers added by the
+// provider and session loops.
+func PlanPauseFrom(err error) (*PlanPauseError, bool) {
+	var paused *PlanPauseError
+	if errors.As(err, &paused) && paused != nil {
+		return paused, true
+	}
+	return nil, false
+}
+
+// PlanPauseSentence is the one person-facing sentence for a temporarily spent
+// subscription window, shared by live status, the final row, and connection.
+func PlanPauseSentence(reset, overflowDoor string) string {
+	detail := planPauseDetail(reset, overflowDoor)
+	if detail == "" {
+		return string(PhasePlanPaused)
+	}
+	return string(PhasePlanPaused) + " · " + detail
+}
+
+func planPauseDetail(reset, overflowDoor string) string {
+	parts := make([]string, 0, 2)
+	if reset = strings.TrimSpace(reset); reset != "" {
+		parts = append(parts, "resets at "+reset)
+	}
+	if overflowDoor = strings.TrimSpace(overflowDoor); overflowDoor != "" {
+		parts = append(parts, "/connect can switch to "+overflowDoor)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // demandedThisOne reports that this request DEMANDED this one machine and

@@ -46,13 +46,22 @@ func setupApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
 		seed(dir)
 	}
 	handed := &[]string{}
+	var connect func(context.Context) (OpenRouterFlow, error)
+	if config.SetupSeenAt(dir).IsZero() {
+		connect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	}
 	a := newApp(t.Context(), Options{
-		Agent:       &fakeAgent{model: "openai/gpt-4.1-mini"},
-		Workspace:   "/tmp/lab",
-		ProfileDir:  dir,
-		Setup:       true,
-		ApplyAPIKey: func(key string) error { *handed = append(*handed, key); return nil },
+		Agent:             &fakeAgent{model: "openai/gpt-4.1-mini"},
+		Workspace:         "/tmp/lab",
+		ProfileDir:        dir,
+		Setup:             true,
+		ConnectOpenRouter: connect,
+		ApplyAPIKey:       func(key string) error { *handed = append(*handed, key); return nil },
 	})
+	// The browser seam is present while the real launch decides which screens
+	// exist. Most tests below exercise the paste road, so it is taken back off
+	// before they press a key; the browser test installs its recording flow.
+	a.routerConnect = nil
 	a.width, a.height = 90, 30
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.touch()

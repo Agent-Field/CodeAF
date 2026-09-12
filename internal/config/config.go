@@ -851,14 +851,21 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 	model, level := roles.SplitEffort(model)
 	effort, _ := provider.ParseEffort(level)
 	service, bare := sources.For(model)
-	return provider.Config{
+	configured := provider.Config{
 		APIKey:      service.Key,
 		BaseURL:     service.Address,
 		Model:       bare,
 		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
+		BillingDoor: service.Door.Name,
 		Effort:      effort,
 	}
+	if service.Overflow != nil {
+		configured.PlanOverflow = service.Overflow.Address
+		configured.PlanOverflowDoor = service.Overflow.Name
+		configured.OverflowOnPlanPause = service.PlanPaused == PlanPausedUseMeter
+	}
+	return configured
 }
 
 // WithoutSeatPin is the settings a raw request path takes: the same account,

@@ -1640,11 +1640,15 @@ type app struct {
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
-	sources          modelsource.Set
-	modelCatalog     []modelsource.Source
-	sourceModels     map[string][]Model
-	modelDraft       *modelConnectDraft
-	modelSuggestions map[string]string
+	sources      modelsource.Set
+	modelCatalog []modelsource.Source
+	sourceModels map[string][]Model
+	modelDraft   *modelConnectDraft
+	// deferredModelServiceModel holds the move a connection earned while a turn
+	// was answering. A PERSON WATCHING A STREAM MUST NOT HAVE ITS MODEL CHANGED
+	// MID-SENTENCE, and dropping the move would leave them on the service they
+	// just replaced, so the one pending id lands at the turn boundary.
+	deferredModelServiceModel string
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -5488,6 +5492,7 @@ func (a *app) settle() tea.Cmd {
 	if a.state == stateWorking {
 		a.state = stateIdle
 	}
+	a.applyDeferredModelServiceMove()
 	// A turn that is over is a turn nothing is outstanding on: the clock stops
 	// here rather than at the next turn's start, so a session left idle for an
 	// hour cannot open its next turn holding an hour-old anchor.
