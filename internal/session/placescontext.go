@@ -5,8 +5,8 @@ package session
 // places.go answers "which folders is this conversation about" and writes the
 // answer down. This file is the half that was missing: THE MODEL BEING TOLD.
 //
-// The set fed the ground ladder (taskstands.go) and the standing trees
-// (standingtree.go), and nothing else — so a person who picked a folder saw a
+// The set fed the ground ladder (taskstands.go) and nothing else — so a person
+// who picked a folder saw a
 // dim line on their screen saying the pick had landed, and the very next request
 // went out with no mention of it anywhere. The model then did the only thing it
 // could: it went looking for the folder, usually by walking the home directory

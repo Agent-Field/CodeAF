@@ -57,6 +57,14 @@ import (
 // a number this one already holds, and the two would disagree the moment a
 // fetch landed between them.
 func gitFactsLine(root string) string {
+	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE, which
+	// for a conversation with no workspace — a headless run, a test — would be
+	// the state of whatever checkout the binary was launched from, reported to
+	// the model as though it were its own project. task_run.go's [git] carries
+	// the incident this rule comes from; the answer here is to ask nothing.
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
 	out, err := git(root, "status", "--short", "--branch")
 	if err != nil {
 		return ""
