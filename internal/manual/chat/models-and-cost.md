@@ -74,8 +74,9 @@ Choosing a model does four things: the model is set on the session, the machine 
 the session learns that model's context window for compaction, a note appears reading
 `model · <model>`, and the choice is written into your profile. **If a turn is still
 running when you pick, the note says what the switch did not touch** —
-`model · moonshotai/kimi-k3 — this turn finishes on zhipu/glm-5.3-flash` — because a turn
-finishes on the model it started on.
+`model · moonshotai/kimi-k3 — zhipu/glm-5.3-flash is answering now, and the next request takes it` — the same
+words a task's room uses, because it is the same fact. See the next section for which of
+the two ways your pick lands.
 
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the

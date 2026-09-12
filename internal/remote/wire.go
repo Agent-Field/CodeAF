@@ -342,7 +342,7 @@ import (
 // SENTENCE THAT IS FALSE.
 // AND 17 IS THE MODEL THE TURN IN FLIGHT IS ON ([Welcome.TurnModel],
 // [session.Facts.TurnModel]). The number moves because the surface draws a
-// SENTENCE off it — `this turn finishes on <model>` — and a version-16 engine
+// SENTENCE off it — `<model> is answering now` — and a version-16 engine
 // sends no such fact while its conversations still run turns: a surface that
 // filled the gap from the dial would say that sentence with the model the person
 // had just picked in both halves, which is a claim about the machine at the far

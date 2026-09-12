@@ -1959,18 +1959,26 @@ func (a *app) switchModel(id string, window int) {
 	// started after this line follow the switch (taskmodel.go's
 	// defaultTaskModel reads the live dial), which is why the sentence is
 	// about the running ones only.
-	// AND THE TURN IN FLIGHT IS THE FIRST THING IT SAYS, because it is the thing
-	// the person is watching. [session.Agent.SetModel] latches a turn's model
-	// when the turn opens and never moves it, so a swap made three seconds into
-	// a turn changes nothing about the seventeen minutes that follow — and until
-	// this line the surface said nothing at all about that, while drawing the
-	// model just picked on the seam beside the old model's endpoint. The sentence
-	// is derived from what the engine is on rather than from a flag: if the
-	// engine is naming a model, there is work on it, and if that model is the one
-	// just picked there is nothing to say.
+	// AND THE WORK IN FLIGHT IS THE FIRST THING IT SAYS, because it is the thing
+	// the person is watching. Until this line the surface said nothing at all
+	// about it while drawing the model just picked on the seam beside the OLD
+	// model's endpoint — one line naming two models, three seconds after a pick
+	// that had not reached the work. The sentence is derived from what the engine
+	// is on ([app.turnModel]) rather than from a flag: if the engine is naming a
+	// model there is work on it, and if that model is the one just picked there
+	// is nothing to say.
+	//
+	// AND IT SAYS WHAT IS TRUE OF BOTH LANDINGS, in the room's own words
+	// ([roomModelNextWord]). Under steer.go's law a pick either cuts a request
+	// nothing had come back from and asks it again, or lets the answer arriving
+	// finish — and either way it is THE NEXT REQUEST that carries it, which is
+	// why one sentence can be true without the surface knowing which happened.
+	// It deliberately does not say "turn": an earlier cut of this line promised
+	// the turn would FINISH on the old model, which stopped being true the day
+	// a person's word started winning at the request.
 	note := "model · " + a.model
 	if turnOn != "" && !strings.EqualFold(turnOn, a.model) {
-		note += " — this turn finishes on " + turnOn
+		note += " — " + turnOn + " is answering now, and " + roomModelNextWord
 	}
 	if a.deckRunning() > 0 {
 		note += " — tasks already running keep the model they started on"

@@ -824,24 +824,28 @@ the door whether it can name the model a turn is on; against an older engine the
 names the model you picked, exactly as it did before, and `/model` says nothing about a
 turn in flight rather than guessing.
 
-**Changing the model does not move the answer you are waiting for.** A turn finishes on
-the model it started on — every step and every retry of it — and your pick takes effect
-at the next message you send. `/model` says so at the moment you press it:
+**Your pick reaches the work at its next request, not at the next turn.** If the request
+in flight has given you nothing yet it is let go of at once and asked again on the model
+you chose; if an answer is already arriving, that answer finishes and everything asked
+for after it is on the new model. Either way it is the next request that carries it, and
+that is what `/model` says at the moment you press it:
 
 ```
-model · moonshotai/kimi-k3 — this turn finishes on zhipu/glm-5.3-flash
+model · moonshotai/kimi-k3 — zhipu/glm-5.3-flash is answering now, and the next request takes it
 ```
 
-If you want the new model *now*, stop the turn with `esc` and send the message again;
-`ctrl+q` queues it to run after this one finishes, on the new model.
+So the cell can change under you a second later, and that is the pick landing rather than
+the line being wrong. "Can I switch models while it is replying" on the models page has
+the whole rule.
 
 **Tasks already running keep their own model too**, and `/model` says that in the same
 line when any are running. A task's model is frozen when the task is admitted; tasks
 started after the switch follow it.
 
-**Pictures you attached stay with the turn that is using them.** Switching to a model
-that cannot see images replaces them with a line naming the file — but only from the
-next turn, never under a turn that is still sending them to a model that can see.
+**Pictures you attached stay with the model that can see them.** Switching to a model
+that cannot see images replaces them with a line naming the file, and that happens when
+the work actually moves onto the blind model — never while requests are still going to
+one that can see.
 
 **And only a switch does that.** Turns of a conversation that never changed model leave
 the pictures alone, and so does a switch to a model aforge has read no row for: replacing

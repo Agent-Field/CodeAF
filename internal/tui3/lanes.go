@@ -1212,15 +1212,16 @@ func (a *app) pinnedNow() string {
 // This is the law, and one line of one reported session is the whole argument
 // for it. A person sent a message, opened the picker three seconds later and
 // chose kimi-k3. The turn had already latched glm-5.3-flash and ran there for
-// seventeen minutes and forty-one calls — which is what [session.Agent.SetModel]
-// promises and what the engine did. The seam said
+// seventeen minutes and forty-one calls — the answer was arriving, so by
+// steer.go's law the pick rode the next request the work made. The seam said
 // `moonshotai/kimi-k3 · auto · via wafer` for all of it: the model cell drawn
 // from [app.model], the picker's answer, and the `via` cell drawn from the
 // endpoint the request in flight had named. Two cells, two worlds, one line, and
 // neither cell wrong by its own reckoning.
 //
 // So both cells now come off ONE fact: [session.Agent.TurnModel], the model the
-// engine latched when this turn opened. It is the same fact the engine stamps on
+// engine is talking to — written when the turn opens and moved only when the
+// work itself moves. It is the same fact the engine stamps on
 // every stage of the work it is doing ([session.Agent.newsModel]), so the `via`
 // machine and the name above it are two readings of one turn — and it crosses a
 // --host connection on the photograph the rung beside it already rides
@@ -1248,9 +1249,9 @@ func (a *app) wireModel() string {
 // [phaseClock.done], internal/session's [Agent.endPhase]), so between two steps
 // of one turn the desk is empty and the seam would fall back to the dial — the
 // cell flipping back and forth across every step boundary — and a pick that
-// landed in one of those gaps would find nothing to say `finishes on` about. The
-// latch has none of those holes: it is set when the turn opens and stands until
-// the turn ends.
+// landed in one of those gaps would find nothing to say about the work in
+// flight. The engine's own fact has none of those holes: it is written when the
+// turn opens and stands until the turn ends.
 //
 // IT IS GATED ON THE SURFACE'S OWN STATE, never on a desk entry. `stateWorking`
 // is this window's answer to "is a turn in flight", kept by the stream it is
