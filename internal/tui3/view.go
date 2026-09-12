@@ -736,12 +736,6 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	if line := a.followRow(width); line != "" {
 		add(line, chromeRow{})
 	}
-	// AND WHAT IS WAITING TO GO INTO ANOTHER FOLDER, in the same slot and by the
-	// same law: one dim row while there is something to land, nothing at all
-	// otherwise (landcmd.go).
-	if line := a.landRow(width); line != "" {
-		add(line, chromeRow{})
-	}
 	// AND WHAT YOU TYPED WHILE THE ANSWER WAS STILL COMING SITS DIRECTLY ABOVE
 	// THE BOX (park.go). It is the LAST block of the chrome for a reason that is
 	// the whole point of it: pinned here, between everything that has happened
@@ -903,7 +897,7 @@ func (a *app) chromeHeight() int {
 	// holding.
 	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() +
 		a.questionFootHeight() + a.guardHeight() +
-		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
+		a.followHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
 	// rule and its breathing room are not drawn under a greeting at all — both
 	// are [app.chrome]'s own decisions, read back here so the conversation is

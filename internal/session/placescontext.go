@@ -121,11 +121,15 @@ func attachedBlock(places []PlaceRef, workspace string) string {
 		}
 		out.WriteString("\n")
 	}
-	// AND WHAT THEY ARE NOT, in the same breath as what they are. A model handed
-	// a second directory and no ranking will write into whichever one it read
-	// last; the working directory above is the one the guard is cut from and the
-	// one every relative path is resolved against, and that has not moved.
-	fmt.Fprintf(&out, "\nThey are REFERENCES AND NOT THE WORKING DIRECTORY: %s is still where work happens, still what a relative path means, and still what may be written to. Attaching a folder moved none of that. Read inside an attached folder freely, by its exact path above. Before you write anything under one, say which folder you mean and why.\n", workspace)
+	// AND WHERE A WRITE UNDER ONE ACTUALLY GOES, IN THE SAME BREATH. This
+	// sentence said the opposite until 2026-09-12 — that the workspace "is still
+	// what may be written to" — while the belt quietly aimed every write into a
+	// copy of the folder. Both halves were wrong at once, and a model reasons
+	// from this paragraph for the rest of the turn. What is true now is the
+	// simplest thing it could be: THE FOLDER ITSELF IS EDITED, so the two facts
+	// worth stating are which directory a bare name still means, and that a
+	// change under an attached path is a change to the person's own files.
+	fmt.Fprintf(&out, "\nTHE WORKING DIRECTORY HAS NOT MOVED: %s is still what a relative path means and still where a command runs. Attaching a folder changed only what this conversation is ABOUT.\n\nWRITES UNDER AN ATTACHED PATH GO INTO THAT FOLDER ITSELF — the person's own files, not a copy, and there is nothing to land afterwards. So work there when the person's message is about that folder, by its exact absolute path above, and say which folder you mean before you change anything under one. The first change in each of them asks the person once.\n", workspace)
 	// AND HOW TO LOOK, because the alternative to saying it is a model that
 	// assumes the whole tree is somewhere in its context and answers from a
 	// listing it never read.

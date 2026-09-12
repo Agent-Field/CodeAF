@@ -81,10 +81,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 		says:  "memory is off for this session · turn it on under /settings",
 		loses: "/remember, /forget, /memories, /memory <query> and the memory place — memory is not off, it is unreachable",
 	},
-	"folderLander": {
-		says:  "nothing is waiting · what this conversation writes in the folder it is standing in is already there",
-		loses: "/land; and the `changes for … · /land` row above the box goes quiet too",
-	},
 	"subharnessAgent": {
 		says:  "no subharnesses here yet — a subharness is a saved program for work that comes round again.",
 		loses: "the subharness list, its intake form and running one",
@@ -120,14 +116,13 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 	"turnResumer":                     {loses: "resuming a turn that was stopped"},
 	"wakeAgent":                       {loses: "reading wakes"},
 	"workingNowAgent":                 {loses: "what is working right now, which the margin draws"},
-	"interface{ LandingFor/1/2 }":     {loses: "the landing a folder already has, beside folderLander"},
 	"interface{ PendingConsent/0/1 }": {loses: "which approvals are still open when a surface detaches"},
 }
 
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 22
+const surfaceDoorLedger = 20
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {

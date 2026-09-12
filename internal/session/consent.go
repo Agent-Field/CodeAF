@@ -173,7 +173,11 @@ func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 	}
 	args := json.RawMessage(call.Function.Arguments)
 	decision := policy.Check(call.Function.Name, args)
-	return a.capabilitySays(call.Function.Name, args, decision), true
+	// AND THEN WHAT THEY SAID ABOUT THE FOLDER, on the same rung and for the same
+	// reason as the account row above: the policy is a pure function of a call,
+	// and "yes, aforge may change files in the folder I attached" is a fact about
+	// this conversation that no rule set carries (folderconsent.go).
+	return a.folderSays(call, a.capabilitySays(call.Function.Name, args, decision)), true
 }
 
 // capabilitySays applies the person's word about the account to the policy's
@@ -245,7 +249,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
 	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
-		if remembered, known := a.rememberedConsent(call.Function.Name); known {
+		if remembered, known := a.rememberedAnswer(call); known {
 			if remembered {
 				return toolResult{}, true
 			}
@@ -409,6 +413,16 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 				a.rememberGrant(call.Function.Name, made)
 				return answer, nil
 			}
+			// AND A STANDING ANSWER ABOUT AN ATTACHED FOLDER IS BANKED AGAINST THE
+			// FOLDER, also INSTEAD of the tool memo and for the same reason the
+			// account row above is: the card named a folder, so a memo that said
+			// "every edit anywhere, forever" would be the card lying by one word.
+			// It is what lets the next `bash` in that folder run unasked, which a
+			// memo keyed by tool could never do (folderconsent.go).
+			if folder, aimed := a.folderAimed(call); aimed {
+				a.rememberFolder(folder, answer.allow)
+				return answer, nil
+			}
 			a.rememberConsent(call.Function.Name, answer.allow)
 			a.rememberGrant(call.Function.Name, grantMade{})
 		}
@@ -486,6 +500,23 @@ func (a *Agent) rememberedConsent(tool string) (bool, bool) {
 	defer a.mu.Unlock()
 	allow, known := a.consentMemo[tool]
 	return allow, known
+}
+
+// rememberedAnswer is the standing answer that covers ONE CALL, and it is keyed
+// by WHAT THE QUESTION WAS ABOUT rather than always by the tool.
+//
+// A card raised about an attached folder (folderconsent.go) asked "may aforge
+// change files in this folder", so its yes is banked against the folder and
+// covers every hand aimed there — `bash` included, which is exactly the hand a
+// tool-keyed memo could never cover. Everywhere else the key is the tool, which
+// is what it has always been.
+func (a *Agent) rememberedAnswer(call ai.ToolCall) (bool, bool) {
+	if folder, aimed := a.folderAimed(call); aimed {
+		if allow, known := a.rememberedFolder(folder); known {
+			return allow, known
+		}
+	}
+	return a.rememberedConsent(call.Function.Name)
 }
 
 // forgetConsent drops a question nobody will answer. Without it an interrupted

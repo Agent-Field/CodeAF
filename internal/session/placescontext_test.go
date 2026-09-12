@@ -391,32 +391,26 @@ func TestTheConversationsFoldersRideItsFacts(t *testing.T) {
 	}
 }
 
-// REMOVING A FOLDER DOES NOT THROW AWAY THE WORK WAITING IN IT. The working
-// copies are their own record and they exist nowhere else (standingtree.go);
-// somebody tidying an indicator must not silently discard an hour of unlanded
-// changes, and the person's own folder is untouched either way.
-func TestRemovingAFolderKeepsTheWorkThatIsWaitingToLand(t *testing.T) {
-	repo := newTestRepo(t)
-	agent, _, _ := standingLab(t, repo)
-	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the changed line\n")
-	if waiting := agent.UnlandedChanges(); len(waiting) != 1 {
-		t.Fatalf("the write left %+v waiting, so this test proves nothing", waiting)
+// REMOVING A FOLDER LEAVES THE PERSON'S OWN FILES EXACTLY WHERE THEY WERE.
+// Taking an attachment off is a change to THIS CONVERSATION and to nothing on
+// their disk; the conversation simply stops being about that folder, and the
+// `# Attached folders` block stops naming it.
+func TestRemovingAFolderTouchesNothingOnDisk(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	folder := t.TempDir()
+	writeFile(t, filepath.Join(folder, "shared.txt"), "the original line\n")
+	if _, err := agent.ReferPlace(folder, PlaceSaid); err != nil {
+		t.Fatalf("ReferPlace: %v", err)
 	}
 
-	if err := agent.RemovePlace(repo); err != nil {
+	if err := agent.RemovePlace(folder); err != nil {
 		t.Fatalf("RemovePlace: %v", err)
 	}
 
-	waiting := agent.UnlandedChanges()
-	if len(waiting) != 1 || waiting[0].Folder != canonicalPath(repo) {
-		t.Fatalf("removing the folder threw away the work waiting in it: %+v", waiting)
+	if places := agent.Places(); len(places) != 0 {
+		t.Fatalf("the conversation is still about %+v", places)
 	}
-	if _, ok := agent.LandingFor(repo); !ok {
-		t.Fatal("the landing can no longer be found, so the changes cannot be put back")
-	}
-	// AND THE PERSON'S OWN FOLDER NEVER MOVED. Removing an attachment is a change
-	// to this conversation and to nothing on their disk.
-	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "the original line\n" {
+	if got := readFile(t, filepath.Join(folder, "shared.txt")); got != "the original line\n" {
 		t.Fatalf("the person's own file now says %q", got)
 	}
 }
