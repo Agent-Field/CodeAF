@@ -121,4 +121,7 @@ showed and what the journal recorded. A journey passes only when:
 
 The executable terminal suite lives in `internal/e2e/`. It drives the live v3
 surface in tmux and checks the screen, durable record, and absence of unintended
-work. The removed harness targeted the retired v1/v2 surfaces.
+work. The harness that used to sit beside this catalog targeted the retired
+v1/v2 surfaces and was removed with them; it carried one script per journey
+above, and `internal/e2e` does not — it covers selected v3 scenarios, so the
+rows here are the catalog of what a journey IS, not an index of what runs.
