@@ -272,6 +272,13 @@ request implies says, and whether the thing asked for is in the source. A
 harness that describes work it did not do fails these, which is the whole point
 of judging from the workspace.
 
+**A cell takes longer than its cap.** The judge runs after the harness has
+stopped: a `go build ./...`, a `go vet`, and one focused test in a workspace
+that is a fresh clone every time, which is minutes of compiling per cell on top
+of whatever the turn took. None of it is inside `wall_s` and none of it reaches
+a model, so it biases nothing — but a grid of twenty-four cells takes hours more
+than the sum of its caps, and that is worth knowing before starting one.
+
 The steer on the interactive door is on the **clock** (`after:30`), not on a
 marker. A person does not wait for a spinner to reach a state before changing
 their mind, and a marker-shaped wait would hand the two arms different
