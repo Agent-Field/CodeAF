@@ -899,9 +899,16 @@ type journalPace struct {
 	// front of a person and the one this row could not see. The post-turn judge
 	// stood there and held it for as long as a cheap screen and a mastermind
 	// confirm took, with the answer already fully written on the screen.
-	SealMS int64    `json:"sealMs,omitempty"`
-	Steps  int      `json:"steps,omitempty"`
-	Aside  []string `json:"aside,omitempty"`
+	SealMS int64 `json:"sealMs,omitempty"`
+	// ReaskMS is how long the request the recall THREW AWAY was on the wire: the
+	// first send to the cut. It is the price of the one move this law buys with a
+	// second request, and without it `recall:reasked` is a name for something
+	// nobody can weigh — the row's own SendMS says 1 on a turn where the person
+	// waited seven seconds (memory.go's [recallAside.cutAt] states the whole of
+	// why). Absent from every turn that did not re-ask.
+	ReaskMS int64    `json:"reaskMs,omitempty"`
+	Steps   int      `json:"steps,omitempty"`
+	Aside   []string `json:"aside,omitempty"`
 }
 
 type journalTook struct {

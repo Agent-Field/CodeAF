@@ -1351,6 +1351,9 @@ type turnPace struct {
 	// reading their answer.
 	lastWord time.Time
 	sealed   time.Time
+	// reask is when a recall that landed first cut the request in flight, so the
+	// row can say what the throw-away cost (memory.go's [recallAside.cutAt]).
+	reask time.Time
 }
 
 // sending stamps a request leaving, and closes whichever gap it ends: the
@@ -1407,6 +1410,14 @@ func (p *turnPace) resultsIn(now time.Time) {
 	p.results = now
 }
 
+// reasked stamps the moment a re-ask cut the first request. It is the caller's
+// fact rather than this clock's, which is why it arrives rather than is taken.
+func (p *turnPace) reasked(at time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.reask = at
+}
+
 // row is the turn as the journal holds it, with the aside names the caller knows
 // and this clock does not.
 func (p *turnPace) row(aside []string) journalPace {
@@ -1434,6 +1445,11 @@ func (p *turnPace) row(aside []string) journalPace {
 	if !p.lastWord.IsZero() && !p.sealed.IsZero() {
 		row.SealMS = p.sealed.Sub(p.lastWord).Milliseconds()
 	}
+	// AND WHAT THE ONE RE-ASK THREW AWAY. The first send to the cut, which is
+	// the whole of what cutting costs over having assembled the block first.
+	if !p.reask.IsZero() {
+		row.ReaskMS = p.reask.Sub(p.firstSend).Milliseconds()
+	}
 	return row
 }
 
@@ -1452,6 +1468,13 @@ func (a *Agent) journalTurnPace(pace *turnPace, recall *recallAside, marked *mar
 			// THE RE-ASK IS NAMED because it is the one move this law buys with a
 			// second request, and an audit that could not see it could not price it.
 			aside = append(aside, "recall:reasked")
+			// AND IT IS PRICED, which naming it alone never did. `SendMS` reads 1
+			// on a re-asked turn because the first request really did leave in a
+			// millisecond — and was then thrown away, so the person waited the
+			// recall out anyway. The row could report the law kept on a turn that
+			// cost seven seconds; now it reports both (memory.go's
+			// [recallAside.cutAt]).
+			pace.reasked(recall.cutMoment())
 		}
 		if recall.wasLate() {
 			// AND SO IS THE LATENESS, which is the quality half: the block was
