@@ -1784,11 +1784,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
 		// follows that, and the node it is gets named beside it.
+		//
+		// THE WORD GOES TO THE DOOR AND THE NODE STAYS HERE. A purpose is what a
+		// request is FOR and the door is the one place it is spelled onto a call
+		// (clientdoor.go); which node made it is a fact only this line knows.
+		purpose := purposeTurn
 		if a.config.taskID != 0 {
-			attemptCtx = provider.WithCallNode(provider.WithCallTag(attemptCtx, "task"),
-				strconv.FormatUint(a.config.taskID, 10))
-		} else {
-			attemptCtx = provider.WithCallTag(attemptCtx, "turn")
+			purpose = purposeTask
+			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
 		messages, carried := a.snapshotWithReasoning()
 		// OLD FROZEN TOOL RESULTS ARE ALREADY CONSUMED EVIDENCE. The live
@@ -1804,7 +1807,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
-		response, err := a.completeWithModel(attemptCtx, messages, model,
+		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
 			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {

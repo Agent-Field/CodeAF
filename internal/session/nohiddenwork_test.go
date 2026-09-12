@@ -315,3 +315,115 @@ func TestTheSenseSaysWhichSenseItIsUsing(t *testing.T) {
 		}
 	}
 }
+
+// ── AND EVERY REQUEST SAYS WHAT IT IS FOR ───────────────────────────────────
+//
+// THE STRUCTURAL HALF OF clientdoor.go's [callPurpose]. The type already makes
+// an anonymous call fail to compile; what the type cannot see is a caller that
+// satisfies it by passing the empty string, which is the same anonymous request
+// wearing the argument. Nine of the eleven callers of this door reached the
+// wire with no tag before the purpose was an argument — the guardian, vision,
+// the shaper, the spell-out, the intake, the planner, the designer, the handoff
+// draft and a saved program's step — and 2,309 of 2,839 untagged finishes in
+// ten days were this package's.
+//
+// SO THE LAW IS: A PURPOSE IS A WORD, NOT A BLANK. One caller is exempt and it
+// is named rather than inferred — [modelRoutingCompleter], which is the view of
+// a live agent that LEAVES this package, whose callers each name their own call
+// and whose tag this door must not overwrite.
+//
+// AND THE TAG IS SPELLED IN ONE PLACE. [provider.WithCallTag] may be called by
+// the door and by nothing else in this package: three callers used to stamp
+// their own, which is three spellings of one fact and the reason the other nine
+// could forget it existed.
+//
+// IT READS THE TREE ITSELF, so it runs on the laws gate of every pull request
+// (scripts/laws.sh finds it by this import).
+func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
+	set := token.NewFileSet()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// theDoors are the two spellings of the one door, and theWrapper is the one
+	// caller that may pass an empty purpose.
+	theDoors := map[string]bool{"completeWithModel": true, "completeWithNamedModel": true}
+	const theWrapper = "modelRoutingCompleter"
+	purposes := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(set, name, nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		// within is the receiver type of the function being walked, so the one
+		// exemption is a property of where the call is rather than a file name.
+		within := ""
+		ast.Inspect(file, func(node ast.Node) bool {
+			if decl, ok := node.(*ast.FuncDecl); ok {
+				within = receiverTypeName(decl)
+			}
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if selector.Sel.Name == "WithCallTag" && name != "clientdoor.go" {
+				t.Errorf("%s:%d calls provider.WithCallTag. The tag is spelled by the one door "+
+					"and nowhere else — pass a callPurpose to completeWithModel instead "+
+					"(clientdoor.go)", name, set.Position(call.Pos()).Line)
+				return true
+			}
+			if !theDoors[selector.Sel.Name] || len(call.Args) < 2 {
+				return true
+			}
+			purposes++
+			if blankPurpose(call.Args[1]) && within != theWrapper {
+				t.Errorf("%s:%d reaches the wire with no purpose. Every request this package "+
+					"makes says what it is FOR, because a tag that can be forgotten is a tag "+
+					"that will be — and the call log cannot say what a build spent its night on "+
+					"(clientdoor.go's [callPurpose])", name, set.Position(call.Pos()).Line)
+			}
+			return true
+		})
+	}
+	// AND THE LAW IS READING THE TREE IT THINKS IT IS. A walk that matched
+	// nothing would pass for ever, which is how a structural law rots.
+	if purposes < 8 {
+		t.Fatalf("only %d calls through the one door were found; the law is reading the wrong tree", purposes)
+	}
+}
+
+// blankPurpose reports an argument that names no purpose: the empty literal, or
+// a conversion of one.
+func blankPurpose(arg ast.Expr) bool {
+	switch node := arg.(type) {
+	case *ast.BasicLit:
+		return node.Kind == token.STRING && (node.Value == `""` || node.Value == "``")
+	case *ast.CallExpr:
+		// callPurpose("") is the same blank wearing its type.
+		return len(node.Args) == 1 && blankPurpose(node.Args[0])
+	}
+	return false
+}
+
+// receiverTypeName is the bare type a method hangs off, and "" for a function.
+func receiverTypeName(decl *ast.FuncDecl) string {
+	if decl.Recv == nil || len(decl.Recv.List) == 0 {
+		return ""
+	}
+	expr := decl.Recv.List[0].Type
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
+}

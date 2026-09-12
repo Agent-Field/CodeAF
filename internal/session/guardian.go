@@ -176,6 +176,7 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// (internal/lane's roles.go).
 	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(judgeCtx), lane.RoleJudge),
+		callPurpose(roles.RoleGuardian),
 		[]ai.Message{
 			textMessage("system", guardianPrompt),
 			textMessage("user", guardianQuestion(call, decision)),

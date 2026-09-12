@@ -4859,8 +4859,16 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// answer rather than the answer itself, so it is priced and drawn as the
 	// errand it is: a person is reading the turn this ends, and the clock over
 	// their answer is not this call's to move (internal/lane's roles.go).
+	//
+	// AND IT SAYS WHAT IT IS, which until now it did not: this rung reached the
+	// wire with no tag, so the dearest side-call of the whole ceiling road —
+	// a mastermind reading the turn's entire transcript — was billed to the turn
+	// and filed under nothing. It is its own purpose rather than the turn's,
+	// because it is not the turn's question: the turn asked what the person
+	// asked, and this asks what is left of it (clientdoor.go).
 	response, err := a.completeWithModel(
-		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
+		purposeHandoffDraft, messages,
 		model)
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This

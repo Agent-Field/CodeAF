@@ -172,6 +172,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 		// A side errand of the box the person is typing in, named as one so it
 		// is priced as one and never owns the clock (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
+		callPurpose(spellOutRole),
 		[]ai.Message{
 			textMessage("system", spellOutSystem),
 			// THE INSTRUCTION IS LAST, after the draft rather than above it, for
