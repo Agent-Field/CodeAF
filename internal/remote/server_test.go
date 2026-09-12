@@ -49,9 +49,9 @@ type fakeAgent struct {
 	tasks    []string
 	planners []string
 
-	// startNote is what the far engine's shaper asked the surface to carry on
-	// the started row. Empty is every ordinary start; a test that wants the
-	// note to cross the wire sets it.
+	// startNote is the far engine's line about where the work stands, carried on
+	// the started row. Empty is every ordinary start; a test that wants the note
+	// to cross the wire sets it.
 	startNote string
 
 	model  string
@@ -104,7 +104,10 @@ func (f *fakeAgent) Cancel(id string) (string, error) {
 	return "stopping task 17", f.failing
 }
 
-func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, string, error) {
+func (f *fakeAgent) StartTask(_ context.Context, brief string, solo bool) (uint64, string, string, error) {
+	if solo {
+		brief = "solo:" + brief
+	}
 	f.tasks = append(f.tasks, brief)
 	return 17, "far task", f.startNote, f.failing
 }
@@ -112,11 +115,6 @@ func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, 
 func (f *fakeAgent) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
 	f.planners = append(f.planners, brief+"|"+hint)
 	return "run-8", "far plan", f.failing
-}
-
-func (f *fakeAgent) JudgeDecomposable(_ context.Context, brief string) (bool, []string, string) {
-	f.tasks = append(f.tasks, "judge:"+brief)
-	return true, []string{"one", "two"}, "independent"
 }
 
 func (f *fakeAgent) PendingConnect() []string { return nil }

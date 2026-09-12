@@ -14,6 +14,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -611,6 +612,9 @@ func TestWorkNoWorkerCanDoStopsARunningWorkerAndLandsOnThePerson(t *testing.T) {
 // the worker has been asked something.
 type besideCompleter struct {
 	review string
+	// judge, when set, is the sizing judge's answer, given once the worker has
+	// been asked something — the same ordering the reviewer keeps.
+	judge string
 	// hold, when set, is what the worker's first answer waits for.
 	hold <-chan struct{}
 
@@ -619,6 +623,7 @@ type besideCompleter struct {
 	asked    []string
 	firstAt  int
 	answerAt int
+	judgedAt int
 	firstIn  chan struct{}
 	arrived  chan struct{}
 }
@@ -635,6 +640,25 @@ func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	switch system {
 	case titleSystem, taskNameSystem:
 		return textResponse("a name"), nil
+	case shapePrompt:
+		// A person's `/task` has its brief written beside the same worker
+		// (task_shape.go); this road is about the division, so the shaper is one
+		// that cannot answer and leaves the node on the person's words.
+		return nil, errors.New("no shaper was scripted")
+	case taskJudgePrompt:
+		if c.judge == "" {
+			return nil, errors.New("no judge was scripted")
+		}
+		select {
+		case <-c.firstIn:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		c.mu.Lock()
+		c.step++
+		c.judgedAt = c.step
+		c.mu.Unlock()
+		return textResponse(c.judge), nil
 	case divideReviewBrief:
 		select {
 		case <-c.firstIn:
@@ -705,6 +729,112 @@ func (c *besideCompleter) verdictAt() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.answerAt
+}
+
+// A PERSON'S WIDE `/task` STARTS ITS WORKER FIRST, AND THE SIZING JUDGE'S PARTS
+// REACH IT AS THE DIVISION RECEIPT — the control of issue #936. The judge used to
+// be asked in front of the task, and its yes only armed the worker with a verb;
+// it is asked beside the worker now, and its parts go through the same gates, the
+// same reviewer and the same admission a drawing does.
+//
+// THE ORDER IS MADE BY THE TEST: the judge will not answer until the worker has
+// been asked something, so a door that still asked it first would never start
+// the worker, and the bound on the wait is what fails it.
+func TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := newBesideCompleter(sketchReviewer("the auth test", "the http client", "the release notes").answer)
+	completer.judge = `{"parallelizable":true,"parts":["the auth test","the http client","the release notes"],"why":"three independent jobs"}`
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	var startedMu sync.Mutex
+	started := 0
+	partsOut := make(chan struct{})
+	graph.run = func(node *TaskNode) {
+		if node.parent == 0 {
+			graph.runOwned(node)
+			return
+		}
+		startedMu.Lock()
+		defer startedMu.Unlock()
+		if started++; started == 3 {
+			close(partsOut)
+		}
+	}
+	completer.hold = partsOut
+
+	ask := "bring the flaking auth test, the http client upgrade and the release notes up to date"
+	id, _, _, err := session.StartTask(t.Context(), ask, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := completer.request(t, 0)
+	if strings.Contains(first, divisionHandedOutBeside) {
+		t.Fatalf("the worker's FIRST request already knew its parts, so it waited for the judge: %q", first)
+	}
+	select {
+	case <-partsOut:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the judge's parts were never handed out")
+	}
+	completer.mu.Lock()
+	firstAt, judgedAt := completer.firstAt, completer.judgedAt
+	completer.mu.Unlock()
+	if firstAt == 0 || judgedAt == 0 || firstAt > judgedAt {
+		t.Fatalf("the worker was asked at step %d and the judge answered at step %d: the worker must go first", firstAt, judgedAt)
+	}
+	if spec := graph.node(id).spec; spec.armed != "" {
+		t.Fatalf("the node was armed %q after its worker's belt was built; arming is frozen at admission", spec.armed)
+	}
+	kids := graph.children(id)
+	if len(kids) != 3 {
+		t.Fatalf("the node has %d parts under it, want the 3 the judge named", len(kids))
+	}
+	for _, kid := range kids {
+		kid.finish(kid.title()+" is done", nil, "", "")
+		graph.complete(kid, TaskDone)
+	}
+	second := completer.request(t, 1)
+	if !strings.Contains(second, divisionHandedOutBeside) || !strings.Contains(second, "split into 3 parts:") {
+		t.Fatalf("the worker never read the receipt for its parts: %q", second)
+	}
+	select {
+	case <-graph.node(id).done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the divided work never landed after its parts reported")
+	}
+}
+
+// THE JUDGE'S YES IS WRITTEN OUT AS A DIVISION the way a drawing is: a part per
+// part it named, each with the stand-in done-condition the reviewer sharpens,
+// and the sentence the judge read as the evidence. A yes naming one part is not
+// a division, by the floor a drawing is held to.
+func TestTheJudgesYesIsWrittenOutAsADivision(t *testing.T) {
+	ask := "update the three regional reports"
+	args, ok := judgedDivision(ask, []string{"the north report", "the south report", "C"}, "three regions")
+	if !ok || len(args.Parts) != 3 {
+		t.Fatalf("division = %+v ok=%v", args, ok)
+	}
+	if !strings.Contains(args.Evidence, ask) || !strings.Contains(args.Evidence, "three regions") {
+		t.Fatalf("evidence %q, want the sentence the judge read and its reason", args.Evidence)
+	}
+	if part := args.Parts[0]; part.Title != "the north report" || part.Acceptance != divisionStandInDone("the north report") {
+		t.Fatalf("first part = %+v", part)
+	}
+	if bare := args.Parts[2].Title; bare == "C" {
+		t.Fatal("a bare label reached the rail as a name")
+	}
+	if _, ok := judgedDivision(ask, []string{"the whole thing"}, "one job"); ok {
+		t.Fatal("a yes naming one part was written out as a division")
+	}
 }
 
 // AND A READING THAT LANDS AFTER THE WORKER HAS SAID ITS LAST WORD IS DROPPED.

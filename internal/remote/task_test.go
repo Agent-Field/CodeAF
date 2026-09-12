@@ -11,14 +11,14 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-func TestTaskCallOutlivesTheEngineShaper(t *testing.T) {
-	if taskCallDeadline <= session.TaskShapeWindow {
-		t.Fatalf("task call gives up after %s before the %s shaper can finish", taskCallDeadline, session.TaskShapeWindow)
-	}
-}
-
+// THE TASK DOOR CROSSES WHOLE, AND SOLO CROSSES WITH IT. The engine decides
+// everything about a person's task — its width, its brief, its name — except the
+// one thing only the surface knows: whether the person said the work is one
+// worker's (issue #936). So a start is one call carrying the brief and that word,
+// and the receipt carries back the engine's one line about where the work stands.
 func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
-	far := &fakeAgent{startNote: session.TaskShapeFallbackNote}
+	const where = "the task works on a branch of /srv/app"
+	far := &fakeAgent{startNote: where}
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
 		return &Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"}, nil
 	}})
@@ -27,23 +27,18 @@ func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 
-	// AND THE FALLBACK NOTE CROSSES THE WIRE. The whole reason [TaskStarted]
-	// grew a Note is that a shaper cut on the ENGINE machine has to reach the
-	// surface drawing the started row, so the receipt is checked for it here
-	// rather than only where session hands it over.
-	id, title, note, err := loop.Client.Agent().StartTask(context.Background(), "fix it")
-	if err != nil || id != 17 || title != "far task" || note != session.TaskShapeFallbackNote {
+	id, title, note, err := loop.Client.Agent().StartTask(context.Background(), "fix it", false)
+	if err != nil || id != 17 || title != "far task" || note != where {
 		t.Fatalf("start = %d %q %q %v", id, title, note, err)
+	}
+	if _, _, _, err := loop.Client.Agent().StartTask(context.Background(), "just this", true); err != nil {
+		t.Fatal(err)
 	}
 	run, name, err := loop.Client.Agent().StartPlannerRun(context.Background(), "plan it", "two parts")
 	if err != nil || run != "run-8" || name != "far plan" {
 		t.Fatalf("planner = %q %q %v", run, name, err)
 	}
-	wide, parts, why := loop.Client.Agent().JudgeDecomposable(context.Background(), "size it")
-	if !wide || !reflect.DeepEqual(parts, []string{"one", "two"}) || why != "independent" {
-		t.Fatalf("judge = %v %v %q", wide, parts, why)
-	}
-	if !reflect.DeepEqual(far.tasks, []string{"fix it", "judge:size it"}) || !reflect.DeepEqual(far.planners, []string{"plan it|two parts"}) {
+	if !reflect.DeepEqual(far.tasks, []string{"fix it", "solo:just this"}) || !reflect.DeepEqual(far.planners, []string{"plan it|two parts"}) {
 		t.Fatalf("far calls = %v %v", far.tasks, far.planners)
 	}
 }
@@ -98,7 +93,7 @@ func TestTaskDoorRefusesWhenTheEngineDoesNotCarryIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = loop.Close() })
-	if _, _, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it"); err == nil {
+	if _, _, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it", false); err == nil {
 		t.Fatal("a taskless engine accepted Task.Start")
 	}
 }

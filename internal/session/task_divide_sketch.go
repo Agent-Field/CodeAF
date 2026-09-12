@@ -145,23 +145,22 @@ type sizingBeside struct {
 	receipt string
 }
 
-// sizeBeside starts the drawing's reading beside this worker, and answers nil
+// sizeBeside starts the division's reading beside this worker, and answers nil
 // when there is nothing to weigh. stopWork is the worker's own run's cancel,
 // which the reading holds for exactly one answer.
 //
-// IT ASKS THE SAME THREE QUESTIONS THE BELT ASKS BEFORE IT OFFERS THE VERB
-// ([Agent.mayDivide]): the road is on, this agent is a worker that may have
-// children, and this task was armed at admission. A worker that would not have
-// been given `divide_work` must not have a division submitted for it either —
-// that is the whole meaning of arming, and a harness that reached past it would be
-// the one caller in the building exempt from the rule.
+// IT ASKS TWO OF THE THREE QUESTIONS THE BELT ASKS BEFORE IT OFFERS THE VERB
+// ([Agent.mayDivide]) up front: the road is on, and this agent is a worker that
+// may have children. The third — did something that arms work say this work is
+// wide — belongs to where the division comes from, and [Agent.proposalBeside]
+// asks it of each source in its own terms.
 //
 // AND IT IS SUBMITTED ONCE. A node that already has children has already been
 // divided — by an earlier worker of this same node, before a provider fault sent
 // [Agent.workTaskNode] round again — and dividing the same work twice would hand
 // out parts nobody drew.
 func (a *Agent) sizeBeside(ctx context.Context, room *taskRoom, stopWork context.CancelFunc) *sizingBeside {
-	if !a.mayDivide() {
+	if !a.config.Divide || !a.config.mayFanOut() {
 		return nil
 	}
 	graph := a.graph()
@@ -169,25 +168,120 @@ func (a *Agent) sizeBeside(ctx context.Context, room *taskRoom, stopWork context
 	if node == nil || len(graph.children(node.id)) > 0 {
 		return nil
 	}
-	drawn := node.drawn()
-	if !drawn.proposes() {
-		return nil
-	}
-	proposal, ok := drawn.proposal()
-	if !ok {
-		return nil
-	}
-	args, err := json.Marshal(proposal)
-	if err != nil {
+	propose := a.proposalBeside(node)
+	if propose == nil {
 		return nil
 	}
 	sizing := &sizingBeside{}
 	sizing.reading = beside(ctx, func(ctx context.Context) {
-		division := a.weighDivision(ctx, args, askedBeside)
-		sizing.person, sizing.receipt = a.deliverBeside(ctx, room, &division, drawn, stopWork)
+		proposal, ok := propose(ctx)
+		if !ok {
+			return
+		}
+		args, err := json.Marshal(proposal.args)
+		if err != nil {
+			return
+		}
+		division := a.weighDivision(ctx, args, proposal.asker)
+		sizing.person, sizing.receipt = a.deliverBeside(ctx, room, &division, proposal.after, stopWork)
 		a.recordDivision(division)
 	})
 	return sizing
+}
+
+// besideProposal is one division put to the road beside a worker: the parts,
+// the step the proposal put behind them, and who proposed it.
+type besideProposal struct {
+	asker divisionAsker
+	args  divideArguments
+	after string
+}
+
+// proposalBeside is WHERE THE DIVISION A NODE'S FIRST WORKER IS STARTED BESIDE
+// COMES FROM, and nil where it comes from nowhere. There are two sources, and
+// both answer inside the reading, never in front of the worker:
+//
+//   - A DRAWING SOMEBODY ALREADY WROTE ([taskSpec.drawn]): a mark's second
+//     reader drew the parts of a turn it handed over. It is weighed only on work
+//     that was armed at admission, which that road always is — a worker that
+//     would not have been given `divide_work` must not have a division
+//     submitted for it either.
+//   - A PERSON'S SENTENCE NOBODY HAS READ FOR WIDTH ([taskSpec.unsized]): the
+//     sizing judge is asked, beside the worker, and its yes IS the arming — the
+//     same model's reading of breadth that used to arm the work at admission,
+//     arriving after the belt was built and so arriving as parts instead of as a
+//     verb ([askedByJudge]). A no, or a judge nobody could reach, is one worker,
+//     which is what is already running.
+//
+// Both then go through the one body every division goes through
+// ([Agent.weighDivision]), so the evidence gate, the free hands, the scope rules
+// and the reviewer weigh a judge's parts exactly as they weigh a worker's.
+func (a *Agent) proposalBeside(node *TaskNode) func(context.Context) (besideProposal, bool) {
+	if drawn := node.drawn(); drawn.proposes() {
+		if !node.dividing() {
+			return nil
+		}
+		return func(context.Context) (besideProposal, bool) {
+			args, ok := drawn.proposal()
+			return besideProposal{asker: askedBeside, args: args, after: drawn.afterParts()}, ok
+		}
+	}
+	judge := a.graph().home
+	request, unsized := node.widthToRead()
+	if judge == nil || !unsized {
+		return nil
+	}
+	return func(ctx context.Context) (besideProposal, bool) {
+		wide, parts, why := judge.judgeDecomposable(ctx, request)
+		if !wide {
+			return besideProposal{}, false
+		}
+		args, ok := judgedDivision(request, parts, why)
+		return besideProposal{asker: askedByJudge, args: args}, ok
+	}
+}
+
+// widthToRead answers the person's sentence where nobody has read it for width
+// yet, and spends the flag in the same breath: the judge is asked about a node
+// once, whatever becomes of its answer ([taskSpec.unsized]).
+func (n *TaskNode) widthToRead() (string, bool) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if !n.spec.unsized {
+		return "", false
+	}
+	n.spec.unsized = false
+	return n.spec.request, true
+}
+
+// judgedDivision is the sizing judge's yes written out as a division: one part
+// per part it named, and the sentence it read as the evidence.
+//
+// THE EVIDENCE IS WHAT THE JUDGE WAS SHOWN, which is the person's own sentence,
+// with its reason under it — the same rule a drawing follows ([drawnDivision.evidence]):
+// what the gates and the reviewer weigh is what somebody saw, not how well the
+// parts were written up. The parts are the judge's own six words apiece, named
+// through [sketchName] so a bare label never reaches the rail, and each carries
+// the stand-in done-condition the reviewer is asked to sharpen
+// ([divisionStandInDone]); the family's brief is composed around every part by
+// the one composer (task_divide_compose.go).
+//
+// A YES WITH FEWER PARTS THAN A DIVISION NEEDS IS NOT ONE, by the same floor a
+// drawing is held to ([checkpointSketchParts]).
+func judgedDivision(request string, named []string, why string) (divideArguments, bool) {
+	if len(named) < checkpointSketchParts {
+		return divideArguments{}, false
+	}
+	parts := make([]dividePart, 0, len(named))
+	for index, said := range named {
+		parts = append(parts, dividePart{
+			Title:      sketchName(said, said, index),
+			Summary:    said,
+			Brief:      said,
+			Acceptance: divisionStandInDone(said),
+		})
+	}
+	return divideArguments{Evidence: clip(withReport(request, why), divideReviewEvidenceBytes), Parts: parts}, true
 }
 
 // end joins the reading and answers the person's own job, empty on every road
@@ -227,7 +321,7 @@ func (s *sizingBeside) handedOut() string {
 // TAKEN ONCE PER NODE AND COVERS ONE ADMISSION — a commit of the worker's own
 // files and a handful of admits — so the tail's next read waits that long at
 // most, and only on the one pass it coincides with.
-func (a *Agent) deliverBeside(ctx context.Context, room *taskRoom, division *weighedDivision, drawn drawnDivision, stopWork context.CancelFunc) (string, string) {
+func (a *Agent) deliverBeside(ctx context.Context, room *taskRoom, division *weighedDivision, after string, stopWork context.CancelFunc) (string, string) {
 	if !division.admissible() && division.person == "" {
 		return "", ""
 	}
@@ -256,7 +350,7 @@ func (a *Agent) deliverBeside(ctx context.Context, room *taskRoom, division *wei
 	if division.line.Admitted == 0 {
 		return "", ""
 	}
-	receipt := withReport(divisionHandedOutBeside, withReport(said, drawn.afterParts()))
+	receipt := withReport(divisionHandedOutBeside, withReport(said, after))
 	a.enqueueNote(briefNote(receipt))
 	return "", receipt
 }

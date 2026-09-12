@@ -529,6 +529,20 @@ type taskRecord struct {
 	// checkpoint to write back. A record written before this field decodes with
 	// nil here and is settled on the kind alone, exactly as it always was.
 	Quick *quickRecord `json:"quick,omitempty"`
+	// Unshaped and Unsized are THE TWO READINGS THIS NODE IS STILL OWED — the
+	// shaper's brief and the sizing judge's width — both taken beside the node's
+	// first worker rather than in front of it ([taskSpec.unshaped],
+	// [taskSpec.unsized], task_shape.go and task_divide_sketch.go).
+	//
+	// THEY SURVIVE THE PROCESS BECAUSE THE WAIT CAN. A person's `/task` admitted
+	// while the lanes are full is queued with no worker, and a restart in that
+	// window without these fields brings the node back with nothing owed: the
+	// brief stays the person's raw sentence and the acceptance the canned
+	// stand-in forever, with no road left to write either. Absent in every
+	// checkpoint written before they existed, and absent on every node that owes
+	// nothing, which is every node but a person's own typed task.
+	Unshaped bool `json:"unshaped,omitempty"`
+	Unsized  bool `json:"unsized,omitempty"`
 
 	// Expects is the checkable half of the handoff this node was given — what its
 	// brief assumes of the world it gets ([TaskNode.Expects], handoffcontract.go).
@@ -1189,6 +1203,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Quick:          quickRecordLocked(n.spec.quick),
+		Unshaped:       n.spec.unshaped,
+		Unsized:        n.spec.unsized,
 		Expects:        append([]Expectation(nil), n.spec.expects...),
 		Assignment:     recordedAssignment(n.assignment),
 	}
@@ -1863,6 +1879,11 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			// AND A QUICK NODE'S BODY, which is what tells the runner it is quick
 			// and what the next checkpoint writes back ([taskRecord.Quick]).
 			quick: record.Quick.body(),
+			// AND THE READINGS THIS NODE IS STILL OWED, so that a `/task` that was
+			// queued when the engine went down still has its brief written and its
+			// width read beside the worker it finally gets ([taskRecord.Unshaped]).
+			unshaped: record.Unshaped,
+			unsized:  record.Unsized,
 		},
 		// THE PREFLIGHT IS OWED ONLY BY A NODE THAT HAS NOT RUN. The contract is
 		// answered before a node's first step (task_run.go's

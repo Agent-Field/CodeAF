@@ -438,14 +438,14 @@ const (
 // cover the three doors work comes through: the typed command, the model's own
 // belt, and the text of the brief itself.
 //
-//   - THE JUDGE ALREADY SAID SO. `/task <brief>` asks a sizing judge whether
-//     the work parallelizes (task_person.go's [Agent.judgeDecomposable]) and
-//     then starts ONE WORKER whatever the answer was — a yes arms that worker
-//     rather than opening a planner, and the surface says so in one dim line
-//     (internal/tui3's taskcommand.go). THAT IS THE POINT OF THE WAVE, and it
-//     is now the shape wide work takes by default: the upfront choice is gone
-//     because a single worker that turns out to be holding six jobs can say so
-//     from the material instead of from the brief.
+//   - A MODEL THAT READ THE WORK SAID SO BEFORE IT WAS ADMITTED. A turn handed
+//     over at the ceiling is read by a mastermind that draws its parts, and the
+//     yes is banked against the goal the handover admits
+//     ([Agent.rememberDivisible], checkpoint.go). A person's `/task` is NOT armed
+//     this way any more: its sizing judge is asked beside the worker, after the
+//     belt was built, and its yes arrives as a division proposed for that worker
+//     (task_divide_sketch.go's [Agent.proposalBeside]) rather than as a verb the
+//     worker would have had to reach for.
 //   - THE PROPOSER SAID SO IN ITS OWN WORDS. propose_task carries a `wide`
 //     argument ([taskSpec.wide], task.go), and it is the model's half of the
 //     same flip: a chat model that judged the work broad is answering the
@@ -558,18 +558,17 @@ func enumeratesWidth(pieces ...string) bool {
 	return splitgate.WorthIt(strings.Join(pieces, "\n"))
 }
 
-// rememberDivisible banks a yes from the sizing judge against the exact text it
-// was asked about. It is one entry, not a map: the judge is asked immediately
-// before the work is started, by one command, and a bank that grew for the life
-// of the session would be remembering answers about work that was never begun.
+// rememberDivisible banks a model's yes about width against the exact text it
+// was about. It is one entry, not a map: the handover that banks it admits the
+// work on its next line, and a bank that grew for the life of the session would
+// be remembering answers about work that was never begun.
 func (a *Agent) rememberDivisible(brief string) {
 	a.mu.Lock()
 	a.divisibleAsk = strings.TrimSpace(brief)
 	a.mu.Unlock()
 }
 
-// judgedDivisible reports whether the sizing judge's last yes was about this
-// text. The comparison is exact on the trimmed text rather than fuzzy, because
+// judgedDivisible reports whether the last banked yes was about this text. The comparison is exact on the trimmed text rather than fuzzy, because
 // a near-miss here would arm a road for work nobody judged.
 func (a *Agent) judgedDivisible(text string) bool {
 	text = strings.TrimSpace(text)
@@ -583,7 +582,7 @@ func (a *Agent) judgedDivisible(text string) bool {
 
 // ── the verb ────────────────────────────────────────────────────────────────
 
-// The two askers a division can have, and the five ways one ends. They are
+// The three askers a division can have, and the five ways one ends. They are
 // written down because the JOURNAL is what a bench reads (sessionfile.go's
 // [journalDivision]), and a decision spelled two ways is two decisions to
 // whatever is counting.
@@ -600,6 +599,7 @@ func (a *Agent) judgedDivisible(text string) bool {
 const (
 	divisionByWorker = "worker"
 	divisionBySketch = "sketch"
+	divisionByJudge  = "judge"
 
 	divisionAdmitted         = "admitted"
 	divisionRefusedMalformed = "refused:arguments"
@@ -674,15 +674,23 @@ const (
 // node was handed is weighed BESIDE a worker that is already at work
 // (task_divide_sketch.go), and there the worker's own call is what the row is
 // about — a phase word over it would be the row explaining a wait nobody is in.
+//
+// AND WHETHER THE ASKER IS ITSELF A MODEL'S READING OF BREADTH, which is the one
+// thing the evidence gate's tiebreak exists to honour. Everywhere else that
+// reading arrives as the node's arming ([TaskNode.armedByJudgement]); the sizing
+// judge's own parts arrive after the worker was built, when the arming is frozen
+// ([taskSpec.armed]), so they carry the reading with them instead.
 type divisionAsker struct {
 	// name is the word the journal keeps ([journalDivision.Source]).
-	name  string
-	waits bool
+	name    string
+	waits   bool
+	breadth bool
 }
 
 var (
 	askedByWorker = divisionAsker{name: divisionByWorker, waits: true}
 	askedBeside   = divisionAsker{name: divisionBySketch, waits: false}
+	askedByJudge  = divisionAsker{name: divisionByJudge, waits: false, breadth: true}
 )
 
 // divideWork is the tool's whole life, and it is a WRAPPER because the life is
@@ -846,7 +854,7 @@ func (a *Agent) weighDivision(ctx context.Context, args json.RawMessage, asker d
 	// which is why the machinery stays rather than being deleted with the
 	// default.
 	thin := !splitgate.Judge(parsed.Evidence, nil).Keep
-	if thin && !node.armedByJudgement() {
+	if thin && !node.armedByJudgement() && !asker.breadth {
 		return ended(divisionRefusedFloor, divisionTooNarrow(parsed.Evidence))
 	}
 	// GATE TWO: THE FREE HANDS, AND IT IS THE LANES ONLY.

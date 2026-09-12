@@ -336,12 +336,12 @@ func (a *app) clearConversation() {
 	// The offers and the sign-ins belong to the conversation that raised them
 	// (connect.go), and a browser standing open on one is a browser nobody is
 	// coming back to.
-	// AND THE FORMING BLOCKS GO WITH IT (formingblock.go). A wait is a command
-	// somebody typed into THIS conversation, and one carried across the switch
+	// AND THE FORMING BLOCKS GO WITH IT (formingblock.go). A wait is a proposal
+	// somebody approved in THIS conversation, and one carried across the switch
 	// would spin at the tail of a transcript it has nothing to do with — with no
 	// door left to answer it, because the answer comes back on a lane this
 	// session no longer reads.
-	a.waits, a.waitAt = nil, 0
+	a.waits = nil
 	a.dropConnectAsks()
 	a.connPanel = connectPanel{}
 	// The harness offer's own question goes with the conversation that raised it

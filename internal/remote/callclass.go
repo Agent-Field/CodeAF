@@ -143,7 +143,7 @@ func classify(method string) callClass {
 		MethodStandingItems, MethodStandingWatch,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
-		MethodTaskRoom, MethodTaskPending, MethodTaskJudge, MethodTaskEffort,
+		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,

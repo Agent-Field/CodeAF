@@ -134,11 +134,6 @@ const (
 	// is this law read strictly: the press reads the span the layout recorded
 	// (task.go's [app.railLead]), so a state cell nobody is pointing at is the
 	// row's, and the row is the node's door.
-	// hoverForming is a row of the forming block at the transcript tail
-	// (formingblock.go); index is the wait it belongs to. It is a kind of its own
-	// rather than a hoverEntry because that one is keyed by ENTRY and this block
-	// belongs to no entry — it is what stands where a block is about to be.
-	hoverForming
 	hoverRail
 	// hoverRailArea is the roster's non-node space. The rail remains one
 	// pointer target even between rows, because its footer offer follows the
@@ -552,12 +547,6 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
-		case r.hit == hitForming:
-			// THE WAIT AND NOT THE ROW. A wait's compact row and the preview under
-			// it are one thing to press, so they light together (formingblock.go's
-			// [app.formingHot]) — and the wait is named by its place in the list,
-			// which is what the row carries in place of an entry.
-			return hoverAt{kind: hoverForming, index: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness:
 			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is

@@ -12,19 +12,20 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const (
-	taskJudgeTimeout = 3 * time.Second
-)
+// taskJudgeTimeout is the sizing judge's own deadline. It is the call's end and
+// no longer anybody's pause: the judge reads the person's sentence beside a
+// worker that has already started, and three seconds is the figure it carried
+// when the surface held the command for it, left where it was.
+const taskJudgeTimeout = 3 * time.Second
 
 // taskJudgePrompt sizes one piece of work. WHAT IT DECIDES IS NARROWER THAN IT
-// LOOKS, and the last paragraph is the whole of the change this wave made to
-// it: the answer no longer settles how the work runs, only whether a planner is
-// offered. A single worker that opens the material and finds six separate jobs
-// in it can now split itself and stay to fold the parts back together
-// (task_divide.go), so a no here is no longer a decision that the work will
-// only ever be one pair of hands. That makes the judge free to be strict — the
-// cost of a wrong no fell to nearly nothing — and being strict is what it was
-// always asked to be ("when unsure, false").
+// LOOKS: the answer never settles whether the work starts, or how. The work has
+// already started as one worker by the time this is asked — the judge reads the
+// person's sentence BESIDE that worker (task_divide_sketch.go's
+// [Agent.proposalBeside]) — and its yes is a division proposed for the worker,
+// put through the same gates and the same reviewer any division is. A no costs
+// nothing, because one worker is what is already running, which is what frees
+// the judge to be strict ("when unsure, false").
 const taskJudgePrompt = `Decide whether this task is meaningfully parallelizable or nestable for speed or quality. Parallel means independent parts can proceed at the same time and a planner can combine them; a merely long sequence is not parallel.
 
 Answer with exactly one JSON object and no markdown:
@@ -43,39 +44,37 @@ type taskJudgeVerdict struct {
 // StartTask starts one person-authored task without routing it through the chat
 // model or presenting the model's proposal card.
 //
-// THE BRIEF IS SHAPED BEFORE IT IS ADMITTED (task_shape.go), and the shaped text
-// is what the node, the room, the roster and the journal all carry — there is no
-// second, secret version of the work anywhere.
+// ── NOTHING IS WAITED FOR IN FRONT OF IT ──
 //
-// THE TITLE IS SHAPED WITH IT, and the reason is what the rail actually draws:
-// THREE WORDS ([taskTitleOf], tui3). The first three words of a typed sentence
-// are whatever that sentence happened to open with — "can you go", "please have
-// a", "look into why" — so a rail of them names every task after the way somebody
-// cleared their throat. The shaper has already read the work closely enough to
-// write a worker's brief about it, so it is asked for the name in the same
-// answer; where it did not run, [taskPersonTitle] cuts the old mechanical one and
-// nothing is lost but a good name.
+// WHAT WAS TRUE: the surface asked the sizing judge (three seconds) and then this
+// door asked the shaper (twenty-five) before the node was admitted, in series,
+// and on a thinking model both ran their windows out and returned nothing — so
+// every `/task` read `shaping the brief…` for twenty-eight seconds and then
+// started on the person's sentence anyway (issue #936).
+//
+// WHAT IS TRUE NOW: the node is admitted here, at once, on the person's own
+// sentence and the canned done-condition, and both readings run BESIDE ITS FIRST
+// WORKER through the one mechanism every answer beside the work comes through
+// (task_beside.go). The shaper writes the brief and hands it to the worker when
+// it lands (task_shape.go); the judge reads the sentence for width and its parts
+// are weighed as a division the worker is handed (task_divide_sketch.go). Neither
+// decides whether the work may start, and the worker's first request waits on
+// neither.
+//
+// solo is the person saying the work is one worker's and asking for no reading
+// of its width — `/task solo`, or a standing answer of `single` — and it is the
+// only thing the judge needs to be told not to do.
+//
+// THE NAME is the one the namer gives every node nothing named
+// ([TaskGraph.nameNode]), asked the moment the node exists; until it lands, the
+// title is the mechanical cut of the person's opening words ([taskPersonTitle]).
 //
 // WHAT IS STILL THEIRS, WORD FOR WORD, is the summary under the row and the
-// request the worker is told outranks anything a model wrote. A shaper that could
-// not run leaves the brief exactly as they typed it.
-func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, string, error) {
+// request the worker is told outranks anything a model wrote.
+func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
 		return 0, "", "", errors.New("a task needs a brief")
-	}
-	shaped := a.shapeBrief(ctx, brief)
-	title := taskName(shaped.Title, brief)
-	work, acceptance := shaped.Brief, shaped.Acceptance
-	// THE ONE HONEST LINE ABOUT A CUT SHAPER. Path (a) of issue #133: the
-	// person's words are the brief either way — display-only — but where a
-	// shaper was genuinely invoked and came back cut, the surface that draws
-	// the started row carries one dim line saying so. Every silent
-	// pass-through (no shaper configured, an empty request, a whole answer
-	// that failed to parse) leaves this empty.
-	note := ""
-	if shaped.FellBack {
-		note = TaskShapeFallbackNote
 	}
 	graph := a.graph()
 	id := graph.reserve()
@@ -107,19 +106,14 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 	// this is the id THIS node runs on, which is the only one anybody can be told
 	// up front.
 	//
-	// THE REQUEST STAYS THE PERSON'S SENTENCE whatever the shaper wrote, and
-	// [composeBrief] prints it above the work under the heading that says whose
-	// words they are, with the rule that theirs win where the two read
-	// differently (task_brief.go). Where nothing shaped it the two halves are
-	// identical and that same function prints them once.
-	// THE NAME IS THE SHAPER'S WHERE IT WROTE ONE, and where it did not the title
-	// above is the mechanical cut of the person's own opening words — which is
-	// what [taskSpec.named] says, and what sends the cheap namer after it once
-	// the node is running (taskname.go).
+	// THE BRIEF IS THEIR SENTENCE, STANDING IN, and [taskSpec.unshaped] says so:
+	// [composeBrief] prints the request once where the two halves are identical,
+	// and the shaper's brief replaces the stand-in when it lands (task_shape.go).
 	spec := taskSpec{
-		title: title, named: strings.TrimSpace(shaped.Title) != "",
-		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
-		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
+		title: taskPersonTitle(brief), summary: firstLine(brief), request: brief,
+		origin: a.taskOriginRef(), brief: brief, acceptance: taskPersonAcceptance,
+		model:    a.resolveTaskModel("").model,
+		unshaped: true, unsized: !solo,
 		// AND WHAT WAS SAID AROUND IT, from the one compiler every door uses
 		// (admission.go). A typed task is the door where the person has most
 		// often already settled something in the conversation above it — the
@@ -131,12 +125,12 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 	// ladder a proposal gets, because a person who opened aforge in their home
 	// directory and typed `/task fix the crash` is in exactly the position issue
 	// #76 was written about — and the one thing this door cannot do is ask, so it
-	// takes the rung below rather than stopping.
+	// takes the rung below rather than stopping. The ladder reads the paths in
+	// the person's own sentence, which is the brief it is handed here.
 	stand := a.taskGroundOrStandingIn(spec)
 	spec.ground, spec.mode = stand.dir, stand.mode
-	note = withReport(note, stand.redirect)
 	graph.admit(id, spec)
-	return id, title, note, nil
+	return id, spec.title, stand.redirect, nil
 }
 
 // THE PLANNER DOOR A PERSON'S COMMAND USED TO OPEN IS GONE FROM THIS FILE.
@@ -147,29 +141,17 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 // worker that starts, opens the material and then hands out what it can actually
 // see is the shape the measured runs favour (internal/splitgate, task_divide.go).
 //
-// NOTHING WAS LOST WITH IT. The shaping and naming above are the same two calls
-// [Agent.StartTask] makes, on the road that survived; the planner ENGINE is
+// NOTHING WAS LOST WITH IT. The shaping and naming it made are the two calls a
+// person's task still gets on the road that survived — the shaper beside its
+// first worker, the namer at admission — and the planner ENGINE is
 // untouched and still shipped ([Agent.RunOrchestrate], orchestrate.go), reached
 // today by cmd/harness-design's own driver — no conversation reaches it at all
 // since the anchored cue went the same way this command's word did (loop.go).
 // What went here is one command's approach road, and a door with no caller is a
 // door the next reader assumes somebody walks through.
 
-// taskName settles what a person's task is called: the shaper's name where it
-// wrote one, and the mechanical cut of their own opening words where it did not.
-//
-// It is a function of its own rather than two lines inside [Agent.StartTask]
-// because the CHOICE is the thing worth naming and testing on its own: which of
-// two names a task ends up wearing, and the fact that the shaper being offline
-// costs a good name and nothing else. It had a second caller until the planner
-// door above went, and it is written to be called again.
-func taskName(shaped, brief string) string {
-	if shaped = strings.TrimSpace(shaped); shaped != "" {
-		return shaped
-	}
-	return taskPersonTitle(brief)
-}
-
+// taskPersonTitle is what a person's task is called until the namer answers:
+// the first eight words of their own opening line.
 func taskPersonTitle(brief string) string {
 	words := strings.Fields(firstLine(brief))
 	if len(words) > 8 {
@@ -178,12 +160,8 @@ func taskPersonTitle(brief string) string {
 	return clip(strings.Join(words, " "), titleLimit)
 }
 
-// JudgeDecomposable asks one bounded auxiliary question. Every failure is a no:
-// the caller can start a single task without teaching a person about this call.
-func (a *Agent) JudgeDecomposable(ctx context.Context, brief string) (bool, []string, string) {
-	return a.judgeDecomposable(ctx, brief)
-}
-
+// judgeDecomposable asks one bounded auxiliary question. Every failure is a no:
+// a no leaves the one worker that is already running exactly as it was.
 func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []string, string) {
 	ctx, cancel := context.WithTimeout(ctx, taskJudgeTimeout)
 	defer cancel()
@@ -199,15 +177,6 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 		}
 		a.addAuxiliaryUsage(response, judge, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
-			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT, AND IT IS WHAT THE
-			// WHOLE CALL IS FOR NOW. A yes used to raise a card offering a
-			// planner; today `/task <brief>` starts one worker either way and
-			// this banked yes is what arms that worker to hand the work out
-			// once it has opened the material and found the width is real
-			// (task_divide.go's [Agent.armDivision]).
-			if verdict.Parallel {
-				a.rememberDivisible(brief)
-			}
 			return verdict.Parallel, verdict.Parts, verdict.Why
 		}
 		messages = append(messages, textMessage("assistant", response.Text()),

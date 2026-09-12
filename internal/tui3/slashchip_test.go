@@ -229,8 +229,8 @@ func TestTaskTagUsesTheTaskCommandRoad(t *testing.T) {
 	a := newTestApp(door)
 	typeInto(t, a, "investigate the wrap /task")
 	drive(t, a, key("enter"))
-	if door.judgeCalls != 1 {
-		t.Fatalf("task tag made %d sizing calls", door.judgeCalls)
+	if door.singleCalls != 1 || door.brief != "investigate the wrap" {
+		t.Fatalf("task tag started %d tasks with brief %q", door.singleCalls, door.brief)
 	}
 	if a.input.String() != "" {
 		t.Fatalf("task tag left %q in the draft", a.input.String())

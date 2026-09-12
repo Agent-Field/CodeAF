@@ -50,15 +50,6 @@ the ones this job is genuinely exposed to.
 which file, which format, how long, which of two plausible readings, what to do when the
 obvious route is blocked. Decide it and say so.
 
-**Where did the person ask it to happen?** Preserve a repository or folder path they
-named as `where`; do not replace it with the current directory and do not guess a path
-from a project name. Use `in place` only for work that belongs directly in a plain-folder
-workspace. A repository with at least one commit gets a branch even if `in place` is
-asked for, and the person is told about the correction; a repository with no commit yet,
-and a bare one, are worked in place like any plain folder, because there is nothing to cut
-a branch from. Otherwise leave `where` empty: the task runner will
-give the work a copy of its own, cut from the conversation's project into the task folder.
-
 **What does done look like, and how would somebody else confirm it?** Not "the page is
 written" but the thing a second party could check without taking the worker's word for it.
 
@@ -77,16 +68,6 @@ brief made of them is a brief that constrains nothing.
 
 ## What you write
 
-**The title:** what this work will be called on a list beside a dozen others. Two or three
-words, lowercase, no quotes and no full stop. Name the WORK — the thing that will exist
-when it is done — in the person's own vocabulary, not yours: `frieren pdf summary`,
-`nil-map crash fix`, `q3 pricing email`.
-
-The column it is drawn in shows three words, so a fourth word is a word nobody reads.
-Never open with the verb somebody happened to type — `can you`, `please`, `have a look
-at`, `write me` — never with a file path, and never with a category word that would fit
-any task at all: `task`, `request`, `work`, `analysis of`, `report on`.
-
 **The brief:** tight paragraphs addressed to the worker in the second person. Not a form,
 not a questionnaire, not headings for their own sake. It opens with the person's request
 quoted word for word and continues with what you worked out above.
@@ -94,8 +75,8 @@ quoted word for word and continues with what you worked out above.
 **The acceptance:** one separate statement of done-ness that somebody other than the
 worker could check.
 
-Keep it bounded. This is read by a worker about to start, and read again mid-flight when
-it has lost the thread, so it has to stay short enough to re-read. Aim under 300 words;
+Keep it bounded. This reaches a worker that has already started on the person's words, and
+is read again mid-flight when it has lost the thread, so it has to stay short enough to re-read. Aim under 300 words;
 never past 600, however long the request was. Cut every sentence that would not change
 what the worker does.
 
@@ -103,4 +84,4 @@ what the worker does.
 
 Exactly one JSON object. No markdown, no code fence, no commentary before or after it:
 
-{"title":"...","brief":"...","acceptance":"...","where":"..."}
+{"brief":"...","acceptance":"..."}

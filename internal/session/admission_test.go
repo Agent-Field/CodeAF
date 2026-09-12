@@ -463,7 +463,7 @@ func TestAnAdmittedQuoteAddressesALineThatIsReallyThere(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "the CSV column order has to survive the rewrite"))
 	collect(t, mustSubmit(t, agent, "now start on the importer"))
 
-	id, _, _, err := agent.StartTask(context.Background(), "rewrite the importer so it streams")
+	id, _, _, err := agent.StartTask(context.Background(), "rewrite the importer so it streams", false)
 	if err != nil {
 		t.Fatalf("StartTask: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestAdmissionSurvivesASessionReopen(t *testing.T) {
 	}
 
 	second := admissionAgent(t, &scriptedCompleter{}, journal)
-	id, _, _, err := second.StartTask(context.Background(), "rewrite the importer so it streams")
+	id, _, _, err := second.StartTask(context.Background(), "rewrite the importer so it streams", false)
 	if err != nil {
 		t.Fatalf("StartTask: %v", err)
 	}
@@ -763,7 +763,7 @@ func TestAHandlePointsAtAResultThatCanBeFetched(t *testing.T) {
 
 	collect(t, mustSubmit(t, agent, "look at the notes and then rewrite the importer"))
 
-	id, _, _, err := agent.StartTask(context.Background(), "rewrite the importer so it streams")
+	id, _, _, err := agent.StartTask(context.Background(), "rewrite the importer so it streams", false)
 	if err != nil {
 		t.Fatalf("StartTask: %v", err)
 	}

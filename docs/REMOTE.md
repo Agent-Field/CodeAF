@@ -492,6 +492,14 @@ by the engine agent and its existing consent answer already returns to that
 same agent. Saying yes therefore starts and records the far task without the
 surface commissioning it a second time.
 
+**Amended by version 16 (#936).** `Task.Judge` is retired, and `Task.Start`
+carries the brief and a `solo` flag. The typed door no longer sizes before it
+starts: the engine admits the task at once and reads its width and writes its
+brief beside the task's first worker, so the surface has nothing to ask first.
+`solo` crosses because it is the one thing the person can still say about
+width. A version-15 surface would call a door that no longer exists, so the
+handshake moves again.
+
 ## Decision 15 — Version 7 opens a running task by id
 
 **Decision.** `Task.Room` reads the bounded journal tail for a node in the

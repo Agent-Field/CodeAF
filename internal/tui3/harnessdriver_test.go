@@ -539,14 +539,12 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 	events := make(chan session.Event)
 	stirs := make(chan behindStirMsg)
 	wakes := make(chan (<-chan session.Event))
-	shaping := make(chan shapingRead)
 	var a app
 
 	// One command per name in [blockingCommands] that is not an exception.
 	// The map is written out rather than derived so that a waiter added to the
 	// table without a case here fails this test rather than slipping through.
 	built := map[string]tea.Cmd{
-		"pumpShaping":        a.pumpShaping(1, shaping),
 		"waitDesign":         waitDesign(events, 1),
 		"waitEvent":          waitEvent(events, 1),
 		"waitGuestNotices":   waitGuestNotices(events, 1),

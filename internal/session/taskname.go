@@ -422,10 +422,21 @@ func (g *TaskGraph) rename(node *TaskNode, name string) {
 		return
 	}
 	node.spec.title = name
+	g.mu.Unlock()
+	g.republish(node)
+}
+
+// republish keeps a node whose spec was written after admission, and tells the
+// world. It is the second half of every write that completes a spec late — a
+// name ([TaskGraph.rename]), a person's brief (task_shape.go) — and it is one
+// function for the reason rename states: the checkpoint and the update take
+// other locks, so they come after the write's own, and they are not
+// [TaskGraph.announce], which is about a node's ending.
+func (g *TaskGraph) republish(node *TaskNode) {
+	g.checkpoint()
+	g.mu.Lock()
 	home := g.home
 	g.mu.Unlock()
-
-	g.checkpoint()
 	if home != nil {
 		home.emitTaskUpdate(node.notice())
 	}

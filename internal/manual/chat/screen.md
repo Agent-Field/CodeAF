@@ -2,13 +2,12 @@
 
 ## Why is there a line next to my task
 
-After you send `/task <brief>`, the transcript tail temporarily shows one dim forming
-block. Each row begins with the thin `▏ ` hairline: the word `task`, your own brief
-verbatim in quotes, and the live `sizing it up…` or `shaping the brief…` spinner and
-clock. Long briefs are fitted to about two rows. The phase changes inside that same
-block. As soon as the task starts, the whole scaffold and hairline collapse into the
-ordinary started-task row; if it fails, they collapse into the error line instead. No
-forming block is drawn when a task command is not in flight.
+The thin `▏ ` hairline at the transcript tail is the forming block, drawn only while a
+task you approved from a proposal card is coming into existence: the word `task`, the
+task's name, and a live spinner and clock on `shaping the brief…`. As soon as the task
+starts, the whole scaffold and hairline collapse into the ordinary task row. A typed
+`/task <brief>` draws no forming block at all — it has no wait in front of it; its
+started row appears at once. No forming block is drawn when nothing is forming.
 
 ## What the frame draws, top to bottom
 

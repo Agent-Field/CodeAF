@@ -110,11 +110,11 @@ tags** anywhere else in a draft:
 - `keep the tests green /standing` removes `/standing` from the sentence and sends
   `keep the tests green` through the standing-order door. `/orders` is the same tag.
 - `please investigate the flaky test /task` removes `/task` and sends the remaining
-  brief through the task sizing road.
+  brief through the same door `/task <brief>` opens.
 
-Both roads stop at something you can see and answer: standing raises its ratification
-card, and task raises its sizing choice when there is a choice to make. A pasted tag does
-not silently do work. With no other words, each tag behaves like that command's existing
+Both roads end at something you can see: standing raises its ratification card, and task
+starts one worker in the open — its started row, and its row on the roster, where it can be
+stopped. A pasted tag does not silently do work, because the chip says what enter will do. With no other words, each tag behaves like that command's existing
 bare form. With two live tags aforge sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
 
@@ -214,8 +214,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | — | opens the six-seat reading: the model you talk to, then the three crew presets |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
-| `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
-| `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
+| `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
+| `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
@@ -770,7 +770,7 @@ hits.
 nothing spent yet — this session has not sent a turn.
 ```
 
-## /budget — setting a limit from the message box
+## /budget — setting a limit from the message box, without opening settings
 
 `/budget` (alias `/limits`) is the keyboard door onto the limits, and it writes through
 the same row the Spending tab writes through.
@@ -1232,14 +1232,26 @@ here`. Pressing the words row puts the command in your box rather than running i
 ## /task — start work you can walk away from
 
 `/task <brief>` starts work directly from the words after the command; the brief does not
-pass through the conversation model. aforge briefly shows a forming block while a small
-judge reads the words for width, and then **one worker starts, whatever the answer was —
-nothing is asked of you**. If the work is meaningfully parallel, one dim line says so
-(`the work looks wide · one worker starts, and it can split as it goes`) and that worker
-may hand the parts out once it has opened the material. Otherwise the task starts silently.
+pass through the conversation model. **Nothing is waited for in front of it**: the task
+exists the moment you press enter, the ordinary started-task row appears
+(`single task 12 started · …`), and one worker starts on your own sentence — nothing is asked
+of you. Two readings then run **beside that worker**, never before it:
+
+- **A model writes the fuller brief** — your sentence kept word for word, with the
+  constraints and the done-condition written around it. It reaches the worker a few steps
+  in, as one message opening `YOUR BRIEF IS WRITTEN OUT NOW`, and from the moment the
+  worker reads it that is the brief and done-condition the work is judged by. If it cannot
+  be written, or arrives after the worker has finished, the work simply stands on your words.
+- **A small judge reads your words for width.** If it finds separate jobs in them, those
+  parts are weighed the way any division is and, where they hold up, handed out to other
+  workers while the first one keeps going; the parts appear on the roster as their own
+  rows. If it finds one job, nothing happens.
+
+The row is called by the first words you typed for a second or two, and then by a short
+name a small model gives it.
 
 `/task` is also a live tag in the middle or at the end: `investigate the flaky test /task`
-strips the tag and takes the remaining words through this same sizing road. Backspace
+strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
@@ -1249,18 +1261,11 @@ it starts nothing. On a project that has never run one it opens the page anyway,
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
-Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
-into the fuller brief the worker is given — your sentence kept word for word, with the
-constraints and the done-condition written around it, **and the name the roster will call
-the work**. The forming block carries a spinning mark and a climbing clock while it runs,
-so you can see the wait is alive rather than stuck. It collapses into the ordinary
-started-task row when the work starts, or into the honest error line if it cannot start.
-The *work that runs on its own* page has this in full, under
-*Why my task's brief is longer than what I typed* and *Why my task is called something I did
-not type*.
+The *work that runs on its own* page has the brief in full, under *Why my task's brief is
+longer than what I typed* and *Why my task is called something I did not type*.
 
-`/task solo <brief>` starts one worker immediately. It skips sizing altogether and still
-shapes the brief.
+`/task solo <brief>` starts one worker in the same instant and asks for no reading of its
+width at all. Its brief is still written beside it.
 
 **`/task adaptive <brief>` is retired**, and it is the only `/task` word that ever opened an
 adaptive run. Typing it now starts an ordinary task: your brief is kept exactly as typed —
@@ -1277,102 +1282,58 @@ line instead: `usage: /task <brief> · /task solo <brief>`.
 
 The `starting a task` row in `/settings` → Session decides what the plain form does:
 `sized` is the default and is the behaviour above, and `single` always starts one worker
-and does not size the work at all. `solo` typed on the command line overrides the row
+and does not read its width at all. `solo` typed on the command line overrides the row
 either way. Two of the row's old answers are gone — `ask` with the two-choice list it
 opened, and `adaptive` with the planner road itself — and a profile still set to either
 reads as `sized`.
 
 ## What happens when I type /task
 
-While `/task <brief>` is being sized and shaped, one dim block appears at the transcript
-tail. Every row has the same thin left line and one space of padding:
-
-```text
-▏ task
-▏ "fix the flaky auth test and add coverage for the retry path"
-▏ ⠙ sizing it up… · 3s
-```
-
-The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
-The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
-`/task solo <brief>` and a `single` starting setting begin at shaping because they skip
-sizing. Once shaping starts writing, a fourth dim row appears under the phase row with the
-newest words of the brief on it — see *Can I see the brief while it is being written*. When
-work starts, the thin line and scaffold disappear in the same frame and the normal
-started-task row takes their place. If starting fails, only the error sentence remains.
+The task starts. There is no wait to watch: the started-task row appears as soon as you
+press enter and the task's row is on the roster, where you can open its room and see the
+worker at work. What you used to wait for — `sizing it up…` and then `shaping the brief…`,
+up to half a minute on a thinking model before the task existed — now runs beside the
+worker instead (see */task — start work you can walk away from* above). If starting fails,
+the error sentence is the only thing written.
 
 ## Why is there a line next to my task
 
-The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the live phase
-into one thing being formed. It is a single left hairline, not a box or a task-status
-border. It exists only while a `/task` command is in flight and disappears when that
-command becomes the ordinary started-task row or an error line.
+The thin `▏ ` hairline at the transcript tail is the forming block, and it is drawn only
+while a task you **approved from a proposal card** is coming into existence: the word
+`task`, the proposal's name, and a spinning mark with a clock on `shaping the brief…`. It
+is a single left hairline, not a box or a task-status border, and it collapses into the
+ordinary task row the moment the task appears. A typed `/task` draws no forming block,
+because it has no wait in front of it.
 
 ## Can I see the brief while it is being written — the preview line under shaping the brief
 
-Yes. While `shaping the brief…` is up, one extra dim row hangs under it carrying the newest
-part of the brief as the model writes it:
+Not any more. `/task` used to wait on the brief behind `shaping the brief…`, with one dim
+row under it showing the newest words — the model's thinking in italics, then the brief
+upright — and a window that opened on `→`. That wait is gone, and the line, the italics and
+the window went with it: the brief is now written beside the worker, so there is nothing on
+screen to preview. An approved proposal's forming block never had a line under it, because
+its brief was written before you were asked.
 
-```text
-▏ task
-▏ "write the release notes"
-▏ ⠙ shaping the brief… · 13s
-▏ ▸ the failure this kind of work has is a release note that lists comm
-```
-
-It is **one row, always**. It never grows into a second row and never pushes the
-conversation up the screen — the words on it change, the height does not. It is the last
-line the brief lays out to at your terminal's width, so it fills up left to right and then
-starts again, and the end of it is where the model's pen is.
-
-**While the model is still thinking, the row shows its thinking, in italics.** The shaper
-runs on the careful-work model and is allowed to reason before it writes, and on some models
-that is most of the wait — so the row shows whatever is actually being produced. Italic is
-the model working; upright is your brief. **The brief takes the row the moment there is a
-brief and never gives it back**, so nothing you have started reading is un-said.
-
-**It appears only when there is something to show.** Before the model has produced anything
-there is no fourth row at all, and a task you approved from a proposal card never grows one
-— that brief was written before you were asked, so there is no stream behind the wait.
-
-**`▸` on the row means there is more behind it.** Press the row, or press `→` with an empty
-box, and the one line becomes the last six lines of the brief so far; `←` or another press
-shuts it again and `▾` goes back to `▸`. No new key is involved — it is the same fold every
-block on this surface has.
-
-Nothing about the preview is kept. The reasoning in particular is never written anywhere,
-never sent anywhere, and is not part of the brief the worker is given.
-
-The preview is **telemetry about a wait, not a transcript**. When the brief lands, the
-preview and the whole forming block disappear in the same frame, and what stays is the
-ordinary started-task row. Nothing of the preview is kept, and the shaped brief itself is
-readable in full in the task's own room.
+What you can see is the brief itself once it lands: the task's own room carries it in full,
+and the worker's transcript shows the message it was handed, opening
+`YOUR BRIEF IS WRITTEN OUT NOW`.
 
 ## Several tasks forming at once — one block with a row each
 
-Two `/task` commands can be shaping at the same time. They share **one** block rather than
-stacking two four-row blocks at the tail of the transcript:
+Two approved proposals can be forming at the same time. They share **one** block rather
+than stacking two blocks at the tail of the transcript:
 
 ```text
-▏ tasks · 3 forming
-▏ ⠙ write the release notes · 13s
-▏ ⠙ fix the nil-map crash in the loader · 9s
-▏ ▸ Reproduce the crash from the stack trace in issue #94, then write a
-▏ ⠙ write the docs for /task · 2s
+▏ tasks · 2 forming
+▏ ⠙ release notes · 13s
+▏ ⠙ nil-map crash fix · 9s
 ```
 
-The head counts them. Each task is one compact row: the same spinning mark, its name or the
-opening of what you typed, and its own clock. **Only the row you are pointed at shows a
-preview under it**, so the block stays the same height however long the briefs get.
-
-`↑` and `↓` with an empty box move between the rows — the keys that walk rows in the
-transcript already — and the preview follows. `→` opens that row's window, `←` shuts it.
-Clicking a row you are not on points at it and opens it; clicking the row you are on shuts
-it again. Walking off either end of the block hands the arrows back to whatever they do
-next, so nothing else you press changes meaning.
-
-**With one task forming, none of this appears.** No head that counts, no rows to walk: the
-block is `task`, your words, the phase row and the preview, exactly as above.
+The head counts them, and each is one compact row: the same spinning mark, its name, and
+its own clock. Each row collapses the moment its task appears. There is nothing to open
+and nothing to walk between — the arrows keep their ordinary meaning — and with one task
+forming there is no head that counts, only the block described under *Why is there a line
+next to my task*. A typed `/task` never joins the block: it has no wait in front of it.
 
 ## /history — the task history command: past tasks, every task this project has run
 

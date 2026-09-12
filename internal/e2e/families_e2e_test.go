@@ -263,15 +263,12 @@ func runFamily(t *testing.T, w *world, ground, ask string, attempt int, during f
 	ctx, cancel := context.WithTimeout(context.Background(), familyWall)
 	defer cancel()
 
-	// THE SIZING JUDGE FIRST, exactly as the typed door asks it: a yes is banked
-	// against this text and is what arms the worker to hand the work out
-	// (task_person.go, task_divide.go's armDivision). A no is not a failure of
-	// this call — the brief's own text can arm the road too — so it is logged
-	// and the task starts either way.
-	wide, parts, why := agent.JudgeDecomposable(ctx, ask)
-	t.Logf("SIZING attempt %d → wide=%v parts=%v why=%q", attempt, wide, parts, why)
-
-	id, title, _, err := agent.StartTask(ctx, ask)
+	// THE TYPED DOOR, WIDTH AND ALL. The sizing judge is asked beside the task's
+	// first worker now (issue #936) and its yes arrives as a division that worker
+	// is handed (internal/session's task_divide_sketch.go), so starting the task
+	// the way `/task` does is the whole of asking it; the divisions on record say
+	// whether it answered, with `source: judge`.
+	id, title, _, err := agent.StartTask(ctx, ask, false)
 	if err != nil {
 		t.Fatalf("start the task: %v", err)
 	}

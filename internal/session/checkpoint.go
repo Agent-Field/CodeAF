@@ -4161,8 +4161,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		drawn = read.drawn()
 		// AND THE ROAD IS ARMED BY THE READER THAT ACTUALLY READ THE WORK. A
 		// mastermind was shown this turn's transcript and drew independent parts out
-		// of it, which is the same fact the sizing judge banks at the typed `/task`
-		// door and is banked the same way ([Agent.rememberDivisible]) — so the task
+		// of it, and that fact is banked ([Agent.rememberDivisible]) — so the task
 		// is armed `judged` rather than `wide`, and [TaskNode.armedByJudgement] can
 		// tell a model that read the work from a counter reading its own text
 		// (task_divide.go). It is banked against the goal this hands over, and

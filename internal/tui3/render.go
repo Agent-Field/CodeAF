@@ -67,17 +67,6 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
-	// hitForming is a row of the forming block at the transcript tail
-	// (formingblock.go): the tail under a wait, and — where several are forming —
-	// the compact row of each. A press points at that wait and opens or shuts its
-	// window.
-	//
-	// IT IS THE ONE HIT ON THIS SURFACE THAT BELONGS TO NO ENTRY. The block is
-	// not part of the conversation — it is what stands where a block is about to
-	// be — so `turn` carries the wait's place in the list, the way [hitFold]
-	// carries a turn and for the same reason: the field names whatever the kind
-	// is keyed by.
-	hitForming
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -279,7 +268,7 @@ func (a *app) layout(width int) []row {
 		// belongs to and the reading view is unchanged.
 		out = append([]row{{entry: -1}}, out...)
 	}
-	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
+	// A FORMING TASK'S BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
 	// notes deck it is deliberately not part of. It takes the ordinary block gap
 	// and no border of its own beyond the one named hairline on each live row.
 	if forming := a.preflightRows(inner); len(forming) > 0 {
@@ -750,7 +739,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 // once, and none of them has to remember the pass exists.
 func (a *app) hoverPass(out []row, width int) {
 	for i := range out {
-		if a.isHot(out[i]) || a.onCursorRow(out[i]) || a.formingHot(out[i]) {
+		if a.isHot(out[i]) || a.onCursorRow(out[i]) {
 			out[i].text = a.hoverRow(out[i].text, width)
 		}
 	}
