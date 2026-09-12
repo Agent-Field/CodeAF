@@ -123,7 +123,7 @@ arm_guard_wire() {
   ARM_GUARD="no"; ARM_GUARD_NOTE=""
   [ -n "$GUARD_URL" ] || { ARM_GUARD_NOTE="no guard is running"; return 1; }
 
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge)
       ARM_ENV+=("AFORGE_BASE_URL=$GUARD_URL" "OPENROUTER_API_KEY=$GUARD_SENTINEL")
       ARM_GUARD="yes"
@@ -204,7 +204,7 @@ sys.exit(1)
 # arm_guard_model is the model string an arm is given once it is wired: the
 # guard is a provider of its own to the peers, and unchanged to aforge.
 arm_guard_model() {
-  case "$1" in
+  case "$(arm_base "$1")" in
     omp) printf 'guard/%s' "$CONV_MODEL" ;;
     pi)  printf '%s' "$CONV_MODEL" ;;
     *)   printf '%s' "$CONV_MODEL" ;;
@@ -225,8 +225,11 @@ arm_guard_model() {
 # is still finishing cannot outlive the thing that keeps it on the allowlist.
 arm_host_stop() {
   local arm="$1" cell="$2" work="$3"
-  [ "$arm" = "aforge" ] || return 0
-  local bin; bin="$(arm_bin aforge)"
+  [ "$(arm_base "$arm")" = "aforge" ] || return 0
+  # THE CELL'S OWN BINARY STOPS THE CELL'S OWN HOST. Asking for `aforge` by
+  # name would reach whichever build the rig happens to default to, which on a
+  # two-build grid is the other arm's binary talking to this arm's state root.
+  local bin; bin="$(arm_bin "$arm")"
   [ -n "$bin" ] || return 0
   [ -d "$cell/state/aforge-home" ] || return 0
   "${CHILD_ENV[@]}" "$bin" engine --workspace "$work" --stop \

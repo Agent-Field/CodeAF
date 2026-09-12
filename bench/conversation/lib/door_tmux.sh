@@ -30,6 +30,16 @@
 #   busy<TAB>text     send when the screen looks busy. A weaker witness, kept
 #                     for scenarios with no work of their own to mark, and
 #                     labelled as such in door.json.
+#   after:N<TAB>text  send N seconds after the previous message went in,
+#                     whatever the screen is doing. This is the steer a person
+#                     actually types: they do not watch for a marker, they read
+#                     the first thing the harness said, decide it is going the
+#                     wrong way, and type again. A marker-shaped wait cannot
+#                     reproduce that, because it makes the rig wait for a state
+#                     the harness chooses — so a build that reaches the state
+#                     later is steered later, and the two arms are no longer
+#                     answering the same question at the same moment. The clock
+#                     is the same for both arms and belongs to neither.
 #   idle<TAB>text     send after the harness has settled (the next-turn case)
 #
 # When the composer never appears, `ended` tells the two cases apart:
@@ -60,6 +70,12 @@ DOOR_ASK_OBSERVED=0
 DOOR_MIDWORK_SENT_AT=""
 DOOR_ANSWER_SEEN_AT=""
 DOOR_WITNESS="screen"
+# The opening message going in, and the first thing that appeared on the pane
+# afterwards. Their difference is the wait a person feels before the harness
+# says anything, which is a different number from how long the whole turn took.
+DOOR_FIRST_SEND_AT=""
+DOOR_FIRST_OUTPUT_AT=""
+DOOR_FIRST_BASELINE=""
 
 # now_f is the same clock the fixture's phase markers use.
 now_f() { python3 -c 'import time; print("%.3f" % time.time())'; }
@@ -104,6 +120,45 @@ door_send() {
   sleep 1
   tmux send-keys -t "=$name:" Enter
   DOOR_TURNS_SENT=$((DOOR_TURNS_SENT + 1))
+  # The baseline for "has it said anything yet" is taken immediately after the
+  # FIRST message goes in, because the pasted paragraph is itself on the screen
+  # by then: a watcher that measured growth from before the paste would stamp
+  # the person's own typing as the harness's first word.
+  if [ -z "$DOOR_FIRST_SEND_AT" ]; then
+    DOOR_FIRST_SEND_AT="$(now_f)"
+    DOOR_FIRST_BASELINE="$(pane_scrollback "$name" | wc -c | tr -d '[:space:]')"
+  fi
+}
+
+# door_watch_first_output stamps the first moment the pane carries more than it
+# did when the opening message went in. It is a proxy and is labelled one in
+# door.json: what it can honestly say is that the harness had put something on
+# the person's screen by then, which is the thing a person calls "it started".
+# Every poll loop below calls it, so a turn that answers during a clock wait is
+# stamped as surely as one that answers while the driver waits for idle.
+door_watch_first_output() {
+  local name="$1" size
+  [ -n "$DOOR_FIRST_SEND_AT" ] || return 0
+  [ -z "$DOOR_FIRST_OUTPUT_AT" ] || return 0
+  size="$(pane_scrollback "$name" | wc -c | tr -d '[:space:]')"
+  [ -n "$size" ] && [ -n "$DOOR_FIRST_BASELINE" ] || return 0
+  [ "$size" -gt "$DOOR_FIRST_BASELINE" ] 2>/dev/null || return 0
+  DOOR_FIRST_OUTPUT_AT="$(now_f)"
+}
+
+# door_wait_clock waits a fixed number of seconds, watching the pane while it
+# does. It returns 1 when the session died or the cap arrived first, so a steer
+# is never typed into a pane that is no longer there.
+door_wait_clock() {
+  local name="$1" seconds="$2" cap_at="$3" until_at
+  until_at=$(( $(now_s) + seconds ))
+  while [ "$(now_s)" -lt "$until_at" ]; do
+    [ "$(now_s)" -ge "$cap_at" ] && { DOOR_ENDED="cap"; return 1; }
+    pane_dead "$name" && { DOOR_ENDED="crash"; return 1; }
+    door_watch_first_output "$name"
+    sleep "$CONV_POLL"
+  done
+  return 0
 }
 
 # door_wait_busy waits for the harness to start working. Returns 1 when it never
@@ -112,6 +167,7 @@ door_wait_busy() {
   local name="$1" deadline=$(( $(now_s) + CONV_BUSY_WAIT )) screen
   while [ "$(now_s)" -lt "$deadline" ]; do
     screen="$(pane_text "$name")"
+    door_watch_first_output "$name"
     if door_is_busy "$screen"; then DOOR_BUSY_OBSERVED=1; return 0; fi
     pane_dead "$name" && return 1
     sleep "$CONV_POLL"
@@ -126,6 +182,7 @@ door_wait_work_start() {
   local name="$1" deadline=$(( $(now_s) + CONV_BUSY_WAIT ))
   [ -n "${SCENARIO_WORK_START:-}" ] || return 1
   while [ "$(now_s)" -lt "$deadline" ]; do
+    door_watch_first_output "$name"
     if [ -s "$SCENARIO_WORK_START" ]; then
       DOOR_BUSY_OBSERVED=1
       return 0
@@ -149,6 +206,7 @@ door_wait_idle() {
     [ "$now" -ge "$cap_at" ] && { DOOR_ENDED="cap"; return 1; }
     pane_dead "$name" && { DOOR_ENDED="crash"; return 1; }
     screen="$(pane_text "$name")"
+    door_watch_first_output "$name"
     printf '[%s] %s\n' "$(now_f)" "$(printf '%s\n' "$screen" | tail -1)" >> "$DOOR_OUT/frames.log"
     if [ -z "$DOOR_ANSWER_SEEN_AT" ] && [ -n "${SCENARIO_ANSWER_RE:-}" ] &&
        screen_matches "$SCENARIO_ANSWER_RE" "$(pane_scrollback "$name")"; then
@@ -192,6 +250,9 @@ tmux_door_run() {
   DOOR_MIDWORK_SENT_AT=""
   DOOR_ANSWER_SEEN_AT=""
   DOOR_WITNESS="screen"
+  DOOR_FIRST_SEND_AT=""
+  DOOR_FIRST_OUTPUT_AT=""
+  DOOR_FIRST_BASELINE=""
   mkdir -p "$out"
   : > "$out/frames.log"
 
@@ -283,6 +344,18 @@ tmux_door_run() {
             break
           fi
           ;;
+        after:*)
+          # A steer on the clock, which is what a person does. The wait starts
+          # when the previous message went in, so both arms are interrupted at
+          # the same point in their own turn and neither is given longer to
+          # finish first.
+          DOOR_WITNESS="clock"
+          if ! door_wait_clock "$name" "${when#after:}" "$cap_at"; then break; fi
+          printf '=== clock frame at %s (%ss after the message before it) ===\n%s\n' \
+            "$(now_f)" "${when#after:}" "$(pane_text "$name")" >> "$out/frames.log"
+          DOOR_MIDWORK_SENT_AT="$(now_f)"
+          door_send "$name" "$text"
+          ;;
         idle)
           door_wait_idle "$name" "$cap_at" || break
           printf '=== idle frame ===\n%s\n' "$(pane_text "$name")" >> "$out/frames.log"
@@ -320,6 +393,9 @@ tmux_door_run() {
  "ask_observed": $DOOR_ASK_OBSERVED,
  "witness": $(json_str "$DOOR_WITNESS"),
  "midwork_sent_at": $(json_str "$DOOR_MIDWORK_SENT_AT"),
+ "first_send_at": $(json_str "$DOOR_FIRST_SEND_AT"),
+ "first_output_at": $(json_str "$DOOR_FIRST_OUTPUT_AT"),
+ "first_output_witness": "the pane carried more than it did when the opening message went in",
  "answer_first_seen_at": $(json_str "$DOOR_ANSWER_SEEN_AT"),
  "work_started_at": $(json_str "$(door_phase "${SCENARIO_WORK_START:-}" || true)"),
  "work_finished_at": $(json_str "$(door_phase "${SCENARIO_WORK_DONE:-}" || true)"),

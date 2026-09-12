@@ -22,6 +22,19 @@
 #   bench/conversation/run.sh --scenarios data-tally   one cell
 #   bench/conversation/run.sh --arms aforge,pi         two arms
 #   bench/conversation/run.sh --door print             only the non-interactive door
+#
+# Two builds of one harness are two arms of one adapter. An arm may name a
+# build with `@`, and the build is bound to a binary on the command line:
+#
+#   bench/conversation/run.sh \
+#     --bin aforge@dev=/path/bin/aforge-dev \
+#     --bin aforge@simplify=/path/bin/aforge-simplify \
+#     --arms aforge@dev,aforge@simplify --scenarios repo-hover-print
+#
+# Nothing else changes: one adapter drives both, both are handed the same pin,
+# the same effort rung and the same freshly written profile, and the arm
+# version column carries each binary's own revision so a comparison across two
+# builds wearing one version word is refused rather than drawn.
 set -uo pipefail
 
 CONV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,6 +87,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --arms)        ARMS="$(echo "${2:?--arms needs a value}" | tr ',' ' ')"; shift 2 ;;
     --arms=*)      ARMS="$(echo "${1#*=}" | tr ',' ' ')"; shift ;;
+    --bin)         arm_bind_binary "${2:?--bin needs <arm>=<path>}" || exit 1; shift 2 ;;
+    --bin=*)       arm_bind_binary "${1#*=}" || exit 1; shift ;;
     --scenarios)   SCENARIOS="$(echo "${2:?--scenarios needs a value}" | tr ',' ' ')"; shift 2 ;;
     --scenarios=*) SCENARIOS="$(echo "${1#*=}" | tr ',' ' ')"; shift ;;
     --door)        DOOR_FILTER="${2:?--door needs a value}"; shift 2 ;;
@@ -121,10 +136,30 @@ GIT_SHA="$(cd "$CONV_REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || ech
 TODAY="$(date +%Y-%m-%d)"
 mkdir -p "$CONV_OUT" "$(dirname "$CSV")"
 
+# CONV_MEASURE_COLUMNS are the numbers a cell may put in a column of its own
+# (verdict.sh's `measure`). The list is APPEND-ONLY for the same reason the
+# header is: a reader that indexes by position keeps reading the same things.
+# A column no cell filled comes out empty, which says "not measured here" —
+# never 0, which would say "measured, and it was none".
+#
+#   first_word_s    wall seconds from launch until the harness first said
+#                   anything, which is not the same number as wall_s and is the
+#                   one people mean by "it felt fast"
+#   tool_calls      how many tool calls the model asked for
+#   rounds          how many times it went back to the wire
+#   task_spawned    whether the conversation spilled into work of its own
+#   files_changed   how many files the workspace ends up carrying that it did
+#                   not start with — read from the workspace, never narrated
+#   build_exit      the workspace's own compiler, run after the harness stopped
+#   vet_exit        and its own vet
+#   focus_exit      and the one named test the request implies
+#   ask_wired       whether the thing that was asked for is in the source now
+CONV_MEASURE_COLUMNS="first_word_s tool_calls rounds task_spawned files_changed build_exit vet_exit focus_exit ask_wired"
+
 # The header is written once, ever, and columns are appended rather than
 # inserted: a reader that indexes the first columns by position keeps reading
 # the same things after a column is added.
-[ -f "$CSV" ] || echo "date,run_id,git_sha,scenario,workload,door,arm,arm_version,model,effort_requested,effort_sent,wall_s,exit,cost_usd,cost_source,tokens_in,tokens_out,turns,verdict,comparable,notes" > "$CSV"
+[ -f "$CSV" ] || echo "date,run_id,git_sha,scenario,workload,door,arm,arm_version,model,effort_requested,effort_sent,wall_s,exit,cost_usd,cost_source,tokens_in,tokens_out,turns,verdict,comparable,notes,$(echo $CONV_MEASURE_COLUMNS | tr ' ' ',')" > "$CSV"
 
 RESULTS_JSONL="$CONV_OUT/results.jsonl"
 # A run's own summary is authoritative evidence and is refused before it is
@@ -146,6 +181,11 @@ allowlist_banner
 echo "effort:     $EFFORT (asked of every arm; an arm without the rung is marked not-comparable)"
 echo "arms:       $ARMS"
 echo "scenarios:  $SCENARIOS"
+# The session's own spend ceiling is a PRODUCT mechanism and it can end a turn.
+# It is printed because a grid whose arms were stopped by it measured the
+# ceiling rather than the build, and a reader must be able to see that from the
+# first page of the evidence rather than by opening an argv file.
+echo "max cost:   \$${CONV_MAX_COST:-1} per interactive session (the product's own ceiling)"
 echo "evidence:   $CONV_OUT"
 echo "history:    $CSV"
 [ "$DRY_RUN" = "1" ] && echo "dry run:    composing fixtures, argv and turn plans only — no model call, no spend"
@@ -205,9 +245,11 @@ emit_row() {
         cost="$7" cost_source="$8" tokens_in="$9" tokens_out="${10}" turns="${11}" \
         verdict="${12}" comparable="${13}" reason="${14}"
   local version; version="$(version_of "$arm")"
-  echo "$TODAY,$CONV_RUN_ID,$GIT_SHA,$scenario,$workload,$door,$arm,$(csv_field "$version"),$(csv_field "$CONV_MODEL"),$EFFORT,${ARM_EFFORT_SENT:-n/a},$wall,$code,$cost,$cost_source,$tokens_in,$tokens_out,$turns,$verdict,$comparable,$(csv_field "${CELL_NOTES:-}${reason:+;$reason}")" >> "$CSV"
+  local column measures=""
+  for column in $CONV_MEASURE_COLUMNS; do measures="$measures,$(csv_field "$(measured "$column")")"; done
+  echo "$TODAY,$CONV_RUN_ID,$GIT_SHA,$scenario,$workload,$door,$arm,$(csv_field "$version"),$(csv_field "$CONV_MODEL"),$EFFORT,${ARM_EFFORT_SENT:-n/a},$wall,$code,$cost,$cost_source,$tokens_in,$tokens_out,$turns,$verdict,$comparable,$(csv_field "${CELL_NOTES:-}${reason:+;$reason}")$measures" >> "$CSV"
   cat >> "$RESULTS_JSONL" <<JSON
-{"date":$(json_str "$TODAY"),"run_id":$(json_str "$CONV_RUN_ID"),"git_sha":$(json_str "$GIT_SHA"),"scenario":$(json_str "$scenario"),"workload":$(json_str "$workload"),"door":$(json_str "$door"),"arm":$(json_str "$arm"),"arm_version":$(json_str "$version"),"model_pin":$(json_str "$CONV_MODEL"),"effort_requested":$(json_str "$EFFORT"),"effort_sent":$(json_str "${ARM_EFFORT_SENT:-n/a}"),"effort_supported":$(json_str "${ARM_EFFORT_SUPPORTED:-n/a}"),"wall_s":$(json_str "$wall"),"exit":$(json_str "$code"),"cost_usd":$([ "$cost" = "unknown" ] && echo null || echo "$cost"),"cost_source":$(json_str "$cost_source"),"tokens_in":$([ "$tokens_in" = "unknown" ] && echo null || echo "${tokens_in:-null}"),"tokens_out":$([ "$tokens_out" = "unknown" ] && echo null || echo "${tokens_out:-null}"),"turns":$(json_str "$turns"),"verdict":$(json_str "$verdict"),"comparable":$(json_str "$comparable"),"reason":$(json_str "$reason"),"notes":$(json_str "${CELL_NOTES:-}"),"checks":[${CELL_CHECK_JSON:-}]}
+{"date":$(json_str "$TODAY"),"run_id":$(json_str "$CONV_RUN_ID"),"git_sha":$(json_str "$GIT_SHA"),"scenario":$(json_str "$scenario"),"workload":$(json_str "$workload"),"door":$(json_str "$door"),"arm":$(json_str "$arm"),"arm_version":$(json_str "$version"),"model_pin":$(json_str "$CONV_MODEL"),"effort_requested":$(json_str "$EFFORT"),"effort_sent":$(json_str "${ARM_EFFORT_SENT:-n/a}"),"effort_supported":$(json_str "${ARM_EFFORT_SUPPORTED:-n/a}"),"wall_s":$(json_str "$wall"),"exit":$(json_str "$code"),"cost_usd":$([ "$cost" = "unknown" ] && echo null || echo "$cost"),"cost_source":$(json_str "$cost_source"),"tokens_in":$([ "$tokens_in" = "unknown" ] && echo null || echo "${tokens_in:-null}"),"tokens_out":$([ "$tokens_out" = "unknown" ] && echo null || echo "${tokens_out:-null}"),"turns":$(json_str "$turns"),"verdict":$(json_str "$verdict"),"comparable":$(json_str "$comparable"),"reason":$(json_str "$reason"),"notes":$(json_str "${CELL_NOTES:-}"),"measures":$(measures_json),"checks":[${CELL_CHECK_JSON:-}]}
 JSON
   case "$verdict" in
     pass)        TOTAL_PASS=$((TOTAL_PASS + 1)) ;;
@@ -251,8 +293,13 @@ for scenario in $SCENARIOS; do
     printf '── %-26s %-8s %-12s %s\n' "$scenario" "$arm" "$SCENARIO_DOOR" "${SCENARIO_GUARDS:-}"
 
     # ── is this cell honest to run at all ─────────────────────────────────
+    #
+    # A scenario declares which HARNESSES it has a door for, not which builds
+    # of them: `aforge@dev` and `aforge@simplify` go through aforge's door, and
+    # a scenario that had to list every label would be a scenario that has to
+    # be edited before a branch can be measured.
     case " $SCENARIO_ARMS " in
-      *" $arm "*) ;;
+      *" $(arm_base "$arm") "*) ;;
       *)
         printf '    ⊘  unsupported: this suite defines no %s door for %s\n' "$SCENARIO_DOOR" "$arm"
         emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
@@ -402,6 +449,7 @@ for scenario in $SCENARIOS; do
       "model_arg:$(arm_model_arg "$arm")" "allowlist:$CONV_ALLOWLIST" \
       "effort_requested:$EFFORT" "effort_sent:$ARM_EFFORT_SENT" \
       "role_pin:$ARM_ROLE_PIN ($ARM_ROLE_NOTE)" "guard:${ARM_GUARD:-off} ${ARM_GUARD_NOTE:-}" \
+      "max_cost_usd:${CONV_MAX_COST:-1}" \
       "isolation:$ARM_ISOLATION" \
       "arm_env:${ARM_ENV[*]:-none}" "carried_env:$CONV_CARRIED" \
       "cap_s:$SCENARIO_CAP_S" "workspace:$work"
@@ -416,10 +464,17 @@ for scenario in $SCENARIOS; do
       # The cap is a spend backstop, not a work limit: a harness still running
       # at the cap has produced nothing and is recorded as a timeout, and on a
       # metered key leaving it running is how a benchmark becomes a bill.
+      #
+      # stdout goes through the first-byte stamper (lib/firstbyte.py) on its way
+      # to the log: byte for byte the same file, plus the moment the harness
+      # first said anything. ${PIPESTATUS[0]} rather than $? because the
+      # pipeline's own status is the stamper's, and the exit code this suite
+      # judges a print cell on belongs to the harness.
       ( cd "$(arm_print_cwd "$arm" "$work")" && "${CHILD_ENV[@]}" \
-          "$TIMEOUT_BIN" "$SCENARIO_CAP_S" "${ARGV[@]}" ) \
-          > "$cell/stdout.log" 2> "$cell/stderr.log"
-      code=$?
+          "$TIMEOUT_BIN" "$SCENARIO_CAP_S" "${ARGV[@]}" ) 2> "$cell/stderr.log" \
+          | python3 "$CONV_LIB/firstbyte.py" --out "$cell/stdout.log" \
+              --stamp "$cell/first-word.txt" --started "$started"
+      code=${PIPESTATUS[0]}
       # timeout(1) reports 124 when it had to kill, and a shell reports 128+n
       # for a signalled child. Both are the cap, not a verdict about the work.
       case "$code" in 124|137|143) timed_out=1 ;; esac
@@ -479,6 +534,46 @@ EOF
     # For the interactive door the transcript IS the reply: what the person saw.
     reply="$cell/reply.txt"
     [ "$SCENARIO_DOOR" = "interactive" ] && reply="$cell/scrollback.txt"
+
+    # ── the numbers that get a column ─────────────────────────────────────
+    #
+    # These are measured before the scenario's own checks run, so that a cell
+    # that fails its question still carries what the attempt cost in work —
+    # which is exactly the cell a comparison most wants to read.
+    #
+    # The first word is stamped at two different doors and both are honest
+    # about what they saw: the print door has the harness's own first byte of
+    # stdout, the interactive door has the first moment the pane carried more
+    # than the person's typing (door.json's first_output_witness). Neither is
+    # invented when it is missing — an unstamped cell leaves the column empty.
+    if [ "$SCENARIO_DOOR" = "print" ]; then
+      [ -s "$cell/first-word.txt" ] && measure "first_word_s" "$(tr -d '[:space:]' < "$cell/first-word.txt")"
+    else
+      first_gap="$(stamp_gap "$(door_field "$cell/door.json" first_send_at)" \
+                             "$(door_field "$cell/door.json" first_output_at)")"
+      [ "$first_gap" = "unknown" ] || measure "first_word_s" "$first_gap"
+    fi
+
+    receipt_number() {
+      CONV_RECEIPT="$receipt" CONV_FIELD="$1" python3 -c '
+import json, os
+got = json.load(open(os.environ["CONV_RECEIPT"]))
+value = got.get(os.environ["CONV_FIELD"])
+print("" if value is None else value)
+'
+    }
+    for field in tool_calls rounds; do
+      value="$(receipt_number "$field")"
+      [ -n "$value" ] && measure "$field" "$value"
+    done
+    # A spilled task is a yes or a no on the row, and the journal count stays
+    # in the note beside it: "did the conversation start work of its own" is
+    # the question, and how many journals that left is the evidence for it.
+    journals="$(receipt_number task_journals)"
+    if [ -n "$journals" ]; then
+      [ "$journals" = "0" ] && measure "task_spawned" "no" || measure "task_spawned" "yes"
+      note "task_journals=$journals"
+    fi
 
     # ── judge ─────────────────────────────────────────────────────────────
     verdict=""

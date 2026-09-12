@@ -46,12 +46,90 @@ OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
 
 CONV_ALL_ARMS="aforge omp pi opencode"
 
+# ── labelled arms: two builds of one harness, through one adapter ────────────
+#
+# An arm may name a BUILD as well as a harness. `aforge@dev` and
+# `aforge@simplify` are both aforge; every function in this file drives them
+# through the same module and they differ in one thing only, which is the
+# binary they run. THAT IS THE WHOLE POINT: a second adapter written for the
+# second build would put the rig into the comparison alongside the build, and
+# the question a before/after run is asked — is this branch on the cost, wall
+# and outcome front against the trunk — cannot be answered by a rig that
+# changed between the two arms.
+#
+# A label is bound to a path at the command line (run.sh's --bin), never
+# guessed, and an unbound label is refused rather than quietly falling back to
+# bin/aforge: two arms that ran the same binary report a dead heat, which is
+# indistinguishable from a wave that changed nothing.
+#
+# The bindings are a plain tab-separated table rather than an associative
+# array, for common.sh's reason: /bin/bash on macOS is 3.2 and has none.
+CONV_ARM_BINARIES=""
+
+# arm_base is the harness inside an arm name, arm_label the build beside it.
+# Everything harness-shaped below switches on the base; only arm_bin and
+# arm_version have anything to say about the label.
+arm_base()  { printf '%s' "${1%%@*}"; }
+arm_label() { case "$1" in *@*) printf '%s' "${1#*@}" ;; esac; }
+
+# arm_bind_binary records which file a labelled arm runs.
+#
+#   arm_bind_binary <arm>=<path>
+#
+# The label is validated before it is used, because it reaches the filesystem
+# as part of a cell directory's name, and the path is resolved and checked
+# here rather than at the moment of the run: a binding that is wrong is a
+# thing to say before a grid starts, not a row of skips discovered afterwards.
+arm_bind_binary() {
+  local spec="$1" arm path label
+  case "$spec" in
+    *=*) arm="${spec%%=*}"; path="${spec#*=}" ;;
+    *)   conv_warn "--bin wants <arm>=<path>, got: $spec"; return 1 ;;
+  esac
+  label="$(arm_label "$arm")"
+  case "$label" in
+    ""|*[!A-Za-z0-9._-]*)
+      conv_warn "a build label must be a plain word of [A-Za-z0-9._-]: $arm"
+      return 1
+      ;;
+  esac
+  case " $CONV_ALL_ARMS " in
+    *" $(arm_base "$arm") "*) ;;
+    *) conv_warn "unknown harness in --bin: $(arm_base "$arm")"; return 1 ;;
+  esac
+  if [ ! -x "$path" ]; then
+    conv_warn "--bin $arm: not an executable file: $path"
+    return 1
+  fi
+  # An absolute path, so that a cell launched from somewhere else still runs
+  # the binary the operator named.
+  path="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+  CONV_ARM_BINARIES="$CONV_ARM_BINARIES$arm	$path
+"
+}
+
+# arm_bound_binary prints the path bound to a labelled arm, or nothing.
+arm_bound_binary() {
+  printf '%s' "$CONV_ARM_BINARIES" | awk -v arm="$1" -F'\t' '$1 == arm { print $2; exit }'
+}
+
+# arm_known accepts a bare harness, and a labelled one only once its label has
+# a binary. An arm nobody bound is not a build; it is a typo.
 arm_known() {
-  case "$1" in aforge|omp|pi|opencode) return 0 ;; *) return 1 ;; esac
+  case " $CONV_ALL_ARMS " in
+    *" $(arm_base "$1") "*) ;;
+    *) return 1 ;;
+  esac
+  [ -z "$(arm_label "$1")" ] || [ -n "$(arm_bound_binary "$1")" ]
 }
 
 arm_bin() {
-  case "$1" in
+  local bound; bound="$(arm_bound_binary "$1")"
+  if [ -n "$bound" ]; then
+    [ -x "$bound" ] && printf '%s' "$bound"
+    return
+  fi
+  case "$(arm_base "$1")" in
     aforge)   [ -x "$AFORGE_BIN" ] && printf '%s' "$AFORGE_BIN" ;;
     omp)      command -v "$OMP_BIN" 2>/dev/null ;;
     pi)       command -v "$PI_BIN" 2>/dev/null ;;
@@ -65,8 +143,22 @@ arm_version() {
   local arm="$1" bin
   bin="$(arm_bin "$arm")" || true
   [ -n "$bin" ] || { printf 'not-installed'; return; }
-  case "$arm" in
-    aforge)   "$bin" --version 2>/dev/null | head -1 ;;
+  case "$(arm_base "$arm")" in
+    aforge)
+      # A LABELLED ARM CARRIES ITS REVISION, not only its version word. Two
+      # builds of this repository print the same `aforge x.y.z` line, so the
+      # version column alone cannot tell a before/after pair apart — and
+      # pareto.py refuses a comparison whose arm_version is inconsistent
+      # across blocks, which a shared word would silently satisfy while the
+      # binaries differed. The revision comes out of the binary's own build
+      # information, which is what `make build` stamps into it.
+      printf '%s' "$("$bin" --version 2>/dev/null | head -1)"
+      local rev
+      rev="$(go version -m "$bin" 2>/dev/null |
+             awk '$1 == "build" && $2 == "vcs.revision" { print substr($3, 1, 12); exit }')"
+      [ -n "$rev" ] && printf ' rev %s' "$rev"
+      printf '\n'
+      ;;
     omp)      "$bin" --version 2>/dev/null | head -1 ;;
     pi)       "$bin" --version 2>/dev/null | tail -1 ;;
     opencode) "$bin" --version 2>/dev/null | tail -1 ;;
@@ -79,7 +171,7 @@ arm_version() {
 # thing; how each CLI wants to be told about it is another, and conflating them
 # is how a grid ends up comparing two models.
 arm_model_arg() {
-  case "$1" in
+  case "$(arm_base "$1")" in
     aforge|pi)    printf '%s' "$CONV_MODEL" ;;
     omp)          [ "${ARM_GUARD:-no}" = "yes" ] && printf 'guard/%s' "$CONV_MODEL" \
                                                  || printf 'openrouter/%s' "$CONV_MODEL" ;;
@@ -109,6 +201,7 @@ arm_pin_check() {
   # fresh PI_CODING_AGENT_DIR does.
   local -a ask=()
   [ "${#CHILD_ENV[@]}" -gt 0 ] && ask=("${CHILD_ENV[@]}")
+  arm="$(arm_base "$arm")"
 
   # A search pattern, not the answer. pi and omp both fuzzy-match, and the full
   # id with its provider prefix matches fewer rows than its last segment does —
@@ -197,7 +290,7 @@ ARM_ROLE_NOTE=""
 arm_role_pin() {
   local arm="$1" model; model="$(arm_model_arg "$arm")"
   ARM_ROLE_FLAGS=()
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge)
       ARM_ROLE_PIN="yes"; ARM_ROLE_NOTE="--one-model pins every text call"
       ;;
@@ -239,7 +332,7 @@ ARM_BASELINE_FLAGS=()
 ARM_BASELINE_NOTE=""
 arm_baseline() {
   ARM_BASELINE_FLAGS=()
-  case "$1" in
+  case "$(arm_base "$1")" in
     omp)
       ARM_BASELINE_FLAGS=(--no-skills --no-extensions --no-rules)
       ARM_BASELINE_NOTE="skills/extensions/rules off; third-party discovery sources disabled in the owned profile"
@@ -279,6 +372,7 @@ arm_effort() {
   ARM_EFFORT_SENT=""
   ARM_EFFORT_SUPPORTED="no"
   ARM_EFFORT_NOTE=""
+  arm="$(arm_base "$arm")"
   case "$arm" in
     aforge)   levels="off low medium high" ;;
     omp)      levels="off minimal low medium high xhigh max auto" ;;
@@ -328,7 +422,7 @@ arm_isolate() {
   ARM_CLEANUP_PATH=""
   ARM_STATE_DIR="$cell/state"
   mkdir -p "$ARM_STATE_DIR"
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge)
       mkdir -p "$ARM_STATE_DIR/aforge-home"
       # A host socket has a roughly hundred-byte path limit. Evidence folders
@@ -340,7 +434,19 @@ arm_isolate() {
       ARM_ENV=("AFORGE_HOME=$alias_dir/home")
       ARM_CLEANUP_PATH="$alias_dir"
       printf '%s\n' "$alias_dir" > "$cell/state-alias.txt"
-      ARM_ISOLATION="full: AFORGE_HOME is a short owned alias to this cell's state"
+      # THE HOME IS EMPTY ON PURPOSE, and that is the seed rather than the
+      # absence of one. Nothing is inherited from the operator's ~/.aforge, and
+      # nothing is written in: the key arrives in the environment (config.go's
+      # APIKeyAt reads the variable before the profile file, so no first-run
+      # setup stands in front of the composer), and the model, the one-model
+      # law and the effort rung are all on the command line.
+      #
+      # A seeded profile would be WRONG for a two-build grid. Anything a
+      # profile pinned — a default model, a crew, a ceiling — is a default one
+      # of the two builds may have deliberately moved, and pinning it would
+      # suppress the change under test. An empty home gives each build its own
+      # defaults, which is what a person gets and therefore what is compared.
+      ARM_ISOLATION="full: AFORGE_HOME is a short owned alias to this cell's own empty state; no profile inherited, none seeded"
       ;;
     omp)
       # omp's documented isolation is a named profile, and profiles live under
@@ -425,7 +531,7 @@ ARGV=()
 arm_print_argv() {
   local arm="$1" work="$2" text="$3"
   local model; model="$(arm_model_arg "$arm")"
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge)
       # --one-model is not optional: without it a chat session resolves titles,
       # reflexes and other auxiliary calls through role pins that this run never
@@ -438,7 +544,7 @@ arm_print_argv() {
       # default, so a benchmark that opted out would be measuring a path people
       # do not use. Each cell gets its own workspace, so the host it starts is
       # its own, and run.sh stops that one host when the cell ends.
-      ARGV=("$AFORGE_BIN" chat --once "$text"
+      ARGV=("$(arm_bin "$arm")" chat --once "$text"
             --model "$model" --one-model --yolo "${ARM_EFFORT_FLAGS[@]}")
       ;;
     omp)
@@ -465,7 +571,7 @@ arm_print_argv() {
 # wrong is the failure bench/README.md warns about: a zero exit, zero changed
 # files, and a row that looks exactly like a real DNF.
 arm_print_cwd() {
-  case "$1" in
+  case "$(arm_base "$1")" in
     omp|opencode) printf '%s' "$2" ;;   # told with a flag, but harmless to start there too
     *)            printf '%s' "$2" ;;   # aforge chat and pi both take the process's directory
   esac
@@ -491,7 +597,7 @@ arm_tui_argv() {
   local arm="$1" work="$2" cap="$3"
   local model; model="$(arm_model_arg "$arm")"
   ARM_READY_RE=""; ARM_BUSY_RE=""; ARM_ASK_RE=""; ARM_DOOR_NOTE=""
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge)
       # Markers read off the CURRENT renderer rather than copied from an older
       # battery. internal/tui3/render.go's stateWord ends the status row with
@@ -525,7 +631,7 @@ arm_tui_argv() {
       # place this suite can measure the product's actual default, and passing
       # --no-host here would quietly measure something else. The cell's own
       # host is stopped by name when the cell ends (run.sh: arm_host_stop).
-      ARGV=("$AFORGE_BIN" chat --model "$model" --one-model --yolo
+      ARGV=("$(arm_bin "$arm")" chat --model "$model" --one-model --yolo
             --max-cost "${CONV_MAX_COST:-1}" --max-hours "$hours" "${ARM_EFFORT_FLAGS[@]}")
       ;;
     pi)
@@ -576,7 +682,7 @@ arm_tui_argv() {
 # arm_receipt_kind names the reader in receipts.py that can read this arm's own
 # account of what it spent.
 arm_receipt_kind() {
-  case "$1" in
+  case "$(arm_base "$1")" in
     aforge)   printf 'aforge-home' ;;
     omp|pi)   printf 'pi-events' ;;
     opencode) printf 'opencode-events' ;;
@@ -594,7 +700,7 @@ arm_receipt_kind() {
 # than zero. aforge is the same either way: the home is the witness.
 arm_receipt_path() {
   local arm="$1" cell="$2" door="${3:-print}"
-  case "$arm" in
+  case "$(arm_base "$arm")" in
     aforge) printf '%s' "$cell/state/aforge-home" ;;
     pi)     [ "$door" = "interactive" ] && printf '%s' "$cell/state/pi-sessions" || printf '%s' "$cell/stdout.log" ;;
     omp)    [ "$door" = "interactive" ] && printf '%s' "$cell/state/omp-sessions" || printf '%s' "$cell/stdout.log" ;;

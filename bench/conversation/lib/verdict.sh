@@ -30,12 +30,14 @@ CELL_FAILURES=0
 CELL_CHECKS=0
 CELL_NOTES=""
 CELL_CHECK_JSON=""
+CELL_MEASURES=""
 
 assert_begin() {
   CELL_FAILURES=0
   CELL_CHECKS=0
   CELL_NOTES=""
   CELL_CHECK_JSON=""
+  CELL_MEASURES=""
 }
 
 # note appends to the record without judging it.
@@ -48,6 +50,44 @@ record() {
   local label="$1" value="$2"
   printf '    ·  %-30s %s\n' "$label" "$value"
   note "$label=$value"
+}
+
+# ── the numbers that get a column of their own ──────────────────────────────
+#
+# A note is prose and a column is data. Everything worth sorting a grid by —
+# how long until the first word, how many tool calls it took, whether the clone
+# still builds — is measured with `measure` rather than `record`, which does
+# both: it writes the human line a record writes AND puts the value in the
+# named column every row of the CSV carries (run.sh's CONV_MEASURE_COLUMNS).
+#
+# THE COLUMN LIST IS RUN.SH'S AND IS APPEND-ONLY. A scenario that measures
+# something nobody declared still gets its note; a column no scenario filled
+# comes out empty, because an empty cell says "not measured here" and a zero
+# would say "measured, and it was none".
+CELL_MEASURES=""
+measure() {
+  local label="$1" value="$2"
+  record "$label" "$value"
+  CELL_MEASURES="$CELL_MEASURES$label	$value
+"
+}
+
+# measured prints one measured value, or nothing.
+measured() {
+  printf '%s' "$CELL_MEASURES" | awk -v want="$1" -F'\t' '$1 == want { print $2; exit }'
+}
+
+# measures_json is the whole set as one JSON object, for the row's receipt.
+measures_json() {
+  CONV_MEASURES="$CELL_MEASURES" python3 -c '
+import json, os
+got = {}
+for line in os.environ["CONV_MEASURES"].splitlines():
+    if "\t" in line:
+        name, value = line.split("\t", 1)
+        got[name] = value
+print(json.dumps(got))
+'
 }
 
 # check_json accumulates one JSON object per assertion, so the cell's receipt

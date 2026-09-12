@@ -201,6 +201,14 @@ def blank():
         "aux_models": [],
         "calls": 0,
         "turns": 0,
+        # How much WORK a reply took, which is the other half of what a cost
+        # comparison is asking. Two harnesses that answer the same question for
+        # the same money are not the same harness if one of them read forty
+        # files to do it. A reader with nothing to say about these leaves them
+        # null rather than zero: no count is not a count of none.
+        "tool_calls": None,
+        "rounds": None,
+        "task_journals": None,
         "ttft_ms": None,
         "reply": "",
         "notes": [],
@@ -394,16 +402,47 @@ def read_aforge_home(home, stdout_path):
             got["ttft_ms"] = int(row["ttft_ms"])
             break
 
-    # The transcript's non-aux `usage` seals are how many turns actually ended.
-    seals = 0
+    # The transcript's non-aux `usage` seals are how many turns actually ended,
+    # and the same pass counts the work the turn did on the way. Three numbers
+    # come out of it and each is a different question:
+    #
+    #   seals       how many turns ended
+    #   rounds      how many times the session went back to the wire. A `call`
+    #               row is written once per wire call that the provider said
+    #               anything about (sessionfile.go's appendCall), so this is
+    #               the count people mean by "it took forty rounds".
+    #   tool_calls  how many tool calls the model asked for, which is the count
+    #               people mean by "it made sixty tool calls". It is read off
+    #               the assistant messages rather than off the results, because
+    #               a call that was refused or never returned is still a call
+    #               the model chose to make and still cost a round.
+    seals = rounds = tool_calls = 0
     for path in glob.glob(os.path.join(home, "v3", "projects", "*", "*", "transcript.jsonl")):
         for row in jsonl(path):
-            if row.get("type") == "usage" and row.get("usage") and not row["usage"].get("aux"):
+            kind = row.get("type")
+            if kind == "usage" and row.get("usage") and not row["usage"].get("aux"):
                 seals += 1
+            elif kind == "call":
+                rounds += 1
+            elif kind == "message":
+                tool_calls += len(row.get("toolCalls") or [])
+
+    # Whether the conversation spilled into work of its own. A task leaves a
+    # journal of its own under the home (session/tasks/), so this is a fact on
+    # disk rather than a name in a list of verbs — which matters, because the
+    # verbs that start a task are the product's business and change, and a
+    # benchmark that enumerated them would stop counting the day one was added.
+    task_journals = 0
+    for pattern in (os.path.join(home, "v3", "projects", "*", "*", "tasks", "*"),
+                    os.path.join(home, "v3", "tasks", "*", "*")):
+        task_journals += len([path for path in glob.glob(pattern) if os.path.isfile(path)])
 
     got["models"] = models
     got["aux_models"] = aux_models
     got["turns"] = seals
+    got["rounds"] = rounds
+    got["tool_calls"] = tool_calls
+    got["task_journals"] = task_journals
     if rows and (tokens_in or tokens_out):
         got["cost_usd"] = cost
         got["cost_source"] = "self-reported"
