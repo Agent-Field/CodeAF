@@ -118,6 +118,23 @@ var fanoutPrompt string
 //go:embed prompts/quick.md
 var quickPrompt string
 
+// workerLeanPrompt and quickLeanPrompt are the LINEAR copies of the two pages
+// above: the lean profile's own variant of the worker role and the quick role
+// (B3 of #1016), rendered when [Config.promptProfile] says lean — and no
+// sooner, because a bench ([bench/prompt-diet] or a `bench/e2e` cell) must
+// show the short copy actually doing work before it joins the default.
+//
+// THE FULL PAGE IS THE CANON, NOT THE VARIANT, WHEREVER EITHER RENDERS. That
+// is the one-source-of-truth law kept by honoring the profile here and only
+// here: the variant looks imperative and is derived from the embedded page at
+// build rather than hand-tuned.
+//
+//go:embed prompts/worker_lean.md
+var workerLeanPrompt string
+
+//go:embed prompts/quick_lean.md
+var quickLeanPrompt string
+
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
 // nobody to ask is actually given.
@@ -268,10 +285,20 @@ func renderSystemAt(config Config, now time.Time) string {
 	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
 	// names no conditional verb, so the one predicate under it is whether this
 	// agent is a task node at all ([Config.isWorker]) — a standing check and a
-	// hand are neither, and each opens on a page of its own.
+	// hand are neither, and each opens on a page of its own. AND THE PAGE IT
+	// OPENS ON IS THE PROFILE'S OWN (workerLeanPrompt/quickLeanPrompt), chosen
+	// once and rendered wherever the profile says lean (B3 of #1016): the full
+	// page stays the canon, so the bench that must approve this variant runs
+	// against a flavour the variant is not.
+	workerPage := strings.TrimRight(workerPrompt, "\n")
+	quickPage := strings.TrimRight(quickPrompt, "\n")
+	if config.promptProfile().lean() {
+		workerPage = strings.TrimRight(workerLeanPrompt, "\n")
+		quickPage = strings.TrimRight(quickLeanPrompt, "\n")
+	}
 	if config.isWorker() {
 		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
+		out.WriteString(workerPage)
 	}
 	if text := renderBeltFacts(config, revisionFacts, "\n\n"); text != "" {
 		out.WriteString("\n\n")
@@ -294,10 +321,11 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 	// AND THE PAGE ABOUT BEING A QUICK TASK, on exactly the predicate that puts
 	// `items` on this belt, for the reason the two pages above are conditional:
-	// it names a verb only a quick worker carries (task_quick.go).
+	// it names a verb only a quick worker carries (task_quick.go). THE PROFILE'S
+	// OWN VARIANT OF IT IS SELECTED WHERE THE WORKER'S OWN PAGE IS (B3 of #1016).
 	if config.mayTickItems() {
 		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
+		out.WriteString(quickPage)
 	}
 
 	out.WriteString("\n\n# Project\n")
