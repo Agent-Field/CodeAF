@@ -4867,6 +4867,12 @@ its chips — you do not have to notice it. And where the model's last message a
 about that task, the chips are the answer surface for that question: its words above, the
 chips under them, one ask rather than two.
 
+**The turn that counts is the one that actually reads it.** Hand a decision over while
+aforge is already mid-answer and the note can arrive too late for that turn to see — so the
+card keeps saying `aforge is deciding` and the question waits for the next turn, which is
+usually the one aforge starts by itself a moment later. It does not bounce straight back at
+you unread, and it does not arrive twice.
+
 **And closing aforge ends the turn too.** If you quit, crash or come back to the
 conversation later, a task aforge was deciding is yours again the moment the conversation
 opens — the card draws its chips rather than the `aforge is deciding` row, because the turn

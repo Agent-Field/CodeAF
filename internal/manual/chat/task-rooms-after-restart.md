@@ -173,7 +173,9 @@ say it may still say.
 
 **And it comes back to you by itself.** A task never stays unowned past the end of a turn:
 if aforge's turn ends with the question still unanswered, the decision moves back to you
-and the card draws its chips, whether or not you noticed it had been handed over. Where
+and the card draws its chips, whether or not you noticed it had been handed over. The turn
+that counts is the one that actually read the question — hand it over while aforge is
+already mid-answer and it waits for the next turn rather than bouncing back unread. Where
 aforge's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
 

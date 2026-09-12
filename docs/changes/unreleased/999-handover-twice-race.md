@@ -1,0 +1,16 @@
+---
+kind: fixed
+title: a press the turn never read is not a press that turn can spend
+pr: 999
+surface: [engine, chat]
+invalidates:
+  - "\"A task never stays unowned past the end of a turn\" was read as the end of WHICHEVER turn ends next. It is the end of the turn that actually put the question in front of the model. A press lands on the steering queue and a queue is read at a STEP boundary, so a card pressed while the turn's last request is already out reaches no request at all — it is recorded at that turn's end drain and answered by the turn that wakes for it. `Agent.handBackUnsettled` took the hold back at the end of the first turn anyway, which put the chips back on the card within milliseconds of the press and then handed the model a decision the person was holding again. The queue is now the fact the floor asks: a hand-over note still waiting on it is a question nobody has been given, and that hold is left where it is. No second state is written down; the note carries the landing it hands over (`userMessage.handsOver`) so the floor can ask. `internal/manual/chat`'s `tasks.md` and `task-rooms-after-restart.md` said the old thing and now say which turn counts."
+  - "`Agent.Close` let go of a steer's grace, a clock armed on a question and the reading beside the work (#963, #997) but not of a held stage's beat, which is re-said on a ticker of its own until the stage ends (`Agent.beatHeldPhase`). A session closed mid-stage left that goroutine posting a conversation's stage after the conversation had gone. `Close` now ends the stage properly — so a surface takes the clock down rather than holding one nobody will finish — and `Agent.tellPhase` refuses a closed session, which is the half the close cannot do by itself while a turn is still unwinding. Under `-race` the old goroutine was a live reader of this package's own `phaseHeldBeat` while the next test wrote it, reported against whichever test happened to be running (#959)."
+  - "`internal/session`'s hand-over fixtures asserted about the window in which the model is holding a decision by pressing and then reading. There is no such window against a scripted model: the press wakes a turn whose whole life is microseconds. `modelHoldsTheTurn` parks the model inside its call — no queue drains while a turn is inside a request, and no second turn starts while one is running — so the window is stated rather than raced. `TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver` failed 3 runs in 30 under `-race` on plain `dev` @ 82624af79 and is one of #959's faces; it is not a known red and never was."
+---
+
+Two doors, one law: nothing a turn never read is spent by that turn ending, and
+nothing armed beside a turn outlives the session that armed it. The first is
+assignment.go's own rule about a line said to a node, said about a decision
+handed to the model; the second is #997's rule about a reading beside the work,
+said about the stage a surface draws a clock for.
