@@ -169,6 +169,13 @@ func TestAPinForARetiredRoleIsDroppedAndTheRestOfTheRowStillMoves(t *testing.T) 
 	}
 
 	// AND THE NEXT CHANGE TO ANY OTHER PIN GOES THROUGH — the whole failure.
+	//
+	// The row is seeded the way a profile written before the deletion holds it:
+	// straight into the file, because the writer is exactly what would refuse it
+	// today and the person whose machine this is never typed it today either.
+	if err := writeText(profile, KeyModelRoles, before); err != nil {
+		t.Fatalf("seeding the profile: %v", err)
+	}
 	if err := writeModelRoles(profile, before); err != nil {
 		t.Fatalf("a row carrying a retired role was refused: %v", err)
 	}
@@ -202,6 +209,28 @@ func TestANewPinForAWordThatIsNotARoleIsStillRefused(t *testing.T) {
 	}
 	if err := writeModelRoles(profile, "title:openai/gpt-5-mini, harness_designer:some/model"); err == nil {
 		t.Fatal("a pin against a word that is not a role was accepted as it was added")
+	}
+}
+
+// AND A ROLE WITH NO TIER IS STILL A ROLE. `imagegen` never calls
+// roles.Register — a painter is chosen by a pin or not at all — so it is in the
+// vocabulary and not in the registry, and a reader that asked the registry threw
+// the pin away on the way in. This is the case that keeps generate_image on a
+// belt somebody configured.
+func TestAPinForARoleWithNoTierSurvivesTheRead(t *testing.T) {
+	pins, err := ParseModelRoles("imagegen:paint/model, title:openai/gpt-5-mini")
+	if err != nil {
+		t.Fatalf("the row was unreadable: %v", err)
+	}
+	if pins["imagegen"] != "paint/model" {
+		t.Fatalf("the painter pin read back as %q; a role with no tier is still a role", pins["imagegen"])
+	}
+	profile := t.TempDir()
+	if err := writeModelRoles(profile, "imagegen:paint/model"); err != nil {
+		t.Fatalf("pinning a painter was refused: %v", err)
+	}
+	if stored, _ := persistedString(profile, KeyModelRoles); !strings.Contains(stored, "imagegen") {
+		t.Fatalf("the painter pin was not written back: %q", stored)
 	}
 }
 
