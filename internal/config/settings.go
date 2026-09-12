@@ -4128,11 +4128,13 @@ func writeModelRoles(profileDir, raw string) error {
 	// the word they just wrote, which is where the refusal has always earned its
 	// keep: the settings pair guessed `harness_designer` the first time it was
 	// asked.
-	stored, _, _ := parseModelRoles(ModelRolesAt(profileDir))
-	before := map[string]bool{}
-	for name := range stored {
-		before[roles.RoleKey(name)] = true
-	}
+	//
+	// AND "ALREADY STORED" IS A QUESTION ABOUT THE PERSON'S TEXT, NOT ABOUT THE
+	// PARSE. Asking [parseModelRoles] was the wrong reader to ask: it drops every
+	// retired word by design, so the stored row it reports back can never contain
+	// the one word this check is looking for, and a name that had sat in the file
+	// for months read as a name being typed for the first time.
+	before := storedRoleWords(profileDir)
 	for _, name := range dropped {
 		if !before[roles.RoleKey(name)] {
 			return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
@@ -4156,6 +4158,23 @@ func writeModelRoles(profileDir, raw string) error {
 		}
 	}
 	return writeText(profileDir, KeyModelRoles, strings.Join(kept, ", "))
+}
+
+// storedRoleWords is every role word the stored row NAMES, whether or not this
+// build still answers to it — which is the set [writeModelRoles] compares a new
+// row against to tell a word being added from a word that was already there.
+//
+// It reads the text rather than the pins on purpose. Every reader above this
+// line drops what it does not recognise, and the word this set exists to hold is
+// exactly the word they drop.
+func storedRoleWords(profileDir string) map[string]bool {
+	words := map[string]bool{}
+	for _, item := range pairItems(ModelRolesAt(profileDir)) {
+		if name, _, ok := strings.Cut(item, ":"); ok {
+			words[roles.RoleKey(name)] = true
+		}
+	}
+	return words
 }
 
 // roleNames is the registered roles as a sorted list of plain words, for the
