@@ -21,6 +21,10 @@ func TestAutomaticTaskChecksReachTheRealChecker(t *testing.T) {
 			var agent *Agent
 			asked := routeAsk
 			if checkpoint {
+				// THE CONTEXT FILLS AS IT GOES, which is the only road a turn is
+				// moved on now: the rungs before the last one tell the turn and
+				// move nothing, and the net reads the window (inherit.go).
+				completer.fillsWindow = true
 				agent, _, _ = racingAgent(t, completer)
 				completer.ahead, completer.aheadConfirm = verdict, verdict
 				asked = routeEnumerated
@@ -105,7 +109,7 @@ func TestAPartialAutomaticHandoffDoesNotInheritWholeRequestChecks(t *testing.T) 
 			verdict := routeVerdict{Work: true, Goal: routeAsk,
 				Checks: []string{"sh ./family-check.sh"}, checksRequest: routeAsk}
 			over := agent.handOverRunningTurn(context.Background(), newEventHub(), &Usage{},
-				time.Now(), agent.model, checkpointSplitNote, checkpointSeamMark, 0, nil,
+				time.Now(), agent.model, checkpointCeilingNote, checkpointSeamCeiling, 0, nil,
 				verdict, read, nil)
 			if !over.moved {
 				t.Fatalf("the handoff did not admit the remainder: %+v", over)

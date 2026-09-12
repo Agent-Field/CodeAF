@@ -1765,6 +1765,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// judge — and they say the line back in its own words.
 		{"this has parts handing it to a task", "tasks"},
 		{"a quick task took over my answer", "tasks"},
+		// The promotion wave of 2026-09-11: the turn is told and decides, the
+		// ceiling is a runaway net, and what takes the work opens on the work.
+		{"why did it stop reading and start a task", "tasks"},
+		{"can it keep what it read", "tasks"},
+		{"why did it not become a task", "tasks"},
 		{"why was there no copy of the folder", "tasks"},
 		{"why did it hand my answer to a team", "tasks"},
 		{"it started answering and then handed the work over", "tasks"},

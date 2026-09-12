@@ -38,7 +38,7 @@ func TestAWriteFreeTurnWithPartsIsTakenByAQuickTask(t *testing.T) {
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	completer := &scriptedCompleter{steps: loopingGrindSteps(checkpointMarkAt(checkpointMarks), checkpointSplitSketch, dowry)}
 	agent := checkpointAgent(t, completer, func(config *Config) {
 		config.Divide = true
 		config.SessionFile = path
@@ -93,7 +93,7 @@ func TestAWriteFreeTurnWithPartsIsTakenByAQuickTask(t *testing.T) {
 	if !saidSomething(said, checkpointQuickNote) {
 		t.Fatalf("the quick road never said its line; notices were %q", said)
 	}
-	if saidSomething(said, checkpointSplitNote) || saidSomething(said, checkpointCeilingNote) {
+	if saidSomething(said, checkpointCeilingNote) {
 		t.Errorf("a quick start drew the watched road's line as well; notices were %q", said)
 	}
 	if saidSomething(said, "this looked like work, so task ") {
@@ -139,7 +139,7 @@ func TestATurnThatWroteAFileStillTakesTheWatchedRoad(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack, checkpointSplitSketch, dowry)}
 	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
@@ -157,7 +157,7 @@ func TestATurnThatWroteAFileStillTakesTheWatchedRoad(t *testing.T) {
 		t.Error("a writing turn's split armed nothing")
 	}
 	said := noticeTexts(collected)
-	if !saidSomething(said, checkpointSplitNote) {
+	if !saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("the watched road never said its line; notices were %q", said)
 	}
 	if saidSomething(said, checkpointQuickNote) {
@@ -214,16 +214,19 @@ func TestTheItemsAreEveryLetterOfTheDrawingInOrder(t *testing.T) {
 // the whole of what tells a quick node from the task a person would otherwise
 // assume had started somewhere else.
 func TestTheQuickLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
-	const want = "this has parts · a quick task is taking them here, in this folder: "
+	const want = "this is running long · carrying on here, in this folder, with everything already read: "
 	if checkpointQuickNote != want {
 		t.Fatalf("the quick line reads %q, want %q", checkpointQuickNote, want)
 	}
 	inTheHouseRegister(t, checkpointQuickLine("the four pieces"))
-	if checkpointQuickNote == checkpointSplitNote || checkpointQuickNote == checkpointCeilingNote {
+	if checkpointQuickNote == checkpointCeilingNote {
 		t.Error("the quick line says what another moment says, and the three have seen different things")
 	}
-	if strings.Contains(checkpointQuickNote, "running long") {
-		t.Errorf("the quick line claims the turn has run long: %q", checkpointQuickNote)
+	// AND IT SAYS WHAT THE OTHER TWO CANNOT: the work went WITH what was already
+	// read. That half is the whole difference between a promotion and a restart,
+	// and a person cannot see it anywhere else (inherit.go).
+	if !strings.Contains(checkpointQuickNote, "already read") {
+		t.Errorf("the quick line does not say the work took what was read with it: %q", checkpointQuickNote)
 	}
 }
 
@@ -269,7 +272,7 @@ func TestAQuickNodeFromADrawingTicksItsListRatherThanFaulting(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	completer := &scriptedCompleter{steps: loopingGrindSteps(checkpointMarkAt(checkpointMarks), checkpointSplitSketch, dowry)}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
@@ -365,8 +368,10 @@ func TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes(t *testing.T) {
 		return completer, ran.await(t), &names
 	}
 
-	// THE QUICK ROAD: a turn that wrote nothing, whose drawing has parts.
-	_, quick, quickNames := namesAsked(t, grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry))
+	// THE QUICK ROAD: a turn that wrote nothing and is going in circles, which is
+	// the shape the net takes a turn away from now — a count of rounds moves
+	// nothing (inherit.go, [loopingGrindSteps]).
+	_, quick, quickNames := namesAsked(t, loopingGrindSteps(checkpointMarkAt(checkpointMarks), checkpointSplitSketch, dowry))
 	if quick.spec.quick == nil {
 		t.Fatal("the write-free turn was not handed to a quick node")
 	}
@@ -381,7 +386,8 @@ func TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes(t *testing.T) {
 
 	// THE FULL ROAD: the same drawing out of a turn that wrote one file, which is
 	// the one turn the watched road still takes ([writingGrindSteps]).
-	_, full, fullNames := namesAsked(t, writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry))
+	_, full, fullNames := namesAsked(t, writingGrindSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointSplitSketch, dowry))
 	if full.spec.quick != nil {
 		t.Fatal("a turn that wrote was handed to a quick node")
 	}
@@ -429,4 +435,39 @@ func TestAFullFanIsWrittenDownAsAFullFanAndNotAsNoBrief(t *testing.T) {
 		t.Fatalf("a carry-on with nothing on it ended as moved=%v %q, want %q",
 			empty.moved, empty.decision, checkpointCeilingNoBrief)
 	}
+}
+
+// loopingGrindSteps is a turn that GOES IN CIRCLES: the same failing command,
+// round after round, until looped.go's watch has spent its two notes and the
+// third signal ends the turn through the ceiling ([Agent.handOverLoopingTurn]).
+//
+// IT IS THE RUNAWAY THE PROMOTION ROAD IS FOR, and the fixture says so by being
+// the shape it is. The net has three rungs and only two of them can promote: a
+// turn whose CONTEXT has run out cannot hand that context to a worker on the
+// same model with the same window, so its move is the brief road with the
+// results compiled into it ([checkpointMeter.outOfRoom]). A turn that is looping
+// has a context that is perfectly fine and work that is not moving, which is
+// exactly the turn worth carrying on somewhere else with everything it read.
+func loopingGrindSteps(count int, sketch, brief string) []step {
+	steps := make([]step, count)
+	for index := range steps {
+		round := index
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				return textResponse(sketch), nil
+			}
+			if askedForHandoff(messages) {
+				return textResponse(brief), nil
+			}
+			if askedToWriteHandoff(messages) {
+				return toolResponse("no-writer", "ls", `{"path":"."}`), nil
+			}
+			if askedForRemains(messages) {
+				return textResponse(checkpointNothingLeft), nil
+			}
+			return toolResponseWithText(fmt.Sprintf("spin-%d", round), "bash",
+				`{"command":"exit 7"}`, "trying the build again."), nil
+		}
+	}
+	return steps
 }
