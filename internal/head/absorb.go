@@ -38,7 +38,8 @@ import (
 // structurally impossible, and it bought that with the person's actual answer:
 // what they got was a machine's output with one polite line on top of it.
 //
-// The answer contract inverts it (chat-simplify §2.6). RAW IN — the turn now
+// The answer contract inverts it (the August 2026 chat-simplification audit,
+// no longer in the tree, §2.6). RAW IN — the turn now
 // reads the result whole, opens the file when that is where the substance lives,
 // and can read the plan or the board if the ask needs it. COMPOSED OUT — what it
 // writes is the answer to the question that started the work, sized to its

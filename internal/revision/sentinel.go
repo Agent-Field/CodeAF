@@ -36,7 +36,8 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	// The sentinel is this job's own second thought about its own remainder,
 	// so its spend belongs to this job.
 	judgeCtx := pool.WithSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
-	// terrain wiring lands here (world-grounded-planning handoff)
+	// terrain wiring lands here (the August 2026 world-grounded-planning
+	// handoff, no longer in the tree)
 	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph, event)
 	if err != nil || len(operations) == 0 {
 		return 0
@@ -119,7 +120,8 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 func ForUser(ctx context.Context, settings config.Config, client plan.Completer,
 	graph *store.Store, job store.Node, planGraph *plan.Graph, root, message string,
 	flavor resident.RevisionFlavor) (resident.Redirection, int, error) {
-	// terrain wiring lands here (world-grounded-planning handoff)
+	// terrain wiring lands here (the August 2026 world-grounded-planning
+	// handoff, no longer in the tree)
 	operations, _, err := plan.Revise(settings.Context(pool.WithSpendNode(ctx, job.ID), planGraph.Goal),
 		client, planGraph, resident.UserRevisionEvent(message, flavor))
 	if err != nil {

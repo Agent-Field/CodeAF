@@ -59,5 +59,5 @@
 // free to paint itself; prose owns its own colours, so someone else's are
 // stripped rather than honoured. Control bytes never reach a cell.
 //
-// Section numbers in comments refer to audit-notes/chat-rebuild.md.
+// Section numbers in comments refer to the August 2026 chat-rebuild audit, no longer in the tree.
 package prose

@@ -1,5 +1,5 @@
 // Package sanitize is the one output chokepoint for terminal-unsafe text
-// (chat-rebuild audit notes, Part 10.2 items 6-7).
+// (the August 2026 chat-rebuild audit, no longer in the tree, Part 10.2 items 6-7).
 //
 // Anything that reaches the terminal and was not authored by our own
 // renderer — a model reply, a tool result, a worker trace line — is a

@@ -33,7 +33,8 @@ import (
 
 const (
 	beltToolBoard = "board"
-	// The verb triad (chat-simplify §2.3). The person's intents about work
+	// The verb triad (the August 2026 chat-simplification audit, no longer in the
+	// tree, §2.3). The person's intents about work
 	// reduce to three shapes — make it, change it, withdraw it — so the belt
 	// carries three verbs and no taxonomy.
 	//

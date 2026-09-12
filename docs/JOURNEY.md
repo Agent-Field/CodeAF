@@ -119,7 +119,6 @@ showed and what the journal recorded. A journey passes only when:
 3. Nothing else happened — no silent extra spend, no orphaned questions, no
    unanswered user words.
 
-The executable suite lives in `test/ux/`. Each journey above maps to one
-script; the suite runs on a disposable store with a spend cap and the
-cheapest capable models, and its report is written for a human reading
-"which journeys are true today."
+The executable terminal suite lives in `internal/e2e/`. It drives the live v3
+surface in tmux and checks the screen, durable record, and absence of unintended
+work. The removed harness targeted the retired v1/v2 surfaces.

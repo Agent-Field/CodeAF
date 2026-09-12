@@ -1,5 +1,6 @@
-// Package registry is the one command registry named in the chat-rebuild
-// doc's 5.22 ("Discoverability: no typed-only actions"): every action lives
+// Package registry is the one command registry established by the August 2026
+// chat-rebuild audit's 5.22 (no longer in the tree; "Discoverability: no
+// typed-only actions"): every action lives
 // on a visible object, and typing is an accelerator, never the only door. A
 // single catalog of entries — id, verb phrase, description, scope predicate,
 // key binding, slash alias, journal mapping — is the source every render

@@ -112,8 +112,9 @@ func TestChatSessionStartsFreshOnlyWhenAsked(t *testing.T) {
 
 // The launch that made five untitled rooms. Two windows opened in a row, with
 // nothing but the journal between them, must be ONE conversation — JOURNEY's
-// law, "session resumes by default; /new starts fresh" (rail-rooms grooming
-// A2). The two launches here are two openChatWindow calls over one file, which
+// law, "session resumes by default; /new starts fresh" (the August 2026
+// rail-room audit, no longer in the tree, A2). The two launches here are two
+// openChatWindow calls over one file, which
 // is what a relaunch is.
 func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")

@@ -1023,7 +1023,7 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// pending.go's registry — and yet it lived outside every lane above, so a
 	// session sitting on one said `idle` to home, to the switcher and to the tab
 	// signal. A person was told there was nothing to do about work that could
-	// not go on without them (ideation/questions-audit.md, finding 4).
+	// not go on without them (the September 2026 questions audit, finding 4).
 	//
 	// IT IS READ LAST because it is the one question in this list that BLOCKS
 	// NOTHING: the work has already finished, and the reason a person reads

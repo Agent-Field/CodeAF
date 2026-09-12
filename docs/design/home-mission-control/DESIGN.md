@@ -1,7 +1,7 @@
 # Home as mission control — the ruling and the lanes
 
 *Owner-shaped 2026-09-10 over four rounds of the picker
-(`ideation/home-layout-rethink.md` is the first draft and its own critique; the
+(the removed first draft supplied the initial critique; the
 picker artifact is the visual record). Status: **ruled 2026-09-10** — the owner took every default in §6. Everything in §2 and §3 is verified against the tree
 on 2026-09-10; file references are to `dev` at `893d66067`.*
 

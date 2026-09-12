@@ -8,7 +8,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// The re-entry brief, and the alive glance (chat-simplify J4, J5).
+// The re-entry brief, and the alive glance (the August 2026 chat-simplification
+// audit, no longer in the tree, J4 and J5).
 //
 // A thread is a working conversation: alive for days, commissioning tasks along
 // the way, taking their results back, and resumable after weeks. What made
