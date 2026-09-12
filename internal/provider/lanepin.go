@@ -171,8 +171,8 @@ func PinnedFor(model string) string {
 // anybody is waiting.
 func SetLaneGuard(on bool) {
 	lanePinMu.Lock()
+	defer lanePinMu.Unlock()
 	laneGuard = on
-	lanePinMu.Unlock()
 }
 
 // LaneGuardOn reports whether the speed guard is on.
@@ -413,11 +413,18 @@ func tellRetiredPins(ctx context.Context) {
 	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
 		return
 	}
-	lanePinMu.Lock()
-	owed := retiredPinLines
-	retiredPinLines = nil
-	lanePinMu.Unlock()
-	for _, line := range owed {
+	for _, line := range takeRetiredPins() {
 		Emit(ctx, StreamNotice, line)
 	}
+}
+
+// takeRetiredPins hands over whatever is parked in one locked step: the queue
+// is emptied by the same critical section that reads it, so two calls somebody
+// is reading can never each say the same line.
+func takeRetiredPins() []string {
+	lanePinMu.Lock()
+	defer lanePinMu.Unlock()
+	owed := retiredPinLines
+	retiredPinLines = nil
+	return owed
 }
