@@ -3143,6 +3143,30 @@ calls. `aforge doctor` names the file and its size. Set `AFORGE_CALL_LOG=off` to
 write nothing at all, or `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere
 you can watch.
 
+## A log row says "let go of because you chose another model" — what that row is, did my call fail, was I charged for it
+
+**Nothing failed, and the row is there on purpose.** It is written when you name
+another model while a request is out that had given you nothing back — see *Can I
+switch models while it is replying* above. aforge let that request go and asked the
+model you chose instead, and the row is the record of the one it let go of:
+
+```
+let go of because you chose another model
+```
+
+- **It is not a failure and nothing is broken.** Your own word is what ended that
+  request. The reply you eventually read is on the model you picked.
+- **It is written down because it cost something.** aforge had already reached a
+  machine and may have been charged for getting there, and a long step that is later
+  read back should show where every second and every cent went — a request that
+  simply vanished from the log would make the arithmetic on that step wrong.
+- **It does not say your turn stopped.** Rows that mean *aforge itself ended the
+  turn* carry a door (`person stopped`, `taken over`); this one carries none,
+  because the turn carried on. Anything reading the log to ask "did this turn end"
+  will not count it.
+- **You will see one per pick**, so picking twice inside one wait writes two rows and
+  each names the request it ended.
+
 ## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
 
 A headless run prints one last line, under the answer and any files or lines it learned:

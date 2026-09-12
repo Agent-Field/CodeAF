@@ -365,12 +365,12 @@ func TestTheOneReadingIsWhatBothDoorsAsk(t *testing.T) {
 	if !generation.productive() {
 		t.Fatal("the person's word does not see what the observer drew")
 	}
-	if !aside.reached.did() {
+	if !aside.reached.Load().did() {
 		t.Fatal("the recall's gate and the person's word are reading two different facts, " +
 			"which is the defect this reading exists to make impossible")
 	}
 	reached.reset()
-	if generation.productive() || aside.reached.did() {
+	if generation.productive() || aside.reached.Load().did() {
 		t.Fatal("the attempt boundary did not empty the reading for both doors")
 	}
 }

@@ -528,6 +528,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			reasoning.reset()
 			warm.reset()
 			forming.reset()
+			// AND THE READING GOES WITH THEM. What the dead machine drew is
+			// withdrawn on the event below, so the person has none of it in front
+			// of them any more — and a reading left standing would tell the doors
+			// that may re-ask this request that they still do (steer.go's
+			// [reachedThePerson]).
+			reached.reset()
 			hub.send(Event{Kind: EventRetrying, Text: event.Delta})
 		case provider.StreamToolCallForming:
 			// The seconds BEFORE the announcement, which the person used to

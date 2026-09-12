@@ -245,6 +245,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// screen is something you have read.
 		{"the model is showing its thinking, can I still switch", "models-and-cost"},
 		{"where are the logs", "models-and-cost"},
+		// AND THE ROW THE PERSON'S OWN WORD WRITES. Somebody reading a long step
+		// back hits this line and has to be able to tell it from a failure.
+		{"let go of because you chose another model", "models-and-cost"},
 		{"what did you send the model", "models-and-cost"},
 		// And the row that is short of a figure: the note names the number it
 		// left out, which is the first thing somebody greps for when a line has

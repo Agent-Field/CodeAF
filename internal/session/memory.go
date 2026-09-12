@@ -503,7 +503,16 @@ type recallAside struct {
 	// every other door that asks the same question, and it is handed over by the
 	// loop ([reachedThePerson], steer.go). There were two readings of this once
 	// and they disagreed about a visible thought.
-	reached *reachedThePerson
+	//
+	// IT IS AN ATOMIC POINTER FOR THE REASON THE FIELD IT REPLACED WAS AN ATOMIC
+	// BOOL: the two ends are two goroutines. The turn's own hands it over
+	// ([recallAside.watch]) while this aside's reading may already be answering
+	// from the sidecar's, and a plain pointer written on one and read on the
+	// other is a race whether or not it is ever observed. A nil load is simply a
+	// reading not handed over yet, which [reachedThePerson.did] already answers
+	// as "nothing has reached them" — the safe answer, and the one that was true
+	// at that instant.
+	reached atomic.Pointer[reachedThePerson]
 	// resent is the ONE re-ask this aside may buy. One, because a second would be
 	// a door that could cut generations forever, and because there is only ever
 	// one block to land.
@@ -567,7 +576,7 @@ func (a *Agent) takeRecall() *recallAside {
 // of them. The loop calls it once, with the reading its stream observer fills.
 func (r *recallAside) watch(reached *reachedThePerson) {
 	if r != nil {
-		r.reached = reached
+		r.reached.Store(reached)
 	}
 }
 
@@ -577,7 +586,7 @@ func (r *recallAside) applyOrDefer() {
 	if r == nil {
 		return
 	}
-	if r.reached.did() {
+	if r.reached.Load().did() {
 		r.late.Store(true)
 		return
 	}
