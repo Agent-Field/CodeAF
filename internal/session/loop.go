@@ -794,7 +794,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// left to run beside. The CEILING used to be a third and is not any more —
 		// it is a rung a turn can carry on past, so a drawing awaited in front of
 		// it would be awaited in front of work about to continue
-		// (sidecar_law_test.go's `endingDoors` says it in the law's own words). A deferred body runs when everything has already been
+		// (sidecar_law_test.go's `endingDoors` says it in the law's own words).
+		//
+		// A deferred body runs when everything has already been
 		// decided, which is what makes the wait honest here and nowhere else
 		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
 		// What it costs is bounded twice — by [checkpointSketchWindow] and by the
@@ -4770,10 +4772,11 @@ func (a *Agent) foldLocked() (int, string) {
 	// SO THE FOLD WRITES THE ACCOUNT ITSELF, out of the messages it is about to
 	// take away, with NO MODEL CALL: where the turn has already been, what it put
 	// there and the opening line of each, and where it had got to. It is
-	// [checkpointDigest] at a small budget — the same function the mark's reader
-	// and the handoff writer are shown, so a lane that changes what counts as an
-	// account of a turn changes all three in one edit — and the budget is what
-	// makes it a fold rather than a copy ([foldAccountBytes], [foldAccount]).
+	// the mark reader's own account at a small budget — [foldAccount] and
+	// [checkpointDigest] are one transcript walk ([checkpointLedger]) and one
+	// eviction rule ([accountSections]) with two budgets, so a lane that changes
+	// what counts as an account of a turn changes both in one edit — and the
+	// budget is what makes this one a fold rather than a copy ([foldAccountBytes]).
 	//
 	// THE PERSON'S OWN MESSAGES NEED NO HELP FROM IT. They are never folded at all
 	// (see this function's own four rules above), which is the same protection the
