@@ -428,7 +428,7 @@ var handoffFacts = []beltFact{{
 		"can. Each landing comes to you as a note, and starts a turn if yours has ended.\n" +
 		"A landing note IS the piece's answer — fold it, never re-open the work to check\n" +
 		"it. When nothing independent of what you handed out remains, end your turn.\n" +
-		"That is how you wait.",
+		"That is the wait.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +

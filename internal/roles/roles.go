@@ -176,6 +176,11 @@ const (
 	// work. What it costs is bounded hard: at most two calls, and only on a turn
 	// that is being handed over at all, which most turns never are.
 	RoleHandoff Role = "handoff"
+	// RoleConsult is the MODEL-INITIATED second opinion: one question to the
+	// tier that thinks, through the `consult` verb (internal/session's
+	// consult.go, which owns the call and registers it). Mastermind, for
+	// RoleRouterConfirm's reason: a wrong answer here routes real spend.
+	RoleConsult Role = "consult"
 	// RoleTaskName is the two or three words a piece of work is CALLED on the
 	// rail, the home card and the task list — made from the node's own gloss and
 	// brief when whoever started it left a raw sentence there instead of a name.
