@@ -12,47 +12,60 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer is the fact a
+// TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer is the fact a
 // SURFACE is not allowed to guess at, written down where it is produced.
 //
 // A surface deciding where a permission's pointer opens has exactly two things
 // to read: the stakes, and which answer the lane marked as losing nothing. The
-// 2026-09-11 design ruling was that an ordinary call should open on `allow once`
-// and only a grave one on deny — and the reason that rule cannot be written from
-// the stakes today is asserted here rather than described: THIS GATE STAMPS
-// `costly` ON EVERY CALL ALIKE, `rm -rf *` included, on purpose and with its own
-// account of why (consent.go). Nothing in internal/approval produces
-// [StakesIrreversible] at all; approval's judgement is expressed as WHETHER TO
-// ASK and never as how much is at stake.
+// 2026-09-11 design ruling was that an ordinary call opens on `allow once` and
+// only a grave one on deny — and the gate now says which is which, because THE
+// STAKES ARE INTERNAL/APPROVAL'S OWN JUDGEMENT PASSED THROUGH (consent.go):
+// [approval.AlwaysAsks] is true for exactly the shapes that hold under a
+// blanket allow — bash's critical table and the calls that act in the person's
+// name — so a recursive delete of a root path is graded [StakesIrreversible]
+// and an ordinary call stays [StakesCostly]. Nothing in this package reads the
+// command's text: one predicate decides asking and grading, and a second list
+// here would be two judgements about the same call that one day disagree.
 //
-// So a surface rule keyed on the stakes would read "ordinary" for a recursive
-// delete exactly as loudly as for a `git status`, and its grave branch would be
-// reachable only from a fixture. The surface's own rule is deny-first for every
-// permission until that changes (tui3's [questionPointerStart]), and THIS TEST
-// IS WHAT TELLS THE NEXT PERSON THE GROUND MOVED: grade a call irreversible
-// here and this fails, which is the moment the pointer rule may be split by
-// stakes and the moment that surface test needs re-reading.
-func TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer(t *testing.T) {
+// THE CALL BELOW IS THE FLOOR'S OWN SHAPE. The issue's replication line ran the
+// same check on `rm -rf *`, but the default policy DENIES that pattern outright
+// and a denied call is answered in approve before any question exists — the
+// irreversible QUESTION the surface can meet is one the policy still asks
+// about, which is exactly the floor's table.
+//
+// THE WIDENING `always` IS NOT OFFERED ON A GRAVE CALL. It banks a memo or a
+// rule that answers the next call without asking, and these are exactly the
+// shapes the gate asks about EVERY time, memo or no memo — so the key would
+// draw a standing permission the very next call refuses to honour.
+//
+// THE SURFACE'S OWN RULE MAY NOW BE SPLIT BY THE STAKES (tui3's
+// [questionPointerStart]): the grave branch is reachable from production, and
+// tui3's TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall must be
+// re-read the day this file changes again.
+func TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	call := ai.ToolCall{
 		ID:       "c1",
-		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"rm -rf *"}`},
+		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"rm -rf /"}`},
 	}
 	decision := approval.Policy{}.Check("bash", json.RawMessage(call.Function.Arguments))
 	if decision.Action != approval.ActionPrompt {
-		t.Fatalf("the default rules do not even ask about `rm -rf *`: %+v", decision)
+		t.Fatalf("the default rules do not even ask about `rm -rf /`: %+v", decision)
 	}
 
 	ask := agent.consentAsk(9, call, decision)
 
-	// THE STAKES, WHICH ARE THE HALF A SURFACE MUST NOT KEY A SAFETY DEFAULT ON.
-	if ask.Stakes == StakesIrreversible {
-		t.Fatal("the gate now grades a call irreversible: the surface's deny-first " +
-			"rule may be split by stakes, and tui3's " +
-			"TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall must be re-read")
+	// THE STAKES, WHICH ARE THE HALF A SURFACE MUST READ: a recursive delete of
+	// a root path is one of the shapes internal/approval never stops asking
+	// about, so the gate grades it irreversible and leaves the widening
+	// `always` off the answers.
+	if ask.Stakes != StakesIrreversible {
+		t.Fatalf("the gate stamped something other than irreversible on `rm -rf /`: %q", ask.Stakes)
 	}
-	if ask.Stakes != StakesCostly {
-		t.Fatalf("the gate stamped something other than costly on `rm -rf *`: %q", ask.Stakes)
+	for _, option := range ask.Options {
+		if option.Widening {
+			t.Fatalf("an irreversible call still offers the widening %q answer", option.Label)
+		}
 	}
 	if ask.Ask != AskPermission {
 		t.Fatalf("a consent is not asking for permission: %q", ask.Ask)
@@ -92,7 +105,7 @@ func TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer(t *testing.T
 	assertConsentGolden(t, ask)
 }
 
-// consentGolden is where the engine's own answer to `rm -rf *` is kept for the
+// consentGolden is where the engine's own answer to `rm -rf /` is kept for the
 // surface's tests to raise. It sits beside the code that produces it, because
 // the producer is what owes it accuracy.
 const consentGolden = "testdata/consentask-rm-rf.json"
