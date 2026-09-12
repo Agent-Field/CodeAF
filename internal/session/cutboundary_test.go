@@ -179,6 +179,24 @@ func TestACutWhoseReasonRidesTheTranscriptIsNotOwed(t *testing.T) {
 	}
 }
 
+// AND NEITHER IS THE WORD A PERSON SAYS. The model they named rides
+// [Agent.spokenModel] and the next request reads it at the latch, so a word said
+// between two requests is already carried without any cut — and owing one would
+// make [Agent.cutGeneration] answer true where nothing was cut, which the room
+// says out loud as `switching now` for a request that is not starting.
+func TestAWordSaidWithNothingRunningIsNotOwedACut(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	if agent.cutGeneration(errPersonCut) {
+		t.Error("a word said between two requests was told it had cut something")
+	}
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
+	defer agent.endGeneration(generation)
+	if ctx.Err() != nil {
+		t.Errorf("the request that was already going to carry their model was cut for it: %v", context.Cause(ctx))
+	}
+}
+
 // AND AN OWED CUT BELONGS TO THE TURN THAT ASKED FOR IT. A drawing read against
 // one turn's transcript has nothing whatever to say about the next thing a person
 // types, so a cut the turn never got to spend dies with it — which is also what
