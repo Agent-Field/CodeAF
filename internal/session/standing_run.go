@@ -98,13 +98,12 @@ const (
 	standingOutcomeClip = 400
 )
 
-// standingSentinelRole is the cheap yes/no judgment, registered as a ROLE so it
-// resolves the way every other auxiliary call in this build resolves: the
-// person's pin, then the low tier, then the conversation's own model
-// (internal/roles). It sits low for the guardian's reason — it reads a few
-// kilobytes and answers one binary question, and a wrong no costs a check that
-// said nothing rather than money.
-const standingSentinelRole roles.Role = "sentinel"
+// standingSentinelRole is the cheap yes/no judgment, registered here and
+// DECLARED IN internal/roles beside every other role's word ([roles.RoleSentinel],
+// which carries the reasoning), so it resolves the way every other auxiliary
+// call in this build resolves and so that everything which reads the role
+// vocabulary can see it.
+const standingSentinelRole = roles.RoleSentinel
 
 func init() {
 	roles.Register(standingSentinelRole, roles.TierLow, "is this worth telling you about")

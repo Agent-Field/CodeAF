@@ -212,6 +212,16 @@ const (
 	// internal/session/subharness_intake.go, which owns the call.
 	RoleIntake Role = "intake"
 
+	// RoleSentinel is one standing item's cheap yes-or-no: is what this check
+	// found worth telling the person about.
+	//
+	// IT SITS LOW for the guardian's reason — it reads a few kilobytes and
+	// answers one binary question, and a wrong no costs a check that said nothing
+	// rather than money. It is also the call this build makes most often with
+	// nobody in front of it, once per check of every item forever. Registered
+	// from internal/session/standing_run.go, which owns the call.
+	RoleSentinel Role = "sentinel"
+
 	// RoleSpellOut expands a half-written request into what it obviously meant,
 	// for the person to read and keep or drop.
 	//
