@@ -113,7 +113,7 @@ func TestAWindowedCallIsToldTheTimeItHasLeft(t *testing.T) {
 	send := func(ctx context.Context) int {
 		t.Helper()
 		before := server.requests()
-		if _, err := agent.completeWithModel(provider.WithLaneChoice(ctx, lanes.Choice{Order: []string{lane}}), ask, model); err != nil {
+		if _, err := agent.completeWithModel(provider.WithLaneChoice(ctx, lanes.Choice{Order: []string{lane}}), purposeTurn, ask, model); err != nil {
 			t.Fatalf("completeWithModel: %v", err)
 		}
 		return server.reasoningBudget(t, before)

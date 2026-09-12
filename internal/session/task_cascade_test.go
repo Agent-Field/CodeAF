@@ -3,7 +3,7 @@ package session
 // THE CASCADE: WHERE A CHEAP CREW BUYS THE CAREFUL MODEL, AND WHERE IT DOES NOT.
 //
 // One escalation exists in this build (repair_role.go): work a checker sent back
-// is handed to [roleRepair], which sits on the careful tier. Four things have to
+// is handed to [roles.RoleRepair], which sits on the careful tier. Four things have to
 // hold for that to be an economy rather than a leak, and each of them is a test
 // here:
 //
@@ -44,18 +44,18 @@ const carefulTier = "test/careful-model"
 // be paying a thinking model's price for many turns of ordinary editing, which
 // is the split [roles.TierMastermind] exists to keep.
 func TestTheRepairRoleSitsOnTheCarefulTier(t *testing.T) {
-	tier, ok := roles.TierOf(roleRepair)
+	tier, ok := roles.TierOf(roles.RoleRepair)
 	if !ok {
-		t.Fatalf("%q is not a registered role, so it resolves to nothing", roleRepair)
+		t.Fatalf("%q is not a registered role, so it resolves to nothing", roles.RoleRepair)
 	}
 	if tier != roles.TierHigh {
-		t.Fatalf("%q resolves on %q, want the careful tier", roleRepair, tier)
+		t.Fatalf("%q resolves on %q, want the careful tier", roles.RoleRepair, tier)
 	}
 	// A ROW A PERSON READS. The settings sheet lists every registered role, and a
 	// role with no line under its name is a call somebody pays for and cannot
 	// read (internal/roles' Describe states the emptiness law about it).
-	if strings.TrimSpace(roles.Describe(roleRepair)) == "" {
-		t.Fatalf("%q has no description, so its settings row says only its own name", roleRepair)
+	if strings.TrimSpace(roles.Describe(roles.RoleRepair)) == "" {
+		t.Fatalf("%q has no description, so its settings row says only its own name", roles.RoleRepair)
 	}
 }
 
@@ -91,12 +91,12 @@ func TestARepairRoundResolvesThroughTheRepairRolesTier(t *testing.T) {
 	// role alone moves the round and nothing else in the crew.
 	pinned, _ := cascadeAgent(t,
 		map[string]string{
-			roles.TierKey(roles.TierHigh): carefulTier,
-			roles.PinKey(roleRepair):      "vendor/mender",
+			roles.TierKey(roles.TierHigh):  carefulTier,
+			roles.PinKey(roles.RoleRepair): "vendor/mender",
 		},
 		taskSpec{title: "the greeting", model: "vendor/flash"})
 	if got := pinned.repairModel(node); got != "vendor/mender" {
-		t.Fatalf("a pin on %q resolved to %q", roleRepair, got)
+		t.Fatalf("a pin on %q resolved to %q", roles.RoleRepair, got)
 	}
 }
 

@@ -98,16 +98,11 @@ const (
 	standingOutcomeClip = 400
 )
 
-// standingSentinelRole is the cheap yes/no judgment, registered as a ROLE so it
-// resolves the way every other auxiliary call in this build resolves: the
-// person's pin, then the low tier, then the conversation's own model
-// (internal/roles). It sits low for the guardian's reason — it reads a few
-// kilobytes and answers one binary question, and a wrong no costs a check that
-// said nothing rather than money.
-const standingSentinelRole roles.Role = "sentinel"
-
+// The cheap yes/no judgment is [roles.RoleSentinel] — declared there with every
+// other role's word, which carries the reasoning — and registered here, where
+// the call is.
 func init() {
-	roles.Register(standingSentinelRole, roles.TierLow, "is this worth telling you about")
+	roles.Register(roles.RoleSentinel, roles.TierLow, "is this worth telling you about")
 }
 
 // ── the live-window registry ────────────────────────────────────────────────
@@ -1025,7 +1020,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 	)
 	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
 		once.Do(func() {
-			model, built = roles.Resolve(roles.Source(parent.RolesSource), standingSentinelRole, parent.Model)
+			model, built = roles.Resolve(roles.Source(parent.RolesSource), roles.RoleSentinel, parent.Model)
 			if built != nil {
 				return
 			}
@@ -1063,8 +1058,15 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// the phase clock share: a standing run has no one in front of it, so
 		// its wait is worth nothing and its stream is nobody's to watch
 		// (internal/lane's roles.go).
+		//
+		// And the purpose, because this road builds its own client and never
+		// passes the door: it is the call this build makes most often with
+		// nobody there, and until it said so it reached the log with no tag at
+		// all (clientdoor.go's [withPurpose]).
 		callCtx := provider.WithRole(
-			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			provider.WithRoutingIntent(
+				provider.WithoutStream(withPurpose(ctx, purposeSentinel)),
+				provider.IntentBackground),
 			lane.RoleStanding)
 		if rung := effort.Resolve(effort.Scope{
 			Task: restoredRung(judgment.Item.Does.Effort),

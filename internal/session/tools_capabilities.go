@@ -267,9 +267,10 @@ func (a *Agent) shelvedTools() []bare.Tool {
 // meets an unfamiliar name in its own history find the group it is in.
 func (a *Agent) loadCapabilityTool(shelf map[string][]bare.Tool, order []string) bare.Tool {
 	return bare.Tool{
-		Name:        loadCapabilityToolName,
-		Description: loadCapabilityDescription(shelf, order),
-		Schema:      json.RawMessage(loadCapabilitySchema(order)),
+		Name: loadCapabilityToolName,
+		Description: loadCapabilityDescription(
+			func(group string) []string { return toolNames(shelf[group]) }, order),
+		Schema: json.RawMessage(loadCapabilitySchema(order)),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Group string `json:"group"`
@@ -287,10 +288,17 @@ func (a *Agent) loadCapabilityTool(shelf map[string][]bare.Tool, order []string)
 // sentence in it is a law the model cannot get elsewhere: what the verb does,
 // WHEN the tools become usable, how long they last, and that it is not
 // permission.
-func loadCapabilityDescription(shelf map[string][]bare.Tool, order []string) string {
+// IT TAKES THE MEMBERS AS A QUESTION rather than the shelf itself, because what
+// is on the shelf depends on the MACHINE — `edit_video` is built only where
+// ffmpeg is on PATH, and a group whose every member was gated off is not named
+// at all — while the bytes this sentence costs are spent on every request
+// everywhere. The one gate that bounds the fixed prefix has to be able to ask
+// for the widest answer rather than this machine's (prefixbudget_test.go's
+// widestBelt), and a function is the seam that lets it.
+func loadCapabilityDescription(members func(group string) []string, order []string) string {
 	var lines strings.Builder
 	for _, name := range order {
-		lines.WriteString(" " + name + ": " + strings.Join(toolNames(shelf[name]), ", ") + ".")
+		lines.WriteString(" " + name + ": " + strings.Join(members(name), ", ") + ".")
 	}
 	return "Load one additional tool group. Available groups:" + lines.String() +
 		" Full schemas arrive on the next model request; continue in this same turn. " +

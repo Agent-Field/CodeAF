@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -30,20 +29,54 @@ import (
 // a registry to design into, a runner to run what is designed, an adaptive
 // runner, and a surface that answers questions.
 
-// v3ShapedAgent is a conversation configured the way the interactive door
-// configures one.
+// v3ShapedAgent is the conversation the interactive door configures, which is
+// [shippedShapeAgent] and is not a second opinion about it.
+//
+// IT USED TO BE A SECOND OPINION, AND THAT WAS THE MEASURED HOLE. This function
+// built its own thin config — no memory store, no accounts hub, no standing
+// items, no saved programs, eighteen tools — and four tests weighed the shipping
+// door through it, including both prefix budgets. A machine somebody has
+// finished setting up carries five more tools and fourteen kilobytes more
+// prefix, so every one of those gates reported on a conversation nobody has.
+// There is ONE shipped shape now and this is a name for it.
 func v3ShapedAgent(t *testing.T) *Agent {
 	t.Helper()
+	return shippedShapeAgent(t)
+}
+
+// shippedBeltShape names the row of [beltShapes] that IS the shipping
+// conversation, fully wired.
+//
+// THE INDEX IS NOT THE IDENTITY. `beltShapes[0]` read the fullest shape only for
+// as long as nobody put a row in front of it — and what reads it is a budget
+// whose whole job is to be the number for the SHIPPED belt, which would have
+// gone on passing, quietly, against whatever shape had moved into slot zero.
+// That is the same failure this fixture exists to repair, one layer down.
+const shippedBeltShape = "a conversation that remembers"
+
+// beltShapeNamed is one row of [beltShapes] by its own name, and fails loudly
+// rather than returning a zero shape that would build an agent out of nothing.
+func beltShapeNamed(t *testing.T, name string) beltShape {
+	t.Helper()
+	names := make([]string, 0, len(beltShapes))
+	for _, shape := range beltShapes {
+		if shape.name == name {
+			return shape
+		}
+		names = append(names, shape.name)
+	}
+	t.Fatalf("there is no belt shape called %q; the shapes are %q", name, names)
+	return beltShape{}
+}
+
+func shippedShapeAgent(t *testing.T) *Agent {
+	t.Helper()
+	shape := beltShapeNamed(t, shippedBeltShape)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.AskConsent = true
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
+		// The rendered page is what the budget weighs, so this shape renders its
+		// own rather than taking newTestAgent's fixed one.
+		config.System = ""
+		shape.build(t, config)
 	})
 	return agent
 }

@@ -167,6 +167,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 	// (internal/lane's roles.go).
 	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
+		callPurpose(roles.RoleIntake),
 		[]ai.Message{
 			textMessage("system", intakeSystem),
 			textMessage("user", "The form:\n"+intakeFields(*card)+

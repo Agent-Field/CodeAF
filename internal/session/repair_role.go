@@ -51,25 +51,23 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// roleRepair is the hands that fix what the cheap hands got wrong.
+// The hands that fix what the cheap hands got wrong are [roles.RoleRepair] —
+// declared there with every other role's word, which carries the reasoning for
+// the tier — and REGISTERED HERE, where the call is.
 //
-// It is DECLARED HERE rather than in internal/roles, which is the arrangement
-// that package's own header asks for: the registry is open, and a package that
-// adds an auxiliary call declares its role in the file that owns the call. The
-// tier is HIGH and not the mastermind's, for [roles.RoleCareful]'s reason — a
-// repair round is many turns of ordinary work done by a model that can be
-// trusted with something subtle, not one answer that decides what every other
-// call does.
-const roleRepair = roles.Role("repair")
-
+// THE WORD AND THE REGISTRATION ARE DIFFERENT THINGS and this file used to
+// conflate them. The registry is open: a package that adds an auxiliary call
+// says so at the call, which is why the Register lives here and why the
+// description is passed from here — internal/roles cannot write a line for a
+// role it does not know about, and a settings row with a blank under its name is
+// a call somebody is paying for and cannot read. But the WORD is vocabulary, and
+// everything that asks what the roles are reads one file. Spelled here as
+// `roles.Role("repair")` it was invisible to all of them.
 func init() {
-	// The description is passed here because internal/roles cannot write a line
-	// for a role it does not know about, and a settings row with a blank under
-	// its name is a call somebody is paying for and cannot read.
-	roles.Register(roleRepair, roles.TierHigh, "the second go at work a check found gaps in")
+	roles.Register(roles.RoleRepair, roles.TierHigh, "the second go at work a check found gaps in")
 }
 
-// repairModel is which hands one repair round runs on: [roleRepair]'s answer,
+// repairModel is which hands one repair round runs on: [roles.RoleRepair]'s answer,
 // with the model the node is already on as the floor.
 //
 // THE FLOOR IS THE WHOLE OF THE ALL-FLASH CASE. A failure to resolve is the same
@@ -95,7 +93,7 @@ func (a *Agent) repairModel(node *TaskNode) string {
 		// never an override.
 		return floor
 	}
-	model, err := roles.Resolve(roles.Source(source), roleRepair, floor)
+	model, err := roles.Resolve(roles.Source(source), roles.RoleRepair, floor)
 	if err != nil || strings.TrimSpace(model) == "" {
 		return floor
 	}
