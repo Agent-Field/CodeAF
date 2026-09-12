@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"sync"
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 )
 
@@ -221,5 +223,162 @@ func TestALateFirstTokenStillTeachesTheLedgerAboutItsMachine(t *testing.T) {
 	}
 	if sighting.TTFT <= LagTTFT {
 		t.Fatalf("a %s first token is not over the lag line of %s — this test is asking nothing", sighting.TTFT, LagTTFT)
+	}
+}
+
+// ── A STREAM TEACHES THE LEDGER WHILE IT IS STILL RUNNING ──────────────────
+
+// partialLedger records every sighting the ledger is handed, so a test can see
+// what a running stream taught and when. The belief reads it does not answer —
+// this seam only ever writes.
+type partialLedger struct {
+	mu      sync.Mutex
+	sighted []lanes.Sighting
+}
+
+func (l *partialLedger) Note(s lanes.Sighting) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sighted = append(l.sighted, s)
+}
+func (l *partialLedger) NoteOutcome(lanes.Outcome)            {}
+func (l *partialLedger) Belief(lanes.ID) (lanes.Belief, bool) { return lanes.Belief{}, false }
+func (l *partialLedger) Beliefs(string) []lanes.Belief        { return nil }
+func (l *partialLedger) Prime(lanes.Row, float64)             {}
+func (l *partialLedger) noted() []lanes.Sighting {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]lanes.Sighting(nil), l.sighted...)
+}
+
+// TestASlowStreamTeachesTheLedgerMidStream is the 14:29–14:32 incident of
+// 2026-09-11: one Morph endpoint wrote for 86 seconds and then 363, and the
+// belief the NEXT pick ranked on still described that machine's morning, so the
+// retry chose the same collapsed endpoint the first call was at that moment
+// still being throttled by.
+//
+// THE DEFECT WAS ONE DOOR OPENING ONLY AT THE END. Every lane.Sighting was
+// built at settlement — [Client.noteVelocity] from the epilogue, or
+// [streamWatch.sighting] for a losing arm — so a stream producing tokens
+// throughout taught the ledger nothing until it closed. The chooser's refusal
+// (beyondThePatience → provider.ignore) reads the belief, and the belief had
+// not been told.
+//
+// THE FIX IS A CHAIN OF NON-OVERLAPPING WINDOWS. The read loop already holds
+// the live figures; it now folds a partial sighting in at most once a minute,
+// each window covering only the span since the one before it, and the
+// settlement sighting is rebased to cover only what no partial claimed — so one
+// stream is one measurement, told in chapters, never the same span twice.
+func TestASlowStreamTeachesTheLedgerMidStream(t *testing.T) {
+	ledger := &partialLedger{}
+	previous := lanes.Default().Ledger()
+	lanes.Default().SetLedger(ledger)
+	t.Cleanup(func() { lanes.Default().SetLedger(previous) })
+
+	began := time.Now()
+	race := &hedgeRace{model: "deepseek/deepseek-v4.1-flash"}
+	watch := &streamWatch{race: race, began: began}
+	// A running arm always has its controller; install the scripted one rather
+	// than driving a whole race for what is a read-loop measurement.
+	watch.control = scriptedController{}
+	watch.served = "Morph"
+	watch.first = began.Add(4 * time.Second) // ttft 3993ms in the incident
+
+	// THE STREAM WRITES FOR MINUTES. Eighty-six seconds of steady output —
+	// sixty rated tokens a minute apart, so both the cadence and the rate floor
+	// are crossed — with no settle anywhere in it.
+	at := watch.first
+	feed := func(tokens int, span time.Duration) {
+		at = at.Add(span)
+		watch.note(control.Reading{Visible: tokens, At: at})
+	}
+	feed(ratedFloor, 30*time.Second) // 0:30 — under the cadence, teaches nothing
+	feed(ratedFloor, 31*time.Second) // 1:01 — a minute of stream: first window
+	feed(ratedFloor, 61*time.Second) // 2:02 — second minute: second window
+
+	taught := ledger.noted()
+	if len(taught) != 2 {
+		t.Fatalf("a stream writing for two minutes taught the ledger %d times, want the two minute-windows", len(taught))
+	}
+
+	// EACH WINDOW IS ITS OWN SPAN, NOT A CUMULATIVE RE-MEASUREMENT. The first
+	// covers first-token to one minute in; the second covers the next minute.
+	// Overlapping windows would tell the belief one slow minute two and three
+	// times — which is exactly the double-count settlement is rebased to avoid.
+	first, second := taught[0], taught[1]
+	if first.ID.Lane != "Morph" {
+		t.Fatalf("the partial is filed against %q, want the machine that is writing", first.ID.Lane)
+	}
+	if first.Gen <= 0 || second.Gen <= 0 {
+		t.Fatalf("a window with no span teaches nothing: %s and %s", first.Gen, second.Gen)
+	}
+	if first.Gen > 61*time.Second {
+		t.Fatalf("the first window claims %s — it may cover only its own minute, not the whole stream", first.Gen)
+	}
+	if !second.At.After(first.At) {
+		t.Fatalf("the windows are not in stream order: %s then %s", first.At, second.At)
+	}
+	// The two windows together account for the whole generation window and no
+	// more: disjoint spans of one stream.
+	if gap := second.At.Sub(first.At); gap < time.Minute {
+		t.Fatalf("the second window opened %s after the first — under the one-minute cadence", gap)
+	}
+
+	// AND SETTLEMENT DOES NOT TEACH THE SAME SPAN TWICE. The stream now closes,
+	// and its final sighting must cover only the tail no partial claimed.
+	watch.last = at
+	settled, ok := watch.sighting("deepseek/deepseek-v4.1-flash", watch.tokens)
+	if !ok {
+		t.Fatal("a stream that wrote for two minutes produced no settlement sighting")
+	}
+	// The whole stream ran ~2 minutes past its first token; the partials already
+	// claimed that span, so the settlement's generation window is the empty tail.
+	if settled.Gen > 2*time.Second {
+		t.Fatalf("settlement re-taught %s the partials already covered — one stream counted twice", settled.Gen)
+	}
+	if settled.Tokens > watch.tokens {
+		t.Fatalf("settlement claims %d tokens of a %d-token stream", settled.Tokens, watch.tokens)
+	}
+	// And it is still one honest sighting: the wait to the first token is told
+	// once, here, because no partial could measure it before it happened.
+	if settled.TTFT != 4*time.Second {
+		t.Fatalf("the settlement lost the first-token wait: %s", settled.TTFT)
+	}
+}
+
+// TestAHealthyFastStreamTeachesNothingEarly is the case the cadence exists to
+// protect: a lane that answers in nine seconds is measured once, at settle,
+// exactly as it always was. The mid-stream door is for the stream that runs
+// long enough to be worth interrupting the belief over — never for the ordinary
+// quick answer, which would only add noise.
+func TestAHealthyFastStreamTeachesNothingEarly(t *testing.T) {
+	ledger := &partialLedger{}
+	previous := lanes.Default().Ledger()
+	lanes.Default().SetLedger(ledger)
+	t.Cleanup(func() { lanes.Default().SetLedger(previous) })
+
+	began := time.Now()
+	race := &hedgeRace{model: "sim/model"}
+	watch := &streamWatch{race: race, began: began}
+	watch.control = scriptedController{}
+	watch.served = "quickmachine"
+	watch.first = began.Add(800 * time.Millisecond)
+
+	// A normal fast stream: eighty tokens over nine seconds, well under the
+	// one-minute cadence.
+	at := watch.first
+	for i := 0; i < 8; i++ {
+		at = at.Add(time.Second)
+		watch.note(control.Reading{Visible: 10, At: at})
+	}
+
+	if got := ledger.noted(); len(got) != 0 {
+		t.Fatalf("a nine-second answer taught the ledger %d times mid-stream — the cadence gate is off", len(got))
+	}
+	// And settlement measures it whole, unchanged.
+	watch.last = at
+	settled, ok := watch.sighting("sim/model", 80)
+	if !ok || settled.Gen != 8*time.Second {
+		t.Fatalf("the fast stream's settlement is wrong: ok=%v gen=%s", ok, settled.Gen)
 	}
 }
