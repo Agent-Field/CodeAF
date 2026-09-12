@@ -895,7 +895,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"questionRoomNoPickWord": {
 		screen: "nothing chosen yet",
-		why:    "the emptiness law in the foot: no pick, no `enter →` line",
+		why: "the emptiness law in the foot: no pick, no `enter →` line. IT IS READ AS AN ABSENCE " +
+			"NOW: since #789 the page opens where the block's pointer stood, so a page with answers " +
+			"on it always has one to send and this sentence belongs to the `something else…` row, " +
+			"which carries no key. The room scenario waited for it on a page that had just opened " +
+			"on `1 postgres` — the same rot as the bracketed keys, one law over (#998)",
 	},
 	"questionFilledWord": {
 		screen: "enter when it reads right",

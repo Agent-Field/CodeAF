@@ -584,7 +584,21 @@ func questionsRoom(t *testing.T) {
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "which store should the ledger sit on?", "the page's head")
 	screenSays(t, room, say(t, "questionRoomWaitsWord"), "the room says what is stopped on it")
-	screenSays(t, room, say(t, "questionRoomNoPickWord"), "the foot with nothing chosen yet")
+	// THE PAGE OPENS WHERE THE BLOCK'S POINTER STOOD, so the foot already says
+	// what `enter` would send — `answering 1 postgres` — rather than nothing.
+	// That is #789's law arriving on the page ("every answer has a pointer the
+	// arrows walk and enter takes"), and questionroom.go's own enter path states
+	// it: "It costs nothing on a page nobody has walked, because the page opens
+	// where the block's pointer stood."
+	screenSays(t, room, say(t, "questionAnsweringWord"),
+		"the foot says what enter would send from the row the page opened on")
+	// AND IT MAY NOT CLAIM NOTHING IS CHOSEN WHILE THE POINTER IS ON AN ANSWER.
+	// `nothing chosen yet` is the foot of a page standing on the one row that
+	// names no answer — `something else…`, which comes after the last option and
+	// carries no key ([questionRoomSends] finds none there). A page that opened
+	// on an answer and said it anyway would be the emptiness law read backwards.
+	screenSilent(t, room, say(t, "questionRoomNoPickWord"),
+		"the page opened on an answer, so the foot may not say nothing is chosen")
 	screenSays(t, room, "what it would look like", "the attached block")
 	screenSays(t, room, say(t, "questionWouldSwitchWord"), "what would change the asker's mind")
 	shot(t, r, "open")
