@@ -489,7 +489,11 @@ const (
 	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
 	// tag is `standing-check`, because cmd/aforge already writes `sentinel` for
 	// the resident's quorum errand and two different calls under one tag is one
-	// reading of neither.
+	// reading of neither. THE RENAME IS A HOLDING ACTION: it moves the collision
+	// rather than fixing it, and it is fixed by carrying [lane.Role] on the
+	// calllog record beside the tag, where the two calls are told apart by what
+	// they ARE and both can spell `sentinel` again. That is issue #1010, whose
+	// spine is #928.
 	purposeSentinel callPurpose = "standing-check"
 	// purposeDocument is a rung of the document reader — the model's own eyes on
 	// a PDF the `read` tool cannot open as text. It is not a role because the
