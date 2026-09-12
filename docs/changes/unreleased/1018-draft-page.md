@@ -2,7 +2,7 @@
 kind: added
 title: /drafts, the page over the kill ring
 surface: [chat]
-pr: 1016
+pr: 1018
 ---
 
 Cleared drafts are ringed (the walk above in `/drafts` reads them); this page
