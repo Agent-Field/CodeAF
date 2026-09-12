@@ -335,7 +335,14 @@ var callSiteRoles = map[string]lane.Role{
 	"planner":       lane.RoleDesign,
 	"designer":      lane.RoleDesign,
 	"division":      lane.RoleDesign,
-	"title":         lane.RoleAuxiliary,
+	// internal/session/taxonomy_boundary.go hands this word to the classifier
+	// that reads a repair round's evidence, and internal/session/repair_role.go
+	// resolves the hands the round itself runs on. Both are work inside a task
+	// with nobody's stream open, which is what an errand IS — the table's own
+	// default, said out loud because this word only became visible here when the
+	// role stopped being conjured at its call site as roles.Role("repair").
+	"repair": lane.RoleAuxiliary,
+	"title":  lane.RoleAuxiliary,
 	// internal/session/image.go is the only writer of this tag and it sets
 	// lane.RoleTalk, deliberately and with the reasoning beside it: a look at an
 	// image STREAMS INTO THE ROOM the person is reading, delta by delta, during

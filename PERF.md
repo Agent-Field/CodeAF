@@ -1296,7 +1296,7 @@ anything, which is #576's shape.
 | | weighed | cap | target owed |
 | --- | --- | --- | --- |
 | full (`fixedPrefixBudget`) | **53,141** | 53,141 | 48,000, **5,141** over |
-| lean (`leanPrefixBudget`) | **44,989** | 44,989 | 31,500, **13,489** over |
+| lean (`leanPrefixBudget`) | **44,920** | 44,920 | 31,500, **13,420** over |
 
 **The cap is the target plus a dated waiver, and a waiver only ever shrinks.**
 `fixedPrefixTarget` and `leanPrefixTarget` are what each arm is supposed to be;
