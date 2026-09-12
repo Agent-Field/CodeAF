@@ -405,7 +405,11 @@ const fixedPrefixTarget = 48_000
 // already being said twice. Raising one is a decision with somebody's name on it
 // in a diff, which is the entire difference between a debt and a floor.
 //
-// 2026-09-12, #996. Both arms were weighing a conversation nobody has — no
+// 2026-09-12, #996. The lean figure shrank from 13,489 to 13,420 in its own
+// first commit, which is the discipline working rather than an edit: fixing the
+// page's working directory and giving the lean arm its OWN shelf sentence took
+// sixty-nine bytes off a number that had been measured on a hybrid. Both arms
+// were weighing a conversation nobody has — no
 // memory store, no accounts hub, no standing items, no saved programs — so both
 // waivers are the first honest measurement of a prefix that had never been
 // weighed, and neither is a wave's overspend. The bill is not spread thin:
@@ -414,7 +418,7 @@ const fixedPrefixTarget = 48_000
 // person has before they have said anything.
 const (
 	fixedPrefixWaiver = 5_141
-	leanPrefixWaiver  = 13_489
+	leanPrefixWaiver  = 13_420
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
