@@ -309,8 +309,8 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 			if !isCall {
 				return true
 			}
-			switch callName(call.Fun) {
-			case "WithCallTag", "provider.WithCallTag":
+			switch methodName(call.Fun) {
+			case "WithCallTag":
 				if len(call.Args) < 2 {
 					return true
 				}
@@ -326,10 +326,7 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 					return true
 				}
 				derived(func(tag, where string) { found[tag] = where })
-			case "completeWithModel", "completeWithNamedModel",
-				"a.completeWithModel", "a.completeWithNamedModel",
-				"p.agent.completeWithModel", "e.agent.completeWithModel",
-				"c.agent.completeWithModel", "child.completeWithModel":
+			case "completeWithModel", "completeWithNamedModel":
 				// THE DOOR IS WHERE internal/session'S TAGS ARE STATED NOW. Its
 				// second argument is a [session.callPurpose], and it reaches
 				// `calllog.Record.Tag` verbatim (clientdoor.go). Reading it here is
@@ -343,7 +340,7 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 				// constant are the same statement, so the conversion comes off
 				// before the argument is read.
 				if conversion, isCall := purpose.(*ast.CallExpr); isCall &&
-					callName(conversion.Fun) == "callPurpose" && len(conversion.Args) == 1 {
+					methodName(conversion.Fun) == "callPurpose" && len(conversion.Args) == 1 {
 					if _, literal := stringLiteral(conversion.Args[0]); !literal {
 						// A ROLE WORN AS A PURPOSE IS STILL A ROLE, and the
 						// vocabulary it can produce is internal/roles' own. It is
@@ -399,6 +396,52 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 		t.Fatalf("the walk found only %d tags for a table of %d rows; it is reading the wrong tree", len(found), len(callSiteRoles))
 	}
 	return found
+}
+
+// TestEveryRoleWordIsDeclaredWhereTheVocabularyIs fails a role named anywhere but
+// internal/roles.
+//
+// [roleWords] parses ONE FILE — internal/roles/roles.go — because that is where
+// this build says the role vocabulary lives. A role constant declared at its own
+// call site is therefore invisible to it, and to every other reader that asks
+// this package what the roles ARE.
+//
+// THE MEASURED FAILURE. `const spellOutRole roles.Role = "spellout"` lived in
+// internal/session/spellout.go. It registered correctly, resolved correctly and
+// tagged its call correctly — and then reached the cost report as a word nobody
+// had written down, which [roleOf] prices as a background errand with nobody
+// waiting. The spell-out is the one auxiliary a person sits and watches, so the
+// single call whose latency matters most was the one counted as if it did not.
+// Nothing failed; a number was quietly wrong.
+func TestEveryRoleWordIsDeclaredWhereTheVocabularyIs(t *testing.T) {
+	const home = "internal/roles/roles.go"
+	walkBuildSources(t, func(path string, file *ast.File) {
+		if path == home {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			spec, isValue := node.(*ast.ValueSpec)
+			if !isValue || spec.Type == nil {
+				return true
+			}
+			named, isSelector := spec.Type.(*ast.SelectorExpr)
+			if !isSelector || named.Sel.Name != "Role" {
+				return true
+			}
+			if pkg, isIdent := named.X.(*ast.Ident); !isIdent || pkg.Name != "roles" {
+				return true
+			}
+			for _, name := range spec.Names {
+				t.Errorf("%s declares the role %s. Every role's WORD belongs in %s, "+
+					"beside the others: a role declared at its call site resolves and tags "+
+					"correctly and is still invisible to everything that reads the "+
+					"vocabulary, which prices its calls as errands nobody is waiting on. "+
+					"Declare it there and keep the roles.Register call here.",
+					path, name.Name, home)
+			}
+			return true
+		})
+	})
 }
 
 // roleWords reads internal/roles for the role vocabulary itself, because that
@@ -461,17 +504,27 @@ func walkBuildSources(t *testing.T, visit func(path string, file *ast.File)) {
 	}
 }
 
-// callName renders a function expression as the source spells it, so that both
-// `WithCallTag` and `provider.WithCallTag` are recognisable without resolving
-// imports.
-func callName(fun ast.Expr) string {
+// methodName is the LAST WORD of a call expression — the function or method
+// being called, whatever it was reached through.
+//
+// THE RECEIVER IS NOT PART OF THE QUESTION THIS LAW ASKS. "Does this call go
+// through the door" has the same answer for `completeWithModel`,
+// `a.completeWithModel`, `p.agent.completeWithModel` and
+// `agentFor(x).completeWithModel`, and for `WithCallTag` whether or not the
+// package is spelled in front of it.
+//
+// It used to be a list of the spellings somebody had seen, rendered by a reader
+// that flattened ONE selector level — so `p.agent.completeWithModel` and
+// `e.agent.completeWithModel` rendered as "" and three of the six rows in that
+// list could never match anything. The ladder looked complete and was half
+// dead, which is what a ladder of names always eventually is, and the only
+// symptom would have been a tag this law quietly stopped knowing about.
+func methodName(fun ast.Expr) string {
 	switch shape := fun.(type) {
 	case *ast.Ident:
 		return shape.Name
 	case *ast.SelectorExpr:
-		if pkg, isIdent := shape.X.(*ast.Ident); isIdent {
-			return pkg.Name + "." + shape.Sel.Name
-		}
+		return shape.Sel.Name
 	}
 	return ""
 }

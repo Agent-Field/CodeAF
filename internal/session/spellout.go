@@ -50,17 +50,12 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// spellOutRole is the expansion, registered as a ROLE so it resolves the way
-// every other auxiliary call in this build resolves: the person's pin, then the
-// tier, then the conversation's own model (internal/roles).
-//
-// IT SITS LOW, with the namer and the sentinel rather than with the shaper. The
-// shaper writes the only document an autonomous worker will ever read, so a
-// vague answer there costs a whole task's spend; this one writes three lines a
-// person reads on screen before deciding whether to keep them, and a weak answer
-// costs one esc. A person who wants it thought about harder pins it
-// (`roles.spellout: <model>`).
-const spellOutRole roles.Role = "spellout"
+// spellOutRole is the expansion, registered here and DECLARED IN internal/roles
+// beside every other role's word ([roles.RoleSpellOut]), so it resolves the way
+// every other auxiliary call in this build resolves — the person's pin, then the
+// tier, then the conversation's own model — and so that everything which reads
+// the role vocabulary can see it.
+const spellOutRole = roles.RoleSpellOut
 
 func init() {
 	roles.Register(spellOutRole, roles.TierLow, "what a half-written request obviously means")
