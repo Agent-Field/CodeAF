@@ -43,23 +43,38 @@ the router publishes for it, and the older build's record stays where it is inst
 being spent on a model nobody has measured. That is the same rule as everywhere else here:
 a measured thing is about the thing that was measured.
 
-## Auto, and which lanes it is choosing between — how it picks a provider on the very first message, and whether aforge do routes too
+## Auto, and who is actually choosing — the router first, and when aforge takes over
 
-Left alone, aforge is on **auto**. Before each request it drops every endpoint
-that cannot do the job at all — too small an answer for what you asked for, not
-enough room for the conversation, weights served at a coarser precision than the
-model is meant to run at, a share of usable answers below what this kind of work
-needs — and then ranks what is left by the only thing you actually feel: how long
-you will be sitting there, plus what it costs, with the money converted into
-seconds by how much your waiting is worth.
+Left alone, aforge is on **auto**, and `auto` means the router routes. OpenRouter
+balances the machines behind your model on its own queues and prices, and aforge
+watches: every answer names the machine that served it, so the speed and the
+quality of what the router hands you are learned exactly as if aforge had asked
+for them. You see the machine in the status line — `via cloudflare · 0.6s · 61 t/s`
+— and the picker's `auto` row tells you what aforge would choose if it were
+choosing.
 
-**The machines that survive all that are asked for by name, and the provider may
-not go outside them.** It is not a ranking the provider is free to put aside; it
-is a closed set with the ranking applied inside it. The section below says what
-that costs when every machine in the set is busy at once.
+**Why did it pick that provider on the very first message?** Because on the first
+message nobody has chosen anything: no pin, no takeover earned yet, so the pick
+is the router's own — whichever machine its balance landed on. The machine is
+named in the status line so the choice is never invisible, and from that first
+answer on it is being learned like any other.
 
-Nothing is waiting on this when nobody is waiting on you. A background errand is
-ranked on price, because a second saved for a machine is a second nobody spends.
+**aforge takes over when the router lets go.** If a model's answers start coming
+back refused (a 429, a machine that cannot serve the shape) or unusable (the
+thread lost, tool markup, a stream that had to be cut) — twice in a short while —
+aforge stops lending the router the choice and picks the machine itself, from the
+lanes it has been watching all along. The conversation says so once, in one
+sentence, and after about half an hour of good answers the choice is the
+router's again. Pinning a machine yourself in `/model` ends it there and then:
+your word outranks either of them.
+
+**`openrouter` is `auto` without the safety.** It is the same router routing, and
+aforge never takes over no matter what comes back. Choose it when you would
+rather have the router's price balance than be rescued from its bad minute.
+
+The rest of this page — the closed set, the refusal walk, the probe — describes
+what happens while aforge is choosing: during a takeover, and whenever you have
+pinned a lane yourself.
 
 **A run started from a terminal is routed on the same terms.** `aforge do`, `aforge run`
 and `aforge plan run` open no conversation and draw no status line, and they used to

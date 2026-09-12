@@ -122,6 +122,12 @@ func newLaneRigWithPrice(
 	// suite that saved its scripted beliefs into somebody's ledger would be a
 	// suite that cost them their afternoon.
 	t.Setenv(home.EnvVar, t.TempDir())
+	// AND NO TEST READS ANOTHER'S SENTENCES. The takeover gate is reset at the
+	// previous rig's cleanup, but its parked lines flush into the first
+	// WATCHED call that runs after — which, in one process, can be this rig's
+	// own first call. Forgetting them here is the setup half of the same
+	// promise the cleanup half makes.
+	forgetRouterGates()
 	model := "openrouter/" + name
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)
@@ -155,6 +161,12 @@ func newLaneRigWithPrice(
 	// send no `provider` object at all until something was pinned, which is
 	// exactly right for a plain endpoint and wrong for a router.
 	lanes.HeardPrefsCarried(server.URL())
+	// AND THE CHOOSER HOLDS THE ROAD FOR THE RIG'S WHOLE LIFE. Every rescue
+	// staged below is the chooser's move, and on the new `auto` the chooser
+	// moves only after a takeover (routefirst.go) — armed here rather than
+	// earned, because what is being proved is the walk and not the gate. The
+	// rig's own cleanup forgets it beside the other learners.
+	armTakeover(model)
 	rig := &laneRig{server: server, client: client, ledger: ledger, model: model}
 	shipped := lanes.SetController(func(plan control.Plan) control.Controller {
 		return ridePolicy(rig.scaled(plan))

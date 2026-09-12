@@ -139,9 +139,14 @@ func refusingRouter(t *testing.T) (*Client, *lanestub.Server, *movingLedger, str
 	client.wait = func(context.Context, time.Duration) error { return nil }
 	lanes.Default().SetLedger(ledger)
 	lanes.ForgetPrefixes()
+	// NO SCENARIO HERE INHERITS ANOTHER'S TAKEOVER. The one that measures a
+	// warm belief arms the gate for itself; the cold one must not find it
+	// armed, or "no opinion at the start" is staged rather than measured.
+	forgetRouterGates()
 	t.Cleanup(func() {
 		lanes.Default().Reset()
 		lanes.ForgetPrefixes()
+		forgetRouterGates()
 	})
 	return client, server, ledger, model
 }
@@ -235,8 +240,12 @@ func TestOneCallAsksForOneSetOfMachinesHoweverOftenItIsEncoded(t *testing.T) {
 // first body — and on the tenth, unchanged, however many times the request has
 // been re-encoded underneath.
 func TestACallThatHadABeliefAsksForItOnEveryBody(t *testing.T) {
-	client, server, ledger, _ := refusingRouter(t)
+	client, server, ledger, model := refusingRouter(t)
 	ledger.warmUp()
+	// A warm belief reaches the wire while the chooser holds the road — on the
+	// new `auto`, after a takeover (routefirst.go), armed here because the
+	// encoder is the thing being measured and not the gate.
+	armTakeover(model)
 
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err == nil {
 		t.Fatal("a router answering 500 to everything produced an answer")

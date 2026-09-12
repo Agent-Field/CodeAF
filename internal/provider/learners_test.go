@@ -66,4 +66,8 @@ func resetSharedLearners() {
 	sharedLimiter = newAdaptiveLimiter()
 	quirks.resetForTests()
 	lanes.ForgetRefusals()
+	// AND THE SIXTH, BESIDE THEM: the router gate is process-wide state of
+	// exactly the same kind, and a takeover one scenario earns is not a road
+	// the next scenario is driving on.
+	forgetRouterGates()
 }
