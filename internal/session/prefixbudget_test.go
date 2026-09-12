@@ -419,9 +419,17 @@ const fixedPrefixTarget = 48_000
 // `stand` is 9,607 bytes, more than a quarter of the full tool block and, on a
 // sixteen-thousand-token window, roughly one token in six of everything that
 // person has before they have said anything.
+//
+// 2026-09-12, the merge with #1015. The prompt diet's read-dedupe wave added
+// one sentence to the shared BELT_FACTS — the pointer that answers
+// `[already read]` from the conversation rather than fetching the file again —
+// and paid exactly 150 bytes on both arms doing it. Both waivers rise by that
+// figure here, in this diff, on purpose: the rule says a raise is a decision
+// with a name on it, and the alternative was cutting the sentence the merge
+// just bought.
 const (
-	fixedPrefixWaiver = 5_141
-	leanPrefixWaiver  = 13_416
+	fixedPrefixWaiver = 5_291
+	leanPrefixWaiver  = 13_566
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
