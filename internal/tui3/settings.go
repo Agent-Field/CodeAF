@@ -380,7 +380,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTierHighModel: {
 		tab: tabProviders, label: "careful work", widget: widgetSelect,
-		about: "careful · checks what must not be wrong — audits, compaction, vision",
+		about: "careful · checks what must not be wrong — audits, briefs, vision",
 	},
 	// The fourth class is the one whose value may name a LEVEL as well as a
 	// model, so it is a TEXT box and not a picker: the picker returns an id, and
