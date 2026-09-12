@@ -43,7 +43,9 @@ import (
 	"time"
 
 	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
@@ -75,9 +77,28 @@ import (
 // prefix fails the build and has to be paid for out of what is already here,
 // which is what a ratchet is for and what the old figure could not do.
 //
+// ── AND IT IS THE WIDEST MACHINE'S MEASUREMENT, NOT THIS ONE'S ──────────────
+//
+// The first spelling of this ratchet was 53,100 — the laptop it was written on
+// weighing 53,025 — and it failed on the runner that proved it, at 53,132. The
+// prefix is not the same size everywhere: `grep` says a longer sentence about
+// itself where ripgrep is absent (134 bytes, and [widestBelt] now weighs that
+// spelling wherever it runs), and `load_capability` lists the tool groups THIS
+// BUILD has, which is 27 more bytes on a machine that can edit video than on one
+// that cannot. A gate whose number depends on who runs it is a gate that passes
+// where it is written and fails where it is proved, so the figure is the widest
+// machine's and the swap that makes the biggest term machine-independent lives
+// in [widestBelt].
+//
+// The residual is the shelf, and it is owed rather than done: `load_capability`
+// would have to name what this build COULD have rather than what it has, which
+// is a change to what the model is told and belongs to whoever owns the shelf.
+// It is bounded — one short clause per group — and it is why this number was
+// measured on the machine that carries every group.
+//
 // ── WHAT IS OWED, AND WHERE IT HAS TO COME FROM ─────────────────────────────
 //
-// THE TARGET IS STILL 48,000 and the shipped prefix is 5,025 over it. The bill
+// THE TARGET IS STILL 48,000 and the shipped prefix is 5,159 over it. The bill
 // is not spread thin — one tool is more than a quarter of the whole tool block:
 //
 //	stand                  9,607   the standing-item verb's schema
@@ -86,7 +107,7 @@ import (
 //	search_conversations   1,613
 //	watch                  1,396
 //
-// `stand` alone is nearly twice the next heaviest and more than the 5,025 owed.
+// `stand` alone is nearly twice the next heaviest and more than the 5,159 owed.
 // It is not this file's to cut: what a tool's schema says is its contract with
 // the model, and trimming it is a change to what the model is told rather than
 // to a byte count. It belongs to whoever owns internal/session's standing belt,
@@ -361,10 +382,11 @@ import (
 // `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
 // TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
 // change to that test's mind and not only to the bytes.
-// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,025 bytes on 2026-09-12: the
-// widest page at 19,114 and the fully-wired belt's tool block at 33,911 over
-// twenty-three tools. The seventy-five bytes are rounding and not headroom.
-const fixedPrefixBudget = 53_100
+// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,159 bytes on 2026-09-12: the
+// widest page at 19,114 and the fully-wired belt's tool block at 34,045 over
+// twenty-three tools, weighed as the widest machine pays for it ([widestBelt]).
+// There is no rounding in it and no headroom on it.
+const fixedPrefixBudget = 53_159
 
 // fixedPrefixTarget is where the shipped prefix has to get back to, and it is
 // the figure [fixedPrefixBudget] was before anybody weighed the right belt. It
@@ -485,15 +507,48 @@ func widestPage() string {
 	return page
 }
 
+// widestBelt is the shipped belt weighed as the WIDEST MACHINE pays for it.
+//
+// A TOOL WHOSE DESCRIPTION DEPENDS ON WHAT IS INSTALLED still sends those bytes
+// on every request, and this gate runs on machines of both kinds: `grep` says
+// one sentence where ripgrep is present and a longer one where it is not
+// (bare's [bare.WidestGrepDescription]), and the difference measured 107 bytes
+// of prefix — enough that the same commit passed on the laptop it was written on
+// and failed on the runner that proved it. So the number below is one number
+// everywhere, and it is the larger one.
+func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
+	t.Helper()
+	definitions := append([]ai.ToolDefinition(nil), agent.beltDefinitions()...)
+	if len(definitions) == 0 {
+		t.Fatal("the belt is empty, so this test would pass on nothing")
+	}
+	widest := map[string]string{"grep": bare.WidestGrepDescription(agent.resultCaps())}
+	swapped := 0
+	for index := range definitions {
+		longest, varies := widest[definitions[index].Function.Name]
+		if !varies {
+			continue
+		}
+		swapped++
+		if len(longest) > len(definitions[index].Function.Description) {
+			definitions[index].Function.Description = longest
+		}
+	}
+	// AND THE SWAP CANNOT SILENTLY STOP APPLYING. A tool that leaves the belt, or
+	// is renamed, would take its machine-variance off this number without anybody
+	// noticing the budget had quietly got easier.
+	if swapped != len(widest) {
+		t.Fatalf("%d of the %d tools that vary by machine are on the belt", swapped, len(widest))
+	}
+	return definitions
+}
+
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	agent := shippedShapeAgent(t)
 
-	definitions := agent.beltDefinitions()
-	if len(definitions) == 0 {
-		t.Fatal("the belt is empty, so this test would pass on nothing")
-	}
+	definitions := widestBelt(t, agent)
 	block, err := json.Marshal(definitions)
 	if err != nil {
 		t.Fatal(err)
