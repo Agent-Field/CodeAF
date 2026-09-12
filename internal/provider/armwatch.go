@@ -221,7 +221,18 @@ func (w *streamWatch) attempt(now time.Time) {
 	plan := w.plan
 	plan.Began = now
 	plan.Alts = w.race.untriedAlts()
+	// The re-arm runs in its own locked half because [hedgeRace.rearm] signals
+	// the beat and this watch's own methods take this same mutex: held across
+	// either, the defer would turn the send loop into a self-deadlock.
+	w.rebuildFor(plan, now)
+	w.race.rearm()
+}
+
+// rebuildFor swaps in a controller built from this send's plan and resets every
+// per-send fact beside it, holding the lock from a defer for the whole of it.
+func (w *streamWatch) rebuildFor(plan control.Plan, now time.Time) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.control = w.race.build(plan)
 	w.began, w.first, w.last, w.gap = now, time.Time{}, time.Time{}, 0
 	w.tokens, w.visible, w.beats = 0, 0, 0
@@ -232,8 +243,6 @@ func (w *streamWatch) attempt(now time.Time) {
 	if !w.deadline.IsZero() {
 		w.armed = w.deadline.Sub(now)
 	}
-	w.mu.Unlock()
-	w.race.rearm()
 }
 
 // note folds one moment of the stream into the controller and does whatever it
@@ -250,28 +259,9 @@ func (w *streamWatch) note(reading control.Reading) {
 	if w == nil {
 		return
 	}
-	w.mu.Lock()
-	if reading.Beat {
-		w.beats++
-	}
-	if reading.Visible > 0 || reading.Hidden > 0 {
-		if w.first.IsZero() {
-			w.first = reading.At
-		} else if gap := reading.At.Sub(w.last); gap > w.gap {
-			w.gap = gap
-		}
-		w.last = reading.At
-		w.tokens += reading.Visible + reading.Hidden
-		w.visible += reading.Visible
-	}
-	spoke := reading.Visible > 0
-	act := w.after(w.control.Note(reading), reading.At)
 	arm, race := w.arm, w.race
-	// The two counts as they now stand, read here rather than by the seam below
-	// so that nothing outside this package ever takes this lock. Hidden is the
-	// remainder because [streamWatch.tokens] is both channels together.
-	visible, hidden := w.visible, w.tokens-w.visible
-	w.mu.Unlock()
+	act, visible, hidden := w.foldNote(reading)
+	spoke := reading.Visible > 0
 	// AND WHOEVER ASKED TO WATCH THIS CALL HEARS THE SAME MOMENT. It is the one
 	// forwarding this seam needs: every streamed delta in the process reaches
 	// this method, so there is no second decoder and no second count
@@ -294,22 +284,56 @@ func (w *streamWatch) note(reading control.Reading) {
 	race.act(arm, act)
 }
 
+// foldNote is [streamWatch.note]'s locked half: the moment folded into the
+// controller and the counts handed back as they now stand, so that nothing
+// outside this package ever takes this lock. Hidden is the remainder because
+// [streamWatch.tokens] is both channels together. Everything the reading sets
+// in motion — the watcher, the voice, the race — stays with the caller, which
+// is what keeps the deferred unlock from being held under them.
+func (w *streamWatch) foldNote(reading control.Reading) (act control.Act, visible, hidden int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if reading.Beat {
+		w.beats++
+	}
+	if reading.Visible > 0 || reading.Hidden > 0 {
+		if w.first.IsZero() {
+			w.first = reading.At
+		} else if gap := reading.At.Sub(w.last); gap > w.gap {
+			w.gap = gap
+		}
+		w.last = reading.At
+		w.tokens += reading.Visible + reading.Hidden
+		w.visible += reading.Visible
+	}
+	act = w.after(w.control.Note(reading), reading.At)
+	return act, w.visible, w.tokens - w.visible
+}
+
 // quiet is the beat: nothing has arrived by now, and the controller is asked
 // the same question it is asked of every reading.
 func (w *streamWatch) quiet(now time.Time) {
 	if w == nil {
 		return
 	}
-	w.mu.Lock()
-	if w.recovering {
-		w.mu.Unlock()
+	act, ok := w.quietAct(now)
+	if !ok {
 		return
 	}
-	act := w.after(w.control.Quiet(now), now)
-	arm, race := w.arm, w.race
-	w.mu.Unlock()
 	w.takeFreeMove()
-	race.act(arm, act)
+	w.race.act(w.arm, act)
+}
+
+// quietAct is the beat's locked half: nothing while a recovery has the
+// controller suspended, and the controller's verdict on the silence otherwise.
+// The acts the verdict sets in motion belong to the caller, outside the lock.
+func (w *streamWatch) quietAct(now time.Time) (control.Act, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.recovering {
+		return control.Act{}, false
+	}
+	return w.after(w.control.Quiet(now), now), true
 }
 
 // takeFreeMove ends the attempt the ceiling gave up on, OUTSIDE every lock.
@@ -323,14 +347,21 @@ func (w *streamWatch) takeFreeMove() {
 	if w == nil {
 		return
 	}
-	w.mu.Lock()
-	take, guard, waited := w.free, w.guard, w.silence
-	w.free = false
-	w.mu.Unlock()
+	take, guard, waited := w.freeMove()
 	if !take || guard == nil {
 		return
 	}
 	guard.cutIdle(waited)
+}
+
+// freeMove takes the free move's claim in one locked step, so two callers can
+// never both cut the same attempt.
+func (w *streamWatch) freeMove() (take bool, guard *stallWatch, waited time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	take, guard, waited = w.free, w.guard, w.silence
+	w.free = false
+	return take, guard, waited
 }
 
 // after records what the controller said, names the fault where there is one,
@@ -411,16 +442,7 @@ func (w *streamWatch) serve(lane string) {
 		return
 	}
 	lane = strings.TrimSpace(lane)
-	w.mu.Lock()
-	first := w.served == "" && lane != ""
-	if first {
-		w.served = lane
-	}
-	model := ""
-	if w.race != nil {
-		model = w.race.model
-	}
-	w.mu.Unlock()
+	first, model := w.noteServed(lane)
 	if first {
 		// The machine that is really answering, forwarded to whoever is watching
 		// this call run (callprogress.go). It is said once per request.
@@ -431,13 +453,41 @@ func (w *streamWatch) serve(lane string) {
 	}
 	now := waitNow()
 	pace := lanes.PaceFor(lanes.ID{Model: model, Lane: lane}, now)
+	// The pace is handed to the controller inside its own locked half: the
+	// re-arm it may produce signals the beat, which takes this same lock.
+	if w.retarget(lane, pace, now) {
+		w.race.rearm()
+	}
+}
+
+// noteServed claims the lane name for this arm if none was named before, and
+// answers the model the pace lookup needs — read here rather than by the caller
+// so the two facts come from one critical section.
+func (w *streamWatch) noteServed(lane string) (first bool, model string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	first = w.served == "" && lane != ""
+	if first {
+		w.served = lane
+	}
+	if w.race != nil {
+		model = w.race.model
+	}
+	return first, model
+}
+
+// retarget re-points the controller at the machine that is really writing and
+// reports whether that moved the deadline, in which case the beat is owed a
+// re-arm — which the caller sends, because it signals back into this lock.
+func (w *streamWatch) retarget(lane string, pace lanes.Pace, now time.Time) (moved bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.control.Serving(lane, pace.First, pace.Gap, now)
 	if next := w.control.Deadline(); !next.Equal(w.deadline) {
 		w.deadline = next
-		w.race.rearm()
+		return true
 	}
+	return false
 }
 
 // sighting is what this arm measured, and whether it is worth writing down.

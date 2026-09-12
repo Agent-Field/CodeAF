@@ -165,23 +165,14 @@ func (c *Client) waitConnection(ctx context.Context, model, target string, start
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	g := &c.connection
-	g.mu.Lock()
-	w := g.active
-	if w == nil && start {
-		probeCtx, cancel := context.WithTimeout(context.Background(), connectionRecoveryWindow)
-		w = &connectionWait{done: make(chan struct{}), cancel: cancel, since: time.Now()}
-		g.active = w
-		guard.Go("provider connection recovery", func() { c.recoverConnection(probeCtx, target, w) })
-	}
-	if w == nil {
-		g.mu.Unlock()
+	w, waiting := c.joinConnection(target, start)
+	if !waiting {
 		return false, nil
 	}
-	w.waiters++
-	g.mu.Unlock()
+	g := &c.connection
 	defer func() {
 		g.mu.Lock()
+		defer g.mu.Unlock()
 		w.waiters--
 		if w.waiters == 0 {
 			w.cancel()
@@ -189,7 +180,6 @@ func (c *Client) waitConnection(ctx context.Context, model, target string, start
 				g.active = nil
 			}
 		}
-		g.mu.Unlock()
 	}()
 	watch := streamWatchFrom(ctx)
 	watch.pauseConnection()
@@ -224,6 +214,28 @@ func (c *Client) waitConnection(ctx context.Context, model, target string, start
 			announce()
 		}
 	}
+}
+
+// joinConnection is [Client.waitConnection]'s locked half: the existing wait
+// joined, or one started when start asks for it and none is running. Starting
+// the probe inside the same critical section is what keeps two callers from
+// each opening their own recovery for one outage.
+func (c *Client) joinConnection(target string, start bool) (*connectionWait, bool) {
+	g := &c.connection
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	w := g.active
+	if w == nil && start {
+		probeCtx, cancel := context.WithTimeout(context.Background(), connectionRecoveryWindow)
+		w = &connectionWait{done: make(chan struct{}), cancel: cancel, since: time.Now()}
+		g.active = w
+		guard.Go("provider connection recovery", func() { c.recoverConnection(probeCtx, target, w) })
+	}
+	if w == nil {
+		return nil, false
+	}
+	w.waiters++
+	return w, true
 }
 
 func (c *Client) recoverConnection(ctx context.Context, target string, w *connectionWait) {
@@ -301,11 +313,19 @@ func (w *streamWatch) pauseConnection() {
 	if w == nil {
 		return
 	}
+	// The suspend is its own locked half: [hedgeRace.rearm] signals the beat,
+	// which reads this watch's deadline under this same lock.
+	w.suspend()
+	w.race.rearm()
+}
+
+// suspend marks this watch as paused on a dead connection and drops its
+// deadline, holding the lock from a defer for the whole of it.
+func (w *streamWatch) suspend() {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.recovering, w.recovered = true, true
 	w.deadline = time.Time{}
-	w.mu.Unlock()
-	w.race.rearm()
 }
 
 func (w *streamWatch) resumeConnection() {
@@ -318,12 +338,21 @@ func (w *streamWatch) resumeConnection() {
 		plan.Lane, plan.Pinned = arm.lane, false
 	}
 	plan.Alts = w.race.untriedAlts()
+	// The fresh controller is installed in its own locked half, for
+	// [streamWatch.attempt]'s reason: the re-arm must not be sent from inside
+	// the lock it wakes readers of.
+	w.rebuildAfterRecovery(plan)
+	w.race.rearm()
+}
+
+// rebuildAfterRecovery installs a controller dated from the reconnection and
+// reopens the watch's per-attempt facts, holding the lock from a defer.
+func (w *streamWatch) rebuildAfterRecovery(plan control.Plan) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.control = w.race.build(plan)
 	w.deadline = w.control.Deadline()
 	w.began = plan.Began
 	w.acted, w.silence, w.fault = control.Act{}, 0, false
 	w.recovering = false
-	w.mu.Unlock()
-	w.race.rearm()
 }
