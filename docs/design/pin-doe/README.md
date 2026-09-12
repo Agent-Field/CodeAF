@@ -7,23 +7,13 @@ shape are on issue #456; this is the evidence behind them.
 
 ## What is here
 
-- `prereg.md` — the pre-registration as approved before the first cell, with every
-  amendment declared in place and timestamped.
-- `report.md`, `report-table.md` — the report and the per-cell table read after the
-  sealed map was opened.
-- `sealed.json`, `order.txt` — the sealed cell-to-arm map and the run order.
-- `baseline-35c1a79e.md` — the unpinned baseline rows the run was compared against.
-- `cells/<id>/` — one folder per cell (32: four arms × four briefs × two replicates):
-  `arm.json` (arm binary and pin), `cell.json` (the driver's record: wall, cost,
-  first-token latency, calls, verdicts), `door.json`, `judge.json` (the grade: the
-  issue's fail-to-pass tests and the whole suite), `cell.log`, `screen.txt` (the final
-  screen), and `ledger-summary.txt`, one line per row of the run's call ledger
-  (`<home>/logs/calls.jsonl`), which is where the `permits only` 404s and the
-  re-demands were counted.
-- `golden/` — PR #533's acceptance proof on the live router with deepseek-v4-flash:
-  the tmux golden frames showing the one-line sentence, and the abridged ledgers
-  showing one `permits only` 404 per run (reef-145 through the chat door; attrs-1416,
-  a task-spawning brief, one 404 across the whole run including its children).
+- `prereg.md` — the approved pre-registration.
+- `report.md` and `report-table.md` — the summarized result and per-cell table.
+- `order.txt` — the seeded run order.
+- `baseline-35c1a79e.md` — the comparison baseline.
+
+The raw cell folders, sealed map, and golden captures were removed after these
+retained reports recorded their findings.
 
 ## What was left out, and where the raw run lived
 
@@ -31,9 +21,8 @@ Each cell also produced `frames.log` (every sampled frame), `f2p.log` and `suite
 (pytest output), `entry.json` and `prompt.txt` (the brief, reproducible from the canary
 pool by id), and the full `home/` and `work/` directories (the isolated `AFORGE_HOME`
 with its transcripts, and the checkout the model edited). Together they were 2.8 GB
-and are not in the repository. The raw run lived in the reporting session's scratchpad
-on the shared box (`/tmp/claude-1001/-home-santosh-src-aforge-v2/…/scratchpad/pin/run1/`
-and `…/scratchpad/e2e-456/`) and does not survive a reboot of that machine. The
+and are not in the repository. The raw run lived in a temporary scratchpad on the
+shared runner and does not survive a reboot of that machine. The
 arm binaries were built from `exp/pin-yields-line` (arm B, 082a0050) and
 `exp/pin-yields-silent` (arm C, e967ad57) on top of PR #368's tip 6b35eb52 (arm A,
 the shipped behaviour byte-for-byte).

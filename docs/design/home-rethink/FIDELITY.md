@@ -1,8 +1,8 @@
 # Design fidelity — the owner's order: follow the exact design
 
 2026-08-25, the owner: "follow the exact design please." This overrules the softened choices in
-LANES.md decision 3 and 5. `SCREENS.txt` (and the .dc.html it was cut from) is the authority;
-where two screens disagree, turn 2 (2a–2f) and turn 3 (3a–3e) win over turn 1. Deviations survive
+LANES.md decisions 3 and 5. This retained fidelity record is the authority; where the recorded
+screens disagreed, turn 2 (2a–2f) and turn 3 (3a–3e) win over turn 1. Deviations survive
 only where the mechanism is physically impossible or the fact does not exist — each such case is
 listed at the bottom and stays flagged to the owner.
 
