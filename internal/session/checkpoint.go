@@ -1872,7 +1872,19 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 // digest is the account the reader was shown ([checkpointDigest]). It is kept
 // because a drawing is not evidence and this is: see [drawnDivision].
 type checkpointRead struct {
-	sketch checkpointSketch
+	// grounded says the half of this reading that needs no model has already been
+	// filled in ([Agent.groundRead]), and it is here because THAT WORK MAY ONLY
+	// HAPPEN ONCE.
+	//
+	// The custody reduction is not idempotent and cannot be: a drawing whose every
+	// part named work this conversation is holding comes back as a hand-back with
+	// the whole shape as its remainder, and asking the same question of THAT is
+	// asking it of a drawing with nothing left in it — which answers "nothing was
+	// withheld" and blanks the remainder the first reduction found
+	// (checkpoint_custody.go's [checkpointSketch.withoutHeldWork]). Grounding
+	// twice was measured turning the held-work ending into a move.
+	grounded bool
+	sketch   checkpointSketch
 	// asDrawn is the shape the reader ANSWERED WITH, before anything this
 	// conversation is still holding was taken out of it. The journal writes this
 	// one: a file that recorded the reduced drawing could not tell a sidecar that
@@ -4000,6 +4012,12 @@ func (a *Agent) handoffDigestBytes() int {
 // second copy of this arithmetic would be a road that handed a worker a piece
 // this conversation is holding for want of a drawing.
 func (a *Agent) groundRead(read checkpointRead) checkpointRead {
+	// AND IT IS DONE ONCE PER READING. See [checkpointRead.grounded] for why the
+	// second pass is not a no-op but a wrong answer.
+	if read.grounded {
+		return read
+	}
+	read.grounded = true
 	read.held = a.piecesStillOut()
 	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
 	if read.digest == "" {
