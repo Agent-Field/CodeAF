@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Home's box is three rows tall, typed in or not, and one command clears every engine
-pr: 997
+pr: 1000
 surface: [chat, engine, docs]
 invalidates:
   - "Home's foot box grew to fit its draft and no further, so the commonest state — a question one sentence long — drew a SINGLE row between the rule above it and the hint below it. The owner's reading was that it is too thin to notice and does not look like somewhere to type, and the cause is that one row of text bounded by two rows of chrome has no mass of its own. It now stands three rows high from the first character (`homeDraftFloor`), padded below the draft so the first line typed stays on the first row."
