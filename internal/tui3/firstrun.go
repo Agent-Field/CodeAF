@@ -138,9 +138,11 @@ type setupFlow struct {
 	skipped bool
 }
 
-// setupStepsFor is which of the two questions this profile still needs
-// answered, in the order they are asked. Each predicate is internal/config's
-// own, so the screen cannot ask for a key Load would have found or a crew /crew
+// setupSteps is which of the two questions this conversation still needs
+// answered, in the order they are asked. The provider question uses the same
+// answer as enter, so setup cannot ask for a default-service key a connected
+// service carrying this conversation does not need. The controls keep using
+// internal/config's own predicates, so the screen cannot ask for a crew /crew
 // would already report.
 //
 // THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries three
@@ -150,12 +152,12 @@ type setupFlow struct {
 // answered would read as a different screen every time it opened. The chat model
 // is not in the condition: it resolves from the build and from AFORGE_MODEL until
 // somebody chooses, so a profile is never MISSING one.
-func setupStepsFor(profileDir string) []setupStep {
+func (a *app) setupSteps() []setupStep {
 	steps := make([]setupStep, 0, 2)
-	if !config.APIKeyConfigured(profileDir) {
+	if a.defaultProviderNeeded() {
 		steps = append(steps, setupKey)
 	}
-	if !config.CrewConfigured(profileDir) || !config.DailyBudgetConfigured(profileDir) {
+	if !config.CrewConfigured(a.profileDir) || !config.DailyBudgetConfigured(a.profileDir) {
 		steps = append(steps, setupControls)
 	}
 	return steps
@@ -190,7 +192,7 @@ func (a *app) openSetup(allowed bool) {
 		return
 	}
 	dir := a.profileDir
-	providerMissing := a.routerConnect != nil && !config.APIKeyConfigured(dir)
+	providerMissing := a.defaultProviderNeeded()
 	firstRun := allowed && !a.resumed && len(a.entries) == 0 && config.SetupSeenAt(dir).IsZero()
 	if !providerMissing && !firstRun {
 		return
@@ -200,7 +202,7 @@ func (a *app) openSetup(allowed bool) {
 		steps = append(steps, setupKey)
 	}
 	if firstRun {
-		for _, step := range setupStepsFor(dir) {
+		for _, step := range a.setupSteps() {
 			if step == setupKey && providerMissing {
 				continue
 			}
@@ -261,16 +263,12 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	if len(later) > 0 {
 		a.noteFacts(setupLaterWord + " · " + strings.Join(later, " · "))
 	}
-	if !config.APIKeyConfigured(dir) {
-		word := setupNoKeyWord
-		facts := []string{config.APIKeyEnv}
-		if a.routerConnect != nil {
-			word = setupNoKeyConnectWord
-			facts = append([]string{"enter"}, facts...)
-		} else {
-			facts = append([]string{"/settings"}, facts...)
-		}
-		a.noteFacts(word, facts...)
+	if a.defaultProviderNeeded() {
+		a.noteFacts(setupNoKeyConnectWord, "enter", config.APIKeyEnv)
+	} else if a.routerConnect == nil && !config.APIKeyConfigured(dir) && !a.connectedServiceCarriesModel() {
+		// This is the older surface's settings pointer, not a second send gate.
+		// The local chat door always wires the browser seam above.
+		a.noteFacts(setupNoKeyWord, "/settings", config.APIKeyEnv)
 	}
 	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. Every
 	// chord this surface binds is `⌥`, and most macOS terminals send Option as an
@@ -294,10 +292,10 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	return nil
 }
 
-// setupNoKeyWord is what the empty conversation says after a setup that ended
-// with no key. It names the row and the variable, and nothing else: the
-// conversation can be typed into, and the refusal on the first turn will say the
-// rest in its own words.
+// setupNoKeyWord is the older, non-browser setup seam's key line. Local chat
+// launches wire the browser road and use [setupNoKeyConnectWord]; a surface
+// without that road can still point at the settings row, unless a connected
+// service already carries the conversation and the emptiness law says nothing.
 const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or export " + config.APIKeyEnv
 
 // setupSkipKeysWord is what esc does, said the same way on every step of the
@@ -316,8 +314,9 @@ const setupLaterWord = "still yours to set"
 
 // setupStepLater is the door onto ONE question esc walked past, said as the
 // thing a person would do rather than as the name of a step. The key step has
-// none: a machine with no key says so in [setupNoKeyWord] already, and two lines
-// about one absence is one too many.
+// none: a conversation that still needs the default provider says so in
+// [setupNoKeyConnectWord] or [setupNoKeyWord] already, and one carried by a
+// connected service owes no line about OpenRouter at all.
 //
 // THE CONTROLS SCREEN NAMES ITS THREE DOORS AND NOT ITS OWN NAME. "the controls
 // screen" is a thing a person cannot go back to; /budget, /model and /crew are
@@ -644,7 +643,7 @@ func (a *app) setupCommit() bool {
 // open /home/…/.aforge/config.json: permission denied`. It names a function, a
 // key, a path inside the program's own storage and an errno, and there is no act
 // in it. Three lines away this same file already had the right shape twice
-// ([setupKeyShapeWord], [setupNoKeyWord]): the cause, and then what to do.
+// ([setupKeyShapeWord], [setupNoKeyConnectWord]): the cause, and then what to do.
 //
 // THE THREE THAT ARE ALWAYS THE MACHINE'S are authored outright — nothing a
 // browser trip can return is a sentence for a person — and the four that write

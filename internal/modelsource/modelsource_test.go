@@ -6,10 +6,11 @@ import (
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
-func TestAServiceNameThatCollidesWithAModelAuthorIsRefusedWithASuggestion(t *testing.T) {
+func TestAServiceNameThatCollidesWithAModelAuthorGetsASuggestion(t *testing.T) {
 	suggestion, collided := Collides(" DeepSeek ", []string{"openrouter"}, []string{"deepseek", "qwen"})
 	if !collided || suggestion != "DeepSeek-direct" {
 		t.Fatalf("collision = %t, suggestion = %q", collided, suggestion)
@@ -37,9 +38,9 @@ func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	}
 }
 
-func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
+func TestVendoredRowsAreTheDecidedSeven(t *testing.T) {
 	rows := Vendored()
-	want := []string{"deepseek", "z-ai", "moonshot", "ollama", "custom"}
+	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "ollama", "custom"}
 	if len(rows) != len(want) {
 		t.Fatalf("vendored rows = %d, want %d", len(rows), len(want))
 	}
@@ -47,15 +48,17 @@ func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
 		if rows[i].ID != want[i] {
 			t.Errorf("row %d = %q, want %q", i, rows[i].ID, want[i])
 		}
-		if rows[i].Plan || rows[i].KeyPrefix != "" {
-			t.Errorf("row %s set phase-five facts", rows[i].ID)
-		}
 		if rows[i].Probe.Timeout != ProbeTimeout {
 			t.Errorf("row %s probe timeout = %s, want %s", rows[i].ID, rows[i].Probe.Timeout, ProbeTimeout)
 		}
 	}
-	if !rows[3].KeyOptional || rows[0].KeyOptional || rows[1].KeyOptional || rows[2].KeyOptional || rows[4].KeyOptional {
+	if !rows[5].KeyOptional {
 		t.Fatal("only Ollama may omit its key")
+	}
+	for index, row := range rows {
+		if index != 5 && row.KeyOptional {
+			t.Fatalf("%s unexpectedly accepts a blank key", row.ID)
+		}
 	}
 }
 
@@ -71,33 +74,112 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		id         string
 		listing    Listing
 		probeModel string
+		preferred  string
 	}{
-		{"deepseek", ListingModels, ""},
+		{"deepseek", ListingModels, "", "deepseek-v4-pro"},
 		// OBSERVED on 2026-09-10 against api.z.ai: 200 and ten models. The row
 		// says so rather than repeating the survey's "undocumented", so the
 		// hint and the behaviour cannot disagree. glm-5.3-flash stays as the
 		// fallback for a region that does not answer, and is the current cheap
 		// model rather than the superseded glm-4.6 the first brief named.
-		{"z-ai", ListingModels, "glm-5.3-flash"},
+		{"z-ai", ListingModels, "glm-5.3-flash", "glm-5.3"},
 		// UNOBSERVED. The survey says undocumented, which after Z.ai is known to
 		// be weak evidence — but nobody has watched this endpoint, so the hint
 		// stays what the survey says and the connect door asks anyway. The
 		// survey's old K2 preview is gone and no replacement is guessed: with no
 		// unambiguous cheapest current model, deferring proof beats spending on
 		// an invented id, which is the mistake this whole law exists about.
-		{"moonshot", ListingNone, ""},
-		{"ollama", ListingModels, ""},
-		{"custom", ListingModels, ""},
+		{"moonshot", ListingNone, "kimi-k2.7-code", "kimi-k2.7-code"},
+		{"minimax", ListingNone, "MiniMax-M3", "MiniMax-M3"},
+		{"qwen", ListingNone, "qwen3.8-flash", "qwen3.7-plus"},
+		{"ollama", ListingModels, "", ""},
+		{"custom", ListingModels, "", ""},
 	}
 	rows := Vendored()
 	for index, expected := range want {
 		row := rows[index]
-		if row.ID != expected.id || row.Listing != expected.listing || row.ProbeModel != expected.probeModel {
-			t.Errorf("row %d = id %q listing %v probe %q, want %q %v %q",
-				index, row.ID, row.Listing, row.ProbeModel, expected.id, expected.listing, expected.probeModel)
+		if row.ID != expected.id || row.Listing != expected.listing || row.ProbeModel != expected.probeModel || row.Preferred != expected.preferred {
+			t.Errorf("row %d = id %q listing %v probe %q preferred %q, want %q %v %q %q",
+				index, row.ID, row.Listing, row.ProbeModel, row.Preferred,
+				expected.id, expected.listing, expected.probeModel, expected.preferred)
 		}
 		if row.Probe.Method != "GET" || row.Probe.Address != "/models" {
 			t.Errorf("row %s does not try the listing first: %+v", row.ID, row.Probe)
+		}
+	}
+}
+
+func TestThePreferredModelIsThePlanDoorsFirstDocumentedId(t *testing.T) {
+	source := Source{Preferred: "vendor-wide"}
+	door := Door{Models: []string{"plan-first", "plan-second"}}
+	if got := source.PreferredModel(door, []string{"listed-first", "vendor-wide"}); got != "plan-first" {
+		t.Fatalf("preferred model = %q, want the plan door's first documented id", got)
+	}
+}
+
+func TestTheRowsPreferredModelWinsWhenTheServiceDoesNotContradictIt(t *testing.T) {
+	source := Source{Preferred: "vendor-best"}
+	for _, listed := range [][]string{nil, {"listed-first", "vendor-best"}} {
+		if got := source.PreferredModel(Door{}, listed); got != "vendor-best" {
+			t.Errorf("PreferredModel(%v) = %q, want the row preference", listed, got)
+		}
+	}
+}
+
+func TestAPreferredIdTheServiceDoesNotListFallsToTheFirstListed(t *testing.T) {
+	source := Source{Preferred: "vendor-best"}
+	if got := source.PreferredModel(Door{}, []string{"served-first", "served-second"}); got != "served-first" {
+		t.Fatalf("preferred model = %q, want the service's first listed id", got)
+	}
+}
+
+func TestAServiceWithoutAPreferredModelUsesItsFirstListedModel(t *testing.T) {
+	if got := (Source{}).PreferredModel(Door{}, []string{"installed-first", "installed-second"}); got != "installed-first" {
+		t.Fatalf("preferred model = %q, want the first installed id", got)
+	}
+}
+
+func TestAServiceWithNothingListedAndNoPreferredMovesNothing(t *testing.T) {
+	if got := (Source{}).PreferredModel(Door{}, nil); got != "" {
+		t.Fatalf("an empty service invented %q", got)
+	}
+}
+
+func TestAKeyPrefixOrdersDoorsAndNeverSkipsOne(t *testing.T) {
+	source := Source{Doors: []Door{
+		{ID: "metered", Metered: true},
+		{ID: "plan", KeyPrefix: "sk-plan-"},
+		{ID: "other"},
+	}}
+	got := source.OrderedDoors("sk-plan-example")
+	if len(got) != 3 || got[0].ID != "plan" || got[1].ID != "metered" || got[2].ID != "other" {
+		t.Fatalf("ordered doors = %+v", got)
+	}
+	if ordinary := source.OrderedDoors("another-shape"); len(ordinary) != 3 || ordinary[0].ID != "metered" {
+		t.Fatalf("an unmatched key changed policy order: %+v", ordinary)
+	}
+}
+
+func TestOnlyWireDistinctBillingProductsShipAsSeparateDoors(t *testing.T) {
+	rows := Vendored()
+	byID := make(map[string]Source, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if minimax := byID["minimax"]; len(minimax.Doors) != 0 || minimax.Address == "" {
+		t.Fatalf("MiniMax claims distinguishable billing doors without wire evidence: %+v", minimax.Doors)
+	}
+	for _, id := range []string{"moonshot", "qwen"} {
+		source := byID[id]
+		if len(source.Doors) != 2 {
+			t.Fatalf("%s doors = %+v, want the documented plan and metered hosts", id, source.Doors)
+		}
+		if strings.TrimRight(source.Doors[0].Address, "/") == strings.TrimRight(source.Doors[1].Address, "/") {
+			t.Fatalf("%s labels one wire as two billing products: %+v", id, source.Doors)
+		}
+		metered, ok := source.MeteredDoor()
+		if !ok || metered.ID != source.Doors[1].ID {
+			t.Fatalf("%s metered identity = %+v, found=%t", id, metered, ok)
 		}
 	}
 }

@@ -30,19 +30,26 @@ type v3ModelShelf struct {
 	// router, with the same key, into the same cache file.
 	options catalog.Options
 	mu      sync.RWMutex
-	direct  map[string][]tui3.Model
+	direct  map[string]serviceCompartment
+}
+
+type serviceCompartment struct {
+	address string
+	door    string
+	models  []tui3.Model
 }
 
 func newV3ModelShelf(models *catalog.Catalog, options catalog.Options) *v3ModelShelf {
-	shelf := &v3ModelShelf{options: options, direct: make(map[string][]tui3.Model)}
+	shelf := &v3ModelShelf{options: options, direct: make(map[string]serviceCompartment)}
 	shelf.current.Store(models)
 	return shelf
 }
 
 // setSources keeps the shelf's connected-service compartments aligned with the
-// live profile. Existing compartments survive so a connection result already
-// fetched into the shelf is not thrown away; a cold process fills them from the
-// service-scoped picker cache without touching the network.
+// live profile. A compartment survives only while its address and proved door
+// do: reconnecting to another billing road must replace a wider catalog left by
+// the old one. A fixed door catalog is seeded directly without a fetch; every
+// other cold compartment reads the service-scoped cache.
 func (s *v3ModelShelf) setSources(sources modelsource.Set) {
 	if s == nil || sources.Empty() {
 		return
@@ -53,13 +60,15 @@ func (s *v3ModelShelf) setSources(sources modelsource.Set) {
 	for _, service := range sources.All()[1:] {
 		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 		keep[id] = true
-		if _, ok := s.direct[id]; !ok {
-			if service.Source.Listing == modelsource.ListingModels {
-				s.direct[id] = tui3.CachedModelsFor(service.Source.ID, service.Address)
-			} else {
-				s.direct[id] = nil
-			}
+		address, door := serviceCompartmentIdentity(service)
+		if held, ok := s.direct[id]; ok && held.address == address && held.door == door {
+			continue
 		}
+		rows := fixedDoorModels(service)
+		if len(rows) == 0 && service.Source.Listing == modelsource.ListingModels {
+			rows = tui3.CachedModelsFor(service.Source.ID, service.Address)
+		}
+		s.direct[id] = serviceCompartment{address: address, door: door, models: rows}
 	}
 	for id := range s.direct {
 		if !keep[id] {
@@ -78,13 +87,26 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
 		return v3Models(s)
 	}
-	if service.Source.Listing != modelsource.ListingModels {
+	if service.Source.Listing != modelsource.ListingModels && len(service.Door.Models) == 0 {
 		return nil
 	}
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	address, door := serviceCompartmentIdentity(service)
 	s.mu.RLock()
-	rows := append([]tui3.Model(nil), s.direct[id]...)
+	held, ok := s.direct[id]
+	rows := append([]tui3.Model(nil), held.models...)
 	s.mu.RUnlock()
+	if ok && held.address == address && held.door == door && len(rows) > 0 {
+		return rows
+	}
+	// A PLAN DOOR'S CATALOG IS VENDORED AND COSTS NO FILE. [fixedDoorModels]
+	// reads `service.Door.Models` — the four documented ids the plan covers,
+	// held in memory since the profile was read — so this rung stays on the
+	// right side of the law below and answers a bound plan door whose
+	// compartment is empty or is still holding the other door's list.
+	if fixed := fixedDoorModels(service); len(fixed) > 0 {
+		return fixed
+	}
 	// AN EMPTY COMPARTMENT IS AN EMPTY ANSWER, and the surface falls to its own
 	// rung below this one. This used to read the service's cache file here —
 	// os.ReadFile plus a JSON parse of the whole list, with no memo in front of
@@ -117,8 +139,9 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 			return nil, err
 		}
 		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		address, door := serviceCompartmentIdentity(service)
 		s.mu.Lock()
-		s.direct[id] = append([]tui3.Model(nil), seed...)
+		s.direct[id] = serviceCompartment{address: address, door: door, models: append([]tui3.Model(nil), seed...)}
 		s.mu.Unlock()
 		if err := tui3.WriteModelCacheFor(service.Source.ID, service.Address, seed); err != nil {
 			return nil, err
@@ -133,11 +156,26 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	}
 	rows := v3Models(fresh)
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	address, door := serviceCompartmentIdentity(service)
 	s.mu.Lock()
-	s.direct[id] = append([]tui3.Model(nil), rows...)
+	s.direct[id] = serviceCompartment{address: address, door: door, models: append([]tui3.Model(nil), rows...)}
 	s.mu.Unlock()
 	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
 	return rows, nil
+}
+
+func serviceCompartmentIdentity(service modelsource.Connected) (address, door string) {
+	return strings.TrimRight(strings.TrimSpace(service.Address), "/"), strings.ToLower(strings.TrimSpace(service.Door.ID))
+}
+
+func fixedDoorModels(service modelsource.Connected) []tui3.Model {
+	rows := make([]tui3.Model, 0, len(service.Door.Models))
+	for _, id := range service.Door.Models {
+		if id = strings.TrimSpace(id); id != "" {
+			rows = append(rows, tui3.Model{ID: id})
+		}
+	}
+	return rows
 }
 
 // ModelsNow is the list on the shelf, answered without waiting — nil while a

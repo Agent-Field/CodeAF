@@ -275,7 +275,10 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
 		callCtx, releaseRung := errandRungContext(callCtx, len(rungs)-attempt-1)
-		response, callErr := a.completeWithModel(callCtx, messages, rung.Model, options...)
+		response, called, callErr := a.completeWithNamedModel(callCtx, messages, rung.Model, options...)
+		if strings.TrimSpace(called) == "" {
+			called = rung.Model
+		}
 		releaseRung()
 		if callErr == nil && response != nil {
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
@@ -285,9 +288,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			// — the whole of the difference being three side-calls to a
 			// mastermind. See [journalCall] for why that is a record worth
 			// nothing and why the role rides the line.
-			a.journalRoleCall(response, role, rung.Model, served.Name())
-			if accept == nil || accept(response, rung.Model) {
-				return response, rung.Model, nil
+			a.journalRoleCall(response, role, called, served.Name())
+			if accept == nil || accept(response, called) {
+				return response, called, nil
 			}
 			// AN ANSWER THE CALLER CANNOT USE IS NOT A TRANSPORT FAILURE and is
 			// never asked for again from the same rung: the endpoint did its job
@@ -297,7 +300,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
 				Failed: true, Why: errandUnusableWords})
 			if ctx.Err() != nil {
-				return nil, rung.Model, ctx.Err()
+				return nil, called, ctx.Err()
 			}
 			continue
 		}
@@ -336,7 +339,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// bare sentence, and the journal held no error row, no call row and no
 		// word of why the worker started blind. A deadline is a failure like any
 		// other and it is now recorded like one.
-		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
+		a.journalFailedCall(callCtx, called, string(role), lastErr, attempt+1, 0)
 		// AND THE BOUNDARY READS IT, on the same row shape and for the same
 		// reason the turn's own failures are read: an errand cut by a deadline
 		// and an errand refused by an upstream are two different pieces of news
@@ -358,25 +361,25 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// whole of a rung, so by the time its failure is read there is
 		// nothing left to ask of THIS model — which is what turns the
 		// verdict into the hop the ladder below is for.
-		verdict, evidence := a.readErrandFailure(lastErr, role, rung.Model,
+		verdict, evidence := a.readErrandFailure(lastErr, role, called,
 			transportLadder{attempt: 1, outOfTime: true, fallback: attempt+1 < len(rungs)})
-		tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
+		tell(errandNews{Model: called, Rung: attempt + 1, Rungs: len(rungs),
 			Failed: true, Why: errandFailureWords(lastErr)})
 		// The person's own interrupt ends the errand where it stands, and the
 		// caller is handed the context's own error so it can tell "nobody
 		// answered in time" from "the provider refused" without reading the row
 		// this just wrote.
 		if ctx.Err() != nil {
-			return nil, rung.Model, ctx.Err()
+			return nil, called, ctx.Err()
 		}
 		// AND SO DOES THE ERRAND'S OWN PATIENCE, for the same reason: walking a
 		// ladder on a budget that is already spent is more requests that cannot
 		// land.
 		if errandCtx.Err() != nil {
-			return nil, rung.Model, errandCtx.Err()
+			return nil, called, errandCtx.Err()
 		}
 		if !errandWalksOn(verdict, evidence, attempt+1 < len(rungs)) {
-			return nil, rung.Model, lastErr
+			return nil, called, lastErr
 		}
 	}
 	return nil, "", lastErr

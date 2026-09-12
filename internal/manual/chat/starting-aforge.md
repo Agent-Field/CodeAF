@@ -43,13 +43,16 @@ prose three rows under it. There is one name now, and `openaf` is on no screen.
 instead — connect OpenRouter in your browser, choose the crew, set the spending rails —
 and then on the empty conversation. The preference questions are shown once. The
 OpenRouter step returns on any later local interactive launch while no key exists,
-including a named or resumed conversation, and `enter` on an unsent message brings it back
-without clearing the draft. The getting-started page has the whole flow.
+including a named or resumed conversation using the default service, and `enter` on an
+unsent message brings it back without clearing the draft. A conversation on a connected
+direct service's model sends without an OpenRouter key and does not open that step. The
+getting-started page has the whole flow.
 
-A `--once` or piped run cannot open a browser and still stops at the door with
-`aforge chat needs a model to talk with.` Its next line says to run bare `aforge` in a
-terminal to connect OpenRouter, or to export `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A
-custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
+A `--once` or piped run cannot open a browser. When its model uses the keyless default
+service it stops at the door with `aforge chat needs a model to talk with.` Its next line
+says to run bare `aforge` in a terminal to connect OpenRouter, or to export
+`OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A connected direct service can carry that run
+instead. A custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
 That variable still changes only the default service. To add a supported second place
 models come from, connect a service through `/connect`; the [services page](services.md)
 explains the checked connection and picker names.

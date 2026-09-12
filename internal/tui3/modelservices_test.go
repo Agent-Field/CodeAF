@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,7 +54,8 @@ func modelServiceTestAppWithAgent(t *testing.T, dir string, model string, source
 	t.Setenv("AFORGE_HOME", t.TempDir())
 	options := Options{
 		Agent: agent, ProfileDir: dir, Sources: sources,
-		Models: func() []Model { return models },
+		Models:    func() []Model { return models },
+		SaveModel: func(model string) error { return config.WriteChatModel(dir, model) },
 	}
 	if live, ok := agent.(*session.Agent); ok {
 		options.ApplyModelSources = live.SetSources
@@ -77,6 +80,230 @@ func testDirectService(address string) modelsource.Connected {
 		}
 	}
 	return modelsource.Connected{}
+}
+
+func testModelSource(t *testing.T, id string) modelsource.Source {
+	t.Helper()
+	for _, source := range modelsource.Vendored() {
+		if source.ID == id {
+			return source
+		}
+	}
+	t.Fatalf("there is no vendored model service %q", id)
+	return modelsource.Source{}
+}
+
+func installTestModelSource(t *testing.T, a *app, source modelsource.Source) {
+	t.Helper()
+	for index := range a.modelCatalog {
+		if a.modelCatalog[index].ID == source.ID {
+			a.modelCatalog[index] = source
+			return
+		}
+	}
+	t.Fatalf("the surface catalog has no model service %q", source.ID)
+}
+
+func connectZAIFromPanel(t *testing.T, a *app, apiKey string) {
+	t.Helper()
+	a.openConnect()
+	rowAt := -1
+	for at := range a.connPanel.hits {
+		row, ok := a.connPanel.at(at)
+		if ok && row.ID == modelConnectionID("z-ai") {
+			rowAt = at
+			break
+		}
+	}
+	if rowAt < 0 {
+		t.Fatal("the models group did not contain Z.ai")
+	}
+	a.connPanel.cursor = rowAt
+	if cmd := a.connectAct(rowAt); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.choosing() {
+		t.Fatal("enter on Z.ai did not open the region choice")
+	}
+	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.secret {
+		t.Fatal("the chosen region did not open the key box")
+	}
+	a.connPanel.entry.box.setText(apiKey)
+	cmd := a.connectEntryKey(key("enter"))
+	if cmd == nil {
+		t.Fatal("the completed key did not start the connection")
+	}
+	if _, follow := a.Update(cmd()); follow != nil {
+		t.Fatal("the settled connection unexpectedly started another command")
+	}
+}
+
+func newZAIConnectTestApp(t *testing.T, defaultKey string) (*app, string) {
+	t.Helper()
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "ZHIPU_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	plan := sourcestub.New("plan-probe")
+	t.Cleanup(plan.Close)
+	metered := sourcestub.New("metered-probe")
+	t.Cleanup(metered.Close)
+	source := testModelSource(t, "z-ai")
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	dir := t.TempDir()
+	opening := "~deepseek/deepseek-v4-flash-latest"
+	a := modelServiceTestApp(t, dir, opening,
+		modelsource.NewSet(testDefaultService(defaultKey)),
+		[]Model{{ID: opening}, {ID: "z-ai/existing-author"}})
+	installTestModelSource(t, a, source)
+	return a, dir
+}
+
+func TestConnectingAServiceMovesTheConversationOntoItsPreferredModel(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		defaultKey string
+	}{
+		{name: "with the default service connected", defaultKey: "sk-default-1234567890"},
+		{name: "with no default service key"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			a, dir := newZAIConnectTestApp(t, testCase.defaultKey)
+			opening := a.model
+			connectZAIFromPanel(t, a, "plan-test-key")
+
+			want := "z-ai-direct/glm-5.3"
+			if a.model != want || a.agent.Model() != want || a.modelWord() != want {
+				t.Fatalf("conversation model = %q/%q, status = %q, want %q", a.model, a.agent.Model(), a.modelWord(), want)
+			}
+			if got := noteSaying(t, a, "is connected"); got != "z-ai-direct is connected · coding plan · 4 models" {
+				t.Fatalf("connection note = %q", got)
+			}
+			if got := noteSaying(t, a, "this conversation was on"); got != "this conversation was on "+opening+" · it is now on "+want {
+				t.Fatalf("move note = %q", got)
+			}
+			if got := config.ChatModelAt(dir); got != want {
+				t.Fatalf("the profile holds %q, want the moved model %q", got, want)
+			}
+		})
+	}
+}
+
+func TestConnectingAServiceFromProvidersMovesTheConversationOntoItsPreferredModel(t *testing.T) {
+	a, dir := newZAIConnectTestApp(t, "")
+	source, ok := a.modelSource("z-ai")
+	if !ok {
+		t.Fatal("the test surface lost Z.ai")
+	}
+	row := config.PersistedSource{
+		ID: source.ID, Written: "z-ai-direct", Region: "intl", Key: "old-plan-key", Door: source.Doors[0].ID, Order: 1,
+	}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	connectedSource := source
+	connectedSource.Written = row.Written
+	connectedSource.Address = source.Doors[0].Address
+	a.sources = modelsource.NewSet(a.sources.Default(), modelsource.Connected{
+		Source: connectedSource, Key: row.Key, Address: source.Doors[0].Address, Door: source.Doors[0],
+	})
+	a.openSettings()
+	toProviders(t, a)
+	found := false
+	for at, item := range a.sheet.items {
+		if item.service != nil && item.service.id == "z-ai" {
+			a.sheet.cursor = at
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Providers did not draw the connected Z.ai service")
+	}
+	drive(t, a, key("enter"))
+	drive(t, a, key("enter"))
+	if a.sheet.conn.entry == nil || !a.sheet.conn.entry.secret {
+		t.Fatal("the Providers road did not reach the key box")
+	}
+	a.sheet.conn.entry.box.setText("new-plan-key")
+	drive(t, a, key("enter"))
+
+	wantModel := "z-ai-direct/glm-5.3"
+	wantMessage := "z-ai-direct is connected · coding plan · 4 models\n" +
+		"this conversation was on ~deepseek/deepseek-v4-flash-latest · it is now on " + wantModel
+	if a.model != wantModel || a.modelWord() != wantModel {
+		t.Fatalf("Providers left the conversation on %q with status %q", a.model, a.modelWord())
+	}
+	if a.sheet.msg != wantMessage {
+		t.Fatalf("Providers message = %q, want %q", a.sheet.msg, wantMessage)
+	}
+}
+
+func TestAConnectDuringATurnMovesTheModelWhenTheTurnEnds(t *testing.T) {
+	a, _ := newZAIConnectTestApp(t, "")
+	opening := a.model
+	a.state = stateWorking
+	connectZAIFromPanel(t, a, "plan-test-key")
+
+	if a.model != opening || a.modelWord() != opening {
+		t.Fatalf("a running turn moved from %q to %q before it ended", opening, a.model)
+	}
+	for _, note := range noteTexts(a) {
+		if strings.Contains(note, "this conversation was on") {
+			t.Fatalf("the running turn drew its deferred move early: %q", note)
+		}
+	}
+	if a.deferredModelServiceModel != "z-ai-direct/glm-5.3" {
+		t.Fatalf("deferred model = %q", a.deferredModelServiceModel)
+	}
+	a.settle()
+	if a.model != "z-ai-direct/glm-5.3" || a.state != stateIdle || a.deferredModelServiceModel != "" {
+		t.Fatalf("settled model/state/deferred = %q/%v/%q", a.model, a.state, a.deferredModelServiceModel)
+	}
+	if got := noteSaying(t, a, "this conversation was on"); got != "this conversation was on "+opening+" · it is now on z-ai-direct/glm-5.3" {
+		t.Fatalf("settled move note = %q", got)
+	}
+}
+
+func TestDisconnectingAServiceBeforeTheTurnEndsClearsItsDeferredMove(t *testing.T) {
+	a, _ := newZAIConnectTestApp(t, "")
+	opening := a.model
+	a.state = stateWorking
+	connectZAIFromPanel(t, a, "plan-test-key")
+	a.disconnectModelService("z-ai")
+	a.settle()
+
+	if a.model != opening || a.deferredModelServiceModel != "" {
+		t.Fatalf("the disconnected service left model/deferred %q/%q", a.model, a.deferredModelServiceModel)
+	}
+	for _, note := range noteTexts(a) {
+		if strings.Contains(note, "this conversation was on") {
+			t.Fatalf("the disconnected deferred service still moved the conversation: %q", note)
+		}
+	}
+}
+
+func TestTheMovedModelIsTheOneTheNextLaunchOpensOn(t *testing.T) {
+	a, dir := newZAIConnectTestApp(t, "")
+	connectZAIFromPanel(t, a, "plan-test-key")
+	want := "z-ai-direct/glm-5.3"
+	if got := config.ChatModelAt(dir); got != want {
+		t.Fatalf("the profile holds %q, want %q", got, want)
+	}
+
+	nextSources := config.ResolveSources(dir, "", config.DefaultBaseURL)
+	next := newApp(t.Context(), Options{
+		Agent:      &fakeAgent{model: config.ChatModelAt(dir)},
+		Workspace:  t.TempDir(),
+		ProfileDir: dir,
+		Sources:    nextSources,
+		Models:     func() []Model { return []Model{{ID: config.DefaultModel}} },
+		SaveModel:  func(model string) error { return config.WriteChatModel(dir, model) },
+	})
+	next.width, next.height = 100, 30
+	next.pal = newPalette(tokens.ANSI256, false)
+	next.openPicker()
+	chosen, ok := next.pick.choice()
+	if next.model != want || !ok || chosen.ID != want {
+		t.Fatalf("next launch model/picker = %q/%q (found=%t), want %q", next.model, chosen.ID, ok, want)
+	}
 }
 
 func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
@@ -174,7 +401,7 @@ func TestAnUndocumentedListingGetsAListingServicesPickerAndCacheImmediately(t *t
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
 	installModelServiceShelf(a, dir)
-	source := modelsource.Vendored()[4]
+	source := modelsource.Vendored()[6]
 	source.Listing = modelsource.ListingNone
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
 		ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1,
@@ -209,7 +436,7 @@ func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
 	dir := t.TempDir()
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
-	source := modelsource.Vendored()[4]
+	source := modelsource.Vendored()[6]
 	source.Listing = modelsource.ListingNone
 	source.ProbeModel = "probe-model"
 	draft := modelConnectDraft{source: source, row: config.PersistedSource{
@@ -342,16 +569,31 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 		want    string
 	}{
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 6}, "deepseek is connected · 6 models"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 1}, "deepseek is connected · 1 model"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 10, Door: modelsource.Door{Name: "coding plan"}}, "deepseek is connected · coding plan · 10 models"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 10, Door: modelsource.Door{Name: "pay-as-you-go"}}, "deepseek is connected · pay-as-you-go · 10 models"},
+		{modelsource.Outcome{
+			Kind: modelsource.OutcomeConnected, Listed: true, Models: 4,
+			Door: modelsource.Door{Name: "coding plan"}, PlanPaused: true, PlanReset: "18:30 UTC",
+			Overflow: &modelsource.Door{Name: "pay-as-you-go", Metered: true},
+		}, "deepseek is connected · coding plan · 4 models · plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected}, "deepseek is connected"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: "Authentication Fails, Your api key is invalid"}, "deepseek refused that key — Authentication Fails, Your api key is invalid"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: "Insufficient balance or no resource package. Please recharge."}, "deepseek accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge."},
 		{modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, "deepseek did not answer · nothing was saved"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, "that is not the shape of a deepseek key — they start with sk-"},
-		{modelsource.Outcome{Kind: modelsource.OutcomeCollides, Suggestion: "deepseek-direct"}, "deepseek is a model author on openrouter · connect this as deepseek-direct"},
 	}
 	for _, testCase := range tests {
 		if got := serviceOutcomeWord("deepseek", testCase.outcome); got != testCase.want {
 			t.Errorf("word = %q, want %q", got, testCase.want)
+		}
+	}
+	for service, want := range map[string]string{
+		"ollama":          "ollama is connected · 1 model",
+		"something-local": "something-local is connected · 1 model",
+	} {
+		if got := serviceConnectedWord(service, modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 1}); got != want {
+			t.Errorf("one-door word = %q, want %q", got, want)
 		}
 	}
 	if got := serviceAnsweringWord("deepseek"); got != "deepseek is answering right now · try again in a moment" {
@@ -373,6 +615,92 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	got := truncateVendorWords(words, 120)
 	if len(got) > 120 || strings.HasSuffix(got, "wor") {
 		t.Fatalf("vendor words were not cut at a word boundary: %q", got)
+	}
+}
+
+func TestACollidingServiceNameConnectsOnTheFirstAttemptUnderTheSuggestedName(t *testing.T) {
+	plan := sourcestub.New("too-wide")
+	metered := sourcestub.New("metered")
+	defer plan.Close()
+	defer metered.Close()
+	source := modelsource.Vendored()[1]
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("default-test-key")),
+		[]Model{{ID: "openai/gpt-4.1-mini"}, {ID: "z-ai/glm-5.3"}})
+	message := a.beginModelConnect(modelConnectDraft{
+		source: source,
+		row: config.PersistedSource{
+			ID: source.ID, Written: source.Written, Region: "intl", Key: "plan-test-key", Order: 1,
+		},
+	})()
+	if _, follow := a.Update(message); follow != nil {
+		t.Fatal("the settled connection unexpectedly started another command")
+	}
+	if got := noteSaying(t, a, "is connected"); got != "z-ai-direct is connected · coding plan · 4 models" {
+		t.Fatalf("connection note = %q", got)
+	}
+}
+
+func TestNoSourceAsksForASecondAttemptAfterAServiceNameCollision(t *testing.T) {
+	err := filepath.WalkDir("../..", func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(raw), "connect this as") {
+			t.Errorf("%s still asks the person to connect a colliding name twice", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestThePlanCatalogDoesNotBelieveTheWiderListing(t *testing.T) {
+	plan := sourcestub.New("glm-5.3", "glm-5.3-flash", "metered-only")
+	metered := sourcestub.New("metered-only")
+	defer plan.Close()
+	defer metered.Close()
+	var source modelsource.Source
+	for _, candidate := range modelsource.Vendored() {
+		if candidate.ID == "z-ai" {
+			source = candidate
+			break
+		}
+	}
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	a := modelServiceTestApp(t, t.TempDir(), "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("default-test-key")), nil)
+	refreshed := false
+	a.serviceModelRefresh = func(context.Context, modelsource.Connected, []Model) ([]Model, error) {
+		refreshed = true
+		return nil, nil
+	}
+	message, ok := a.beginModelConnect(modelConnectDraft{
+		source: source,
+		row: config.PersistedSource{
+			ID: source.ID, Written: source.Written, Key: "plan-test-key", Order: 1,
+		},
+	})().(modelConnectResultMsg)
+	want := []string{"glm-5.3", "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"}
+	if !ok || message.err != nil || message.outcome.Door.ID != "coding-plan" ||
+		!reflect.DeepEqual(message.outcome.ModelIDs, want) || refreshed {
+		t.Fatalf("fixed plan catalog: message=%T door=%s models=%v refreshed=%t",
+			message, message.outcome.Door.ID, message.outcome.ModelIDs, refreshed)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 {
+		t.Fatalf("catalog connection requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
 	}
 }
 
@@ -519,7 +847,7 @@ func TestACustomServiceUsesItsWrittenNameOnRefusalAndSuccess(t *testing.T) {
 	defer agent.Close()
 	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.Model(), modelsource.NewSet(base), []Model{{ID: agent.Model()}}, agent)
 	draft := modelConnectDraft{
-		source: modelsource.Vendored()[4],
+		source: modelsource.Vendored()[6],
 		row:    config.PersistedSource{ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1},
 	}
 	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
@@ -595,6 +923,132 @@ func TestADirectModelKeepsItsServiceInStatusAndCarriesNoLane(t *testing.T) {
 		}
 	}
 	t.Fatal("the direct model was not in the picker")
+}
+
+func TestATurnOnAConnectedServiceSendsWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	sources := modelsource.NewSet(base, direct)
+	agent := &fakeAgent{model: "deepseek-direct/deepseek-v4-pro"}
+	a := modelServiceTestAppWithAgent(t, dir, agent.model, sources, nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("hello")
+	runSubmit(t, a.enter())
+
+	if len(agent.sent) != 1 || agent.sent[0] != "hello" {
+		t.Fatalf("connected service was sent %v, want the turn", agent.sent)
+	}
+	if a.setup.open {
+		t.Fatal("enter opened the default provider over a connected service")
+	}
+	for _, line := range noteTexts(a) {
+		if strings.Contains(line, "openrouter is not connected") {
+			t.Fatalf("connected service drew the default-provider note: %q", line)
+		}
+	}
+}
+
+func TestAConnectedServiceKeepsSetupSilentAboutTheDefaultProvider(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	a := newApp(t.Context(), Options{
+		Agent:      &fakeAgent{model: "deepseek-direct/deepseek-v4-pro"},
+		Workspace:  t.TempDir(),
+		ProfileDir: dir,
+		Sources:    modelsource.NewSet(base, direct),
+		Setup:      true,
+		ConnectOpenRouter: func(context.Context) (OpenRouterFlow, error) {
+			return nil, nil
+		},
+	})
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.step() != setupControls {
+		t.Fatalf("the direct-only setup asked %+v, want only controls", a.setup.steps)
+	}
+	pressSetup(a, key("esc"))
+	for _, line := range noteTexts(a) {
+		if strings.Contains(line, "openrouter") {
+			t.Fatalf("direct-only setup left an OpenRouter note: %q", line)
+		}
+	}
+}
+
+func TestAKeyOptionalServiceCarriesATurnWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	base := testDefaultService("")
+	local := modelsource.Connected{
+		Source:  modelsource.Source{ID: "ollama", Written: "ollama", KeyOptional: true},
+		Address: "http://localhost:11434/v1",
+	}
+	agent := &fakeAgent{model: "ollama/llama3.2"}
+	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.model, modelsource.NewSet(base, local), nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("hello locally")
+	runSubmit(t, a.enter())
+	if len(agent.sent) != 1 || agent.sent[0] != "hello locally" || a.setup.open {
+		t.Fatalf("key-optional service sent %v with setup open=%v", agent.sent, a.setup.open)
+	}
+}
+
+func TestATurnOnTheDefaultServiceStillOpensSetupWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	agent := &fakeAgent{model: config.DefaultModel}
+	a := modelServiceTestAppWithAgent(t, dir, agent.model, modelsource.NewSet(base, direct), nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("keep these words")
+
+	if cmd := a.enter(); cmd != nil {
+		t.Fatal("the missing default provider submitted a turn")
+	}
+	if !a.setup.open || a.setup.step() != setupKey {
+		t.Fatalf("the default provider's setup did not open: %+v", a.setup)
+	}
+	if len(agent.sent) != 0 || a.input.String() != "keep these words" {
+		t.Fatalf("the gate sent %v and kept draft %q", agent.sent, a.input.String())
+	}
+}
+
+func TestDirectOnlyCommandsInventNoDefaultProviderUsage(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	a := modelServiceTestApp(t, t.TempDir(), "deepseek-direct/deepseek-v4-pro",
+		modelsource.NewSet(base, direct), []Model{{ID: config.DefaultModel}})
+	a.sourceModels[direct.Source.ID] = []Model{{ID: "deepseek-v4-pro"}}
+
+	for _, command := range []string{"/status", "/cost"} {
+		a.slash(command)
+		answer := strings.ToLower(lastNote(t, a))
+		for _, invented := range []string{"$0.00", "0 tok", "openrouter"} {
+			if strings.Contains(answer, invented) {
+				t.Fatalf("%s invented %q in %q", command, invented, answer)
+			}
+		}
+	}
+	a.openPicker()
+	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
+	if !strings.Contains(rendered, "deepseek-direct") || !strings.Contains(rendered, "deepseek-direct/deepseek-v4-pro") {
+		t.Fatalf("/model lost the connected service and its model:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "openrouter") || !strings.Contains(rendered, config.DefaultModel) {
+		t.Fatalf("/model lost the keyless default service's existing group or model:\n%s", rendered)
+	}
 }
 
 func TestDisconnectingReplacesTheLiveClientBeforeTheNextRequest(t *testing.T) {
@@ -700,5 +1154,51 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	}
 	if keyAt < 0 || headAt != keyAt+1 || rowAt != headAt+1 {
 		t.Fatalf("the services section is not immediately under the openrouter key: key=%d head=%d row=%d", keyAt, headAt, rowAt)
+	}
+}
+
+func TestThePlanDoorSaysItsPositionAndDefaultsToWait(t *testing.T) {
+	dir := t.TempDir()
+	row := config.PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "plan-test-key", Door: "coding-plan", Order: 1,
+	}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	var source modelsource.Source
+	for _, candidate := range modelsource.Vendored() {
+		if candidate.ID == "z-ai" {
+			source = candidate
+			break
+		}
+	}
+	if len(source.Doors) != 2 {
+		t.Fatal("the z-ai billing doors are missing")
+	}
+	overflow := source.Doors[1]
+	connected := modelsource.Connected{
+		Source: source, Key: row.Key, Address: source.Doors[0].Address,
+		Door: source.Doors[0], Overflow: &overflow, PlanPaused: config.PlanPausedWait,
+	}
+	sources := modelsource.NewSet(testDefaultService("default-test-key"), connected)
+	rows := modelServiceRows(dir, sources)
+	if len(rows) != 2 || rows[0].name != "z-ai" ||
+		!strings.Contains(rows[0].value, "coding plan") ||
+		!strings.Contains(rows[0].value, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.") ||
+		rows[1].name != "when the plan is paused" || rows[1].value != config.PlanPausedWait {
+		t.Fatalf("the plan rows do not say their billing position: count=%d", len(rows))
+	}
+
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, nil)
+	a.raiseSettings()
+	a.cyclePlanPause("z-ai")
+	written := config.PersistedSources(dir)
+	if len(written) != 1 || written[0].PlanPaused != config.PlanPausedUseMeter {
+		t.Fatal("the plan-pause setting did not opt in to metered overflow")
+	}
+	a.cyclePlanPause("z-ai")
+	written = config.PersistedSources(dir)
+	if len(written) != 1 || written[0].PlanPaused != "" {
+		t.Fatal("the default wait value was not stored as the default")
 	}
 }

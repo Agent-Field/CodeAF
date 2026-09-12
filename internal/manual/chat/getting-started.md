@@ -29,9 +29,11 @@ screen. Its heading is `Models and spending` and the line under it is
 again. `esc` on the controls screen goes **back** to the connection when there is one
 behind it, and skips when the controls are the whole of the setup. A skip leaves one dim
 line naming the doors onto what it walked past: `still yours to set · /budget sets what
-aforge may spend · /model and /crew pick the models`. If the default OpenRouter service is still not
-connected, its one-step screen returns on the next local interactive launch because the
-model cannot work without it.
+aforge may spend · /model and /crew pick the models`. If the default OpenRouter service is
+still not connected and the conversation is using one of its models, its one-step screen
+returns on the next local interactive launch because that model cannot work without it. A
+conversation on a connected direct service's model does not owe OpenRouter a key, so that
+step stays away.
 
 The header reads `aforge` on the left and `setup · 2 of 2` on the right; with only one
 screen to show there is no count at all. The foot names the keys that work on the row you
@@ -95,16 +97,22 @@ conversation takes it at once — the next message rides it, no restart.
 
 ## Skip the default OpenRouter service, retry later, and keep the message I typed
 
-`esc` on the idle step skips setup. The conversation then says one dim line:
+`esc` on the idle step skips setup. When the conversation is using the default service, it
+then says one dim line:
 `openrouter is not connected · enter on your message connects in a browser, or export
 OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it normally and
 press `enter`, and the one-step connection opens over the conversation before the draft is
 cleared. Connect, then press `enter` again to send those same words.
 
+When the conversation is on a connected direct service's model, pressing `enter` sends
+those words instead. The OpenRouter step does not open and the missing-OpenRouter line is
+absent, because that turn already has a service that can answer.
+
 This default-service step also opens over an existing or resumed conversation and over a profile
 whose first-run setup was already shown. It appears whenever all of these are true: the
 launch is local and interactive, the built-in OpenRouter endpoint is still the model
-provider, and neither the shell nor the profile holds a key. A custom `AFORGE_BASE_URL`, a
+provider for the conversation's model, and neither the shell nor the profile holds a key.
+A connected direct service carrying the conversation, a custom `AFORGE_BASE_URL`, a
 `--host` session, and a headless `--once` run are not offered an OpenRouter browser trip.
 For a headless run using the default service, start bare `aforge` once to connect in a terminal, or export
 `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`) before running it.

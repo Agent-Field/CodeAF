@@ -16,8 +16,8 @@ import (
 
 // THE RECEIPT: MONEY A CUT STREAM LEFT OFF THE WIRE.
 //
-// A provider can accept a request, begin a streamed answer and charge for the
-// work, then lose the connection or be cut before the terminal usage block.
+// A routed provider can accept a request, begin a streamed answer and charge
+// for the work, then lose the connection or be cut before the terminal usage block.
 // When the stream named its generation id, the provider's generation route is
 // the only honest source for the missing figures. Text without an id is still
 // charged work but cannot name a receipt; neither text nor an id is nothing to
@@ -105,16 +105,24 @@ func (m *receiptRouteMemo) heard(base string, now time.Time) {
 }
 
 // settle closes one of the four streamed endings that may still hold provider
-// money. A usage block stays on the ordinary billing door. Without one, a
-// generation id proves the provider got far enough for its receipt to be
-// asked for, while text already written without an id is reported unpriced
-// without making an unanswerable request. A call with neither is not reported
-// at all: the measured first-frame in-band refusal is an upstream breaking
-// before it produced a generation, not money the provider charged. Those
-// mutually exclusive doors keep one call from ever being counted twice.
+// money. A usage block stays on the ordinary billing door. A direct service
+// stops there because it has no routed receipt. Otherwise a generation id
+// proves the provider got far enough for its receipt to be asked for, while
+// text already written without an id is reported unpriced without making an
+// unanswerable request. A call with neither is not reported at all: the
+// measured first-frame in-band refusal is an upstream breaking before it
+// produced a generation, not money the provider charged. Those mutually
+// exclusive doors keep one call from ever being counted twice.
 func (c *Client) settle(ctx context.Context, model string, response *ai.Response, reason string, answerBytes int) {
 	if response != nil && response.Usage != nil {
 		c.bill(ctx, model, response)
+		return
+	}
+	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
+	// usage block supplies no measured figures to record, and calling the
+	// router's route on the vendor would send that vendor a request and bearer
+	// for a fact this client already knows cannot be there.
+	if c.config.Direct {
 		return
 	}
 	sink := reconcileFrom(ctx)
@@ -265,7 +273,7 @@ func (c *Client) fetchReceipt(ctx context.Context, ref string) (Billed, bool, bo
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+key)
-	ApplyAttribution(request.Header)
+	c.applyRequestIdentity(request)
 	response, err := c.http.Do(request)
 	if err != nil {
 		return Billed{}, false, false

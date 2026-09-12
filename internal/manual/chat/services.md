@@ -3,22 +3,47 @@
 ## Add a key — connect a service, add a provider, use a different model service
 
 Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
-Ollama and **Something else**, followed by any service already connected. Pick a row and
-answer its fields. A successful listed service says `deepseek is connected · 6 models`;
-one without a list says only `deepseek is connected`. The Providers tab in `/settings`
-then shows the service, the safe spelling of its key, its region and its order.
+MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
+connected. Pick a row and answer its fields. A successful listed service says
+`deepseek-direct is connected · 6 models`; one without a list says only
+`deepseek-direct is connected`. A service with more than one billing door names the one it
+bound: `z-ai-direct is connected · coding plan · 4 models` or
+`z-ai-direct is connected · pay-as-you-go · 10 models`. The Providers tab in `/settings`
+then shows the service, door, safe spelling of its key, region and order.
 
 The default service remains first. With two or more services, `/model` groups models by
 service in that order; with only the default service, the picker remains ungrouped.
 
-## When a newly connected model service starts working in this conversation
+## Using aforge with only a direct service — no OpenRouter key at all
 
-On a plain launch on this machine, a successful connection with a pasted key is live in
-the conversation that is already open. The surface writes the service to the engine's
-profile; the engine re-reads that profile through the model-setting door before it applies
-the chosen model. Pick one of the new service's models in `/model`, and the very next
-request uses that service's address and pasted key. Opening another conversation is not
-required.
+Yes. When the conversation is on a model from a connected service, that service can carry
+the turn without an OpenRouter key. Pressing `enter` sends the message; the setup screen
+does not open, and aforge does not show
+`openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
+Ollama counts as connected without a key because its local service explicitly needs none.
+
+The crew follows the same road. Its small background calls — naming a session, titling a
+task, the reflex and the judges — normally use the configured crew models. If one of those
+models belongs to the default service and that service has no key, the call instead uses
+the conversation's model on the connected service. Tools, tasks and child agents launched
+from that turn inherit the same rule, so none of them makes an OpenRouter request. If the
+default service does have a key, the crew keeps using its configured models as usual.
+
+## What model do I get after connecting a service — why did my model change
+
+A successful connection from `/connect`, or a reconnect from the Providers tab in
+`/settings`, moves this conversation onto that service in the same moment. A plan door's
+first documented model wins. Otherwise aforge uses the vendor's preferred model when the
+service listed it or published no list, then the first model the service listed. With no
+preferred or listed model there is no move and no extra sentence.
+
+For example, the connection line
+`z-ai-direct is connected · coding plan · 4 models` is followed by
+`this conversation was on ~deepseek/deepseek-v4-flash-latest · it is now on z-ai-direct/glm-5.3`.
+The status line and `/model` show the new model at once. The previous model is named so
+opening `/model` and choosing it once takes you back; `/model` is also how to go somewhere
+else. If a turn is answering, the connection lands immediately but the model move waits
+until that answer ends, so the model does not change under a sentence already streaming.
 
 When the key is a variable, the receipt adds, for example,
 `the engine process reads $DEEPSEEK_API_KEY from its own environment`. The daemon keeps
@@ -32,36 +57,102 @@ not the local profile the panel could write.
 
 ## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen or MiniMax directly
 
-Open `/connect`, choose the vendor in the `models` group, and enter the key. Z.ai asks
-for a region before its key and is the direct door for GLM; Moonshot asks for a region
-before its key and is the direct door for Kimi. Qwen or MiniMax can be added through
-**Something else** when you have an OpenAI-compatible address and key for them.
+Open `/connect` and choose the vendor in the `models` group. DeepSeek and MiniMax open
+`your key` directly. Z.ai, Moonshot and Alibaba Qwen first open `your region` as a
+choice with `International` under the cursor and `China` below it; a region is never
+typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A letter jumps to a
+region whose name starts with it, enter takes the row under the cursor and opens
+`your key`, and esc returns to the service row with nothing saved. The same choice
+opens when reconnecting one of these services from its Providers row in `/settings`.
+Z.ai is the direct service for GLM and Moonshot is the direct service for Kimi.
+MiniMax, Ollama and **Something else** are single-door services. MiniMax makes no plan
+claim because its plan and metered traffic currently have no wire-level difference
+aforge can use to prove which balance answered.
 
 A service name cannot be confused with the author part of a model already on the default
-service. For example, `deepseek` collides, so aforge says
-`deepseek is a model author on openrouter · connect this as deepseek-direct`. Connect it with that written name; its
-models then read `deepseek-direct/<model id>`.
+service. When `deepseek` is already an author there, aforge connects the direct service
+under `deepseek-direct` in that same attempt. The region and key are not asked for twice,
+and its models read `deepseek-direct/<model id>`.
+
+## Why is my service called z-ai-direct — I connected Z.ai, the name changed
+
+A service may not be written with a name the default service already uses for a model
+author. Aforge appends `-direct` and finishes the connection in the same attempt, so the
+region and key are not asked for twice. The connect line tells you the name it used, for
+example `z-ai-direct is connected · coding plan · 4 models`, and those models read
+`z-ai-direct/<model id>`. DeepSeek follows the same rule: it becomes `deepseek-direct`,
+and its models read `deepseek-direct/<model id>`.
 
 ## Connect a service — what is asked for, and what aforge checks before it saves anything
 
-Open `/connect` and choose a row in `models`. DeepSeek asks for a key. Z.ai and Moonshot
-ask for a region and then a key. Ollama asks for nothing. **Something else** asks for a
-base URL and a key. A key may also be the name of an environment variable, such as
-`$DEEPSEEK_API_KEY`.
+Open `/connect` and choose a row in `models`. DeepSeek asks for `your key`. Z.ai,
+Moonshot and Alibaba Qwen ask `your region` with one row per region: `International`
+is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
+`ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
+enter takes the row under the cursor and then opens `your key`; esc backs out with
+nothing saved. The region is a choice and cannot be typed. Ollama asks for nothing.
+**Something else** asks for `your base url` and then `your key`. A key may also be the
+name of an environment variable, such as `$DEEPSEEK_API_KEY`.
 
 A key with the wrong shape is stopped before any call:
-`that is not the shape of a deepseek key — they start with sk-`. A refusal carries the service's own answer, cut at
-120 characters on a word boundary:
-`deepseek refused that key — Authentication Fails, Your api key is invalid`. No answer is different:
-`deepseek did not answer · nothing was saved`. Aforge asks `GET <base>/models` first even when the vendor does not document
-that address; undocumented is not the same as absent. If it is absent, aforge uses the row's current one-token check where
-one is known, or believes the key until the first turn rather than guessing a billable model.
+`that is not the shape of a deepseek key — they start with sk-`. A refusal carries the
+service's own answer, cut at 120 characters on a word boundary:
+`deepseek refused that key — Authentication Fails, Your api key is invalid`. No answer is
+different: `deepseek did not answer · nothing was saved`.
 
-A payment refusal proves the key authenticated, so the service is connected and stored. It says, for example,
+Aforge checks each billing door in order with a one-token completion and binds the first
+one that answers. A no-plan or payment answer on one door moves the connection check to
+the next; a bad-key answer stops immediately in the vendor's words. A missing answer also
+moves to the next door. If no door answers, aforge saves nothing. Key-prefix hints may
+change which door is tried first, but never skip a door.
+
+A spent plan window proves that plan door works: aforge binds it, stops before the
+pay-as-you-go door, and says `plan paused`. It does not make a paid probe or change the
+saved billing door. When the vendor supplies a reset time, the connected line carries
+the same sentence used during a turn, for example
+`plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go`.
+
+The bound door is saved and every later request uses it. Aforge does not silently probe
+or change billing doors while a turn runs. Only an explicit reconnect rechecks them:
+re-enter the service from its Providers row in `/settings`, or press `ctrl+r` there to
+reuse the saved details. Disconnecting and reconnecting the service through `/connect`
+does the same check. Where a door has no fixed catalog, its model listing is believed
+after the one-token check succeeds.
+
+A payment refusal proves a key authenticated. For an unchanged one-door service, the
+service is connected and stored as before. For a multi-door service, aforge tries the
+remaining doors; if every one refuses for plan or payment reasons, it stores nothing and
+says, for example,
 `z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
-Fix the balance or package on that account; its own words appear again on the first turn, which is not retried. A plain
-`429` with no payment explanation still means the service is busy and is waited out. Every saved key lives in the profile
-`config.json`, owner-readable only.
+A plain `429` with no recognised payment or plan code still means the service is busy and
+is waited out. Every saved key lives in the profile `config.json`, owner-readable only.
+
+## Z.ai coding-plan models — why only four GLM models are listed
+
+Z.ai's coding endpoint publishes a wider model listing than its DevPack documentation
+says the plan serves. Aforge therefore shows only the documented plan catalog:
+`glm-5.3`, `glm-5.3-flash`, `glm-5.3[1m]`, and `glm-5.3-flash[1m]`. The
+pay-as-you-go door keeps the model listing returned by that door.
+
+## Plan paused — what happens when my plan runs out, reset times, and pay-as-you-go overflow
+
+When a plan reaches a documented usage window, the turn is paced and the account is not
+described as unable to pay. The live line says `plan paused`; when the vendor supplies a
+reset time it also says, for example,
+`resets at 18:30 UTC · /connect can switch to pay-as-you-go`. An account that cannot pay
+remains terminal; a spent plan window is not the same thing.
+
+Each connected plan service has a Providers setting named `when the plan is paused`.
+It defaults to `wait`, which never sends the turn to a metered door. Choose
+`use pay-as-you-go` only when you want that service to spend through its metered door.
+During overflow the status line names it, for example
+`writing · 4s · pay-as-you-go 61 t/s`. The setting is per service.
+
+## Is aforge supported by Zhipu for the coding plan
+
+Zhipu lists the tools its plan covers. Aforge is not currently listed; a request has been
+drafted but has not been sent. Aforge identifies itself as aforge and does not pretend to
+be another supported client.
 
 ## What a service without a model list can and cannot do
 
@@ -109,11 +200,17 @@ same model name. `via <machine>` belongs only to a default-service model with ro
 lanes. A direct-service row and status line draw no `via` at all and open no lane
 sheet; that service has one road, not a choice of serving machines.
 
-## Why there is no price on a direct service yet
+## Why does my plan show no cost instead of unbilled or could not be priced?
 
 Phase 1 records no cost for a direct service. Its calls therefore add nothing to the
 spend page and show no invented `$0.00`. This does not mean the vendor charged nothing;
 consult that account for its bill and limits.
+
+When a direct stream ends before its usage block arrives, aforge asks for no OpenRouter
+receipt and writes no ledger row for that unmeasured call. `/cost` stays silent about it
+rather than saying a subscription call was charged but could not be priced. Direct calls
+whose usage block does arrive still record their model call and token counts without an
+invented price.
 
 A direct service has one lane, so there is no serving-machine picker and nothing to
 choose between. That is not a fault. Price caps, privacy negotiation and lane routing

@@ -44,6 +44,27 @@ type Region struct {
 	Address string
 }
 
+// Door is one way of paying for the same vendor's models: a base URL, and the
+// word a person reads for it. ORDER IS THE POLICY — the subsidised door is
+// first, because a person who has paid a subscription meant to use it.
+type Door struct {
+	ID      string
+	Name    string
+	Address string
+	// Metered marks the road whose use can create a charge outside a fixed
+	// plan. The fact lives on the door because an ID is persistence vocabulary,
+	// not a billing policy for callers to reinterpret.
+	Metered bool
+	// KeyPrefix is a shortcut hint for ordering, never a claim. Every door is
+	// still tried because a vendor may change its key convention.
+	KeyPrefix string
+	// Models is the catalog to trust when this door's own listing is wider than
+	// the models the billing product actually serves. Empty believes the listing.
+	Models []string
+	// Observed says somebody has watched this door answer. It never gates use.
+	Observed bool
+}
+
 // Probe is the cheap read that proves a key works. It is a description only;
 // internal/config performs the request beside the key it needs.
 type Probe struct {
@@ -63,6 +84,7 @@ type Source struct {
 	Written string
 	Name    string
 	Address string
+	Doors   []Door
 	Regions []Region
 	KeyEnv  string
 	// KeyShape validates a supplied key. Nil accepts any non-blank value;
@@ -74,8 +96,10 @@ type Source struct {
 	Probe       Probe
 	Listing     Listing
 	ProbeModel  string
-	Plan        bool
-	KeyPrefix   string
+	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
+	// is chosen by what the key proves, so this is the vendor's best model both
+	// its subscription and metered roads serve, not simply its flagship.
+	Preferred string
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -84,6 +108,13 @@ type Connected struct {
 	Source  Source
 	Key     string
 	Address string
+	// Door is the bound billing road. It is zero for a one-door service, so all
+	// older status and runtime behaviour remains byte-identical.
+	Door Door
+	// Overflow is the metered road a bound plan may use only when the person has
+	// explicitly chosen it. Nil means there is no such road.
+	Overflow   *Door
+	PlanPaused string
 }
 
 // Set is the services this profile talks to, in the person's own order, the
@@ -156,7 +187,7 @@ func (s Set) OrDefault(key, address string) Set {
 		return s
 	}
 	source := DefaultSource(address)
-	return NewSet(Connected{source, key, address})
+	return NewSet(Connected{Source: source, Key: key, Address: address})
 }
 
 // WithDefaultKey returns the same ordered set with its default member's key
@@ -221,16 +252,27 @@ func LooksLikeAPIKey(key string) bool {
 	return strings.HasPrefix(key, "sk-") && len(key) >= 20 && !strings.ContainsAny(key, " \t\r\n")
 }
 
-// Vendored returns the five service descriptions shipped by this phase.
+const (
+	zaiPreferredModel      = "glm-5.3"
+	moonshotPreferredModel = "kimi-k2.7-code"
+	minimaxPreferredModel  = "MiniMax-M3"
+)
+
+// Vendored returns the seven service descriptions shipped by this phase.
 func Vendored() []Source {
 	return []Source{
 		{
 			ID: "deepseek", Written: "deepseek", Name: "DeepSeek",
 			Address: "https://api.deepseek.com/v1", KeyEnv: "DEEPSEEK_API_KEY",
 			KeyShape: LooksLikeAPIKey, Listing: ListingModels, Probe: listingProbe(),
+			Preferred: "deepseek-v4-pro",
 		},
 		{
 			ID: "z-ai", Written: "z-ai", Name: "Z.ai", KeyEnv: "ZHIPU_API_KEY",
+			Doors: []Door{
+				{ID: "coding-plan", Name: "coding plan", Address: "https://api.z.ai/api/coding/paas/v4", Models: []string{zaiPreferredModel, "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"}, Observed: true},
+				{ID: "metered", Name: "pay-as-you-go", Address: "https://api.z.ai/api/paas/v4", Metered: true, Observed: true},
+			},
 			Regions: []Region{
 				{ID: "intl", Name: "International", Address: "https://api.z.ai/api/paas/v4"},
 				{ID: "cn", Name: "China", Address: "https://open.bigmodel.cn/api/paas/v4"},
@@ -242,25 +284,108 @@ func Vendored() []Source {
 			// endpoint actually does. The fallback model stays for the regions
 			// or the day it stops.
 			Listing: ListingModels, ProbeModel: "glm-5.3-flash", Probe: listingProbe(),
+			Preferred: zaiPreferredModel,
 		},
 		{
 			ID: "moonshot", Written: "moonshot", Name: "Moonshot", KeyEnv: "MOONSHOT_API_KEY",
+			Doors: []Door{
+				{ID: "kimi-code", Name: "kimi code", Address: "https://api.kimi.com/coding/v1"},
+				{ID: "metered", Name: "pay-as-you-go", Address: "https://api.moonshot.ai/v1", Metered: true},
+			},
 			Regions: []Region{
 				{ID: "intl", Name: "International", Address: "https://api.moonshot.ai/v1"},
 				{ID: "cn", Name: "China", Address: "https://api.moonshot.cn/v1"},
 			},
-			Listing: ListingNone, Probe: listingProbe(),
+			Listing: ListingNone, ProbeModel: moonshotPreferredModel, Probe: listingProbe(),
+			Preferred: moonshotPreferredModel,
+		},
+		{
+			ID: "minimax", Written: "minimax", Name: "MiniMax", KeyEnv: "MINIMAX_API_KEY",
+			Address: "https://api.minimax.io/v1", KeyShape: LooksLikeAPIKey,
+			// MiniMax's plan and metered calls currently have no wire-level
+			// distinction: the same host, bearer, model and request can spend either
+			// balance. Two doors return only when an observed response field, header
+			// or error can prove which billing product answered.
+			Listing: ListingNone, ProbeModel: minimaxPreferredModel, Probe: listingProbe(),
+			Preferred: minimaxPreferredModel,
+		},
+		{
+			ID: "qwen", Written: "qwen", Name: "Alibaba Qwen", KeyEnv: "DASHSCOPE_API_KEY",
+			Doors: []Door{
+				{ID: "coding-plan", Name: "coding plan", Address: "https://coding-intl.dashscope.aliyuncs.com/v1", KeyPrefix: "sk-sp-"},
+				{ID: "metered", Name: "pay-as-you-go", Address: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", Metered: true},
+			},
+			Regions: []Region{
+				{ID: "intl", Name: "International", Address: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"},
+				{ID: "cn", Name: "China", Address: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+			},
+			Listing: ListingNone, ProbeModel: "qwen3.8-flash", Probe: listingProbe(),
+			Preferred: "qwen3.7-plus",
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
 			Address: "http://localhost:11434/v1", KeyOptional: true,
-			Listing: ListingModels, Probe: listingProbe(),
+			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
 			ID: "custom", Written: "custom", Name: "Something else",
-			Listing: ListingModels, Probe: listingProbe(),
+			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 	}
+}
+
+// PreferredModel answers the model a newly connected service should put the
+// conversation on. THE ORDER IS THE POLICY: a door's documented catalog is
+// narrower than the vendor row, then a row preference is trusted only when the
+// service did not list models or listed that id, and only then may the first
+// listed id stand in. Empty means there is no honest move to make.
+func (s Source) PreferredModel(door Door, listed []string) string {
+	if len(door.Models) > 0 {
+		return strings.TrimSpace(door.Models[0])
+	}
+	preferred := strings.TrimSpace(s.Preferred)
+	if preferred != "" {
+		if len(listed) == 0 {
+			return preferred
+		}
+		for _, id := range listed {
+			if strings.TrimSpace(id) == preferred {
+				return preferred
+			}
+		}
+	}
+	for _, id := range listed {
+		if id = strings.TrimSpace(id); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// MeteredDoor returns the one separately billed road described by this
+// service. A missing answer means the service has no honest overflow road.
+func (s Source) MeteredDoor() (Door, bool) {
+	for _, door := range s.Doors {
+		if door.Metered {
+			return door, true
+		}
+	}
+	return Door{}, false
+}
+
+// OrderedDoors returns every billing road exactly once. A matching prefix moves
+// its likely door to the front and never removes any alternative.
+func (s Source) OrderedDoors(key string) []Door {
+	doors := append([]Door(nil), s.Doors...)
+	key = strings.TrimSpace(key)
+	for index, door := range doors {
+		if door.KeyPrefix != "" && strings.HasPrefix(key, door.KeyPrefix) {
+			copy(doors[1:index+1], doors[0:index])
+			doors[0] = door
+			break
+		}
+	}
+	return doors
 }
 
 func listingProbe() Probe {
@@ -279,6 +404,16 @@ func completionProbe(model string) Probe {
 // absent. An empty ProbeModel deliberately means believe the key until its first
 // real call; guessing a current billable model is worse than deferring proof.
 func (s Source) FallbackProbe() Probe {
+	if strings.TrimSpace(s.ProbeModel) == "" {
+		return Probe{}
+	}
+	return completionProbe(s.ProbeModel)
+}
+
+// DoorProbe is the one-token request that proves which billing road this key
+// can use. A multi-door row must name a current model rather than guess at the
+// call site.
+func (s Source) DoorProbe() Probe {
 	if strings.TrimSpace(s.ProbeModel) == "" {
 		return Probe{}
 	}
@@ -318,7 +453,6 @@ const (
 	OutcomeAccountCannotPay
 	OutcomeUnanswered
 	OutcomeWrongShape
-	OutcomeCollides
 )
 
 // Outcome is what a connect attempt learned, in facts rather than a sentence:
@@ -330,7 +464,14 @@ type Outcome struct {
 	// ModelIDs are the non-empty ids carried by an answered listing. Keeping
 	// them lets the surface retain the list it already paid for instead of
 	// making a second catalog-shaped response the only road to the picker.
-	ModelIDs   []string
-	Listed     bool
-	Suggestion string
+	ModelIDs []string
+	Listed   bool
+	Door     Door
+	// PlanPaused records that the selected door proved the plan exists but its
+	// current usage window is spent. PlanReset is the vendor's readable reset
+	// time when it supplied one, and Overflow is the separately billed road the
+	// person may explicitly choose later.
+	PlanPaused bool
+	PlanReset  string
+	Overflow   *Door
 }

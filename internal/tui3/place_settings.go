@@ -193,7 +193,7 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.sheetEditKey(msg)
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
-	case s.conn.entry != nil && s.onConnections():
+	case s.conn.entry != nil:
 		return a.connEntryKey(msg), true
 	default:
 		return nil, false

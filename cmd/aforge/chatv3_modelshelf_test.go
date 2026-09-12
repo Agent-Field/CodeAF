@@ -43,7 +43,7 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 	discovery := catalog.Options{BaseURL: defaultHost.URL(), APIKey: defaultService.Key, Dir: dir}
 	launch := catalog.Load(t.Context(), discovery)
 	shelf := newV3ModelShelf(launch, discovery)
-	custom := modelsource.Vendored()[4]
+	custom := modelsource.Vendored()[6]
 	outcome, err := config.ConnectService(t.Context(), dir, config.PersistedSource{
 		ID: custom.ID, Written: "localhost", Address: directHost.URL(), Key: "direct-key", Order: 1,
 	}, custom, nil)
@@ -112,6 +112,47 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 		if request.Method == http.MethodPost {
 			t.Fatalf("the default host received the direct turn: %+v", defaultHost.Requests())
 		}
+	}
+}
+
+func TestAReboundDoorReplacesTheShelfAndSeedsItsFixedCatalogWithoutAFetch(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		oldAddress string
+		oldDoor    string
+	}{
+		{name: "address changed", oldAddress: "https://metered.example/v1", oldDoor: "coding-plan"},
+		{name: "door changed on one host", oldAddress: "https://plan.example/v1", oldDoor: "metered"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			shelf := &v3ModelShelf{direct: map[string]serviceCompartment{
+				"z-ai": {
+					address: testCase.oldAddress, door: testCase.oldDoor,
+					models: []tui3.Model{{ID: "metered-one"}, {ID: "metered-two"}},
+				},
+			}}
+			plan := modelsource.Door{
+				ID: "coding-plan", Name: "coding plan", Address: "https://plan.example/v1",
+				Models: []string{"glm-5.3", "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"},
+			}
+			service := modelsource.Connected{
+				Source:  modelsource.Source{ID: "z-ai", Written: "z-ai", Listing: modelsource.ListingModels},
+				Address: plan.Address, Door: plan,
+			}
+			shelf.setSources(modelsource.NewSet(
+				modelsource.Connected{Source: modelsource.DefaultSource("https://router.example/v1")},
+				service,
+			))
+
+			got := shelf.modelsForService(service)
+			if len(got) != 4 || got[0].ID != "glm-5.3" || got[3].ID != "glm-5.3-flash[1m]" {
+				t.Fatalf("rebound shelf = %+v, want only the fixed plan catalog", got)
+			}
+			held := shelf.direct["z-ai"]
+			if held.address != plan.Address || held.door != plan.ID {
+				t.Fatalf("compartment identity = %+v", held)
+			}
+		})
 	}
 }
 

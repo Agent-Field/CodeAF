@@ -19,6 +19,7 @@ type Request struct {
 	Path   string
 	Host   string
 	Bearer string
+	Agent  string
 	Body   []byte
 }
 
@@ -103,7 +104,7 @@ func (s *Server) stage(request *http.Request) (int, string, time.Duration) {
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, Request{
 		Method: request.Method, Path: request.URL.Path, Host: request.Host,
-		Bearer: request.Header.Get("Authorization"), Body: body,
+		Bearer: request.Header.Get("Authorization"), Agent: request.Header.Get("User-Agent"), Body: body,
 	})
 	if request.Method == http.MethodPost && s.completionStatus != 0 {
 		return s.completionStatus, s.completionBody, s.hang

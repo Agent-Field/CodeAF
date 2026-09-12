@@ -45,6 +45,14 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
+	// BillingDoor is the person-facing name of a bound road. Empty is a service
+	// with one road and preserves every older status line.
+	BillingDoor string
+	// PlanOverflow is the separately billed road a paused subscription may use.
+	// It is inert unless OverflowOnPlanPause is true, which is never the default.
+	PlanOverflow        string
+	PlanOverflowDoor    string
+	OverflowOnPlanPause bool
 	// Effort is the operator's own pin carried by the model value this client
 	// was built from, such as `vendor/model:high`. It belongs to this client
 	// rather than a context because one run holds several differently pinned
@@ -123,12 +131,11 @@ type Client struct {
 	// out of config so that a key handed over after construction reaches the
 	// very next call. Empty is a client that cannot send yet ([ErrNoAPIKey]).
 	apiKey string
-	// base is the pinned AgentField client, retained for the one surface this
-	// adapter does not implement for itself: the tool-call loop against a plain
-	// OpenAI-compatible endpoint. It never sees an OpenRouter request and never
-	// sees a request the adapter has shaped — see ExecuteToolCallLoop for where
-	// that boundary is drawn and why it is where it is. Nil while there is no
-	// key, because the SDK refuses to be built without one.
+	// base is the pinned AgentField client retained for an operator's custom
+	// non-direct OpenAI-compatible endpoint. Connected direct services use this
+	// adapter's transport even through ExecuteToolCallLoop, because that is where
+	// their billing-door policy and aforge attribution live. Nil while there is
+	// no key, because the SDK refuses to be built without one.
 	base *ai.Client
 	// wait is the retry backoff, seamed exactly like the media client's video
 	// poll: production sleeps, tests record what would have been slept and
@@ -257,13 +264,17 @@ func (c *Client) SetAPIKey(key string) error {
 	key = strings.TrimSpace(key)
 	var base *ai.Client
 	if key != "" {
+		siteName := AppName
+		if c.config.Direct {
+			siteName = DirectUserAgent
+		}
 		built, err := ai.NewClient(&ai.Config{
 			APIKey:   key,
 			BaseURL:  c.config.BaseURL,
 			Model:    c.config.Model,
 			Timeout:  c.config.Timeout,
 			SiteURL:  AppURL,
-			SiteName: AppName,
+			SiteName: siteName,
 		})
 		if err != nil {
 			return err
@@ -314,11 +325,10 @@ func (c *Client) OwnsToolLoop() bool { return true }
 // it — and the only way a refused belt reaches the endpoint-refusal ladder
 // instead of ending the turn on a 404.
 //
-// c.base is for everything else: an operator pointed at a plain OpenAI-
-// compatible endpoint, where the SDK's loop is a working implementation this
-// package has no reason to duplicate. It never sees an OpenRouter request, and
-// it never sees a request this adapter shaped. The SDK module itself is
-// read-only and is not edited to make any of this true.
+// c.base is only for an operator's non-direct plain OpenAI-compatible endpoint.
+// A connected service is direct even when its wire happens to be compatible:
+// sending that loop through the SDK would bypass both its billing-door answer
+// and the User-Agent that identifies aforge honestly.
 func (c *Client) ExecuteToolCallLoop(
 	ctx context.Context,
 	messages []ai.Message,
@@ -331,7 +341,7 @@ func (c *Client) ExecuteToolCallLoop(
 	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
 	// categories header, the refusal ladder — and not about whether some base
 	// carries a `provider` object (prefcarry.go).
-	if c.shippedRouterHint() || c.config.KeyOptional {
+	if c.shippedRouterHint() || c.config.Direct || c.config.KeyOptional {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -902,6 +912,7 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // and answers one whole JSON completion — and [Client.unstreamable] remembers it
 // from what actually happened, so the fallback is a memo rather than a guess.
 func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	ctx = WithPlanOverflowGuard(ctx)
 	observer := streamObserverFrom(ctx)
 	response, relearned, err := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 	if err != nil {
@@ -1395,6 +1406,7 @@ func (c *Client) completeWithMessagesStreaming(
 		ctx = withPhaseClock(ctx, phase)
 		defer phase.done()
 	}
+	phase.useDoor(c.config.BillingDoor)
 	// ONLY THE ARM THE PERSON IS HEARING NARRATES. An arm of a race runs this
 	// same function on a child context and inherits the same clock; if it told
 	// its own story the surface would be shown "connecting" by the rescue while
@@ -2186,6 +2198,7 @@ func observeToolCallForming(observer StreamObserver, session string, tools *tool
 // It mirrors the SDK's channel contract exactly so the harness's stream pump is
 // unchanged.
 func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...ai.Option) (<-chan ai.StreamChunk, <-chan error) {
+	ctx = WithPlanOverflowGuard(ctx)
 	chunks := make(chan ai.StreamChunk)
 	errs := make(chan error, 1)
 
@@ -2251,7 +2264,11 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 }
 
 func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body []byte, stream bool) (*http.Request, error) {
-	endpoint := strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + "/chat/completions"
+	return c.newHTTPRequestAt(ctx, request, body, stream, c.config.BaseURL)
+}
+
+func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body []byte, stream bool, baseURL string) (*http.Request, error) {
+	endpoint := strings.TrimSuffix(strings.TrimSpace(baseURL), "/") + "/chat/completions"
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -2264,17 +2281,12 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
+	c.applyRequestIdentity(httpRequest)
 	if apiKey != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
-	}
-	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
-	// machine's ranking page and by nothing else, so the question really is
-	// "is this that machine" (prefcarry.go says why every other site moved).
-	if c.shippedRouterHint() {
-		ApplyAttribution(httpRequest.Header)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
 	// still honour a session header, and a router that honours neither is
@@ -2287,6 +2299,24 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		httpRequest.Header.Set("X-Session-Id", routingSessionID(key))
 	}
 	return httpRequest, nil
+}
+
+// applyRequestIdentity gives every request this client builds the product's
+// own name and adds the router's attribution only on the router. Keeping both
+// decisions together matters because a late receipt is still this client's
+// request: if it has a second header path, it can silently identify as Go or
+// carry one service's ranking headers and bearer to a different service.
+func (c *Client) applyRequestIdentity(request *http.Request) {
+	if request == nil {
+		return
+	}
+	request.Header.Set("User-Agent", DirectUserAgent)
+	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
+	// machine's ranking page and by nothing else, so the question really is
+	// "is this that machine" (prefcarry.go says why every other site moved).
+	if c.shippedRouterHint() {
+		ApplyAttribution(request.Header)
+	}
 }
 
 // shippedRouterHint reports whether this client is talking to THE SHIPPED
@@ -2415,6 +2445,12 @@ type APIError struct {
 	// as a number, as a string, and sometimes omits it, so it is normalised here
 	// once rather than decoded at each reader.
 	Code string
+	// Payment, PlanPaused and PlanUnavailable are the three billing facts the
+	// refusal door classified from the vendor's numeric code. They travel on the
+	// refusal so the response boundary does not classify the same body again.
+	Payment         bool
+	PlanPaused      bool
+	PlanUnavailable bool
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the

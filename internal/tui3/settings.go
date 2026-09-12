@@ -1885,6 +1885,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter", " ", "space":
 		return a.activate(), true
+	case "ctrl+r":
+		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause {
+			return a.reconnectModelService(item.service.id), true
+		}
 
 	case "delete":
 		// The one key on this sheet that only one kind of row answers, and it
@@ -1943,6 +1947,10 @@ func (a *app) activate() tea.Cmd {
 		return a.connAct(item.conn)
 	}
 	if item.service != nil {
+		if item.service.planPause {
+			a.cyclePlanPause(item.service.id)
+			return nil
+		}
 		source, ok := a.modelSource(item.service.id)
 		if !ok {
 			return nil
@@ -2755,12 +2763,25 @@ func (s *sheet) cursorLine(owner []int) int {
 }
 
 // cursorLastLine is the display row the cursor's ROW ends on — the wrapped
-// value's line at [tierPhone], and the row itself everywhere else.
+// value's line at [tierPhone], or the end of the shared answer block while a
+// service row has one open.
 //
 // It stops at the row and does not walk the whole item: the selected setting's
 // description follows it under the same owner, and pinning that into the window
 // would scroll the list by two rows the moment somebody moved the cursor.
 func (s *sheet) cursorLastLine(owner []int, at, width int) int {
+	if item, ok := s.current(); ok {
+		entryOpen := item.conn != nil && item.conn.entry != nil
+		entryOpen = entryOpen || (item.service != nil && s.conn.entry != nil &&
+			s.conn.entry.id == modelConnectionID(item.service.id))
+		if entryOpen {
+			last := at
+			for last+1 < len(owner) && owner[last+1] == s.cursor {
+				last++
+			}
+			return last
+		}
+	}
 	if phoneList(width) && at+1 < len(owner) && owner[at+1] == s.cursor {
 		return at + 1
 	}
@@ -2790,7 +2811,12 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
 	}
 	if item.service != nil {
-		return overlayLines(item.service.name, item.service.value, selected, false, hovered, width, pal)
+		head := overlayLines(item.service.name, item.service.value, selected, false, hovered, width, pal)
+		entry := s.conn.entry
+		if entry != nil && entry.id == modelConnectionID(item.service.id) {
+			return keyEntryRowLines(head, entry, pal, width, boxRows)
+		}
+		return head
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)
@@ -2967,6 +2993,8 @@ func (s *sheet) keysLine() string {
 			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
 		}
 		return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+	case s.conn.entry != nil:
+		return s.connKeysLine()
 	case s.onConnections():
 		return s.connKeysLine()
 	default:
@@ -2989,7 +3017,7 @@ func (a *app) sheetLayerOwnsKeys() bool {
 		return false
 	}
 	s := &a.sheet
-	return s.edit != nil || s.sel != nil || (s.conn.entry != nil && s.onConnections())
+	return s.edit != nil || s.sel != nil || s.conn.entry != nil
 }
 
 // hoveredSheetRow is the item the pointer is over, or -1.

@@ -700,19 +700,26 @@ func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width, boxRow
 	// somebody is answering, or the one line saying what the account may do.
 	// Never both — a box is open on a row that is not connected.
 	if row.entry != nil {
-		// The box hangs at the same indent an open account's capabilities do, so
-		// a row that has opened into a question occupies the same interior column
-		// as a row that has opened into a list of answers.
-		lines, _, _ := keyBoxLines(row.entry, pal, width, overlayIndent, boxRows)
-		// AND ONE LINE OF AIR UNDER IT. A row that has opened into a question is
-		// a block, and the row after it is the catalog resuming; without the
-		// blank the next service reads as the fourth line of somebody's key.
-		return append(append(head, lines...), "")
+		return keyEntryRowLines(head, row.entry, pal, width, boxRows)
 	}
 	if row.summary != "" {
 		return append(head, connUnder(row.summary, selected, hovered, width, pal))
 	}
 	return head
+}
+
+// keyEntryRowLines hangs the shared answer under one settings service row.
+// The Connections catalog and the Providers reconnect row are two doors onto
+// the SAME answer, so both spend this block rather than growing a second widget.
+func keyEntryRowLines(head []string, entry *keyEntry, pal palette, width, boxRows int) []string {
+	// The answer hangs at the same indent an open account's capabilities do, so
+	// a row that has opened into a question occupies the same interior column
+	// as a row that has opened into a list of answers.
+	lines, _, _ := keyBoxLines(entry, pal, width, overlayIndent, boxRows)
+	// AND ONE LINE OF AIR UNDER IT. A row that has opened into a question is a
+	// block, and the row after it is the catalog resuming; without the blank the
+	// next service reads as the fourth line of somebody's key.
+	return append(append(head, lines...), "")
 }
 
 // connHeadInk is the held account's row, in the one weight this tab spends that
@@ -977,10 +984,13 @@ func (s *sheet) filterWorth() bool {
 
 // connKeysLine is the tab's key legend, in the sheet's own grammar.
 func (s *sheet) connKeysLine() string {
-	// A BOX HAS TAKEN THE KEYBOARD, so the legend is the box's two keys and not
-	// the list's five. A line still offering ↑↓ and the tabs would be offering
-	// keys that are going into a secret.
+	// AN ANSWER HAS TAKEN THE KEYBOARD, so the legend is its keys and not the
+	// sheet's five. A typed answer has only its two; a closed one is itself a
+	// list and says the walk it accepts.
 	if s.conn.entry != nil {
+		if s.conn.entry.choosing() {
+			return "↑↓ move · enter choose · esc cancel"
+		}
 		return "enter connect · esc cancel"
 	}
 	act := "enter act"
@@ -1076,7 +1086,8 @@ func (a *app) newConnEntry(row *connRow) *keyEntry {
 	return newKeyEntry(connect.Service{ID: row.service}, name)
 }
 
-// connEntryKey drives the key box while it is open on a row of this tab.
+// connEntryKey drives the answer while it is open on a Connections or Providers
+// service row.
 //
 // It is the /connect panel's own two keys ([app.connectEntryKey]) with one
 // difference, and the difference is what the two surfaces ARE: the panel closes
@@ -1090,17 +1101,17 @@ func (a *app) newConnEntry(row *connRow) *keyEntry {
 func (a *app) connEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 	s := &a.sheet
 	entry := s.conn.entry
-	back := &connRow{kind: connService, service: entry.id}
+	back := entry.id
 	switch msg.String() {
 	case "esc":
 		s.conn.entry = nil
-		s.rebuildConnAt(back)
+		s.rebuildEntryAt(back)
 
 	case "enter":
 		answer, id, name, secret := entry.value(), entry.id, entry.name, entry.secret
 		s.conn.entry = nil
 		if answer == "" {
-			s.rebuildConnAt(back)
+			s.rebuildEntryAt(back)
 			return nil
 		}
 		if _, model := modelConnectionSource(id); model {
@@ -1110,16 +1121,79 @@ func (a *app) connEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		// [app.connTabSettled], which is the same bargain the sign-in makes with
 		// the same two fields.
 		s.conn.pending, s.conn.pendingKey, s.msg = id, secret, ""
-		s.rebuildConnAt(back)
+		s.rebuildEntryAt(back)
 		if secret {
 			return a.beginConnectKey(id, name, answer)
 		}
 		return a.beginConnect(id, name, answer)
 
+	case "up", "ctrl+p":
+		if entry.choosing() {
+			entry.walk(-1)
+			s.rebuildEntryAt(back)
+			return nil
+		}
+		entry.typeInto(msg)
+
+	case "down", "ctrl+n":
+		if entry.choosing() {
+			entry.walk(1)
+			s.rebuildEntryAt(back)
+			return nil
+		}
+		entry.typeInto(msg)
+
+	case "pgup":
+		if entry.choosing() {
+			entry.walk(-sheetRows)
+			s.rebuildEntryAt(back)
+			return nil
+		}
+		entry.typeInto(msg)
+
+	case "pgdown":
+		if entry.choosing() {
+			entry.walk(sheetRows)
+			s.rebuildEntryAt(back)
+			return nil
+		}
+		entry.typeInto(msg)
+
 	default:
+		if entry.choosing() {
+			// A CLOSED CHOICE HAS NOTHING TO TYPE INTO. Rebuild only when a
+			// first-letter jump moved it; every other key is still swallowed.
+			if entry.jumpTo(msg) {
+				s.rebuildEntryAt(back)
+			}
+			return nil
+		}
 		entry.typeInto(msg)
 	}
 	return nil
+}
+
+// rebuildEntryAt redraws an answer and returns the cursor to the service row
+// that opened it. The catalog stores the prefixed connection id while Providers
+// stores the source id, so identity is translated once here rather than guessed
+// by every key that moves the answer.
+func (s *sheet) rebuildEntryAt(id string) {
+	if s.onConnections() {
+		s.rebuildConnAt(&connRow{kind: connService, service: id})
+		return
+	}
+	s.build()
+	source, ok := modelConnectionSource(id)
+	if !ok {
+		return
+	}
+	for at, item := range s.items {
+		if item.service != nil && item.service.id == source {
+			s.cursor = at
+			return
+		}
+	}
+	s.cursor = s.clampCursor(s.cursor)
 }
 
 // cycleCapability walks yes → ask first → off → yes and WRITES AT ONCE.

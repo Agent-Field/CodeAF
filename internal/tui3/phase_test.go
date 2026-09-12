@@ -103,6 +103,14 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		news: PhaseNews{Phase: provider.PhasePaced, Since: ago(6 * time.Second)},
 		want: "paced · 6s",
 	}, {
+		what: "a plan window that will reset without metered spend",
+		news: PhaseNews{Phase: provider.PhasePlanPaused, Since: ago(2 * time.Second), Detail: "resets at 18:30 UTC · /connect can switch to pay-as-you-go"},
+		want: "plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go",
+	}, {
+		what: "a metered overflow while it is writing",
+		news: PhaseNews{Phase: provider.PhaseWriting, Since: ago(4 * time.Second), Door: "pay-as-you-go", Rate: 61},
+		want: "writing · 4s · pay-as-you-go 61 t/s",
+	}, {
 		what: "the relax ladder saying which rung it is on",
 		news: PhaseNews{Phase: provider.PhaseRetrying, Since: ago(4 * time.Second), Detail: "2 of 6"},
 		want: "trying again · 2 of 6",
