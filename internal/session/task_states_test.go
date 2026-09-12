@@ -652,6 +652,87 @@ func TestTheFloorOnlyTakesBackWhatThisTurnWasAsked(t *testing.T) {
 	}
 }
 
+// AND A TURN TAKES BACK ONLY WHAT IT WAS ASKED IN THE OTHER SENSE TOO: a
+// decision whose note no request has carried is not this turn's to spend,
+// whoever is ending one. The press is made on the conversation and the note sits
+// on the conversation's queue; a worker finishing a piece of work knows nothing
+// about it, and until this the worker's own floor took it back.
+func TestAWorkerTurnDoesNotSpendADecisionNobodyHasBeenGiven(t *testing.T) {
+	graph := &TaskGraph{nodes: map[uint64]*TaskNode{}, order: []uint64{1, 2}}
+	root := &TaskNode{graph: graph, id: 1, state: TaskRunning, spec: taskSpec{title: "the whole job"}}
+	piece := &TaskNode{
+		graph: graph, id: 2, parent: 1, state: TaskUnverified,
+		decider: TaskAskOwnerModel, handNote: decisionNoteOwed,
+		spec: taskSpec{title: "a piece of it"},
+	}
+	graph.nodes[1], graph.nodes[2] = root, piece
+
+	worker := &Agent{config: Config{tasker: graph, taskID: 1}}
+	worker.handBackUnsettled()
+	if piece.decider != TaskAskOwnerModel {
+		t.Fatal("a worker's turn ending spent a decision whose note no request had carried")
+	}
+	// AND IT IS NOT A DOOR THAT STAYS SHUT. Once a request has carried the note,
+	// the next turn to end is the window closing, exactly as it always was.
+	graph.mu.Lock()
+	piece.handNote = decisionNoteRead
+	graph.mu.Unlock()
+	worker.handBackUnsettled()
+	if piece.decider != TaskAskOwnerPerson {
+		t.Fatalf("the floor did not take back a question the model had been asked (%q)", piece.decider)
+	}
+}
+
+// THE SETTLE POLICY'S OWN HAND-OVER IS THE SAME QUESTION THROUGH ANOTHER DOOR.
+// Under `task.settle = auto` a landing is the model's to decide by policy
+// ([Agent.handToModelOnAuto]) and the landing note is the whole of the asking,
+// so a turn that ends between the landing and the request that carries that note
+// must no more spend it than it may spend a press.
+func TestALandingHandedOverByPolicyIsNotSpentBeforeItsNoteIsCarried(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	agent.handToModelOnAuto(node)
+	// The note reaches a reader — which is where this road writes the mark,
+	// because a landing folded into a parent's report never gets a note at all.
+	node.owesDecisionNote()
+	agent.handBackUnsettled()
+	if node.decider != TaskAskOwnerModel {
+		t.Fatal("the floor spent a policy hand-over before its note reached a request")
+	}
+	// AND THE REQUEST IS WHAT MAKES IT A QUESTION THE MODEL HAS.
+	agent.decisionNotesOwed = []uint64{node.id}
+	agent.decisionNotesCarried()
+	if got := decisionNoteOf(node); got != decisionNoteRead {
+		t.Fatalf("the note the request carried is %v, want it read", got)
+	}
+	agent.handBackUnsettled()
+	if node.decider != TaskAskOwnerPerson {
+		t.Fatalf("the floor did not take back the landing after the model was asked (%q)", node.decider)
+	}
+}
+
+// AND WHEN NO TURN FOLLOWS, WHAT WAS NEVER ASKED COMES BACK AT ONCE. The floor
+// leaves an unread hand-over alone so that one turn ending cannot spend a press
+// the next turn will read — which is right while a next turn is coming, and
+// wrong the moment one is not: a question nobody will be asked sits in nobody's
+// hands, and home stops counting it as something needing a person.
+func TestWhatNoTurnWillEverCarryComesBackToThePerson(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	// The press's own mark, written exactly as [Agent.HandUnverifiedToModel]
+	// writes it, and the note in this agent's hands with no request gone out.
+	node.holdsDecision(TaskAskOwnerModel)
+	agent.decisionNotesOwed = []uint64{node.id}
+	// The turn that would have carried it has ended with nothing following.
+	agent.handBackUnreadNotes()
+	if node.decider != TaskAskOwnerPerson {
+		t.Fatalf("a press nothing was ever going to carry was left with the model (%q)", node.decider)
+	}
+	if node.wasHandedOver() {
+		t.Fatal("the hand-back left the press's receipt behind")
+	}
+}
+
 // ── the floor across a restart ──────────────────────────────────────────────
 
 // WHO IS DECIDING SURVIVES THE PROCESS, AND IS HANDED BACK ON THE WAY IN. The

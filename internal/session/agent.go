@@ -1785,7 +1785,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// there must be no window in which a Submit could start a turn and
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
+			// followed says A TURN COMES AFTER THIS ONE, which is the whole of
+			// what an unread hand-over note needs to know: any turn that starts
+			// carries this transcript, so a note in it is a question that will be
+			// put in front of the model. When nothing follows, nothing will, and
+			// what this agent owes goes back to the person below.
+			followed := false
 			if next, ok := a.nextFollowUpLocked(completed); ok {
+				followed = true
 				// context.Background rather than the finished turn's: the
 				// Submit that would have carried a context never happened, and
 				// a follow-up inheriting a cancelled one would end before it
@@ -1793,6 +1800,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
 			} else if completed && unanswered && a.wakeLocked() {
+				followed = true
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -1812,6 +1820,18 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// their transcript and silence, which is what they asked for.
 			}
 			a.mu.Unlock()
+			// AND A DECISION NOBODY IS NOW GOING TO BE ASKED ABOUT COMES BACK.
+			// The floor above left every unread hand-over where it was, because
+			// one turn ending must not spend a press the next turn will read;
+			// this is the case where there is no next turn, and a question left
+			// with the model then sits in nobody's hands
+			// ([Agent.handBackUnreadNotes]). It is after the unlock because it
+			// takes the graph's lock, and after the disowned-turn return above
+			// because a turn that was abandoned has had every act here done for
+			// it already.
+			if !followed {
+				a.handBackUnreadNotes()
+			}
 			// AND NO QUESTION OF THE MODEL'S OWN OUTLIVES THE TURN THAT RAISED
 			// IT UNLESS IT SAID IT WOULD. It is [Agent.handBackUnsettled]'s law
 			// one lane over: a ratify nobody answered and a question somebody
@@ -2736,26 +2756,94 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	return landed
 }
 
-// handOversWaiting is every landing whose hand-over note is still on the
-// steering queue — the presses the model has not been given yet.
+// decisionNotesCarried says a request has gone out carrying the notes this
+// agent's transcript holds, so the landings they hand over are questions the
+// model HAS (task_audit.go's [decisionNote]).
 //
-// IT IS THE WHOLE OF WHAT THE FLOOR NEEDS (task_run.go's
-// [Agent.handBackUnsettled]). A note on this queue has reached no request, so
-// the turn that is ending never asked about it; a note that has left it is in
-// the transcript, which is what the next request carries.
-func (a *Agent) handOversWaiting() map[uint64]bool {
+// IT IS CALLED AT THE ONE LINE IN THIS PACKAGE WHERE A REQUEST ACTUALLY GOES OUT
+// (loop.go) and nowhere else, which is the difference between this and marking
+// at the drain: a note drained at a step boundary whose turn is then cut — an
+// interrupt, an oversize refusal, a checkpoint that ends the turn — has left the
+// queue and reached nobody, and a mark made at the drain would let the floor
+// spend a question no model ever read.
+//
+// IT IS THIS AGENT'S OWN NOTES AND NOT THE GRAPH'S. A worker's request carries
+// what a worker was told; a press made on the conversation is not a question a
+// worker's turn has asked ([Agent.readsTheDecisionLocked] lets a worker read its
+// children's decisions, which is what made that confusion possible).
+func (a *Agent) decisionNotesCarried() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	var waiting map[uint64]bool
-	for _, message := range a.steering {
-		for _, id := range message.handsOver {
-			if waiting == nil {
-				waiting = map[uint64]bool{}
-			}
-			waiting[id] = true
+	owed := a.decisionNotesOwed
+	a.decisionNotesOwed = nil
+	a.mu.Unlock()
+	if len(owed) == 0 {
+		return
+	}
+	graph := a.tasker()
+	if graph == nil {
+		return
+	}
+	// Outside this agent's lock, because it takes the graph's and there is no
+	// order in which those two are ever taken the other way round.
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	for _, id := range owed {
+		if node := graph.nodes[id]; node != nil && node.handNote == decisionNoteOwed {
+			node.handNote = decisionNoteRead
 		}
 	}
-	return waiting
+}
+
+// handBackUnreadNotes gives back every decision THIS agent owes the model a note
+// about and is now never going to deliver, because its turn has ended and
+// nothing follows it.
+//
+// IT IS THE OTHER HALF OF THE FLOOR'S OWN LAW (task_run.go's
+// [Agent.handBackUnsettled]). The floor leaves an unread hold alone so that one
+// turn ending cannot spend a press the next turn will read; that is right while
+// a next turn is coming, and wrong the moment one is not. A turn somebody
+// interrupted, or one that ended owing nothing anybody is waiting for, starts no
+// successor — and a question left with the model then would sit in nobody's
+// hands: the card stops offering its chips and home stops counting it as
+// something needing a person (taskstatus.go).
+//
+// It is every note this agent holds: the ones still on its queue and the ones
+// its transcript took at a drain no request followed.
+func (a *Agent) handBackUnreadNotes() {
+	a.mu.Lock()
+	owed := a.decisionNotesOwed
+	a.decisionNotesOwed = nil
+	for _, message := range a.steering {
+		owed = append(owed, message.handsOver...)
+	}
+	a.mu.Unlock()
+	if len(owed) == 0 {
+		return
+	}
+	graph := a.tasker()
+	if graph == nil {
+		return
+	}
+	var handed []*TaskNode
+	graph.mu.Lock()
+	for _, id := range owed {
+		node := graph.nodes[id]
+		if node == nil || node.handNote != decisionNoteOwed {
+			continue
+		}
+		node.givesBackLocked()
+		// A NODE THAT WAS ACTUALLY SETTLED IS NOT NEWS, for the floor's own
+		// reason: the resolution published its own landing.
+		if node.state == TaskUnverified {
+			handed = append(handed, node)
+		}
+	}
+	graph.mu.Unlock()
+	// The notices are read with the lock let go of ([TaskNode.notice] states the
+	// ordering).
+	for _, node := range handed {
+		a.emitTaskUpdate(node.notice())
+	}
 }
 
 // queuedDirections is every node receipt id on one queue.
@@ -2792,6 +2880,13 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		a.ambient = nil
 	}
 	sourceCount := len(queued)
+	// WHICH DECISIONS THIS AGENT'S TRANSCRIPT NOW HOLDS A NOTE ABOUT. It is taken
+	// at BOTH drains, because both put the note in the transcript and the next
+	// request carries it either way; what turns it into a question the model has
+	// been given is that request ([Agent.decisionNotesCarried]).
+	for _, message := range queued {
+		a.decisionNotesOwed = append(a.decisionNotesOwed, message.handsOver...)
+	}
 	queued = coalesceSessionNotes(queued)
 	owed := false
 	for _, message := range queued {
@@ -3043,8 +3138,8 @@ func (a *Agent) enqueueSteering(text string) {
 
 // enqueueHandOver is [Agent.enqueueSteering] for the one note that also changes
 // who is holding a question: the person's "let aforge decide this one". The
-// landing rides with the line so that the queue can be asked which presses the
-// model has not been given yet ([Agent.handOversWaiting]).
+// landing rides with the line so that the drain, and the request that follows
+// it, can say which decisions the model has been given ([Agent.decisionNotesCarried]).
 func (a *Agent) enqueueHandOver(id uint64, text string) {
 	note := wakeNote(text)
 	note.handsOver = []uint64{id}

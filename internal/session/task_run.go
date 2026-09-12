@@ -817,14 +817,19 @@ type TaskNode struct {
 	// announcing the end raced past.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and the note that asks it is either
-	// waiting on the steering queue or in front of the model. It is not the same
-	// fact as [TaskNode.decider] being the model — a landing under
-	// `task.settle = auto` writes that by policy and presses nothing — and it
-	// travels with the owner through [TaskNode.givesBackLocked] so a hand-back
-	// leaves no receipt behind (task_audit.go's [TaskNode.wasHandedOver] states
-	// the whole rule).
+	// asked aforge to decide this one card. It is not the same fact as
+	// [TaskNode.decider] being the model — a landing under `task.settle = auto`
+	// writes that by policy and presses nothing — and it travels with the owner
+	// through [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
+	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
 	handed bool
+	// handNote is HOW FAR THE NOTE THAT HANDS THIS DECISION TO THE MODEL HAS GOT
+	// (task_audit.go's [decisionNote]), and it is on the NODE rather than on any
+	// one agent's queue because the floor that takes a hand-over back runs at the
+	// end of every agent's turn: a worker reads its own children's decisions
+	// ([Agent.readsTheDecisionLocked]), and a fact kept per queue let a worker's
+	// turn spend a press that was made, and is still waiting, somewhere else.
+	handNote decisionNote
 	// stopReason is what whoever pulled the stop said they were stopping it FOR,
 	// and "" for every stop that came with no words — which is every one a person
 	// pulls, their card being a decision and not a sentence (cancel.go). It is
@@ -3881,6 +3886,16 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // written by the caller, after the seam.
 func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	// AND WHERE THIS LANDING'S DECISION IS THE MODEL'S, THE NOTE SAYS SO. Under
+	// `task.settle = auto` the landing hands the question over by policy
+	// ([Agent.handToModelOnAuto]) and THIS note is the whole of the asking, so it
+	// carries the landing the way a press's own note does (task_audit.go's
+	// [Agent.HandUnverifiedToModel]) — which is what lets the drain and the
+	// request tell a question the model has been given from one still on its way.
+	hands := node.decidedBy() == TaskAskOwnerModel
+	if hands {
+		message.handsOver = []uint64{tag.ID}
+	}
 	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
 	// This delivery happens after a claim is won and a reader is found, and a
 	// node can be re-armed and revised in that gap: composing the tag here would
@@ -3910,6 +3925,13 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record s
 			}
 		}
 		return got
+	}
+	// AND THE NOTE IS OWED FROM THE MOMENT A READER HAS IT. Before this line
+	// there is no note anywhere — the fold above took it into a report instead —
+	// and a decision marked owed with nothing to carry it would be a card saying
+	// aforge is deciding with no question in front of anybody.
+	if hands {
+		node.owesDecisionNote()
 	}
 	got.reader.handOverTaskNews(mark)
 	return got
@@ -4386,6 +4408,12 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 	if node.state != TaskUnverified || node.merge == mergeConflicted || node.shifted {
 		return
 	}
+	// THE OWNER IS WRITTEN HERE AND THE NOTE'S OWN MARK IS NOT, because on this
+	// road the note may never reach a queue at all: a landing whose news is
+	// folded into a parent's report has no delivery of its own
+	// ([Agent.postTaskMessage]). The mark is made where a reader actually takes
+	// the note, so a question nobody was handed is never held open waiting for an
+	// answer to a note that does not exist.
 	node.decider = TaskAskOwnerModel
 }
 
@@ -4415,11 +4443,20 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 // decision the person is holding again, which is two hands on one question and
 // the exact thing the receipt exists to prevent.
 //
-// SO THE QUEUE IS THE FACT, and it needs no second one written down: a hand-over
-// note still waiting on it is a question nobody has been given yet, and this
-// floor leaves that hold exactly where it is. It is assignment.go's own law
-// about a line said to a node, said here about a decision handed to the model —
-// a line accepted after the last drain was never in front of anybody.
+// SO THE NODE CARRIES HOW FAR ITS OWN NOTE HAS GOT ([decisionNote]), and this
+// floor leaves a hold alone until a request has actually carried it. It is
+// assignment.go's own law about a line said to a node, said here about a
+// decision handed to the model — a line accepted after the last drain was never
+// in front of anybody. THE FACT IS ON THE NODE AND NOT ON A QUEUE because this
+// floor runs at the end of EVERY agent's turn and a worker reads its own
+// children's decisions: the press is one thing, and whose turn is ending is
+// another.
+//
+// A NOTE NOBODY WILL EVER CARRY IS NOT LEFT HELD EITHER. When a turn ends and
+// nothing follows it — no follow-up, no wake, an interrupted turn — the agent
+// that owes the note hands back exactly what it owes
+// ([Agent.handBackUnreadNotes]), because there is no longer a turn coming that
+// would put the question in front of anybody.
 //
 // IT PUBLISHES ON THE ORDINARY TASK LANE. A surface already folds every
 // [EventTaskUpdate] into the row it is drawing, and the notice now carries who is
@@ -4430,9 +4467,6 @@ func (a *Agent) handBackUnsettled() {
 	if graph == nil {
 		return
 	}
-	// Read before the graph is taken, because this lock is never held while that
-	// one is ([Agent.drainSteering] states the ordering).
-	waiting := a.handOversWaiting()
 	var handed []*TaskNode
 	graph.mu.Lock()
 	for _, id := range graph.order {
@@ -4440,10 +4474,10 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
-		// THE PRESS NOBODY HAS BEEN GIVEN YET. Its note is still on the queue, so
-		// this turn never asked about it and the turn that reads it owns the
-		// window.
-		if waiting[id] {
+		// THE DECISION NOBODY HAS BEEN GIVEN YET. No request has carried its
+		// note, so no turn has asked about it and the turn that reads it owns
+		// the window.
+		if node.handNote == decisionNoteOwed {
 			continue
 		}
 		node.givesBackLocked()

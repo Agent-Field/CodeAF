@@ -97,6 +97,20 @@ second line about the same decision — and it is not shown to you as trouble, b
 state it asks for is the state that already holds: the reason row goes on reading `aforge
 is deciding`. If you want it back, press `take it back` and the answers return to you.
 
+**If the card stayed `your call` and nothing above fits, the press landed after aforge's
+last question went out.** Your press puts a line on the queue, and a queue is read between
+steps — so pressing while the answer is already streaming can mean that turn never sees it.
+What happens then: the card keeps saying `aforge is deciding`, aforge starts one more turn
+by itself to read the line, and that turn is the one it has to answer in. The card comes
+back to you at the end of it, whether or not aforge spent a verb on it. It used to come
+back within a moment of your press instead, and the model was then handed a decision you
+were holding again — two of you answering one question.
+
+**A turn you stop is the end of it.** If you press `esc` — or the turn fails — before the
+line has been read, nothing is coming that would put the question in front of aforge, so
+the card draws its chips again straight away and the task counts on your home page as
+something needing you. Press `let aforge decide` again when you want it asked.
+
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers
 works on those tasks, the model's answers included.

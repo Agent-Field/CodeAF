@@ -717,8 +717,8 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 	if err := agent.HandUnverifiedToModel(id); err != nil {
 		t.Fatalf("handing the decision over: %v", err)
 	}
-	if waiting := agent.handOversWaiting(); !waiting[id] {
-		t.Fatal("the press left no note waiting for the model on the queue")
+	if note := decisionNoteOf(graph.node(id)); note != decisionNoteOwed {
+		t.Fatalf("the press marked the node %v, want the note owed and unread", note)
 	}
 
 	// The floor, run by hand at the instant the turn in flight would run it.
@@ -736,6 +736,49 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 		node := agent.taskNode(id)
 		return node != nil && node.decidedBy() == TaskAskOwnerPerson && !node.wasHandedOver()
 	})
+}
+
+// AND A TURN SOMEBODY STOPPED HANDS BACK WHAT IT NEVER ASKED. This is the same
+// law from the other end (task_states_test.go's
+// [TestWhatNoTurnWillEverCarryComesBackToThePerson]), driven through the real
+// turn: an interrupted turn starts no successor, so the press it was carrying
+// reaches nobody and the card has to draw its chips again — until this it stayed
+// `aforge is deciding` until the person's NEXT turn, and home stopped counting
+// it as something needing them (taskstatus.go).
+func TestAnInterruptedTurnHandsBackThePressItNeverCarried(t *testing.T) {
+	held, entered, release := modelHoldsTheTurn()
+	t.Cleanup(release)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{held}}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	events := mustSubmit(t, agent, "keep thinking")
+	waitUntilClosed(t, "the model to be holding the turn", entered, 10*time.Second)
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+
+	agent.Interrupt()
+	collect(t, events)
+	waitFor(t, "the stopped turn to hand back what it never asked", func() bool {
+		node := agent.taskNode(id)
+		return node != nil && node.decidedBy() == TaskAskOwnerPerson && !node.wasHandedOver()
+	})
+}
+
+// decisionNoteOf reads how far one node's decision note has got, under the lock
+// every other reader of a node's fields takes.
+func decisionNoteOf(node *TaskNode) decisionNote {
+	node.graph.mu.Lock()
+	defer node.graph.mu.Unlock()
+	return node.handNote
 }
 
 // TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing is the same press

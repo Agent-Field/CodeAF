@@ -876,6 +876,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// which is exactly the news an outside reader wants (task_beat.go). It is
 		// nil for a conversation, whose liveness the presence file already carries
 		// (taskpresence.go).
+		// AND EVERY DECISION THIS TRANSCRIPT HOLDS A NOTE ABOUT IS A QUESTION THE
+		// MODEL HAS FROM HERE. It is on this line for the reason the beat and the
+		// clock below it are: this is the one place in this package where a
+		// request actually goes out, and a note that left the queue at a drain
+		// this turn was then cut short of has reached nobody
+		// (agent.go's [Agent.decisionNotesCarried]).
+		a.decisionNotesCarried()
 		a.config.beat.began()
 		// AND THE FIRST-TOKEN CLOCK, on the same line and for a related reason:
 		// this is the one place in this package where a request actually goes
