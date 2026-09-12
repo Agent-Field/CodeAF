@@ -435,9 +435,13 @@ func (s *sidecar[T]) takeAtTheEnd() (T, bool) {
 // arming this on one would be a promise to spend an answer that is about to be
 // cancelled. A caller that uses this verb starts its reading on the session's own
 // lifetime instead ([Agent.afterTurn]).
-func (s *sidecar[T]) spendWhenItLands(spend func(T)) {
+// It reports whether it TOOK the reading, which is the one-answer rule read from
+// the caller's side: a sidecar that was already spent hands `spend` nothing, and
+// a caller holding something on the reading's behalf — a place on a lifetime, a
+// name being made — has to be told so it can let go of it.
+func (s *sidecar[T]) spendWhenItLands(spend func(T)) bool {
 	if s == nil || s.taken || spend == nil {
-		return
+		return false
 	}
 	s.taken = true
 	select {
@@ -460,6 +464,7 @@ func (s *sidecar[T]) spendWhenItLands(spend func(T)) {
 			spend(s.answer)
 		})
 	}
+	return true
 }
 
 // pending reports that a reading is in flight or landed and not yet spent. It is
