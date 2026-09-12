@@ -855,6 +855,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"checked on the second try", "how-tasks-run"},
 		{"one call ran without answering and was abandoned", "how-tasks-run"},
 		{"the window closed before a second", "how-tasks-run"},
+		// A check the clock cut (#941), asked as the row a person meets and as
+		// the question under it: was the work wrong, or did the checker run out.
+		{"my task says the check ran out of time", "how-tasks-run"},
+		{"does the check running out of time mean my work is wrong", "how-tasks-run"},
+		{"the checker was cut off while it was thinking", "how-tasks-run"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},

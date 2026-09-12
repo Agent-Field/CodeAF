@@ -1239,7 +1239,7 @@ func (a *app) proposeTask(ev session.Event) {
 //
 //   - WHAT THIS PROGRAM DOES ABOUT AN ANSWER ([app.taskAnswered]) — the card in
 //     the transcript keeps what was decided, and a yes opens the forming block
-//     the approved brief is shaped in.
+//     that stands until the approved task exists.
 //   - WHAT A KEYSTROKE MEANS TO THE CLOCK ([app.taskHeld]). A proposal is the
 //     one question on this surface whose silence ANSWERS, so the moment there
 //     is somebody at the keyboard the engine is told to stop counting.
@@ -1501,10 +1501,9 @@ func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 		card.verdict = taskDeclinedWord
 	}
 	card.answer = word
-	// A YES OPENS THE SAME WAIT THE TYPED COMMAND STANDS IN. The engine shapes
-	// the approved brief before the task exists, and the person who just said
-	// yes is owed the same forming block a person who typed /task gets — one
-	// vocabulary for one pause, whichever door opened it (taskcommand.go's
+	// A YES OPENS THE FORMING BLOCK. The task the card names does not exist
+	// until its first update arrives, and the person who just said yes is owed
+	// something moving in that pause rather than nothing (taskcommand.go's
 	// [app.beginProposalWait]). A no and a redirect raise nothing: there is no
 	// task coming to wait for.
 	if approve && redirect == "" {

@@ -165,7 +165,7 @@ var doorsStillOnTheLoop = map[string]string{
 // doorsOnTheLoopBudget is how many such call sites there may be, and it is a
 // ratchet in `internal/ci`'s own shape: it may only ever be lowered. Move one
 // off the loop and lower this number in the same commit.
-const doorsOnTheLoopBudget = 39
+const doorsOnTheLoopBudget = 38
 
 // NO DOOR IS ASKED FROM THE UPDATE LOOP.
 //

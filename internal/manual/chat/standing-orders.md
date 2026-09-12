@@ -663,8 +663,8 @@ Honest limits, so you do not rely on something that is not built:
   the cheapest rung however deep this machine is dialled, because it is unattended and it
   repeats. `ctrl+v` on the item's row on home raises the one that needs it, and nothing
   else does — there is no way to raise them all at once, on purpose.
-- **A firing gets no sizing call.** Work you type is read once for width before it starts;
-  an order that fires is not, and is armed to split itself only off the items its own
+- **A firing gets no sizing call.** Work you type is read once for width beside its first
+  worker; an order that fires is not, and is armed to split itself only off the items its own
   brief already names. Asking a model every night whether a sentence that has not changed
   is wide would be a bill you never agreed to. (What splitting is, and everything that
   decides it, are on the tasks page.)

@@ -134,7 +134,7 @@ import (
 // [session.Agent.Steer] defines it.
 //
 // And it adds THE TASK DOOR — [MethodTaskStart], [MethodPlannerStart] and
-// [MethodTaskJudge] (wire_task.go). Every place method before it was a READING,
+// `Task.Judge`, which version 16 retired (wire_task.go). Every place method before it was a READING,
 // which is why they could ride version 5 behind an honest fallback: an engine
 // that cannot answer one leaves a page drawing the sentence it has always
 // drawn. These calls are not reading. They COMMISSION WORK on the far machine
@@ -329,7 +329,18 @@ import (
 // is the one thing this lane must never give, so the refusal is at the door and
 // the nil that comes back is drawn as "not read" rather than as "nothing set"
 // (client.Autonomy, and settingsautonomy.go's own reading).
-const Version = 15
+//
+// VERSION 16 IS THE TASK DOOR THAT STOPPED WAITING (issue #936). `/task` used to
+// be two calls in series — `Task.Judge`, then [MethodTaskStart] held open for
+// the engine's shaper — and the engine now admits the work at once and reads its
+// width and writes its brief beside the worker. So `Task.Judge` is gone,
+// [TaskStartArgs] carries the one fact the engine cannot know (`solo`), and the
+// start is an ordinary call with the ordinary deadline. The number moves because
+// a version-15 engine would still hold the start behind its shaper for up to
+// half a minute while this surface had stopped waiting at ten seconds: the
+// person would be told their work did not start while it did. NEVER TO A
+// SENTENCE THAT IS FALSE.
+const Version = 16
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"

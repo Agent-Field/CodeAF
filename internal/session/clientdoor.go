@@ -438,7 +438,9 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, messages []ai.Messag
 	if err != nil {
 		return nil, called, err
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, append(options, ai.WithModel(wire))...)
+	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
+	// is this package's to change (callwindow.go says why it cannot be earlier).
+	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 	return response, called, err
 }
 

@@ -50,6 +50,7 @@ var legacyEffortStampers = map[string]string{
 	"orchestrate.go":    "an adaptive-run node's role call, from the node's own tier",
 	"subharness_env.go": "a saved program's ai() call, from the options its author wrote",
 	"agent.go":          "the per-model dial's doc comment, which names the shape it is NOT",
+	"callwindow.go":     "an answer ask's thinking switched off: a requirement of that one call shape, not a person's depth",
 }
 
 // EVERY FILE THAT STAMPS A RUNG ALSO RESOLVES ONE.

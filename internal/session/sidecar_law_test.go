@@ -766,6 +766,59 @@ func TestThereIsOneDoorForAReadingBesideTheWork(t *testing.T) {
 	}
 }
 
+// AND THE WATCH IS A TEST'S, NEVER THE WORK'S. [besideWatch] lets a test pin an
+// order between a reading and the work without guessing at the scheduler, and
+// that is all it may do: the product carrying one, or waiting on one, is a
+// reading standing in front of the work again under another name. So no file of
+// the product calls the door that carries a watch or the verb that waits on one.
+func TestTheRunningProductNeverWaitsOnAReadingsLanding(t *testing.T) {
+	set := token.NewFileSet()
+	for _, file := range parsePackage(t, set) {
+		for _, complaint := range watchLaw(set, file) {
+			t.Error(complaint)
+		}
+	}
+	// AND IT BITES, on the two ways the product would reach for it.
+	const planted = `package session
+func (a *Agent) runTurn(ctx context.Context) {
+	ctx = withBesideWatch(ctx, &besideWatch{})
+	besideWatchOn(ctx).quiet(ctx)
+}`
+	file, err := parser.ParseFile(set, "planted.go", planted, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parsing the plant: %v", err)
+	}
+	if complaints := watchLaw(set, file); len(complaints) != 2 {
+		t.Errorf("the law named %d of the two planted uses: %v", len(complaints), complaints)
+	}
+}
+
+// watchLaw is one file's uses of the watch, in source order.
+func watchLaw(set *token.FileSet, file *ast.File) []string {
+	var complaints []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name := ""
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			name = fun.Name
+		case *ast.SelectorExpr:
+			name = fun.Sel.Name
+		}
+		if name == "withBesideWatch" || name == "quiet" {
+			complaints = append(complaints, fmt.Sprintf(
+				"%s: %s in the product — a watch on a reading's landing is how a TEST pins an order "+
+					"(sidecar.go's besideWatch), and the work never carries one or waits on one",
+				set.Position(call.Pos()), name))
+		}
+		return true
+	})
+	return complaints
+}
+
 func receiverNames(recv *ast.FieldList, want string) bool {
 	if recv == nil || len(recv.List) == 0 {
 		return false

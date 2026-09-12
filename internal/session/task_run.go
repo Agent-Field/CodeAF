@@ -2345,6 +2345,24 @@ func (n *TaskNode) instruction() string {
 func (n *TaskNode) instructionOn(tree taskTree) string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	return n.instructionLocked(tree, taskContract{assembled: n.brief, acceptance: n.spec.acceptance})
+}
+
+// taskContract is the half of a node's document that can arrive after the node
+// does: the assembled brief and the done-condition. Everything else a worker's
+// document carries — the person's words, the deliverable, the checks, the copy —
+// is settled at admission and read from the node itself.
+type taskContract struct {
+	assembled  string
+	acceptance string
+}
+
+// instructionLocked composes a worker's document around one contract, under the
+// graph's lock. It is [TaskNode.instructionOn] for the node's own contract, and
+// the brief a person's `/task` is written beside its worker is composed through
+// it too (task_shape.go), so the document the worker opened on and the one it is
+// handed later are one format by construction.
+func (n *TaskNode) instructionLocked(tree taskTree, contract taskContract) string {
 	// AND THE FAMILY'S OWN CHECKS RIDE THE DONE-CONDITION, because that is the
 	// sentence a worker reads to find out what finishing means. They are composed
 	// into the section rather than written into the spec ([TaskNode.Family] says
@@ -2357,7 +2375,7 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 	// their original words; what the revision moves is the work, the deliverable
 	// and the done-condition, and the block that says so carries their later
 	// words verbatim, so the worker reads the same account the auditor will.
-	now := n.assignmentLocked()
+	now := n.assignment.effective(contract.assembled, n.spec.deliverable, contract.acceptance)
 	// AND WHETHER THE MESSAGE ABOVE IS THIS WORKER'S WHOLE JOB, which is the
 	// parent and nothing else (task_brief.go's [briefPieceRule]). It is read
 	// here, on the one road that composes a worker's document — the opening
@@ -5267,8 +5285,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// running: it must read the same receipt, and the division must not be
 		// put a second time.
 		sizing *sizingBeside
-		// weighed says the drawing has been put, so a second worker never puts it
-		// again whatever the first reading came to.
+		// shaping is a person's brief being written beside the same first worker
+		// (task_shape.go), and nil for every node whose brief somebody already
+		// wrote. It is kept outside the loop for sizing's reason: a second worker is
+		// the same node, and the brief is written for the node once.
+		shaping *shapingBeside
+		// weighed says the readings beside the first worker have been started, so
+		// a second worker never starts them again whatever the first ones came to.
 		weighed bool
 		// handedOut is the receipt the first worker was given for the parts, read
 		// once its reading is joined, and an empty string on every node whose
@@ -5281,7 +5304,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// THE READING IS JOINED ON EVERY ROAD OUT, and before the parts are stopped:
 	// defers run last-in first-out, so nothing it admits can land after the
 	// nursery law above has swept the node's parts (task_beside.go's law).
-	defer func() { sizing.end() }()
+	defer func() { sizing.end(); shaping.end() }()
 	// AND A NODE THAT HAS ALREADY MOVED MODEL CARRIES THAT INTO THIS ATTEMPT.
 	// THE CHAIN IS WALKED ONCE PER NODE, NOT ONCE PER ATTEMPT — the engine buys a
 	// node one rerun from its branch for an ending that said nothing about the
@@ -5329,8 +5352,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// THIS WORKER'S RUN HAS A CANCEL OF ITS OWN, for exactly one caller: the
 		// reading beside it, on the one answer that stops a started worker.
 		work, stopWork := context.WithCancel(ctx)
-		// AND THE DIVISION SOMEBODY ALREADY DREW IS WEIGHED BESIDE THIS WORKER, NOT
-		// IN FRONT OF IT. A turn handed over on a mark's sketch arrives with its
+		// AND A DIVISION IS WEIGHED BESIDE THIS WORKER, NOT IN FRONT OF IT: the one
+		// somebody already drew, or the one the sizing judge proposes for a
+		// person's own `/task` ([Agent.proposalBeside]). A turn handed over on a
+		// mark's sketch arrives with its
 		// parts already named by a mastermind, and waiting for a cheap worker to
 		// re-derive them was measured never happening at all — so the harness
 		// submits the drawing on this worker's behalf, through the same gates, the
@@ -5341,23 +5366,35 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// The worker's first request now goes out below at once, and the reading's
 		// answer reaches this worker while it works: parts on its queue, a refusal
 		// as nothing at all, and work only a person can do as a stop.
-		if !weighed {
-			weighed = true
-			sizing = child.sizeBeside(ctx, room, stopWork)
-		}
-
-		var wrote []string
+		//
 		// AND THE CONTRACT IS BOUND TO THE COPY IT IS ABOUT TO BE ASKED IN. This
 		// is one of the two moments a worker is spoken to, and the tree is right
 		// here ([TaskNode.instructionOn]). A second worker is also told what the
 		// first one's parts are; the first is told on its queue, when they exist.
-		wrote, stopped, runErr = runTaskChild(work, child, node, withReport(node.instructionOn(tree), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
+		//
+		// IT IS COMPOSED BEFORE ANYTHING IS READ BESIDE IT, so the document a
+		// worker opens on is the one its node was admitted with, every time, and
+		// whatever a reading writes reaches it by one road — its queue — however
+		// quickly the reading answered.
+		opening := withReport(node.instructionOn(tree), withReport(tree.note, handedOut))
+		// AND A PERSON'S OWN BRIEF IS WRITTEN BESIDE THE SAME WORKER, for the same
+		// reason and through the same mechanism (task_shape.go): the worker opens
+		// on their sentence, and the shaper's brief reaches it when it lands.
+		if !weighed {
+			weighed = true
+			sizing = child.sizeBeside(ctx, room, stopWork)
+			shaping = a.shapeBeside(ctx, node, room, tree, log)
+		}
+
+		var wrote []string
+		wrote, stopped, runErr = runTaskChild(work, child, node, opening, tree.dir, a.taskLimits(node), room, log)
 		stopWork()
-		// THE READING ENDS WITH THE FIRST WORKER'S READING. An answer that has not
+		// THE READINGS END WITH THE FIRST WORKER'S READING. An answer that has not
 		// come back by now is about work this worker has finished with, and
 		// [sizingBeside.end] waits for the reading to let go before anything here
 		// reads what it came to.
 		person := sizing.end()
+		shaping.end()
 		handedOut = sizing.handedOut()
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
@@ -6795,17 +6832,13 @@ func taskReport(child *Agent) string {
 // composes and what the auditor's verdict is parsed out of (task_audit.go) — a
 // verdict is four lines and an ordinary report is three, and cutting before the
 // parse would be the harness deciding a verdict was too long to read.
-func lastSaid(child *Agent) string {
-	entries := child.Transcript()
-	for index := len(entries) - 1; index >= 0; index-- {
-		entry := entries[index]
-		if entry.Role != "assistant" || strings.TrimSpace(entry.Text) == "" {
-			continue
-		}
-		return entry.Text
-	}
-	return ""
-}
+//
+// IT IS ONE READ WITH [saidSince], over the whole transcript instead of over its
+// tail. The two questions differ by a floor and by nothing else — "what did it
+// say" and "what did it say after it was asked again" — and written twice they
+// would be two answers to "what counts as having said something", which is the
+// one judgement a verdict is parsed out of.
+func lastSaid(child *Agent) string { return saidSince(child, 0) }
 
 // composeTaskReport keeps the ordinary three-line report small while carrying
 // a fenced block that begins there. A REPORT NEVER LEAVES AN OPENING FENCE

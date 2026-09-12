@@ -458,6 +458,12 @@ func stewardCheckpointAgent(t *testing.T, completer Completer, mutate func(*Conf
 	if agent.steward() == nil {
 		t.Fatal("the fixture built a session with no goal owner behind it")
 	}
+	// THE DRAWING LANDS BEFORE THE NEXT WORD. Every road under test here is a
+	// mark's reading deciding what the goal owner is asked, and every reading is
+	// answered at once ([answerTheReadingsOffTheQueue]); so the conversation is
+	// held until it has landed ([answerWhenQuiet]), and a script long enough to
+	// cross the mark is long enough whatever else the machine is doing.
+	watchReadings(t, agent)
 	return agent, transcript
 }
 
@@ -1065,8 +1071,14 @@ func TestAWindowTooSmallToAskInSaysTheWindowClosed(t *testing.T) {
 	waitDoneNode(t, node)
 	notice := node.notice()
 
-	if !strings.Contains(notice.Report, "nobody could check it in") {
+	if !strings.Contains(notice.Report, checkerRanOut(time.Nanosecond)) {
 		t.Fatalf("the landing does not say the window closed:\n%s", notice.Report)
+	}
+	// AND THE ROW NAMES THE CLOCK, NOT THE WORK (#941): nothing was ever asked,
+	// so the reason is the check running out of time rather than a check that
+	// could not be made of the work.
+	if reason := taskAskOf(notice.StatusFacts()).Reason; reason != taskAskTimeReason {
+		t.Fatalf("the row reads %q, want %q", reason, taskAskTimeReason)
 	}
 	if strings.Contains(notice.Report, "without answering and was abandoned") {
 		t.Fatalf("the landing blames a call that was never made:\n%s", notice.Report)

@@ -1427,19 +1427,13 @@ type app struct {
 	// It is the crew chooser's shape for the crew chooser's reason: a fixed
 	// ladder is a thing you read rather than a thing you search.
 	effPick effortMenu
-	// wait is the forming block a task command is standing in — its verbatim
-	// brief, present phase, and clock (taskcommand.go). It keeps that live region
-	// out of the notes lane while driving its shared spinner and count-up.
-	// waits are the forming blocks up right now — a task command that is sizing
-	// or shaping, and a proposal whose yes is waiting on the same call
-	// (taskcommand.go). It is a LIST because two of them can be in flight at
-	// once, and three tall blocks stacked at the transcript tail is a wall;
-	// several share one block (formingblock.go).
+	// waits are the forming blocks up right now: proposals the person approved
+	// whose tasks do not exist yet (taskcommand.go). It keeps that live region
+	// out of the notes lane while driving its shared spinner and count-up, and it
+	// is a LIST because two of them can be in flight at once, and three tall
+	// blocks stacked at the transcript tail is a wall; several share one block
+	// (formingblock.go).
 	waits []preflight
-	// waitSeq hands out the identity a settle comes back with, and waitAt is the
-	// row of the block a person is pointed at — the only one whose preview draws.
-	waitSeq uint64
-	waitAt  int
 	// mem is the memory place's state: the snapshot it is drawing, the shelves that
 	// are unrolled, and the filter (place_memory.go).
 	mem memoryPlace
@@ -3090,15 +3084,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.catchUpLearning() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
-	// A TASK BRIEF BEING SHAPED IS THE SECOND THING ARMED HERE, and it is the
-	// colder start of the two. Both doors onto the forming block — `/task` typed
-	// into a still surface, and a yes on a proposal card — are answered while
-	// nothing else on screen is moving, so the paint clock's eighth reason to
-	// KEEP turning ([app.paint]) had nothing to keep: the block's spinner and its
-	// count-up stood still for the whole shaping call, which is the exact dead
-	// air the block was built to end (taskcommand.go's [preflight]). The two
-	// places read ONE fact, [preflight.live], so a clock that starts and a clock
-	// that keeps going cannot disagree about whether a wait is up.
+	// A FORMING TASK IS THE SECOND THING ARMED HERE, and it is the colder start
+	// of the two. The forming block's door — a yes on a proposal card — is
+	// answered after the turn that raised the card has ended, while nothing else
+	// on screen is moving, so the paint clock's eighth reason to KEEP turning
+	// ([app.paint]) had nothing to keep: the block's spinner and its count-up
+	// stood still for the whole pause, which is the exact dead air the block was
+	// built to end (taskcommand.go's [preflight]). The two places read ONE fact,
+	// [app.waiting], so a clock that starts and a clock that keeps going cannot
+	// disagree about whether a wait is up.
 	// AN ARRIVING PROPOSAL CARD IS THE THIRD THING ARMED HERE. Its own event
 	// stream normally wakes the surface, but both clock lists read the derived
 	// card fact so a start and a keep can never disagree (task.go).
@@ -4487,51 +4481,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.modelsFetched(msg)
 		return a, nil
 
-	case taskSizedMsg:
-		door, ok := a.agent.(taskCommandAgent)
-		if !ok {
-			a.note("could not start the task · this session has no task door")
-			return a, nil
-		}
-		// EITHER ANSWER STARTS THE SAME THING, AND ONLY ONE OF THEM SAYS ANYTHING.
-		// The sizing call does not pick a road any more — there is one — so what
-		// its yes does is ARM this task to divide (internal/session's
-		// [Agent.armDivision]) and earn the person a line about it. This used to be
-		// the moment a two-row card opened and asked which shape to run, and the
-		// card was the wrong question: it wanted a decision about width before
-		// anybody had opened the material, from the one person in the room who had
-		// not read it. The measured road answers it later and from evidence — the
-		// worker hands the parts out only once it has seen how many there really
-		// are, and they ride the same frontier the rest of the graph does. So the
-		// command starts the work either way, and the note says the one thing the
-		// person could not otherwise know: it may not stay one task. A no says
-		// nothing, because nothing about narrow work is news.
-		if msg.parallel {
-			a.note(taskWideNote)
-		}
-		// THE PHASE CHANGES IN PLACE ON THE BLOCK ALREADY ON SCREEN. Sizing and
-		// shaping are two phases of one command, so the wait's own identity is
-		// handed on rather than settled and re-raised — a collapse and a second
-		// block opening under it would read as two commands (taskcommand.go's
-		// [app.beginPreflight]).
-		return a, a.startTaskDoor(door, msg.brief, msg.wait)
-
-	case shapingTailMsg:
-		// THE BRIEF, AS FAR AS IT HAS BEEN WRITTEN. The lane closing says the
-		// shaping call has returned, and the block that was drawing the tail is
-		// about to be settled by the answer itself — so nothing is asked for after
-		// it and the pump stops (taskcommand.go).
-		if msg.done {
-			return a, nil
-		}
-		a.shapingTail(msg.wait, msg.read)
-		return a, a.pumpShaping(msg.wait, msg.stream)
-
 	case taskStartedMsg:
 		if msg.conv != "" && msg.conv != a.taskBriefConv() {
 			return a, nil
 		}
-		a.settleShaping(msg.wait)
 		if msg.err != nil {
 			a.note("could not start the task · " + msg.err.Error())
 		} else {
@@ -4540,10 +4493,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
 			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
-			// AND THE ONE HONEST LINE ABOUT A CUT SHAPER (path (a) of issue
-			// #133, [session.TaskShapeFallbackNote]). Its own dim line under the
-			// started one, in the same slot [app.noteFacts] already carries facts
-			// in; empty is every ordinary start and says nothing.
+			// AND WHERE THE WORK STANDS, when the engine had something to say
+			// about it: the ground ladder's redirect, said when the work goes
+			// somewhere other than where it was asked to go. Its own dim line
+			// under the started one, in the same slot [app.noteFacts] already
+			// carries facts in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
 				a.note(msg.note)
 			}
@@ -4792,11 +4746,11 @@ func (a *app) paint() tea.Cmd {
 		// running while a person signs in, so without this the waiting line's
 		// spinner would be a still photograph (connect.go).
 		a.connectAnimating() ||
-		// AND A TASK COMMAND'S PRE-FLIGHT IS THE EIGHTH, and it is the second of
-		// them that can be the whole of what is happening: no turn runs while
-		// `/task` sizes and shapes a brief, and without this the wait's spinner and
-		// its count-up would be a still photograph for twenty-five seconds — which
-		// is exactly what they were (taskcommand.go's [preflight]).
+		// AND A FORMING TASK IS THE EIGHTH, and it is the second of them that can
+		// be the whole of what is happening: no turn runs between a proposal's yes
+		// and its task's first update, and without this the wait's spinner and its
+		// count-up would be a still photograph — which is exactly what they were
+		// (taskcommand.go's [preflight]).
 		a.waiting() ||
 		// AND HOME WITH A ROW RUNNING IS THE NINTH, and the third that can be the
 		// whole of what is happening: the work is another window's, so no turn of
@@ -5270,7 +5224,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	case session.EventTaskUpdate:
 		// A PROPOSAL'S FORMING BLOCK ENDS HERE, because this is the first breath
 		// the approved task takes on any lane: an update for its id means the
-		// shaping pause the block was about is over (taskcommand.go's
+		// pause the block was about is over (taskcommand.go's
 		// [app.settleProposalWait]). It runs before the fold so the collapse and
 		// the row it collapses into land in the same frame.
 		a.settleProposalWait(ev.Task.ID)
@@ -5843,32 +5797,6 @@ func (a *app) take(u session.Usage) {
 	if a.state != stateWorking || a.linear {
 		a.snapMeters()
 	}
-}
-
-// shapingPreviewField names the argument the BRIEF BEING SHAPED is previewed
-// by, and it is the sibling of [formingPreviewField] (feed.go) rather than a
-// second idea. It stayed on this side of the extraction because the shaper is a
-// stream the CHAT watches and not an event the reducer takes.
-//
-// The shaper answers with one JSON object — {"title","brief","acceptance",
-// "where"} (internal/session's task_shape.go) — and `brief` is the field for the
-// same reason `content` is a write's: it is appended to and never revised, so
-// what has arrived is the beginning of the document and will still be the
-// beginning of it when the call is whole. A title is three words that land at
-// once and say nothing about progress; an acceptance is written last and is
-// blank for most of the wait.
-const shapingPreviewField = "brief"
-
-// shapingPreview is [formingPreview] for the other stream this surface watches:
-// the shaper's answer as it arrives, rather than a tool call's arguments.
-//
-// IT IS THE SAME SCANNER, deliberately. Both are prefixes of a JSON object that
-// nothing may unmarshal, and [session.PartialString] is the one tolerant read of
-// one field of such a prefix in this tree — a second parser here would be a
-// second answer to "what has arrived" waiting to disagree with the first.
-func shapingPreview(text string) string {
-	preview, _ := session.PartialString(text, shapingPreviewField)
-	return preview
 }
 
 // note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
@@ -6462,12 +6390,6 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
-	case hitForming:
-		// THE FORMING BLOCK AT THE TAIL (formingblock.go). Its rows belong to no
-		// entry — the block is not part of the conversation, it is what stands
-		// where one is about to be — so the wait is named by its place in the list,
-		// which is what the row carries.
-		a.formingPress(r.turn)
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a

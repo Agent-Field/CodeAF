@@ -30,6 +30,12 @@ func TestRetainedBranchNoticePreservesRequestedWorkflow(t *testing.T) {
 
 func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 	uri := "file:///tmp/lab/.aforge/sessions/task-7.jsonl"
+	// WHAT THE ENGINE WRITES WHEN BOTH CHECKING CALLS CAME BACK WITH NOTHING,
+	// composed the one way production composes it ([auditVerdict.twice]) rather
+	// than spelled again here: the subject of that sentence depends on which
+	// clock ran out, and a fixture holding its own copy is a fixture that would
+	// go on passing after the sentence moved.
+	twiceAsked := (auditVerdict{}).twice().evidence[0]
 	for _, c := range []struct {
 		what   string
 		notice TaskNotice
@@ -79,7 +85,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: withYourCallLead(TaskFacts{}, checkerAskedTwice),
+			Report: withYourCallLead(TaskFacts{}, twiceAsked),
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
@@ -90,7 +96,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		// checker's own sentence (task_run.go's [taskNote]).
 		want: []string{
 			"task 9 your call: Collect sources · nobody could check it",
-			strings.TrimPrefix(checkerAskedTwice, yourCallLead(TaskFacts{})),
+			strings.TrimPrefix(twiceAsked, yourCallLead(TaskFacts{})),
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},
