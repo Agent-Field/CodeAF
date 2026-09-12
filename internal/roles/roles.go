@@ -477,6 +477,38 @@ func Registered() []Role {
 	return roles
 }
 
+// ── the roles this build used to have ───────────────────────────────────────
+
+// retired names every role this build has deliberately stopped having, with the
+// one line that says what happened to it. IT ONLY EVER GROWS.
+//
+// A ROLE THAT STOPS EXISTING IS STILL IN SOMEBODY'S config.json. `compaction`
+// was assigned a tier, described in the settings panel and offered as a pin for
+// months while nothing ever called it, so profiles carry `compaction:some/model`
+// rows that were true when they were typed. Deleting the constant took the row
+// off the panel and left the word in the file — and because the panel
+// re-serialises the WHOLE `models.roles` string on any pin, the next change to
+// ANY OTHER role was refused with `"compaction" is not a role` and every pin on
+// that machine became unchangeable until somebody hand-edited config.json.
+//
+// So a reader DROPS what is retired rather than refusing it, and a writer never
+// puts it back (internal/config's ParseModelRoles and writeModelRoles). The
+// names stay here long after the code is gone, which is the whole point: this
+// map is the only memory the build has of a word it used to answer to, and
+// without it the word is indistinguishable from a typo.
+var retired = map[string]string{
+	"compaction": "a compaction has never asked a model; the role was assigned a tier and called by nothing",
+}
+
+// Retired reports whether `name` is a role this build deliberately stopped
+// having, and the line that says what happened to it. The comparison is the
+// same one [Registered] readers make — lower-case, trimmed — so a row typed
+// `Compaction: x` is recognised as the retired word and not as a new one.
+func Retired(name string) (string, bool) {
+	why, ok := retired[strings.ToLower(strings.TrimSpace(name))]
+	return why, ok
+}
+
 // TierOf reports the tier a role resolves under, and false if the role was
 // never registered.
 func TierOf(role Role) (Tier, bool) {

@@ -133,6 +133,56 @@ func TestEveryRowSaysWhatItAccepts(t *testing.T) {
 	}
 }
 
+// A ROLE THIS BUILD RETIRED IS DROPPED FROM A PROFILE THAT STILL PINS IT, and
+// the rest of that person's row keeps working.
+//
+// THE MEASURED FAILURE THIS IS WRITTEN AGAINST. `compaction` was a role for
+// months: it had a tier, a description, and a row in the settings panel, and
+// nothing ever called it. Deleting it took the row off the panel and left the
+// word in every config.json that had pinned it. The panel re-serialises the
+// WHOLE `models.roles` string on any change, so the next time that person moved
+// ANY OTHER pin the write came back `"compaction" is not a role` — and every
+// role pin on that machine was unchangeable until somebody opened config.json by
+// hand. A deletion with no reading for what it deleted is a deletion that breaks
+// the people who used the thing.
+func TestAPinForARetiredRoleIsDroppedAndTheRestOfTheRowStillMoves(t *testing.T) {
+	profile := t.TempDir()
+	// The string a profile written before the role was deleted actually holds.
+	const before = "compaction:openai/gpt-5-mini, title:openai/gpt-5-mini, planner:deepseek/deepseek-v4-pro"
+
+	pins, err := ParseModelRoles(before)
+	if err != nil {
+		t.Fatalf("a profile that pins a retired role could not be read at all: %v", err)
+	}
+	if _, still := pins["compaction"]; still {
+		t.Error("the retired role came back as a live pin")
+	}
+	for _, want := range []string{"title", "planner"} {
+		if pins[want] == "" {
+			t.Errorf("the pin for %q was lost along with the retired one: %v", want, pins)
+		}
+	}
+
+	// AND THE NEXT CHANGE TO ANY OTHER PIN GOES THROUGH — the whole failure.
+	if err := writeModelRoles(profile, before); err != nil {
+		t.Fatalf("a row carrying a retired role was refused: %v", err)
+	}
+	// AND THE DEAD WORD IS NOT WRITTEN BACK, so the next read has nothing to
+	// forgive and the row stops carrying a sentence about nothing.
+	stored, ok := persistedString(profile, KeyModelRoles)
+	if !ok {
+		t.Fatal("the row was not stored at all")
+	}
+	if strings.Contains(stored, "compaction") {
+		t.Errorf("the retired role was written back: %q", stored)
+	}
+	for _, want := range []string{"title:openai/gpt-5-mini", "planner:deepseek/deepseek-v4-pro"} {
+		if !strings.Contains(stored, want) {
+			t.Errorf("the row that was kept lost %q: %q", want, stored)
+		}
+	}
+}
+
 // A ROLE NOBODY RECOGNISES FAILS SILENTLY FOREVER, which is why this row
 // validates the name and the model slug beside it does not. A pin written
 // against a misspelled role is stored, reads back exactly as typed, shows in
