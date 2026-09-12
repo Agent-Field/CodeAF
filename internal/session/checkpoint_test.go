@@ -93,8 +93,11 @@ func TestTheMeterFiresOnlyAtTheGeometricMarks(t *testing.T) {
 // leans on.
 func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 	meter := &checkpointMeter{}
-	// Two ordinary rounds, then the race's verdict lands at the third boundary.
-	for round := 1; round <= 2; round++ {
+	// THE VERDICT LANDS PAST THE FLOOR here, at a boundary where pulling the
+	// first rung down still means firing it at the very next step. A verdict
+	// that lands EARLIER meets the floor instead, which is the next test's
+	// business; this one pins the rungs the race is allowed to move at all.
+	for round := 1; round <= checkpointFirstRungFloor+1; round++ {
 		if mark := meter.round(true); mark != 0 {
 			t.Fatalf("round %d fired mark %d before the price", round, mark)
 		}
@@ -110,7 +113,7 @@ func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 		t.Errorf("the race's own reading was dropped: %+v", meter.raced)
 	}
 	// THE LATER RUNGS ARE THE ORDINARY ONES.
-	for round := 4; round < checkpointMarkAt(2); round++ {
+	for round := meter.rounds + 1; round < checkpointMarkAt(2); round++ {
 		if mark := meter.round(true); mark != 0 {
 			t.Fatalf("round %d fired mark %d; the second rung stands at %d",
 				round, mark, checkpointMarkAt(2))
@@ -147,6 +150,97 @@ func TestALateTightenKeepsTheVerdictAndMovesNothing(t *testing.T) {
 	}
 	if !meter.raced.Wide {
 		t.Error("a late verdict's reading of breadth was thrown away")
+	}
+}
+
+// AND A VERDICT THAT LANDS BEFORE THE FLOOR CANNOT PULL THE FIRST RUNG BELOW IT.
+//
+// This is the measured failure the floor exists for: a planning turn whose race
+// said yes two rounds in was told [taking stock] at round three — over one issue
+// and two listings — and the model waved the note past, which is what made the
+// round-twenty note just as easy to wave past. The race is TRIAGE: it may make
+// the first look sooner, it may not make it empty ([checkpointFirstRungFloor]).
+func TestARacedYesCannotPullTheFirstRungBelowTheFloor(t *testing.T) {
+	meter := &checkpointMeter{}
+	// The verdict lands two rounds in, exactly as the measured one did.
+	for round := 1; round <= 2; round++ {
+		if mark := meter.round(true); mark != 0 {
+			t.Fatalf("round %d fired mark %d before the price", round, mark)
+		}
+	}
+	meter.tighten(routeVerdict{Work: true, Wide: true})
+	if meter.firstAt != checkpointFirstRungFloor {
+		t.Fatalf("the first rung stands at %d, want the floor at %d", meter.firstAt, checkpointFirstRungFloor)
+	}
+	// NOTHING FIRES BETWEEN THE VERDICT AND THE FLOOR — round three is where the
+	// measured turn was told, and told noise.
+	for round := 3; round < checkpointFirstRungFloor; round++ {
+		if mark := meter.round(true); mark != 0 {
+			t.Fatalf("round %d fired mark %d below the floor at %d", round, mark, checkpointFirstRungFloor)
+		}
+	}
+	if mark := meter.round(true); mark != 1 {
+		t.Fatalf("the floor round gave mark %d, want the first mark", mark)
+	}
+	// AND THE SECOND RUNG IS STILL THE ORDINARY ONE: sooner, never oftener.
+	if got := meter.markAt(2); got != checkpointMarkAt(2) {
+		t.Errorf("the second rung moved to %d; only the first is the race's to move", got)
+	}
+}
+
+// AND A FIRST MARK FIRED AT THE FLOOR CARRIES REAL FACTS.
+//
+// The floor's whole reason for standing where it stands is that the note below
+// it was noise, so this pins the other half of the bargain: a note sent AT the
+// floor is a full one. The transcript is the shape of a turn the race was right
+// about — one file opened per round, each with a real result held — and the
+// note the model is handed must say all three of the figures it prices the
+// roads with (inherit.go's [turnFacts.line]): the rounds, the files and the
+// bytes.
+func TestAFirstMarkAtTheFloorCarriesRealFacts(t *testing.T) {
+	transcript := []ai.Message{
+		textMessage("system", "SYSTEM"),
+		textMessage("user", "plan the migration"),
+	}
+	for round := 1; round <= checkpointFirstRungFloor; round++ {
+		transcript = append(transcript,
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{
+				{Function: ai.ToolCallFunction{Name: "read",
+					Arguments: fmt.Sprintf(`{"path":"pkg/file%d.go"}`, round)}}}},
+			textMessage("tool", strings.Repeat("x", 2_048)),
+		)
+	}
+
+	note := checkpointChoiceNote(readTurnFacts(transcript, turnOpenedAt(transcript), checkpointFirstRungFloor))
+	if !strings.HasPrefix(note, checkpointChoiceLead+" ") {
+		t.Fatalf("the note does not lead with the harness's own tag: %q", note)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("%d rounds so far", checkpointFirstRungFloor),
+		fmt.Sprintf("%d files opened", checkpointFirstRungFloor),
+		"of results in front of you",
+	} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the floored first mark's note is missing %q:\n%s", want, note)
+		}
+	}
+}
+
+// AND A METER NO RACE EVER TOUCHED CLIMBS THE LADDER THE POLICY WROTE.
+//
+// The floor bounds the race's exception; it must not leak into the rule. A turn
+// nobody said anything about stands every rung exactly where the two constants
+// put it — the pin that a clamp written for the raced road did not quietly
+// become a second ladder.
+func TestAnUnracedMeterClimbsTheOrdinaryLadder(t *testing.T) {
+	meter := &checkpointMeter{}
+	if meter.firstAt != 0 {
+		t.Fatalf("an untouched meter has a first rung at %d; zero is the ordinary turn", meter.firstAt)
+	}
+	for n := 1; n <= checkpointMarks; n++ {
+		if got, want := meter.markAt(n), checkpointMarkAt(n); got != want {
+			t.Errorf("rung %d stands at %d, want the ordinary %d", n, got, want)
+		}
 	}
 }
 
