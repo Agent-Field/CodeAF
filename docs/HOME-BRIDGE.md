@@ -1,9 +1,9 @@
 # The bridge — home as a calm dashboard
 
 *Design doc for the home redesign on the `standing/v0` line. Companion to
-`docs/STANDING-ORDERS.md` and successor to `docs/home-design.md`'s layout (its
-three jobs — triage, recall, the door — are unchanged and this doc reuses its
-machinery). Where this doc and landed code disagree, the code wins.*
+`docs/STANDING-ORDERS.md`; its three jobs — triage, recall, the door — are
+unchanged, and this document retains their layout and machinery. Where this doc
+and landed code disagree, the code wins.*
 
 ## The shape
 
