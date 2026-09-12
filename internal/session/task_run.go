@@ -4440,6 +4440,9 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
+		// THE PRESS NOBODY HAS BEEN GIVEN YET. Its note is still on the queue, so
+		// this turn never asked about it and the turn that reads it owns the
+		// window.
 		if waiting[id] {
 			continue
 		}
