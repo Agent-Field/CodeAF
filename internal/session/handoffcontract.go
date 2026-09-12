@@ -44,13 +44,21 @@ package session
 //
 // ── AND IT IS NEVER INVENTED ──
 //
-// NOTHING IN THIS FILE WRITES AN EXPECTATION. The divider writes them, because
+// NO EXPECTATION IS EVER MINED OUT OF PROSE. The divider writes them, because
 // only the divider knows which sentences of its own brief are load-bearing. A
 // harness that mined paths out of the prose would be guessing at what the brief
 // meant and then landing somebody's work on the guess — and it would be wrong
 // in exactly the direction that is most expensive, since a brief mentions many
 // paths and depends on few. A brief with no expectations preflights nothing and
 // costs nothing, which is the honest default and the common case.
+//
+// AND THERE IS EXACTLY ONE BRIEF WITH NO AUTHOR TO WRITE THEM. A conversation
+// whose turn is moved out because it cannot carry on did not know it was going
+// to be handed over, so nobody wrote a manifest and the harness holds facts
+// nobody else does: the turn's own tool calls say which places it actually
+// wrote. That is a RECORD and not a reading of anybody's meaning, which is why
+// [Agent.continuationExpects] at the foot of this file is allowed to exist and
+// why it is the only thing here that writes one.
 
 import (
 	"fmt"
@@ -327,3 +335,74 @@ func expectsSection(expects []Expectation) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// ── the one manifest the harness itself may write ───────────────────────────
+
+// continuationExpects is the manifest a CONTINUATION carries: every place this
+// turn wrote, asserted to still be there when the worker's folder is made.
+//
+// ── AND THIS IS NOT THE MINING THIS FILE REFUSES ──
+//
+// The header above says NOTHING IN THIS FILE WRITES AN EXPECTATION, and the
+// reason it gives is exact: a harness that mined paths out of a brief's PROSE
+// would be guessing at which sentences the brief depended on, and landing
+// somebody's work on the guess. That refusal stands and this does not touch it.
+// What is read here is not prose. It is the turn's own tool calls — the record
+// of what it actually put on the disk, which the harness compiled for the
+// reader's account already ([checkpointLedger]) — and "the file this turn wrote
+// is still there" is not an inference about anybody's meaning. It is the one
+// assumption a continuation certainly makes, because the work it is carrying on
+// from IS those files.
+//
+// ── WHY WRITES AND NOT READS ──
+//
+// A turn opens many places and changes few, which is the same asymmetry the
+// header gives for not mining prose. A manifest listing everything the turn
+// looked at would fail a worker over a file that was only ever glanced at, and
+// the value of a manifest is that every line of it is worth the landing it
+// causes.
+//
+// ── AND ONLY ON THE CONTINUATION ROAD ──
+//
+// Groomed work is written for a worker by somebody who knows which of their own
+// sentences are load-bearing, and that somebody is the divider — the header's
+// own answer. A continuation has no such author: the turn did not know it was
+// going to be handed over, so nobody wrote a manifest and the harness is the
+// only participant that holds the facts. That is the whole of the difference,
+// and it is why this takes the road as an argument rather than deciding.
+//
+// AN EMPTY ANSWER IS THE ORDINARY ONE. A turn that changed nothing assumes
+// nothing about the folder, preflights nothing and costs nothing — which is the
+// honest default this file already states.
+func (a *Agent) continuationExpects(why taskModelReason) []Expectation {
+	if why != taskModelContinuation {
+		return nil
+	}
+	_, written, _, _, _ := checkpointLedger(a.snapshot())
+	expects := make([]Expectation, 0, len(written))
+	for _, line := range written {
+		// The account writes a path and then what went into it; the manifest wants
+		// only the place, because what a file HOLDS after an edit is the worker's
+		// to read and not the harness's to assert.
+		path := line
+		if at := strings.Index(path, checkpointWroteArrow); at >= 0 {
+			path = path[:at]
+		}
+		if path = strings.TrimSpace(path); path == "" {
+			continue
+		}
+		expects = append(expects, Expectation{Path: path, Fact: continuationWroteFact})
+		if len(expects) >= expectsRemembered {
+			break
+		}
+	}
+	if len(expects) == 0 {
+		return nil
+	}
+	return expects
+}
+
+// continuationWroteFact is what the manifest says about each of those places in
+// the words of whoever wrote it — which on this road is the harness, so it says
+// the plain thing it actually knows and claims nothing about the contents.
+const continuationWroteFact = "the conversation this work continues wrote this before it was handed over"

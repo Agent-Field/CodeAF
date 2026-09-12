@@ -174,7 +174,7 @@ func TestContextReplayOnlySelectedEvidenceFilesResults(t *testing.T) {
 	source := admissionSource{messages: messages, resultSource: func(ai.Message) string { files++; return strings.Repeat("longpath/", 1000) }}
 	spent := admissionRoom() - 500
 	handles := admissionEvidence(source, &spent)
-	if files != len(handles) || files > admissionHandlesKept || spent > admissionRoom() {
+	if files != len(handles) || spent > admissionRoom() {
 		t.Fatalf("unselected filing or exceeded budget: %d files, %d handles, %d spent", files, len(handles), spent)
 	}
 }
@@ -191,7 +191,7 @@ func TestContextReplayCompletionDigestIgnoresOrphanResults(t *testing.T) {
 		second,
 		contextReplayResult("call_0", "Successfully wrote 5 bytes"),
 	}
-	_, _, results, _ := checkpointLedger(messages)
+	_, _, _, results, _ := checkpointLedger(messages)
 	if len(results) != 2 {
 		t.Fatalf("completion reader received %d results, want only the two matched calls: %q", len(results), results)
 	}

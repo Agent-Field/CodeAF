@@ -755,9 +755,12 @@ below, and it is not a count.
 **A reply is moved only when it can no longer work where it is.** aforge reads that three
 ways, and none of them is a number of rounds:
 
-- **Its own context is full.** The conversation has grown until this model's window no longer
-  has room for one more tool result. A reply that cannot hold another result cannot take
-  another step.
+- **Its own context is full, and folding it did not help.** The conversation has grown until
+  this model's window no longer has room for one more tool result. The fold runs first, every
+  step, before that is even asked — consumed results become pointers to their own bytes, the
+  oldest work becomes one line, and your own messages are never touched — so what is weighed
+  is what a fold could not get rid of. A reply that fits after the fold carries straight on
+  and you are told nothing. One that does not fit even then cannot take another step.
 - **It is going in circles.** The loop watch has said so twice, and a third note would be
   aforge talking to itself — see *Why does it say carry on*.
 - **It said it was finished and then carried on.** A reply claiming nothing is left is
@@ -776,6 +779,13 @@ configured, a reader that faults or takes too long — the reply still moves, wi
 **Then the reply stops where it is, and what takes the work opens on the work.** See *A quick
 task took over my answer* for the one-line case and *It made a task out of work that was
 already done* for the reply that was finishing anyway.
+
+**When the fold makes room, you see nothing at all** — no `this is running long` line, no row
+on the rail — because nothing was taken away from you and nothing had to be decided. It is
+not a reprieve that gets counted: the question is asked again at every step boundary, of
+whatever the conversation weighs at that moment. So an answer that keeps growing what a fold
+cannot take — your own messages, and the work of the last few rounds — runs out of room for
+real, and moves then.
 
 ## A quick task took over my answer · this is running long, carrying on here in this folder · this has parts, a quick task is taking them here · why was there no copy of the folder · the moved work carried on in my own folder
 

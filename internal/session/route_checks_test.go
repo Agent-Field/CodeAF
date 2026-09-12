@@ -74,7 +74,7 @@ func TestAutomaticTaskAdmissionDoesNotGrantStaleOrComposedChecks(t *testing.T) {
 			agent.mu.Unlock()
 			verdict := routeVerdict{Work: true, Goal: routeAsk,
 				Checks: []string{test.check}, checksRequest: routeAsk}
-			_, id := agent.launchRouteTask(newEventHub(), verdict, "repository review", drawnDivision{}, nil)
+			_, id := agent.launchRouteTask(newEventHub(), verdict, "repository review", drawnDivision{}, nil, taskModelGroomed)
 			node := agent.graph().node(id)
 			if node == nil {
 				t.Fatal("a rejected verification list should not discard the work")

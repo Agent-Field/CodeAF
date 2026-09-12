@@ -506,7 +506,7 @@ func (a *Agent) applyRouteJudge(hub *eventHub, ruling judgeRuling) {
 	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
 	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
 	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
-	a.launchRouteTask(hub, ruling.verdict, ruling.verdict.Goal, drawnDivision{}, ruling.ahead)
+	a.launchRouteTask(hub, ruling.verdict, ruling.verdict.Goal, drawnDivision{}, ruling.ahead, taskModelGroomed)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -1119,7 +1119,12 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // every quick node on every road comes through [Agent.admitQuick], because the
 // things this function decides — a done-condition, a place on the ground
 // ladder, a name, a width to arm — are the things a quick node does not have.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
+// AND IT IS TOLD WHICH ROAD IT IS ON, in one word, because two of the things it
+// decides differ between them: which model the work continues on
+// ([taskModelReason]) and whether the harness has any business writing a
+// manifest for it ([Agent.continuationExpects]). Everything else here is the
+// same on both roads, which is why they share this function at all.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead, why taskModelReason) (string, uint64) {
 	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
@@ -1167,7 +1172,11 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		brief:      verdict.Goal,
 		acceptance: routeAcceptance(verdict, a.taskRequest()),
 		checks:     routeChecks(verdict, a.taskRequest()),
-		model:      a.resolveTaskModel("").model,
+		model:      a.resolveTaskModelFor("", why).model,
+		// AND WHAT THE BRIEF ASSUMES, ON THE ONE ROAD THAT CAN HONESTLY SAY
+		// ([Agent.continuationExpects]). Every other door leaves this empty, which
+		// is the default handoffcontract.go states and the common case.
+		expects: a.continuationExpects(why),
 		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. It is the same
 		// judgement the sizing judge is asked at the typed door and the same one
 		// propose_task carries in `wide` — see [routeVerdict.Wide] for why this
