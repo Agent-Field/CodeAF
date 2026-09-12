@@ -524,6 +524,19 @@ func refusal(reason string) toolResult {
 
 var errAgentClosed = errors.New("session: agent is closed")
 
+// withoutWidening drops the `always` answer from a consent question. It is
+// used only for a call the policy graded irreversible, where a banked answer
+// would be refused by the floor on the very next call.
+func withoutWidening(options []AnswerOption) []AnswerOption {
+	kept := options[:0]
+	for _, option := range options {
+		if !option.Widening {
+			kept = append(kept, option)
+		}
+	}
+	return kept
+}
+
 // consentAsk is the approval gate's question as [Question] — the same moment
 // the EventConsentRequest above describes, in the object every lane now speaks.
 //
@@ -532,12 +545,31 @@ var errAgentClosed = errors.New("session: agent is closed")
 // (internal/approval's Rule), the evidence is the arguments the row already
 // carries, and the answers are answers.go's for this kind.
 //
-// THE STAKES ARE `costly` AND NOT `irreversible`, deliberately and for every
-// call alike. This gate does not know what a command will do — that judgement
-// is internal/approval's, and it is expressed as WHETHER TO ASK rather than as
-// how much is at stake — and a question that claimed `irreversible` on a `read`
-// would be crying wolf on the one word that is supposed to stop somebody.
+// THE STAKES ARE INTERNAL/APPROVAL'S OWN JUDGEMENT, PASSED THROUGH — NEVER
+// READ OFF THE COMMAND HERE. [approval.AlwaysAsks] is true for exactly the
+// shapes that hold under a blanket allow: bash's critical table and the calls
+// that act in the person's name. Those are the calls whose outcome cannot be
+// taken back, so they are graded `irreversible` and everything else stays
+// `costly`. A second list or a string match in this package would be two
+// judgements about the same call that one day disagree, which is the
+// repository's generic-and-meta law: internal/approval says which shapes are
+// grave, and this lane carries the grade.
 func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
+	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	stakes := StakesCostly
+	options := AnswerOptions(QuestionConsent)
+	scope := []AnswerScope{ScopeOnce, ScopeAlways}
+	if irreversible {
+		stakes = StakesIrreversible
+		// AND THE WIDENING YES IS NOT OFFERED ON ONE. `always` banks a memo or
+		// a rule that answers the next call without asking — and these are
+		// exactly the shapes the gate asks about EVERY time, memo or no memo
+		// (approve's floor above), so the key would draw a standing permission
+		// the very next call refuses to honour. One predicate decides both the
+		// grade and the offer, because they are one fact.
+		options = withoutWidening(options)
+		scope = []AnswerScope{ScopeOnce}
+	}
 	return Question{
 		ID:      id,
 		Kind:    QuestionConsent,
@@ -551,13 +583,13 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		// are drawn and answered as the one thing they are (question.go's
 		// [Question.Batch]).
 		Batch:   a.stepToken(),
-		Options: AnswerOptions(QuestionConsent),
-		Stakes:  StakesCostly,
+		Options: options,
+		Stakes:  stakes,
 		// THE TURN IS STOPPED ON IT AND NOTHING ELSE IS. The call is blocked
 		// inside its batch; the batch's other calls run in their own goroutines,
 		// and no task waits on this at all.
 		Blocking: Blocking{Turn: true},
-		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
+		Scope:    scope,
 		// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
 		// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
 		// ALREADY THERE — two renderings of one call is how a person ends up

@@ -19,23 +19,17 @@
       "label": "allow once"
     },
     {
-      "key": "2",
-      "label": "always",
-      "widening": true
-    },
-    {
       "key": "3",
       "label": "deny",
       "safe": true
     }
   ],
-  "stakes": "costly",
+  "stakes": "irreversible",
   "blocking": {
     "turn": true
   },
   "batch": "step:0",
   "scope": [
-    "once",
-    "always"
+    "once"
   ]
 }

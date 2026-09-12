@@ -27,10 +27,16 @@ The tool's own name and the wait mode are the aside in the top edge — ` · 7s`
 or ` · paused` once you have touched it or the reminder ran out, or ` · waiting`
 when the countdown is off. Silence is never a no.
 
-**The pointer opens on `3 deny`, on every permission**, and that answer says
-`safe answer` on its row. So **`enter` on a permission you have not moved the
-pointer on denies the call.** Allowing is a key you choose — `1`, or `↑` onto it
-and then `enter` — and refusing is the one that is already under your hand.
+**What happens if you just press `enter`?** The pointer is what `enter` takes,
+and where it opens depends on how much the call can cost you. On an **ordinary
+call** it opens on `1 allow once`, so `enter` runs that one call and nothing
+else. On a **grave one** — a call aforge will always stop you for, such as
+`rm -rf *`, a force-push, or anything sent out in your name — the pointer opens
+on `3 deny` instead, and that answer says `safe answer` on its row. So `enter`
+you have not aimed means "allow it once" when the call can be lived with and
+"no" when it cannot be taken back. On a grave call the pointer never opens on
+the act: allowing is a key you choose — `1`, or `↑` onto it and then `enter` —
+and refusing is the one that is already under your hand.
 
 Nothing on a permission is painted in the question's amber except the marks —
 the `?`, the pointer and the recommendation — because the command is the thing
@@ -44,8 +50,8 @@ you are here to read.
 - `c` — refuse or allow **in words**. It puts the cursor in the box (which was
   never taken away); type your sentence and press `enter`, and the words go to
   the model as the answer.
-- `enter` — take the answer the pointer is on, which on a permission is `deny`
-  until you move it.
+- `enter` — take the answer the pointer is on: `allow once` on an ordinary
+  call, `deny` on a grave one — whichever it is, until you move it.
 - `esc` — **later**. The question folds in place to one titled rule, the chip on
   the status line carries its words, and **nothing is answered**. The call stays blocked and the conversation stays
   paused on it. This is the one word here that changed meaning: `esc` used to be
@@ -154,8 +160,9 @@ is three cells for a thumb that covers ten:
 ```
 
 Two plain rules instead of a box, the head and the command between them, and the
-answers under. The pointer is the same pointer and it still opens on the answer
-that loses nothing, so `enter` here denies too.
+answers under. The pointer is the same pointer and it opens where the wide frame
+opens — `allow once` on an ordinary call, the answer that loses nothing on a
+grave one — so `enter` here does exactly what `enter` does there.
 
 Each answer is a **band the full width of the sheet** — the whole row is the
 target, not just its key. The clock, where a question has one, keeps its own
