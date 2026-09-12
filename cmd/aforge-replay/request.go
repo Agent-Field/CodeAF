@@ -337,18 +337,27 @@ var callSiteRoles = map[string]lane.Role{
 	"division":      lane.RoleDesign,
 	"title":         lane.RoleAuxiliary,
 	"vision":        lane.RoleAuxiliary,
-	"imagegen":      lane.RoleAuxiliary,
-	"worker":        lane.RoleAuxiliary,
-	"speech":        lane.RoleAuxiliary,
-	"video":         lane.RoleAuxiliary,
-	"handoff":       lane.RoleAuxiliary,
-	"taskname":      lane.RoleAuxiliary,
-	"jobname":       lane.RoleAuxiliary,
-	"caption":       lane.RoleAuxiliary,
-	"shaper":        lane.RoleAuxiliary,
-	"intake":        lane.RoleAuxiliary,
-	"careful":       lane.RoleAuxiliary,
-	"distill":       lane.RoleAuxiliary,
+	// internal/session/spellout.go declares lane.RoleAuxiliary on its own
+	// context, so this row is that file's own reading and not a second one.
+	//
+	// IT IS WORTH A LOOK AND IT IS NOT THIS FILE'S CALL. A person is SITTING AND
+	// WATCHING a spell-out — it writes three lines they read before deciding
+	// whether to keep them — and an auxiliary is by definition a call nobody's
+	// seconds are being spent on. Either the lane role or the product is wrong
+	// there; the table's job is to agree with the build.
+	"spellout": lane.RoleAuxiliary,
+	"imagegen": lane.RoleAuxiliary,
+	"worker":   lane.RoleAuxiliary,
+	"speech":   lane.RoleAuxiliary,
+	"video":    lane.RoleAuxiliary,
+	"handoff":  lane.RoleAuxiliary,
+	"taskname": lane.RoleAuxiliary,
+	"jobname":  lane.RoleAuxiliary,
+	"caption":  lane.RoleAuxiliary,
+	"shaper":   lane.RoleAuxiliary,
+	"intake":   lane.RoleAuxiliary,
+	"careful":  lane.RoleAuxiliary,
+	"distill":  lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.
