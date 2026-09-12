@@ -42,13 +42,17 @@ func holdProposal(t *testing.T, agent *Agent, args json.RawMessage) heldProposal
 	return held
 }
 
+// await is the held call's answer, or a failure that says what it observed
+// rather than what it concluded — [awaitTimeoutWord] states why, and this is the
+// same fixed five seconds it replaced in [ranNodes.await] (#967).
 func (h heldProposal) await(t *testing.T) toolResult {
 	t.Helper()
+	started := time.Now()
 	select {
 	case result := <-h.result:
 		return result
-	case <-time.After(5 * time.Second):
-		t.Fatal("the held proposal never returned")
+	case <-time.After(awaitPatience(t)):
+		t.Fatal(awaitTimeoutWord("the held proposal to return", time.Since(started)))
 		return toolResult{}
 	}
 }
