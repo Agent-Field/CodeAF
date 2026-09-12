@@ -113,11 +113,6 @@ type memoryBrain struct {
 	// ([store.Store.RecordMemoryOutcome]). It is replaced per turn rather than
 	// accumulated: what a turn retrieved belongs to that turn.
 	injected []reflex.Stub
-	// said holds the dim lines this session owes the person and has had no
-	// stream to say them on. The post-turn pass writes memories after the turn
-	// is sealed and its hub is closed, so a supersession settled there has
-	// nowhere to land; the next turn's refresh flushes them.
-	said []string
 	// imported records that the legacy memory.md has already been looked at.
 	// The rename on disk is the durable answer; this is what keeps a session
 	// from stat-ing the same absent file every turn.
@@ -432,14 +427,6 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	// standing preferences lived in memory.md is answered out of them on the
 	// very first turn after the upgrade rather than the second.
 	a.importMemoryFile()
-	// AND WHATEVER THE LAST POST-TURN PASS HAD NOWHERE TO SAY. It writes after
-	// the turn is sealed and its hub closed, so a supersession settled there has
-	// no stream; this is the first one it gets, or, when this reading has
-	// outlived its own turn, the next.
-	for _, line := range a.memory.takeNotices() {
-		a.sayMemory(line)
-	}
-
 	// AND THERE IS NO PHASE WORD ON IT ANY MORE. `preparing saved context` was an
 	// honest sentence about a wait the person really was serving — and it is not a
 	// wait any more, so a status line that still said it would be this surface
@@ -865,22 +852,6 @@ func (m *memoryBrain) takeInjected() []reflex.Stub {
 	return stubs
 }
 
-// queueNotice holds one dim line until there is somewhere to say it.
-func (m *memoryBrain) queueNotice(text string) {
-	m.mu.Lock()
-	m.said = append(m.said, text)
-	m.mu.Unlock()
-}
-
-// takeNotices drains the held lines.
-func (m *memoryBrain) takeNotices() []string {
-	m.mu.Lock()
-	held := m.said
-	m.said = nil
-	m.mu.Unlock()
-	return held
-}
-
 // ── the post-turn pass ──────────────────────────────────────────────────────
 
 // learnFromTurn is what happens after the model has finished answering: the
@@ -1113,13 +1084,58 @@ func (a *Agent) saySuperseded(oldTitle, newTitle string) {
 // explanation of why holding a line is rare, and no longer the reason the door
 // is correct. A hub send is an append and a signal, so the lock is held for
 // nothing longer than the steer drains already hold it.
-func (a *Agent) sayMemory(text string) {
+func (a *Agent) sayMemory(text string) { a.sayLate(text) }
+
+// ── A DIM LINE THAT MAY HAVE NO STREAM YET ──────────────────────────────────
+//
+// sayLate puts one dim line in front of the person: on the turn's own stream
+// when there is one, and on the next turn's when there is not.
+//
+// THERE IS ONE MECHANISM FOR THIS SHAPE AND THIS IS IT. Everything in this
+// package that decides something AFTER a turn has sealed owes the person a line
+// and has nowhere to put it — the post-turn memory pass, which writes once the
+// hub is closed, and now the route judge, whose ruling is spent whenever it
+// lands (route_judge.go). It was the memory brain's own queue, which meant a
+// session with memory off had no queue at all and the second caller would have
+// quietly dropped its line.
+//
+// THE HUB ITSELF SAYS WHETHER THE LINE LANDED, and that is what makes "when
+// there is one" true — not an ordering between this door and the roads that end
+// turns. [eventHub.send] reports it from under the hub's own lock, which is the
+// only place the answer is not already stale, and a nil hub answers false by the
+// same door, so there is one road here and not two.
+//
+// The line is said under a.mu, which is how this reads the pointer at all — and
+// because every road that ends a turn clears a.hub under this lock before
+// closing the hub, the usual case is that a live hub takes it. A hub send is an
+// append and a signal, so the lock is held for nothing longer than the steer
+// drains already hold it.
+func (a *Agent) sayLate(text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.hub.send(Event{Kind: EventNotice, Text: text}) {
 		return
 	}
-	a.memory.queueNotice(text)
+	a.heldLines = append(a.heldLines, text)
+}
+
+// sayHeldLines flushes whatever had no stream when it was said, onto the stream
+// of the turn that is starting.
+//
+// IT IS THE TOP OF EVERY TURN and not the memory refresh, which is where the
+// drain used to be: a session with memory off never ran that refresh, so the
+// moment anything but the memory pass held a line, the line was held for ever.
+func (a *Agent) sayHeldLines(hub *eventHub) {
+	a.mu.Lock()
+	held := a.heldLines
+	a.heldLines = nil
+	a.mu.Unlock()
+	for _, line := range held {
+		hub.send(Event{Kind: EventNotice, Text: line})
+	}
 }
 
 // ── what a person and the model can ask for by hand ─────────────────────────

@@ -482,22 +482,16 @@ func (a *Agent) applyRouteJudge(hub *eventHub, ruling judgeRuling) {
 		ruling.release()
 		return
 	}
-	// AND THE LINE GOES TO WHICHEVER STREAM IS LIVE, not to the one the turn was
-	// holding when it asked. This ruling is spent when it LANDS, which is usually
-	// inside the turn that bought it and sometimes after it has sealed and closed
-	// its hub ([judgeRace.spendWhenItLands]) — and a told-after line sent to a
-	// closed hub is a line nobody reads. It is [Agent.sayMemory]'s door, read
-	// under the same lock and for the same reason: the hub itself is the only
-	// thing that knows, and it knows under its own lock.
+	// A NIL HUB IS THE ORDINARY CASE ON THIS ROAD and it is not an absence. This
+	// ruling is spent when it LANDS, which is sometimes after the turn that bought
+	// it has sealed and closed its hub, so the told-after line goes through the
+	// door that says it on whichever stream is live and holds it for the next one
+	// otherwise ([launchRouteTask], memory.go's [Agent.sayLate]).
 	//
-	// The task itself needs none of this. It is on the rail the moment it is
+	// The task itself needs none of that. It is on the rail the moment it is
 	// admitted, through the standing lane every node's news goes out on
 	// ([Agent.emitTaskUpdate]), which a turn ending has never closed.
-	if hub == nil {
-		a.mu.Lock()
-		hub = a.hub
-		a.mu.Unlock()
-	}
+
 	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE, which is why this line
 	// stands here rather than beside the confirm. The gap is a person's
 	// patience: it exists because work appearing over the top of a conversation
@@ -1260,7 +1254,23 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	// the rest, on the rail.
 	said := "this looked like work, so task " +
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
-	hub.send(Event{Kind: EventNotice, Text: said})
+	// AND IT IS SAID ON WHATEVER STREAM IS LIVE, OR HELD FOR THE NEXT ONE.
+	//
+	// This line opens by saying why work began that nobody asked for, so it is the
+	// one thing here a person cannot do without — and the ruling that starts this
+	// work is spent WHENEVER IT LANDS now, which is sometimes after the turn that
+	// bought it has sealed and closed its hub ([judgeRace.spendWhenItLands]). A
+	// send to that hub would be a line nobody reads, and a task appearing on the
+	// rail with no word about where it came from is exactly the surprise this
+	// sentence exists to prevent. The caller with a live hub of its own still
+	// passes one — the checkpoint road is inside its turn — and everything else
+	// goes through the door that holds a line until there is somewhere to say it
+	// (memory.go's [Agent.sayLate]).
+	if hub != nil {
+		hub.send(Event{Kind: EventNotice, Text: said})
+	} else {
+		a.sayLate(said)
+	}
 	return said, id
 }
 
