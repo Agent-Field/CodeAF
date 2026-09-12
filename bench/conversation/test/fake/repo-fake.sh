@@ -21,9 +21,14 @@ set -uo pipefail
 
 MODE="${FAKE_REPO_MODE:-fix}"
 
+# THE MODEL IT WAS TOLD IS THE MODEL IT BILLS. A fake that wrote a hardcoded id
+# into the usage file would fail its own cell on the open-model law and look
+# exactly like a rig that cannot read a receipt — which is how an hour goes.
+MODEL="unset"
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) echo "aforge 0.0.0-fake-repo built today"; exit 0 ;;
+    --model)   MODEL="${2:-}"; shift ;;
   esac
   shift
 done
@@ -49,7 +54,7 @@ echo "Done — the foot now reads \"alt+s sorts\", and the test that quotes it i
 
 home="${AFORGE_HOME:?repo-fake needs AFORGE_HOME, exactly as the real one does}"
 mkdir -p "$home/v3/projects/fake/session"
-FAKE_HOME="$home" FAKE_MODEL="${CONV_MODEL:-moonshotai/kimi-k3}" python3 -c '
+FAKE_HOME="$home" FAKE_MODEL="$MODEL" python3 -c '
 import json, os
 home, model = os.environ["FAKE_HOME"], os.environ["FAKE_MODEL"]
 with open(home + "/v3/usage.jsonl", "w") as handle:

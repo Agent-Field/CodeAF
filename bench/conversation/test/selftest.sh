@@ -847,6 +847,19 @@ grep -q -- '--one-model' "$CASE_OUT/evidence/data-tally-aforge@simplify/argv.txt
   || bad "the labelled arm was composed differently from the bare one"
 [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
   && ok "and a healthy labelled cell passes" || bad "a healthy labelled cell did not pass"
+# THE TWO ARMS MUST BE TELLABLE APART ON THE ROW. The fakes print the same
+# version word by construction, exactly as two builds of one commit would, and
+# the digest on the end is what still separates them. pareto.py refuses a
+# comparison whose arm_version is inconsistent across blocks; two arms wearing
+# one version would pass that check while measuring one binary twice.
+VERSIONS="$(CONV_RESULTS="$CASE_RESULTS" python3 -c '
+import json, os
+rows = [json.loads(l) for l in open(os.environ["CONV_RESULTS"]) if l.strip()]
+print(len({r.get("arm_version") for r in rows}))
+')"
+[ "$VERSIONS" = "2" ] \
+  && ok "the two builds carry different version strings, even printing one word" \
+  || bad "both arms recorded the same arm_version; a grid could not tell them apart"
 say
 
 say "labelled arms (a label nobody bound):"
@@ -999,7 +1012,17 @@ sys.exit(0 if got.get("ask_wired") == "yes" and got.get("focus_exit") != "0" els
   || bad "the half-done case did not separate the word from the test"
   say
 else
-  skip "the workspace judge (set CONV_SELFTEST_HEAVY=1 on a machine with cycles)"
+  # NOT A SKIP, and deliberately not counted as one. `skip` is this suite's word
+  # for a dependency that was missing and that somebody has to decide about, and
+  # it makes the run exit non-zero on purpose. These cases are not missing
+  # anything: they are cases that belong on another machine, and saying so with
+  # the same word would make every laptop run of this file report amber forever
+  # — which is how a real skip stops being read.
+  say "the workspace judge: NOT RUN HERE. It clones this repository and runs its"
+  say "  own toolchain over the result, so it belongs on the Spark. Run it with"
+  say "  CONV_SELFTEST_HEAVY=1 ./test/selftest.sh — and run it before trusting a"
+  say "  change to fixtures/repoclone.sh or to the repo-* scenarios, because"
+  say "  nothing else in this file reads a workspace judgement."
 fi
 
 # ── the summary tool ────────────────────────────────────────────────────────

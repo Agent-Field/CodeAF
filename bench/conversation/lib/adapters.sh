@@ -137,6 +137,17 @@ arm_bin() {
   esac
 }
 
+# binary_digest is the first twelve characters of a file's sha256, spelled the
+# same way on a Mac and on Linux — the two ship different tools for it and
+# neither accepts the other's name.
+binary_digest() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | cut -c1-12
+  else
+    sha256sum "$1" 2>/dev/null | cut -c1-12
+  fi
+}
+
 # arm_version records what was actually measured. A benchmark row without it is
 # a row nobody can reproduce: all three peers move their flags between versions.
 arm_version() {
@@ -145,19 +156,20 @@ arm_version() {
   [ -n "$bin" ] || { printf 'not-installed'; return; }
   case "$(arm_base "$arm")" in
     aforge)
-      # A LABELLED ARM CARRIES ITS REVISION, not only its version word. Two
-      # builds of this repository print the same `aforge x.y.z` line, so the
-      # version column alone cannot tell a before/after pair apart — and
-      # pareto.py refuses a comparison whose arm_version is inconsistent
-      # across blocks, which a shared word would silently satisfy while the
-      # binaries differed. The revision comes out of the binary's own build
-      # information, which is what `make build` stamps into it.
-      printf '%s' "$("$bin" --version 2>/dev/null | head -1)"
-      local rev
-      rev="$(go version -m "$bin" 2>/dev/null |
-             awk '$1 == "build" && $2 == "vcs.revision" { print substr($3, 1, 12); exit }')"
-      [ -n "$rev" ] && printf ' rev %s' "$rev"
-      printf '\n'
+      # THE VERSION WORD AND THE FILE, because a before/after grid needs both.
+      #
+      # `make build` stamps the revision into the binary (Makefile's
+      # BUILD_STAMP), so aforge's own --version already reads
+      # `aforge 82624af79 built … · go1.26.5` and two builds say different
+      # things. That covers the ordinary case and it is the answer to "which
+      # commit is this". It does NOT cover two builds of the SAME commit with
+      # a change on top, or a stamp that came out empty — so the file's own
+      # digest goes on the end. pareto.py refuses a comparison whose
+      # arm_version is inconsistent across blocks, and an arm that cannot be
+      # told from its neighbour would satisfy that check while measuring one
+      # binary twice.
+      printf '%s · sha %s\n' "$("$bin" --version 2>/dev/null | head -1)" \
+        "$(binary_digest "$bin")"
       ;;
     omp)      "$bin" --version 2>/dev/null | head -1 ;;
     pi)       "$bin" --version 2>/dev/null | tail -1 ;;

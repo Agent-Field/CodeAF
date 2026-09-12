@@ -58,7 +58,12 @@ CAP_S="${AB_CAP_S:-1800}"
 # The product's own spend ceiling for an interactive session. It is part of the
 # condition and both arms get the same one: an arm stopped by the ceiling
 # measured the ceiling.
-MAX_COST="${AB_MAX_COST:-5}"
+# It is set well ABOVE what a cell is expected to cost, on purpose. A ceiling
+# that binds is a mechanism the grid would then be measuring instead of the
+# build — and it would bind on the arm that wandered, which is the arm the
+# comparison most needs to see the whole of. The arithmetic behind the figure
+# is in the banner below.
+MAX_COST="${AB_MAX_COST:-10}"
 SCENARIOS="${AB_SCENARIOS:-repo-hover-print,repo-hover-interactive,repo-wording-print,repo-wording-interactive}"
 BASE_REF="${AB_BASE_REF:-origin/dev}"
 HEAD_REF="${AB_HEAD_REF:-origin/simplify}"
@@ -181,6 +186,20 @@ echo "effort:     $EFFORT, sent to both arms as --reasoning $EFFORT"
 echo "scenarios:  $SCENARIOS"
 echo "repeats:    $REPEATS per (arm × scenario)  →  $cells cells"
 echo "cap:        ${CAP_S}s per cell; the session's own ceiling \$$MAX_COST"
+# WHAT THIS IS EXPECTED TO COST, and where the figure comes from. The turn this
+# battery reproduces cost $0.27 on a flash-priced model on 2026-09-11. kimi-k3
+# is about $2.55 per million input tokens — roughly seventeen times that model's
+# input rate — so the same shape of turn lands near $4 to $5, and the small ask
+# should be well under a dollar because it is a handful of rounds rather than
+# forty. The ceiling above is set clear of both so that it never binds.
+#
+# It is an ESTIMATE FROM ONE TURN and it is quoted as one. The whole reason for
+# the grid is that nobody knows what the branch does to that number.
+echo "expect:     roughly \$3-5 a hover cell and under \$1 a wording cell, from the"
+echo "            \$0.27 the same request cost on a flash-priced model on 2026-09-11"
+echo "            scaled by kimi-k3's input rate. A $cells-cell grid is therefore"
+echo "            of the order of \$50, and the ceiling caps the worst case at"
+echo "            \$$(( cells * ${MAX_COST%%.*} )). Both figures are estimates from one turn."
 echo "far side:   $SSH_HOST:$FAR_OUT"
 echo "evidence:   $LOCAL_OUT"
 echo
