@@ -497,7 +497,7 @@ func TestAPictureIsReadByTheLookingModelWhenTheSessionCannotSee(t *testing.T) {
 		provider.DocumentParseNative: "INVOICE 3319 — total 412.00",
 	}}
 	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight { return SightOf(model == "vendor/slot-eyes") }
+		config.SeesImages = func(model string) (bool, bool) { return seesIf(model == "vendor/slot-eyes") }
 		config.MediaModel = func(modality string) string {
 			if modality == "vision" {
 				return "vendor/slot-eyes"
@@ -524,7 +524,7 @@ func TestAPictureStaysOnTheSessionModelWhenItCanSee(t *testing.T) {
 		provider.DocumentParseNative: "INVOICE 3319 — total 412.00",
 	}}
 	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
-		config.SeesImages = func(string) ModelSight { return SightOf(true) }
+		config.SeesImages = func(string) (bool, bool) { return seesIf(true) }
 		config.MediaModel = func(string) string { return "vendor/slot-eyes" }
 	})
 	name := dropFile(t, workspace, "receipt.png", []byte("\x89PNG\r\n\x1a\n"))
@@ -544,7 +544,7 @@ func TestADocumentIsNeverRoutedToTheLookingModel(t *testing.T) {
 		provider.DocumentParseNative: "PAGE ONE — the quarterly figures, in full sentences",
 	}}
 	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
-		config.SeesImages = func(string) ModelSight { return SightOf(false) }
+		config.SeesImages = func(string) (bool, bool) { return seesIf(false) }
 		config.MediaModel = func(string) string { return "vendor/slot-eyes" }
 	})
 	name := dropFile(t, workspace, "scan.pdf", scannedPDF())

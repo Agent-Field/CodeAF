@@ -21,30 +21,35 @@ func TestTheVisionGateAnswersFromTheCatalogsInputModalities(t *testing.T) {
 	models := fakeV3Catalog{rows: []catalog.Model{
 		{ID: "vendor/sees", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
 		{ID: "vendor/reads", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
-		// A row cached before modalities were recorded. Silence is not consent.
+		// A row cached before modalities were recorded. Silence is not consent —
+		// and it is not a verdict either.
 		{ID: "vendor/quiet", OutputModalities: []string{"text"}},
 	}}
 
 	cfg := session.Config{Model: "vendor/sees", SeesImages: v3SeesImages(models)}
-	if got := cfg.SeesImages("vendor/sees"); got != session.SightSees {
+	if got := sightWord(cfg.SeesImages("vendor/sees")); got != "sees" {
 		t.Fatalf("a model that publishes image input reads as %v", got)
 	}
 	// Case is not a difference: it is the same id either way.
-	if got := cfg.SeesImages("Vendor/Sees"); got != session.SightSees {
+	if got := sightWord(cfg.SeesImages("Vendor/Sees")); got != "sees" {
 		t.Fatalf("the gate answered case rather than identity: %v", got)
 	}
-	// A ROW THIS DOOR HAS READ IS A VERDICT; AN ID IT HAS NOT IS IGNORANCE. The
-	// two were one answer until 2026-09-12, and the scrub that read them took a
-	// person's pictures out of the transcript on the strength of the second
-	// (internal/session's blindswap.go).
-	for _, model := range []string{"vendor/reads", "vendor/quiet"} {
-		if got := cfg.SeesImages(model); got != session.SightBlind {
-			t.Fatalf("%q, whose row this door has read, answers %v", model, got)
-		}
+	// A ROW THAT PUBLISHED ITS MODALITIES IS A VERDICT. `vendor/reads` says text
+	// and stops: this door has read that and knows the model is blind.
+	if got := sightWord(cfg.SeesImages("vendor/reads")); got != "cannot see" {
+		t.Fatalf("a row that published text-only input answers %v", got)
 	}
-	for _, model := range []string{"vendor/unheard-of", ""} {
-		if got := cfg.SeesImages(model); got != session.SightUnknown {
-			t.Fatalf("%q, which this door has never read, answers %v rather than ignorance", model, got)
+	// AND EVERYTHING ELSE IS IGNORANCE, INCLUDING A ROW THAT SAID NOTHING.
+	// `vendor/quiet` published no input modalities at all, which is the shape a
+	// router uses for a model with no architecture block — not a claim that it
+	// cannot see. Grading that silence as a verdict was this door calling its own
+	// ignorance a fact, and it was the irreversible one of the two answers for as
+	// long as the guard that read it rewrote the transcript (internal/session's
+	// blindswap.go). The SEND gate still refuses all three of these, which is the
+	// silence law; it refuses them for not being a positive yes.
+	for _, model := range []string{"vendor/quiet", "vendor/unheard-of", ""} {
+		if got := sightWord(cfg.SeesImages(model)); got != "nobody has said" {
+			t.Fatalf("%q, which nobody has published anything about, answers %v rather than ignorance", model, got)
 		}
 	}
 
@@ -52,10 +57,10 @@ func TestTheVisionGateAnswersFromTheCatalogsInputModalities(t *testing.T) {
 	// answers per call, so the same session says yes once the rows land rather
 	// than being pinned at boot.
 	warming := fakeV3Catalog{}
-	if got := v3SeesImages(warming)("vendor/sees"); got != session.SightUnknown {
+	if got := sightWord(v3SeesImages(warming)("vendor/sees")); got != "nobody has said" {
 		t.Fatalf("a warming catalog answered %v for a model it has not read", got)
 	}
-	if got := v3SeesImages(nil)("vendor/sees"); got != session.SightUnknown {
+	if got := sightWord(v3SeesImages(nil)("vendor/sees")); got != "nobody has said" {
 		t.Fatalf("no catalog at all answered %v for a model", got)
 	}
 }
@@ -78,16 +83,16 @@ func TestTheVisionGateReadsTheDiskCacheWhileTheCatalogIsWarming(t *testing.T) {
 	}
 
 	gate := v3SeesImages(fakeV3Catalog{})
-	if got := gate("vendor/sees"); got != session.SightSees {
+	if got := sightWord(gate("vendor/sees")); got != "sees" {
 		t.Fatalf("the cache's own witness that a model can see reads as %v", got)
 	}
 	for _, model := range []string{"vendor/reads", "vendor/painter"} {
-		if got := gate(model); got != session.SightBlind {
+		if got := sightWord(gate(model)); got != "cannot see" {
 			t.Fatalf("%q, whose cached row this door has read, answers %v", model, got)
 		}
 	}
 	// AND A MODEL THE CACHE HAS NEVER HEARD OF IS IGNORANCE, not a verdict.
-	if got := gate("vendor/unheard-of"); got != session.SightUnknown {
+	if got := sightWord(gate("vendor/unheard-of")); got != "nobody has said" {
 		t.Fatalf("a model the cache does not carry answers %v rather than ignorance", got)
 	}
 
@@ -97,18 +102,38 @@ func TestTheVisionGateReadsTheDiskCacheWhileTheCatalogIsWarming(t *testing.T) {
 	live := v3SeesImages(fakeV3Catalog{rows: []catalog.Model{
 		{ID: "vendor/sees", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 	}})
-	if got := live("vendor/sees"); got != session.SightBlind {
+	if got := sightWord(live("vendor/sees")); got != "cannot see" {
 		t.Fatalf("a stale cache overruled the catalog that had already answered: %v", got)
 	}
 }
 
 // The modality test itself, spelled out: the direction that matters is INPUT,
-// and an output-image row is a painter rather than a model that can see.
+// an output-image row is a painter rather than a model that can see, and a row
+// that listed nothing has said nothing.
 func TestTheImageModalityTestIsAboutWhatGoesIn(t *testing.T) {
-	if !v3ReadsImages([]string{"text", "IMAGE"}) {
-		t.Fatal("a published image modality was missed on case")
+	if got := sightWord(v3ReadsImages([]string{"text", "IMAGE"})); got != "sees" {
+		t.Fatalf("a published image modality was missed on case: %v", got)
 	}
-	if v3ReadsImages(nil) || v3ReadsImages([]string{"text", "audio"}) {
-		t.Fatal("a row with no image input was read as one that has it")
+	if got := sightWord(v3ReadsImages([]string{"text", "audio"})); got != "cannot see" {
+		t.Fatalf("a row that listed its input and left image out answers %v", got)
+	}
+	// AN EMPTY LIST IS THE THIRD ANSWER. It is a row with no architecture block,
+	// and it is the difference between refusing to send a picture — which costs a
+	// turn — and hiding one, which used to cost the picture.
+	if got := sightWord(v3ReadsImages(nil)); got != "nobody has said" {
+		t.Fatalf("a row that published no modalities answers %v rather than ignorance", got)
+	}
+}
+
+// sightWord is an oracle's two answers as one, so a table can say what it
+// expected in the words the design uses.
+func sightWord(sees, known bool) string {
+	switch {
+	case !known:
+		return "nobody has said"
+	case sees:
+		return "sees"
+	default:
+		return "cannot see"
 	}
 }

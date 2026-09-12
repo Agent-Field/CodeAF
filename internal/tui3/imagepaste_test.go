@@ -454,7 +454,7 @@ func TestADroppedPicturesTokenAndBytesBothReachTheWire(t *testing.T) {
 		APIKey:     "test",
 		BaseURL:    server.URL,
 		System:     "SYSTEM",
-		SeesImages: func(string) session.ModelSight { return session.SightOf(true) },
+		SeesImages: func(string) (bool, bool) { return seesIf(true) },
 	})
 	if err != nil {
 		t.Fatalf("session.New: %v", err)
@@ -523,3 +523,8 @@ func TestADroppedPicturesTokenAndBytesBothReachTheWire(t *testing.T) {
 		t.Fatalf("the picture reached the model as %q", parts[1].ImageURL.URL)
 	}
 }
+
+// seesIf is a fixture's yes-or-no as the oracle's pair ([session.Config.SeesImages]): a
+// test that says a model sees or does not is a test that KNOWS, and the third
+// answer — nobody has said — is written out where it is the subject.
+func seesIf(sees bool) (bool, bool) { return sees, true }
