@@ -297,14 +297,18 @@ func TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth(t *testing.T) {
 // (PLACES-AUDIT.md finding 1). One loop over the registry and over every place
 // that can be empty, at three sizes, and every edge has to be on the same row.
 //
-// placeFootRows is that foot at rest, counted: the blank over the rule, the rule
-// with the note on it, the composer's [homeDraftFloor] rows and the hint.
+// [placeFootRows] is that foot at rest, counted where it is drawn: the blank
+// over the rule, the rule with the note on it, the composer's [homeDraftFloor]
+// rows and the hint. This law reads the number back off the frame rather than
+// keeping a second copy of it, because a law that owned its own arithmetic
+// would go on passing after the foot moved.
 //
 // THE COMPOSER IS THE SAME HEIGHT AT REST AS IN USE, which is what makes this
-// number a constant at all. It was three when the box was one row and grew with
-// what was typed into it; a box that changed height moved this whole foot under
-// the hand, and the law below could only be stated about a resting screen.
-const placeFootRows = 3 + homeDraftFloor
+// number a constant at all. It was one row at rest and grew to three with what
+// was typed into it; a box that changed height moved this whole foot under the
+// hand, and the law below could only be stated about a resting screen. The
+// sizes here are all tall enough to hold that floor ([placeBoxFloor] gives it
+// back on a frame that is not).
 
 func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	type edges struct{ bar, headRule, blank, footRule, box, hint int }
@@ -314,7 +318,7 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	for _, size := range sizes {
 		height := size[1]
 		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
-			footRule: height - placeFootRows + 1, box: height - homeDraftFloor, hint: height - 1}
+			footRule: height - placeFootRows + 1, box: height - 1 - homeDraftFloor, hint: height - 1}
 	}
 	for _, lab := range labs {
 		for _, size := range sizes {
@@ -337,10 +341,10 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 			// [homeDraftFloor] rows and its FIRST row is the one carrying the
 			// prompt, so the rule sits one above that and the rows between the
 			// prompt and the hint are the composer's own.
-			if at := len(rows) - 1 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], "─") {
+			if at := len(rows) - 2 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], "─") {
 				got.footRule = at
 			}
-			if at := len(rows) - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
+			if at := len(rows) - 1 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
 				got.box = at
 			}
 			if got != want[size] {

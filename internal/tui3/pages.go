@@ -1185,13 +1185,13 @@ func placeFrameWithBar(a *app, width, height int,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
 	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
-		// THE BOX HAS A FLOOR ONCE IT HOLDS SOMETHING ([homeDraftFloor]), and the
+		// THE BOX HAS A FLOOR ([placeBoxFloor]), and the
 		// rows that make it up are added BELOW what was typed. Padding above would
 		// move the first line a person typed off the first row, and the caret's own
 		// row is derived by subtracting this block's height from the rows placed
 		// below — so a pad at the bottom moves both by the same amount and the
 		// caret stays on the letter it is on.
-		for len(draftRows) < homeDraftFloor {
+		for floor := placeBoxFloor(height); len(draftRows) < floor; {
 			draftRows = append(draftRows, "")
 		}
 	}
@@ -1204,8 +1204,8 @@ func placeFrameWithBar(a *app, width, height int,
 	// moment a letter landed would shift the list up under the hand that was
 	// reaching for it.
 	draftHeight := len(draftRows)
-	if draftHeight < homeDraftFloor {
-		draftHeight = homeDraftFloor
+	if floor := placeBoxFloor(height); draftHeight < floor {
+		draftHeight = floor
 	}
 	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
 	// FOOT, and they are asked for separately because they are two different
@@ -1379,7 +1379,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// (boxHeight is still zero above): these rows are the box's silhouette
 		// and not its surface, so a press on them falls through to the place
 		// underneath exactly as a press on the resting row always has.
-		for row := 1; row < homeDraftFloor; row++ {
+		for row := 1; row < placeBoxFloor(height); row++ {
 			add("", nil)
 		}
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
@@ -1625,6 +1625,47 @@ const (
 	// close` is the way out and the way out is always said last.
 	mapCloseWords = "esc close"
 )
+
+// placeFootRows is how many rows every place spends under its body when it has
+// nothing extra to say: the blank ([spacingRuleClearance]), the rule, the box
+// at its floor, and the hint. A note, a tray, a verb strip or the composer
+// layer each add their own rows on top of these, which is why the frame counts
+// them separately — this is the floor of the foot, not its whole height, and it
+// is the number every place is measured against ([placeFrameWithBar] builds it
+// row by row and TestEveryPlaceSpendsTheSameHeadAndFoot reads it back).
+const placeFootRows = 3 + homeDraftFloor
+
+// placeBodyFloor is the fewest rows of list a place is drawn with before the
+// composer gives its own height back. Three is a row to stand on, a row above
+// it and a row below it, which is the least that reads as a list at all.
+const placeBodyFloor = 3
+
+// placeBoxFloor is how many rows the composer occupies, and it is the same
+// number typed in or not ([homeDraftFloor]) — except on a frame with no room
+// for it.
+//
+// A THREE-ROW BOX ON AN EIGHT-ROW TERMINAL IS THE LIST GONE. The foot already
+// spends a blank, a rule and a hint; holding three more open on top of a
+// four-row head leaves one body row, and the list a person came to read touches
+// the foot. So the floor is taken only while the body keeps [placeBodyFloor]
+// rows under it, and a frame too short falls back to the single row the box has
+// always drawn — the box stays usable, and what gives way is the emptiness
+// around it rather than the content above it.
+//
+// THE SAME ANSWER FEEDS THE HEIGHT AND THE DRAWING, so the rows the foot
+// reserves and the rows it then adds can never disagree. That is not tidiness:
+// they are read a hundred lines apart and a frame that reserved three and drew
+// one would lose a row off the top of the window, which is where the head is.
+// It is handed the frame's own height rather than asking [app.size] for one,
+// because a frame is drawn at the height it was given — the rigs draw many
+// sizes through one app, and a floor decided from the window would be the wrong
+// floor for every frame but the last.
+func placeBoxFloor(height int) int {
+	if height-(placeHeadRows+placeFootRows) < placeBodyFloor {
+		return 1
+	}
+	return homeDraftFloor
+}
 
 // placeRestWord is what this place's box row says with nothing typed in it.
 //
