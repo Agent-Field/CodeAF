@@ -669,7 +669,7 @@ func TestEveryEndingWritesOneRowAtTheSeamThatTookIt(t *testing.T) {
 	}
 	// AND THE FOUR SEAMS ARE FOUR WORDS, because a door spelled the same as
 	// another door is a door nothing can tell apart afterwards.
-	seams := []string{checkpointSeamMark, checkpointSeamWrite, checkpointSeamCeiling, checkpointSeamWall}
+	seams := []string{checkpointSeamWrite, checkpointSeamCeiling, checkpointSeamWall}
 	for i, one := range seams {
 		for _, other := range seams[i+1:] {
 			if one == other {

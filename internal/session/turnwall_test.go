@@ -70,7 +70,7 @@ func TestATurnPastTheShareOfTheWallHandsOver(t *testing.T) {
 	// AND IT MOVED ON THE CLOCK AND NOT ON THE LADDER. The split note is the
 	// mark's own line, and reading it here would mean the turn had reached round
 	// ten before anything noticed the wall.
-	if saidSomething(said, checkpointSplitNote) {
+	if saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("the turn was moved by the mark ladder rather than by the wall; notices were %q", said)
 	}
 	lines := closedJournal(t, agent, transcript)
@@ -119,7 +119,7 @@ func TestATurnUnderTheShareOfTheWallIsLeftAlone(t *testing.T) {
 	if saidSomething(said, turnWallShareNote) {
 		t.Fatalf("a turn a minute short of the share was moved by the wall; notices were %q", said)
 	}
-	if !saidSomething(said, checkpointSplitNote) {
+	if !saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("the mark ladder stopped governing the turn the wall left alone; notices were %q", said)
 	}
 
@@ -171,7 +171,7 @@ func TestATurnThatCannotBeCheckedBeforeTheWallIsNotMoved(t *testing.T) {
 	if saidSomething(said, turnWallShareNote) {
 		t.Fatalf("a turn with less than a task needs left was moved by the wall; notices were %q", said)
 	}
-	if !saidSomething(said, checkpointSplitNote) {
+	if !saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("the mark ladder stopped governing the turn the wall left alone; notices were %q", said)
 	}
 

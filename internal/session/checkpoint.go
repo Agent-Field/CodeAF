@@ -32,30 +32,32 @@ package session
 // buying costs, and then buy. That is exactly the shape here, with one softening
 // and one hardening:
 //
-//   - THE TRIGGER IS DETERMINISTIC COST AND NEVER CONTENT. Nothing decides to
-//     LOOK on account of what the turn is about. A counter of finished tool
-//     rounds is the whole of the input, so there is no phrasing that defeats it
-//     and no kind of work it is tuned for.
-//   - THE JUDGEMENT IS READ FROM THE WORK, up to a point. At each mark the
-//     harness has somebody sketch what is left, and a turn that is genuinely one
-//     long job carries on with nothing said and nothing spent but that one call.
-//   - AND PAST THE LAST MARK THE HARNESS STOPS READING. Two sketches saying "one
-//     job" are a judgement; a third would be momentum. At the ceiling the turn
-//     ends and the REMAINING work moves onto the one road, where it is watched —
-//     and remaining is the whole of what is still asked there
-//     ([checkpointNothingLeft]): a turn that answers the handoff by saying it is
-//     finished is left to finish, which is not the harness asking again but the
-//     harness having nothing to move.
+//   - NOTHING HERE IS DECIDED ON WHAT THE TURN IS ABOUT. Neither rung reads a
+//     word of the subject: the notes are counted in finished tool rounds and the
+//     ceiling is a property of the machine the turn is running on. So there is no
+//     phrasing that defeats this and no kind of work it is tuned for.
+//   - AND THE RENT IS TOLD TO THE ONE READER THAT CAN PRICE IT. At each note rung
+//     the turn is handed what it has run up and the roads on, and NOBODY IS ASKED
+//     ANYTHING ([checkpointChoiceNote], inherit.go): the model holding the work is
+//     the only party that knows what carrying it elsewhere would cost, because
+//     only it knows what re-reading everything it has read would buy.
+//   - AND THE LAST RUNG IS NOT RENT AT ALL. Spending is not a reason to end a
+//     turn; being unable to carry on is. The ceiling fires on a turn that can no
+//     longer work where it is ([Agent.turnHasRunAway]) and moves the REMAINING
+//     work onto the one road, where it is watched — and remaining is the whole of
+//     what is still asked there ([checkpointNothingLeft]): a turn that answers
+//     the handoff by saying it is finished is left to finish, which is not the
+//     harness asking again but the harness having nothing to move.
 //
 // ── WHY THE MARKS ARE GEOMETRIC AND NOT ONE LINE ──
 //
-// A single threshold is a single chance to be wrong. Doubling the interval each
-// time means a turn that is honestly one long job is looked at a bounded number
-// of times — three, over four times the handoff price — while a turn that is four
-// jobs in a trench coat is read early, when the findings are still worth handing
-// over. Each look costs a model call, so looking gets rarer as the evidence that
-// the answer is "carry on" accumulates. [checkpointRatio] is the whole of that
-// policy.
+// A single threshold is a single chance to be wrong. Doubling the interval means
+// a turn that is honestly one long job is told a bounded number of times — twice,
+// the second at [checkpointRatio] times the handoff price — while a turn that is four jobs in
+// a trench coat hears it early, when the findings are still worth handing over. A
+// note costs no call, but it costs the turn's attention, so saying it gets rarer
+// as the evidence that the answer is carrying on accumulates. [checkpointRatio]
+// is the whole of that policy.
 //
 // ── WHY THE MARK IS READ BY SOMEBODY ELSE ──
 //
@@ -72,10 +74,17 @@ package session
 // interrupt.
 //
 // The mastermind tier answered the same questions on the same transcripts with
-// 0% to 7% unanswered. So the mark is READ BY A SIDECAR ([Agent.readMark]): one
-// call, on the tier that thinks, over the transcript the turn has built — and the
-// running model never sees a word of it. Nothing is injected into the turn at any
-// mark, which is why there is no note const in this file any more.
+// 0% to 7% unanswered. So the READING is done BY A SIDECAR ([Agent.readMark]):
+// one call, on the tier that thinks, over the transcript the turn has built —
+// and the running model is never asked to answer anything.
+//
+// WHICH IS WHY THE NOTE RUNGS ASK NOTHING RATHER THAN ASKING CHEAPLY. A line does
+// ride into the turn at those rungs (inherit.go's [checkpointChoiceNote]), and
+// the difference between it and the mechanism the measurement killed is the whole
+// of what was learned: it is told and not asked, it needs no answer to be worth
+// sending, and a turn that replies to it with a tool call has lost nothing. The
+// one reading that must come back is the one at the ceiling, and that is the one
+// the sidecar takes.
 //
 // ── AND WHAT IT IS ASKED FOR IS A SHAPE AND NOT A DECISION ──
 //
@@ -190,16 +199,29 @@ const (
 	// however long it runs.
 	checkpointRatio = 2
 
-	// checkpointMarks is how many marks a turn has, and the LAST of them is the
-	// ceiling rather than a fourth reading ([Agent.checkpointRound]).
+	// checkpointMarks is how many rungs a turn's ladder has, and the LAST of them
+	// is the ceiling rather than a third note ([Agent.checkpointRound]).
 	//
-	// Three, because two readings are the most that are worth paying for. The loop
+	// Three, because two tellings are the most that are worth paying for. The loop
 	// detector reached the same number from the other side — past two nudges the
 	// notes have stopped working and a third is the harness talking to itself
 	// (looped.go's loopNudgeCeiling) — and the answer here is the same answer:
-	// stop asking and do something. What this does instead of asking again is move
-	// the work somewhere it is watched.
+	// stop saying it and do something.
+	//
+	// AND THE LAST RUNG NO LONGER STANDS ON A ROUND COUNT AT ALL, which is the
+	// 2026-09-11 ruling and the one change that matters in this file. A count of
+	// finished rounds prices THE PERSON'S WAITING, which is exactly what the two
+	// notes below are for and exactly the wrong question to end a turn on: a turn
+	// that read ten files in 48 seconds was moved by it, and its worker then spent
+	// 551,000 tokens reading them again. What ends a turn is a reading of RUNAWAY
+	// — a turn that can no longer work where it is (inherit.go's
+	// [Agent.turnHasRunAway]) — and the ladder's business stops at the notes.
 	checkpointMarks = 3
+
+	// checkpointNotes is how many of those rungs are NOTES: every rung but the
+	// last. It is derived rather than written so the two cannot disagree about
+	// where the telling stops and the ceiling begins.
+	checkpointNotes = checkpointMarks - 1
 
 	// THE HANDOFF BRIEF IS SENT WITH NO CEILING, like everything else on this
 	// road. It used to carry 2000 — more room than the shaper's, because this
@@ -492,30 +514,6 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 	"Work that is already done is not a part either: what the account above shows finished is not " +
 	"what remains, and drawing it sends somebody to do it a second time."
 
-// checkpointSplitNote is the ONE line a person reads when a mark's sketch says
-// the work in front of it has parts.
-//
-// It is the third line in this register and the last of the family: the
-// mid-answer handoff's ([taskEscalationNote]), the ceiling's
-// ([checkpointCeilingNote]) and this one. All three are an observation, a middle
-// dot and a promise, all three are lowercase with no full stop, and nothing in
-// any of them is machinery.
-//
-// WHAT DIFFERS IS THE OBSERVATION, because the three moments have honestly seen
-// different things. The ceiling has watched an answer outrun its own price and
-// says so. This one has had somebody read the work and draw what is left of it,
-// and the true thing it has to say is that the drawing came back with more than
-// one part in it — so it says that, and nothing about how long the turn has been
-// running, which at the first mark may be no time at all.
-//
-// AND THE PROMISE IS THE ONE THING THIS PATH CAN PROMISE THAT THE OTHERS CANNOT.
-// The ceiling says the work "can split", because arming is all it did. Here the
-// parts are already named and already at the head of the brief, so the honest
-// promise is about the shape of the hands rather than about a possibility — and
-// it still stops short of saying it WILL split, because the evidence gate and the
-// reviewer stand in front of every actual division (task_divide.go).
-const checkpointSplitNote = "this has parts · handing it to a task that can take them side by side"
-
 // checkpointCeilingNote is the ONE line a person reads when the harness stops
 // reading and moves the work itself.
 //
@@ -681,7 +679,7 @@ const checkpointRemainsAsk = "[still asked] Above is what the person asked for a
 // checkpointCarryOnNote is the ONE line a person reads when a turn stopped and
 // the ask had not.
 //
-// It is the fourth in the register ([checkpointSplitNote], [checkpointCeilingNote],
+// It is the fourth in the register ([checkpointCeilingNote],
 // task.go's [taskEscalationNote]): an observation, a middle dot, a promise, all
 // lowercase, no full stop, no machinery. WHAT IT OBSERVES IS THE ONE HONEST THING
 // AT THIS MOMENT — somebody who is not the running model read the ask against the
@@ -958,6 +956,62 @@ type checkpointMeter struct {
 	// said this message reads like work, and zero on every ordinary turn — see
 	// [checkpointMeter.tighten].
 	firstAt int
+	// outOfRoom says THE NET FIRED BECAUSE THIS TURN'S CONTEXT COULD NO LONGER
+	// HOLD ANOTHER STEP, and it is the one fact about a runaway that decides what
+	// happens next (inherit.go): a worker handed a context its own window cannot
+	// work in is a worker in the same trouble one step later, so that rung's move
+	// is the brief road with the results compiled into it and never a promotion.
+	//
+	// IT IS LATCHED WHERE THE NET FIRES RATHER THAN ASKED AGAIN LATER, which is
+	// the reading-decides law read in this file's own currency: two readings of a
+	// growing context taken a model call apart can disagree, and the one that
+	// decided to end the turn is the one that must decide what takes it.
+	//
+	// AND IT IS NEVER CLEARED, WHICH IS THE POINT RATHER THAN AN OVERSIGHT. The
+	// one thing that can put a turn's context back under the line after this
+	// fired is a compaction (loop.go's [Agent.maybeCompact]), and a compacted
+	// transcript is precisely what a promotion must not carry: the whole argument
+	// for inheriting is that the worker holds the RESULTS, verbatim, and a folded
+	// transcript is a summary of them. So a turn that ran out of room once takes
+	// the brief road for the rest of its life, with what it found out compiled
+	// into the brief, whatever the meter would read a moment later.
+	outOfRoom bool
+	// opened is where in the transcript this turn's own messages start — the
+	// index of the message the person opened it with — and zero until the first
+	// boundary has taken it ([turnOpenedAt]).
+	//
+	// IT IS ON THE METER FOR THE REASON EVERYTHING HERE IS: it is a fact about
+	// ONE answer, and the note it feeds says "9 files opened" about this answer
+	// rather than about every conversation this session has ever had.
+	opened int
+	// netFired is that the runaway net has fired on this turn at all, and
+	// netFiredAt is the round it last fired on.
+	//
+	// THEY ARE TWO FIELDS BECAUSE THEY ARE TWO FACTS AND ROUND ZERO IS A REAL
+	// ROUND. A batch that only watched work already out does not advance
+	// [checkpointMeter.rounds], so a turn whose opening boundaries are all
+	// watching sits at round zero with the net able to fire; a single field
+	// would read that firing as "never fired" and hand the turn the very
+	// re-arming this latch exists to stop.
+	//
+	// THE NET IS A CONDITION AND NOT A BOUNDARY, WHICH IS WHY IT NEEDS THIS. The
+	// ladder's rungs are rounds and a round happens once; "this turn cannot work
+	// where it is" is true of a quantity that only grows, so it is true at every
+	// boundary after the first one it is true at. Three of the endings below
+	// [Agent.handOverRunningTurn] LEAVE THE TURN RUNNING — no brief to give, work
+	// this conversation is holding, a reader saying nothing is left — and without
+	// a latch each of those would be followed by a fresh reading and an
+	// unconditional cut on every remaining step, which is the person's answer
+	// being chopped once a round for the rest of the turn.
+	//
+	// SO A FIRING BUYS ITS OWN QUIET, AND THE QUIET IS THE PRICE. The bound is
+	// [checkpointPrice] rounds of real work — the same unit the meter already
+	// uses for "this was asked and answered; do not ask it again for free"
+	// ([checkpointMeter.round]'s disproved-claim rung) — so a turn that really is
+	// running away is met again after a turn's worth of evidence rather than
+	// after a step, and no new number is invented for it.
+	netFired   bool
+	netFiredAt int
 	// raced is what that race's both-yes actually wrote: the breadth two readers
 	// agreed on and the done-condition the screen composed ([routeVerdict]).
 	//
@@ -1117,7 +1171,10 @@ func (m *checkpointMeter) round(worked bool) int {
 		m.askAgainAt = 0
 		return checkpointMarks
 	}
-	if m.marks >= checkpointMarks {
+	// AND THE COUNT CLIMBS NO FURTHER THAN THE NOTES. The rung above them is the
+	// ceiling, and nothing about how many rounds a turn has finished says whether
+	// it has run away ([checkpointNotes], [Agent.turnHasRunAway]).
+	if m.marks >= checkpointNotes {
 		return 0
 	}
 	if m.rounds < m.markAt(m.marks+1) {
@@ -1125,6 +1182,20 @@ func (m *checkpointMeter) round(worked bool) int {
 	}
 	m.marks++
 	return m.marks
+}
+
+// netRested reports that the runaway net may fire again: either it has not
+// fired on this turn at all, or a turn's worth of real work has been done since
+// it last did ([checkpointMeter.netFiredAt] says why the quiet is owed).
+//
+// IT IS ONE PREDICATE FOR ALL FOUR ENDINGS. A believed completion claim, a
+// reader with no brief to give, work this conversation is holding and a reading
+// that says nothing is left all leave the turn running, and all four used to be
+// followed by the same question being asked again at the very next boundary. A
+// predicate per ending is four chances to forget one; this is the shape asked
+// once, of the fact that the net fired at all.
+func (m *checkpointMeter) netRested() bool {
+	return m == nil || !m.netFired || m.rounds-m.netFiredAt >= checkpointPrice
 }
 
 // mayBelieveDone reports that no completion claim about THIS request has been
@@ -1868,7 +1939,12 @@ func (a *Agent) journalMarkRead(read checkpointRead, mark, rounds int, decision 
 // constants because the bench reads them and a decision spelled two ways is two
 // decisions to whatever is counting.
 const (
-	checkpointDecisionSplit    = "split"
+	// checkpointDecisionTold is what a NOTE rung did: the turn was handed the
+	// facts and the three roads on, and nothing else happened. It carries no
+	// model, no cost and no duration — the emptiness law doing the rest of the
+	// work, because there was no call and so there are no figures about one.
+	checkpointDecisionTold = "told"
+
 	checkpointDecisionContinue = "continue"
 	checkpointDecisionFailed   = "failed"
 	// checkpointDecisionNoReader is the ONE row a session with no second model
@@ -1978,7 +2054,6 @@ const (
 // therefore never says `moved` — nothing was handed anywhere — it says which
 // ending the road stood down for.
 const (
-	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
@@ -2719,51 +2794,70 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	if wallShareIsAsked(mark, calls) && a.pastTurnWallShare(meter, started) {
 		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
-	if mark == 0 {
-		return false
-	}
-	// THE SKETCH IS READ AT EVERY MARK, THE CEILING'S INCLUDED. At the first two
-	// it is the decision; at the ceiling the decision is already made and the
-	// drawing is still worth its call for TWO reasons now — it is what names the
-	// parts at the head of the brief the worker opens on, and a drawing with parts
-	// in it is the one reading that REFUSES a completion claim
-	// ([Agent.handOverRunningTurn]).
 	rounds := meter.rounds
-	if mark < checkpointMarks {
-		// AND AT THE FIRST TWO IT IS STARTED RATHER THAN WAITED FOR, which is this
-		// file's whole share of loop.go's law. A mark's reading was eight seconds
-		// of a person's evening on the 2026-09-11 census — measured at 09:29:12,
-		// with the next step going out two milliseconds after it returned — and
-		// what it decided on that turn, and on the great majority of turns it is
-		// ever asked on, was NOTHING: [checkpointSketch.split] is false and the
-		// only thing that happens is a journal line (the branch below). A reading
-		// whose usual answer is "carry on" has no business being the reason the
-		// work stopped to wait.
-		//
-		// SO IT RIDES BESIDE THE NEXT STEP AND INTERRUPTS IT WHERE IT MUST. A
-		// carry-on costs the person nothing at all now; a drawing with independent
-		// parts in it cuts the step in flight through the same door a person's own
-		// steer uses (steer.go's [Agent.cutGeneration]) and is spent at the
-		// boundary that cut opens ([Agent.checkpointSettle]).
-		aside.start(ctx, a, mark, rounds)
+	// AND WHERE THIS TURN BEGAN IS TAKEN ONCE, AT ITS FIRST BOUNDARY, because the
+	// note below reports three figures about ONE answer and two of them are read
+	// off the transcript ([turnOpenedAt], inherit.go). It is a walk back over one
+	// round's traffic, done on the first boundary and never again, rather than a
+	// walk of the session at every mark.
+	if meter.opened == 0 {
+		meter.opened = turnOpenedAt(a.snapshot())
+	}
+	// ── THE NOTE RUNGS: THE TURN IS TOLD, AND NOTHING ELSE HAPPENS ──
+	//
+	// NOBODY IS ASKED ANYTHING HERE ANY MORE, and that is the 2026-09-11 ruling.
+	// A mark used to buy a mastermind call — eight seconds of a person's evening
+	// on the census, measured at 09:29:12 — and hand the decision to a reader that
+	// had been shown an ACCOUNT of the work rather than the work. On the measured
+	// failure that reader said `split` about a turn that had read ten files in 48
+	// seconds, and the worker it started spent 551,000 tokens reading them again.
+	//
+	// THE ONE READER THAT CAN WEIGH THIS IS THE ONE HOLDING THE CONTEXT, because
+	// the question is not "are there parts" — it is "is it worth this work being
+	// re-read somewhere else", and only the model holding what was read knows what
+	// that is worth. So the harness states the facts and the three roads on, ONCE,
+	// through the same ambient door a loop nudge uses, and the model decides
+	// (inherit.go's [checkpointChoiceNote]).
+	//
+	// IT COSTS NO CALL, NO TIMER AND NO WAIT. The note lands in the next request
+	// at the boundary the turn was going to reach anyway.
+	if mark > 0 && mark <= checkpointNotes {
+		a.enqueueAmbientNote(checkpointChoiceNote(readTurnFacts(a.snapshot(), meter.opened, rounds)))
+		a.file.appendMark(journalMark{N: mark, Rounds: rounds, Decision: checkpointDecisionTold})
 		return false
 	}
-	// THE CEILING IS AN ENDING AND NOT A READING, so it is the one mark still read
-	// in line. There is no next step to run beside it: the decision to move this
-	// turn is already taken by the time this branch is reached, and starting one
-	// more request only to cut it a moment later would be a prefill bought to be
-	// thrown away.
+	// ── THE RUNAWAY NET ──
 	//
-	// AND ITS OWN READ IS JOURNALED AS A CARRY-ON, because that is what it did: it
-	// decided nothing, and the ceiling line written a moment later is where what
-	// happened to the turn is recorded.
+	// The last rung, and it is not a count. A turn reaches it when it can no
+	// longer work where it is ([Agent.turnHasRunAway]) or when a completion claim
+	// it made has been disproved by [checkpointPrice] more rounds of real work
+	// (the meter's own rung, which is what `mark` carries here). The other two
+	// absolute bounds on a turn are written where they belong and are not repeated
+	// here: an unattended session's clock is turnwall.go's share, asked above, and
+	// a turn that has added nothing twice is looped.go's ceiling, which reaches
+	// [Agent.checkpointCeiling] by its own road.
 	//
-	// A READING STILL IN FLIGHT FROM THE MARK BELOW IS LET GO OF HERE. Its answer
-	// could only ever say what this ceiling is already doing.
-	aside.end()
-	read := a.readMark(ctx)
-	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, taken)
+	// AND A FIRING BUYS ITS OWN QUIET, because three of the endings this leads to
+	// leave the turn running and the condition it fires on stays true forever
+	// after ([checkpointMeter.netRested]).
+	if mark < checkpointMarks {
+		if !meter.netRested() || !a.turnHasRunAway() {
+			return false
+		}
+		meter.outOfRoom = true
+	}
+	// THE LATCH IS SET ON EVERY FIRING AND NOT ONLY ON THE NET'S, because what it
+	// bounds is the reading, and the disproved-claim rung buys exactly the same
+	// reading. It is set BEFORE the ask so that a reading in flight cannot be
+	// asked for twice by the boundary it is riding beside.
+	meter.netFired, meter.netFiredAt = true, rounds
+	// AND THE DRAWING IS STILL WORTH ITS CALL, because the decision is already
+	// taken and what the drawing supplies is the CHECKLIST the promoted worker
+	// opens on. It rides beside the work like every other reading in this build
+	// (sidecar.go) and cuts the step in flight the instant it lands, so the
+	// boundary where it can be spent arrives at once ([Agent.checkpointSettle]).
+	aside.start(ctx, a, checkpointMarks, rounds)
+	return false
 }
 
 // ── A MARK'S READING, BESIDE THE WORK ───────────────────────────────────────
@@ -2796,14 +2890,16 @@ type markAside struct {
 // decomposition row loop.go writes.
 func (m *markAside) everAsked() bool { return m != nil && m.asked }
 
-// start launches one mark's reading beside the work.
+// start launches the net's reading beside the work.
 //
-// A DRAWING WITH INDEPENDENT PARTS IN IT CUTS THE STEP IN FLIGHT. That is the
-// only thing this reading is allowed to do to the work, and it is the
+// IT CUTS THE STEP IN FLIGHT WHATEVER IT DRAWS, which is the one thing that
+// changed when the marks stopped deciding. The drawing is no longer the decision
+// — the net took that before this was started — so there is nothing for the
+// drawing to decline and nothing to wait for the step to finish for. What it
+// supplies is the CHECKLIST the promoted worker opens on, and the cut is the
 // interruption road a person's own steer already uses: the request stops,
 // whatever was written stays in the transcript, and the loop comes back to a
-// boundary where the drawing can be spent ([Agent.checkpointSettle]). A carry-on
-// cuts nothing and says nothing.
+// boundary where the drawing can be spent ([Agent.checkpointSettle]).
 //
 // AND A DRAWING THAT LANDS BETWEEN TWO STEPS IS NOT A DRAWING THAT CUT NOTHING.
 // The cut is OWED to the next request this turn makes and spent the instant it
@@ -2818,11 +2914,7 @@ func (m *markAside) start(ctx context.Context, a *Agent, mark, rounds int) {
 		func(readCtx context.Context) markReading {
 			return markReading{read: a.readMark(readCtx), mark: mark, rounds: rounds}
 		},
-		func(landed markReading) {
-			if landed.read.sketch.split() {
-				a.cutGeneration(errMarkCut)
-			}
-		})
+		func(markReading) { a.cutGeneration(errMarkCut) })
 }
 
 // take answers the reading IF ONE HAS ALREADY LANDED, and never waits.
@@ -2874,10 +2966,6 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 	// reading that has already been read (steer.go's [Agent.dropOwedCut]).
 	a.dropOwedCut(errMarkCut)
 	read, mark, rounds := landed.read, landed.mark, landed.rounds
-	if !read.sketch.split() {
-		a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-		return false
-	}
 	// AND A TURN THE PERSON HAS SINCE LET GO OF STARTS NOTHING. The reading was
 	// taken against a turn that was alive; between then and here the person may
 	// have pressed stop, and a handover on a dead turn would put work on the rail
@@ -2886,9 +2974,12 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 	if ctx.Err() != nil {
 		return false
 	}
-	a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
-	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		checkpointSplitNote, checkpointSeamMark, rounds, meter, meter.raced, read, taken).moved
+	// AND WHAT LANDS HERE IS ALWAYS THE NET'S, because the net is the only thing
+	// that starts a reading now. Its own read is journaled as a carry-on because
+	// that is what it did — it decided nothing — and the ceiling line written a
+	// moment later is where what happened to the turn is recorded.
+	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
+	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, taken)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -3988,8 +4079,8 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// writes no brief because the drawing already is one (checkpoint_quick.go).
 	//
 	// IT IS DECIDED HERE, AFTER EVERY ENDING AND BEFORE EVERY MODEL CALL. After,
-	// because a turn that is finishing, awaiting or overruled must not be moved
-	// at all and the kind of node it would have moved to changes none of that.
+	// because a turn that is finishing, awaiting or overruled must not be moved at
+	// all and the kind of node it would have moved to changes none of that.
 	// Before, because the two calls below are the whole of what this road exists
 	// to skip: a worktree nobody opens and a ninety-second writer producing a
 	// paragraph the items say better — AND THE NAME, which is asked for under
@@ -3999,7 +4090,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// quick carry-on sent a real request to a real model and cancelled it
 	// microseconds later — a call paid for, and an answer nobody was ever going to
 	// read.
-	if quick := a.quickFromDrawing(read, asked); quick != nil {
+	if quick := a.promotedFromTurn(read, asked, meter); quick != nil {
 		return a.handOverAsQuick(ctx, hub, turn, started, model, *quick)
 	}
 	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
@@ -4182,6 +4273,24 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
+	// AND A WORKER THAT COULD NOT BE HANDED THE TURN IS HANDED WHAT THE TURN READ.
+	//
+	// THIS IS THE FALLBACK UNDER THE PROMOTION AND IT IS NOT POINTERS. A node that
+	// cannot inherit the transcript ([Agent.inheritFits] refused it) used to open
+	// on a brief plus a list of POINTERS to the calls this turn had already made
+	// ("CALLS THAT HAVE ALREADY RUN", admission.go) — and a pointer is an
+	// instruction to read it again, which is the 116 KB the measured worker spent
+	// its first six calls on. The account this file has already compiled for its
+	// own reader is the same evidence, bounded the same way ([checkpointDigest]:
+	// each result cut to its tail, newest first, with the count of what was left
+	// out), and it costs nothing to carry because it exists.
+	//
+	// IT RIDES THE GOAL rather than a section of its own, because the goal is the
+	// one document every door into the graph already carries whole (task_brief.go).
+	// AND IT RIDES AFTER THE CUSTODY READINGS ABOVE, so a digest full of a
+	// sibling's name cannot make a handover look like one that assigns work this
+	// conversation is holding.
+	verdict.Goal = carriedResults(verdict.Goal, read.digest)
 	verdict = a.handoffChecks(verdict, asked, request, read)
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.

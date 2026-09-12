@@ -30,7 +30,7 @@ func TestAHeadlessRunLeftGoingCheckpointsAtTheSameRoundsAsAChatOne(t *testing.T)
 	wantRounds := []int{
 		checkpointMarkAt(1),
 		checkpointMarkAt(2),
-		checkpointMarkAt(3),
+		checkpointMarkAt(checkpointMarks),
 	}
 	journalRounds := make(map[string][]int, 2)
 
@@ -69,8 +69,10 @@ func TestAHeadlessRunLeftGoingCheckpointsAtTheSameRoundsAsAChatOne(t *testing.T)
 				"work through the four things I listed and report back"))
 			ran.await(t)
 
-			if read := marksRead(completer); read != checkpointMarks {
-				t.Fatalf("the mark reader was asked %d times, want %d", read, checkpointMarks)
+			// ONE READING, AT THE NET. The two rungs under it tell the turn and
+			// ask nobody anything (inherit.go), which is the same on both postures.
+			if read := marksRead(completer); read != 1 {
+				t.Fatalf("the mark reader was asked %d times, want the net's one reading", read)
 			}
 			if count := admitted(graph); count != 1 {
 				t.Fatalf("%d tasks were started, want the one the ceiling moved", count)
@@ -90,9 +92,13 @@ func TestAHeadlessRunLeftGoingCheckpointsAtTheSameRoundsAsAChatOne(t *testing.T)
 				if mark.N != index+1 {
 					t.Errorf("mark %d was journaled as rung %d", index+1, mark.N)
 				}
-				if mark.Decision != checkpointDecisionContinue {
-					t.Errorf("rung %d decided %q, want %q",
-						mark.N, mark.Decision, checkpointDecisionContinue)
+				// THE NOTE RUNGS TELL AND THE NET READS, on both postures alike.
+				want := checkpointDecisionTold
+				if mark.N == checkpointMarks {
+					want = checkpointDecisionContinue
+				}
+				if mark.Decision != want {
+					t.Errorf("rung %d decided %q, want %q", mark.N, mark.Decision, want)
 				}
 			}
 			if !slices.Equal(gotRounds, wantRounds) {
@@ -213,7 +219,7 @@ func TestAScreenlessRunWithNobodyInChargeStillNeverCheckpoints(t *testing.T) {
 				t.Errorf("the screenless run had %d tasks started over it", count)
 			}
 			if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
-				saidSomething(said, checkpointSplitNote) {
+				saidSomething(said, checkpointQuickNote) {
 				t.Errorf("the screenless run was moved off its own turn: %q", said)
 			}
 			if completer.requests() <= rounds {

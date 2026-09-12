@@ -195,8 +195,11 @@ func paceRounds(count int, answer string) []step {
 			arguments, _ := json.Marshal(struct {
 				Path string `json:"path"`
 			}{Path: fmt.Sprintf("./%d", round)})
-			return toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
-				"Working through the next path."), nil
+			// AND IT FILLS THE WINDOW AS IT GOES, for [checkpointFillAt]'s reason:
+			// a turn is taken away from a person when its context can no longer
+			// hold another step, never for having finished a number of rounds.
+			return filling(toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
+				"Working through the next path."), round), nil
 		})
 	}
 	return append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -247,9 +250,12 @@ func pacedTurn(t *testing.T, journal string) journalPace {
 // mark crossed part way through — with the recall, the namer, the narrator, the
 // work-or-words judge and the mark's own reader each taking three seconds.
 func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
-	// The first mark falls at [checkpointPrice] finished rounds; two more rounds
-	// past it are what the reading rides beside.
-	rounds := checkpointMarkAt(1) + 2
+	// THE ONE RUNG THAT STILL ASKS ANYBODY TO READ THE WORK IS THE NET, so the
+	// script runs until the context it is filling can hold no more
+	// (inherit.go's [Agent.turnHasRunAway]). The rungs below it tell the turn and
+	// call nobody, which is a saving rather than a gap in this law: what this test
+	// pins is that the reading which DOES happen is never in front of the person.
+	rounds := checkpointMarkAt(checkpointMarks) + 2
 	completer := &paceCompleter{
 		steps:  paceRounds(rounds, "all done"),
 		slow:   paceSlowReading,
@@ -273,8 +279,11 @@ func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 			"a reading beside the work was awaited between two steps",
 			pace.StepGapMS, paceLawBudget.Milliseconds())
 	}
-	if pace.Steps < rounds {
-		t.Fatalf("the turn took %d steps, want at least %d — the script did not run", pace.Steps, rounds)
+	// AND THE SCRIPT RAN. The net cuts the step it lands beside, so the turn ends
+	// a round or two short of its script and the floor is the rung rather than the
+	// whole of it.
+	if floor := checkpointMarkAt(checkpointMarks); pace.Steps < floor {
+		t.Fatalf("the turn took %d steps, want at least %d — the script did not run", pace.Steps, floor)
 	}
 
 	// AND THE READINGS REALLY WERE ASKED. A law that passed because nothing ran
@@ -392,13 +401,14 @@ func TestARecallThatLandsAfterTheFirstWordRidesTheNextStep(t *testing.T) {
 	}
 }
 
-// A MARK'S READING RUNS BESIDE THE NEXT STEP AND INTERRUPTS IT.
+// THE NET'S READING RUNS BESIDE THE NEXT STEP AND INTERRUPTS IT.
 //
-// The reading takes three seconds and draws independent parts. The next step
-// goes out at once — the law above — and the drawing then cuts it where it
-// stands rather than waiting for it to end.
+// The reading takes three seconds. The next step goes out at once — the law
+// above — and the drawing then cuts it where it stands rather than waiting for
+// it to end. The reading is the runaway net's now and the only one there is: the
+// rungs under it tell the turn and buy nothing (inherit.go).
 func TestAMarksReadingRidesBesideTheStepAndCutsItOnIndependentParts(t *testing.T) {
-	rounds := checkpointMarkAt(1)
+	rounds := checkpointMarkAt(checkpointMarks)
 	// The mark falls once `rounds` tool rounds have FINISHED, so the step that
 	// rides beside the reading is the one after them. It waits for its own
 	// context, which makes the cut the only thing that can end it.
