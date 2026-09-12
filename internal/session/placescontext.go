@@ -6,9 +6,8 @@ package session
 // answer down. This file is the half that was missing: THE MODEL BEING TOLD.
 //
 // The set fed the ground ladder (taskstands.go) and nothing else — so a person
-// who picked a folder saw a
-// dim line on their screen saying the pick had landed, and the very next request
-// went out with no mention of it anywhere. The model then did the only thing it
+// who picked a folder saw a dim line on their screen saying the pick had landed,
+// and the very next request went out with no mention of it anywhere. The model then did the only thing it
 // could: it went looking for the folder, usually by walking the home directory
 // for a name that sounded right, and sometimes it found the wrong one. A
 // DISPLAYED LINE IS NOT A MESSAGE, and this file is the difference.
