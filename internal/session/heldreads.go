@@ -181,7 +181,10 @@ func (a *Agent) heldSpecOf(args json.RawMessage) (heldSpec, bool) {
 		Offset *int   `json:"offset"`
 		Limit  *int   `json:"limit"`
 	}
-	if err := json.Unmarshal(args, &p); err != nil || p.Path == "" {
+	// EVERY TOOL DECODES THROUGH ONE DOOR (toolargs_test.go): the ledger's parse
+	// goes through decodeToolArguments like the tools themselves, so a model
+	// reads one grammar of refusal and never Go's own words.
+	if err := decodeToolArguments(args, &p); err != nil || p.Path == "" {
 		return heldSpec{}, false
 	}
 	spec := heldSpec{path: p.Path, start: 1, end: 0}

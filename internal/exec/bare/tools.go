@@ -148,7 +148,7 @@ const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","de
 // every request on the belt.
 
 func readDescription(caps Caps) string {
-	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page with offset/limit. Each call is one round trip; a range already in the conversation answers as a pointer.", caps.MaxLines, sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page the rest with offset/limit. Each call is one round trip; an already-read range answers as a pointer.", caps.MaxLines, sizeWord(caps.MaxBytes))
 }
 
 // ── what a read result's text can conclude about the file ────────────────────
