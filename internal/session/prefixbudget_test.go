@@ -34,7 +34,6 @@ package session
 // is.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -42,9 +41,7 @@ import (
 	"testing"
 	"time"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -522,7 +519,15 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 	if len(definitions) == 0 {
 		t.Fatal("the belt is empty, so this test would pass on nothing")
 	}
-	widest := map[string]string{"grep": bare.WidestGrepDescription(agent.resultCaps())}
+	widest := map[string]string{
+		// `grep` says a longer sentence about itself where ripgrep is absent.
+		"grep": bare.WidestGrepDescription(agent.resultCaps()),
+		// `load_capability` NAMES THE GROUPS THIS BUILD HAS, and a group whose
+		// every member was gated off is not named at all — `edit_video` is built
+		// only where ffmpeg is on PATH, so a machine that can edit video pays for
+		// one more clause than one that cannot (tools_capabilities.go).
+		"load_capability": widestLoadCapability(),
+	}
 	swapped := 0
 	for index := range definitions {
 		longest, varies := widest[definitions[index].Function.Name]
@@ -530,9 +535,11 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 			continue
 		}
 		swapped++
-		if len(longest) > len(definitions[index].Function.Description) {
-			definitions[index].Function.Description = longest
-		}
+		// ASSIGNED, NOT COMPARED. A swap that only fired when it made the number
+		// bigger would be a swap that silently stopped firing the day the other
+		// spelling grew — which is the same defeat, one level up. `widest` is
+		// widest by construction and this takes it at its word.
+		definitions[index].Function.Description = longest
 	}
 	// AND THE SWAP CANNOT SILENTLY STOP APPLYING. A tool that leaves the belt, or
 	// is renamed, would take its machine-variance off this number without anybody
@@ -541,6 +548,23 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 		t.Fatalf("%d of the %d tools that vary by machine are on the belt", swapped, len(widest))
 	}
 	return definitions
+}
+
+// widestLoadCapability is the loader's sentence with EVERY group the table
+// declares and every member of each, which is what it says on a machine that has
+// all the programs its tools shell out to.
+//
+// It is built through the product's own [loadCapabilityDescription], so the
+// three sentences after the group list are stated once and cannot drift out of
+// this number.
+func widestLoadCapability() string {
+	order := make([]string, 0, len(capabilityGroups))
+	members := make(map[string][]string, len(capabilityGroups))
+	for _, group := range capabilityGroups {
+		order = append(order, group.name)
+		members[group.name] = group.members
+	}
+	return loadCapabilityDescription(func(group string) []string { return members[group] }, order)
 }
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
@@ -602,24 +626,29 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 
 // ── the lean arm ────────────────────────────────────────────────────────────
 
-// leanShapedAgent is the shipping conversation door on a small window: the same
-// config [v3ShapedAgent] builds, with the window a local open-weight model
-// actually has. Everything else about the shape is deliberately identical, so
-// the difference between the two numbers below is the profile and nothing else.
+// leanShapedAgent is the SHIPPING CONVERSATION on a small window: the shape
+// [shippedShapeAgent] builds, with the one thing that differs — the window a
+// local open-weight model actually has — changed and nothing else. The
+// difference between the two numbers below is therefore the profile, and only
+// the profile.
+//
+// ── IT WEIGHED A THINNER AGENT THAN ANYBODY RUNS, AND THIS IS THAT REPAIR ───
+//
+// It used to build its own config: no memory store, no accounts hub, no standing
+// items, no saved programs. That is #576's shape again and the same one the full
+// arm was repaired for in this PR — a gate pointed at something nobody runs
+// passes without having tested anything. A real lean conversation carries
+// `stand` (9.6 KB on its own), `remember` and `search_conversations`, and
+// [Config.leanCapabilityGroups] shelves none of the three, so every one of those
+// bytes is bought on every request of every turn by exactly the person whose
+// window has the least room for them.
 func leanShapedAgent(t *testing.T) *Agent {
 	t.Helper()
+	shape := beltShapeNamed(t, shippedBeltShape)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
+		shape.build(t, config)
 		config.ContextWindow = leanWindow
-		config.AskConsent = true
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
 	})
 	return agent
 }
@@ -638,10 +667,7 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 		t.Fatalf("a %d-token window did not resolve to the lean profile, so this test is weighing the wrong arm", leanWindow)
 	}
 
-	definitions := agent.beltDefinitions()
-	if len(definitions) == 0 {
-		t.Fatal("the belt is empty, so this test would pass on nothing")
-	}
+	definitions := widestBelt(t, agent)
 	block, err := json.Marshal(definitions)
 	if err != nil {
 		t.Fatal(err)
