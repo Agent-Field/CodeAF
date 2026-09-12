@@ -1096,29 +1096,6 @@ type routeMemory struct {
 
 const routeReflexKind = "reflex"
 
-func commandKind(kind string) (store.CommandKind, bool, bool) {
-	switch kind {
-	case routeReflexKind:
-		return store.CommandSplice, true, true
-	case string(store.CommandSplice):
-		return store.CommandSplice, false, true
-	case string(store.CommandAmend):
-		return store.CommandAmend, false, true
-	case string(store.CommandCancel):
-		return store.CommandCancel, false, true
-	case string(store.CommandPause):
-		return store.CommandPause, false, true
-	case string(store.CommandResume):
-		return store.CommandResume, false, true
-	case string(store.CommandReprioritize):
-		return store.CommandReprioritize, false, true
-	case string(store.CommandRestart):
-		return store.CommandRestart, false, true
-	default:
-		return "", false, false
-	}
-}
-
 // consequenceGated is a safety membrane, not a triviality classifier. It names
 // only irreversible effect families; everything about how small or obvious an
 // action is remains a learned model judgment.
@@ -1189,40 +1166,6 @@ func boardJobRoot(node store.Node, byID map[string]store.Node) bool {
 	}
 	owner, ok := byID[parent]
 	return !ok || owner.Group == store.TerritoryGroup
-}
-
-// boardSubtreeCounts rolls a job's open subtree into the clause the belt's board
-// has always carried. It is the same reading: "the running ones" means jobs with
-// somebody working on them, not jobs whose root happens to hold a running status.
-func boardSubtreeCounts(root store.Node, byID map[string]store.Node, children map[string][]string) string {
-	running, queued, failed := 0, 0, 0
-	seen := make(map[string]bool, 8)
-	stack := []string{root.ID}
-	for len(stack) > 0 {
-		id := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		switch byID[id].Status {
-		case store.Running, store.Claimed:
-			running++
-		case store.Pending:
-			queued++
-		case store.Failed:
-			failed++
-		}
-		stack = append(stack, children[id]...)
-	}
-	if running == 0 && queued == 0 && failed == 0 {
-		return ""
-	}
-	counts := fmt.Sprintf("%d running, %d queued", running, queued)
-	if failed > 0 {
-		counts += fmt.Sprintf(", %d failed", failed)
-	}
-	return counts
 }
 
 // boardOwnerLabel names the job one part belongs to.

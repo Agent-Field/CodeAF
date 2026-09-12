@@ -444,7 +444,7 @@ func TestAQuestionWhoseSubjectWentAwayIsWithdrawnWithAReason(t *testing.T) {
 // A LANDED `YOUR CALL` IS A QUESTION LIKE ANY OTHER, which for a long time it
 // was not: it lived in a registry of its own that the one predicate never folded
 // in, so a session sitting on one said `idle` to home, the switcher and the tab
-// signal (ideation/questions-audit.md, finding 4).
+// signal (the September 2026 questions audit, finding 4).
 func TestALandedYourCallIsAQuestionAndCountsAsNeedingSomebody(t *testing.T) {
 	agent, _, child := unverifiedFamily(t)
 

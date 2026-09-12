@@ -219,7 +219,7 @@ func (b Beta) Mean() float64 {
 // request of every process, for lack of evidence rather than for cause, and the
 // refusal was ABSORBING: a lane outside the candidate set is never sent to, so
 // it never earns the ninth good answer that would have let it back. The
-// simulator found it in one run (ideation/provider-routing.md, Part III).
+// simulator found it in one run (docs/design/routing/provider-routing.md, Part III).
 //
 // The bound asks the question the gate means to ask — "could this lane be good
 // enough?" rather than "is its point estimate above the line?" — and it is what

@@ -129,19 +129,6 @@ func AnswerOffer(ask string, yes bool) bool {
 	return true
 }
 
-// OpenOffer is what is being asked about one request, for a surface that has to
-// draw it: the machine that went quiet and the one a `y` would go to. It is
-// empty when that token names nothing open.
-func OpenOffer(ask string) (lane, alt string, open bool) {
-	offers.mu.Lock()
-	defer offers.mu.Unlock()
-	question, found := offers.open[strings.TrimSpace(ask)]
-	if !found {
-		return "", "", false
-	}
-	return question.lane, question.alt, true
-}
-
 // sweepOffers drops what has aged out. It runs with the lock held, on the one
 // path that is already writing, so an unanswered question costs a map entry
 // until the next stall and never longer.

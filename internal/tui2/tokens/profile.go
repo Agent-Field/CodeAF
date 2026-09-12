@@ -202,66 +202,12 @@ func Reset(p Profile) string {
 	return "\x1b[0m"
 }
 
-// GroundResets is every sequence this package writes that also clears the
-// BACKGROUND, and therefore every place a caller who asserted a ground at the
-// head of a row has to assert it again.
-//
-// It exists because a surface that paints its own floor — the composer hug's two
-// grounds, a card's ground, any fixed chrome a scroll passes under — composes
-// rows out of spans painted by OTHER packages through this package's ordinary
-// doors, and one of those doors ([Styler.PaintOn], the selection band and the
-// caret cell) ends its span by clearing both layers. A floor asserted once at
-// column 0 stops at the first such span and the rest of the row falls back to
-// the terminal's own background, which reads as the strip ending halfway across.
-//
-// The list belongs HERE rather than restated at each caller for the reason every
-// other spelling in this package does: it is a fact about what this package
-// emits, and a restatement is a fact that goes stale on a commit that never
-// touched the file it lives in. [Styler.PaintToken] is deliberately absent — it
-// resets the foreground alone, so a run painted with it keeps whatever ground it
-// was drawn over, which is what makes the ordinary row free.
-//
-// A profile with no colour writes nothing at all, so there is nothing to repair.
-func GroundResets(p Profile) []string {
-	if p == NoColor {
-		return nil
-	}
-	return []string{sgrResetAll, Reset(p)}
-}
-
 // Reverse is SGR 7, the selection idiom for [SelectionReverse].
 func Reverse(p Profile) string {
 	if p == NoColor {
 		return ""
 	}
 	return "\x1b[7m"
-}
-
-// Underline is SGR 4, and [UnderlineOff] is SGR 24.
-//
-// It is the quietest mark the vocabulary has for "this one, of several" — a rule
-// UNDER a word rather than a ground behind it — and it exists here for the same
-// reason [Reverse] does: an attribute a surface would otherwise spell as a
-// literal escape is an attribute no profile can degrade.
-//
-// [NoColor] emits NOTHING, including the underline. That profile's promise is
-// not "no colour", it is NO ESCAPES: its consumers are a dumb pipe and a golden
-// file, and both read a stray SGR as corruption. A surface that needs the
-// distinction there says it in words.
-func Underline(p Profile) string {
-	if p == NoColor {
-		return ""
-	}
-	return "\x1b[4m"
-}
-
-// UnderlineOff is SGR 24. It clears the underline WITHOUT clearing colour, so a
-// span that underlined one word does not have to repaint the tier of the next.
-func UnderlineOff(p Profile) string {
-	if p == NoColor {
-		return ""
-	}
-	return "\x1b[24m"
 }
 
 // UnderlineColor is SGR 58: the underline's own colour, so a bright word can
@@ -274,17 +220,6 @@ func UnderlineOff(p Profile) string {
 // the two together and gets whatever the terminal can carry.
 func (t Token) UnderlineColor(p Profile, f Focus) string {
 	return table[t.check()].sgrUl[p.check()][f.check()]
-}
-
-// UnderlineColorOff is SGR 59, which returns the underline to the foreground
-// colour. It is written beside [UnderlineOff] rather than instead of it: a
-// terminal that ignored 58 also ignores 59, and one that honoured 58 would carry
-// the colour into the next underlined run if nobody cleared it.
-func UnderlineColorOff(p Profile) string {
-	if p == NoColor {
-		return ""
-	}
-	return "\x1b[59m"
 }
 
 func sgrString(p Profile, e *entry, f Focus, l layer) string {

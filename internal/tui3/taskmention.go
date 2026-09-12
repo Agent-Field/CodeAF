@@ -455,7 +455,7 @@ func (a *app) completeTask(entry session.TaskIndexEntry) {
 // do.
 //
 // UNKNOWN TOKENS ARE LEFT ALONE, in silence. "@internal/session/task.go" is a
-// path, "@santosh" is a person, and neither is a failed lookup worth telling
+// path, "@person" is a person, and neither is a failed lookup worth telling
 // anybody about — the sentence a person wrote is not a query this surface gets
 // to reject.
 //

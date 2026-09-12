@@ -95,14 +95,6 @@ func TitleCraftRootFromRequest(subtree *store.Subtree, request string) {
 	}
 }
 
-// CraftCommit returns the commit half of a craft reference.
-func CraftCommit(reference string) string {
-	if cut := strings.LastIndex(reference, "@"); cut >= 0 {
-		return reference[cut+1:]
-	}
-	return ""
-}
-
 // CompileCraft turns one loaded workflow into the store's admission shape.
 // The id namespace is derived from the run's provenance so a compile is
 // reproducible; RunCraft uses CompileCraftAs to guarantee a fresh namespace

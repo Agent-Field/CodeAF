@@ -8,7 +8,7 @@ package session
 // landed task's `your call`, the merge conflict, the fuel gate, the stuck-turn
 // recovery and the auto-settle take-back each minted their own id, banked their
 // own wait, emitted their own event and were answered through their own door —
-// and `ideation/questions-audit.md` counted twenty-one distinct question
+// and the September 2026 questions audit counted twenty-one distinct question
 // mechanisms across fourteen answer surfaces, three of which could draw an
 // answer row at all. Two of those doors had no caller anywhere in the product.
 //

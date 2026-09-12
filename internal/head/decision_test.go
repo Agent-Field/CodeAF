@@ -36,7 +36,8 @@ func beltToolTurn(id, name string, args map[string]any) beltTurn {
 //
 // What moved is HOW. It used to be a `commands` array on a terminal router
 // decision, then an `orders` argument on spawn — a way for the chat to split
-// work. Both are gone (chat-simplify §2.3): the chat never divides an ask, and
+// work. Both are gone (the August 2026 chat-simplification audit, no longer in
+// the tree, §2.3): the chat never divides an ask, and
 // genuinely unrelated asks are separate task calls in the same turn. The
 // arithmetic the array guarded — one splice per piece, verbatim words, no
 // target — is what this still pins, arrived at from the other side.

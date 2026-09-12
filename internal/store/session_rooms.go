@@ -16,9 +16,9 @@ import (
 // minted a fresh id every time it opened; a `+ new room` that could not answer
 // the second minted a second empty room on top of the empty room already
 // standing there. Five "untitled room" rows is what those two questions look
-// like unanswered — not a naming failure, a MINTING failure (rail-rooms
-// grooming A2, design-law-v2 §2: "launch resumes the last thread; empty rooms
-// are reused/reaped").
+// like unanswered — not a naming failure, a MINTING failure (the August 2026
+// rail-room audit, no longer in the tree, A2; design-law-v2 §2: "launch resumes
+// the last thread; empty rooms are reused/reaped").
 //
 // All three reads are here rather than in the caller because all three are one
 // query each and none of them is a policy: what a room is, whether anybody has

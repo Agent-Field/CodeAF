@@ -39,7 +39,7 @@ import (
 // and that is what tmux, kitty, Ghostty and the window bar of every terminal
 // read. Terminal.app and iTerm2 label a TAB with the icon name, OSC 1, and until
 // this file wrote one nothing did — so the owner's Terminal.app tab read
-// `/Users/santos…`, the running binary's path, beside a shell tab whose own
+// `<home>/…`, the running binary's path, beside a shell tab whose own
 // program had set a real name. [app.retitle] writes OSC 1 and [app.View]
 // declares OSC 2, and both are the same sentence ([app.titleSent]).
 

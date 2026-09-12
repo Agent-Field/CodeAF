@@ -191,17 +191,6 @@ func (t Task) leafKey() string {
 	return strconv.Itoa(t.NodeID)
 }
 
-// progress reports one step of within-node progress, and reports nothing at all
-// when the surface offered no channel. The nil check lives here rather than at
-// every call site because a worker that has to remember it will forget it once,
-// in the path that only runs when something has already gone wrong.
-func (t Task) progress(phase string, done, total int, latest string) {
-	if t.Progress == nil || strings.TrimSpace(phase) == "" {
-		return
-	}
-	t.Progress(phase, done, total, latest)
-}
-
 // Faulted reports one recovered panic, and reports nothing at all when the
 // surface offered nowhere to write it. The nil check lives here for the same
 // reason [Task.progress]'s does, and it matters more: every call site is inside

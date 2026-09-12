@@ -14,7 +14,8 @@
 // It is a package rather than a corner of the chat window because the desk has
 // to be reachable from wherever work is admitted. A window-side desk answers
 // only for the process holding the terminal; a resident-side orchestrator —
-// the chat-rebuild doc's 4.6 v2 — admits work with no window attached at all,
+// the August 2026 chat-rebuild audit's 4.6 v2 (no longer in the tree) — admits
+// work with no window attached at all,
 // and until this moved it had no way to price anything (Part 9.10).
 package consent
 

@@ -2,50 +2,7 @@ package modelui
 
 import (
 	"strings"
-
-	"github.com/Agent-Field/aforge-v2/internal/store"
 )
-
-// THE ROLE WORDS, and they are the settings page's own.
-//
-// The five slots used to reach this surface spelled the way the roles table
-// names them for itself — voice, architect, hands, skeptic, clerk — and a user
-// who clicked a model row was handed that list and reported it as "some weird
-// lists like voice, architect, skeptic". They were right, and §14 says why:
-// user-facing words only, and a metaphor nobody was taught is an invented
-// concept however evocative it reads. Nobody has an architect; they have
-// planning.
-//
-// The words below are NOT a third vocabulary either. They are exactly the
-// labels the settings page already shows on its landed role-model rows
-// (internal/config's roleWords), so one slot has one spelling wherever it is
-// shown. word_test.go walks [store.ModelRoles] against the settings registry
-// and fails the build if the two ever disagree or if a sixth role arrives with
-// no word here.
-//
-// [store.ModelRole.Word] keeps its own answer and keeps its own job: it is the
-// journal's name for a slot, at the store's altitude, and no surface draws it
-// directly.
-var roleWords = map[store.ModelRole]string{
-	store.RoleOrchestrate: "conversation",
-	store.RolePlan:        "planning",
-	store.RoleWork:        "execution",
-	store.RoleVerify:      "verification",
-	store.RoleScribe:      "naming",
-}
-
-// RoleWord is the plain word for one of the five slots — what a row names
-// itself on every surface in this tree.
-//
-// A role with no word here degrades to the role's own spelling rather than to
-// nothing: a row with a blank name reads as a rendering fault, and the test
-// above is what makes the degradation unreachable rather than tolerated.
-func RoleWord(role store.ModelRole) string {
-	if word := roleWords[role]; word != "" {
-		return word
-	}
-	return string(role)
-}
 
 // Model words, never provider ids (5.10). "anthropic/claude-sonnet-4-20250514"
 // is provenance; "claude-sonnet-4" is what a person says out loud, and a row
@@ -115,21 +72,6 @@ func dropAliasSuffix(word string) string {
 		return base
 	}
 	return word
-}
-
-// variantWord is the variant a slug carries after [variantSeparator], lowered,
-// or the empty string for a plain slug. It is deliberately open where
-// [Effort]'s list is closed: Effort must not misread ":free" as a reasoning
-// effort, but a model row must show WHATEVER the provider hung off the slug —
-// an unshown variant is how two rows wear the same word and only one of them
-// works.
-func variantWord(slug string) string {
-	word := strings.TrimSpace(slug)
-	index := strings.LastIndexByte(word, variantSeparator)
-	if index < 0 || index+1 >= len(word) {
-		return ""
-	}
-	return lower(word[index+1:])
 }
 
 // Effort is the reasoning effort a slug carries, or the empty string.

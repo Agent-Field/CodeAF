@@ -119,9 +119,6 @@ func (r *Registration) Close() error {
 	return nil
 }
 
-// Done is closed when this registration has ended, so a caller can redial.
-func (r *Registration) Done() <-chan struct{} { return r.carrier.done }
-
 // Dial reaches a machine by name, and hands back the raw byte pipe to it.
 //
 // WHAT COMES BACK IS NOT AUTHENTICATED AND NOT ENCRYPTED. It is a pipe to

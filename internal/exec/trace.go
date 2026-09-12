@@ -123,13 +123,6 @@ func patchName(leaf string) string {
 	return filepath.Join(traceDir, fmt.Sprintf("%s.patch", pathSlug(leaf)))
 }
 
-// StreamFile is where a node's raw subharness event stream is written. It is
-// referenced by the recorder and read by whoever is debugging a run; no surface
-// renders it, which is the whole point of it being a separate file.
-func StreamFile(home, leaf string) string {
-	return filepath.Join(home, streamName(leaf))
-}
-
 // legacyTraceName is where recorders written before the move still are. It is
 // read from and never written to.
 func legacyTraceName(leaf string) string {

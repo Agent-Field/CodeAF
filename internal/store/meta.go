@@ -161,18 +161,6 @@ func applyCredibility(facts []Fact, credibility channelCredibility) {
 	}
 }
 
-// CredibilityWord renders one muted notebook word from a shrunk channel rate.
-func CredibilityWord(value float64) string {
-	switch {
-	case value >= CredibilityHighThreshold:
-		return "strong"
-	case value >= CredibilitySteadyThreshold:
-		return "steady"
-	default:
-		return "tentative"
-	}
-}
-
 // PromptEligible applies the two-occurrence bar only to empirically weak channels.
 func (s *Store) PromptEligible(fact Fact) (bool, error) {
 	if fact.Kind == FactQuestion || fact.Kind == FactTrait || fact.Status != FactActive {

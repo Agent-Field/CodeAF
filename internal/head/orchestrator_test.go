@@ -293,7 +293,8 @@ func TestThePromptDescribesTheBeltItActuallyHas(t *testing.T) {
 	}
 }
 
-// ── The cap that died (12.6.3, then chat-simplify §2.6) ─────────────────────
+// ── The cap that died (12.6.3, then the August 2026 chat-simplification audit,
+// no longer in the tree, §2.6) ──────────────────────────────────────────────
 
 // The ceiling was 600 — the exact number that cut session bd3c78ed's diagram in
 // half — and was then re-set to 1,200 in the belief that a chosen ceiling is

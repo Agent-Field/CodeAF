@@ -119,13 +119,6 @@ func WithCallHorizon(ctx context.Context, calls int) context.Context {
 	return context.WithValue(ctx, callHorizonContextKey{}, calls)
 }
 
-// CallHorizonFrom answers how many more calls are expected under ctx, and
-// whether anybody said.
-func CallHorizonFrom(ctx context.Context) (int, bool) {
-	calls, said := ctx.Value(callHorizonContextKey{}).(int)
-	return calls, said
-}
-
 func valueOfTimeFrom(ctx context.Context) secondsPerDollar {
 	stated, _ := ctx.Value(valueOfTimeContextKey{}).(secondsPerDollar)
 	return stated

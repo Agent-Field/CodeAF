@@ -59,16 +59,16 @@ Commands that act on a conversation act on the one home holds behind the screen.
 
 ## Why a file path does not pop up the command list
 
-Typing `/Users/santosh/notes.md` or `/tmp/log` into the message box does not leave the
+Typing `/Users/you/notes.md` or `/tmp/log` into the message box does not leave the
 command list flickering over your sentence. Three rules keep it away, and they are the
 same three wherever the slash is:
 
 - **A slash needs a space in front of it.** Only the first character of the box, or a
   slash after a space or a newline, is a candidate. So the second slash of
-  `/Users/santosh` is not one, and neither is the one in `cmd/aforge/main.go` or in
+  `/Users/you` is not one, and neither is the one in `cmd/aforge/main.go` or in
   `https://`.
 - **A word that matches no command closes the list.** The candidate runs to the next
-  space, so the word being matched is `Users/santosh`, and nothing in the table looks
+  space, so the word being matched is `Users/you`, and nothing in the table looks
   like it. In practice a path drops the list within a couple of keystrokes and it stays
   gone. Backspace back to a word that does match and it returns.
 - **esc seals the word.** If it did open over something you meant literally, esc puts it

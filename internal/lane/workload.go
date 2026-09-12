@@ -13,7 +13,7 @@ import (
 // routing arithmetic compares, and pricing no output makes every lane with the
 // same input tariff look equally cheap, handing the turn to whichever starts
 // soonest at any output tariff. The design's ordinary talk figure is therefore
-// used for COMPARING lanes (ideation/provider-routing.md, "The choice"); it is
+// used for COMPARING lanes (docs/design/routing/provider-routing.md, "The choice"); it is
 // never taught, billed, or shown as a measurement.
 //
 // THE ASSUMED ANSWER IS VISIBLE. It is the shape of the prose somebody

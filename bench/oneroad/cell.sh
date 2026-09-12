@@ -27,8 +27,8 @@ source "$ONEROAD/lib/corpus.sh"
 
 ISSUES="${ISSUES:-20 21 22 23}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
-OLD_BIN="${OLD_BIN:-/home/santosh/af-oldbase/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
+OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/aforge}"
 # WAVE 1B'S BINARY, AND IT IS A SNAPSHOT RATHER THAN THE LIVE PATH ON PURPOSE.
 # bin/aforge is rebuilt in place by whoever is working the tree, and wave 1's
 # batch cells landed two minutes before one such rebuild — which is luck, not a
@@ -95,8 +95,8 @@ run_aforge() {
   local profile="$CELL/profile" cellhome="$CELL/home"
   mkdir -p "$profile" "$cellhome"
 
-  # The disposable brain. Same shape test/ux/run.sh builds: HOME moves as well as
-  # the profile, so anything that does not yet honour the profile override lands
+  # The disposable brain. This is the same shape the retired UX harness built:
+  # HOME moves as well as the profile, so anything that does not yet honour the profile override lands
   # here rather than in the user's actual home, and two cells cannot contaminate
   # each other through one store.
   #
@@ -361,10 +361,10 @@ say "$ARM/$TASK: harness finished, exit $CODE, ${WALL}s"
 # changes", the judges were handed that, and they scored the cells zero. Any
 # measurement a row depends on has to be taken by the runner that writes the row.
 CHANGED="$(changed_files "$DIR")"
-python3 - "$DIR" "$BASE_COMMIT" "$CELL" <<'LANDED'
+python3 - "$DIR" "$BASE_COMMIT" "$CELL" "$ONEROAD/lib" <<'LANDED'
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath("__file__")), "lib"))
-sys.path.insert(0, "/home/santosh/af-oneroad/bench/oneroad/lib")
+sys.path.insert(0, sys.argv[4])
 import landed
 repo, base, cell = sys.argv[1], sys.argv[2], sys.argv[3]
 open(os.path.join(cell, "diff.patch"), "w").write(landed.patch(repo, base))

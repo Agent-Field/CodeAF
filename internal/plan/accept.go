@@ -302,20 +302,6 @@ func clausesInLine(line string) int {
 	return 1 + len(clauseBreak.FindAllString(strings.TrimSpace(line), -1))
 }
 
-// AcceptanceQuotes is the checklist's citations, in the form every grounding
-// rule in this program already reads: one string per point, the request's own
-// words. It is here rather than at each caller so the checklist has one
-// rendering into the shape the invariant weighs.
-func AcceptanceQuotes(points []Point) []string {
-	quotes := make([]string, 0, len(points))
-	for _, point := range points {
-		if quote := strings.TrimSpace(point.Quote); quote != "" {
-			quotes = append(quotes, quote)
-		}
-	}
-	return quotes
-}
-
 // SetAcceptance stamps the checklist on the node that DELIVERS, and on no other.
 //
 // The list is the request's, so it belongs to whoever hands the finished thing

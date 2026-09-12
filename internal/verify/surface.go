@@ -341,16 +341,6 @@ func digested(lines []string, declared []Declaration) []Declaration {
 	return declared
 }
 
-// publicNames is the file's public surface: the names of its declarations.
-func publicNames(file, body string) []string {
-	found := DeclarationsIn(file, body)
-	names := make([]string, 0, len(found))
-	for _, declaration := range found {
-		names = append(names, declaration.Name)
-	}
-	return sortedUnique(names)
-}
-
 // opened is one declaration a line reader has found and not yet closed: its
 // name, the index of the line it opens on, and the indentation that decides
 // where it ends.

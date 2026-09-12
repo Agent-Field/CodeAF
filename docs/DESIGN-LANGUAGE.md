@@ -301,8 +301,8 @@ keep the old values as history; neither is on any ladder any more.
 
 **Owner-signed, 2026-08-25, and then reversed by the owner the same day.** The first
 order was "follow the exact design": home and the six places beside it — tasks,
-standing, memory, spend, search, settings — took the design's own nine hexes
-(`docs/design/home-rethink/SCREENS.txt`), painted `#12121A` over every cell of the
+standing, memory, spend, search, settings — took the captured design's nine hexes,
+painted `#12121A` over every cell of the
 frame, and carried place-scoped variants of the glare law, the isoluminant band and
 the ground ladder to admit them. It was built and shipped for testing. The owner ran
 it and said:

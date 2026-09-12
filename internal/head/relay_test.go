@@ -27,7 +27,8 @@ import (
 // For a while the answer to that was to relay: the head wrote one sentence and
 // the code pasted the whole deliverable underneath it. That made generation
 // impossible and made the person's answer a machine's raw output. The answer
-// contract (chat-simplify §2.6) fixes the actual cause instead — the turn was
+// contract (the August 2026 chat-simplification audit, no longer in the tree,
+// §2.6) fixes the actual cause instead — the turn was
 // shown a QUARTER of the deliverable and asked to speak about the whole — so
 // what this pins now is that the turn is given all of it.
 func TestTheDeliveryTurnIsGivenTheWholeDeliverableAndNotAClipOfIt(t *testing.T) {

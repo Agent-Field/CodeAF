@@ -31,14 +31,14 @@ ARM="${1:?usage: finish.sh <arm> <task> <seed> <settle-reason>}"
 TASK="${2:?}"; SEED="${3:?}"; REASON="${4:-finished out of band}"
 
 MAR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MARATHON_REPO="${MARATHON_REPO:-/tmp/claude-1001/-home-santosh/36adab24-74be-4ae9-946a-ab932634b759/scratchpad/marathon/repo}"
+MARATHON_REPO="${MARATHON_REPO:-$HOME/af-bench/marathon/repo}"
 TASKDIR="$MARATHON_REPO/tasks/$TASK"
-MAR_OUT="${MAR_OUT:-/home/santosh/af-bench/marathon}"
+MAR_OUT="${MAR_OUT:-$HOME/af-bench/marathon}"
 CELL="$MAR_OUT/$ARM-$TASK-$SEED"
 CONTAINER="oneroad-mar-$ARM-$TASK-$SEED"
 SESSION_NAME="$CONTAINER"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
 HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
 
 say() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CELL/cell.log"; }

@@ -19,7 +19,6 @@ package relay
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -364,11 +363,4 @@ func sweep(table map[string]*bucket, minute time.Time) {
 			delete(table, caller)
 		}
 	}
-}
-
-// Refuse is the sentence a relay operator's front end should hand back when it
-// is turning connections away for a reason of its own, so that the surface has
-// something true to print rather than an HTML error page.
-func Refuse(reason string) string {
-	return fmt.Sprintf("the relay refused this connection: %s", reason)
 }
