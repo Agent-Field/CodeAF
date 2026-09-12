@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
@@ -2866,6 +2868,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	if !a.welcome.open {
 		a.noteLandingKeys()
 	}
+	// THE LAUNCH GATE'S ONE SWEEP, on the same line family as the landing
+	// keys: any live session still held by an older build rev is named once
+	// (internal/session's [SweepStaleBuilds]), so the newer-build shock stops
+	// arriving as "same old rev" on every screen.
+	a.noteStaleBuilds()
 	a.restoreDraft()
 	// AND THE CORRECTIONS THE LAST LIFE NEVER LEARNED THE FATE OF COME BACK WITH
 	// THEM, under the names they were sent with, as rows their pages raise when
@@ -2914,6 +2921,25 @@ func newApp(ctx context.Context, opts Options) *app {
 // own dim. It is spelled in the hint slot's own grammar — chord, then what it
 // does — and the facts are named rather than recognized, because a note is prose
 // to this surface and only the line that wrote it knows otherwise.
+
+// noteStaleBuilds is the launch gate's one sweep: any live session holding an
+// older build rev is named once, so a stale engine stops reporting today as
+// though this build had reached the wire. The pids are said for a person's
+// `kill`, exactly as the file law asks them to be.
+//
+// FAIL-OPEN TO THE NO-SWEEPLine: an empty projects root answers nothing,
+// which is the whole of `no sessions live`.
+func (a *app) noteStaleBuilds() {
+	root := filepath.Join(a.profileDir, "v3", "projects")
+	rows := session.SweepStaleBuilds(root, buildinfo.Revision(), a.now())
+	if len(rows) == 0 {
+		return
+	}
+	pretty := rows[0]
+	a.noteFacts(fmt.Sprintf("%d session(s) on an older build · e.g. pid %d rev %.8s · they move to this build when closed", len(rows), pretty.PID, pretty.Build), "older build", pretty.SessionID)
+}
+
+
 func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c", helpAskKey) }
 
 // resumedWord opens the line a session says on the frame it opens over a
