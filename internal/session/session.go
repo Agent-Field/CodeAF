@@ -2158,6 +2158,12 @@ type Agent struct {
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
 	armMu sync.Mutex
+	// held is the held-range ledger (heldreads.go): which line ranges of which
+	// files this conversation's transcript already carries verbatim, so a read
+	// for exactly that is answered with a pointer and the disk is not opened.
+	// Like jobs it sits outside mu and holds its own lock — dispatch's claim
+	// takes the transcript's lock second, never first.
+	held heldLedger
 	// connect is the accounts seam, nil when the feature is absent (connect.go).
 	// It is written once at construction and read without a lock.
 	connect connectHub

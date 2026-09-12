@@ -148,7 +148,26 @@ const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","de
 // every request on the belt.
 
 func readDescription(caps Caps) string {
-	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page the rest with offset/limit.", caps.MaxLines, sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page with offset/limit. Each call is one round trip; a range already in the conversation answers as a pointer.", caps.MaxLines, sizeWord(caps.MaxBytes))
+}
+
+// ── what a read result's text can conclude about the file ────────────────────
+
+// ReadPagingFooter reports whether a read result's text carries either of the
+// two paging footers [readTool] appends. The converse is the ONLY door the
+// holder of those bytes learns the file ended inside what it got: the footers
+// are the tool's own sentences, built here and matched here, so the session's
+// ledger reads the format at its one seam instead of guessing at strings.
+func ReadPagingFooter(text string) bool {
+	return strings.Contains(text, "[Showing lines ") || strings.Contains(text, " more lines in file.")
+}
+
+// ReadContentless reports whether a successful read answer carried no file
+// bytes at all. The ONE such answer is the exceeds-limit line diagnostic
+// [readTool] emits instead of content, and the held-ranges ledger must never
+// record it as bytes the conversation holds.
+func ReadContentless(text string) bool {
+	return strings.HasPrefix(text, "[Line ") && strings.Contains(text, " exceeds ")
 }
 
 func bashDescription(caps Caps) string {
