@@ -1493,7 +1493,7 @@ func (p *picker) mark(filled bool) string {
 // laneAutoNote is what the auto row says it does. It is a sentence and not a
 // word because it is the row a person will land on first and the one they will
 // leave alone: what it is FOR has to be on it.
-const laneAutoNote = "weighs speed against price each answer"
+const laneAutoNote = "router routes; aforge takes over if answers turn bad"
 
 // laneUnmeasured is the one line a fold draws in the machines' place when
 // nothing behind the model has been measured. It is a sentence a person would

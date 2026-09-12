@@ -514,6 +514,11 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// on every call after the sentence has been said.
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
+	// AND THE TAKEOVER SAYS ITSELF THROUGH THE SAME DOOR (routefirst.go). One
+	// more parked sentence, one more nil check; the three share the two
+	// conditions above because they are the same promise about three different
+	// rows.
+	tellTakeover(ctx)
 	// AND THE MODEL IS WRITTEN DOWN BEFORE THE REQUEST LEAVES. This is the one
 	// door every send passes through, and since the adapter stopped changing the
 	// model (endpoints.go) every attempt below this line is on the model named
