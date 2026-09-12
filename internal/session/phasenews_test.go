@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -522,6 +523,9 @@ func TestNothingIsSaidAfterTheQuitEvenWhileStagesAreBeingArmed(t *testing.T) {
 			default:
 			}
 			agent.tellPhase(provider.PhaseRunning, "a tool", time.Now())
+			// A yield rather than a spin: the point is to be arming ACROSS the
+			// quit, not to starve the goroutine running it.
+			runtime.Gosched()
 		}
 	}()
 	// The stages are really being said before the quit starts, or this would be a

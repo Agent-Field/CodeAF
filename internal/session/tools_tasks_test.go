@@ -11,18 +11,14 @@ package session
 // took one would be testing the runner again.
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // A MODEL CAN LOOK AT WORK THAT IS STILL GOING. It names the task, and what
@@ -605,45 +601,13 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 	}
 }
 
-// modelHoldsTheTurn parks the model inside its first call and hands back the two
-// facts a test needs about that window: that it has begun, and the way to end
-// it.
-//
-// IT IS HOW A TEST SAYS "WHILE THE MODEL IS HOLDING THIS", and it is the
-// opposite of a tolerance. Handing a decision over WAKES A TURN on an idle
-// session (agent.go's [Agent.enqueueSteering]), and against a scripted model the
-// whole life of that turn is a few microseconds: it drains the steering queue
-// before its request and the floor hands every model-held landing back after it
-// (task_run.go's [Agent.handBackUnsettled]). A test that pressed and then read
-// either fact was reading whichever of those the turn had got to — measured on
-// the Spark, three runs in thirty under -race, as a steering queue that shrank
-// by two between two reads. Parking the model call freezes exactly the window
-// these tests are about: no queue is drained while a turn is inside its request,
-// and no second turn starts while one is running.
-func modelHoldsTheTurn() (held step, entered <-chan struct{}, release func()) {
-	arrived, let := make(chan struct{}), make(chan struct{})
-	var once, letGo sync.Once
-	held = func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-		once.Do(func() { close(arrived) })
-		select {
-		case <-let:
-		case <-ctx.Done():
-			// A cancelled turn is the session closing on top of the park, which
-			// every one of these tests does at cleanup.
-			return nil, ctx.Err()
-		}
-		return textResponse("noted"), nil
-	}
-	return held, arrived, func() { letGo.Do(func() { close(let) }) }
-}
-
 // AND A SECOND PRESS IS NOT A SECOND HAND-OVER. Pressing "let aforge decide"
 // twice sent the model two identical lines about one decision it was already
 // holding; the answer now is the plain fact.
 func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
-	held, entered, release := modelHoldsTheTurn()
-	t.Cleanup(release)
-	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{held}}, func(config *Config) {
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -659,7 +623,7 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	}
 	// The press has woken a turn; everything below is asserted while that turn is
 	// parked in its request and nothing can drain or hand anything back.
-	waitUntilClosed(t, "the model to be holding the turn", entered, 10*time.Second)
+	parked.wait(t)
 	said := len(steeringQueue(agent))
 	err := agent.HandUnverifiedToModel(id)
 	if err == nil {
@@ -696,9 +660,9 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 // put the chips back on the card within milliseconds of the press and then told
 // the model to decide a question the person was holding again.
 func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.T) {
-	held, entered, release := modelHoldsTheTurn()
-	t.Cleanup(release)
-	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{held}}, func(config *Config) {
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -709,7 +673,7 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 	// request has gone out, so nothing it does now will carry a line queued after
 	// this point.
 	events := mustSubmit(t, agent, "keep thinking")
-	waitUntilClosed(t, "the model to be holding the turn", entered, 10*time.Second)
+	parked.wait(t)
 
 	id := graph.reserve()
 	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
@@ -730,7 +694,7 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 	// AND THE FLOOR STILL FALLS. Once the woken turn has put the note in front of
 	// the model, the end of THAT turn hands the question back exactly as it
 	// always did — the window moved to the turn that asked, it did not go away.
-	release()
+	parked.let()
 	collect(t, events)
 	waitFor(t, "the turn that read the note to hand the decision back", func() bool {
 		node := agent.taskNode(id)
@@ -746,9 +710,9 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 // `aforge is deciding` until the person's NEXT turn, and home stopped counting
 // it as something needing them (taskstatus.go).
 func TestAnInterruptedTurnHandsBackThePressItNeverCarried(t *testing.T) {
-	held, entered, release := modelHoldsTheTurn()
-	t.Cleanup(release)
-	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{held}}, func(config *Config) {
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -756,7 +720,7 @@ func TestAnInterruptedTurnHandsBackThePressItNeverCarried(t *testing.T) {
 		node.graph.complete(node, TaskUnverified)
 	})
 	events := mustSubmit(t, agent, "keep thinking")
-	waitUntilClosed(t, "the model to be holding the turn", entered, 10*time.Second)
+	parked.wait(t)
 
 	id := graph.reserve()
 	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
@@ -771,6 +735,91 @@ func TestAnInterruptedTurnHandsBackThePressItNeverCarried(t *testing.T) {
 		node := agent.taskNode(id)
 		return node != nil && node.decidedBy() == TaskAskOwnerPerson && !node.wasHandedOver()
 	})
+}
+
+// AND A HARD STOP IS THE SAME LAW AGAIN. [Agent.Abandon] is what a second stop
+// press reaches when the first one did not land (internal/tui3's app.go): it
+// moves the session past the turn and the goroutine still running under it
+// cleans up nothing, so the ordinary ending's own hand-back cannot run. Until
+// this, the card stayed `aforge is deciding` on work nobody was deciding and the
+// next press answered `already handed to aforge`, which on v3 has no way back.
+func TestAnAbandonedTurnHandsBackThePressItNeverCarried(t *testing.T) {
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	events := mustSubmit(t, agent, "keep thinking")
+	parked.wait(t)
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+
+	if _, letGo := agent.Abandon(AbandonStopTimeout); !letGo {
+		t.Fatal("the turn was not there to abandon")
+	}
+	if node := agent.taskNode(id); node.decidedBy() != TaskAskOwnerPerson || node.wasHandedOver() {
+		t.Fatalf("the abandoned turn left the decision with the model (%q)", node.decidedBy())
+	}
+	// AND THE PRESS CAN BE MADE AGAIN, which is the whole of what being stuck
+	// cost: the refusal is about who is holding the question, not a door that
+	// closes for good.
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing it over after the stop: %v", err)
+	}
+	parked.let()
+	collect(t, events)
+}
+
+// AND A WORKER'S TURN ENDING IS NOT THE END OF THE ROAD. A task node's turns
+// belong to the runner that drives it — nothing in this agent wakes one — and
+// the runner re-enters it the moment one of its pieces reports, carrying
+// whatever its last drain took. Reading "does a turn follow me" off this agent's
+// own doors makes it structurally false for every worker turn, and the hand-back
+// then races the resume that carries the note: two hands on one question.
+func TestAWorkerTurnEndingDoesNotHandBackWhatItsRunnerWillCarry(t *testing.T) {
+	conversation, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(conversation, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "a piece of it", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	graph.mu.Lock()
+	graph.node(id).parent = 7
+	graph.mu.Unlock()
+
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	worker, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
+		config.InTask, config.tasker, config.taskID = true, graph, 7
+	})
+	events := mustSubmit(t, worker, "get on with it")
+	parked.wait(t)
+
+	// The question reaches this worker's queue while its one request is already
+	// in flight, so nothing in THIS turn will carry it: the end drain takes it
+	// into the transcript and the runner's next turn is what asks it.
+	graph.node(id).holdsDecision(TaskAskOwnerModel)
+	worker.enqueueHandOver(id, "the person has asked you to make this decision rather than making it themselves.")
+	parked.let()
+	collect(t, events)
+
+	if node := graph.node(id); node.decidedBy() != TaskAskOwnerModel {
+		t.Fatalf("the worker's turn ending handed back a question its runner is about to ask (%q)", node.decidedBy())
+	}
+	if !decisionNoteOwed(graph.node(id)) {
+		t.Fatal("the worker's turn ending spent a note no request had carried")
+	}
 }
 
 // decisionNoteOwed reads whether a node is still owed a question, under the lock
@@ -789,11 +838,11 @@ func decisionNoteOwed(node *TaskNode) bool {
 // refusal would put trouble on a card whose question was answered correctly.
 // Every other refusal on that key is still handed back.
 func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
-	// The model holds the turn for both presses, for [modelHoldsTheTurn]'s reason:
+	// The model holds the turn for both presses, for [heldTurn.step]'s reason:
 	// this door hands over through the same one and wakes the same turn.
-	held, entered, release := modelHoldsTheTurn()
-	t.Cleanup(release)
-	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{held}}, func(config *Config) {
+	parked := newHeldTurn()
+	t.Cleanup(parked.let)
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{parked.step("noted")}}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -808,7 +857,7 @@ func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the first press: %v", err)
 	}
-	waitUntilClosed(t, "the model to be holding the turn", entered, 10*time.Second)
+	parked.wait(t)
 	said := len(steeringQueue(agent))
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the second press was refused: %v", err)

@@ -40,11 +40,44 @@ import (
 type heldTurn struct {
 	entered chan struct{}
 	release chan struct{}
+	arrived sync.Once
+	let1    sync.Once
 }
 
 func newHeldTurn() *heldTurn {
 	return &heldTurn{entered: make(chan struct{}), release: make(chan struct{})}
 }
+
+// step is the parked call itself, and it is HOW A TEST SAYS "WHILE THE MODEL IS
+// HOLDING THIS" rather than racing it.
+//
+// Several doors in this package wake a turn when the session is idle — a press
+// that hands a decision over, a landing's own note (agent.go's
+// [Agent.enqueueSteering]) — and against a scripted model the whole life of that
+// turn is a few microseconds: it drains the steering queue before its request
+// and the floor gives every model-held landing back after it. A test that
+// pressed and then read either fact was reading whichever of those the turn had
+// got to. Parking the model call freezes exactly that window: no queue is
+// drained while a turn is inside its request, and no second turn starts while
+// one is running.
+func (h *heldTurn) step(answer string) step {
+	return func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		h.arrive()
+		select {
+		case <-h.release:
+		case <-ctx.Done():
+			// A cancelled turn is a stop or the session closing on top of the
+			// park, which several of these tests do on purpose.
+			return nil, ctx.Err()
+		}
+		return textResponse(answer), nil
+	}
+}
+
+// arrive and let are the two ends of that park, said once however many times a
+// scripted turn comes back through the step or a cleanup lets it go.
+func (h *heldTurn) arrive() { h.arrived.Do(func() { close(h.entered) }) }
+func (h *heldTurn) let()    { h.let1.Do(func() { close(h.release) }) }
 
 func (h *heldTurn) wait(t *testing.T) {
 	t.Helper()

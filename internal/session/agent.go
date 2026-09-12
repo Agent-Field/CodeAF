@@ -3017,9 +3017,16 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 	return tags
 }
 
-// writeIfOpen is THE ONE DOOR for anything a reading beside the work leaves
-// behind, and it answers one question: is there still a conversation to leave it
-// in.
+// writeIfOpen is THE ONE DOOR FOR A READING BESIDE THE WORK, and it answers one
+// question: is there still a conversation to leave this in.
+//
+// IT IS NOT EVERY `closed` CHECK IN THIS PACKAGE, and does not try to be. A
+// door a caller is waiting at answers for itself — an enqueue that must tell its
+// caller the note was dropped, a submit that must refuse in words — and reads
+// `closed` inline under the same lock as the rest of its work. What comes
+// through here is the other shape: a reading nobody is waiting for, which
+// started while the conversation was open and comes back with something to leave
+// behind.
 //
 // NOTHING WRITES INTO A CONVERSATION THAT HAS CLOSED. After [Agent.Close] the
 // queues are drained and nobody will read another word, the folder behind the
