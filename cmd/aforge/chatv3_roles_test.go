@@ -68,7 +68,7 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	}{
 		{roles.RoleTitle, config.DefaultLowModel},
 		{roles.RoleWorker, config.DefaultWorkerModel},
-		{roles.RoleCompaction, config.DefaultHighModel},
+		{roles.RoleAuditor, config.DefaultHighModel},
 		// The mastermind's value carries a level, and Resolve hands back the id
 		// alone — a colon in a model field is a request for a model nobody serves.
 		{roles.RolePlanner, "z-ai/glm-5.3"},

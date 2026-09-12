@@ -2,8 +2,8 @@
 // call the surface makes, and one rule for which model answers it.
 //
 // An auxiliary call is any call the person did not type — the title a session
-// names itself, the summary a compaction writes, the advisor's aside, a commit
-// message. Each is a ROLE. Roles group under TIERS, and a tier is what the
+// names itself, the judge that asks whether a turn should have been work, the
+// gate that reads one tool call for safety. Each is a ROLE. Roles group under TIERS, and a tier is what the
 // person actually configures: "low model = X, high model = Y", set once. New
 // auxiliary calls register a role, inherit their tier's model, and need no
 // settings of their own; the person never learns a new knob per feature.
@@ -37,8 +37,6 @@ type Role string
 const (
 	// RoleTitle names a session from its opening exchange.
 	RoleTitle Role = "title"
-	// RoleCompaction summarizes a transcript that outgrew its window.
-	RoleCompaction Role = "compaction"
 	// RoleConsolidate is the dreaming pass over what a session has remembered:
 	// one call over fifty short lines whose whole instruction is "merge the
 	// duplicates and drop what is superseded" (internal/session's
@@ -290,7 +288,6 @@ const (
 	// designer that writes badly puts a wrong answer on the menu with a name on
 	// it; a division reviewed badly hands four workers four briefs that nobody
 	// inside them can correct. The first two were on the high tier, beside the
-	// compaction summary and the
 	// auditor, which made a person choosing "the capable model" choose one
 	// figure for two very different bills: the careful calls are many and short,
 	// the mastermind's are few and worth thinking about. Separating them is what
@@ -317,10 +314,10 @@ func known(tier Tier) bool {
 // DefaultAssignment is the tier each built-in role starts on.
 //
 // Titles are disposable prose: a wrong one costs a glance and is rewritten by
-// the next session, so it goes to the cheap model. A compaction summary is the
-// session's memory — everything before the cut is gone and only the summary
-// survives it — so it goes to the capable one. The asymmetry is about what a
-// bad answer destroys, not about how hard the task reads.
+// the next session, so it goes to the cheap model. The planner's amendment is
+// the opposite — every node the rest of a run pays for is a node it cut — so it
+// goes to the most capable one there is. The asymmetry is about what a bad
+// answer destroys, not about how hard the task reads.
 //
 // THE THREE RUN ROLES ARE ASSIGNED HERE rather than from the files that make
 // their calls, which is the arrangement guardian, vision and the auditor keep.
@@ -330,14 +327,13 @@ func known(tier Tier) bool {
 // happens, many cheap ones that do it. Split across three files, that balance
 // is three unrelated lines nobody reads together.
 var DefaultAssignment = map[Role]Tier{
-	RoleTitle:      TierLow,
-	RoleCaption:    TierLow,
-	RoleCompaction: TierHigh,
-	RolePlanner:    TierMastermind,
-	RoleDesigner:   TierMastermind,
-	RoleWorker:     TierWorker,
-	RoleRouter:     TierLow,
-	RoleReflex:     TierReflex,
+	RoleTitle:    TierLow,
+	RoleCaption:  TierLow,
+	RolePlanner:  TierMastermind,
+	RoleDesigner: TierMastermind,
+	RoleWorker:   TierWorker,
+	RoleRouter:   TierLow,
+	RoleReflex:   TierReflex,
 }
 
 // ErrUnknownRole is returned by [Resolve] for a role that was never
@@ -383,15 +379,14 @@ func TierKey(tier Tier) string { return tierPrefix + string(tier) }
 // A package that does pass one to [Register] overwrites its entry here, which is
 // the same last-one-wins rule the tier assignment keeps.
 var roleDescriptions = map[Role]string{
-	RolePlanner:    "the plan that steers an adaptive run",
-	RoleDesigner:   "writes and reviews a harness page",
-	RoleAuditor:    "whether finished-looking work is actually finished",
-	RoleCompaction: "the summary that survives a compaction",
-	RoleWorker:     "one node of an adaptive run",
-	RoleTitle:      "the name a session gives itself",
-	RoleIntake:     "filling in a program's form from what was already said",
-	RoleGuardian:   "is this one tool call plainly safe",
-	RoleRouter:     "whether a turn should have been work",
+	RolePlanner:  "the plan that steers an adaptive run",
+	RoleDesigner: "writes and reviews a harness page",
+	RoleAuditor:  "whether finished-looking work is actually finished",
+	RoleWorker:   "one node of an adaptive run",
+	RoleTitle:    "the name a session gives itself",
+	RoleIntake:   "filling in a program's form from what was already said",
+	RoleGuardian: "is this one tool call plainly safe",
+	RoleRouter:   "whether a turn should have been work",
 	// The cascade's second half, and the two calls a division makes.
 	RoleRouterConfirm: "a second look before work starts itself",
 	RoleMarkReader:    "what is left of a long answer, and whether it has parts",
@@ -610,9 +605,12 @@ func Patience(tier Tier) time.Duration {
 		// already cost more than the answer is worth.
 		return 45 * time.Second
 	case TierHigh:
-		// Long enough for a compaction summary over a full window — the one
-		// call on this tier that legitimately reads a great deal before it
-		// writes anything.
+		// Long enough for the AUDITOR over a whole piece of finished-looking
+		// work — the one call on this tier that legitimately reads a great deal,
+		// and gathers evidence of its own, before it writes anything. (It was
+		// derived from the compaction summary until that role was deleted; the
+		// summariser had already stopped existing, and the figure it justified
+		// had outlived it.)
 		return 5 * time.Minute
 	case TierMastermind:
 		// A planner reading a whole run, or a designer writing a page everybody
