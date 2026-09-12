@@ -785,11 +785,15 @@ neither reading.
 judge's parts (`judgedDivision`), asked with `askedByJudge`. That asker carries
 `breadth`, which lets the parts past the floor gate the way an armed node's own
 division gets past it; the parts are then weighed by `weighDivision` and handed to the
-worker by `deliverBeside` as the same receipt #883 delivers. **Arming is not touched**:
-`spec.armed` stays frozen at admission, because the belt and the system prompt read it
-when the worker is built, and arming a running worker would make the prompt and the
-belt disagree. `solo` (typed, or the standing `single`) is the one thing that turns the
-judge off.
+worker by `deliverBeside` as the same receipt #883 delivers. **The yes arms the running
+worker as well** — amended by #958, and this wave shipped without it: arming stayed
+frozen at admission, so a task the judge called wide whose first parts the reviewer then
+refused ran to the end of its life with no way to divide at all. `armDivisionBeside`
+banks the answer, asks `armDivision` the same question admission asks, and on a yes
+writes the word, appends `divide_work` to the running belt through `armFamily` and
+re-renders the system prompt through `rerenderSystemLocked` — in that order, off that one
+write, so the belt and the prompt cannot be built from different answers. `solo` (typed,
+or the standing `single`) is the one thing that turns the judge off.
 
 **The brief** arrives as a steer. `shapeBeside` asks the shaper beside the worker and
 hands the written brief to the worker's room as a note through the mailbox

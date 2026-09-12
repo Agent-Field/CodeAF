@@ -404,11 +404,35 @@ func nowLine(now time.Time) string {
 //
 // It is called with a.mu held, from [Agent.startTurnLocked].
 func (a *Agent) refreshClockLocked(now time.Time) {
-	if !a.systemOwn || now.Sub(a.systemAt) < clockRefresh {
+	if now.Sub(a.systemAt) < clockRefresh {
+		return
+	}
+	a.rerenderSystemLocked(now)
+}
+
+// rerenderSystemLocked rebuilds this agent's instructions from its config AS IT
+// NOW STANDS, and puts them back at the head of the transcript.
+//
+// IT IS ONE FUNCTION BECAUSE THE CONFIG MOVES UNDER RUNNING AGENTS, in three
+// ways and no more: the clock going stale above, a conversation anchoring to a
+// project (tools_anchor_workspace.go), and work being armed to divide beside its
+// worker (task_divide.go's [Agent.armDivisionBeside]). Each of the three changes
+// something [renderSystemAt] reads, and a prompt assembled in two different ways
+// is a prompt that will one day disagree with itself — which is the same reason
+// the clock re-renders the whole footer rather than editing one line.
+//
+// A PROMPT THIS AGENT DID NOT WRITE IS LEFT ALONE. [Agent.systemOwn] is false
+// where a caller handed one in, and rendering ours over the top of it would be
+// this file deciding what another door's worker is told.
+//
+// The caller holds a.mu.
+func (a *Agent) rerenderSystemLocked(now time.Time) {
+	if !a.systemOwn {
 		return
 	}
 	a.system = renderSystemAt(a.config, now)
 	a.systemAt = now
+	a.refreshSystemLocked()
 }
 
 // readAgentsFile reads at most agentsFileLimit bytes of the workspace's

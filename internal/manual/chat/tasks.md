@@ -25,6 +25,13 @@ going — they appear on the roster as rows of their own, and the worker is told
 handed out. That is *When a task turns out to be too wide for one worker*, below. A no, a
 timeout or an unreadable answer changes nothing: one worker is what is already running.
 
+**A yes counts for the whole run, even where those first parts do not hold up.** The parts
+are read together by a second model before anybody is given one, and it can say they are
+really one job. That is a finding about those parts — drawn out of your sentence by a
+reader that had not opened anything — and not about the work: nothing is handed out, the
+one worker carries on, and it keeps `divide_work` for the rest of its run. So it can still
+hand out the real parts later, once it has seen the material and can say what they are.
+
 `/task solo <brief>` starts one worker and asks the judge nothing.
 
 **There is no `/task adaptive` any more.** `/task` cannot open an adaptive run, and the
@@ -3901,6 +3908,12 @@ name.
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
 report reaches it as that part lands, and the one thing it owes you at the end is a single
 deliverable made out of all of it. A task never finishes while a part of it is still running.
+
+**Not every task carries `divide_work`.** A worker has it where somebody read the work as
+wide: the sizing judge at the `/task` door, the model's own reading when it proposed the
+work, or a brief that already names enough separate items to be worth splitting. Work
+nobody read that way runs as one worker and stays one — the verb is absent rather than
+present and refusing, so nothing is said about it either way.
 
 ## What the parts start with — do the parts see the parent's unfinished work, when is the parent's work frozen for its parts, the wip commit before a split
 
