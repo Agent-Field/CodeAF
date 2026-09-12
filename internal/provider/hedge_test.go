@@ -223,6 +223,11 @@ func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 // states its ceiling; on expiry the hold opens so the scenario can end, and the
 // silence itself becomes the failure, said once and naming the last rung of the
 // waiting ladder a person was told about.
+//
+// WHICH RUNGS COUNT AS THE CONTROLLER SPEAKING IS [PhaseNews.ControllerActed]'s
+// ANSWER AND NOT THIS FILE'S. This helper kept that list by hand and had to
+// grow it twice inside one pull request; the way the copy failed when it fell
+// behind was the very silence bounded above, with no cause to name (#970).
 func theControllersWord(t *testing.T) <-chan struct{} {
 	t.Helper()
 	// ONE HOLD TO A SCENARIO. The bound is armed through the package's own
@@ -239,8 +244,7 @@ func theControllersWord(t *testing.T) <-chan struct{} {
 	// a phase posted in that window reads the variable from another goroutine.
 	previous := OnPhase(nil)
 	OnPhase(func(news PhaseNews) {
-		switch news.Phase {
-		case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
+		if news.ControllerActed() {
 			word.speak()
 		}
 		word.heard(news)
