@@ -312,7 +312,7 @@ class, then the conversation model when that worker class is blank.
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
-the summary a compaction keeps, the safety gate, the check on finished task work, the second
+the brief a task opens on, the safety gate, the check on finished task work, the second
 look before a task starts itself, the reading of a task's parts before they are handed out,
 the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
 looking at an image. Each of those is a
@@ -323,7 +323,7 @@ looking at an image. Each of those is a
 - **small work** — cheap · the small calls — names, digests, the safety gate.
 - **worker** — does the work · every task you hand off, the parts it divides into, every
   node of an adaptive run. Most of what a task costs is spent here.
-- **careful work** — careful · checks what must not be wrong — audits, compaction, vision.
+- **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
 **All five arrive with a model already in them**, and the five together are the `balanced`
@@ -413,7 +413,6 @@ under the class answering it, saying which model comes out. As shipped:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
@@ -431,9 +430,9 @@ this build rather than a table someone kept up to date. Stop on a row and the li
 list is that role's own description followed by which class it follows.
 
 **What the mastermind's roles have in common is that one answer decides what all the other
-calls do.** `planner` and `designer` used to sit on careful work beside the compaction
-summary, which made one model id answer two unrelated bills: the careful calls are many and
-short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
+calls do.** `planner` and `designer` used to sit on careful work beside the check on
+finished work, which made one model id answer two unrelated bills: the careful calls are
+many and short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
 a designer that writes badly puts a wrong answer on the menu with a name on it;
 `routerconfirm` stands between a cheap model's "that should have been work" and a task
 starting itself, and it is asked on nothing else, so it costs a call only where something was
