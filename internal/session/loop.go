@@ -1600,9 +1600,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 //
 // The reasoning level is stamped HERE, on the request path and nowhere else, so
 // it reaches every step and every retry of the turn and reaches nothing else:
-// the compaction summary and the title call are the session's own errands, not
-// the person's question, and a level they asked for their conversation to be
-// thought about would be an odd thing to spend on naming it.
+// the title call and the memory reflex are the session's own errands, not the
+// person's question, and a level they asked for their conversation to be thought
+// about would be an odd thing to spend on naming it.
 //
 // The stamp is [provider.WithConfiguredReasoningEffort] — the OPERATOR-explicit
 // setter — because this level is exactly that: a person turned a knob. The other

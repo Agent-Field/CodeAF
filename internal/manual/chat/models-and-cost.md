@@ -472,7 +472,7 @@ only thing that moves it is `/model`, the model row in `/settings`, or naming on
 
 The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
-the work inside every task, checks on finished work, compaction summaries, adaptive-run
+the work inside every task, checks on finished work, the brief a task is shaped into, adaptive-run
 planners and their nodes, harness pages, and looking at an image. Setting it writes all
 five class rows in one write, and **it is live from that moment**: the next call aforge
 makes on its own uses the new crew, with no relaunch and no new session. A task already
@@ -633,7 +633,7 @@ for calls you did not type:
 | 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
 | 3 | small work | digests, task names, the safety gate's yes-or-no — cheap |
 | 4 | worker | every task you hand off, its parts, every run node — most of the bill |
-| 5 | careful work | checks on finished work, compaction summaries, vision |
+| 5 | careful work | checks on finished work, the brief a task is shaped into, vision |
 | 6 | mastermind | plans adaptive runs and designs harnesses — thinks |
 
 `/crew` shows all six and sets seats two to six in one word — `frugal`, `balanced` or

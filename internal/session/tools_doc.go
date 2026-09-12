@@ -349,8 +349,8 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		// Accounted BEFORE the answer is judged, and folded into the SESSION
 		// total rather than the turn's ([Agent.addAuxiliaryUsage]): a rung that
 		// billed for an unusable answer still billed, and no turn of the
-		// person's ran on that endpoint (the same treatment the title, the
-		// compaction summary and a generated picture get).
+		// person's ran on that endpoint (the same treatment the title and a
+		// generated picture get).
 		if response != nil {
 			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 		}
