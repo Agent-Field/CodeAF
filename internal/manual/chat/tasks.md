@@ -619,6 +619,15 @@ nobody had seen yet, and the task itself answers it better by existing — it is
 roster, it says what it is doing, and `x` stops it like any other task. Nothing else is
 different about it: a row, a room, a report, and everything else on this page.
 
+**It never holds up your answer, and the line can arrive after the turn ends.**
+The reading outlives the turn that bought it: your answer is sealed, the total is
+drawn and you can type again while the two models are still thinking. A yes that
+lands after that gets the same dim line in the same place, and the task is on the
+rail beside it — nothing about it arrives differently for being a moment late.
+It used to be the other way round: the whole end of the turn waited on this
+reading, with the answer already finished on the screen and the status line
+reading `whether that should be work`. That wait is gone and so is that line.
+
 **What keeps it from becoming a nuisance:**
 
 - **At most one start every three turns.** Two can never arrive back to back, so a

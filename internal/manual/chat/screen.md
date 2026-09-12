@@ -3314,7 +3314,7 @@ same clock:
 | The word | What is happening |
 |---|---|
 | `running <tool>` | one call on the belt is executing |
-| `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work. The two are asked **at the same time** rather than one after the other, so this stage lasts as long as the slower of them and not both |
+| `checking` | a reader is deciding whether the answer finished your ask. It is the **only** reading left at the end of a turn that you wait for, because it decides whether the turn is over at all |
 | `checking whether this is safe to run` | the safety stand-in is being asked whether one command is plainly safe, before you are asked about it. This is **the one reading that really does come first** — it decides whether the command runs at all — and it answers in ten seconds or not at all |
 | `taking stock` | a second model is being shown an account of the work so far and asked what is left of what you asked for. **The work does not stop for it**: the next step goes out straight away and the reading happens alongside it. It happens **once**, and only on a reply that can no longer work where it is — its context full, the loop watch already spent, the wall run out, or a reply that said it had finished and then worked on for another ten rounds. The step it lands beside is stopped whatever the reading says; what the reading supplies is the list the work carries on with (*Tasks*, under *When a reply is taken out of your hands*) |
 | `tidying` | the conversation is being compacted |
@@ -3366,7 +3366,9 @@ answer, never in front of it:
 - the **naming** of the conversation, on your first message (*Why does my tab say
   Untitled*);
 - the **work-or-words judge**, asking whether what you typed was really a job for
-  a task (*Tasks*);
+  a task (*Tasks*). It outlives your turn: it is the one reading that keeps
+  thinking after the answer is sealed, because what it does with a yes — start a
+  task — lands outside the turn anyway;
 - the **step captions** over a running batch;
 - the **reading of a long answer**, asking what is left of your question;
 - the **keeping pass** after the turn, deciding whether the exchange held anything
@@ -3384,10 +3386,24 @@ there is nothing for it to run alongside and nothing it could be applied to
 afterwards. It gets ten seconds and the status line says
 `checking whether this is safe to run` for the whole of them.
 
-**The end of an answer is a different wait.** Once the model has stopped writing
-there is no work left to run beside, so the two readers that decide whether the
-answer finished your ask and whether it should have been work are asked **at the
-same time** and the line says `checking` until the slower of them is back.
+**The end of an answer used to be a different wait, and is not any more.** Once
+the model has stopped writing, two readers are still out: one asking whether the
+answer finished your ask, and one asking whether what you typed should have been
+work.
+
+Only the first can keep you. It decides whether the turn is **re-opened**, so
+there is no turn to end until it has answered, and the line says `checking` while
+it is out — normally a few seconds.
+
+The second cannot keep you and no longer does. What it does when it says yes is
+**start a task**, which is just as good a minute later as it is now: the turn
+ends, your answer is sealed, you can type again, and if the reading does come
+back with a yes you get the ordinary one-line note —
+`this looked like work, so task 4 started: …` — with the task on the rail beside
+it. Before this it held the whole end of the turn open while it thought, with
+your answer already finished on the screen and the line reading
+`whether that should be work`. **That line is gone**, because the wait it named
+is gone.
 
 
 ## A stage that lasts minutes keeps drawing — the phase went blank, the status line disappeared while it was still working, does a slow stage stop being shown
