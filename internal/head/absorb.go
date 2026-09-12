@@ -243,15 +243,6 @@ func (h *Head) deliveryAnswer(ctx context.Context, client Client, message store.
 	return ""
 }
 
-// deliveredText is the finished work as the person is owed it: the job's own
-// settled summary, or the row that announced it when the summary has gone.
-func deliveredText(node store.Node, message store.Message) string {
-	if result := strings.TrimSpace(node.Summary); result != "" {
-		return result
-	}
-	return strings.TrimSpace(message.Body)
-}
-
 // The relay that used to stand here — the head's frame, then the whole delivered
 // text copied underneath it — is gone, and the incident it was written for is
 // worth keeping in view. A job spent twelve leaves verifying twelve technical

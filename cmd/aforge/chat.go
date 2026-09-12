@@ -4154,20 +4154,6 @@ func (j *jobPlans) retain(prefix string, entry plannedJob) {
 	j.graphs[prefix] = entry
 }
 
-// putContract holds a one-leaf job's working method until its leaf claims it.
-func (j *jobPlans) putContract(nodeID, contract string) {
-	contract = strings.TrimSpace(contract)
-	if nodeID == "" || contract == "" {
-		return
-	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.contracts == nil {
-		j.contracts = map[string]string{}
-	}
-	j.contracts[nodeID] = contract
-}
-
 // takeContract hands the method to the leaf and forgets it. Once is enough:
 // the task struct is built one time and every retry, escalation and revision
 // pass is built from that struct, so a second reader would only be a leak.

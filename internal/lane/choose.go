@@ -282,16 +282,6 @@ var lowQuantAllowed struct {
 	allowed bool
 }
 
-// AllowLowQuantization says whether lanes serving four-bit weights may be
-// chosen. It is off by default: four-bit weights are a different model wearing
-// the same name, and a router that took them unasked would be trading the
-// answer's quality for a price nobody agreed to.
-func AllowLowQuantization(allow bool) {
-	lowQuantAllowed.mu.Lock()
-	defer lowQuantAllowed.mu.Unlock()
-	lowQuantAllowed.allowed = allow
-}
-
 func lowQuantizationAllowed() bool {
 	lowQuantAllowed.mu.RLock()
 	defer lowQuantAllowed.mu.RUnlock()

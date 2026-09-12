@@ -331,14 +331,6 @@ func formatCallLog(report callLogReport) string {
 	return report.Path + " · " + humanBytes(report.Size)
 }
 
-func detailSuffix(detail string) string {
-	detail = firstLine(strings.TrimSpace(detail))
-	if detail == "" {
-		return ""
-	}
-	return " (" + clip(detail, 120) + ")"
-}
-
 // residentLockFor is the lock guarding one store, asked of the package that
 // owns the naming. Doctor used to spell the file itself, which is how a report
 // keeps naming a lock nobody writes any more the day the key changes.

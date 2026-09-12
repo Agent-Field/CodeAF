@@ -161,47 +161,6 @@ var (
 	subharnessBy = map[string]Manifest{LinearSubharness: linearManifest}
 )
 
-// RegisterManifest is the door a saved program comes through, and what a
-// Go-native subharness under docs/SUBHARNESS-PRD.md registers with.
-//
-// IT ANSWERS THE VALIDATION IN PROSE rather than swallowing it, because the
-// callers are a bundle being loaded off disk and a model iterating against what
-// it got back — and neither is served by a silent refusal.
-func RegisterManifest(manifest Manifest) error {
-	name := strings.TrimSpace(manifest.Name)
-	if name == "" || name == LinearSubharness {
-		// The worker is already in the table and may not be re-registered. It
-		// is not an error to try: a build enumerating what it can run should
-		// not have to know which one of them is the one nobody may describe.
-		return nil
-	}
-	manifest.Name = name
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
-	remember(manifest)
-	return nil
-}
-
-// remember is the guarded half of registration, split out so the lock it takes
-// is released by a defer under the line that took it.
-func remember(manifest Manifest) {
-	subharnessMutex.Lock()
-	defer subharnessMutex.Unlock()
-	subharnessBy[manifest.Name] = manifest
-}
-
-// ManifestFor resolves a name to the whole manifest, and says whether anything
-// was there. It is the honest half of [SubharnessFor], which degrades an
-// unknown name to the worker: a caller reading a schema or a whitelist has to
-// know it got the thing it asked for.
-func ManifestFor(name string) (Manifest, bool) {
-	subharnessMutex.RLock()
-	defer subharnessMutex.RUnlock()
-	manifest, ok := subharnessBy[strings.TrimSpace(name)]
-	return manifest, ok
-}
-
 // SubharnessFor resolves a name to what will actually run it, which is the one
 // worker. An unknown or empty name is it rather than an error — the same
 // degradation Registry.For promises, said one layer up so a budget shape can be
@@ -234,13 +193,3 @@ func GeneralistSubharness(name string) bool { return plan.GeneralistSubharness(n
 // SubharnessChosen reports whether a node's worker column was ever written at
 // all. Only the empty string is nothing.
 func SubharnessChosen(name string) bool { return plan.SubharnessChosen(name) }
-
-// ForgetSubharnesses restores the process to the state it boots in: the one
-// worker and no saved programs. Tests own it — registration is process-global
-// by design, and a test that loads a bundle must be able to put the process
-// back for every test that asserts the baseline.
-func ForgetSubharnesses() {
-	subharnessMutex.Lock()
-	defer subharnessMutex.Unlock()
-	subharnessBy = map[string]Manifest{LinearSubharness: linearManifest}
-}

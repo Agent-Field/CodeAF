@@ -300,14 +300,6 @@ func buildEntries() []Entry {
 	return built
 }
 
-// All returns the whole catalog. Callers that only read (never mutate) may
-// keep the slice; nothing in this package appends to it after init.
-func All() []Entry { return entries }
-
-// Len is the catalog size, for callers that only want the count (a
-// capability-honesty line, a test) without walking the slice.
-func Len() int { return len(entries) }
-
 // ByID finds the one entry with this id. O(entries) worst case, no
 // allocation — a linear scan over static data, which is cheap enough at this
 // catalog's size that an index would cost more to keep correct than it saves.

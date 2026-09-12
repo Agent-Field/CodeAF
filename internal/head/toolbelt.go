@@ -1391,30 +1391,6 @@ func (run *beltRun) summary() string {
 	return strings.Join(run.did, " ")
 }
 
-// beltJob resolves one job id the model named. Only the user's own live work is
-// addressable: the resident's practice and its own internals are not on the
-// board, so they can never be named, and a hallucinated id fails here.
-func (h *Head) beltJob(id string) (store.Node, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return store.Node{}, fmt.Errorf("job must name an id from a board read")
-	}
-	node, found, err := h.store.Node(id)
-	if err != nil {
-		return store.Node{}, fmt.Errorf("that job could not be read: %w", err)
-	}
-	if !found || node.Folded || node.ID == store.RootID {
-		return store.Node{}, fmt.Errorf("there is no live work with id %q — read the board again", id)
-	}
-	if !beltAddressable(node) {
-		return store.Node{}, fmt.Errorf("%q is not the user's work and is not yours to change", id)
-	}
-	if !classOpen(node.Status) {
-		return store.Node{}, fmt.Errorf("%q has already finished", id)
-	}
-	return node, nil
-}
-
 // beltAddressable is the ownership membrane the whole belt sits behind. The
 // class path draws the same line with its sweeping flag; here it is absolute,
 // because a model composing tools has no user word to weigh against it.
