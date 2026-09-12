@@ -514,11 +514,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.harnessPanelKey(msg)
 	}
 
-	// And the permissions panel, which is those two panels' twin in every
-	// respect that matters here: opened by a command, nothing being typed under
-	// it, and esc leaving the conversation exactly as it was (permissions.go).
-	// Being modal is also what frees a bare d to mean "drop this line" — no
-	// draft is under this one for a letter to fall through into.
+	// And the permissions panel, which is those panels' twin (permissions.go):
+	// opened by a command, nothing typed under it, esc leaves exactly as it was.
+	// Modal also frees a bare d to mean "drop this line" — no draft is under it
+	// for the letter to fall into.
+	//
+	// The draft ring's page rides the same modal posture (draftpage.go): the
+	// bare d below it says "let this one go".
+	if a.draftPage.open && msg.String() != "ctrl+c" {
+		return a.draftPageKey(msg)
+	}
 	if a.permPanel.open && msg.String() != "ctrl+c" {
 		return a.permPanelKey(msg)
 	}

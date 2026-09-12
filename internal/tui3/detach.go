@@ -454,6 +454,7 @@ func (a *app) closeForSwitch() {
 	// about to start work in a conversation they are no longer in
 	// (subharness.go).
 	a.subPage.close()
+	a.draftPage.close()
 	a.roster.close()
 	a.shelf.close()
 	a.closeLists()

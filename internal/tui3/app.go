@@ -2323,6 +2323,10 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
+	// draftPage is the list /drafts opens over the ring of cleared-but-kept
+	// drafts (draftring.go): closed, it costs the frame nothing.
+	draftPage draftPanel
+
 	// orders is the standing place's state: the shelves of what stands here — this
 	// conversation's orders, this project's and the machine's (place_standing.go).
 	// It reads the engine's own seam, so a surface whose agent has no ambient
@@ -6908,6 +6912,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// on a card, so the only way anybody could name one at a command line is
 		// by reading it off this list first (permissions.go).
 		a.openPermissions()
+		return nil
+
+	case "drafts":
+		// The ring of cleared-but-kept drafts, as a list (draftpage.go). No
+		// argument form: the rows are a person's own words, and naming them is
+		// reading this list first.
+		a.openDrafts()
 		return nil
 
 	case "standing":
