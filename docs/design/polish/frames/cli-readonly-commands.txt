@@ -1,10 +1,10 @@
 === aforge doctor
-brain            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db · 496 KiB
+brain            /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db · 496 KiB
 resident         this terminal while open
 standing watch   not installed · last wake not yet
 spend            $0.00 today · rail $500.00
 standing         0 active charters · 0 pending questions
-model calls      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 16 KiB
+model calls      /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 16 KiB
 -- exit 0
 
 === aforge why self
@@ -18,7 +18,7 @@ nothing measured yet. Ratings appear once calls have been graded — run a plan 
 -- exit 0
 
 === aforge cache
-the cache is empty · /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/cache
+the cache is empty · /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/cache
 -- exit 0
 
 === aforge notebook
@@ -36,7 +36,7 @@ No competence evidence yet.
 -- exit 0
 
 === aforge logs --tail 5
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
 23:08:41  turn  ~deepseek/deepseek-v4-flash-latest  high  → 429  0.3s  deadline 10.0s  API error (429): Provider returned error (via OpenInference: deepseek/deepseek-v4-flash-0731 is temporarily rate-limited upstream.)
 23:08:42  turn  ~deepseek/deepseek-v4-flash-latest  high  try 2  deadline 10.0s  ⋯ in flight 1m55s
 23:08:49  turn  ~deepseek/deepseek-v4-flash-latest  high  try 5  deadline 10.0s  ⋯ in flight 1m48s
@@ -45,7 +45,7 @@ No competence evidence yet.
 -- exit 0
 
 === aforge logs --path
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
 -- exit 0
 
 === aforge version

@@ -23,7 +23,7 @@ exit=
 ### aforge services --help
 Usage of services:
   -db string
-    	path to the durable graph database (default "/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db")
+    	path to the durable graph database (default "/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db")
 error: flag: help requested
 exit=
 

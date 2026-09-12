@@ -31,7 +31,7 @@ ARM="${1:?usage: finish.sh <arm> <task> <seed> <settle-reason>}"
 TASK="${2:?}"; SEED="${3:?}"; REASON="${4:-finished out of band}"
 
 MAR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MARATHON_REPO="${MARATHON_REPO:-/tmp/claude-1001/-home-santosh/36adab24-74be-4ae9-946a-ab932634b759/scratchpad/marathon/repo}"
+MARATHON_REPO="${MARATHON_REPO:-$HOME/af-bench/marathon/repo}"
 TASKDIR="$MARATHON_REPO/tasks/$TASK"
 MAR_OUT="${MAR_OUT:-$HOME/af-bench/marathon}"
 CELL="$MAR_OUT/$ARM-$TASK-$SEED"

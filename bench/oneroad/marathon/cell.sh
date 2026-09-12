@@ -51,7 +51,7 @@ SEED="${SEED:-s1}"
 
 MAR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONEROAD="$(cd "$MAR/.." && pwd)"
-MARATHON_REPO="${MARATHON_REPO:-/tmp/claude-1001/-home-santosh/36adab24-74be-4ae9-946a-ab932634b759/scratchpad/marathon/repo}"
+MARATHON_REPO="${MARATHON_REPO:-$HOME/af-bench/marathon/repo}"
 TASKDIR="$MARATHON_REPO/tasks/$TASK"
 IMAGE="${IMAGE:-swe-marathon/$TASK:v1.1}"
 

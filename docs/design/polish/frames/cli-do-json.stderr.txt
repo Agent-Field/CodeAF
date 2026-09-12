@@ -10,4 +10,4 @@ models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the wo
   still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 2m1s ago — 2m25s
   still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 0s ago — 2m55s
   ✗ Print ok and stop            (linear) 2m55s
-record kept at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-1213699178
+record kept at /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-1213699178

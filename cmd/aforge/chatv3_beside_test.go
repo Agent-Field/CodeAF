@@ -241,7 +241,7 @@ func waitUntilBeside(t *testing.T, what string, done func() bool) {
 }
 
 // THE DEFECT, AS THE PERSON MET IT. Three Untitled tabs, a question typed into
-// the third, and `closed · santoshkumar — a connection holds one conversation
+// the third, and `closed · example — a connection holds one conversation
 // at a time` where the answer should have been.
 //
 // The door is asked for three conversations and every one of them has to be a
