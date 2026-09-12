@@ -64,6 +64,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
@@ -157,6 +158,104 @@ func readBeside[T any](ctx context.Context, ask func(context.Context) T, act fun
 		watch.landed()
 	}()
 	return side
+}
+
+// ── AND THE LIFETIME A READING GETS WHEN THE TURN IS NOT ONE ────────────────
+//
+// [readBeside] ties a reading to the WORK'S context, which is right for every
+// reading that has work to run beside: a turn that ends has nothing left for its
+// recall or its mark to be applied to, so cancelling them with it is the honest
+// thing.
+//
+// THE END-OF-TURN READINGS ARE THE EXCEPTION AND THEY ARE WHY THIS EXISTS. The
+// post-turn judge is asked whether the answer should have been WORK, and a yes
+// starts a task — an effect that is about the turn and lands entirely outside it.
+// Tied to the turn's context it could only be had by holding the turn open until
+// it answered, which is the wait this whole file exists to remove. Tied to the
+// SESSION it is what it always was: a reading nobody is waiting for, whose answer
+// is spent when it arrives ([sidecar.spendWhenItLands]).
+//
+// THE BARGAIN IS THE [jobRegistry]'S, IN MINIATURE: the work is tracked, so a
+// session that is closing can wait for it, and it is cancelled, so the wait is
+// short. A session that has closed starts nothing, and that test is taken under
+// this type's own lock so that "closed, therefore no new work" is one atomic
+// fact rather than two.
+//
+// TWO OLDER SPELLINGS OF THIS SHAPE ARE STILL IN THE PACKAGE and are named here
+// rather than left to be rediscovered: the namer's (session.go's `titleCtx`,
+// `titleStop`, `titleJobs`) and the memory pass's (`memoryCtx`, `memoryStop`,
+// `memoryJobs`). They are this type written out by hand, twice. They are not
+// folded in here because their shutdowns genuinely differ — the namer is
+// cancelled and then joined, the memory pass is waited for and THEN cancelled,
+// because a pass two seconds from keeping something a person said is worth two
+// seconds of a quit and a half-written name is not — and a fold that flattened
+// that difference would be this type deciding something neither of them asked it
+// to. Folding them wants that difference carried as a named property.
+type afterTurn struct {
+	mu      sync.Mutex
+	ctx     context.Context
+	stop    context.CancelFunc
+	closed  bool
+	running sync.WaitGroup
+}
+
+// newAfterTurn mints the lifetime. It is called once per session, at
+// construction, because work bought by the FIRST turn has to have somewhere to
+// be cancelled from.
+func newAfterTurn() *afterTurn {
+	ctx, stop := context.WithCancel(context.Background())
+	return &afterTurn{ctx: ctx, stop: stop}
+}
+
+// begin registers one piece of work and answers the context it runs under. It
+// answers false once the session is closing, which is the caller's whole
+// instruction: do not start.
+//
+// THE CALLER OWNS THE `done` IT IS HANDED and must call it on every way out, or
+// a closing session waits the whole grace for work that has already finished.
+func (t *afterTurn) begin() (context.Context, func(), bool) {
+	if t == nil {
+		return nil, func() {}, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return nil, func() {}, false
+	}
+	t.running.Add(1)
+	return t.ctx, t.running.Done, true
+}
+
+// settle ends the lifetime: nothing new starts, whatever is in flight is
+// cancelled, and the caller waits a bounded moment for it to unwind.
+//
+// IT CANCELS BEFORE IT WAITS, which is the namer's order rather than the memory
+// pass's, and for the namer's reason: nothing under here owes a store a write.
+// What the judge owes is a decision, and a decision nobody is going to read is
+// worth none of a person's quit.
+func (t *afterTurn) settle(grace time.Duration) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	already := t.closed
+	t.closed = true
+	t.mu.Unlock()
+	if already {
+		return
+	}
+	t.stop()
+	settled := make(chan struct{})
+	go func() {
+		t.running.Wait()
+		close(settled)
+	}()
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
 }
 
 // ── AND HOW A LANDING IS SEEN WITHOUT RACING IT ─────────────────────────────
@@ -305,6 +404,62 @@ func (s *sidecar[T]) takeAtTheEnd() (T, bool) {
 	s.claim()
 	s.stop()
 	return s.answer, true
+}
+
+// spendWhenItLands hands the answer to `spend` AT THE MOMENT IT LANDS, and the
+// caller does not wait for it.
+//
+// IT IS THE FOURTH VERB AND IT IS WHAT THE END OF A TURN ACTUALLY NEEDS.
+// [sidecar.takeAtTheEnd] above is a WAIT, and the only thing that ever made it
+// honest was that the caller had already been told the turn was over — which is
+// true of the caller and NOT of the person, who is sitting in front of a
+// finished answer while a judge decides something about it. A turn that waited
+// there kept the seal, the transcript, the next Submit and the follow-up drain
+// all parked behind a reading nobody asked for: measured at up to half a minute
+// after the last word was written, under a phase line reading "whether that
+// should be work".
+//
+// So the turn says WHEN the answer may be spent, and stops saying WHETHER it has
+// arrived. `spend` runs on the reading's own goroutine the instant it lands, and
+// on the CALLER'S goroutine when it has landed already — which is the ordinary
+// fast case and costs exactly what taking it did.
+//
+// THE CALLER MUST HAVE DECIDED THE ANSWER IS SPENDABLE, exactly as [sidecar.take]
+// requires: this is TAKE with the waiting removed, not a licence to act earlier.
+// Everything [sidecar.take] does for the one-answer rule is done here — the
+// sidecar is marked taken at once, so a second caller gets nothing, and the
+// interruption is claimed so a cut nobody needs is not raised.
+//
+// AND THE READING MUST OUTLIVE THE TURN FOR THIS TO MEAN ANYTHING. A sidecar
+// started on the turn's own context is cancelled the moment the turn returns, so
+// arming this on one would be a promise to spend an answer that is about to be
+// cancelled. A caller that uses this verb starts its reading on the session's own
+// lifetime instead ([Agent.afterTurn]).
+func (s *sidecar[T]) spendWhenItLands(spend func(T)) {
+	if s == nil || s.taken || spend == nil {
+		return
+	}
+	s.taken = true
+	select {
+	case <-s.settled:
+		// It is already here, so this is [sidecar.take] with the select already
+		// answered, and it runs on the caller's goroutine exactly as that did.
+		s.claim()
+		s.stop()
+		spend(s.answer)
+	default:
+		// AND THE HANDOFF IS ITS OWN GOROUTINE because the whole point is that
+		// this caller walks away. It is bounded by the reading's own windows and
+		// by the lifetime the reading was started on, the same two bounds
+		// [sidecar.takeAtTheEnd] was bounded by — the difference is only who is
+		// standing in front of them.
+		guard.Go("reading spent after the turn", func() {
+			<-s.settled
+			s.claim()
+			s.stop()
+			spend(s.answer)
+		})
+	}
 }
 
 // pending reports that a reading is in flight or landed and not yet spent. It is

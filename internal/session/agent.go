@@ -164,6 +164,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// session may name itself and the errand starts on the first message rather
 	// than at the end of a turn (title.go).
 	agent.titleCtx, agent.titleStop = context.WithCancel(context.Background())
+	// AND THE LIFETIME EVERY READING THAT OUTLIVES ITS TURN RUNS ON, minted for
+	// the same reason the two above are: a turn that ends is not the end of the
+	// question it asked (sidecar.go's [afterTurn]).
+	agent.after = newAfterTurn()
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
@@ -2274,6 +2278,11 @@ func (a *Agent) Close() error {
 	// that has already earned a name owes the journal one line, and cutting the
 	// process between the answer and the append would lose it (title.go).
 	a.waitForTitle()
+	// AND NO READING THAT OUTLIVED ITS TURN OUTLIVES THE SESSION. It is cancelled
+	// and then joined, on the namer's order and for the namer's reason: what is
+	// under here owes no store a write, so a decision nobody is going to read is
+	// worth none of a person's quit (sidecar.go's [afterTurn.settle]).
+	a.after.settle(closeGrace)
 	if done != nil {
 		timer := time.NewTimer(closeGrace)
 		select {
