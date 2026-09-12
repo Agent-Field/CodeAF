@@ -457,13 +457,13 @@ A shell command runs in the folder you are standing in and touches whatever it n
 exactly as it always did, and so do `read`, `write` and `edit`. All seven hands see the
 same disk you do.
 
-**The first change in a folder you chose asks you once.** Before anything is written under
-a folder you attached, you get the ordinary approval card naming that folder:
-`the first change in /Users/you/code/notes, which is the folder itself`. Answer it once
-and it runs; press the key that stops it asking and **every** later change in that folder
-runs without asking for the rest of the conversation — a `bash` command in it too, which is
-the point of the answer being about the folder rather than about one tool. A new
-conversation asks again.
+**A change in a folder you chose asks you, and the answer is about the folder.** Before
+anything is written under a folder you attached, you get the ordinary approval card, and
+its reason names that folder: `a change in /Users/you/code/notes — the folder itself, not
+a copy`. Answer it and the call runs; press the key that stops it asking and **every**
+later change in that folder runs without asking for the rest of the conversation — a
+`bash` command in it too, which is the point of the answer being about the folder rather
+than about one tool. A new conversation asks again.
 
 Two things that answer does **not** buy, both deliberate:
 
