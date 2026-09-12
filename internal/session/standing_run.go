@@ -1063,8 +1063,15 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// the phase clock share: a standing run has no one in front of it, so
 		// its wait is worth nothing and its stream is nobody's to watch
 		// (internal/lane's roles.go).
+		//
+		// And the purpose, because this road builds its own client and never
+		// passes the door: it is the call this build makes most often with
+		// nobody there, and until it said so it reached the log with no tag at
+		// all (clientdoor.go's [withPurpose]).
 		callCtx := provider.WithRole(
-			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			provider.WithRoutingIntent(
+				provider.WithoutStream(withPurpose(ctx, purposeSentinel)),
+				provider.IntentBackground),
 			lane.RoleStanding)
 		if rung := effort.Resolve(effort.Scope{
 			Task: restoredRung(judgment.Item.Does.Effort),

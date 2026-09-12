@@ -338,7 +338,12 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		if rung == provider.DocumentParseNative {
 			asked = question
 		}
-		response, err := client.ParseDocument(ctx, provider.DocumentRequest{
+		// THE PURPOSE, because this road builds its own client and never passes
+		// the door (clientdoor.go's [withPurpose]). A rung of the document reader
+		// is the model's own eyes on a file, billed to the session and asked for
+		// by a tool call rather than by a turn, and it reached the call log with
+		// no tag at all until it said so.
+		response, err := client.ParseDocument(withPurpose(ctx, purposeDocument), provider.DocumentRequest{
 			Model:     model,
 			Filename:  filename,
 			MediaType: entry.mediaType,

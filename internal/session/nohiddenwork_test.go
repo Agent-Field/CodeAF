@@ -350,6 +350,14 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 	theDoors := map[string]bool{"completeWithModel": true, "completeWithNamedModel": true}
 	const theWrapper = "modelRoutingCompleter"
 	purposes := 0
+	// AND THE OTHER HALF OF THE SAME LAW. Three roads in this package build a
+	// [provider.Client] of their own — the memory tidy-up, a standing item's
+	// sentinel, the document reader — because each needs a client shape the door
+	// does not make. They are allowed to; what they are not allowed to do is
+	// reach the wire anonymously, which all three did until #996. So a file that
+	// builds its own client owes a [withPurpose], and this pairs the two.
+	ownClients := map[string]bool{}
+	stamped := map[string]bool{}
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -370,8 +378,18 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 			if !ok {
 				return true
 			}
+			// withPurpose is a plain function and not a method, so it is read
+			// before the selector shape below can rule it out.
+			if named, isIdent := call.Fun.(*ast.Ident); isIdent && named.Name == "withPurpose" {
+				stamped[name] = true
+				return true
+			}
 			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
+				return true
+			}
+			if selector.Sel.Name == "NewClient" && name != "clientdoor.go" {
+				ownClients[name] = true
 				return true
 			}
 			if selector.Sel.Name == "WithCallTag" && name != "clientdoor.go" {
@@ -393,10 +411,23 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 			return true
 		})
 	}
+	for file := range ownClients {
+		if stamped[file] {
+			continue
+		}
+		t.Errorf("%s builds a provider client of its own and never says what its calls are "+
+			"FOR. A road that needs a client the door does not make is allowed one; a road "+
+			"that reaches the wire anonymously is not, because the call log then cannot say "+
+			"what this build spent its night on. Wrap the context in withPurpose "+
+			"(clientdoor.go)", file)
+	}
 	// AND THE LAW IS READING THE TREE IT THINKS IT IS. A walk that matched
 	// nothing would pass for ever, which is how a structural law rots.
 	if purposes < 8 {
 		t.Fatalf("only %d calls through the one door were found; the law is reading the wrong tree", purposes)
+	}
+	if len(ownClients) < 3 {
+		t.Fatalf("only %d files building their own client were found; the law is reading the wrong tree", len(ownClients))
 	}
 }
 

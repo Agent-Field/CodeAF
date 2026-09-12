@@ -1283,6 +1283,44 @@ a rule in two places is the cheapest thing in a budget to spend twice. `wide`,
 `model` is unchanged. Every em dash came out of every description string, small
 models tokenising them badly. The tool block went **23,369 → 21,808**.
 
+**Both caps were weighing a conversation nobody has, and are re-measured
+(2026-09-12, #996).** Every figure above is real and every one of them was
+measured against a fixture with no memory store, no accounts hub, no standing
+items and no saved programs — eighteen tools on the full arm, sixteen on the
+lean one. A machine somebody has finished setting up carries five more (`stand`,
+`search_conversations`, `remember` and the subharness pair), and the shipped
+prefix has been **over the cap it was enforcing** for as long as that shape has
+existed. A gate pointed at something nobody runs passes without having tested
+anything, which is #576's shape.
+
+| | weighed | cap | target owed |
+| --- | --- | --- | --- |
+| full (`fixedPrefixBudget`) | **53,141** | 53,141 | 48,000, **5,141** over |
+| lean (`leanPrefixBudget`) | **44,989** | 44,989 | 31,500, **13,489** over |
+
+Both caps are now the measurement with **no headroom**, because a number that
+has never been honestly weighed has not earned any, and both arms build the
+shipped shape by name rather than by index. `fixedPrefixTarget` and
+`leanPrefixTarget` hold the figures each has to come back to, and each test
+prints its shortfall on **every green run** — a ratchet passing is not the same
+fact as the number being what it should be.
+
+The bill is not spread thin: `stand` is **9,607 bytes**, more than a quarter of
+the full tool block and nearly twice the next heaviest, and on a
+sixteen-thousand-token window it is roughly one token in six of everything that
+person has before they have said anything. Trimming it is a change to what the
+model is told, so it is owed by whoever owns the standing belt and not by this
+gate.
+
+**And the prefix is not the same size on every machine, which is why both
+figures are the widest machine's.** `grep` says a longer sentence about itself
+where ripgrep is absent (**134 bytes**) and `load_capability` names the tool
+groups this build has, so `edit_video` — built only where ffmpeg is on PATH —
+costs another **27**. The first spelling of the full cap was 53,100, measured at
+53,025 on the laptop that wrote it, and it failed CI at 53,132. `widestBelt`
+weighs both varying sentences at their widest wherever it runs, so the cap no
+longer depends on who runs it.
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no
