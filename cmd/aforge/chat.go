@@ -3566,7 +3566,8 @@ func continuationMessage(pieces int) string {
 
 // The consent desk is internal/consent's now: the price before the purchase,
 // reachable from anywhere work is admitted rather than only from the window
-// holding the terminal (chat-rebuild Part 9.10). These names stay because they
+// holding the terminal (the August 2026 chat-rebuild audit, no longer in the
+// tree, Part 9.10). These names stay because they
 // are what this package's own prose calls them.
 type (
 	consentDesk  = consent.Desk
@@ -4151,20 +4152,6 @@ func (j *jobPlans) retain(prefix string, entry plannedJob) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.graphs[prefix] = entry
-}
-
-// putContract holds a one-leaf job's working method until its leaf claims it.
-func (j *jobPlans) putContract(nodeID, contract string) {
-	contract = strings.TrimSpace(contract)
-	if nodeID == "" || contract == "" {
-		return
-	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.contracts == nil {
-		j.contracts = map[string]string{}
-	}
-	j.contracts[nodeID] = contract
 }
 
 // takeContract hands the method to the leaf and forgets it. Once is enough:

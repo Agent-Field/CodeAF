@@ -73,10 +73,6 @@ func IndexSurface(surface Surface) SurfaceIndex {
 	return index
 }
 
-// Empty reports that no tree could be read, in which case every caller behaves
-// exactly as it did before this existed.
-func (i SurfaceIndex) Empty() bool { return len(i.full) == 0 && len(i.member) == 0 }
-
 // Holds confirms a name the request already spelled distinctively: the tree
 // declares it, either whole or as the member of something.
 //

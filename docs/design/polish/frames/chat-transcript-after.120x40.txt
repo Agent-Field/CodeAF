@@ -1,7 +1,7 @@
 ream=true&provider=openinference for the shape.                                           │ + /task
                                                                                           │
 The file lives at                                                                         │ standing
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de  │ ◦ the morning sweep
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de  │ ◦ the morning sweep
 mohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.                     │ ? CI on master
                                                                                           │ ◦ the public API
 ▏ func (a *app) burnSegment() string {                                                    │ + /standing

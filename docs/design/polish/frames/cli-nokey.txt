@@ -2,7 +2,7 @@
 models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
 aforge do needs a model to work with.
 export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
-record kept at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/nokeyhome/.aforge/runs/aforge-do-960343047
+record kept at /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/nokeyhome/.aforge/runs/aforge-do-960343047
 error: OPENROUTER_API_KEY (or OPENAI_API_KEY) is required
 -- exit 1
 
@@ -34,7 +34,7 @@ error: OPENROUTER_API_KEY (or OPENAI_API_KEY) is required
 -- exit 1
 
 === NO KEY: doctor
-brain            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/nokeyhome/.aforge/graph.db · not created
+brain            /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/nokeyhome/.aforge/graph.db · not created
 resident         this terminal while open
 standing watch   not installed · last wake not yet
 spend            $0.00 today · rail $500.00

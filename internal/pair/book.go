@@ -117,23 +117,6 @@ func (b *Book) Remember(one Known) error {
 	})
 }
 
-// Forget drops a machine from this device's book.
-func (b *Book) Forget(name string) (bool, error) {
-	found := false
-	err := b.update(func(known []Known) []Known {
-		kept := known[:0]
-		for _, existing := range known {
-			if existing.Name == name {
-				found = true
-				continue
-			}
-			kept = append(kept, existing)
-		}
-		return kept
-	})
-	return found, err
-}
-
 // Devices is every device this machine lets in, oldest first.
 func (b *Book) Devices() ([]Paired, error) {
 	var paired []Paired

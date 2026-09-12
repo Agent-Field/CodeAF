@@ -1,6 +1,6 @@
 # Quick tasks — DESIGN
 
-2026-09-10. Owner's ruling after `ideation/quick-task.md` (Parts 1–5): keep the big task
+2026-09-10. Owner's ruling after the earlier exploration (Parts 1–5): keep the big task
 exactly as it is; add ONE small notion, the quick task, with no barrier to enter or to
 leave; the checklist is the graph; a quick node shows on the rail and has a room like any
 task; `fork` comes off the belt. Unify later only if it earns it.
@@ -302,4 +302,3 @@ restored node had already answered its preflight, which was false for a node tha
 never started, and the brief section it feeds (`instructionOn`) came back empty for
 every restored node. The spec's copy is always restored; the preflight manifest only
 onto a record that never ran (`expectsOwed`).
-

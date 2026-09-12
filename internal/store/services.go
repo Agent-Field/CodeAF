@@ -239,10 +239,6 @@ func (s *Store) adoptService(id string, payload serviceAdoptedPayload) error {
 	})
 }
 
-func applyServiceAdopted(tx *sql.Tx, id string, seq int64) error {
-	return applyServiceAdoptedPayload(tx, id, serviceAdoptedPayload{}, seq)
-}
-
 func applyServiceAdoptedPayload(tx *sql.Tx, id string, payload serviceAdoptedPayload, seq int64) error {
 	var result sql.Result
 	var err error

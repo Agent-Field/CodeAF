@@ -1,9 +1,8 @@
 # Home rethink — decisions and lanes
 
-Branch `home/rethink-v0` (worktree `~/af-home`), cut from `origin/chat-v3-task`; merges back into
-`chat-v3-task` when the waves land. Read in this order: `SCREENS.txt` (the design), `RECON.md`
-(the home we are replacing), `DATA-AUDIT.md` (what data exists), `PAGES.md` (the pages and the
-router). This file is the plan those four feed.
+This is the retained decision record for the 2026-08-25 home rethink. Read
+`DATA-AUDIT.md` for the available data, `FIDELITY.md` for the owner's visual
+rulings, and `ARCHITECTURE.md` for the shipped structure.
 
 > **OVERRULED 2026-08-25 evening:** the owner ordered "follow the exact design". Decision 3's
 > softened palette and decision 5's two-word rope are superseded by `FIDELITY.md`, which is now
@@ -11,9 +10,9 @@ router). This file is the plan those four feed.
 
 ## Decisions (settled 2026-08-25; the owner may overrule any of them)
 
-1. **Target surface is `internal/tui3`.** `github.md`'s tui2 paths are only where the palette and
-   glyph slots live. Nothing in `internal/tui2` is touched.
-2. **Router: a `page` enum and one shared `placeFrame`** (PAGES.md §4). The existing structs stay as
+1. **Target surface is `internal/tui3`.** `internal/tui2` retains only the shared palette and
+   glyph slots used here. Nothing else in `internal/tui2` is touched.
+2. **Router: a `page` enum and one shared `placeFrame`.** The existing structs stay as
    page bodies behind adapters; `standDownFullscreen` becomes the private half of `showPage`.
    Go uses the word `page`; people read the word *place*. One key grammar for every place.
 3. **Palette: same meanings, tui3's own lightness.** The mockups' hexes fail the pinned laws

@@ -9,7 +9,7 @@
  make: *** [Makefile:41: vet] Error 1
  exit status 1
 ────────────────────────────────────────────────────────────
- /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-…
+ /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-…
  c copy path · m puts it in your message · ↑↓ scroll
 
 

@@ -13,7 +13,7 @@ import (
 // ── THE MEASURED WORLD, AS A FIXTURE ────────────────────────────────────────
 //
 // Every number below is from the sheet `deepseek/deepseek-v4-flash` published
-// on 2026-08-30 (ideation/provider-routing.md, "The world, measured"): the
+// on 2026-08-30 (docs/design/routing/provider-routing.md, "The world, measured"): the
 // first-token percentiles in milliseconds, the throughput percentiles in tokens
 // a second, the uptime, the output tariff in dollars per million tokens, the
 // quantization, whether the lane takes a tool call, and how much it will write.

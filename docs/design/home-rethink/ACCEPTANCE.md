@@ -332,7 +332,7 @@ what ran it · by the model, and the role it named
 > home — is unchanged.
 
 **Matches.** **Fixed in this lane:** home's chip drew the raw absolute path
-(`here /home/santosh/af-acc-home/aforge-v2`) while every other place drew the short form, so
+(`here <repo>`) while every other place drew the short form, so
 one fact was spelled two ways on two frames a `tab` apart. Home now shortens it the way
 `app.placePath` already did, and both read `here ~/aforge-v2` — the design's own spelling.
 

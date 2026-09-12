@@ -4066,14 +4066,6 @@ func writeDuration(profileDir, key, raw string) error {
 	return writeProfileValue(profileDir, key, formatDuration(value))
 }
 
-func writePercent(profileDir, key, raw string, low, high int) error {
-	value, err := parsePercent(raw, low, high)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, key, value)
-}
-
 func writeBool(profileDir, key, raw string) error {
 	value, err := parseBool(raw)
 	if err != nil {

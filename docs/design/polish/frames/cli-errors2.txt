@@ -1,6 +1,6 @@
 === aforge do x -w /nope/dir --timeout 20s
 models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
-record kept at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-225156877
+record kept at /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-225156877
 error: create chat workspace: mkdir /nope: permission denied
 -- exit 1
 
@@ -20,7 +20,7 @@ resident         this terminal while open
 standing watch   not installed · last wake not yet
 spend            $0.00 today · rail $500.00
 standing         0 active charters · 0 pending questions
-model calls      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 16 KiB
+model calls      /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 16 KiB
 -- exit 0
 
 === aforge notebook --db /nope/dir/graph.db

@@ -9,7 +9,7 @@ package lane
 // use, and never goes to the network to decide any of it.
 //
 // Those are the five sentences the design is sold on
-// (`ideation/provider-routing.md`, "Proof plan"), and they are written here as
+// (`docs/design/routing/provider-routing.md`, "Proof plan"), and they are written here as
 // five scenarios rather than as unit tests because every one of them is a
 // statement about the seams TOGETHER: a chooser that picks well over a ledger
 // that forgets is worth nothing, and so is a ledger that learns for a chooser
@@ -91,7 +91,7 @@ const e2ePromptTokens = 4000
 
 // ── THE WORLD, AS IT WAS MEASURED ───────────────────────────────────────────
 
-// e2eLane is one row of the table in `ideation/provider-routing.md`, "The
+// e2eLane is one row of the table in `docs/design/routing/provider-routing.md`, "The
 // world, measured (2026-08-30, one model, 30-minute window)". Six of the
 // seventeen lanes are here, chosen because between them they carry every shape
 // the design has to get right: the one that is fastest at the median and among
@@ -424,7 +424,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	// ── WHAT THE TWO ARMS ARE SCORED ON, AND WHY IT IS THE FIRST TOKEN ──────
 	//
 	// The design's ship gate for a talk turn is p90 TIME TO FIRST TOKEN
-	// (`ideation/provider-routing.md`, C3: "for the talk scenario the prize is
+	// (`docs/design/routing/provider-routing.md`, C3: "for the talk scenario the prize is
 	// the FIRST TOKEN only, because above the reading rate every lane is the
 	// same speed to a person, so talk gates on p90 TTFT"), and this scenario is
 	// a talk turn. The victim is scripted to go slow in exactly that way — four
@@ -516,7 +516,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 // and asserting that one snapshot of Order (at most three names, Thompson-
 // sampled) contains it is the same coin toss wearing different clothes. The
 // honest claim is that the belief came down and the recovered lane is on the
-// frontier. See ideation/provider-routing.md, Part III.
+// frontier. See docs/design/routing/provider-routing.md, Part III.
 func TestS3ItComesBack(t *testing.T) {
 	ledger := e2ePrimed(t)
 	e2eSkipWithoutAChooser(t, e2eMoment)
@@ -723,7 +723,7 @@ type e2eRouter struct {
 	//
 	// Both are kept because they answer different questions and only one of
 	// them is a ship gate. THE DESIGN GATES A TALK SCENARIO ON p90 TTFT
-	// (`ideation/provider-routing.md`, C3: "for the talk scenario the prize is
+	// (`docs/design/routing/provider-routing.md`, C3: "for the talk scenario the prize is
 	// the FIRST TOKEN only, because above the reading rate every lane is the
 	// same speed to a person"), and `firsts` is that quantity. `answers` is
 	// what the world's clock advances by and what a scenario asserting that an

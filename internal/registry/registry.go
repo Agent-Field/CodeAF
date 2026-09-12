@@ -1,5 +1,6 @@
-// Package registry is the one command registry named in the chat-rebuild
-// doc's 5.22 ("Discoverability: no typed-only actions"): every action lives
+// Package registry is the one command registry established by the August 2026
+// chat-rebuild audit's 5.22 (no longer in the tree; "Discoverability: no
+// typed-only actions"): every action lives
 // on a visible object, and typing is an accelerator, never the only door. A
 // single catalog of entries — id, verb phrase, description, scope predicate,
 // key binding, slash alias, journal mapping — is the source every render
@@ -298,14 +299,6 @@ func buildEntries() []Entry {
 	}
 	return built
 }
-
-// All returns the whole catalog. Callers that only read (never mutate) may
-// keep the slice; nothing in this package appends to it after init.
-func All() []Entry { return entries }
-
-// Len is the catalog size, for callers that only want the count (a
-// capability-honesty line, a test) without walking the slice.
-func Len() int { return len(entries) }
 
 // ByID finds the one entry with this id. O(entries) worst case, no
 // allocation — a linear scan over static data, which is cheap enough at this

@@ -1,7 +1,7 @@
 # CLI audit — everything aforge prints when it is not the full-screen TUI
 
 Audited against `bin/aforge` at `2d4c4dde8 built 2026-09-02 22:57`, driven with
-`HOME=<demo home>` from `/home/santosh/af-polish`. Every capture named below is under
+`HOME=<demo home>` from `<repo>`. Every capture named below is under
 `docs/design/polish/frames/`.
 
 **What is already right, and should not be touched:** `do --json` is a real contract —

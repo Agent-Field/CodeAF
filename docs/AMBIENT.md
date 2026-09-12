@@ -5,7 +5,7 @@
 (the card, the sentinel, the runner) and `internal/tui3` (home's band, the
 `ask here` exchange). Where this document and the code disagree, the code is
 right and this document is the bug. Companion to CHAT-V3.md (the session) and
-home-design.md (the place a window opens onto). STANDING.md and
+HOME-BRIDGE.md (the place a window opens onto). STANDING.md and
 ARCHITECTURE.md Decision 5 are the v1 ancestors; this document says what v3
 takes from them and what it leaves.*
 

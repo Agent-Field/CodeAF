@@ -9,7 +9,8 @@ import (
 
 // stop: withdraw something.
 //
-// It stays its own verb rather than folding into change (chat-simplify §4.2)
+// It stays its own verb rather than folding into change (the August 2026
+// chat-simplification audit, no longer in the tree, §4.2)
 // because withdrawal is definite and consent-gated: a destructive intent
 // deserves an unambiguous door, and a gate that fires on a sentence the judge
 // was still interpreting would be a gate on nothing.

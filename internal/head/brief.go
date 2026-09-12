@@ -8,7 +8,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// The re-entry brief, and the alive glance (chat-simplify J4, J5).
+// The re-entry brief, and the alive glance (the August 2026 chat-simplification
+// audit, no longer in the tree, J4 and J5).
 //
 // A thread is a working conversation: alive for days, commissioning tasks along
 // the way, taking their results back, and resumable after weeks. What made
@@ -382,50 +383,4 @@ func (h *Head) openThreads(current string, now time.Time) string {
 		return "nothing is hanging in any conversation."
 	}
 	return strings.Join(lines, "\n")
-}
-
-// ParkedThreads is the nudge's read, exported because the party that speaks a
-// presence line is the surface and the party that knows which threads are
-// parked is the store. It hands back the arcs, not a sentence: what a presence
-// line may say is the surface's law, and this is the fact underneath it.
-//
-// A thread qualifies once it has been sitting on its open thing longer than
-// threadParked. Anything shorter is a working conversation between two
-// exchanges, and naming that would be nagging.
-func (h *Head) ParkedThreads(now time.Time) []store.ThreadArc {
-	if h == nil || h.store == nil {
-		return nil
-	}
-	arcs, err := h.store.ParkedThreads(now, threadParked, store.OpenThreadsDefaultLimit)
-	if err != nil {
-		return nil
-	}
-	return arcs
-}
-
-// ParkedThreadLine is the one sentence a presence line may say about a parked
-// thread, or the empty string when there is nothing worth saying. It is here
-// rather than in the surface for the reason every other wording in this package
-// is: the head owns how the colleague talks, and a second component composing
-// its sentences is how two voices appear.
-func (h *Head) ParkedThreadLine(now time.Time) string {
-	arcs := h.ParkedThreads(now)
-	if len(arcs) == 0 {
-		return ""
-	}
-	arc := arcs[0]
-	name := strings.TrimSpace(arc.Title)
-	if name == "" {
-		name = "an older conversation"
-	} else {
-		name += " thread"
-	}
-	switch arc.Open {
-	case store.ThreadOpenQuestion:
-		return name + " is parked on my question"
-	case store.ThreadOpenDelivery:
-		return name + " has something you have not read"
-	default:
-		return name + " is parked on your last message"
-	}
 }

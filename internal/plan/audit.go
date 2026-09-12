@@ -72,13 +72,6 @@ type auditCheck struct {
 	Missing []int `json:"missing"`
 }
 
-// Audit runs the completability check over every stage after the first and adds
-// back the edges whose absence would strand a node. It returns how many it
-// recovered, which is the honest measure of how far bind undershot.
-func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, error) {
-	return auditWith(ctx, client, graph, graph.planBlock())
-}
-
 // auditWith is Audit against a catalog block the caller has already rendered.
 // The caller owns the guarantee that the block still describes this graph.
 func auditWith(ctx context.Context, client Completer, graph *Graph, shared string) (int, Usage, error) {

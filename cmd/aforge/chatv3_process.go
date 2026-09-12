@@ -303,14 +303,6 @@ func (p *v3Process) currentAccount() (string, modelsource.Set) {
 	return p.Settings.APIKey, p.Settings.Sources
 }
 
-// apiKey is the key the process holds now, which may be newer than the one any
-// launch was assembled with.
-func (p *v3Process) apiKey() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.Settings.APIKey
-}
-
 // takeForClose marks the process closed and hands over what is left to close,
 // or answers false when a previous call already took it. It is its own method
 // so the mutex is held from a defer while the closes, which are slow and

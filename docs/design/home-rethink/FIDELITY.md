@@ -1,8 +1,8 @@
 # Design fidelity — the owner's order: follow the exact design
 
 2026-08-25, the owner: "follow the exact design please." This overrules the softened choices in
-LANES.md decision 3 and 5. `SCREENS.txt` (and the .dc.html it was cut from) is the authority;
-where two screens disagree, turn 2 (2a–2f) and turn 3 (3a–3e) win over turn 1. Deviations survive
+LANES.md decisions 3 and 5. This retained fidelity record is the authority; where the recorded
+screens disagreed, turn 2 (2a–2f) and turn 3 (3a–3e) win over turn 1. Deviations survive
 only where the mechanism is physically impossible or the fact does not exist — each such case is
 listed at the bottom and stays flagged to the owner.
 
@@ -73,7 +73,8 @@ listed at the bottom and stays flagged to the owner.
 
 ## Type and ground — what the design specifies, and what a terminal can honour
 
-What the .dc.html actually sets: `font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace`,
+What the design file set, as recorded here before it was removed: `font-family: 'JetBrains Mono',
+ui-monospace, Menlo, monospace`,
 weights **400 and 700 only** (71 bold spans — bold is the tier-1 device), body 14px at 21px line
 height; the small 11.5px runs are the canvas's own captions, not screen content. Mockup grounds:
 `#12121A` page ground (18 blocks), `#262633` selection band (25), `#E6E6F0` three inverted chips,
