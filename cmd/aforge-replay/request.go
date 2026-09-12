@@ -208,11 +208,12 @@ func measuredFelt(end callrows.Row, role lane.Role) float64 {
 // delete when the role reaches the row (#928, which carries the acceptance).
 //
 // THE RULE IS THAT AN ERRAND'S TAG IS ALREADY ITS ROLE. Every side call of a
-// turn is tagged with its own role word — internal/session's auxiliary.go writes
-// `WithCallTag(errandCtx, string(role))` for exactly this reason, "so three
-// records of one call agree about what to call it" — which resolves `judge`,
-// `memory`, `design`, `auxiliary`, `recall`, `tool`, `probe` and `standing` with
-// no table at all. What is left is the handful of tags that name a CALL SITE
+// turn is tagged with its own role word — internal/session's auxiliary.go hands
+// `callPurpose(role)` to the one door, which spells it onto the request
+// (clientdoor.go), so three records of one call agree about what to call it —
+// which resolves `judge`, `memory`, `design`, `auxiliary`, `recall`, `tool`,
+// `probe` and `standing` with no table at all. What is left is the handful of
+// tags that name a CALL SITE
 // rather than a role, and each of those is one row of data below with the file
 // that sets it.
 //
@@ -248,10 +249,12 @@ func roleOf(tag string) lane.Role {
 //
 // IT IS COMPLETE, AND A LAW READS THE TREE TO KEEP IT SO
 // (`TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared`). Every tag this
-// build can write is reachable from source: the string literals handed to
-// `provider.WithCallTag`, the errand names `cmd/aforge`'s errandContext passes,
-// and — because internal/session/auxiliary.go writes `string(role)` — every
-// [roles.Role] constant there is. A word missing from here reads as a background
+// build can write is reachable from source: the [session.callPurpose] values
+// handed to internal/session's one door (clientdoor.go, which is the only file
+// in that package that spells `provider.WithCallTag`), the errand names
+// `cmd/aforge`'s errandContext passes, and — because auxiliary.go hands the door
+// `callPurpose(role)` — every [roles.Role] constant there is. A word missing
+// from here reads as a background
 // errand, which is quiet, plausible and moves every number in the table, so the
 // law fails the build rather than the report going quietly wrong.
 var callSiteRoles = map[string]lane.Role{
