@@ -304,3 +304,102 @@ class ReviewCounterexamples(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TwoBuildsOfOneHarnessTests(unittest.TestCase):
+    """The before/after case: two arms that are two builds of aforge.
+
+    The rule the report draws the front on is stated once, in pareto.py's
+    `dominates`, and it is deliberately strict: an arm wins only when it is no
+    worse on median cost, median wall AND success rate, and better on at least
+    one. Everything below is a way a looser rule would hand somebody a win they
+    did not earn."""
+
+    def blocks(self, dev, simplify, scenario="repo-hover-print"):
+        """Paired blocks, one attempt per arm each, from two lists of (wall, cost, ok)."""
+        cells = []
+        for index, ((wall_a, cost_a, ok_a), (wall_b, cost_b, ok_b)) in enumerate(
+                zip(dev, simplify), start=1):
+            for arm, wall, cost, ok in (("aforge@dev", wall_a, cost_a, ok_a),
+                                        ("aforge@simplify", wall_b, cost_b, ok_b)):
+                cells.append(base(scenario=scenario, arm=arm,
+                                  arm_version="aforge 1.0 rev " + arm.split("@")[1],
+                                  wall_s=wall, cost_usd=cost,
+                                  verdict="pass" if ok else "fail",
+                                  checks=[{"name": "answer",
+                                           "outcome": "pass" if ok else "fail"}],
+                                  experiment_id="ab", block_id=str(index),
+                                  condition_id="c1",
+                                  expected_arms=["aforge@dev", "aforge@simplify"]))
+        return cells
+
+    def test_an_arm_better_on_all_three_is_said_to_dominate(self):
+        report = run_pareto(self.blocks(
+            dev=[(300, 0.40, True), (320, 0.44, True), (310, 0.42, False)],
+            simplify=[(120, 0.10, True), (130, 0.12, True), (125, 0.11, True)]))
+        self.assertIn("aforge@simplify dominates aforge@dev", report)
+        self.assertIn("nondominated here: aforge@simplify", report)
+
+    def test_cheaper_but_slower_is_a_tie_and_says_so(self):
+        # THE TRADE-OFF IS NOT THE RIG'S TO MAKE. Cheaper-and-slower against
+        # dearer-and-faster is two different products, and a report that picked
+        # one would be publishing an opinion as a measurement.
+        report = run_pareto(self.blocks(
+            dev=[(100, 0.50, True), (100, 0.50, True), (100, 0.50, True)],
+            simplify=[(300, 0.10, True), (300, 0.10, True), (300, 0.10, True)]))
+        self.assertIn("a tie:", report)
+        self.assertNotIn("dominates", report)
+        self.assertIn("aforge@dev", report.split("nondominated here:")[1])
+        self.assertIn("aforge@simplify", report.split("nondominated here:")[1])
+
+    def test_identical_arms_are_a_tie_not_a_winner(self):
+        same = [(200, 0.20, True), (210, 0.21, True), (205, 0.22, True)]
+        report = run_pareto(self.blocks(dev=same, simplify=list(same)))
+        self.assertIn("a tie:", report)
+        self.assertNotIn("dominates", report)
+
+    def test_a_runaway_cell_is_named_where_the_claim_is_made(self):
+        # Three cells, one of which spilled into twenty-five minutes of work.
+        # Its median is ordinary and its mean is not, and a report that drew
+        # the front on the median and said nothing else would be telling a
+        # reader that the build with the expensive rare failure is the better
+        # one. The front IS still drawn on the median — and the disagreement
+        # is printed on the next line, where the claim is.
+        report = run_pareto(self.blocks(
+            dev=[(100, 0.10, True), (105, 0.11, True), (1500, 2.40, True)],
+            simplify=[(110, 0.12, True), (112, 0.13, True), (115, 0.14, True)]))
+        self.assertIn("aforge@dev dominates aforge@simplify", report)
+        self.assertIn("on the MEAN cost the order reverses", report)
+        self.assertIn("rare expensive attempt", report)
+        # And the runaway is visible as its own row, not smoothed into a figure.
+        self.assertIn("every attempt", report)
+        self.assertIn("1500", report)
+
+    def test_an_unmeasured_cost_wins_nothing_and_loses_nothing(self):
+        cells = self.blocks(
+            dev=[(300, 0.40, True), (320, 0.44, True), (310, 0.42, True)],
+            simplify=[(120, None, True), (130, None, True), (125, None, True)])
+        report = run_pareto(cells)
+        # The report stops before the front rather than drawing one without a
+        # cost: an arm whose bill was never read cannot be on a cost frontier.
+        self.assertIn("incomplete cost/time coverage", report)
+        self.assertNotIn("dominates", report)
+
+    def test_every_attempt_is_printed_so_an_outlier_is_visible(self):
+        report = run_pareto(self.blocks(
+            dev=[(300, 0.40, True), (320, 0.44, True), (310, 0.42, True)],
+            simplify=[(120, 0.10, True), (130, 0.12, True), (125, 0.11, True)]))
+        rows = [line for line in report.splitlines() if "aforge@dev" in line and "block" not in line]
+        # One per block, plus the table row and the dominance sentence.
+        self.assertGreaterEqual(len(rows), 3)
+
+    def test_the_measured_columns_reach_the_per_run_rows(self):
+        cells = self.blocks(
+            dev=[(300, 0.40, True)] * 3, simplify=[(120, 0.10, True)] * 3)
+        for cell in cells:
+            cell["measures"] = {"first_word_s": "4.2", "tool_calls": "62",
+                                "rounds": "40", "task_spawned": "yes",
+                                "files_changed": "3"}
+        report = run_pareto(cells)
+        for expected in ("4.2", "62", "40", "yes"):
+            self.assertIn(expected, report)

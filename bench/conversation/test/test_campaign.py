@@ -17,14 +17,24 @@ class CampaignTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        # ONE BINARY PER ARM, and their bytes differ. A campaign refuses a plan
+        # whose arms share a file, because two arms that are one binary report a
+        # dead heat — so a fixture that handed all three the same bytes would be
+        # testing a plan nobody is allowed to run.
         self.binary = self.root / "binary"
         self.binary.write_bytes(b"frozen executable")
+        self.peers = {}
+        for peer in ("pi", "omp"):
+            path = self.root / peer
+            path.write_bytes(b"frozen executable for " + peer.encode())
+            self.peers[peer] = str(path)
         self.args = argparse.Namespace(manifest=str(self.root / "plan.json"),
             arms="aforge,pi,omp", scenarios="data-tally,revision-midwork", repeats=3,
-            cap=30, seed=12, id="test", aforge=str(self.binary))
+            cap=30, seed=12, id="test", aforge=str(self.binary), bin=[],
+            model=campaign.MODEL, effort="low", max_cost=0, condition="")
 
     def plan(self):
-        with patch.object(campaign.shutil, "which", return_value=str(self.binary)):
+        with patch.object(campaign.shutil, "which", side_effect=lambda name: self.peers.get(name)):
             campaign.plan(self.args)
         return json.loads(Path(self.args.manifest).read_text())
 
@@ -58,6 +68,57 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual({row["scenario"] for row in manifest["schedule"]},
                          {"multi-defect-pipeline"})
         self.assertEqual(len(manifest["schedule"]), 9)
+
+    # ── two builds of one harness ──────────────────────────────────────────
+
+    def test_a_labelled_arm_without_a_binary_is_refused(self):
+        # A label with nothing bound to it would fall back to whatever binary
+        # the rig defaults to, which is the other arm's — and the grid would
+        # then measure one build twice and report that the branch changed
+        # nothing.
+        self.args.arms = "aforge@dev,aforge@simplify"
+        self.args.bin = [f"aforge@dev={self.binary}"]
+        with self.assertRaises(ValueError) as caught:
+            self.plan()
+        self.assertIn("aforge@simplify", str(caught.exception))
+
+    def test_two_arms_sharing_one_binary_are_refused(self):
+        # The easiest mistake on a two-build grid: one worktree not rebuilt, or
+        # an install that landed on the path the other arm reads.
+        self.args.arms = "aforge@dev,aforge@simplify"
+        self.args.bin = [f"aforge@dev={self.binary}", f"aforge@simplify={self.binary}"]
+        with self.assertRaises(ValueError) as caught:
+            self.plan()
+        self.assertIn("sha256", str(caught.exception))
+
+    def test_labelled_arms_are_planned_and_blocked_like_any_other(self):
+        other = self.root / "simplify-binary"
+        other.write_bytes(b"a different build entirely")
+        self.args.arms = "aforge@dev,aforge@simplify"
+        self.args.bin = [f"aforge@dev={self.binary}", f"aforge@simplify={other}"]
+        self.args.scenarios = "repo-hover-print,repo-wording-print"
+        manifest = self.plan()
+        self.assertEqual(manifest["expected_arms"], ["aforge@dev", "aforge@simplify"])
+        self.assertNotEqual(manifest["binaries"]["aforge@dev"]["sha256"],
+                            manifest["binaries"]["aforge@simplify"]["sha256"])
+        # Every block still holds exactly one attempt per arm per scenario, so
+        # neither build is ever measured against the other's block.
+        for block in ("1", "2", "3"):
+            for scenario in ("repo-hover-print", "repo-wording-print"):
+                self.assertCountEqual(
+                    [r["arm"] for r in manifest["schedule"]
+                     if r["block_id"] == block and r["scenario"] == scenario],
+                    ["aforge@dev", "aforge@simplify"])
+
+    def test_the_condition_carries_the_model_and_the_effort(self):
+        # pareto.py refuses to compare blocks whose condition_id differs, so the
+        # condition has to name everything that would make two halves of a grid
+        # two experiments.
+        self.args.model = "moonshotai/kimi-k3"
+        manifest = self.plan()
+        self.assertIn("moonshotai/kimi-k3", manifest["condition_id"])
+        self.assertIn("effort=low", manifest["condition_id"])
+        self.assertEqual(manifest["model_pin"], "moonshotai/kimi-k3")
 
     def test_a_scenario_this_rig_does_not_define_is_refused(self):
         self.args.scenarios = "data-tally,invented-slice"

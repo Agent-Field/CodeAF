@@ -158,6 +158,15 @@ def arm_stats(cells):
         "cost_complete": cost_complete,
         "total_cost": sum(costs_known) if cost_complete else None,
         "mean_cost": (sum(costs_known) / len(costs_known)) if cost_complete else None,
+        # The MEDIAN is what the front below is drawn on. With three or five
+        # repetitions one cell that ran away — a turn that spilled into a task,
+        # a retry ladder that fired — moves a mean by more than the difference
+        # anybody is looking for, and a front drawn on means would then be a
+        # report about that one cell. The mean stays printed beside it, because
+        # the gap between the two is itself the finding when a build's failure
+        # mode is rare and expensive.
+        "p50_cost": percentile(costs_known, 0.50) if cost_complete else None,
+        "success_rate": (n_success / len(cells)) if cells else None,
         # Cost per success divides the cost of ALL attempts by the successes,
         # so an arm that fails expensively is not let off by its wins. With no
         # successes it is undefined, not zero — division by zero is not a
@@ -176,13 +185,14 @@ def fmt_cost(value):
 
 
 def print_stats_row(arm, stats):
-    print("     %-10s %6d %6d  %11s %6d %6d %9s %9s %9s %11s %10s %10s"
+    print("     %-16s %6d %6d  %11s %6d %6d %9s %9s %9s %11s %10s %10s %10s"
           % (arm, stats["n_attempted"], stats["n_success"],
              "%d/%d" % (stats["n_success"], stats["n_attempted"]),
              stats["missing_cost"], stats["missing_wall"],
              fmt_wall(stats["mean_wall"]), fmt_wall(stats["p50_wall"]),
              fmt_wall(stats["p95_wall"]),
              fmt_cost(stats["total_cost"]), fmt_cost(stats["mean_cost"]),
+             fmt_cost(stats["p50_cost"]),
              fmt_cost(stats["cost_per_success"])))
     if stats["n_attempted"] < TINY_N:
         print("       (tiny n: %d attempt(s); every figure above is exploratory)"
@@ -287,9 +297,9 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
 
     blocks = [kept[block_id] for block_id in sorted(kept, key=str)]
     print("   per arm, over the paired blocks only:")
-    print("     %-10s %6s %6s  %11s %6s %6s %9s %9s %9s %11s %10s %10s"
+    print("     %-16s %6s %6s  %11s %6s %6s %9s %9s %9s %11s %10s %10s %10s"
           % ("arm", "tried", "succ", "success", "miss$$", "miss_s",
-             "mean s", "p50 s", "p95 s", "total $", "mean $", "$/succ"))
+             "mean s", "p50 s", "p95 s", "total $", "mean $", "p50 $", "$/succ"))
     stats_by_arm = {}
     for arm in expected_arms:
         cells_for_arm = [block[arm] for block in blocks]
@@ -351,10 +361,9 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
     if any(not s["cost_complete"] or s["missing_wall"] for s in stats_by_arm.values()):
         print("   incomplete cost/time coverage: observed nondominance is withheld")
         return
-    observed = observed_nondominated(expected_arms, stats_by_arm)
-    print("   observed, not dominated on these blocks: %s"
-          % (", ".join(map(str, sorted(observed, key=str))) or "nothing"))
-    print("   exploratory only: this lists what no other arm beat on these blocks;"
+    print_front(expected_arms, stats_by_arm)
+    print_runs(expected_arms, blocks)
+    print("   exploratory only: this says what no other arm beat on these blocks;"
           " it is not a frontier, not a ranking, and not a claim about any run"
           " or condition not printed above.")
 
@@ -389,28 +398,130 @@ def bootstrap_ci(diffs):
     return means[int(0.025 * BOOT_N)], means[int(0.975 * BOOT_N) - 1]
 
 
-def observed_nondominated(arms, stats_by_arm):
-    """Arms no other arm beats on all measured quantities at once, computed
-    from paired-block means. It is labelled exploratory everywhere it is
-    printed because point means carry no confidence; the bootstrap section
-    above is the only place this report speaks with one."""
-    def dominates(a, b):
-        sa, sb = stats_by_arm[a], stats_by_arm[b]
-        if sa["missing_wall"] or sb["missing_wall"] or sa["mean_wall"] is None or sb["mean_wall"] is None:
-            return False
-        if not sa["cost_complete"] or not sb["cost_complete"]:
-            return False
-        at_least = (sa["n_success"] / sa["n_attempted"] >= sb["n_success"] / sb["n_attempted"]
-                    and sa["mean_wall"] <= sb["mean_wall"])
-        strictly = (sa["n_success"] / sa["n_attempted"] > sb["n_success"] / sb["n_attempted"]
-                    or sa["mean_wall"] < sb["mean_wall"])
-        if sa["cost_complete"] and sb["cost_complete"]:
-            at_least = at_least and sa["mean_cost"] <= sb["mean_cost"]
-            strictly = strictly or sa["mean_cost"] < sb["mean_cost"]
-        return at_least and strictly
+def dominates(stats_by_arm, a, b):
+    """Does arm `a` beat arm `b` outright on these blocks?
 
+    THE RULE, and it is the whole comparison: a dominates b when it is no worse
+    on every one of the three — median cost, median wall, success rate — and
+    better on at least one. Nothing is traded off against anything: an arm that
+    is cheaper and slower is NOT declared a winner here, because which of those
+    two matters is a decision about a product and not a fact about a grid.
+
+    Medians rather than means, for the reason `arm_stats` states: at these
+    sample sizes one runaway cell moves a mean further than the difference
+    anybody is looking for.
+
+    An arm with a missing cost or a missing wall dominates nobody and is
+    dominated by nobody: a measurement that was not made cannot lose, and
+    cannot be used to win either."""
+    sa, sb = stats_by_arm[a], stats_by_arm[b]
+    for stats in (sa, sb):
+        if stats["missing_wall"] or stats["p50_wall"] is None:
+            return False
+        if not stats["cost_complete"] or stats["p50_cost"] is None:
+            return False
+    at_least = (sa["success_rate"] >= sb["success_rate"]
+                and sa["p50_wall"] <= sb["p50_wall"]
+                and sa["p50_cost"] <= sb["p50_cost"])
+    strictly = (sa["success_rate"] > sb["success_rate"]
+                or sa["p50_wall"] < sb["p50_wall"]
+                or sa["p50_cost"] < sb["p50_cost"])
+    return at_least and strictly
+
+
+def observed_nondominated(arms, stats_by_arm):
+    """Arms no other arm beats on all three at once. It is labelled exploratory
+    everywhere it is printed because point statistics carry no confidence; the
+    bootstrap section above is the only place this report speaks with one."""
     return [arm for arm in arms
-            if not any(dominates(other, arm) for other in arms if other != arm)]
+            if not any(dominates(stats_by_arm, other, arm) for other in arms if other != arm)]
+
+
+def print_front(arms, stats_by_arm):
+    """Say, in a sentence, what the front is — including when it is a tie.
+
+    A TIE IS A RESULT AND IT IS SAID OUT LOUD. The question a before/after grid
+    is asked is whether the branch is on the front, and "neither arm beats the
+    other" answers it. A report that printed only a list of nondominated arms
+    would answer it with a list of two and leave the reader to work out whether
+    that means both are good or neither was separable."""
+    print("   the front, on median cost, median wall and success rate:")
+    beaten = {}
+    for a in arms:
+        for b in arms:
+            if a != b and dominates(stats_by_arm, a, b):
+                beaten.setdefault(a, []).append(b)
+    if beaten:
+        for winner in sorted(beaten, key=str):
+            for loser in sorted(beaten[winner], key=str):
+                wa, wb = stats_by_arm[winner], stats_by_arm[loser]
+                print("     %s dominates %s — cost %s vs %s, wall %s vs %s, success %s vs %s"
+                      % (winner, loser,
+                         fmt_cost(wa["p50_cost"]), fmt_cost(wb["p50_cost"]),
+                         fmt_wall(wa["p50_wall"]), fmt_wall(wb["p50_wall"]),
+                         fmt_rate(wa["success_rate"]), fmt_rate(wb["success_rate"])))
+                print_mean_disagreement(winner, loser, wa, wb)
+    else:
+        measurable = all(stats_by_arm[arm]["cost_complete"]
+                         and not stats_by_arm[arm]["missing_wall"] for arm in arms)
+        if not measurable:
+            print("     nothing is compared: at least one arm has a cost or a wall that was"
+                  " not measured, and an unmeasured arm can neither win nor lose")
+        else:
+            print("     a tie: no arm is no-worse-on-all-three-and-better-on-one than another.")
+            print("     Each is better on something and worse on something else, or the"
+                  " figures are equal; the table above says which.")
+    print("   nondominated here: %s"
+          % (", ".join(map(str, sorted(observed_nondominated(arms, stats_by_arm), key=str))) or "nothing"))
+
+
+def print_mean_disagreement(winner, loser, wa, wb):
+    """Say when the median's winner is the mean's loser.
+
+    A MEDIAN CAN HIDE A MECHANISM. Three cells of which one spilled into a task
+    and ran for twenty-five minutes has a perfectly ordinary median and a mean
+    several times its rival's — and the expensive rare failure is exactly the
+    thing a before/after grid exists to find. The front is still drawn on the
+    median, for the reason `arm_stats` gives, but a disagreement between the
+    two is printed at the moment the claim is made rather than left for a
+    reader to notice in a column."""
+    for name, key, show in (("cost", "mean_cost", fmt_cost), ("wall", "mean_wall", fmt_wall)):
+        a, b = wa[key], wb[key]
+        if a is None or b is None or b <= 0:
+            continue
+        if a > b:
+            print("       but on the MEAN %s the order reverses: %s %s against %s %s"
+                  " (%.1f×) — a rare expensive attempt, not a slower one."
+                  " Read the rows below before quoting the median."
+                  % (name, winner, show(a), loser, show(b), a / b))
+
+
+def fmt_rate(value):
+    return "%.0f%%" % (100 * value) if value is not None else "—"
+
+
+def print_runs(arms, blocks):
+    """Every attempt, one line each.
+
+    A median hides the run that ran away, and the run that ran away is usually
+    the whole story: on the night this battery was built for, ONE turn out of a
+    day's work took seventeen minutes and spilled into a task, and no summary
+    statistic over three repetitions would have shown a reader that it was one
+    turn rather than all of them. So the rows are printed."""
+    print("   every attempt, so one outlier cannot hide inside a median:")
+    print("     %-6s %-16s %9s %11s %8s %8s %7s %7s %6s %s"
+          % ("block", "arm", "wall s", "cost $", "1st word", "tools", "rounds", "task?", "ok", "files"))
+    for index, block in enumerate(blocks, start=1):
+        for arm in arms:
+            cell = block[arm]
+            got = cell.get("measures") or {}
+            print("     %-6s %-16s %9s %11s %8s %8s %7s %7s %6s %s"
+                  % (cell.get("block_id") or index, arm,
+                     fmt_wall(wall_of(cell)), fmt_cost(cost_of(cell)),
+                     got.get("first_word_s") or "—", got.get("tool_calls") or "—",
+                     got.get("rounds") or "—", got.get("task_spawned") or "—",
+                     "yes" if success(cell) else "no",
+                     got.get("files_changed") or "—"))
 
 
 def print_legacy(stratum, by_arm, excluded):
@@ -423,9 +534,9 @@ def print_legacy(stratum, by_arm, excluded):
     print("   compares arms against each other: without pairing there is no honest")
     print("   way to separate an arm's contribution from the run's, so no frontier,")
     print("   dominance, or superiority claim is made or implied from these rows.")
-    print("     %-10s %6s %6s  %11s %6s %6s %9s %9s %9s %11s %10s %10s"
+    print("     %-16s %6s %6s  %11s %6s %6s %9s %9s %9s %11s %10s %10s %10s"
           % ("arm", "tried", "succ", "success", "miss$$", "miss_s",
-             "mean s", "p50 s", "p95 s", "total $", "mean $", "$/succ"))
+             "mean s", "p50 s", "p95 s", "total $", "mean $", "p50 $", "$/succ"))
     for arm in sorted(by_arm, key=str):
         print_stats_row(arm, arm_stats(by_arm[arm]))
 

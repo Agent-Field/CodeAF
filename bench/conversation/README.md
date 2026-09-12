@@ -236,6 +236,47 @@ until prompted passes it. Whether a result arrives on its own is a different
 question, tested live against the product's own task surface, and it is not in
 this suite.
 
+### The before/after asks, which are also not in the battery
+
+Four more scenarios exist for one purpose: comparing two builds of **this**
+binary against each other on a request that really happened.
+
+| scenario | door | the ask |
+|---|---|---|
+| `repo-hover-print` | print | the request of 2026-09-11, verbatim: a hover effect on the tasks place's two sortable column labels |
+| `repo-hover-interactive` | interactive | the same ask, plus one steer typed thirty seconds later |
+| `repo-wording-print` | print | a one-word change to a person-facing line, and the test that quotes it |
+| `repo-wording-interactive` | interactive | the same, plus the steer |
+
+They are not part of the calibration battery for that battery's reason: a
+scenario that joined it by existing would change what every earlier campaign
+measured. They are planned by name.
+
+The fixture (`fixtures/repoclone.sh`) is a **fresh one-commit clone of this
+repository at a pinned sha**, and four things about it are load-bearing rather
+than incidental:
+
+- **the clone is fresh** — no warm memory of the tree, no earlier conversation
+  about it, nothing in the state root. A second run against a workspace the
+  first one explored measures the cache.
+- **the commit is pinned** — a literal in the fixture, not `origin/dev`. Both
+  arms edit character-for-character the same source, and moving the pin starts
+  a new experiment on purpose.
+- **the harness is launched from a directory that is not the repository**, the
+  way the owner launched it — from home. Finding the folder is part of the turn.
+- **the message names the project by nickname** and nothing else points at it.
+
+The judge reads the **clone**, never the reply: what `git status` says changed,
+whether it still compiles, whether it still vets, what the one named test the
+request implies says, and whether the thing asked for is in the source. A
+harness that describes work it did not do fails these, which is the whole point
+of judging from the workspace.
+
+The steer on the interactive door is on the **clock** (`after:30`), not on a
+marker. A person does not wait for a spinner to reach a state before changing
+their mind, and a marker-shaped wait would hand the two arms different
+treatments: a build that reaches the marker sooner gets steered sooner.
+
 ### `multi-defect-pipeline`, which is not in the battery
 
 One more coding scenario exists and is **not** run by default. Nothing above
@@ -594,6 +635,66 @@ The report now uses **binary outcome success**, separates exact scenario/door/mo
 Cancelled streams may lack their final usage event. The guard records generation IDs, request identities, and timing without prompt contents. After the owned runtime stops, `reconcile.py` can obtain read-only generation billing metadata from OpenRouter. It preserves the raw ledger and writes a derived ledger and receipts; ID/model mismatches, unfinished records, or unavailable prices stay unknown. No inference is retried to recover a price.
 
 The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in [PARETO.md](../../docs/design/conversation-runtime/PARETO.md). Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.
+
+### Two builds of one harness, and `ab.sh`
+
+An arm may name a **build** as well as a harness. `aforge@dev` and
+`aforge@simplify` are both aforge, driven by the same module in `adapters.sh`,
+and they differ in exactly one thing: the binary they run.
+
+```sh
+bench/conversation/run.sh \
+  --bin aforge@dev=/path/to/aforge-dev \
+  --bin aforge@simplify=/path/to/aforge-simplify \
+  --arms aforge@dev,aforge@simplify --scenarios repo-hover-print
+```
+
+There is **one adapter**, deliberately. A second one written for the second
+build would put the rig into the comparison alongside the build, and the
+question — is this branch on the cost, wall and outcome front against the
+trunk — cannot be answered by a rig that changed between the two arms.
+
+Three refusals keep a two-build grid honest, and each of them is a full table
+of plausible rows that would otherwise say the branch changed nothing:
+
+- **an unbound label is not an arm.** A label with no `--bin` would fall back
+  to whatever binary the rig defaults to, which is the other arm's.
+- **two arms may not share one binary.** `campaign.py plan` compares the two
+  sha256s and refuses. It is the easiest mistake to make when both builds come
+  out of the same `make build`.
+- **an arm measured at two versions is two arms wearing one name.** `pareto.py`
+  already refused that; what makes it bite here is that `arm_version` for a
+  labelled aforge carries the binary's own `vcs.revision`, because two builds
+  of this repository print the same version word.
+
+`ab.sh` is the whole grid in one command, run on the Spark and driven from a
+laptop over ssh. It builds both refs in detached worktrees under `~/bench-ab`,
+installs each binary by absolute path (removing first — never a copy over a
+file a process may hold), refuses byte-identical builds, **warms the Go build
+cache over the pinned tree so that neither arm pays for it**, freezes the
+schedule with `campaign.py`, runs it, and rsyncs the evidence back.
+`--dry-run` prints every command and spends nothing.
+
+### What `summary.sh` says about a front
+
+The front is drawn on **medians**, and the rule is deliberately strict: an arm
+dominates when it is no worse on median cost, median wall AND success rate, and
+better on at least one. Nothing is traded off — cheaper-and-slower against
+dearer-and-faster is reported as a **tie**, because which of those matters is a
+decision about a product and not a fact about a grid.
+
+Medians rather than means because at three repetitions one runaway cell moves a
+mean further than the difference anybody is looking for. But a median can hide
+a mechanism, so two things sit beside it: the mean is printed in the same table,
+and **when the mean reverses the median's verdict the report says so on the line
+where the claim is made** — a rare expensive attempt is not a slower build, and
+it is usually the finding.
+
+Under it, **every attempt is printed**: block, arm, wall, cost, seconds to the
+first word, tool calls, rounds, whether a task was spawned, and how many files
+changed. On the night this was built for, one turn out of a day's work took
+seventeen minutes; no statistic over three repetitions would have shown a reader
+that it was one turn rather than all of them.
 
 ### A free chat is not a finished background action
 

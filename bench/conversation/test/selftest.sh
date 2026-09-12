@@ -56,7 +56,7 @@ mkdir -p "$LOGDIR"
 # inherits what this suite carries on purpose (lib/common.sh). Naming the FAKE_*
 # variables here is what lets them through — and the credential scrubbing test
 # below still holds, because nothing in this list is a credential.
-export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID FAKE_ANSWER_ROOT FAKE_REPAIR_SRC FAKE_CHEAT_SRC"
+export CONV_PASS_ENV="FAKE_MODE FAKE_REPO_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID FAKE_ANSWER_ROOT FAKE_REPAIR_SRC FAKE_CHEAT_SRC"
 
 # These cases drive fake binaries that reach no network, so they run without the
 # forwarding guard — and say so the only way run.sh accepts, which is what keeps
@@ -802,6 +802,205 @@ CONV_FAKE_HARNESS=0 CONV_OUT="$WORKDIR/gate/evidence" CONV_CSV="$WORKDIR/gate.cs
 grep -q 'CONV_FAKE_HARNESS=1' "$LOGDIR/gate.log" \
   && ok "and says what it would need" || bad "the refusal does not say why"
 say
+
+# ── two builds of one harness ───────────────────────────────────────────────
+#
+# The before/after case. Everything here is about one failure and it is the
+# quiet one: a grid whose two arms turn out to be the same binary. It produces
+# a full table of plausible rows saying the branch changed nothing, and nothing
+# in the output says so unless the rig refuses it.
+say "labelled arms (two builds, one adapter):"
+
+# Two fakes that differ by one byte, so they are genuinely two binaries.
+BUILD_A="$WORKDIR/aforge-dev"
+BUILD_B="$WORKDIR/aforge-simplify"
+cp "$FAKE/aforge-fake.sh" "$BUILD_A"
+{ cat "$FAKE/aforge-fake.sh"; echo "# this build is the other one"; } > "$BUILD_B"
+chmod +x "$BUILD_A" "$BUILD_B"
+
+FAKE_MODE=ok case_run twobuilds --unguarded --cap 60 \
+  --bin "aforge@dev=$BUILD_A" --bin "aforge@simplify=$BUILD_B" \
+  --arms aforge@dev,aforge@simplify --scenarios data-tally
+ROWS="$(grep -c '' "$CASE_RESULTS" 2>/dev/null || echo 0)"
+[ "$ROWS" = "2" ] \
+  && ok "both labelled arms ran, one row each" || bad "expected 2 rows, got $ROWS"
+grep -q '"arm": *"aforge@dev"' "$CASE_RESULTS" && grep -q '"arm": *"aforge@simplify"' "$CASE_RESULTS" \
+  && ok "each row names its own build" || bad "the rows do not name the two builds apart"
+# The basename, not the whole path: a binding is stored CANONICAL (arm_bind_binary
+# resolves it), and TMPDIR on a Mac ends in a slash, so the path this file holds
+# and the path this shell composed differ by a doubled separator while naming
+# the same file. What is being defended is which binary ran, and that is the
+# last segment.
+grep -q '/aforge-dev chat' "$CASE_OUT/evidence/data-tally-aforge@dev/argv.txt" \
+  && ok "the dev arm was launched from the dev binary" || bad "the dev arm ran the wrong file"
+grep -q '/aforge-simplify chat' "$CASE_OUT/evidence/data-tally-aforge@simplify/argv.txt" \
+  && ok "and the simplify arm from the simplify binary" || bad "the simplify arm ran the wrong file"
+# AND THE BINDING IS AN ABSOLUTE PATH. A cell is launched from inside its own
+# workspace, so a relative binding would reach a file that is not there — or,
+# worse, one that is.
+awk '{ print $1 }' "$CASE_OUT/evidence/data-tally-aforge@dev/argv.txt" | grep -q '^/' \
+  && ok "a bound binary is recorded as an absolute path" || bad "the binding is not absolute"
+# ONE ADAPTER. A labelled arm must be handed exactly what a bare one is: the
+# pin, --one-model so no auxiliary call floats, and --yolo.
+grep -q -- '--one-model' "$CASE_OUT/evidence/data-tally-aforge@simplify/argv.txt" \
+  && ok "a labelled arm gets the same flags as a bare one" \
+  || bad "the labelled arm was composed differently from the bare one"
+[ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
+  && ok "and a healthy labelled cell passes" || bad "a healthy labelled cell did not pass"
+say
+
+say "labelled arms (a label nobody bound):"
+CONV_OUT="$WORKDIR/unbound/evidence" CONV_CSV="$WORKDIR/unbound.csv" \
+  "$RUN" --unguarded --cap 30 --bin "aforge@dev=$BUILD_A" \
+  --arms aforge@dev,aforge@simplify --scenarios data-tally \
+  > "$LOGDIR/unbound.log" 2>&1
+grep -q 'unknown arm: aforge@simplify' "$LOGDIR/unbound.log" \
+  && ok "an unbound label is refused rather than run on the other arm's binary" \
+  || bad "an unbound label was not named as unknown"
+[ ! -e "$WORKDIR/unbound/evidence/data-tally-aforge@simplify" ] \
+  && ok "and no cell was opened for it" || bad "a cell was opened for an unbound label"
+say
+
+say "labelled arms (a label that is not a plain word):"
+CONV_OUT="$WORKDIR/badlabel/evidence" CONV_CSV="$WORKDIR/badlabel.csv" \
+  "$RUN" --unguarded --bin "aforge@../escape=$BUILD_A" --arms aforge@dev \
+  --scenarios data-tally > "$LOGDIR/badlabel.log" 2>&1
+[ $? -ne 0 ] \
+  && ok "a label that would reach out of its directory is refused" \
+  || bad "a path-shaped label was accepted"
+say
+
+say "labelled arms (a binary that is not there):"
+CONV_OUT="$WORKDIR/nobin/evidence" CONV_CSV="$WORKDIR/nobin.csv" \
+  "$RUN" --unguarded --bin "aforge@dev=$WORKDIR/not-a-file" --arms aforge@dev \
+  --scenarios data-tally > "$LOGDIR/nobin.log" 2>&1
+[ $? -ne 0 ] && grep -q 'not an executable file' "$LOGDIR/nobin.log" \
+  && ok "a binding to a file that is not there is refused before anything runs" \
+  || bad "a missing binary was not refused at the binding"
+say
+
+# ── the front, drawn on fake numbers ────────────────────────────────────────
+#
+# The arithmetic that answers the owner's question, checked against numbers
+# whose right answer is known by construction. Nothing here runs a harness.
+say "the front (two arms, known numbers):"
+FRONT="$WORKDIR/front.jsonl"
+front_rows() {
+  # front_rows <dev-wall> <dev-cost> <simplify-wall> <simplify-cost>
+  CONV_A_WALL="$1" CONV_A_COST="$2" CONV_B_WALL="$3" CONV_B_COST="$4" \
+  CONV_FRONT="$FRONT" python3 -c '
+import json, os
+rows = []
+for block in ("1", "2", "3"):
+    for arm, wall, cost in (("aforge@dev", os.environ["CONV_A_WALL"], os.environ["CONV_A_COST"]),
+                            ("aforge@simplify", os.environ["CONV_B_WALL"], os.environ["CONV_B_COST"])):
+        rows.append({"scenario": "repo-hover-print", "door": "print", "arm": arm,
+                     "arm_version": "aforge 1.0 rev " + arm.split("@")[1],
+                     "model_pin": "m", "effort_requested": "low", "effort_sent": "low",
+                     "wall_s": float(wall), "cost_usd": float(cost), "verdict": "pass",
+                     "comparable": "yes", "experiment_id": "ab", "block_id": block,
+                     "condition_id": "c1", "expected_arms": ["aforge@dev", "aforge@simplify"],
+                     "checks": [{"name": "answer", "outcome": "pass"}]})
+with open(os.environ["CONV_FRONT"], "w") as handle:
+    for row in rows:
+        handle.write(json.dumps(row) + "\n")
+'
+}
+
+front_rows 300 0.40 120 0.10
+python3 "$CONV_ROOT/lib/pareto.py" "$FRONT" > "$WORKDIR/front-win.txt" 2>&1
+grep -q 'aforge@simplify dominates aforge@dev' "$WORKDIR/front-win.txt" \
+  && ok "an arm cheaper AND faster AND no worse is said to dominate" \
+  || bad "a clear win was not reported as one"
+
+front_rows 100 0.50 300 0.10
+python3 "$CONV_ROOT/lib/pareto.py" "$FRONT" > "$WORKDIR/front-tie.txt" 2>&1
+grep -q 'a tie:' "$WORKDIR/front-tie.txt" && ! grep -q 'dominates' "$WORKDIR/front-tie.txt" \
+  && ok "cheaper-but-slower against dearer-but-faster is a tie, not a winner" \
+  || bad "the report traded cost against time and picked one"
+
+front_rows 200 0.20 200 0.20
+python3 "$CONV_ROOT/lib/pareto.py" "$FRONT" > "$WORKDIR/front-same.txt" 2>&1
+grep -q 'a tie:' "$WORKDIR/front-same.txt" \
+  && ok "two arms with the same numbers are a tie" || bad "identical arms produced a winner"
+grep -q 'every attempt' "$WORKDIR/front-same.txt" \
+  && ok "and every attempt is printed, so one outlier cannot hide in a median" \
+  || bad "the per-run rows are missing"
+say
+
+# ── the judge reads the workspace, not the reply ────────────────────────────
+#
+# THIS ONE COMPILES A REPOSITORY AND IS THEREFORE OPT-IN. Everything else in
+# this file is seconds and reaches nothing; these cases clone this checkout and
+# run its own toolchain over it, which belongs on a machine with cycles to
+# spare and not on the laptop somebody is working on. Set CONV_SELFTEST_HEAVY=1
+# — the Spark is where it is meant to run.
+#
+# What it defends is the whole point of the before/after scenarios: a harness
+# that describes work it did not do must FAIL, and one that really did it must
+# PASS, and the two are indistinguishable from the reply alone.
+if [ "${CONV_SELFTEST_HEAVY:-0}" = "1" ]; then
+  say "the workspace judge (a real clone, a real compiler):"
+
+  FAKE_REPO_MODE=fix AFORGE_BIN="$FAKE/repo-fake.sh" \
+    case_run repofix --unguarded --arms aforge --scenarios repo-wording-print --cap 300
+  [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
+    && ok "a harness that really made the change passes" \
+    || bad "a correct repair came out $(field "$CASE_RESULTS" verdict)"
+  MEASURES="$(CONV_RESULTS="$CASE_RESULTS" python3 -c '
+import json, os
+rows = [json.loads(l) for l in open(os.environ["CONV_RESULTS"]) if l.strip()]
+print(json.dumps(rows[-1].get("measures") or {}))
+')"
+  printf '%s' "$MEASURES" | grep -q '"build_exit": *"0"' \
+    && ok "the clone still compiles, and its exit is on the row" \
+    || bad "build_exit is not 0 on a correct repair: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"focus_exit": *"0"' \
+    && ok "the named test the request implies is green" \
+    || bad "focus_exit is not 0 on a correct repair: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"ask_wired": *"yes"' \
+    && ok "and the new word is in the source the arm changed" \
+    || bad "ask_wired is not yes on a correct repair: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"files_changed": *"2"' \
+    && ok "both files it had to touch are counted" || bad "files_changed is wrong: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"tool_calls": *"3"' \
+    && ok "the tool calls the turn made reach the row" || bad "tool_calls is wrong: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"rounds": *"3"' \
+    && ok "and so do the rounds" || bad "rounds is wrong: $MEASURES"
+  printf '%s' "$MEASURES" | grep -q '"task_spawned": *"no"' \
+    && ok "a turn that spawned nothing says so" || bad "task_spawned is wrong: $MEASURES"
+  say
+
+  say "the workspace judge (a fluent account of work that did not happen):"
+  FAKE_REPO_MODE=narrate AFORGE_BIN="$FAKE/repo-fake.sh" \
+    case_run reponarrate --unguarded --arms aforge --scenarios repo-wording-print --cap 300
+  [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+    && ok "a reply that claims the change with an unchanged workspace FAILS" \
+    || bad "a narrated repair came out $(field "$CASE_RESULTS" verdict)"
+  grep -q 'the workspace is unchanged' "$CASE_RESULTS" \
+    && ok "and the row says which of the two it was" || bad "the row does not say the workspace is unchanged"
+  say
+
+  say "the workspace judge (the source changed and the test left red):"
+  FAKE_REPO_MODE=halfway AFORGE_BIN="$FAKE/repo-fake.sh" \
+    case_run repohalf --unguarded --arms aforge --scenarios repo-wording-print --cap 300
+  [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+    && ok "stopping at the first green compile FAILS on the named test" \
+    || bad "a half-done repair came out $(field "$CASE_RESULTS" verdict)"
+  # It is a real change, so ask_wired is yes — and the cell still fails. The
+  # two are different questions and a benchmark that collapsed them would score
+  # a red test as a pass because the right string was in the file.
+  CONV_RESULTS="$CASE_RESULTS" python3 -c '
+import json, os, sys
+rows = [json.loads(l) for l in open(os.environ["CONV_RESULTS"]) if l.strip()]
+got = rows[-1].get("measures") or {}
+sys.exit(0 if got.get("ask_wired") == "yes" and got.get("focus_exit") != "0" else 1)
+' && ok "the word is in the source AND the test is red, and the cell fails on the test" \
+  || bad "the half-done case did not separate the word from the test"
+  say
+else
+  skip "the workspace judge (set CONV_SELFTEST_HEAVY=1 on a machine with cycles)"
+fi
 
 # ── the summary tool ────────────────────────────────────────────────────────
 say "summary (per workload, and what it refuses to say):"

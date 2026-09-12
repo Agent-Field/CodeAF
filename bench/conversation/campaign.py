@@ -18,6 +18,12 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 MODEL = "deepseek/deepseek-v4-flash-0731"
+# The harnesses this rig has an adapter for. An arm may name a BUILD of one of
+# them with `@` — `aforge@dev` and `aforge@simplify` are both aforge — and a
+# labelled arm must be given a binary on the command line, because two arms
+# that silently ran the same file report a dead heat that looks exactly like a
+# branch which changed nothing.
+HARNESSES = {"aforge", "pi", "omp"}
 # The calibration battery: the six comparable slices, and what a campaign plans
 # when nobody says otherwise.
 CALIBRATION_SCENARIOS = {"data-tally", "research-brief", "writing-memo", "code-fix",
@@ -27,7 +33,18 @@ CALIBRATION_SCENARIOS = {"data-tally", "research-brief", "writing-memo", "code-f
 # and would make its numbers incomparable with the ones already collected;
 # --scenarios multi-defect-pipeline is a separate experiment, planned on purpose.
 EXTRA_SCENARIOS = {"multi-defect-pipeline"}
-SCENARIOS = CALIBRATION_SCENARIOS | EXTRA_SCENARIOS
+# The before/after asks: one real request and one small one, each through both
+# doors. They are a separate experiment from the calibration battery for that
+# battery's own stated reason — a scenario that joined it silently would change
+# what every earlier campaign measured — and they are planned by name.
+REPO_SCENARIOS = {"repo-hover-print", "repo-hover-interactive",
+                  "repo-wording-print", "repo-wording-interactive"}
+SCENARIOS = CALIBRATION_SCENARIOS | EXTRA_SCENARIOS | REPO_SCENARIOS
+
+
+def harness_of(arm):
+    """The harness inside an arm name; the part after `@` is the build."""
+    return arm.split("@", 1)[0]
 
 
 def sha(path):
@@ -68,19 +85,31 @@ def executable_identity(path):
 def plan(args):
     arms = args.arms.split(",")
     scenarios = args.scenarios.split(",")
-    if len(set(arms)) != len(arms) or not set(arms) <= {"aforge", "pi", "omp"}:
-        raise ValueError("arms must be distinct members of aforge,pi,omp")
+    bound = dict(spec.split("=", 1) for spec in args.bin if "=" in spec)
+    if len(set(arms)) != len(arms) or not {harness_of(a) for a in arms} <= HARNESSES:
+        raise ValueError("arms must be distinct, and each must name one of " + ",".join(sorted(HARNESSES)))
+    unbound = [arm for arm in arms if "@" in arm and arm not in bound]
+    if unbound:
+        raise ValueError("a labelled arm needs --bin <arm>=<path>: " + ",".join(unbound))
     if len(arms) < 2 or not scenarios or not set(scenarios) <= SCENARIOS:
         raise ValueError("choose at least two arms and supported comparable scenarios")
     if len(set(scenarios)) != len(scenarios) or args.repeats < 1 or args.cap < 1:
         raise ValueError("scenarios must be distinct; repeats and cap must be positive")
     binaries = {}
     for arm in arms:
-        path = (args.aforge if arm == "aforge" else shutil.which(arm))
+        path = bound.get(arm) or (args.aforge if arm == "aforge" else shutil.which(arm))
         if not path or not Path(path).is_file():
             raise ValueError("binary missing: " + arm)
         path = str(Path(path).resolve())
         binaries[arm] = {"path": path, "sha256": sha(path), "identity": executable_identity(path)}
+    # TWO ARMS THAT ARE ONE BINARY ARE NOT A COMPARISON. It is the easiest
+    # mistake to make when both builds come out of the same `make build` — one
+    # worktree not rebuilt, one install that went to the wrong path — and it
+    # produces a full grid of plausible rows saying the branch changed nothing.
+    identical = [a for a in arms for b in arms
+                 if a < b and binaries[a]["sha256"] == binaries[b]["sha256"]]
+    if identical:
+        raise ValueError("two arms share one binary (sha256 matches): " + ",".join(sorted(set(identical))))
     rng = random.Random(args.seed)
     schedule = []
     for repetition in range(args.repeats):
@@ -94,14 +123,21 @@ def plan(args):
                                  "arm": arm, "ordinal": len(schedule) + 1})
     manifest = {"schema": 1, "experiment_id": args.id, "seed": args.seed,
                 "purpose": "calibration" if args.repeats < 5 else "comparison",
-                "expected_arms": arms, "repeats": args.repeats, "model_pin": MODEL,
-                "effort": "low", "cap_s": args.cap, "slow_seconds": 60,
+                "expected_arms": arms, "repeats": args.repeats, "model_pin": args.model,
+                "effort": args.effort, "cap_s": args.cap, "slow_seconds": 60,
+                "max_cost_usd": args.max_cost,
                 "binaries": binaries, "rig_inputs": inputs(), "schedule": schedule,
                 "maximum_cell_seconds": len(schedule) * args.cap,
                 "quality_rule": "verdict pass AND every assertion pass",
                 "machine": {"system": platform.system(), "release": platform.release(),
                             "architecture": platform.machine(), "cpu_count": os.cpu_count()},
-                "condition_id": "clean-profile-v2;fresh-state;slow60;no-shared-live-load"}
+                # The condition every block was run under. It carries the model
+                # and the effort as well as the state rules, because pareto.py
+                # refuses a comparison whose blocks disagree on it — and two
+                # halves of a grid run at two efforts are two experiments.
+                "condition_id": args.condition or
+                ("clean-profile-v2;fresh-state;slow60;no-shared-live-load"
+                 ";model=%s;effort=%s;cap=%ds" % (args.model, args.effort, args.cap))}
     with open(args.manifest, "x") as handle:
         json.dump(manifest, handle, indent=2)
     print("Frozen %d cells; maximum cell time %.1f minutes; no model called."
@@ -142,13 +178,27 @@ def execute(args):
         cell_out.mkdir()
         # Ambient benchmark overrides must not change a frozen experiment.
         env = {k: v for k, v in os.environ.items() if not k.startswith("CONV_")}
+        binds = []
         for arm, binary in manifest["binaries"].items():
-            env[arm.upper() + "_BIN"] = binary["path"]
+            # A bare arm is told through the environment, the way this rig has
+            # always told it. A labelled one is bound on the command line,
+            # because the label is the thing that makes two builds two arms and
+            # `AFORGE@DEV_BIN` is not a variable name.
+            if "@" in arm:
+                binds += ["--bin", arm + "=" + binary["path"]]
+            else:
+                env[harness_of(arm).upper() + "_BIN"] = binary["path"]
         env.update(CONV_SLOW_SECONDS=str(manifest["slow_seconds"]),
                    CONV_CSV=str(out / "raw.csv"))
+        # The product's own spend ceiling is part of the condition: an arm
+        # stopped by it measured the ceiling, so both arms are given the same
+        # one and the manifest says which.
+        if manifest.get("max_cost_usd"):
+            env["CONV_MAX_COST"] = str(manifest["max_cost_usd"])
         command = [str(ROOT / "run.sh"), "--arms", cell["arm"], "--scenarios", cell["scenario"],
                    "--cap", str(manifest["cap_s"]), "--model", manifest["model_pin"],
-                   "--effort", manifest["effort"], "--out", str(cell_out / "evidence"), "--keep"]
+                   "--effort", manifest["effort"], "--out", str(cell_out / "evidence"),
+                   "--keep"] + binds
         print("%d/%d %s %s" % (cell["ordinal"], len(manifest["schedule"]),
                                cell["scenario"], cell["arm"]), flush=True)
         start = time.monotonic()
@@ -161,7 +211,8 @@ def execute(args):
             row = parsed[0]
         else:
             row = dict(cell, verdict="skipped", comparable="no", checks=[], cost_usd=None,
-                       wall_s=None, reason="runner did not produce exactly one result", model_pin=MODEL)
+                       wall_s=None, reason="runner did not produce exactly one result",
+                       model_pin=manifest["model_pin"])
         row.update(experiment_id=manifest["experiment_id"], block_id=cell["block_id"],
                    expected_arms=manifest["expected_arms"], condition_id=manifest["condition_id"],
                    runner_wall_s=elapsed, runner_exit=result.returncode,
@@ -192,11 +243,19 @@ def build_parser():
     p.add_argument("manifest")
     p.add_argument("--id", required=True)
     p.add_argument("--aforge", default=str(ROOT.parents[1] / "bin/aforge"))
+    p.add_argument("--bin", action="append", default=[],
+                   help="bind a labelled arm to a binary: aforge@dev=/path/bin/aforge-dev")
     p.add_argument("--arms", default="aforge,pi,omp")
     p.add_argument("--scenarios", default=",".join(sorted(CALIBRATION_SCENARIOS)))
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--seed", type=int, default=20260905)
     p.add_argument("--cap", type=int, default=240)
+    p.add_argument("--model", default=MODEL)
+    p.add_argument("--effort", default="low")
+    p.add_argument("--max-cost", type=float, default=0,
+                   help="the session's own spend ceiling, in dollars; 0 leaves the product's default")
+    p.add_argument("--condition", default="",
+                   help="override the condition id; blocks that disagree on it are not compared")
     p = sub.add_parser("run")
     p.add_argument("manifest")
     p.add_argument("--out", required=True)
