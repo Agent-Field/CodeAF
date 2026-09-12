@@ -192,6 +192,39 @@ func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 	r.ceiling.Store(int64(ceiling))
 }
 
+// theControllersWord is a signal that closes once the waiting controller has
+// spoken: said the wait out loud, reported the pace, or started a rescue. A
+// lane given it as its [lanestub.Profile.FirstTokenUntil] answers no sooner.
+//
+// IT IS THE STUB'S SIGNAL RULE APPLIED TO A FIRST TOKEN, and it exists because
+// a primary scripted to answer a little after the ceiling asserts nothing but
+// the slack between two wall-clock figures, which a starved machine eats: the
+// ceiling's timer fires late, the first token arrives first, and the row says
+// nothing was done at all. Every rung of the ladder releases it, not only the
+// one a given test is about, so a regression that acts differently fails on
+// its assertion rather than hanging here.
+func theControllersWord(t *testing.T) <-chan struct{} {
+	t.Helper()
+	spoken := make(chan struct{})
+	var once sync.Once
+	// The reader that was there is taken FIRST and only then chained, because a
+	// closure that assigns the handler it chains to is a write racing its own
+	// reads: [OnPhase] has installed it by the time the assignment happens, and
+	// a phase posted in that window reads the variable from another goroutine.
+	previous := OnPhase(nil)
+	OnPhase(func(news PhaseNews) {
+		switch news.Phase {
+		case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
+			once.Do(func() { close(spoken) })
+		}
+		if previous != nil {
+			previous(news)
+		}
+	})
+	t.Cleanup(func() { OnPhase(previous) })
+	return spoken
+}
+
 // rigScale is how much shorter every bound a scenario is judged against is than
 // the one a person is really given.
 //

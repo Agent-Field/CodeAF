@@ -1597,7 +1597,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	//
 	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
 	// racing to be the first must not each buy a route.
-	a.startRecallLocked(turnCtx, hub, user.text())
+	a.startRecallLocked(turnCtx, user.text())
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
 	// decision the leftover handlers and this turn's opening share.
@@ -3542,18 +3542,25 @@ func (h *eventHub) adopt(stream *eventStream) {
 // so every subscriber sees the same events in the same order, and a subscriber
 // arriving mid-fan-out lands cleanly before or after this event rather than
 // inside it.
-func (h *eventHub) send(event Event) {
+//
+// IT REPORTS WHETHER THE EVENT LANDED, because a caller holding something a
+// person is owed must be able to keep it rather than trust an ordering. Only
+// this lock can answer that: a hub reads open until the moment it closes under
+// it, so anything a caller checked beforehand is already a guess. Almost every
+// caller is drawing a line that belongs to the turn it is in and correctly
+// ignores the answer; [Agent.sayMemory] is the one that holds a line over.
+func (h *eventHub) send(event Event) (landed bool) {
 	// NOBODY WATCHING IS AN ORDINARY CASE. A completion driven without a turn
 	// around it — a test of the retry loop, a future headless caller — has no
 	// hub, and a line nobody can read is a line worth not drawing rather than a
 	// panic in the middle of a request.
 	if h == nil {
-		return
+		return false
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
-		return
+		return false
 	}
 	// The backlog is written BEFORE the fan-out and under the same lock, so what
 	// the next attacher is handed is exactly what the subscribers already have —
@@ -3571,6 +3578,7 @@ func (h *eventHub) send(event Event) {
 	for _, stream := range h.subscribers {
 		stream.send(event)
 	}
+	return true
 }
 
 // foldedLocked settles the accumulated run back into the backlog entry it

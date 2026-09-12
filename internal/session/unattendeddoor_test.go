@@ -458,6 +458,12 @@ func stewardCheckpointAgent(t *testing.T, completer Completer, mutate func(*Conf
 	if agent.steward() == nil {
 		t.Fatal("the fixture built a session with no goal owner behind it")
 	}
+	// THE DRAWING LANDS BEFORE THE NEXT WORD. Every road under test here is a
+	// mark's reading deciding what the goal owner is asked, and every reading is
+	// answered at once ([answerTheReadingsOffTheQueue]); so the conversation is
+	// held until it has landed ([answerWhenQuiet]), and a script long enough to
+	// cross the mark is long enough whatever else the machine is doing.
+	watchReadings(t, agent)
 	return agent, transcript
 }
 
