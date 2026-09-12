@@ -87,3 +87,17 @@ func TestTheRefreshUnderTheLockRunsNoGit(t *testing.T) {
 	}
 	t.Fatal("refreshGitLocked is gone from gitfacts.go; this law has to move with it")
 }
+
+// AND A CONVERSATION WITH NO WORKSPACE ASKS GIT NOTHING. `exec.Cmd` reads an
+// empty Dir as "the calling process's working directory", so a headless run or
+// a test with no workspace would otherwise report the state of whatever
+// checkout the binary was launched from as though it were the model's own
+// project — the same hole task_run.go's [git] carries a real incident about.
+func TestAConversationWithNoWorkspaceReadsNoGit(t *testing.T) {
+	if line := gitFactsLine("   "); line != "" {
+		t.Fatalf("a blank root answered %q, which is some other repository's state", line)
+	}
+	if block := gitFacts("", nil); block != "" {
+		t.Fatalf("a conversation with no workspace and no folders rendered %q", block)
+	}
+}
