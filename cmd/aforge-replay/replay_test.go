@@ -241,13 +241,6 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 // that passes forever the moment somebody builds a tag out of a variable, which
 // is exactly how the log came to carry 2,309 untagged rows in the first place.
 var derivedTags = map[string]func(yield func(tag, where string)){
-	// internal/session/auxiliary.go: every errand is tagged with its own role
-	// word, so the whole of internal/roles' vocabulary reaches the log.
-	"string(role)": func(yield func(tag, where string)) {
-		for _, word := range roleWords() {
-			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
-		}
-	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.
 	"toolCallTag(question.tool)": func(yield func(tag, where string)) {
@@ -257,6 +250,52 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// cmd/aforge/chat.go's errandContext passes the errand's own name straight
 	// through; its call sites are walked for the literals they hand it.
 	"task": func(yield func(tag, where string)) {},
+	// internal/session/clientdoor.go is the ONE place that package writes a tag
+	// now, and what it writes is whatever purpose its caller handed it. It
+	// enumerates nothing on its own: the words come from the door's own call
+	// sites, which the walk below reads through the same rules.
+	"string(purpose)": func(yield func(tag, where string)) {},
+	// internal/session/auxiliary.go hands the door the errand's own role word, so
+	// the whole of internal/roles' vocabulary reaches the log. The spelling is
+	// what is left after `callPurpose(...)` comes off the argument.
+	"role": func(yield func(tag, where string)) {
+		for _, word := range roleWords() {
+			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
+		}
+	},
+}
+
+// purposeWords reads internal/session/clientdoor.go for the [callPurpose]
+// constants, because those ARE tags the moment the door writes one.
+//
+// It is [roleWords] one package over and for its reason. The purposes that are
+// a role's own name need no entry — they arrive through the role vocabulary —
+// and these are the three or four that are not any role: the turn, a node's
+// turn, a saved program's step, the ceiling's draft rung.
+func purposeWords() []string {
+	var words []string
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, filepath.Join(moduleRoot, "internal", "session", "clientdoor.go"), nil, 0)
+	if err != nil {
+		panic("reading internal/session/clientdoor.go: " + err.Error())
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		spec, isValue := node.(*ast.ValueSpec)
+		if !isValue || len(spec.Values) != 1 {
+			return true
+		}
+		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != "callPurpose" {
+			return true
+		}
+		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
+			words = append(words, word)
+		}
+		return true
+	})
+	if len(words) == 0 {
+		panic("internal/session/clientdoor.go declares no callPurpose constants; this law is reading the wrong tree")
+	}
+	return words
 }
 
 // tagsTheBuildWrites reads the module's sources for every tag that can reach
@@ -284,6 +323,63 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 				if !known {
 					t.Errorf("%s writes a call tag spelled %q, which this law cannot read; "+
 						"add it to derivedTags with what it can produce", path, spelling)
+					return true
+				}
+				derived(func(tag, where string) { found[tag] = where })
+			case "completeWithModel", "completeWithNamedModel",
+				"a.completeWithModel", "a.completeWithNamedModel",
+				"p.agent.completeWithModel", "e.agent.completeWithModel",
+				"c.agent.completeWithModel", "child.completeWithModel":
+				// THE DOOR IS WHERE internal/session'S TAGS ARE STATED NOW. Its
+				// second argument is a [session.callPurpose], and it reaches
+				// `calllog.Record.Tag` verbatim (clientdoor.go). Reading it here is
+				// what keeps this law pointed at the same thing the build is: the
+				// `WithCallTag` case above sees only the one relay line.
+				if len(call.Args) < 2 {
+					return true
+				}
+				purpose := call.Args[1]
+				// A PURPOSE MAY WEAR ITS TYPE. `callPurpose("...")` and a bare
+				// constant are the same statement, so the conversion comes off
+				// before the argument is read.
+				if conversion, isCall := purpose.(*ast.CallExpr); isCall &&
+					callName(conversion.Fun) == "callPurpose" && len(conversion.Args) == 1 {
+					if _, literal := stringLiteral(conversion.Args[0]); !literal {
+						// A ROLE WORN AS A PURPOSE IS STILL A ROLE, and the
+						// vocabulary it can produce is internal/roles' own. It is
+						// over-approximated deliberately: this law asks whether
+						// every tag the build CAN write is named, so answering
+						// with more of them than one site writes is safe, where
+						// answering with fewer is the hole it exists to close.
+						if strings.Contains(source(t, conversion.Args[0]), "Role") {
+							for _, word := range roleWords() {
+								found[word] = path + ", a role worn as a purpose"
+							}
+							return true
+						}
+					}
+					purpose = conversion.Args[0]
+				}
+				if word, literal := stringLiteral(purpose); literal {
+					if word != "" {
+						found[word] = path
+					}
+					return true
+				}
+				// A NAMED CONSTANT IS THE ORDINARY CASE and the door declares them
+				// all in one block, so they are read from the declaration rather
+				// than listed here.
+				if ident, isIdent := purpose.(*ast.Ident); isIdent && strings.HasPrefix(ident.Name, "purpose") {
+					for _, word := range purposeWords() {
+						found[word] = "an internal/session/clientdoor.go callPurpose constant"
+					}
+					return true
+				}
+				spelling := source(t, purpose)
+				derived, known := derivedTags[spelling]
+				if !known {
+					t.Errorf("%s hands the model door a purpose spelled %q, which this law cannot "+
+						"read; add it to derivedTags with what it can produce", path, spelling)
 					return true
 				}
 				derived(func(tag, where string) { found[tag] = where })
