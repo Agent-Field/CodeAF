@@ -1639,22 +1639,32 @@ const (
 // row by row and TestEveryPlaceSpendsTheSameHeadAndFoot reads it back).
 const placeFootRows = 3 + homeDraftFloor
 
-// placeBodyFloor is the fewest rows of list a place is drawn with before the
-// composer gives its own height back. Three is a row to stand on, a row above
-// it and a row below it, which is the least that reads as a list at all.
-const placeBodyFloor = 3
+// placeSmallestFrame is the shortest terminal this surface is laid out for, and
+// the height nearly every law in this package is stated at. Eighty by
+// twenty-four is not a guess: it is the size the design's own screens are drawn
+// at and the size a frame has to survive without losing anything a person came
+// for.
+const placeSmallestFrame = 24
 
 // boxFloor is how many rows the composer occupies, and it is the same number
-// typed in or not ([homeDraftFloor]) — in the conversation and on every place
-// — except on a frame with no room for it.
+// typed in or not ([homeDraftFloor]) — in the conversation and on every place —
+// on any frame with rows to spare for it.
 //
-// A THREE-ROW BOX ON AN EIGHT-ROW TERMINAL IS THE LIST GONE. The foot already
-// spends a blank, a rule and a hint; holding three more open on top of a
-// four-row head leaves one body row, and the list a person came to read gives
-// way to the emptiness around the box. So the floor is taken only while the
-// body keeps [placeBodyFloor] rows under it, and a frame too short falls back to
-// the single row the box has always drawn — the box stays usable, and what gives
-// way is the space around it rather than the content above it.
+// THE FLOOR IS SPENT OUT OF ROOM THE FRAME HAS OVER THE SMALLEST ONE, NEVER OUT
+// OF THE SMALLEST FRAME'S OWN BODY. Held open unconditionally it cost three
+// rows everywhere, and at [placeSmallestFrame] those three are not spare: home
+// dropped a whole panel off the bottom of its column, an empty place drew its
+// rule where its whisper had been, and the rail's standing section was squeezed
+// out by a long roster. A box nobody can miss is not worth the list they came
+// to read, so a frame that cannot afford the floor draws the single row the box
+// has always drawn. The box is just as usable; what gives way is the space
+// around it.
+//
+// So the test is the BODY the floor would leave, against the body an eighty by
+// twenty-four frame has under a one-row box — which works out at twenty-six rows
+// and taller. It is written as that comparison rather than as the number,
+// because the number is a consequence of the head and the foot and would be
+// wrong the next time either of them moves.
 //
 // THE SAME ANSWER FEEDS THE HEIGHT AND THE DRAWING, so the rows a foot reserves
 // and the rows it then adds can never disagree. That is not tidiness: they are
@@ -1668,7 +1678,11 @@ const placeBodyFloor = 3
 // sizes through one app, and a floor decided from the window would be the wrong
 // floor for every frame but the last.
 func boxFloor(height int) int {
-	if height-(placeHeadRows+placeFootRows) < placeBodyFloor {
+	// The body the smallest frame has under a box of one row: its height, less
+	// the head, less that foot — the blank, the rule, the one box row and the
+	// last line.
+	const spare = placeSmallestFrame - placeHeadRows - (placeFootRows - homeDraftFloor + 1)
+	if height-placeHeadRows-placeFootRows < spare {
 		return 1
 	}
 	return homeDraftFloor
