@@ -123,7 +123,7 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	}
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"● auto", "weighs speed against price each answer", "recommended",
+		"● auto", "router routes; aforge takes over if answers turn bad", "recommended",
 		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
@@ -553,7 +553,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	}
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
-		"auto", "weighs speed against price each answer",
+		"auto", "router routes; aforge takes over if answers turn bad",
 		"cloudflare", "0.8s", "58 t/s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
 		"openrouter", "let the router balance on price",

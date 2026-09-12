@@ -488,6 +488,23 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
 	}
+	// `auto` IS OPENROUTER'S ROAD UNTIL THE ROUTER LETS GO OF IT (routefirst.go).
+	// A gate per model counts the refusals and the answers that came back
+	// unusable; while it says the router is serving this model, there is no
+	// choice to draw — the request goes out with the legacy preferences (the
+	// sort word, the strike ledger's order, the price ceiling), which is the
+	// shape the wire carried before this package held an opinion. The belief
+	// ledger learns from every named lane's answers all the same, so when the
+	// gate says the router has let go, the chooser below ranks lanes it has
+	// been watching rather than strangers. A pin — strict or borrowable —
+	// skips the gate entirely: it is a person's own instruction, and the
+	// router's record is not theirs to answer for. A pin the wire has already
+	// retired for this model is `auto` again (the retirement block below), so
+	// it answers to the gate like any other unpinned call.
+	pinned := pin.pinned() != "" && !retired
+	if !pinned && !c.routingGateTakenOver(model) {
+		return lanes.Choice{}, false
+	}
 	lambda := c.laneValueOfTime(knobs)
 	ask := c.laneRequest(model, knobs, request, lambda)
 	choice := lanes.Default().Chooser().Choose(ask)
@@ -1013,6 +1030,21 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 		Reason:   reason,
 		At:       laneNow(),
 	})
+	// AND THE ROUTER'S OWN RECORD MOVES WITH THE SAME ANSWER (routefirst.go).
+	// `auto` lends the model to OpenRouter until this says it has let go; an
+	// answer that could not be used counts toward the takeover, and one that
+	// served whole counts it back. The sentence is parked, not emitted: the
+	// call that earned the takeover is often one nobody is watching, and the
+	// next watched request carries it — the same promise lanepin.go's
+	// retired-pin line keeps.
+	//
+	// THE ONE REASON THIS DOOR DOES NOT HEAR IS `error`: an answer that ended
+	// with finish_reason:error is ALSO a refusal, and it already reached the
+	// gate through refuseLane in the same breath (terminal_error.go). Counting
+	// it here would be one event striking the router twice.
+	if reason != "error" && c.noteRouterChoice(model, served, reason, accepted) {
+		parkTakeoverLine(model)
+	}
 }
 
 // coverMargin is the room left above the dearest named lane's tariff, so that
