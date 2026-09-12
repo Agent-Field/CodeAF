@@ -1298,12 +1298,14 @@ anything, which is #576's shape.
 | full (`fixedPrefixBudget`) | **53,141** | 53,141 | 48,000, **5,141** over |
 | lean (`leanPrefixBudget`) | **44,989** | 44,989 | 31,500, **13,489** over |
 
-Both caps are now the measurement with **no headroom**, because a number that
-has never been honestly weighed has not earned any, and both arms build the
-shipped shape by name rather than by index. `fixedPrefixTarget` and
-`leanPrefixTarget` hold the figures each has to come back to, and each test
-prints its shortfall on **every green run** — a ratchet passing is not the same
-fact as the number being what it should be.
+**The cap is the target plus a dated waiver, and a waiver only ever shrinks.**
+`fixedPrefixTarget` and `leanPrefixTarget` are what each arm is supposed to be;
+`prefixWaivers` holds what each is over by, in one place, with the date and the
+reason. That is `.github/known-red.txt`'s discipline applied to bytes: a wave
+that grows the prefix raises a waiver in a diff with its name on it, and a wave
+that pays some back lowers it in the same commit. It replaced a `t.Logf`, which
+nothing in the Makefile passes `-v` to — the one line saying the prefix was
+thousands of bytes over was printed where nobody would ever see it.
 
 The bill is not spread thin: `stand` is **9,607 bytes**, more than a quarter of
 the full tool block and nearly twice the next heaviest, and on a

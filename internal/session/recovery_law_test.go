@@ -210,7 +210,7 @@ func sessionSources(t *testing.T) map[string]*ast.File {
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		parsed, err := parser.ParseFile(fset, filepath.Join(".", name), nil, parser.ParseComments)
+		parsed, err := parser.ParseFile(fset, filepath.Join(".", name), nil, parser.ParseComments|parser.SkipObjectResolution)
 		if err != nil {
 			t.Fatalf("parse %s: %v", name, err)
 		}

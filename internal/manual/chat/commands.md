@@ -1713,6 +1713,18 @@ order:
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
 
+**A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
+come and go with the calls that use them — `compaction` was one, and a compaction has not asked
+a model since long before it was deleted. A pin left behind for a word like that is dropped
+when the row is read, never written back, and the foot line says `compaction is no longer a
+role — that pin is ignored` the next time you change any pin. **Every other pin on the row
+keeps working**, which is the whole point: the row is one string holding all of them, and
+refusing the lot over one dead word would leave you unable to change any of them without
+editing `config.json` by hand.
+
+Typing a word that is not a role is still refused outright, with the real names listed — that
+refusal is for the pin you are adding now, which is the one you can do something about.
+
 The four machine rows lead because the endpoint serving your model is part of the same
 decision as the model, and they used to sit at the foot of the tab, forty rows below it.
 
