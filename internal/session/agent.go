@@ -2961,6 +2961,40 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 	return tags
 }
 
+// writeIfOpen is THE ONE DOOR for anything a reading beside the work leaves
+// behind, and it answers one question: is there still a conversation to leave it
+// in.
+//
+// NOTHING WRITES INTO A CONVERSATION THAT HAS CLOSED. After [Agent.Close] the
+// queues are drained and nobody will read another word, the folder behind the
+// person's path may already be gone, and what a late write leaves there is a
+// claim about a session that is over — a memory block landed at the tail of a
+// transcript nothing will carry (memory.go), a stage a surface goes on drawing a
+// clock for (phasenews.go), a stamp saying this conversation's model was told
+// (taskdelta.go). Each of those readings had its own idea of the question, and
+// two of them had none at all.
+//
+// THE CHECK AND THE WRITE ARE ONE HOLD OF a.mu, which is the whole reason it is
+// a door and not a helper. A reading that asks `closed` and writes afterwards is
+// a reading [Agent.Close] fits inside: the close takes this lock, sets the flag,
+// and goes on to wait for what it can see — and the write that lands a moment
+// later is exactly the thing it was waiting for. So the write runs under the
+// lock, and the caller is told whether it happened.
+//
+// IT IS FOR THE SMALL WRITE AND NEVER FOR THE SLOW ONE. Everything under this
+// lock is on the path of the person's next keystroke: an assignment, a queue, a
+// count, a deferred write handed to its own writer. A reading that has to reach
+// a disk or a provider does that outside and brings the ANSWER here.
+func (a *Agent) writeIfOpen(write func()) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
+	}
+	write()
+	return true
+}
+
 // enqueueSteering puts one OWED line the session authored — principally a task
 // node landing — onto the queue the person's steering rides, and wakes the
 // session if nobody is working.

@@ -489,30 +489,74 @@ func TestNothingBeatsAfterTheConversationHasClosed(t *testing.T) {
 	}
 }
 
-// TestTheQuitJoinsTheBeatsItEnds is the other half of the close, and the half a
-// cancel on its own does not buy.
+// TestNothingIsSaidAfterTheQuitEvenWhileStagesAreBeingArmED is the close's other
+// half, and the half a cancel on its own does not buy.
 //
-// Closing `stop` is what ENDS a beat; it is not what makes it gone. A beat armed
-// in the last instant before the quit may not have been scheduled at all yet —
-// it wakes afterwards, reads this package's own beat interval, finds the stop
-// closed and returns — and a goroutine that runs after the session has left is
-// one the session still owns however quickly it exits. Fifty arms and ends,
-// because the beat this is about is the one that never started: wait for none of
-// them and at least one of the fifty is still pending here.
-func TestTheQuitJoinsTheBeatsItEnds(t *testing.T) {
+// Closing `stop` ENDS a beat; it does not make it gone, and it says nothing at
+// all about the beat that is armed a moment later. Both halves are needed and
+// both are here: the quit waits for the beats it ended ([Agent.waitForPhaseBeats]),
+// and the door every arming goes through is shut under the same lock the quit
+// sets `closed` under ([Agent.writeIfOpen]), so an arming either happens before
+// the close takes that lock — and is therefore joined by it — or does nothing.
+//
+// THE TEST DRIVES THAT INTERLEAVING RATHER THAN HOPING FOR IT: a goroutine arms
+// stages as fast as it can while [Agent.Close] runs through it. The claim is the
+// one a person could see — once the quit has returned, this conversation says
+// nothing more about what it is doing, ever — so the assertion is that the news
+// log does not grow after Close returns.
+func TestNothingIsSaidAfterTheQuitEvenWhileStagesAreBeingArmed(t *testing.T) {
+	log := watchPhases(t)
+	held := phaseHeldBeat
+	phaseHeldBeat = time.Millisecond
+	t.Cleanup(func() { phaseHeldBeat = held })
+
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	for round := 0; round < 50; round++ {
-		agent.tellPhase(provider.PhaseRunning, "a tool", time.Now())
-		// The two acts [Agent.Close] does, in its order.
-		agent.endPhase()
-		agent.waitForPhaseBeats()
-		agent.phase.mu.Lock()
-		left := len(agent.phase.beating)
-		agent.phase.mu.Unlock()
-		if left != 0 {
-			t.Fatalf("round %d: the quit ended the stage and left %d beat(s) still running behind it",
-				round, left)
+	arming := make(chan struct{})
+	armed := make(chan struct{})
+	go func() {
+		defer close(armed)
+		for round := 0; ; round++ {
+			select {
+			case <-arming:
+				return
+			default:
+			}
+			agent.tellPhase(provider.PhaseRunning, "a tool", time.Now())
 		}
+	}()
+	// The stages are really being said before the quit starts, or this would be a
+	// test of a race that never happened.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if said, _ := heldSince(log.all(), provider.PhaseRunning); said >= 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no stage was ever said, so the quit has nothing to race")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if err := agent.Close(); err != nil {
+		t.Fatalf("closing the conversation: %v", err)
+	}
+	close(arming)
+	<-armed
+	// The armer may have been mid-call when the quit returned; its refusal is
+	// silent, so the count can only be the one the quit left behind.
+	settled := len(log.all())
+	// Several beats' worth of silence, for [TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds]'s
+	// reason: absence is the claim, and this is how long it takes to be false.
+	time.Sleep(20 * time.Millisecond)
+	if after := len(log.all()); after != settled {
+		t.Fatalf("the conversation said %d more things about what it was doing after the quit returned",
+			after-settled)
+	}
+	// AND THE CLOCK CAME DOWN rather than being left on the screen for a
+	// conversation that has gone.
+	last := log.all()
+	if len(last) == 0 || last[len(last)-1].Phase != "" {
+		t.Fatalf("the closed conversation left its stage on the screen; phases were %v", phaseWords(last))
 	}
 }
 

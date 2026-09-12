@@ -369,17 +369,6 @@ type phaseHeart struct {
 	// screen, which is the same defect as a stale phase and harder to see.
 	held PhaseNews
 	stop chan struct{}
-	// beating is one channel per beat goroutine this heart has armed that has not
-	// returned yet, closed by the beat itself on its way out.
-	//
-	// IT IS THERE SO THE QUIT CAN JOIN THEM AND NOT MERELY CANCEL THEM. Closing
-	// `stop` is what ENDS a beat; it is not what makes it gone. A beat armed in
-	// the last instant before [Agent.Close] may not have been scheduled at all
-	// yet — it then wakes after the session has left, reads this package's own
-	// beat interval and returns — which is a goroutine outliving the thing that
-	// armed it however quickly it exits. A session that has closed owns nothing
-	// still running, so the close waits ([Agent.waitForPhaseBeats]).
-	beating []chan struct{}
 }
 
 // tellPhase is how this package says what a turn is doing between requests, and
@@ -411,19 +400,8 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 		return
 	}
 	a.mu.Lock()
-	closed, model := a.closed, a.model
+	model := a.model
 	a.mu.Unlock()
-	// A CONVERSATION THAT HAS CLOSED SAYS NOTHING ABOUT WHAT IT IS DOING, and
-	// arms no beat to go on saying it. It is the one door's law said about this
-	// heart — the reading beside a turn writes nothing into a closed conversation
-	// (taskdelta.go), a clock armed on a question decides nothing after the door
-	// shuts (asklane.go) — and it is the half [Agent.Close] cannot do by itself:
-	// the close ends whatever is held, and this is what stops a phase being armed
-	// behind it. Without both, a beat went on posting a stage for a session that
-	// had gone, which is the stale clock this whole file exists to end.
-	if closed {
-		return
-	}
 	now := time.Now()
 	if since.IsZero() {
 		since = now
@@ -450,14 +428,38 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 		Subject: a.newsSubject(),
 		At:      now,
 	}
+	// A CONVERSATION THAT HAS CLOSED SAYS NOTHING ABOUT WHAT IT IS DOING, and arms
+	// no beat to go on saying it — which is [Agent.writeIfOpen]'s law said about
+	// this heart rather than about a file (agent.go).
+	//
+	// THE REFUSAL AND THE ARMING ARE ONE HOLD OF a.mu, and they have to be. Read
+	// `closed`, let the lock go and arm afterwards and [Agent.Close] fits exactly
+	// in the gap: it ends the held stage, waits for the beats it knows about, and
+	// returns — and the beat armed a moment later outlives the session, which is
+	// the leak this was written to close. Inside the door, an arming either
+	// happens before the close takes the lock and is therefore JOINED by it, or
+	// finds the door shut and does nothing.
+	a.writeIfOpen(func() { a.armPhaseLocked(news) })
+}
+
+// armPhaseLocked replaces whatever this heart was saying with one phase and
+// starts the beat that keeps saying it. It is called with a.mu held and takes
+// the heart's own lock inside it, which is the ONE nesting of these two locks
+// and always in this order: nothing that holds the heart's lock ever asks this
+// agent for anything ([Agent.sayHeldPhaseAgain] posts to a reader documented
+// never to block, and [postPhaseNews] touches nothing of this session's).
+func (a *Agent) armPhaseLocked(news PhaseNews) {
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()
-	stop, done := make(chan struct{}), make(chan struct{})
+	stop := make(chan struct{})
 	a.phase.held, a.phase.stop = news, stop
-	a.phase.beating = append(a.phase.beating, done)
+	// THE COUNT IS TAKEN BEFORE THE GOROUTINE EXISTS, under the same lock the
+	// quit's own `closed` is written under, so a beat can never be added to the
+	// count after [Agent.Close] has begun waiting on it.
+	a.phaseBeats.Add(1)
 	postPhaseNews(news)
-	guard.Go("phase beat", func() { a.beatHeldPhase(stop, done) })
+	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
 }
 
 // interruptPhase says a phase over the top of whatever the turn was already
@@ -527,8 +529,8 @@ func (a *Agent) dropHeldPhaseLocked() {
 // beatHeldPhase re-says one held phase until it ends. It is the whole lifetime
 // of the goroutine [Agent.tellPhase] spawns: it starts with a phase and it
 // returns when that phase is over, and there is no other exit.
-func (a *Agent) beatHeldPhase(stop, done chan struct{}) {
-	defer a.beatEnded(done)
+func (a *Agent) beatHeldPhase(stop chan struct{}) {
+	defer a.phaseBeats.Done()
 	beat := time.NewTicker(phaseHeldBeat)
 	defer beat.Stop()
 	for {
@@ -543,39 +545,17 @@ func (a *Agent) beatHeldPhase(stop, done chan struct{}) {
 	}
 }
 
-// beatEnded is one beat's own last act: it takes itself off the heart and
-// releases whoever is waiting for it ([Agent.waitForPhaseBeats]). The close is
-// outside the lock the quit reads that list under, so a join and an ending beat
-// cannot cross.
-func (a *Agent) beatEnded(done chan struct{}) {
-	a.phase.mu.Lock()
-	kept := a.phase.beating[:0]
-	for _, other := range a.phase.beating {
-		if other != done {
-			kept = append(kept, other)
-		}
-	}
-	a.phase.beating = kept
-	a.phase.mu.Unlock()
-	close(done)
-}
-
 // waitForPhaseBeats waits for every beat this heart has armed to have RETURNED,
 // and is the quit's own door ([Agent.Close]) and nobody else's.
 //
 // IT IS NOT ON A TURN'S PATH, deliberately: ending a stage cancels its beat and
 // carries on, because the only wait a person is ever made to feel is the model
 // generating. This is the one caller that has to know the goroutine is gone
-// rather than going, and it has already told [Agent.tellPhase] that nothing may
-// arm another one.
+// rather than going, and by the time it runs the door every arming goes through
+// is already shut ([Agent.writeIfOpen]), so nothing can be added to the count
+// while it waits.
 func (a *Agent) waitForPhaseBeats() {
-	a.phase.mu.Lock()
-	pending := make([]chan struct{}, len(a.phase.beating))
-	copy(pending, a.phase.beating)
-	a.phase.mu.Unlock()
-	for _, done := range pending {
-		<-done
-	}
+	a.phaseBeats.Wait()
 }
 
 // sayHeldPhaseAgain re-says the phase this beat belongs to and reports whether
