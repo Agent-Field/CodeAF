@@ -653,15 +653,16 @@ talking to and where** on the left, and the keys that work now on the right, lik
 legend on a fieldset:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── space space home · / commands ─
+─ porting the parser · glm-5.3-flash · ⠿ thinking high · via deepinfra · main* ── space space home · / commands ─
 ```
 
 The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
 **name** (the one the session chose for itself, falling back to the folder's name until
 it has named itself, so it is never empty), the **model** as its basename
-(`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
-high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
-install says), a `· via deepinfra` rider naming the endpoint that answered (the name alone, never a timing: the last answer's wait and speed are the `served` row of `/status`),
+(`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ thinking
+high`, `~ thinking high` on a plain terminal — `⠿ thinking auto` until something is
+dialled, which is what a fresh install says), a `· via deepinfra` rider naming the
+endpoint that answered (the name alone, never a timing: the last answer's wait and speed are the `served` row of `/status`),
 and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
 is not a repository there is no branch. It never says "untitled" and never invents a
 placeholder.
@@ -679,6 +680,14 @@ Until 2026-09-09 the rung was spelled onto the model id with a colon
 (`glm-5.3-flash:high`) and there was a second chip for it at the right end of the tray
 row. That was one ladder said two ways on one screen; there is one cell now, and it names
 the rung that will **actually** be asked for whichever setting decided it.
+
+**The rung cell says the word `thinking` before the rung.** It used to read `⠿ auto`
+bare, and `auto` is also what the **lane** dial says — `/model auto` hands the choice of
+machine back to aforge, and the `lane` row in `/settings` reads `auto` too. So
+`glm-5.3-flash · ⠿ auto` had two honest readings and was taken for "lane: auto" twice.
+The cell names its own ladder at every rung now, not only at `auto`: `⠿ thinking auto`,
+`⠿ thinking low`, `⠿ thinking high`. Which machine you are pinned to is written on the
+model's own word instead, as `glm-5.3-flash@cloudflare`.
 
 The rate the endpoint is writing at is *not* on this line — while a turn runs it stands
 beside the state word on the status row (`38 tok/s · ⠹ working · 12s`), because how fast
@@ -796,6 +805,66 @@ The pinned header at the top of a room says `esc/← main` in its own words, and
 legend it answers to a press: click it and you are back in the conversation. Clicking the
 page itself does not leave a room — a press on empty space does nothing here as it does
 everywhere.
+
+## Which model is actually answering — I changed the model mid-answer and the line still shows the old one
+
+**The model on that line is the model the answer in flight is being written by, not the
+one you last picked.** While a turn is running the cell names what the engine is actually
+talking to; when nothing is running it names what the next message will use, which is
+what you picked.
+
+That is the same reading the `· via deepinfra` rider comes from, so the two cells can
+never disagree. Before 2026-09-12 they could: the model cell was drawn from your last
+pick and the rider from the request in flight, so a person who picked `kimi-k3` three
+seconds into a turn read `moonshotai/kimi-k3 · via wafer` for the next seventeen minutes
+while every one of the forty-one calls went to `glm-5.3-flash`.
+
+**Over `--host` this needs an engine that keeps the fact.** The far machine states at
+the door whether it can name the model a turn is on; against an older engine the line
+names the model you picked, exactly as it did before, and `/model` says nothing about a
+turn in flight rather than guessing.
+
+**Changing the model does not move the answer you are waiting for.** A turn finishes on
+the model it started on — every step and every retry of it — and your pick takes effect
+at the next message you send. `/model` says so at the moment you press it:
+
+```
+model · moonshotai/kimi-k3 — this turn finishes on zhipu/glm-5.3-flash
+```
+
+If you want the new model *now*, stop the turn with `esc` and send the message again;
+`ctrl+q` queues it to run after this one finishes, on the new model.
+
+**Tasks already running keep their own model too**, and `/model` says that in the same
+line when any are running. A task's model is frozen when the task is admitted; tasks
+started after the switch follow it.
+
+**Pictures you attached stay with the turn that is using them.** Switching to a model
+that cannot see images replaces them with a line naming the file — but only from the
+next turn, never under a turn that is still sending them to a model that can see.
+
+**And only a switch does that.** Turns of a conversation that never changed model leave
+the pictures alone, and so does a switch to a model aforge has read no row for: replacing
+a picture cannot be undone, so it happens only when the model changed *and* the new one is
+known to have no vision. A model nothing is known about is refused a picture — it goes to
+the looking model instead — but it never costs you the one you already attached.
+
+## The cells on that line, one by one
+
+Left to right, each cell and what question it answers:
+
+| cell | what it is |
+| --- | --- |
+| `devbox ·` | the machine, on a `--host` session only |
+| `porting the parser` | this conversation's name, or the folder's name until it has one |
+| `glm-5.3-flash` | the model the engine is on right now — the dial when nothing is running |
+| `@cloudflare` | on the model's own word: the machine this model's requests are pinned to. Absent on `auto` |
+| `⠿ thinking high` | how hard this conversation is asked to think. `thinking auto` means nothing is asked for and the model decides |
+| `via deepinfra` | the endpoint that is writing, or wrote last. A name only, never a timing |
+| `main*` | the git branch, with `*` for uncommitted work |
+
+The speed is not here: `38 tok/s` stands beside the state word on the status row at the
+bottom, because how fast is a claim about now and who served is attribution.
 
 ## Why is one word in a line brighter than the rest — highlighted model names, keys and figures
 

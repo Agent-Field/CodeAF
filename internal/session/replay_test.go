@@ -251,7 +251,7 @@ func TestAResumedMessageCarriesItsImageReferences(t *testing.T) {
 	// Every other message answers nothing, which is what keeps a marker off a
 	// line nobody attached anything to. The person's own line is matched by its
 	// opening words rather than whole: this session was reopened with no
-	// SupportsImages, which is "nobody vouched for this model" and therefore NO
+	// SeesImages, which is "nobody vouched for this model" and therefore NO
 	// by Config's law, so the transcript guard has replaced the picture with its
 	// placeholder and the line now carries that sentence too (image.go).
 	for _, entry := range second.Transcript() {

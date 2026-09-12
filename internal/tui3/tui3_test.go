@@ -127,14 +127,18 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns  [][]session.Event
-	turn   int
-	live   chan session.Event
-	model  string
-	window int
-	usage  session.Usage
-	sent   []string
-	stops  int
+	// turnModel is what [fakeAgent.TurnModel] answers: the model a turn in
+	// flight is on. Empty is an idle session, which is what almost every test
+	// here wants.
+	turnModel string
+	turns     [][]session.Event
+	turn      int
+	live      chan session.Event
+	model     string
+	window    int
+	usage     session.Usage
+	sent      []string
+	stops     int
 	// stopDoor is the door the last stop named (internal/session's stopcause.go).
 	stopDoor session.StopDoor
 	closes   int
@@ -261,9 +265,15 @@ func (f *fakeAgent) InterruptFor(door session.StopDoor) {
 	f.stopDoor = door
 	f.stops++
 }
-func (f *fakeAgent) Compact(context.Context) error    { f.packs++; return nil }
-func (f *fakeAgent) Close() error                     { f.closes++; return nil }
-func (f *fakeAgent) Model() string                    { return f.model }
+func (f *fakeAgent) Compact(context.Context) error { f.packs++; return nil }
+func (f *fakeAgent) Close() error                  { f.closes++; return nil }
+func (f *fakeAgent) Model() string                 { return f.model }
+
+// TurnModel is the latch a local session keeps: the model the turn in flight is
+// on, "" when nothing is in flight ([session.Agent.TurnModel]). A double that did
+// not have it would leave the surface with no door at all, which is a different
+// state from an idle conversation and would hide every wire-model law.
+func (f *fakeAgent) TurnModel() string                { return f.turnModel }
 func (f *fakeAgent) SetModel(model string)            { f.model = model }
 func (f *fakeAgent) SetContextWindow(tokens int)      { f.window = tokens }
 func (f *fakeAgent) ReasoningFor(model string) string { return f.levels[model] }

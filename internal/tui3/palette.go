@@ -1740,11 +1740,17 @@ func (p *picker) keysHint() string {
 // any other, and every slot says which models may answer it (settings.go's
 // [filterFor]).
 func (a *app) openPicker() {
-	a.pick.startFor(a.modelList(), a.model, chatModel)
+	// IT OPENS ON THE MODEL THE ENGINE IS ON, which is the model the chip that
+	// opened it was spelling ([app.wireModel]) — hover.go's law: what lights is
+	// what the press acts on. A picker that opened with the cursor on the dial
+	// after a mid-turn pick would be a list about a model the person is not
+	// looking at.
+	wire := a.wireModel()
+	a.pick.startFor(a.modelList(), wire, chatModel)
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
 	// row inside an open fold, and what the row in use says `via`, and neither
 	// of those can change while a modal overlay owns the keyboard.
-	a.armLanes(&a.pick, laneSlotFor(a.model))
+	a.armLanes(&a.pick, laneSlotFor(wire))
 	a.armRefresh()
 	a.touch()
 }
@@ -1914,6 +1920,13 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
+	// WHAT THE TURN IN FLIGHT IS ON, READ BEFORE THE DIAL MOVES. It is the
+	// engine's own answer and not a flag this surface keeps — [app.turnModel] is
+	// [session.Agent.TurnModel] as it crossed the seam — so a model named here IS
+	// the engine saying there is work in flight and what it is talking to. It is
+	// read first because the dial is about to become the answer to a different
+	// question.
+	turnOn := a.turnModel()
 	a.agent.SetModel(id)
 	a.model = a.agent.Model()
 	if a.model == "" {
@@ -1946,11 +1959,31 @@ func (a *app) switchModel(id string, window int) {
 	// started after this line follow the switch (taskmodel.go's
 	// defaultTaskModel reads the live dial), which is why the sentence is
 	// about the running ones only.
+	// AND THE TURN IN FLIGHT IS THE FIRST THING IT SAYS, because it is the thing
+	// the person is watching. [session.Agent.SetModel] latches a turn's model
+	// when the turn opens and never moves it, so a swap made three seconds into
+	// a turn changes nothing about the seventeen minutes that follow — and until
+	// this line the surface said nothing at all about that, while drawing the
+	// model just picked on the seam beside the old model's endpoint. The sentence
+	// is derived from what the engine is on rather than from a flag: if the
+	// engine is naming a model, there is work on it, and if that model is the one
+	// just picked there is nothing to say.
 	note := "model · " + a.model
+	if turnOn != "" && !strings.EqualFold(turnOn, a.model) {
+		note += " — this turn finishes on " + turnOn
+	}
 	if a.deckRunning() > 0 {
 		note += " — tasks already running keep the model they started on"
 	}
-	a.noteFacts(note, a.model)
+	// BOTH IDS ON THE LINE STEP TO INK. The id just picked is the fact this note
+	// is about; the model the turn keeps is the fact it is about NEXT, and a
+	// sentence that dimmed half of what it was telling somebody would be a
+	// sentence half read (payload.go).
+	facts := []string{a.model}
+	if turnOn != "" {
+		facts = append(facts, turnOn)
+	}
+	a.noteFacts(note, facts...)
 	a.noticeEvent(eventModelSwitched)
 }
 

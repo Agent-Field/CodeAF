@@ -7321,8 +7321,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// model is never told it has. It is nil for every other node — the node
 		// has no revision lane to close over — which is what keeps revise_design
 		// off every other belt (harness_task.go's reviseDoor).
-		reviseDesign:   node.reviseDoor(),
-		SupportsImages: parent.SupportsImages,
+		reviseDesign: node.reviseDoor(),
+		SeesImages:   parent.SeesImages,
 		// AND THE ANSWER TO "CAN THIS MODEL HOLD A TOOL", without which the
 		// rescue above works exactly one level deep. It is read at the top of
 		// THIS constructor, off the parent's config, so a worker that did not

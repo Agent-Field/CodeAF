@@ -47,7 +47,7 @@ func countImageParts(agent *Agent) int {
 func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SupportsImages = func(model string) bool { return model == "test/model" }
+		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
 		config.SessionFile = writeableJournal(t)
 	})
 	path := writeImage(t, workspace, "chart.png", "PHOTOBYTES")
@@ -150,11 +150,11 @@ func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
 	}
 
 	resumed, err := newAgent(Config{
-		Workspace:      workspace,
-		Model:          "vendor/blind",
-		System:         "SYSTEM",
-		SessionFile:    journal,
-		SupportsImages: func(model string) bool { return model == "test/model" },
+		Workspace:   workspace,
+		Model:       "vendor/blind",
+		System:      "SYSTEM",
+		SessionFile: journal,
+		SeesImages:  func(model string) ModelSight { return SightOf(model == "test/model") },
 	}, &scriptedCompleter{})
 	if err != nil {
 		t.Fatalf("resume: %v", err)
@@ -174,7 +174,7 @@ func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
 // send base64 to a blind model.
 func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.SupportsImages = func(model string) bool { return model == "test/model" }
+		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
 	})
 	agent.mu.Lock()
 	agent.messages = append(agent.messages, ai.Message{Role: "user", Content: []ai.ContentPart{

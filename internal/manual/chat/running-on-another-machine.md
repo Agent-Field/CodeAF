@@ -375,10 +375,10 @@ moment the link does.
 ## Make a hosted conversation think harder — ctrl+v, /effort and the thinking rung over --host
 
 **It works, and the rung is set on the machine the conversation is running on.** The line
-above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
+above your message box names it beside the model — `glm-5.3-flash · ⠿ thinking high` — and all
 three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
 `/effort` opens the six rows or takes one outright (`/effort max`). A hosted conversation
-nobody has dialled reads `⠿ auto`, exactly as a local one does, and `/effort auto` clears
+nobody has dialled reads `⠿ thinking auto`, exactly as a local one does, and `/effort auto` clears
 it back there.
 
 The word you see is the rung **that machine** resolved, not the one this one would have

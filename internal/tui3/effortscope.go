@@ -67,11 +67,36 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
-// effortClauseWord leads the clause on every surface. It is the word the
-// settings row already labels this setting with (internal/config's settings.go
-// spells the row `thinking`), so the fact a card states and the row a person
-// finds in the panel are the same word rather than two.
-const effortClauseWord = "thinking "
+// effortLadderWord is WHAT THE RUNG IS ABOUT, and the one place this surface
+// spells it. It is the word the settings row already labels this setting with
+// (internal/config's settings.go spells the row `thinking`), so the fact a card
+// states, the row a person finds in the panel and the cell on the seam are the
+// same word rather than three.
+//
+// A RUNG WORD ON ITS OWN IS A WORD BESIDE A MODEL, AND `auto` IS ALSO THE LANE
+// VOCABULARY'S WORD. `/model auto` hands the choice of machine back to the
+// router, the `lane` row in /settings reads `auto`, and the manual's own
+// settings picture spells `lane  auto` two lines under `your model`. So
+// `glm-5.3-flash · ⠿ auto` had two honest readings and the owner took the wrong
+// one TWICE — once on 2026-09-10, when the pin looked to them as though it had
+// failed and the `model@lane` spelling was built in answer ([app.modelWord]),
+// and again on 2026-09-11 on `moonshotai/kimi-k3 · auto · via wafer`. A cell
+// that is read wrong twice is not a cell somebody else should be asked to read
+// a third time.
+//
+// SO THE CELL NAMES ITS OWN LADDER, ALWAYS, AND NOT ONLY FOR THE WORD THAT
+// COLLIDES. A cell that qualified itself for `auto` and went bare for `high`
+// would be a rule about one word rather than about the cell, and the next rung
+// word to collide with something would be read wrong too. `⠿ thinking auto`,
+// `⠿ thinking high`: the same sentence at every rung, and the width the extra
+// word costs is spent by the seam's own ladder, which drops this cell WHOLE when
+// the line is tight (foot.go's [seamLadder]).
+const effortLadderWord = "thinking"
+
+// effortClauseWord leads the clause on every surface — the ladder's word with
+// the space that separates it from the rung. It is derived rather than spelled
+// again, because a number (or a word) that appears in two places will drift.
+const effortClauseWord = effortLadderWord + " "
 
 // effortKeyClause is what a legend says beside it, in the hint grammar every
 // other legend on this surface is written in — `chord verb` (payload.go).

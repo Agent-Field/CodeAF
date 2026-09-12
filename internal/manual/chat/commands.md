@@ -884,8 +884,9 @@ model, `enter choose · ← back · esc` inside its lanes.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
-notes `model · <model>`, and writes the choice into your profile, so the next `aforge`
-opens on it. Over `--host` the switch takes for the session and is not written down: the
+notes `model · <model>` — and, when a turn is still running, `model · <model> — this turn
+finishes on <the model it started on>` — and writes the choice into your profile, so the
+next `aforge` opens on it. Over `--host` the switch takes for the session and is not written down: the
 model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do

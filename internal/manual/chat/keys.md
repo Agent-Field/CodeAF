@@ -1149,7 +1149,7 @@ The line above the message box — the legend — names how hard the model will 
 your next turn, immediately after the model that will be doing the thinking:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+─ porting the parser · glm-5.3-flash · ⠿ thinking high · via deepinfra · main* ── / commands ─
 › what changed in the relay this week
 ```
 
@@ -1159,7 +1159,7 @@ chose: it is the rung the next turn will ask for, whichever setting decided it. 
 *Making the model think harder, deeper, or less* on the "Models and cost" page for the
 whole ladder and for what each rung asks the provider for.
 
-**A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
+**A conversation nobody has dialled reads `⠿ thinking auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
 **`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
@@ -1206,7 +1206,7 @@ What it changes and what it does not:
   row in `/settings`, which ships at `auto` (the provider default).
 - **`auto` is on the legend and it is the ladder's top row.** With thinking at `auto` and
   no more specific level chosen — which is what a shipped install is — the cell reads
-  `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  `⠿ thinking auto`, it is pressable, and `ctrl+v` walks it onto `low`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
   An engine too old to know the ladder says so at the door and there is then no rung on
@@ -1224,17 +1224,19 @@ without looking away from what you are typing, and then it goes quiet again. Set
 back to `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
-## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
+## What `thinking auto` means beside the model — putting thinking back to auto, why it does not say a lane, and why the cell is there at all
 
-`⠿ auto` on the line above the message box means **nobody has asked this conversation to
-think any particular amount**. aforge sends no reasoning field on the request at all, and
+`⠿ thinking auto` on the line above the message box means **nobody has asked this
+conversation to think any particular amount**. The cell names its ladder — `thinking` —
+because `auto` on its own is also the **lane** dial's word (`/model auto`, the `lane` row
+in `/settings`), and the bare word was read as "lane: auto" twice. aforge sends no reasoning field on the request at all, and
 the model thinks however it thinks — its own published default. It is not "think as little
 as possible": that is a different request, and `low` is the rung for it.
 
 **It is what a fresh install says.** The **thinking** row in `/settings` ships at `auto`,
 so until you dial something — this conversation with `ctrl+v`, `/effort` or a press on the
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
-itself in `/settings` — every conversation reads `⠿ auto`.
+itself in `/settings` — every conversation reads `⠿ thinking auto`.
 
 **To put it back to `auto`:** type `/effort auto` (or `/effort off`, the older name for
 the same thing), or open `/effort` and pick the top row. **`ctrl+v` and pressing the cell

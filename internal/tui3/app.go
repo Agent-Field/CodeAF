@@ -6724,11 +6724,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// a machine to pin, the word that un-pins, a question for the list, or
 		// — still, and as the fall-through — a slug to switch to.
 		switch intent, value := modelArg(rest); intent {
+		// THE PIN LANDS ON THE MODEL THE ENGINE IS ON, which is the model the
+		// chrome is naming ([app.wireModel]): `/lane` is read beside the chip
+		// that spells `model@lane`, and pinning the dial while another model is
+		// answering would put the instruction on a model nobody is looking at.
 		case modelPinLane:
-			a.pinLane(a.model, value)
+			a.pinLane(a.wireModel(), value)
 			return nil
 		case modelAutoLane:
-			a.clearLanePin(a.model)
+			a.clearLanePin(a.wireModel())
 			return nil
 		case modelQuery:
 			a.openPickerFiltered(value)

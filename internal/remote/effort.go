@@ -36,6 +36,13 @@ type effortDoor interface {
 	SetConversationEffort(rung string) bool
 }
 
+// resolvedEffortForDoor is the per-model half of the dial, asserted separately
+// so an engine that predates it still advertises a dial ([effortKnown]) and
+// still answers for the conversation as a whole.
+type resolvedEffortForDoor interface {
+	ResolvedEffortFor(model string) string
+}
+
 // effortKnown is whether this engine has the whole dial. A partial one is no
 // dial at all: the surface draws the resolved rung and moves the stored one, so
 // an engine with one of the three would light a cell nothing could turn.
@@ -52,6 +59,19 @@ func (a *Agent) EffortSupported() bool { return a.c.Welcome().Effort }
 // that a View over --host issues zero far calls (replica.go states the whole
 // reason).
 func (a *Agent) ResolvedEffort() string { return a.c.facts.read().Thinking }
+
+// ResolvedEffortFor is that rung for one model id — and over a connection it is
+// the SAME memory read, whatever id is asked for.
+//
+// THE ENGINE HAS ALREADY RESOLVED IT FOR THE MODEL IT IS ON. [session.Facts]
+// carries the rung resolved for [session.Facts.TurnModel] (its facts.go states
+// why), and the model this surface names is that same model
+// (internal/tui3's [app.wireModel]) — so the id a caller passes is the id the
+// answer was resolved for, and asking the far machine again would be a call on
+// a frame, which PERF.md forbids. An id that is NOT the one the engine is on has
+// no answer here and gets the engine's, which is the honest fallback: this end
+// keeps no ladder of its own to resolve with.
+func (a *Agent) ResolvedEffortFor(string) string { return a.ResolvedEffort() }
 
 // ConversationEffort is the rung THIS conversation was set to, "" when nobody
 // has set one.

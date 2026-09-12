@@ -25,29 +25,38 @@ func TestTheVisionGateAnswersFromTheCatalogsInputModalities(t *testing.T) {
 		{ID: "vendor/quiet", OutputModalities: []string{"text"}},
 	}}
 
-	cfg := session.Config{Model: "vendor/sees", SupportsImages: v3SeesImages(models)}
-	if !cfg.SupportsImages("vendor/sees") {
-		t.Fatal("a model that publishes image input was gated out")
+	cfg := session.Config{Model: "vendor/sees", SeesImages: v3SeesImages(models)}
+	if got := cfg.SeesImages("vendor/sees"); got != session.SightSees {
+		t.Fatalf("a model that publishes image input reads as %v", got)
 	}
 	// Case is not a difference: it is the same id either way.
-	if !cfg.SupportsImages("Vendor/Sees") {
-		t.Fatal("the gate answered case rather than identity")
+	if got := cfg.SeesImages("Vendor/Sees"); got != session.SightSees {
+		t.Fatalf("the gate answered case rather than identity: %v", got)
 	}
-	for _, model := range []string{"vendor/reads", "vendor/quiet", "vendor/unheard-of", ""} {
-		if cfg.SupportsImages(model) {
-			t.Fatalf("%q was told it can read images", model)
+	// A ROW THIS DOOR HAS READ IS A VERDICT; AN ID IT HAS NOT IS IGNORANCE. The
+	// two were one answer until 2026-09-12, and the scrub that read them took a
+	// person's pictures out of the transcript on the strength of the second
+	// (internal/session's blindswap.go).
+	for _, model := range []string{"vendor/reads", "vendor/quiet"} {
+		if got := cfg.SeesImages(model); got != session.SightBlind {
+			t.Fatalf("%q, whose row this door has read, answers %v", model, got)
+		}
+	}
+	for _, model := range []string{"vendor/unheard-of", ""} {
+		if got := cfg.SeesImages(model); got != session.SightUnknown {
+			t.Fatalf("%q, which this door has never read, answers %v rather than ignorance", model, got)
 		}
 	}
 
-	// A catalog still warming, with no cache on disk either, answers no — and
-	// answers it per call, so the same session says yes once the rows land
-	// rather than being pinned at boot.
+	// A catalog still warming, with no cache on disk either, knows NOTHING — and
+	// answers per call, so the same session says yes once the rows land rather
+	// than being pinned at boot.
 	warming := fakeV3Catalog{}
-	if v3SeesImages(warming)("vendor/sees") {
-		t.Fatal("a warming catalog vouched for a model it has not read")
+	if got := v3SeesImages(warming)("vendor/sees"); got != session.SightUnknown {
+		t.Fatalf("a warming catalog answered %v for a model it has not read", got)
 	}
-	if v3SeesImages(nil)("vendor/sees") {
-		t.Fatal("no catalog at all vouched for a model")
+	if got := v3SeesImages(nil)("vendor/sees"); got != session.SightUnknown {
+		t.Fatalf("no catalog at all answered %v for a model", got)
 	}
 }
 
@@ -69,13 +78,17 @@ func TestTheVisionGateReadsTheDiskCacheWhileTheCatalogIsWarming(t *testing.T) {
 	}
 
 	gate := v3SeesImages(fakeV3Catalog{})
-	if !gate("vendor/sees") {
-		t.Fatal("the cache's own witness that a model can see was ignored")
+	if got := gate("vendor/sees"); got != session.SightSees {
+		t.Fatalf("the cache's own witness that a model can see reads as %v", got)
 	}
-	for _, model := range []string{"vendor/reads", "vendor/painter", "vendor/unheard-of"} {
-		if gate(model) {
-			t.Fatalf("%q was told it can read images off the cache", model)
+	for _, model := range []string{"vendor/reads", "vendor/painter"} {
+		if got := gate(model); got != session.SightBlind {
+			t.Fatalf("%q, whose cached row this door has read, answers %v", model, got)
 		}
+	}
+	// AND A MODEL THE CACHE HAS NEVER HEARD OF IS IGNORANCE, not a verdict.
+	if got := gate("vendor/unheard-of"); got != session.SightUnknown {
+		t.Fatalf("a model the cache does not carry answers %v rather than ignorance", got)
 	}
 
 	// AND A CATALOG THAT HAS ANSWERED WINS. The cache is the warming rung and
@@ -84,8 +97,8 @@ func TestTheVisionGateReadsTheDiskCacheWhileTheCatalogIsWarming(t *testing.T) {
 	live := v3SeesImages(fakeV3Catalog{rows: []catalog.Model{
 		{ID: "vendor/sees", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 	}})
-	if live("vendor/sees") {
-		t.Fatal("a stale cache overruled the catalog that had already answered")
+	if got := live("vendor/sees"); got != session.SightBlind {
+		t.Fatalf("a stale cache overruled the catalog that had already answered: %v", got)
 	}
 }
 

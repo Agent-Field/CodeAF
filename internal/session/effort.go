@@ -67,7 +67,28 @@ func (a *Agent) ConversationEffort() string {
 // whichever scope decided it. It is what a surface shows when it wants to say
 // what is HAPPENING rather than what was chosen.
 func (a *Agent) ResolvedEffort() string {
-	return a.effortFor(a.Model()).String()
+	return a.ResolvedEffortFor(a.Model())
+}
+
+// ResolvedEffortFor is that rung FOR ONE MODEL ID, which is a different question
+// whenever a level has been dialled onto a model in the picker: those live per
+// model id ([Agent.ReasoningFor]), and they are the most specific scope the
+// ladder has, so they decide.
+//
+// IT EXISTS BECAUSE THE RUNG IS DRAWN BESIDE A MODEL AND MUST BE THAT MODEL'S.
+// The seam's cells read left to right as one sentence — this model, thinking
+// this hard, served by this machine — and the model cell names the model the
+// ENGINE is on (internal/tui3's [app.wireModel]). Resolving the rung for the
+// dial instead put one model's name next to another model's level the moment
+// somebody picked mid-turn, and a fallback hop moved the turn's rung
+// (loop.go's `moveOn` re-resolves) without moving the drawn one.
+//
+// An empty id is the dial, which is what an idle conversation's cell names.
+func (a *Agent) ResolvedEffortFor(model string) string {
+	if strings.TrimSpace(model) == "" {
+		model = a.Model()
+	}
+	return a.effortFor(model).String()
 }
 
 // SetConversationEffort sets this conversation's rung and reports whether the
