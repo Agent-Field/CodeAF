@@ -419,10 +419,13 @@ refuses does not stop the sweep — the whole point is the folder you did not kn
 failure on the third of five must not hide the fourth — and every refusal is reported
 together at the end.
 
-This is the blunt instrument and it is safe to reach for: an engine that is stopped closes
-its conversations and flushes their transcripts first, and a turn it catches keeps its
-partial reply. What it costs you is that every conversation on this machine comes back on
-the next connection rather than staying warm.
+This is the blunt instrument and it is safe to reach for: a host let go of this way writes
+every transcript out before it goes, and a turn the sweep catches keeps the part of its
+reply that had arrived. What it costs you is that everything on this machine comes back
+cold on the next connection rather than staying warm.
+
+If what you are actually chasing is a reply that stopped and said so on screen, this is
+not the page — *Models and cost* has the sentence you read and what each of them means.
 
 ## Rebuilt aforge but your conversation was still on the old engine — how aforge tells you
 
