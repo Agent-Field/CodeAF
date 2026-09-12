@@ -606,51 +606,61 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 		[]string{mine, a.config.Place.ID()}, since, deltaLandedRows)
 	live := a.Elsewhere().Tasks()
 
-	a.mu.Lock()
-	if a.closed {
-		// NOTHING THIS READING COULD SAY WOULD REACH ANYBODY once the session
-		// has closed, so it says nothing and owes nothing. It is the ask lane's
-		// own law about a clock that ran out after the door shut
-		// ([Agent.askClockRanOut]), said about a reading instead of a decision,
-		// and it is what makes "nothing armed outlives the session that armed
-		// it" (steer_grace.go) true of this goroutine: a reading still in flight
-		// when [Agent.Close] runs either owes its stamp BEFORE `closed` is set —
-		// and the close's own settle then lands it — or finds the door shut and
-		// leaves the folder alone. Measured on the Spark, 2026-09-12: thirteen
-		// runs in five thousand of one asklane fixture failed as `TempDir
-		// RemoveAll cleanup: directory not empty`, and the file left behind was
-		// this stamp.
-		a.mu.Unlock()
-		return
-	}
+	// ── EVERYTHING THIS READING CHANGES, UNDER ONE HOLD OF THE LOCK ──────────
+	//
+	// NOTHING IT COULD SAY WOULD REACH ANYBODY once the session has closed, so a
+	// closed session takes neither the block nor the stamp. It is the ask lane's
+	// own law about a clock that ran out after the door shut
+	// ([Agent.askClockRanOut]), said about a reading instead of a decision, and
+	// it is what makes "nothing armed outlives the session that armed it"
+	// (steer_grace.go) true of this goroutine: a reading still in flight when
+	// [Agent.Close] runs either owes its stamp BEFORE `closed` is set — and the
+	// close's own settle then lands it — or finds the door shut and leaves the
+	// folder alone. Measured on the Spark, 2026-09-12: thirteen runs in five
+	// thousand of one asklane fixture failed as `TempDir RemoveAll cleanup:
+	// directory not empty`, and the file left behind was this stamp.
+	//
+	// THE CHECK AND THE WRITES ARE ONE HOLD BECAUSE THE CHECK IS TRUE ONLY FOR
+	// AS LONG AS IT IS HELD — `Close` sets `closed` under this same lock. The
+	// shape is deliberate and temporary: #999 lands [Agent.writeIfOpen], the one
+	// door for exactly this — write nothing into a conversation that has closed,
+	// already carried by the memory pass and the phase news — and this region
+	// becomes a call to it with the three lines below as its closure. Nothing but
+	// those three lines belongs between the check and the unlock until it does.
+	//
 	// AND THE TURN ENDING IS NOT THAT DOOR. The context is what stops this
 	// reading STARTING work — the walk above — and it deliberately does not stop
 	// the answer landing: `elsewhereText` is not this turn's, it is the
 	// conversation's, and the note the next request opens with reads it
 	// ([Agent.landVolatileLocked]). That is the bargain loop.go states in so many
-	// words, "a read that lands after the first request rides the next step",
-	// and it is the difference between a slow disk costing one turn and a slow
-	// disk costing every turn: dropped here, the next reading starts from the
-	// same unmoved `since` and re-walks the same index, forever, delivering
-	// nothing on a machine where the walk outlasts a short turn.
+	// words, "a read that lands after the first request rides the next step", and
+	// it is the difference between a slow disk costing one turn and a slow disk
+	// costing every turn: dropped here, the next reading starts from the same
+	// unmoved `since` and re-walks the same index, forever, delivering nothing on
+	// a machine where the walk outlasts a short turn.
+	//
 	// AND THE STAMP IS OWED WITH THE ASSIGNMENT RATHER THAN AHEAD OF THE READS.
 	// It says THIS SESSION'S MODEL WAS TOLD, and the assignment is the last
 	// moment at which that can still be arranged: after it the block is in
-	// `elsewhereText` and the next request carries it ([Agent.landVolatileLocked]
-	// at the drain). That is not the same as the model having READ it, and this
-	// stamp cannot honestly claim more than it — `elsewhereTold` lives in memory
-	// alone, so a process that stops between here and the next request loses
-	// those rows from the block while the stamp says they were told. What the
-	// old order — stamping before the reads — bought over this was nothing at
-	// all, and what it cost was the same loss over the whole of the walk plus
-	// every session that closed during one.
+	// `elsewhereText` and the next request carries it. That is not the same as
+	// the model having READ it, and this stamp cannot honestly claim more than it
+	// — `elsewhereTold` lives in memory alone, so a process that stops between
+	// here and the next request loses those rows from the block while the stamp
+	// says they were told. What the old order — stamping before the reads —
+	// bought over this was nothing at all, and what it cost was that same loss
+	// over the whole of the walk, plus every session that closed during one.
+	//
+	// The assignment itself puts the block at the tail of the transcript, in the
+	// note the drain lands immediately before the next request, and not in
+	// message[0] where it used to sit: writing it there re-priced every message
+	// of the conversation behind it each time another window landed something.
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
 	a.oweToldStampLocked(dir, now)
 	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
-	// The assignment alone: the block reaches the model at the tail of the
-	// transcript, in the note the drain lands immediately before the first
-	// request of this turn ([Agent.landVolatileLocked]), and not in message[0]
-	// where it used to sit. Writing it there re-priced every message of the
-	// conversation behind it each time another window landed something.
 	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
 	a.mu.Unlock()
 }
