@@ -361,6 +361,13 @@ var leanCapabilityGroups = []struct {
 	capabilityGroup: capabilityGroup{name: "watching", members: []string{"watch"}},
 	holds:           Config.mayWatch,
 }, {
+	// A second opinion is reached for rarely, and the lean budget law says a
+	// rarely reached verb shelves (prefixbudget_test.go). It is loaded the same
+	// breath the model asks for it, so the small model consult serves keeps the
+	// door one call away rather than paying its schema on every turn.
+	capabilityGroup: capabilityGroup{name: "opinion", members: []string{"consult"}},
+	holds:           func(c Config) bool { return !c.InTask },
+}, {
 	// The working-state trio (state.go). A model small enough for this profile
 	// keeps its state in the transcript it can see.
 	capabilityGroup: capabilityGroup{name: "memory", members: []string{"track", "commit", "recall"}},

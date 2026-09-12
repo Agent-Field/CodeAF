@@ -2802,6 +2802,11 @@ type Agent struct {
 	// the seal that would carry the figure is exactly what an abandoned turn
 	// never writes.
 	turnSpend Usage
+	// consultCalls is how many `consult` questions this turn has already spent
+	// ([Agent.consultTool]); it is reset beside turnSpend when a turn opens
+	// (agent.go's [Agent.startTurnLocked]), because the answer it bounds is
+	// "has this turn already bought a second opinion" and nothing else.
+	consultCalls int
 	// contextWindow is the window learned after construction — the catalog's
 	// figure for a model chosen with /model, which Config.ContextWindow cannot
 	// carry because the model was picked long after New. Zero means nobody has

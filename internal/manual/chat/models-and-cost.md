@@ -1,6 +1,24 @@
 # Models, context, and what it costs
 
-## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
+## Asking for a second opinion — the `consult` verb
+
+When the model itself wants a bigger model's judgement on something it is about to
+commit to — a fan-out shape, a choice between roads, a reading it cannot resolve
+— it can ask one question of the tier that thinks, with its `consult` tool, and
+use the answer before it spends.
+
+At most **two a turn**, and the refusal says the arithmetic: `no: 2 consults are
+already spent this turn`. That is the entire control. The question rides with the
+facts the answering model cannot see, so the answer is a decision, not a summary.
+
+On a window small enough for the lean profile, `consult` waits on the shelf (the
+`opinion` group) the way `propose_task` does, so its schema is not paid on every
+request — it arrives with one `load_capability`.
+
+Task workers have no `consult` on their belt: inside a task, the armed version of
+the second opinion is the division review, and two doors to the same tier is a
+move the harness refuses by design.
+
 
 When DNS or a connection attempt fails before the request is accepted, aforge
 shows `waiting for connection`. It pauses requests on that client and checks

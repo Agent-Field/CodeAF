@@ -187,6 +187,12 @@ func (a *Agent) belt() []bare.Tool {
 	// (task_quick.go). The judge that decides between the two is written once, in
 	// its description.
 	tools = append(tools, a.quickTools()...)
+	// consult is a conversation's verb (consult.go): a task node's second
+	// opinion rides the division review instead, so the door is absent there
+	// rather than present and refusing.
+	if !a.config.InTask {
+		tools = append(tools, a.consultTool())
+	}
 	// items is the verb a QUICK WORKER carries and nothing else does: a node with
 	// no list has no door behind the tool, so it is absent rather than present
 	// and refusing — the law every conditional family on this belt is built on.

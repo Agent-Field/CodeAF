@@ -1644,6 +1644,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// abandoned turn is journaled with, and carrying the last turn's figure into
 	// this one would put another turn's money on that line.
 	a.turnSpend = Usage{}
+	// And the second-opinion budget opens again with the turn that must pay for
+	// it (consult.go).
+	a.consultCalls = 0
 	// done is how Close waits for this turn: closed under a.mu by the cleanup
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
