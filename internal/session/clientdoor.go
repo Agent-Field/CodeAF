@@ -363,7 +363,9 @@ func (a *Agent) completeWithModel(ctx context.Context, messages []ai.Message, mo
 	if err != nil {
 		return nil, err
 	}
-	return client.CompleteWithMessages(ctx, messages, append(options, ai.WithModel(wire))...)
+	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
+	// is this package's to change (callwindow.go says why it cannot be earlier).
+	return client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 }
 
 type unavailableCompleter struct{ err error }

@@ -121,6 +121,7 @@ ALWAYS the same three columns in the same order with the same keys:
 | conflicts with your branch: <files> | merge conflicted after the merge round failed | resolve it (spends one more merge round) | drop it (refute; branch kept) |
 | your branch changed the same files while it worked: <files> | the ground moved under work that HELD its check (`TaskFacts.Shifted`) | resolve it (spends one more merge round) | drop it (refute; branch kept) |
 | nobody could check it | TaskUnverified, checker gave no answer after failover | accept | not right |
+| the check ran out of time | TaskUnverified, the clock cut the checker's last call or closed its window (`auditVerdict.ranOut`) | accept | not right |
 | the check did not pass it: <gaps> | ResultHeld / held landing | accept anyway | not right |
 | paused at the <cap> cap | fuel gate | raise the cap | stop it |
 
@@ -205,6 +206,31 @@ ordinary landing:
 1. **Checker failover.** A check that never answers or answers with neither
    word is retried once through the provider failover ladder on another model
    before the node lands as `nobody could check it`.
+
+   **Before that, a checker that read something is asked for its word (#941).**
+   Until 2026-09-11 a checker whose call was cut by its share of the window was
+   closed with everything it had read, and a fresh one began the investigation
+   again inside what was left; on a reasoning model with nothing to run (a
+   one-minute window, thirty seconds a call) both were cut mid-thought and
+   correct work landed `your call`. Now every checker call goes out under a
+   window it is TOLD (`internal/session/callwindow.go`: the one client door
+   hands the time left to the adapter, which derives the thinking allowance from
+   it and the lane's measured pace, #940's `provider.WithThinkingWall`), its
+   calls are planned as `lane.RoleJudge` rather than a leaf's, and a call cut
+   after the checker had opened files or run commands is followed by an answer
+   ask on the SAME checker — its transcript is the evidence, `auditNudge` is the
+   question, its thinking is switched off (`Agent.askForTheWord`, which is also
+   the old nudge for a reply that said neither word). Only a checker cut before
+   it read anything goes to the fresh-checker rung.
+
+   **And a non-answer the clock decided says so.** It used to read `nobody could
+   check it` like every other non-answer, which a person takes as news about the
+   work. It is still `your call` — nothing merges on a non-answer — but the row
+   reads `the check ran out of time`, and the report leads `the check ran out of
+   time — one call ran 30s without answering and was abandoned · the window
+   closed before a second`. The reason is read back off that lead
+   (`taskCheckReason`), the way the held row reads its gaps, so every surface that
+   carries the report comes to the same sentence without a field of its own.
 2. **The merge round.** A branch that conflicts gets one resolver round: merge
    the person's branch into the task branch in the task's worktree, a worker
    resolves the markers with the brief and both sides in front of it, the check

@@ -4598,12 +4598,14 @@ as it takes: nothing ages it out, and only your decision moves it.
 ## What your call can be asking — the six questions, and what a and n mean on each
 
 There are exactly six things a `your call` row can be asking, and each closes with its own
-two answers — a yes and a no, in the words that question deserves. One of the six has two
-sentences, because there are two ways to end up with two versions of the same file:
+two answers — a yes and a no, in the words that question deserves. Two of the six have more
+than one sentence: a check that could not answer says whether the clock is why, and there
+are three ways to end up with two versions of the same file:
 
 | The reason on the row | its yes | its no |
 | --- | --- | --- |
 | `nobody could check it` | `accept` | `not right` |
+| `the check ran out of time` | `accept` | `not right` |
 | `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
 | `conflicts with your branch: <files>` | `resolve it` | `drop it` |
 | `your branch changed the same files while it worked: <files>` | `resolve it` | `drop it` |
@@ -4616,6 +4618,14 @@ The third, fourth and fifth are **one question with three true sentences**: the 
 not merge, or it would have merged and your own branch changed those files while the task
 worked, or your folder already holds your own uncommitted copies of the very files the task
 wrote. All three hand you the same two answers, and the sentence says which happened.
+
+The first two rows are **one question with two true sentences** as well. `nobody could check
+it` means the checker would not start, the provider failed it, or it answered neither way;
+`the check ran out of time` means its call was cut by its window before it said the word.
+Both ask whether the work is right, with the same two answers, and nothing merges on either.
+The second is **a fact about the checker and not about your work** — it says nothing about
+whether the work is right — so read the work and the checker's account under the row before
+answering (how-tasks-run, *The check was asked twice*).
 
 **The first four are the ones a landing card asks**, and there the two answers are chips,
 always the same three columns in the same order with the same keys — only the words on them

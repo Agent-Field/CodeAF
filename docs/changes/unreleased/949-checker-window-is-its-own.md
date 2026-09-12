@@ -1,0 +1,17 @@
+---
+kind: fixed
+title: a check that runs out of time is told its window, keeps what it read, and says it was the clock
+pr: 949
+surface: [chat, engine]
+invalidates:
+  - "A task's checker call was bounded by a bare `context.WithTimeout` at its share of the window (`auditPace.bound`: thirty seconds of the one-minute reading window a check with no declared `checks` gets) and by nothing else: no reasoning budget, no word on the wire about how long it had. Every checker call now goes out under a window it is TOLD (`internal/session/callwindow.go`'s `openCallWindow`), and the one client door (`Agent.completeWithModel`) hands the time left on it to the adapter's effort ladder (#940's `provider.WithThinkingWall`), which derives the thinking allowance from that time and the asked machine's measured rate. The wall is applied at the door, after the turn loop's rung stamp, because a rung stamp replaces the whole effort request and would otherwise shadow it."
+  - "The checker's calls were planned as a working task node's: `Agent.laneRole` returned `lane.RoleLeafAttached` / `lane.RoleLeafUnattended` for anything `InTask`, so the controller used a leaf's ceiling and give-up. They are now `lane.RoleJudge` — `Config.crewRole` is set on the agent `newAuditAgent` builds (the checker, and the progress check that shares that constructor), and `laneRole` reads it through the same `errandRole` table every errand uses. A watched check therefore routes like every other gate (price-ordered, a task-wall value of time) rather than like the conversation's own turn."
+  - "A checker call cut by its share threw away everything the checker had read, and the second attempt was a fresh checker starting the investigation again from nothing in what was left of the window. Now, when the cut checker had already read something (a tool result in its transcript), the next ask goes to the SAME checker over the same transcript — `auditNudge`, thinking switched off as a requirement of the call (`Agent.askForTheWord`). Only a checker cut before it read anything goes to the fresh-checker rung. The old `nudgeAudit` is deleted: the reply that said neither word takes the same answer ask, now in its own share of the window rather than in the remains of the call it followed."
+  - "A check that ran out of time read `your call · nobody could check it`, the same sentence as a checker that would not start or a provider that failed, so a person read it as news about their work. It is still `your call` and nothing merges on it, but the row now reads `your call · the check ran out of time` and the report leads `the check ran out of time — one call ran 30s without answering and was abandoned · the window closed before a second`. `nobody could check it in 5m0s` is gone: a window too small for any call reads `the check ran out of time before a call could be made — it had 5m0s`. The row reads the reason back off the report's lead (`taskCheckReason`), the way the held row reads its gaps, so no record field was added."
+---
+
+Issue #941: five of thirty-four non-quick landings in one acceptance drive ended `your
+call` on correct work, because a reasoning model on the checker thought through both of its
+thirty-second shares without writing a word. The one-minute reading window is not widened
+here — a check with nothing to run has nothing slow to do — what changed is that the checker
+is told the window, keeps what it read when it is cut, and a cut says so.
