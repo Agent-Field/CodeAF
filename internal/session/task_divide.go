@@ -133,6 +133,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -319,7 +320,10 @@ func (c Config) mayDivide() bool {
 	return node != nil && node.dividing()
 }
 
-// dividing reports whether this node was armed for division at admission.
+// dividing reports whether this node has been armed for division — at
+// admission, or by the one door that arms work whose width was read beside its
+// worker ([Agent.armDivisionBeside]). It is asked LIVE, on every read, which is
+// what lets the belt and the prompt be rebuilt from one write.
 func (n *TaskNode) dividing() bool {
 	return n.armedBy() != ""
 }
@@ -529,6 +533,80 @@ func (a *Agent) armDivision(spec taskSpec) string {
 	return ""
 }
 
+// armDivisionBeside arms work whose width was read BESIDE its worker instead of
+// in front of it, and it is THE ONE DOOR for that: the word on the node, the
+// verb on the running worker's belt and the page in its prompt, all built from
+// the single write it makes.
+//
+// WHY IT HAS TO EXIST. The sizing judge used to answer before the node was
+// admitted, so its yes was one of [Agent.armDivision]'s signals and the worker
+// was CONSTRUCTED holding the verb. The judge is asked beside the worker now, so
+// that nobody waits through it (task_beside.go), and an answer that lands after
+// the belt was built can no longer be a construction-time signal. Left at that,
+// it was no signal at all: a task a model had read as wide, whose first set of
+// parts the reviewer then refused, ran to the end of its life with no way to
+// hand anything out — however much of the material it opened, and however
+// plainly the parts were there (#958). A refusal is a finding about the parts
+// that were drawn; it never un-judges the width.
+//
+// THE RULES ARE NOT COPIED HERE. The yes goes into the bank the arming reads
+// ([Agent.rememberDivisible]) and admission's own question is then asked again,
+// of the same reader, with the fact it was missing — so a harness design, a
+// quick task, a part of somebody else's division and work that is already armed
+// are refused here by the very lines that refuse them at admission, rather than
+// by a second list that would drift from the first.
+//
+// AND THE BELT AND THE PROMPT CANNOT DISAGREE, which is the law that froze
+// arming at construction in the first place. Both are built from
+// [Config.mayDivide], which reads the node's word live, so both are rebuilt here
+// and in this order after the one write: the verb joins the belt at the tail
+// through the door every late capability comes through ([Agent.armFamily], whose
+// append law is what keeps the prefix cache), and then the prompt is re-rendered
+// from the same config so the page that says how to use the verb stands under
+// it. A prompt naming a tool the belt had not been given yet is the disagreement,
+// and this order cannot produce one.
+func (a *Agent) armDivisionBeside(node *TaskNode, spec taskSpec) {
+	home := a.graph().home
+	if home == nil {
+		return
+	}
+	home.rememberDivisible(spec.request)
+	word := home.armDivision(spec)
+	if word == "" || !node.armAfterAdmission(word) {
+		return
+	}
+	if _, err := a.armFamily(a.divideTools()); err != nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.rerenderSystemLocked(time.Now())
+}
+
+// armAfterAdmission writes the arming word onto work that is already running and
+// answers whether THIS call is the one that wrote it.
+//
+// It is the only writer of [taskSpec.armed] outside admission, and work that is
+// already armed is left exactly as it is: the word says WHO decided, and a
+// second writer would erase that. Answering whether the write landed is what
+// makes the belt and the prompt below it the consequence of one decision rather
+// than of two racing readings.
+func (n *TaskNode) armAfterAdmission(word string) bool {
+	if n == nil || word == "" {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.spec.armed != "" {
+		return false
+	}
+	n.spec.armed = word
+	return true
+}
+
 // enumeratesWidth is [Agent.armDivision]'s THIRD SIGNAL on its own: does this
 // text already name enough separate items to be worth handing out?
 //
@@ -559,9 +637,16 @@ func enumeratesWidth(pieces ...string) bool {
 }
 
 // rememberDivisible banks a model's yes about width against the exact text it
-// was about. It is one entry, not a map: the handover that banks it admits the
-// work on its next line, and a bank that grew for the life of the session would
-// be remembering answers about work that was never begun.
+// was about. It is one entry, not a map: the reading that banks it is about one
+// piece of work, and a bank that grew for the life of the session would be
+// remembering answers about work that was never begun.
+//
+// BOTH ROADS THAT BANK A YES REACH [Agent.armDivision] THROUGH IT. A mark's
+// second reader banks the goal it judged and admits the work on its next line
+// (checkpoint.go); a typed `/task`'s own judge answers beside the worker that is
+// already running, and banks it there ([Agent.armDivisionBeside]). The yes
+// travels as a banked fact rather than as an argument so that ONE function
+// decides what arming means, whenever the answer happens to arrive.
 func (a *Agent) rememberDivisible(brief string) {
 	a.mu.Lock()
 	a.divisibleAsk = strings.TrimSpace(brief)
@@ -677,9 +762,12 @@ const (
 //
 // AND WHETHER THE ASKER IS ITSELF A MODEL'S READING OF BREADTH, which is the one
 // thing the evidence gate's tiebreak exists to honour. Everywhere else that
-// reading arrives as the node's arming ([TaskNode.armedByJudgement]); the sizing
-// judge's own parts arrive after the worker was built, when the arming is frozen
-// ([taskSpec.armed]), so they carry the reading with them instead.
+// reading arrives as the node's arming ([TaskNode.armedByJudgement]), and the
+// sizing judge's yes now arms the running worker too, before its parts are
+// weighed ([Agent.armDivisionBeside]). It is carried here as well because the
+// word on the node says who armed it FIRST: work whose own text was counted
+// keeps [armedCounted], and a model that has since read the same work as broad
+// would go unheard by a tiebreak that could only ask the word.
 type divisionAsker struct {
 	// name is the word the journal keeps ([journalDivision.Source]).
 	name    string

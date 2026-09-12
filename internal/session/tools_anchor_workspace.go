@@ -95,11 +95,7 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 		a.jobs.place = place
 		a.jobs.mu.Unlock()
 	}
-	if a.systemOwn {
-		a.system = renderSystemAt(a.config, time.Now())
-		a.systemAt = time.Now()
-		a.refreshSystemLocked()
-	}
+	a.rerenderSystemLocked(time.Now())
 	return resolved, nil
 }
 

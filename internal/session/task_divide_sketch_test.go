@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -618,21 +619,41 @@ type besideCompleter struct {
 	// hold, when set, is what the worker's first answer waits for.
 	hold <-chan struct{}
 
-	mu       sync.Mutex
-	step     int
-	asked    []string
+	mu    sync.Mutex
+	step  int
+	asked []string
+	// offered is the tool names each of those requests carried, index for index
+	// with asked. It is the WIRE's own answer to "what could the worker reach
+	// for at that moment", which is the only honest way to ask whether a belt
+	// gained a verb: a belt rebuilt from the config in a test would answer about
+	// the config and not about the request that went out.
+	offered  [][]string
 	firstAt  int
 	answerAt int
 	judgedAt int
 	firstIn  chan struct{}
 	arrived  chan struct{}
+	// judged and reviewed are closed as those two readers answer, and they are
+	// what a test hands back as [besideCompleter.hold]: A READING IS CANCELLED
+	// WHEN ITS WORKER FINISHES (task_beside.go's law), so a worker whose only
+	// answer is "Done." can outrun the whole road and leave a test asserting
+	// about a reading that was never made.
+	judged   chan struct{}
+	reviewed chan struct{}
 }
 
 func newBesideCompleter(review string) *besideCompleter {
-	return &besideCompleter{review: review, firstIn: make(chan struct{}), arrived: make(chan struct{}, 16)}
+	return &besideCompleter{review: review, firstIn: make(chan struct{}), arrived: make(chan struct{}, 16),
+		judged: make(chan struct{}), reviewed: make(chan struct{})}
 }
 
-func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	// The options are applied to a throwaway request so a test can assert which
+	// tools each step actually rode.
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
@@ -658,6 +679,7 @@ func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		c.step++
 		c.judgedAt = c.step
 		c.mu.Unlock()
+		close(c.judged)
 		return textResponse(c.judge), nil
 	case divideReviewBrief:
 		select {
@@ -669,6 +691,7 @@ func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		c.step++
 		c.answerAt = c.step
 		c.mu.Unlock()
+		close(c.reviewed)
 		return textResponse(c.review), nil
 	}
 	var asked strings.Builder
@@ -678,9 +701,14 @@ func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []a
 			asked.WriteString("\n")
 		}
 	}
+	names := make([]string, 0, len(request.Tools))
+	for _, tool := range request.Tools {
+		names = append(names, tool.Function.Name)
+	}
 	c.mu.Lock()
 	c.step++
 	c.asked = append(c.asked, asked.String())
+	c.offered = append(c.offered, names)
 	firstAsk := len(c.asked) == 1
 	if firstAsk {
 		c.firstAt = c.step
@@ -717,6 +745,18 @@ func (c *besideCompleter) request(t *testing.T, n int) string {
 			t.Fatalf("the worker was never asked a request %d", n+1)
 		}
 	}
+}
+
+// offeredAt is the belt the worker's nth request carried, as the wire saw it.
+// It is read after [besideCompleter.request] has waited for that request.
+func (c *besideCompleter) offeredAt(t *testing.T, n int) []string {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.offered) <= n {
+		t.Fatalf("the worker was never asked a request %d", n+1)
+	}
+	return c.offered[n]
 }
 
 func (c *besideCompleter) firstAskedAt() int {
@@ -791,8 +831,12 @@ func TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt(t *tes
 	if firstAt == 0 || judgedAt == 0 || firstAt > judgedAt {
 		t.Fatalf("the worker was asked at step %d and the judge answered at step %d: the worker must go first", firstAt, judgedAt)
 	}
-	if spec := graph.node(id).spec; spec.armed != "" {
-		t.Fatalf("the node was armed %q after its worker's belt was built; arming is frozen at admission", spec.armed)
+	// AND THE WORD IS ON THE WORK, which is the other half of what the judge's
+	// yes does now: the parts go to the road, and the node is armed so that the
+	// worker still running can hand out more of it later (#958). It used to be
+	// asserted EMPTY here, and that assertion was the defect written down.
+	if armed := graph.node(id).armedBy(); armed != armedJudged {
+		t.Fatalf("the node is armed %q after the judge called its work wide, want %q", armed, armedJudged)
 	}
 	kids := graph.children(id)
 	if len(kids) != 3 {
@@ -1105,4 +1149,169 @@ func TestAWorkerThatAsksIsToldToStopAndSaySoRatherThanCarryOn(t *testing.T) {
 	}
 	// THE VOCABULARY LAW: a person reads this over the worker's shoulder.
 	assertPlainWords(t, "what the worker is told about work only a person can do", answer)
+}
+
+// ── the judge's yes arms the worker it was read beside (#958) ───────────────
+
+// A JUDGED-WIDE TASK WHOSE FIRST PARTS THE REVIEWER REFUSES KEEPS THE VERB.
+//
+// Two readers answered two different questions here. The judge read the person's
+// sentence and said the WORK was wide; the reviewer read one set of parts drawn
+// out of that same sentence, before anybody had opened the material, and said
+// THOSE were one job. The second answer does not undo the first — so the worker
+// that is already running gains `divide_work` and the page that says how to use
+// it, which is exactly what it would have been constructed holding while the
+// judge was still asked in front of the work.
+//
+// IT IS ASSERTED FROM THE OUTSIDE: what the wire offered on the first request,
+// and what the running worker's own belt and instructions carry once the reading
+// has been joined. The join is the runner's (task_beside.go's law: no reading
+// outlives the node that started it), so the node landing is a fact that happens
+// after the refusal and everything it decided.
+func TestAJudgedWideTaskWhoseFirstPartsAreRefusedStillGainsTheDivideVerb(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := newBesideCompleter(`{"refuse": true, "why": "these are stages of one job"}`)
+	completer.judge = `{"parallelizable":true,"parts":["the auth test","the http client","the release notes"],"why":"three independent jobs"}`
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	// THE WORKER STAYS AT ITS FIRST ANSWER UNTIL THE REVIEWER HAS SPOKEN. A
+	// reading does not outlive the node that started it, so a worker whose whole
+	// run is one "Done." would cancel the judge mid-sentence and this test would
+	// be about that instead. The refusal is decided after the answer this waits
+	// for, and the join below is what makes it a fact.
+	completer.hold = completer.reviewed
+
+	ask := "bring the flaking auth test, the http client upgrade and the release notes up to date"
+	id, _, _, err := session.StartTask(t.Context(), ask, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := graph.node(id)
+
+	// THE FIRST REQUEST WENT OUT WITHOUT THE VERB, which is the shape this is
+	// about: the belt was built before anybody had read the work for width.
+	completer.request(t, 0)
+	if offered := completer.offeredAt(t, 0); slices.Contains(offered, "divide_work") {
+		t.Fatal("the worker's first request already carried divide_work, so this is not the branch #958 is about")
+	}
+	worker := node.openRoom().speaker()
+	if worker == nil {
+		t.Fatal("no worker was in the room after its first request")
+	}
+
+	select {
+	case <-node.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the task never landed after its division was refused")
+	}
+
+	// THE REVIEWER DID READ THE PARTS AND DID REFUSE THEM. Without both halves
+	// this test would pass on a run where the judge was never asked at all.
+	if completer.verdictAt() == 0 {
+		t.Fatal("the reviewer was never asked, so no refusal was under test")
+	}
+	if kids := graph.children(id); len(kids) != 0 {
+		t.Fatalf("%d parts were born from a division the reviewer refused", len(kids))
+	}
+	// AND THE WORK IS ARMED, ON THE JUDGE'S OWN WORD.
+	if armed := node.armedBy(); armed != armedJudged {
+		t.Fatalf("a refused division left the work armed %q, want the judge's own %q", armed, armedJudged)
+	}
+	// THE BELT AND THE INSTRUCTIONS AGREE, because both were rebuilt from that
+	// one write: the verb the worker can reach for, and the page telling it what
+	// the verb is for.
+	if !liveBeltHas(worker, "divide_work") {
+		t.Fatal("the running worker's belt never gained divide_work after the refusal")
+	}
+	if instructions := liveSystem(worker); !strings.Contains(instructions, dividePromptHeading) {
+		t.Fatalf("the running worker's instructions never gained the divide page: %q", clip(instructions, 400))
+	}
+}
+
+// AND THE CONTROL: WORK NOBODY CALLED WIDE GAINS NOTHING. The same door, the
+// same reading beside the same worker, and a judge that says no — the belt and
+// the instructions are what narrow work has always had, so the door arms what
+// was judged and not everything that passes it.
+func TestATaskTheJudgeCallsNarrowNeverGainsTheDivideVerb(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := newBesideCompleter(`{"refuse": true, "why": "unused"}`)
+	completer.judge = `{"parallelizable":false,"why":"one job"}`
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	// The judge is the only reader this road reaches, so its no is what the
+	// worker waits for — see the test above for why it waits at all.
+	completer.hold = completer.judged
+
+	id, _, _, err := session.StartTask(t.Context(), "fix the flaking reconciler test", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := graph.node(id)
+	completer.request(t, 0)
+	worker := node.openRoom().speaker()
+	if worker == nil {
+		t.Fatal("no worker was in the room after its first request")
+	}
+
+	select {
+	case <-node.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the narrow task never landed")
+	}
+
+	if armed := node.armedBy(); armed != "" {
+		t.Fatalf("work the judge called narrow came away armed %q", armed)
+	}
+	if liveBeltHas(worker, "divide_work") {
+		t.Fatal("work nobody called wide carries divide_work: the door arms everything")
+	}
+	if instructions := liveSystem(worker); strings.Contains(instructions, dividePromptHeading) {
+		t.Fatal("work nobody called wide is told how to use a verb it does not have")
+	}
+	if kids := graph.children(id); len(kids) != 0 {
+		t.Fatalf("%d parts exist under work nobody called wide", len(kids))
+	}
+}
+
+// dividePromptHeading is the divide page's own first heading, read from the page
+// rather than written out again here: a test that quoted it would go on passing
+// after somebody rewrote the page it is asserting the presence of.
+var dividePromptHeading = firstLine(strings.TrimSpace(dividePrompt))
+
+// liveBeltHas asks the belt the agent IS HOLDING, never one rebuilt from its
+// config: this file is about a belt that gains a verb while its worker runs, and
+// a rebuild would answer about the arming rather than about the worker.
+func liveBeltHas(agent *Agent, name string) bool {
+	for _, tool := range agent.beltTools() {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// liveSystem is the instructions the agent's next request would carry, read the
+// same way and for the same reason.
+func liveSystem(agent *Agent) string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	return agent.system
 }
