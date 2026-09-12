@@ -176,11 +176,17 @@ func foldBeforePrice(file *ast.File, name string) (priced, folded bool) {
 	return priced, folded
 }
 
-// calls reports whether a statement makes the named method call anywhere inside
-// it — the condition of an `if` included, since the price is read there.
+// calls reports whether a statement ITSELF makes the named method call — the
+// condition of an `if` included, since the price is read there, and the BODY of
+// one excluded, since a call only some branch makes is not a call this run of
+// statements makes. That exclusion is the whole of the second plant.
 func calls(statement ast.Stmt, name string) bool {
-	found := false
+	found, top := false, true
 	ast.Inspect(statement, func(node ast.Node) bool {
+		if _, ok := node.(*ast.BlockStmt); ok && !top {
+			return false
+		}
+		top = false
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
