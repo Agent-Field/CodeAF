@@ -318,9 +318,7 @@ func moveTheStewardsClock(t *testing.T, agent *Agent, past time.Duration) {
 	t.Helper()
 	on := shareOfTheWall(t, agent) + past
 	steward := agent.steward()
-	steward.mu.Lock()
-	defer steward.mu.Unlock()
-	steward.now = func() time.Time { return time.Now().Add(on) }
+	steward.setClock(func() time.Time { return time.Now().Add(on) })
 }
 
 // leaveOfTheWall winds the RUN's clock forward so that `left` of the wall is in
@@ -332,8 +330,9 @@ func leaveOfTheWall(t *testing.T, agent *Agent, left time.Duration) {
 	t.Helper()
 	steward := agentWithGoalOwner(t, agent)
 	steward.mu.Lock()
-	defer steward.mu.Unlock()
-	steward.started = steward.now().Add(left - steward.wall)
+	fresh := steward.now().Add(left - steward.wall)
+	steward.mu.Unlock()
+	steward.setStarted(fresh)
 }
 
 // holdTheStewardsClock STOPS the session's goal owner at one instant and hands
@@ -344,9 +343,7 @@ func holdTheStewardsClock(t *testing.T, agent *Agent) time.Time {
 	t.Helper()
 	steward := agentWithGoalOwner(t, agent)
 	at := time.Now()
-	steward.mu.Lock()
-	defer steward.mu.Unlock()
-	steward.now = func() time.Time { return at }
+	steward.setClock(func() time.Time { return at })
 	return at
 }
 

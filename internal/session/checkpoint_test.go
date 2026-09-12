@@ -756,9 +756,9 @@ func TestADoneEndingNamesTheCheckItCouldNotRun(t *testing.T) {
 		steward := agent.steward()
 		steward.hear(ask)
 		steward.setAcceptanceContract(steward.Ask(), "the parser is ported and the declared check passes", []string{check})
-		steward.now = func() time.Time {
+		steward.setClock(func() time.Time {
 			return steward.started.Add(steward.wall - verify.ShortestUsefulReading/2)
-		}
+		})
 	}
 
 	t.Run("stopped turn", func(t *testing.T) {

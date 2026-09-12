@@ -77,8 +77,8 @@ func spendWall(t *testing.T, agent *Agent) string {
 	}
 	steward.mu.Lock()
 	started, wall := steward.started, steward.wall
-	steward.now = func() time.Time { return started.Add(wall) }
 	steward.mu.Unlock()
+	steward.setClock(func() time.Time { return started.Add(wall) })
 	spent, why := steward.Budget().Exhausted()
 	if !spent {
 		t.Fatal("the moved wall clock did not exhaust the budget")
@@ -325,14 +325,12 @@ func TestATaskUnderAWallInheritsWhatIsLeftOfIt(t *testing.T) {
 	steward := agent.steward()
 	steward.mu.Lock()
 	started := steward.started
-	steward.now = func() time.Time { return started.Add(90 * time.Minute) }
 	steward.mu.Unlock()
+	steward.setClock(func() time.Time { return started.Add(90 * time.Minute) })
 	if got := agent.taskLimits(node).deadline; got != 30*time.Minute {
 		t.Fatalf("the task got %s, want the 30 minutes left of the wall", got)
 	}
-	steward.mu.Lock()
-	steward.now = func() time.Time { return started.Add(2*time.Hour - taskAllowance/2) }
-	steward.mu.Unlock()
+	steward.setClock(func() time.Time { return started.Add(2*time.Hour - taskAllowance/2) })
 	if got := agent.taskLimits(node).deadline; got != taskAllowance {
 		t.Fatalf("the task got %s inside the wall margin, want the %s allowance", got, taskAllowance)
 	}
