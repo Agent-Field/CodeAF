@@ -44,14 +44,10 @@ func TestAGenuineMultiPartAskCanStillBecomeATask(t *testing.T) {
 	if agent.graph().node(1) == nil {
 		t.Fatal("a genuine multi-part ask started nothing")
 	}
-	// AND THE TOLD-AFTER LINE IS SAID, on this turn's stream or on the next one's.
-	// The turn does not wait for the ruling any more, so the line is not promised
-	// to this turn's events — but it is promised to the person, which is the claim
-	// worth holding (memory.go's [Agent.sayLate]).
-	notice := routeNotice(collected)
-	if notice == "" {
-		notice = routeNotice(collect(t, mustSubmit(t, agent, "and what else is on today")))
-	}
+	// AND THE TOLD-AFTER LINE IS SAID. The turn does not wait for the ruling any
+	// more, so the line is not promised to THIS turn's events — but it is promised
+	// to the person, which is the claim worth holding ([routeSaid]).
+	notice := routeSaid(t, agent, collected)
 	if !strings.Contains(notice, "task 1 started") {
 		t.Fatalf("the person was told %q, want the work that started", notice)
 	}
@@ -141,7 +137,7 @@ func assertAskNeverSpawns(t *testing.T, asked string) {
 		if output := toolOutput(t, collected, "propose_task"); !strings.Contains(output, spawnFloorRefusal) {
 			t.Fatalf("propose_task answered %q, want the floor's refusal", output)
 		}
-		if notice := routeNotice(collected); notice != "" {
+		if notice := routeNotice(agent, collected); notice != "" {
 			t.Fatalf("a task was announced for %q: %q", asked, notice)
 		}
 	})
@@ -160,7 +156,7 @@ func assertAskNeverSpawns(t *testing.T, asked string) {
 		if nodes.count() != 0 || agent.graph().node(1) != nil {
 			t.Fatalf("the route judge started work on %q", asked)
 		}
-		if notice := routeNotice(collected); notice != "" {
+		if notice := routeNotice(agent, collected); notice != "" {
 			t.Fatalf("the route judge announced %q for %q", notice, asked)
 		}
 	})

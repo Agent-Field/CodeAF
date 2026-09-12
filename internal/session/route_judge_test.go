@@ -420,13 +420,76 @@ func noCard(t *testing.T, collected []Event) {
 // lines that stand above it — the ceiling's and the race's — both say "a task"
 // themselves, and a helper that answered with the reason instead of the start
 // would make every "nothing was started" assertion on this page read backwards.
-func routeNotice(collected []Event) string {
+// routeNotice is the told-after line WHEREVER IT LANDED, asked once and now.
+//
+// THE TURN DOES NOT WAIT FOR THE RULING ANY MORE (loop.go), so the line is on
+// this turn's stream when the ruling beat the seal and on the session's held
+// queue when it did not — and a reader that looked only at the stream would
+// read a line that was said as a line that was never said (memory.go's
+// [Agent.sayLate]). This is the reader for a NEGATIVE: nothing was said
+// anywhere, right now.
+func routeNotice(agent *Agent, collected []Event) string {
 	for _, event := range collected {
-		if event.Kind == EventNotice && strings.HasPrefix(event.Text, "this looked like work, so task ") {
+		if event.Kind == EventNotice && routeToldAfter(event.Text) {
 			return event.Text
 		}
 	}
+	return routeHeld(agent)
+}
+
+// routeHeld is the told-after line waiting for the next turn's stream, or "".
+func routeHeld(agent *Agent) string {
+	if agent == nil {
+		return ""
+	}
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	for _, line := range agent.heldLines {
+		if routeToldAfter(line) {
+			return line
+		}
+	}
 	return ""
+}
+
+func routeToldAfter(text string) bool {
+	return strings.HasPrefix(text, "this looked like work, so task ")
+}
+
+// routeSaid is [routeNotice] for a POSITIVE: it WAITS for the line, because a
+// ruling that starts work is spent whenever it lands and "not yet" is not the
+// same answer as "never".
+func routeSaid(t *testing.T, agent *Agent, collected []Event) string {
+	t.Helper()
+	var line string
+	waitFor(t, "the told-after line the started work owes the person", func() bool {
+		line = routeNotice(agent, collected)
+		return line != ""
+	})
+	return line
+}
+
+// routeSettled waits for everything the turn set going BESIDE itself.
+//
+// THE TURN NO LONGER WAITS FOR THE ROUTE JUDGE (loop.go), so "was the judge
+// asked", "did work start" and "was the person told" are claims about the
+// SESSION and not about the instant the turn sealed. This waits for exactly what
+// [Agent.Close] waits for — the after-turn lifetime's own running work
+// (sidecar.go's [afterTurn]) — which is registered while the turn is still
+// going, so there is no window where this returns before the reading it is
+// waiting for has begun.
+func routeSettled(t *testing.T, agent *Agent) {
+	t.Helper()
+	quiet := make(chan struct{})
+	go func() {
+		defer close(quiet)
+		agent.after.running.Wait()
+	}()
+	select {
+	case <-quiet:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the work the turn set going beside itself never finished")
+	}
 }
 
 const routeYes = `{"work": true, "goal": "audit every package's pricing code and report what is wrong", "why": "research across every package"}`
@@ -443,6 +506,7 @@ func TestTheJudgeStartsWorkAfterAToolLessTurn(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collected := collect(t, events)
+	routeSettled(t, agent)
 
 	if completer.asked() != 1 {
 		t.Fatalf("the judge was asked %d times", completer.asked())
@@ -474,9 +538,9 @@ func TestTheJudgeStartsWorkAfterAToolLessTurn(t *testing.T) {
 	}
 	// AND THEY ARE TOLD, in one line that says why work began that they did not
 	// ask for.
-	notice := routeNotice(collected)
+	notice := routeSaid(t, agent, collected)
 	if !strings.Contains(notice, "this looked like work") || !strings.Contains(notice, "task 1 started") {
-		t.Fatalf("the turn said %q about the work it started", notice)
+		t.Fatalf("the person was told %q about the work it started", notice)
 	}
 	if started := runs.started(); len(started) != 0 {
 		t.Fatalf("the judge reached a planner: %v", started)
@@ -583,6 +647,7 @@ func TestAJudgeThatCannotAnswerIsSilent(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collected := collect(t, events)
+	routeSettled(t, agent)
 	if completer.asked() != 1 {
 		t.Fatalf("the judge was asked %d times", completer.asked())
 	}
@@ -604,25 +669,30 @@ func TestAJudgeThatCannotAnswerIsSilent(t *testing.T) {
 // a keypress between a judge that likes every turn and a rail full of work.
 func TestTheRateLimitHolds(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
-	agent, _, _ := routeAgent(t, completer)
+	agent, _, nodes := routeAgent(t, completer)
 
-	starts := 0
+	// The reading is what STARTED, turn by turn, and not the line that announces
+	// it: the told-after line rides whichever stream is live when the ruling lands
+	// ([routeNotice]), so counting lines here would count turn 1's announcement
+	// against turn 2 and read the gap as broken.
+	started := 0
 	for turn := 1; turn <= 4; turn++ {
 		events, err := agent.Submit(context.Background(), routeAsk)
 		if err != nil {
 			t.Fatalf("submit %d: %v", turn, err)
 		}
 		collected := collect(t, events)
+		routeSettled(t, agent)
 		noCard(t, collected)
-		if routeNotice(collected) != "" {
-			starts++
+		if nodes.count() > started {
+			started = nodes.count()
 			if turn != 1 && turn != routeJudgeGap+1 {
 				t.Fatalf("work started on turn %d, inside the gap", turn)
 			}
 		}
 	}
-	if starts != 2 {
-		t.Fatalf("%d tasks over four turns, want one on turn 1 and one on turn %d", starts, routeJudgeGap+1)
+	if started != 2 {
+		t.Fatalf("%d tasks over four turns, want one on turn 1 and one on turn %d", started, routeJudgeGap+1)
 	}
 }
 
@@ -651,6 +721,7 @@ func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collect(t, events)
+	routeSettled(t, agent)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -678,6 +749,7 @@ func TestARouteYesWithoutWidthArmsNothing(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collect(t, events)
+	routeSettled(t, agent)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -708,6 +780,7 @@ func TestTheJudgesDoneConditionIsWhatTheWorkIsFinishedAgainst(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collect(t, events)
+	routeSettled(t, agent)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -746,6 +819,7 @@ func TestAnAutoStartedTaskWithNoDoneConditionIsFinishedAgainstThePersonsWords(t 
 		t.Fatalf("submit: %v", err)
 	}
 	collect(t, events)
+	routeSettled(t, agent)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -856,6 +930,7 @@ func TestBothJudgesMustAgreeBeforeWorkStarts(t *testing.T) {
 	agent, _, nodes := routeAgent(t, completer)
 
 	collected := collect(t, mustSubmit(t, agent, routeAsk))
+	routeSettled(t, agent)
 
 	if completer.asked() != 1 || completer.confirms() != 1 {
 		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
@@ -872,8 +947,8 @@ func TestBothJudgesMustAgreeBeforeWorkStarts(t *testing.T) {
 	if agent.graph().node(2) != nil {
 		t.Fatal("one turn admitted two tasks")
 	}
-	if notice := routeNotice(collected); !strings.Contains(notice, "task 1 started") {
-		t.Fatalf("the turn said %q about the work it started", notice)
+	if notice := routeSaid(t, agent, collected); !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the person was told %q about the work it started", notice)
 	}
 }
 
@@ -885,6 +960,7 @@ func TestAYesTheConfirmRefusesStartsNothingAndSaysNothing(t *testing.T) {
 	agent, _, nodes := routeAgent(t, completer)
 
 	collected := collect(t, mustSubmit(t, agent, routeAsk))
+	routeSettled(t, agent)
 
 	if completer.asked() != 1 || completer.confirms() != 1 {
 		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
@@ -894,7 +970,7 @@ func TestAYesTheConfirmRefusesStartsNothingAndSaysNothing(t *testing.T) {
 		t.Fatal("a refused yes started work anyway")
 	}
 	noCard(t, collected)
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a refused yes said %q out loud", notice)
 	}
 	for _, event := range collected {
@@ -922,6 +998,7 @@ func TestAConfirmThatAnswersProseStartsNothing(t *testing.T) {
 	agent, _, nodes := routeAgent(t, completer)
 
 	collected := collect(t, mustSubmit(t, agent, routeAsk))
+	routeSettled(t, agent)
 
 	if completer.confirms() != 1 {
 		t.Fatalf("the confirm was asked %d times, want once and never repaired", completer.confirms())
@@ -930,7 +1007,7 @@ func TestAConfirmThatAnswersProseStartsNothing(t *testing.T) {
 		t.Fatal("a yes nobody could confirm started work")
 	}
 	noCard(t, collected)
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a yes nobody could confirm said %q", notice)
 	}
 }
@@ -943,6 +1020,7 @@ func TestTheConfirmIsNeverAskedAboutANo(t *testing.T) {
 	agent, _, nodes := routeAgent(t, completer)
 
 	collect(t, mustSubmit(t, agent, routeAsk))
+	routeSettled(t, agent)
 
 	if completer.asked() != 1 {
 		t.Fatalf("the screen was asked %d times", completer.asked())
@@ -967,13 +1045,15 @@ func TestAConfirmedNoDoesNotSpendTheGap(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeConfirmNo}
 	agent, _, nodes := routeAgent(t, completer)
 
-	if notice := routeNotice(collect(t, mustSubmit(t, agent, routeAsk))); notice != "" {
+	refused := collect(t, mustSubmit(t, agent, routeAsk))
+	routeSettled(t, agent)
+	if notice := routeNotice(agent, refused); notice != "" {
 		t.Fatalf("the refused turn said %q", notice)
 	}
 	completer.answerConfirmWith(routeYes)
 	// THE VERY NEXT TURN, which is inside the gap a start would have opened.
 	collected := collect(t, mustSubmit(t, agent, routeAsk))
-	if notice := routeNotice(collected); !strings.Contains(notice, "task 1 started") {
+	if notice := routeSaid(t, agent, collected); !strings.Contains(notice, "task 1 started") {
 		t.Fatalf("the turn after a refused yes said %q, want the work it agreed to", notice)
 	}
 	waitFor(t, "the task the second turn started", func() bool { return nodes.count() == 1 })
@@ -1125,7 +1205,7 @@ func TestARacedYesIsLookedAtEarlyAndTheLookConvertsTheTurn(t *testing.T) {
 	if !saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("the conversion never said its line; notices were %q", said)
 	}
-	notice := routeNotice(collected)
+	notice := routeSaid(t, agent, collected)
 	if !strings.Contains(notice, "this looked like work") || !strings.Contains(notice, "task 1 started") {
 		t.Fatalf("the turn said %q about the work it started", notice)
 	}
@@ -1196,7 +1276,7 @@ func TestARacedYesOnlyMakesTheSidecarLookSooner(t *testing.T) {
 	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) {
 		t.Fatalf("a raced yes said something to the person: %q", said)
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a raced yes announced %q", notice)
 	}
 	// AND THE TURN RAN TO ITS OWN END, on its own answer.
@@ -1369,7 +1449,7 @@ func TestAVerdictThatLandsAfterTheTurnIsDropped(t *testing.T) {
 	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("a dropped verdict said its line out loud: %q", noticeTexts(collected))
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a dropped verdict said %q", notice)
 	}
 	// AND THE TURN ENDED AS ITS OWN ANSWER, which is the whole of what the person
@@ -1408,7 +1488,7 @@ func TestAnInterruptDiscardsTheRacedYes(t *testing.T) {
 	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("an interrupted turn drew the conversion line: %q", noticeTexts(collected))
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("an interrupted turn said %q", notice)
 	}
 }
@@ -1486,7 +1566,7 @@ func TestARacedYesIsDroppedWhenTheModelSaysNothingIsLeft(t *testing.T) {
 		t.Fatalf("the person was told their answer was being moved and then watched it finish where "+
 			"it was; notices were %q", noticeTexts(collected))
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a task was announced over a finished turn: %q", notice)
 	}
 	if nodes.count() != 0 || agent.graph().node(1) != nil {
@@ -1520,10 +1600,7 @@ func TestAConvertedTaskIsNamedFromTheAskAndNotFromTheDowry(t *testing.T) {
 	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
 	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
 
-	notice := routeNotice(collected)
-	if notice == "" {
-		t.Fatalf("no task was announced; notices were %q", noticeTexts(collected))
-	}
+	notice := routeSaid(t, agent, collected)
 	if strings.Contains(notice, "DSML") {
 		t.Fatalf("the sentinel became the task's name: %q", notice)
 	}
@@ -1657,7 +1734,7 @@ func TestTheRateLimitIsSharedByBothAsks(t *testing.T) {
 	// and that is sometimes this one (memory.go's [Agent.sayLate]) — so what
 	// says nothing started here is the NUMBER in the line, and the graph beside
 	// it.
-	if notice := routeNotice(second); strings.Contains(notice, "task 2") {
+	if notice := routeNotice(agent, second); strings.Contains(notice, "task 2") {
 		t.Fatalf("a second task started inside the gap: %q", notice)
 	}
 	if agent.graph().node(2) != nil {
@@ -1696,7 +1773,7 @@ func TestARacedYesTheConfirmRefusesLetsTheTurnRunToItsEnd(t *testing.T) {
 	if nodes.count() != 0 || agent.graph().node(1) != nil {
 		t.Fatal("a refused pre-turn yes started work anyway")
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a refused pre-turn yes said %q out loud", notice)
 	}
 	for _, event := range collected {
@@ -1881,7 +1958,7 @@ func TestASlowScreenNeverDelaysTheTurnsFirstRequest(t *testing.T) {
 	if answers != 1 {
 		t.Fatalf("the conversation was asked %d times, want the ordinary turn", answers)
 	}
-	if notice := routeNotice(collected); notice != "" {
+	if notice := routeNotice(agent, collected); notice != "" {
 		t.Fatalf("a judge that never answered said %q", notice)
 	}
 	for _, event := range collected {
