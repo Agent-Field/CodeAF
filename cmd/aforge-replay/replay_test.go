@@ -13,12 +13,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/callrows"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 // ── THE INSTRUMENT'S OWN LAW ────────────────────────────────────────────────
@@ -241,13 +243,6 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 // that passes forever the moment somebody builds a tag out of a variable, which
 // is exactly how the log came to carry 2,309 untagged rows in the first place.
 var derivedTags = map[string]func(yield func(tag, where string)){
-	// internal/session/auxiliary.go: every errand is tagged with its own role
-	// word, so the whole of internal/roles' vocabulary reaches the log.
-	"string(role)": func(yield func(tag, where string)) {
-		for _, word := range roleWords() {
-			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
-		}
-	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.
 	"toolCallTag(question.tool)": func(yield func(tag, where string)) {
@@ -257,6 +252,66 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// cmd/aforge/chat.go's errandContext passes the errand's own name straight
 	// through; its call sites are walked for the literals they hand it.
 	"task": func(yield func(tag, where string)) {},
+	// internal/session/clientdoor.go is the ONE place that package writes a tag
+	// now, and what it writes is whatever purpose its caller handed it. It
+	// enumerates nothing on its own: the words come from the door's own call
+	// sites, which the walk below reads through the same rules.
+	"string(purpose)": func(yield func(tag, where string)) {},
+	// internal/session/auxiliary.go hands the door the errand's own role word, so
+	// the whole of internal/roles' vocabulary reaches the log. The spelling is
+	// what is left after `callPurpose(...)` comes off the argument.
+	"role": func(yield func(tag, where string)) {
+		for _, word := range roleWords() {
+			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
+		}
+	},
+}
+
+// purposeWords and roleWords are the two vocabularies this law joins, each read
+// from the ONE FILE that declares it and each read ONCE per run.
+//
+// They are [constWordsOfType] twice. The purposes that are a role's own name
+// need no entry in either table — they arrive through the role vocabulary — and
+// what is left in the door's own block is the handful that are not any role.
+var purposeWords = sync.OnceValue(func() []string {
+	return constWordsOfType(filepath.Join("internal", "session", "clientdoor.go"), "callPurpose")
+})
+
+var roleWords = sync.OnceValue(func() []string {
+	return constWordsOfType(filepath.Join("internal", "roles", "roles.go"), "Role")
+})
+
+// constWordsOfType reads one file for the string constants declared with one
+// named type, and PANICS ON AN EMPTY ANSWER.
+//
+// The panic is the point. This law joins two vocabularies by parsing the files
+// that declare them, and a parse that silently found nothing would make the join
+// trivially complete — every tag resolved, no row missing, the report quietly
+// wrong. A file renamed out from under it has to be loud.
+func constWordsOfType(relative, typeName string) []string {
+	path := filepath.Join(moduleRoot, relative)
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		panic("reading " + relative + ": " + err.Error())
+	}
+	var words []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		spec, isValue := node.(*ast.ValueSpec)
+		if !isValue || len(spec.Values) != 1 {
+			return true
+		}
+		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != typeName {
+			return true
+		}
+		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
+			words = append(words, word)
+		}
+		return true
+	})
+	if len(words) == 0 {
+		panic(relative + " declares no " + typeName + " constants; this law is reading the wrong tree")
+	}
+	return words
 }
 
 // tagsTheBuildWrites reads the module's sources for every tag that can reach
@@ -270,8 +325,8 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 			if !isCall {
 				return true
 			}
-			switch callName(call.Fun) {
-			case "WithCallTag", "provider.WithCallTag":
+			switch methodName(call.Fun) {
+			case "WithCallTag":
 				if len(call.Args) < 2 {
 					return true
 				}
@@ -284,6 +339,60 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 				if !known {
 					t.Errorf("%s writes a call tag spelled %q, which this law cannot read; "+
 						"add it to derivedTags with what it can produce", path, spelling)
+					return true
+				}
+				derived(func(tag, where string) { found[tag] = where })
+			case "completeWithModel", "completeWithNamedModel":
+				// THE DOOR IS WHERE internal/session'S TAGS ARE STATED NOW. Its
+				// second argument is a [session.callPurpose], and it reaches
+				// `calllog.Record.Tag` verbatim (clientdoor.go). Reading it here is
+				// what keeps this law pointed at the same thing the build is: the
+				// `WithCallTag` case above sees only the one relay line.
+				if len(call.Args) < 2 {
+					return true
+				}
+				purpose := call.Args[1]
+				// A PURPOSE MAY WEAR ITS TYPE. `callPurpose("...")` and a bare
+				// constant are the same statement, so the conversion comes off
+				// before the argument is read.
+				if conversion, isCall := purpose.(*ast.CallExpr); isCall &&
+					methodName(conversion.Fun) == "callPurpose" && len(conversion.Args) == 1 {
+					if _, literal := stringLiteral(conversion.Args[0]); !literal {
+						// A ROLE WORN AS A PURPOSE IS STILL A ROLE, and the
+						// vocabulary it can produce is internal/roles' own. It is
+						// over-approximated deliberately: this law asks whether
+						// every tag the build CAN write is named, so answering
+						// with more of them than one site writes is safe, where
+						// answering with fewer is the hole it exists to close.
+						if strings.Contains(source(t, conversion.Args[0]), "Role") {
+							for _, word := range roleWords() {
+								found[word] = path + ", a role worn as a purpose"
+							}
+							return true
+						}
+					}
+					purpose = conversion.Args[0]
+				}
+				if word, literal := stringLiteral(purpose); literal {
+					if word != "" {
+						found[word] = path
+					}
+					return true
+				}
+				// A NAMED CONSTANT IS THE ORDINARY CASE and the door declares them
+				// all in one block, so they are read from the declaration rather
+				// than listed here.
+				if ident, isIdent := purpose.(*ast.Ident); isIdent && strings.HasPrefix(ident.Name, "purpose") {
+					for _, word := range purposeWords() {
+						found[word] = "an internal/session/clientdoor.go callPurpose constant"
+					}
+					return true
+				}
+				spelling := source(t, purpose)
+				derived, known := derivedTags[spelling]
+				if !known {
+					t.Errorf("%s hands the model door a purpose spelled %q, which this law cannot "+
+						"read; add it to derivedTags with what it can produce", path, spelling)
 					return true
 				}
 				derived(func(tag, where string) { found[tag] = where })
@@ -305,29 +414,123 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 	return found
 }
 
-// roleWords reads internal/roles for the role vocabulary itself, because that
-// package's constants ARE tags the moment auxiliary.go writes one.
-func roleWords() []string {
-	var words []string
-	set := token.NewFileSet()
-	file, err := parser.ParseFile(set, filepath.Join(moduleRoot, "internal", "roles", "roles.go"), nil, 0)
-	if err != nil {
-		panic("reading internal/roles: " + err.Error())
+// TestEveryRoleWordIsDeclaredWhereTheVocabularyIs fails a role named anywhere
+// but internal/roles, in either spelling.
+//
+// [roleWords] parses ONE FILE, because that is where this build says the role
+// vocabulary lives and because the tool that reads it cannot import the engine
+// to ask the registry at run time — a replay reader would pull in the whole
+// session package for a list of words. A role constant declared at its own call
+// site is therefore invisible to it, and to every other reader that asks what
+// the roles ARE.
+//
+// THE MEASURED FAILURE. `const spellOutRole roles.Role = "spellout"` lived in
+// internal/session/spellout.go. It registered, resolved and tagged its call
+// correctly — and reached the cost report as a word nobody had written down,
+// which [roleOf] prices as a background errand with nobody waiting. The
+// spell-out is the one auxiliary a person sits and watches, so the single call
+// whose latency matters most was the one counted as if it did not. Nothing
+// failed; a number was quietly wrong. `const standingSentinelRole roles.Role =
+// "sentinel"` was the second, caught by this law on the day it was written.
+//
+// BOTH SPELLINGS, because there are two. A declared type
+// (`x roles.Role = "w"`) and a conversion (`x = roles.Role("w")`) produce the
+// same constant and only the first has a Type for a reader to match on;
+// `roleRepair = roles.Role("repair")` was invisible to the first version of
+// this law. The second half — every word handed to [roles.Register] — is the
+// one that cannot be spelled around at all, because a role nothing registers
+// resolves under no tier.
+func TestEveryRoleWordIsDeclaredWhereTheVocabularyIs(t *testing.T) {
+	const home = "internal/roles/roles.go"
+	declared := map[string]bool{}
+	for _, word := range roleWords() {
+		declared[word] = true
 	}
-	ast.Inspect(file, func(node ast.Node) bool {
-		spec, isValue := node.(*ast.ValueSpec)
-		if !isValue || len(spec.Values) != 1 {
+	walkBuildSources(t, func(path string, file *ast.File) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			if call, isCall := node.(*ast.CallExpr); isCall {
+				if methodName(call.Fun) == "Register" && len(call.Args) > 0 {
+					if word, spelled := roleWordOf(call.Args[0]); spelled && !declared[word] {
+						t.Errorf("%s registers the role %q, which %s does not declare. A role's "+
+							"WORD belongs there beside the others — spelled out, not conjured at "+
+							"the call — because everything that reads the vocabulary reads that "+
+							"file and a word it cannot see is priced as an errand nobody is "+
+							"waiting on.", path, word, home)
+					}
+				}
+				return true
+			}
+			spec, isValue := node.(*ast.ValueSpec)
+			if !isValue || path == home {
+				return true
+			}
+			for index, name := range spec.Names {
+				spelled := isRoleType(spec.Type)
+				if !spelled && index < len(spec.Values) {
+					_, spelled = roleWordOf(spec.Values[index])
+				}
+				if spelled {
+					t.Errorf("%s declares the role %s. Every role's WORD belongs in %s, beside "+
+						"the others: a role declared at its call site resolves and tags correctly "+
+						"and is still invisible to everything that reads the vocabulary, which "+
+						"prices its calls as errands nobody is waiting on. Declare it there and "+
+						"keep the roles.Register call here.", path, name.Name, home)
+				}
+			}
 			return true
-		}
-		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != "Role" {
-			return true
-		}
-		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
-			words = append(words, word)
-		}
-		return true
+		})
 	})
-	return words
+}
+
+// TestTheVocabularyListsEveryRoleTheFileDeclares keeps [roles.Vocabulary] whole.
+//
+// THE REGISTRY IS NOT THE VOCABULARY, and that difference cost a real setting.
+// A role gets into the registry by registering, which is how it gets a TIER; a
+// role with no tier never registers, and `imagegen` is one — a painter is chosen
+// by a pin or not at all. Reading the registry as "what are the roles" threw a
+// person's `imagegen:` pin away on the way in.
+//
+// So internal/roles answers both questions, and the vocabulary is a hand-written
+// list, which is a thing that falls behind. This is why it cannot: the same
+// parse that reads the file for [roleWords] is checked against what the package
+// says it has.
+func TestTheVocabularyListsEveryRoleTheFileDeclares(t *testing.T) {
+	listed := map[string]bool{}
+	for _, role := range roles.Vocabulary() {
+		listed[string(role)] = true
+	}
+	for _, word := range roleWords() {
+		if !listed[word] {
+			t.Errorf("internal/roles declares the role %q and roles.Vocabulary does not list it. "+
+				"Every reader that asks what the roles ARE reads that list, and a word missing "+
+				"from it is a pin thrown away on the way in.", word)
+		}
+	}
+	if len(listed) != len(roleWords()) {
+		t.Errorf("roles.Vocabulary lists %d roles and the file declares %d; a word in the list "+
+			"that is not a constant is a word nothing can ever write",
+			len(listed), len(roleWords()))
+	}
+}
+
+// isRoleType reports the `roles.Role` type spelled on a declaration.
+func isRoleType(expr ast.Expr) bool {
+	named, isSelector := expr.(*ast.SelectorExpr)
+	if !isSelector || named.Sel.Name != "Role" {
+		return false
+	}
+	pkg, isIdent := named.X.(*ast.Ident)
+	return isIdent && pkg.Name == "roles"
+}
+
+// roleWordOf reads a role written as a conversion — `roles.Role("repair")` —
+// and answers the word inside it.
+func roleWordOf(expr ast.Expr) (string, bool) {
+	call, isCall := expr.(*ast.CallExpr)
+	if !isCall || !isRoleType(call.Fun) || len(call.Args) != 1 {
+		return "", false
+	}
+	return stringLiteral(call.Args[0])
 }
 
 // moduleRoot is this package's place in the tree, which is two directories up.
@@ -365,17 +568,27 @@ func walkBuildSources(t *testing.T, visit func(path string, file *ast.File)) {
 	}
 }
 
-// callName renders a function expression as the source spells it, so that both
-// `WithCallTag` and `provider.WithCallTag` are recognisable without resolving
-// imports.
-func callName(fun ast.Expr) string {
+// methodName is the LAST WORD of a call expression — the function or method
+// being called, whatever it was reached through.
+//
+// THE RECEIVER IS NOT PART OF THE QUESTION THIS LAW ASKS. "Does this call go
+// through the door" has the same answer for `completeWithModel`,
+// `a.completeWithModel`, `p.agent.completeWithModel` and
+// `agentFor(x).completeWithModel`, and for `WithCallTag` whether or not the
+// package is spelled in front of it.
+//
+// It used to be a list of the spellings somebody had seen, rendered by a reader
+// that flattened ONE selector level — so `p.agent.completeWithModel` and
+// `e.agent.completeWithModel` rendered as "" and three of the six rows in that
+// list could never match anything. The ladder looked complete and was half
+// dead, which is what a ladder of names always eventually is, and the only
+// symptom would have been a tag this law quietly stopped knowing about.
+func methodName(fun ast.Expr) string {
 	switch shape := fun.(type) {
 	case *ast.Ident:
 		return shape.Name
 	case *ast.SelectorExpr:
-		if pkg, isIdent := shape.X.(*ast.Ident); isIdent {
-			return pkg.Name + "." + shape.Sel.Name
-		}
+		return shape.Sel.Name
 	}
 	return ""
 }

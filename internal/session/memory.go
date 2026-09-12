@@ -171,8 +171,8 @@ func (a *Agent) reflexClient() reflex.Completer {
 // billedCompleter is what makes a reflex call cost something a person can see.
 //
 // THE PERSON PAYS FOR IT, SO IT CANNOT BE FREE — the argument
-// [Agent.addAuxiliaryUsage] states for the title and the compaction summary,
-// and it bites harder here: this is the only auxiliary call made twice EVERY
+// [Agent.addAuxiliaryUsage] states for the title call, and it bites harder
+// here: this is the only auxiliary call made twice EVERY
 // turn, so a feature whose whole claim is that it is nearly free is exactly the
 // one that has to prove it on the bill. It is folded into the SESSION total and
 // never into a turn's, because no turn asked for it.
