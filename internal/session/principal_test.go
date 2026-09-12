@@ -923,7 +923,7 @@ func TestABudgetNobodySetIsNeverExhausted(t *testing.T) {
 // longer than its ceiling stops even if it never spent a penny.
 func TestTheWallClockStopsARunThatSpentNothing(t *testing.T) {
 	steward := NewSteward("port the parser", Budget{Wall: time.Hour}, nil)
-	steward.now = func() time.Time { return steward.started.Add(90 * time.Minute) }
+	steward.setClock(func() time.Time { return steward.started.Add(90 * time.Minute) })
 	decision := steward.Decide(Remains{Reader: "there is plenty left", Landed: true})
 	if decision.Verb != DecideStop {
 		t.Fatalf("a run past its hours did not stop: %+v", decision)

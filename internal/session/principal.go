@@ -1081,6 +1081,34 @@ func (s *Steward) since(moment time.Time) time.Duration {
 	return now().Sub(moment)
 }
 
+// setClock and setStarted are the ONE DOOR to the two fields of the Steward's
+// clock that ever move, and both take s.mu. EVERY WRITE TO NOW OR STARTED AFTER
+// CONSTRUCTION GOES THROUGH THEM: the product reads both fields under this same
+// lock ([Steward.Budget], [Steward.since], wallIsUp in wallclock.go), so a write
+// that skips it is a data race the detector catches the moment the clock is
+// moved on a live session whose wall clock is already reading it (#957 — go
+// test -race red on clean dev through nearWall in checkpoint_test.go).
+//
+// Almost every caller is a fixture winding the clock forward; the one that is
+// not is makePrincipal in principal_wire.go, handing over the session's own
+// start. It uses the door too, and stewardclock_law_test.go is what keeps every
+// caller on it.
+
+// setClock replaces the clock the wall and the turn's share are measured with.
+func (s *Steward) setClock(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = now
+}
+
+// setStarted moves when the run began, which winds the wall's remainder without
+// moving a turn's own stretch, because both are read off the one clock.
+func (s *Steward) setStarted(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.started = at
+}
+
 // Report turns one landing into the next attempt's brief, and it is the road a
 // failed unit of work now has instead of a sentence addressed to nobody.
 //

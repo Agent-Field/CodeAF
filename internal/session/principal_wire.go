@@ -81,8 +81,10 @@ func newPrincipalFor(a *Agent) Principal {
 	// started for itself a microsecond later. There is one wall clock in this
 	// package ([Agent.startedAt]) and this is where it is handed over; a
 	// [Steward] built by a test starts its own, which is what a type nobody
-	// wired should do.
-	steward.started = a.startedAt
+	// wired should do. It goes through [Steward.setStarted] like every other
+	// move of that clock: nothing is reading this one yet, and a second door
+	// that happens to be safe today is how the first one stops being the door.
+	steward.setStarted(a.startedAt)
 	return steward
 }
 
