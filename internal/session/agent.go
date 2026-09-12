@@ -388,6 +388,22 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// nobody will see until tomorrow (standing_run.go's registry). Close erases
 	// it.
 	registerLiveSession(agent)
+	// AND WHAT WAS ANSWERED WHILE NOBODY WAS HOME IS ANSWERED NOW. An answer left
+	// on this conversation's doorstep rides the presence heartbeat
+	// (answers.go's [Agent.drainAnswers]), which is the right beat for one
+	// window answering another that is RUNNING. It is the wrong one for the
+	// conversation that was NOT: a window shut for the night keeps nothing
+	// beating, so the answer the person left on home — accept this landing, no
+	// to that card — sat in answers.jsonl until the next time anybody happened
+	// to open the conversation, and even then until the first tick of the new
+	// process. From home's side the row said `answered · waiting for it to pick
+	// that up` for as long as the person cared to look, which is home saying it
+	// answered and home being wrong. The graph the landing answers to is back
+	// above, and the heartbeat that would race this drain starts below, so the
+	// doorstep is emptied here: the answer is applied through the same one door
+	// as every other, and the conversation opens already settled rather than
+	// asking a question somebody answered yesterday.
+	agent.drainAnswers()
 	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
 	// came to; this is the claim that a PROCESS is alive right now, which no
 	// file on disk could otherwise make (taskpresence.go). It is last of the
