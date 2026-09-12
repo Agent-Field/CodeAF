@@ -266,12 +266,10 @@ task; a quick task is now allowed the blank it is supposed to have.
 The rule is written once, in the words the model itself reads:
 
 > A task gets its own copy of the folder, is checked, and lands. A quick task works where
-> you are and its last message is its answer. If you will read the result and carry on,
-> it is quick. If it must be checked and merged on its own, or survive the window
-> closing, it is a task. One edit, one read, one command is a step: do it yourself.
-> Related steps that share what they learn are one quick task's items, not several quick
-> tasks. Keep one small — a few files and a few minutes: reading is not progress, so
-> six steps that only read end it.
+> you are and its last message is its answer. Related steps that share what they learn
+> are one quick task's items, not several quick tasks. Keep one small; a wide read wants
+> `no_progress` raised, because reading is not progress and six steps that only read end
+> it.
 
 **What decides is what happens to the answer, never how wide the work is.** Work whose
 result comes back for the conversation to read and carry on with is quick tasks, one per
@@ -312,6 +310,14 @@ half a dollar for an answer nobody got.
 So a large package is **several** quick tasks of a few files each, or one quick task with
 one item per small group — never one over all of it. And a quick task that starts quick
 tasks of its own cuts them smaller still, because its own room is already spent.
+
+**The number it stops at is on the wire, exactly as on `propose_task`.** `quick_task`
+takes an optional `no_progress`, defaulted to 6, and a negative value draws the same
+refusal (`Invalid arguments: no_progress cannot be negative`). A **read-heavy sweep
+raises it** rather than splits a package by count: one quick task with one item per
+group and `no_progress` set high for the reads beats several tasks cut to the default —
+because a worker that only reads is still the counter's case, and the number is moved,
+not the rule.
 
 ## Why several things started at once — three quick tasks in one message, why it did not do them one at a time
 

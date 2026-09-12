@@ -419,3 +419,49 @@ func TestAPartWithNoParentInTheReadingStandsAlone(t *testing.T) {
 		t.Fatalf("a part was folded under a node of another window: %+v", families)
 	}
 }
+
+// ── (6) the grain dial ──────────────────────────────────────────────────────
+
+// AN ASK THAT RAISED `no_progress` RUNS AT IT, ONE THAT SAID NOTHING RUNS AT
+// THE DEFAULT, AND A NEGATIVE ONE IS REFUSED.
+//
+// The dial is how many steps that add nothing a node may take before the
+// runner stops it as stuck ([TaskNode.limits] substitutes the default wherever
+// the wire said zero), and a wide read is exactly the work that dies at the
+// default without the raise — which is the death the dial exists to answer. The
+// door's whole job with it is to carry it, in `propose_task`'s words and
+// under the same refusal ([Agent.newQuickSpec]).
+func TestTheGrainDialCarriesOntoTheAdmittedNode(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+
+	said, failed, err := agent.startQuickTask(context.Background(), quickArgs(t, quickArguments{
+		Line: "read the twenty schema files", NoProgress: 40,
+	}))
+	if err != nil || failed {
+		t.Fatalf("the door refused an ask that raised the dial: %q (%v)", said, err)
+	}
+	raised := graph.node(1)
+	if raised == nil || raised.limits().noProgress != 40 {
+		t.Fatalf("the admitted node's limits are %+v, want no_progress carried", raised.limits())
+	}
+
+	said, failed, err = agent.startQuickTask(context.Background(), quickArgs(t, quickArguments{
+		Line: "read the twenty schema files", NoProgress: -1,
+	}))
+	if err != nil || !failed || said != "Invalid arguments: no_progress cannot be negative" {
+		t.Fatalf("a negative threshold answered %q (failed = %v, err = %v), want the refusal in propose_task's words", said, failed, err)
+	}
+
+	said, failed, err = agent.startQuickTask(context.Background(), quickArgs(t, quickArguments{
+		Line: "read the twenty schema files",
+	}))
+	if err != nil || failed {
+		t.Fatalf("the door refused a plain ask: %q (%v)", said, err)
+	}
+	// The refusal above consumed no id, so this is the second node admitted.
+	plain := graph.node(2)
+	if plain == nil || plain.limits().noProgress != taskNoProgress {
+		t.Fatalf("a node whose caller named nothing runs at %+v, want the default threshold", plain.limits())
+	}
+}
