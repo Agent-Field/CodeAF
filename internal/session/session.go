@@ -3044,6 +3044,13 @@ type Agent struct {
 	// ([Agent.oweToldStampLocked]).
 	toldAtOwed time.Time
 
+	// decisionNotesOwed names the landings whose decision-handing notes THIS
+	// agent's transcript holds with no request having gone out since
+	// (task_audit.go's [decisionNote]). A drain appends to it, the request that
+	// follows spends it ([Agent.decisionNotesCarried]), and a turn that ends with
+	// nothing following hands back what is left ([Agent.handBackUnreadNotes]).
+	decisionNotesOwed []uint64
+
 	// phaseBeats counts the beat goroutines the phase heart has armed
 	// (phasenews.go). It is the same shape [Agent.memoryJobs] is and for the same
 	// reason: the quit waits for them rather than merely cancelling them, and the
