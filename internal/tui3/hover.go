@@ -516,7 +516,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// pointer answered from the transcript underneath would brighten a tool call
 	// in a conversation the person cannot see (questionroom.go).
 	if a.questionRoomOpen() {
-		if at, ok := a.questionRoomOptionAt(y); ok {
+		if at, ok := a.questionRoomSpotAt(x, y); ok {
 			return hoverAt{kind: hoverQuestionOption, index: at}
 		}
 	}
