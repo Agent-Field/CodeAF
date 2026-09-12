@@ -31,10 +31,12 @@
 #     --bin aforge@simplify=/path/bin/aforge-simplify \
 #     --arms aforge@dev,aforge@simplify --scenarios repo-hover-print
 #
-# Nothing else changes: one adapter drives both, both are handed the same pin,
-# the same effort rung and the same freshly written profile, and the arm
-# version column carries each binary's own revision so a comparison across two
-# builds wearing one version word is refused rather than drawn.
+# Nothing else changes: one adapter drives both, both are handed the same pin
+# and the same effort rung, both start on a state root of their own that
+# inherits nothing and is seeded with nothing — so each build's own defaults
+# are what gets compared, which is what a person would meet — and the arm
+# version column carries each binary's revision AND its digest, so a grid that
+# measured one binary twice is refused rather than reported as a dead heat.
 set -uo pipefail
 
 CONV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
