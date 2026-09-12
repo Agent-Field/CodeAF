@@ -400,8 +400,19 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 		return
 	}
 	a.mu.Lock()
-	model := a.model
+	closed, model := a.closed, a.model
 	a.mu.Unlock()
+	// A CONVERSATION THAT HAS CLOSED SAYS NOTHING ABOUT WHAT IT IS DOING, and
+	// arms no beat to go on saying it. It is the one door's law said about this
+	// heart — the reading beside a turn writes nothing into a closed conversation
+	// (taskdelta.go), a clock armed on a question decides nothing after the door
+	// shuts (asklane.go) — and it is the half [Agent.Close] cannot do by itself:
+	// the close ends whatever is held, and this is what stops a phase being armed
+	// behind it. Without both, a beat went on posting a stage for a session that
+	// had gone, which is the stale clock this whole file exists to end.
+	if closed {
+		return
+	}
 	now := time.Now()
 	if since.IsZero() {
 		since = now

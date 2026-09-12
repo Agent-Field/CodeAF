@@ -436,6 +436,59 @@ func TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds(t *testing.T) {
 	}
 }
 
+// TestNothingBeatsAfterTheConversationHasClosed is the beat's half of the law
+// every other thing this session arms already keeps: nothing armed outlives the
+// session that armed it (steer.go's grace, asklane.go's clock, taskdelta.go's
+// reading beside the work).
+//
+// A stage is re-said on a ticker until it ends, and a session closed mid-stage
+// left that ticker running: it went on posting a conversation's stage after the
+// conversation had gone. Under the detector it was worse than untidy — a live
+// goroutine reading this package's own beat while the next test wrote it, which
+// is a data race reported against whichever test happened to be running.
+func TestNothingBeatsAfterTheConversationHasClosed(t *testing.T) {
+	log := watchPhases(t)
+	held := phaseHeldBeat
+	phaseHeldBeat = 2 * time.Millisecond
+	t.Cleanup(func() { phaseHeldBeat = held })
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if said, _ := heldSince(log.all(), provider.PhaseChecking); said >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stage never beat at all, so this proves nothing about it stopping")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if err := agent.Close(); err != nil {
+		t.Fatalf("closing the conversation: %v", err)
+	}
+	settled, _ := heldSince(log.all(), provider.PhaseChecking)
+	// AND NOTHING ARMS A NEW ONE BEHIND THE CLOSE, which is the half the close
+	// cannot do by itself: a turn still unwinding says its stages on the way out.
+	agent.tellPhase(provider.PhaseRunning, "a tool nobody is running", time.Now())
+	// Several beats' worth of silence, for [TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds]'s
+	// reason: absence is the claim, and this is how long it takes to be false.
+	time.Sleep(20 * time.Millisecond)
+	if after, _ := heldSince(log.all(), provider.PhaseChecking); after != settled {
+		t.Fatalf("the beat said the stage %d more times after the conversation closed", after-settled)
+	}
+	if said, _ := heldSince(log.all(), provider.PhaseRunning); said != 0 {
+		t.Fatalf("a closed conversation said what it was doing %d times", said)
+	}
+	// AND THE CLOCK CAME DOWN rather than being left on the screen for a
+	// conversation that has gone.
+	last := log.all()
+	if len(last) == 0 || last[len(last)-1].Phase != "" {
+		t.Fatalf("the closed conversation left its stage on the screen; phases were %v", phaseWords(last))
+	}
+}
+
 // TestTheBeatIsComfortablyInsideTheWindowASurfaceDrops is the one-source-of-truth
 // law between two packages, checked rather than commented.
 //

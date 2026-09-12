@@ -817,12 +817,13 @@ type TaskNode struct {
 	// announcing the end raced past.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and the note that asks it has been
-	// put in front of the model. It is not the same fact as [TaskNode.decider]
-	// being the model — a landing under `task.settle = auto` writes that by
-	// policy and presses nothing — and it travels with the owner through
-	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
-	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	// asked aforge to decide this one card, and the note that asks it is either
+	// waiting on the steering queue or in front of the model. It is
+	// not the same fact as [TaskNode.decider] being the model — a landing under
+	// `task.settle = auto` writes that by policy and presses nothing — and it
+	// travels with the owner through [TaskNode.givesBackLocked] so a hand-back
+	// leaves no receipt behind (task_audit.go's [TaskNode.wasHandedOver] states
+	// the whole rule).
 	handed bool
 	// stopReason is what whoever pulled the stop said they were stopping it FOR,
 	// and "" for every stop that came with no words — which is every one a person
@@ -4404,6 +4405,22 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 // about whether the model tried: one turn is the whole window, and a model that
 // wants longer has the same verb next turn once somebody hands it back.
 //
+// THE WINDOW IS THE TURN THAT ASKED, AND A TURN THAT NEVER ASKED IS NOT ONE. A
+// press lands on the steering queue and a queue is read at a STEP boundary, so a
+// card pressed while the turn's last request is already out reaches no request
+// at all: it is recorded at this turn's own end drain — which runs immediately
+// BELOW this call, and is what makes the question the next request carries — and
+// answered by the turn that wakes for it. Taking the hold back here would spend
+// the person's press on a turn that never heard it and then hand the model a
+// decision the person is holding again, which is two hands on one question and
+// the exact thing the receipt exists to prevent.
+//
+// SO THE QUEUE IS THE FACT, and it needs no second one written down: a hand-over
+// note still waiting on it is a question nobody has been given yet, and this
+// floor leaves that hold exactly where it is. It is assignment.go's own law
+// about a line said to a node, said here about a decision handed to the model —
+// a line accepted after the last drain was never in front of anybody.
+//
 // IT PUBLISHES ON THE ORDINARY TASK LANE. A surface already folds every
 // [EventTaskUpdate] into the row it is drawing, and the notice now carries who is
 // deciding ([TaskNotice.Decider]), so the hand-back is one more update about a
@@ -4413,11 +4430,17 @@ func (a *Agent) handBackUnsettled() {
 	if graph == nil {
 		return
 	}
+	// Read before the graph is taken, because this lock is never held while that
+	// one is ([Agent.drainSteering] states the ordering).
+	waiting := a.handOversWaiting()
 	var handed []*TaskNode
 	graph.mu.Lock()
 	for _, id := range graph.order {
 		node := graph.nodes[id]
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
+			continue
+		}
+		if waiting[id] {
 			continue
 		}
 		node.givesBackLocked()

@@ -1226,6 +1226,14 @@ type userMessage struct {
 	// request actually carried the words.
 	directions []uint64
 
+	// handsOver names the landings whose DECISION this message hands to the
+	// model — the person's own "let aforge decide this one"
+	// ([Agent.HandUnverifiedToModel]). It is read off the queue and nowhere else,
+	// for `directions`' own reason: a press still waiting here is one no request
+	// has carried, and the floor that takes a hand-over back must not spend it on
+	// a turn that never asked (task_run.go's [Agent.handBackUnsettled]).
+	handsOver []uint64
+
 	// crossed is what the record keeps about a line the person sent ACROSS to
 	// this agent from the room they were standing in (task_room.go's
 	// [Agent.SteerTask]) — the instant they sent it, and the engine's own one-fact
@@ -2254,6 +2262,17 @@ func (a *Agent) Close() error {
 	// because it is the one background lane that owes nothing to the quit: a
 	// beat holds no write anybody is waiting for.
 	a.stopLaneBeat()
+	// AND NO BEAT ON A HELD PHASE OUTLIVES THE SESSION THAT ARMED IT. A stage is
+	// re-said on a ticker of its own until it ends (phasenews.go's
+	// [Agent.beatHeldPhase]), and a session that closed mid-stage left that
+	// goroutine running: it went on posting a conversation's stage after the
+	// conversation had gone, and under the detector it was a live goroutine
+	// reading the package's own beat while the next test wrote it. The end is
+	// said properly rather than merely dropped, so a surface takes the clock down
+	// instead of holding a stage nobody will ever finish. [Agent.tellPhase]
+	// refuses a closed session, which is what keeps a turn still unwinding below
+	// from arming another one.
+	a.endPhase()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes
@@ -2713,6 +2732,28 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	return landed
 }
 
+// handOversWaiting is every landing whose hand-over note is still on the
+// steering queue — the presses the model has not been given yet.
+//
+// IT IS THE WHOLE OF WHAT THE FLOOR NEEDS (task_run.go's
+// [Agent.handBackUnsettled]). A note on this queue has reached no request, so
+// the turn that is ending never asked about it; a note that has left it is in
+// the transcript, which is what the next request carries.
+func (a *Agent) handOversWaiting() map[uint64]bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var waiting map[uint64]bool
+	for _, message := range a.steering {
+		for _, id := range message.handsOver {
+			if waiting == nil {
+				waiting = map[uint64]bool{}
+			}
+			waiting[id] = true
+		}
+	}
+	return waiting
+}
+
 // queuedDirections is every node receipt id on one queue.
 func queuedDirections(queued []userMessage) []uint64 {
 	var ids []uint64
@@ -2960,6 +3001,16 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 // drains, and the journal it would be written to is already shut.
 func (a *Agent) enqueueSteering(text string) {
 	a.enqueueNote(wakeNote(text))
+}
+
+// enqueueHandOver is [Agent.enqueueSteering] for the one note that also changes
+// who is holding a question: the person's "let aforge decide this one". The id
+// rides with the line so that the drain in front of the next request is what
+// turns the press into a question the model has (task_audit.go's [handOver]).
+func (a *Agent) enqueueHandOver(id uint64, text string) {
+	note := wakeNote(text)
+	note.handsOver = []uint64{id}
+	a.enqueueNote(note)
 }
 
 // enqueueJobNote is the registry's owed lane, and what it carries is the ending
