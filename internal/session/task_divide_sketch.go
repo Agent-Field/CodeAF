@@ -209,9 +209,10 @@ type besideProposal struct {
 //   - A PERSON'S SENTENCE NOBODY HAS READ FOR WIDTH ([taskSpec.unsized]): the
 //     sizing judge is asked, beside the worker, and its yes IS the arming — the
 //     same model's reading of breadth that used to arm the work at admission,
-//     arriving after the belt was built and so arriving as parts instead of as a
-//     verb ([askedByJudge]). A no, or a judge nobody could reach, is one worker,
-//     which is what is already running.
+//     arriving after the belt was built and so reaching the running worker
+//     through the one door that can still arm it ([Agent.armDivisionBeside]) as
+//     well as reaching this road as parts ([askedByJudge]). A no, or a judge
+//     nobody could reach, is one worker, which is what is already running.
 //
 // Both then go through the one body every division goes through
 // ([Agent.weighDivision]), so the evidence gate, the free hands, the scope rules
@@ -227,31 +228,45 @@ func (a *Agent) proposalBeside(node *TaskNode) func(context.Context) (besideProp
 		}
 	}
 	judge := a.graph().home
-	request, unsized := node.widthToRead()
+	spec, unsized := node.widthToRead()
 	if judge == nil || !unsized {
 		return nil
 	}
 	return func(ctx context.Context) (besideProposal, bool) {
-		wide, parts, why := judge.judgeDecomposable(ctx, request)
+		wide, parts, why := judge.judgeDecomposable(ctx, spec.request)
 		if !wide {
 			return besideProposal{}, false
 		}
-		args, ok := judgedDivision(request, parts, why)
+		// THE YES ARMS THE WORK, AND IT ARMS IT WHATEVER BECOMES OF THESE PARTS.
+		// What the gates and the reviewer are about to read is ONE set of parts,
+		// drawn from a sentence nobody had opened the material behind; a no about
+		// them is a finding about them. The judgement that the WORK is wide was
+		// made here, and it is the same judgement that armed the worker at
+		// admission while the judge was asked in front of the work — so it is
+		// spent on the node before anything is weighed (#958).
+		a.armDivisionBeside(node, spec)
+		args, ok := judgedDivision(spec.request, parts, why)
 		return besideProposal{asker: askedByJudge, args: args}, ok
 	}
 }
 
-// widthToRead answers the person's sentence where nobody has read it for width
-// yet, and spends the flag in the same breath: the judge is asked about a node
-// once, whatever becomes of its answer ([taskSpec.unsized]).
-func (n *TaskNode) widthToRead() (string, bool) {
+// widthToRead answers the SPEC of work nobody has read for width yet, and spends
+// the flag in the same breath: the judge is asked about a node once, whatever
+// becomes of its answer ([taskSpec.unsized]).
+//
+// THE WHOLE SPEC RIDES BACK because the judge's yes is put to the same arming
+// admission asks ([Agent.armDivisionBeside]), and that reads more of the work
+// than its request line: the kind, whose part this is, and what its own text
+// already enumerates. Handing the arming a sentence and letting it fetch the
+// rest would be a second reading of a node that has already been read here.
+func (n *TaskNode) widthToRead() (taskSpec, bool) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if !n.spec.unsized {
-		return "", false
+		return taskSpec{}, false
 	}
 	n.spec.unsized = false
-	return n.spec.request, true
+	return n.spec, true
 }
 
 // judgedDivision is the sizing judge's yes written out as a division: one part
