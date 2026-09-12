@@ -68,7 +68,7 @@ func (a *Agent) stampUserLocked(text string) {
 	a.metaStamp().Owe(func() {
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
 			meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
-			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+			meta.Places = snapshot.Places
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
 				meta.Title = title
@@ -99,7 +99,7 @@ func (a *Agent) metaStamp() *stampWriter {
 //
 // IT MUST NOT BE CALLED WITH a.mu HELD, and that is the whole of its contract.
 // Every write it waits on takes that lock to read or replace what it is writing
-// — the stamp fills a Meta, the cut appends to a.trees — so a call from inside
+// — the stamp fills a Meta — so a call from inside
 // the lock waits forever on work that is waiting for the caller. In [Agent.Close]
 // the place is beside [Agent.settleDeliveries] (agent.go), BEFORE the
 // `a.mu.Lock()` that follows it, and nowhere after.
@@ -109,7 +109,6 @@ func (a *Agent) SettleWrites() {
 	}
 	a.metaStamp().settle()
 	a.fixShelfFor().settle()
-	a.treesAhead().Settle()
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside
@@ -268,9 +267,6 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
 		}
-		if meta.Trees == nil {
-			meta.Trees = snapshot.Trees
-		}
 		patch(&meta)
 		return SaveMeta(dir, meta)
 	})
@@ -306,10 +302,6 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// and spend patches preserve the latest stored set instead of replacing it
 	// with a snapshot captured before a folder was named (places.go).
 	meta.Places = a.places
-	// And the working copies held on those folders, for the same reason and one
-	// sharper: the places are an answer that could be worked out again, and this
-	// is work that exists nowhere else (standingtree.go).
-	meta.Trees = a.trees
 	return meta
 }
 
@@ -336,25 +328,15 @@ func (a *Agent) stampEffort() { a.stampMeta() }
 // returns without calling this when the set already reads the way it would.
 func (a *Agent) stampPlaces() { a.stampMeta() }
 
-// stampTrees writes the working copies down the moment one is cut, one is
-// written into, or one lands.
-//
-// IT IS THE ONE STAMP THAT CANNOT BE LOST. A rung and a set of folders are
-// conveniences a next process could live without; a copy holding an hour of
-// unlanded work that nothing wrote down is work the person cannot get back to
-// (standingtree.go). It is still the same read-and-rename of a few hundred
-// bytes, and it happens once per file first written rather than once per write.
-func (a *Agent) stampTrees() { a.stampMeta() }
-
 // stampMeta updates the configuration and working context those three stamps
 // share. The transaction reads the latest title and spending from disk and
-// preserves them; this snapshot owns only model, effort, places and trees.
+// preserves them; this snapshot owns only model, effort and places.
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
 func (a *Agent) stampMeta() {
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
-		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+		meta.Places = snapshot.Places
 	})
 }
 

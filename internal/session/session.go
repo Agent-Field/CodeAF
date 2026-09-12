@@ -1844,6 +1844,17 @@ type Config struct {
 	// inside. It is private for droppings' reason: no surface sets it, the
 	// constructor that builds the worker does.
 	ownSpace bool
+	// gitFacts is what git already knows about the working directory and each
+	// attached repository — branch, how much is not committed, how far the branch
+	// stands from its upstream — rendered into `# Project` (gitfacts.go).
+	//
+	// IT IS THE ONE FIELD ON THIS STRUCT THE AGENT ITSELF WRITES, and it is here
+	// rather than on the Agent because [renderSystemAt] is a pure function of a
+	// Config and a moment, and a prompt assembled from two sources is a prompt
+	// that will one day disagree with itself. The write happens under a.mu at the
+	// start of a turn, which is the same lock and the same moment
+	// `anchor_workspace` rewrites [Config.Workspace] under.
+	gitFacts string
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).
@@ -2316,27 +2327,20 @@ type Agent struct {
 	// slice to the marshaller and writes it after the lock is released
 	// (placemeta.go's [Agent.stampMeta]).
 	places []PlaceRef
-	// trees is the working copies this conversation holds of the folders it
-	// refers to, and what has been written into each that the folder itself
-	// does not have yet (standingtree.go). It rides the same meta.json for the
-	// same reason places does, and it is REPLACED AND NEVER EDITED IN PLACE for
-	// the same one.
+	// folderConsent is which attached folders this conversation has already been
+	// asked about, and what the person said (folderconsent.go).
 	//
-	// Nil is the ordinary state and means nothing has been written outside the
-	// folder this conversation stands in, which is every conversation until one
-	// aims a write somewhere else.
-	trees []StandingTree
-	// treeCut serializes the CUTTING of one, and nothing else. Making a working
-	// copy runs git and copies files, so it cannot be done under mu, and two
-	// tool calls in one turn that both find no copy would otherwise both make
-	// one — leaving a registered worktree that nothing holds a record of.
-	treeCut sync.Mutex
-	// toldStanding is which folders' working copies THIS PROCESS has already
-	// told the model about (standingbelt.go). It is not on the meta on purpose:
-	// what it tracks is whether the model in front of it has been told, and a
-	// resumed conversation's model has been told nothing.
-	toldStanding map[string]bool
-	messages     []ai.Message
+	// IT IS IN MEMORY AND NOT ON THE META, deliberately. What it records is that
+	// a person sitting here watched a card and answered it, and a conversation
+	// reopened tomorrow is a person who has not — so the first change in an
+	// attached folder asks again, which is exactly when the question is worth
+	// asking. Nil is the ordinary state: nothing has been asked yet.
+	folderConsent map[string]bool
+	// gitAhead is the reading of git's own state that is in flight right now
+	// (gitfacts.go). It is started at the end of one turn's refresh and taken at
+	// the start of the next, and it is NEVER waited on.
+	gitAhead *offpath.Reading[string]
+	messages []ai.Message
 	// messageReasoning is aligned one-for-one with messages and carries the
 	// provider fields ai.Message cannot represent. Rewrites clear or move the
 	// matching slot; no model working is ever smuggled into visible Content.
@@ -3034,11 +3038,6 @@ type Agent struct {
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).
 	toolCompact toolCompactMemo
-
-	// treesWrite cuts the working copy of a referred folder AHEAD of the first
-	// write into it, and treesOnce builds it on the first refer (standingtree.go).
-	treesOnce  sync.Once
-	treesWrite *offpath.Write
 
 	title      string
 	titleTried bool
