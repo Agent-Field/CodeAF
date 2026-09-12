@@ -69,10 +69,49 @@ type taskModelChoice struct {
 // configured. That default is resolved through the same matcher, so a settings
 // row written as "opus-5" reaches the same id a proposal naming it would.
 func (a *Agent) resolveTaskModel(word string) taskModelChoice {
+	return a.resolveTaskModelFor(word, taskModelGroomed)
+}
+
+// taskModelReason is WHY a piece of work needs a model, and it is the whole of
+// what [Agent.defaultTaskModel] needs in order to answer.
+//
+// IT IS A PROPERTY OF THE ROAD AND NEVER OF THE WORK. Nothing here reads what
+// the task is about; the two values are the two shapes of door, and a third
+// would be a third door rather than a third opinion.
+type taskModelReason string
+
+const (
+	// taskModelGroomed is work somebody wrote down for a worker: a typed task, a
+	// proposal, a part of a division, a judge's own ruling on a request nobody
+	// has started. The crew's worker seat is the right answer, because that seat
+	// IS the statement of what a task should cost.
+	taskModelGroomed taskModelReason = "groomed"
+	// taskModelContinuation is a TURN THAT IS STILL RUNNING, moved out because it
+	// cannot carry on where it is (checkpoint.go).
+	//
+	// IT IS NOT THE SAME KIND OF WORK AND THE SEAT WAS THE WRONG ANSWER FOR IT.
+	// The worker ladder prices a task that starts cold from a brief somebody wrote
+	// on purpose. What moves here is the middle of an answer the person is
+	// watching, and the only reader in the building holding what the turn found
+	// out is the model that spent it — so replacing that model with a cheaper one
+	// AT THE MOMENT the findings are handed over as a lossy brief is paying twice
+	// for the same loss. Measured on 2026-09-11: a turn on the conversation's own
+	// model was moved onto the worker seat with a five-thousand-token account of
+	// sixty-two calls, and the worker re-read everything.
+	//
+	// SO A CONTINUATION CONTINUES ON THE MODEL THAT WAS DOING IT. A person who
+	// has pinned `task.model` has still said something more specific than either,
+	// and that pin still wins.
+	taskModelContinuation taskModelReason = "continuation"
+)
+
+// resolveTaskModelFor is [Agent.resolveTaskModel] with the road named, which is
+// the only thing the empty-word default turns on.
+func (a *Agent) resolveTaskModelFor(word string, why taskModelReason) taskModelChoice {
 	word = strings.TrimSpace(word)
 	available := a.taskModelList()
 	if word == "" {
-		return taskModelChoice{model: a.defaultTaskModel(available)}
+		return taskModelChoice{model: a.defaultTaskModel(available, why)}
 	}
 	if len(available) == 0 {
 		// Nobody holds a list, so nothing here can be validated against one.
@@ -85,7 +124,7 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 	case len(candidates) == 1:
 		return taskModelChoice{model: candidates[0]}
 	case len(candidates) == 0:
-		return taskModelChoice{problem: taskModelUnknown(word, nearTaskModels(word, available), a.defaultTaskModel(available))}
+		return taskModelChoice{problem: taskModelUnknown(word, nearTaskModels(word, available), a.defaultTaskModel(available, why))}
 	case len(candidates) > taskModelShortlist:
 		return taskModelChoice{problem: taskModelVague(word, candidates[:taskModelShortlist])}
 	default:
@@ -115,12 +154,16 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 // It reads the LIVE model rather than the one the session was built with,
 // because /model moves it and a task groomed after the switch belongs on the
 // model the person is working with now.
-func (a *Agent) defaultTaskModel(available []string) string {
+func (a *Agent) defaultTaskModel(available []string, why taskModelReason) string {
 	a.mu.Lock()
 	configured := strings.TrimSpace(a.config.TaskModel)
 	source, model := a.config.RolesSource, a.model
 	a.mu.Unlock()
-	if configured == "" {
+	// AND THE SEAT IS FOR GROOMED WORK ALONE. A turn moved out because it cannot
+	// carry on is not a task somebody wrote; it is this answer, continuing
+	// elsewhere, and it continues on the model that has been giving it
+	// ([taskModelContinuation] carries the measurement).
+	if configured == "" && why != taskModelContinuation {
 		if seat, ok := roles.TierModel(roles.Source(source), roles.TierWorker); ok {
 			id, _ := roles.SplitEffort(seat)
 			configured = strings.TrimSpace(id)

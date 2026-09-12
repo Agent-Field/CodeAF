@@ -402,14 +402,42 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	defer recall.end()
 
 	// AND WHAT THE OTHER WINDOWS ON THIS PROJECT HAVE BEEN DOING (taskdelta.go),
-	// on its own goroutine for the same law. It makes no model call — it opens the
+	// beside the work for the same law. It makes no model call — it opens the
 	// project index and one small JSON per live window — but a shared directory on
 	// a cold disk is still a wait, and the only wait a person experiences here is
 	// the model generating. It fails open the same way: no folder, no index and no
 	// other window each answer an empty block, and a turn with an empty block is a
 	// turn as it always was; a read that lands after the first request rides the
 	// next step, which is the same bargain the recall takes.
-	go a.refreshElsewhere()
+	//
+	// IT GOES THROUGH [readBeside] AND NOT THROUGH A `go` OF ITS OWN, which is
+	// sidecar.go's whole reason for existing: a reading with its own goroutine has
+	// its own idea of what a cancellation means, and this one had none at all —
+	// it was measured stamping a conversation's folder after that conversation
+	// had closed. Nothing takes its answer, because its answer IS the assignment
+	// it makes; what the door buys is the cancellation — the reading carries the
+	// context it is given and obeys it ([Agent.refreshElsewhere]) — and a reading
+	// the beside-watch can see, so a fixture waits on the fact instead of guessing.
+	//
+	// AND A TURN THAT MAY NOT BE TOLD STARTS NO READING AT ALL. A task node and a
+	// conversation with no folder are both answered by one predicate
+	// ([Agent.tellsElsewhere]); asking it here keeps a reading that would return
+	// on its first line out of the watch, where it would be one more thing a
+	// fixture waits for and nothing at all beside the work.
+	//
+	// THE `ask` IS WRITTEN OUT HERE AND NOT HOISTED INTO A VARIABLE, because the
+	// set of readings the sidecar law watches is READ OFF THE TREE — whatever an
+	// inline [readBeside] ask calls is a reading, by construction
+	// (sidecar_law_test.go). A reading handed in through a name is a reading that
+	// law cannot see, which is how the next one stops being watched.
+	var elsewhere *sidecar[struct{}]
+	if a.tellsElsewhere() {
+		elsewhere = readBeside(ctx, func(read context.Context) struct{} {
+			a.refreshElsewhere(read)
+			return struct{}{}
+		}, nil)
+	}
+	defer elsewhere.end()
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
@@ -762,9 +790,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// for and thrown away is a ledger line nobody can ever count.
 		//
 		// AND THIS IS ONE OF THE TWO PLACES THIS ENGINE WAITS ON A READING, for
-		// the reason the CEILING's own drawing is still read in line and the
-		// reason the guardian blocks: the turn is over, so there is nothing left
-		// to run beside. A deferred body runs when everything has already been
+		// the reason the guardian blocks: the turn is over, so there is nothing
+		// left to run beside. The CEILING used to be a third and is not any more —
+		// it is a rung a turn can carry on past, so a drawing awaited in front of
+		// it would be awaited in front of work about to continue
+		// (sidecar_law_test.go's `endingDoors` says it in the law's own words).
+		//
+		// A deferred body runs when everything has already been
 		// decided, which is what makes the wait honest here and nowhere else
 		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
 		// What it costs is bounded twice — by [checkpointSketchWindow] and by the
@@ -1260,6 +1292,38 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// one boundary too late to move the mark it is pulling down.
 		a.routeTriage(race, meter)
 
+		// AND THE TRANSCRIPT IS BROUGHT DOWN BEFORE ITS WEIGHT IS PRICED. These
+		// two lines used to stand BELOW the reading under them, and that order was
+		// the whole of a measured defect.
+		//
+		// THE RUNAWAY NET ASKS A QUESTION ABOUT A QUANTITY THIS LOOP IS ABOUT TO
+		// REDUCE. "This turn can no longer work where it is" is read off the
+		// conversation's weight against the line a fold fires at (checkpoint.go's
+		// [Agent.checkpointRound], inherit.go's [Agent.turnHasRunAway]) — and with
+		// the reading taken first, a turn whose last round pushed it over that line
+		// was moved out to a cold worker one statement before this build folded it
+		// back under. Measured 2026-09-11: a one-paragraph request ran forty rounds
+		// with most of its window free and spilled into a fresh task that re-read
+		// everything the conversation had already found out.
+		//
+		// A TURN LEAVES ONLY WHEN IT CANNOT CONTINUE, and the fold is what decides
+		// whether it can. So the order is the enforcement: everything this build
+		// can do to make room happens first, and the net reads what is actually
+		// left. Nothing is added to do it — the pass was already here, one
+		// statement away, and a second fold owned by the ceiling would have been
+		// two mechanisms for one shape.
+		//
+		// AND WHAT THE FOLD LEAVES BEHIND IS WHY THIS IS SAFE TO DO FIRST. The
+		// marker carries the account of the work it took — the places opened, the
+		// places written — so a reading taken after the fold still sees where the
+		// turn has been ([foldAccount]).
+		//
+		// The ordinary stub citizen remains an end-of-turn pass: running it here
+		// would rewrite old turns in the middle of this one and change its cache
+		// economics. Only the current-turn fold belongs at every step boundary.
+		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
+		a.maybeCompact(ctx, hub)
+
 		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
 		// what handing it over would cost instead (checkpoint.go). The two prior
 		// answers to a grinding turn both decide BEFORE there is any evidence —
@@ -1268,8 +1332,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// one reading taken while the cost is a fact. At each geometric mark a
 		// sidecar on the tier that thinks is shown the transcript and asked to
 		// sketch what is left; a sketch with independent parts in it ends the turn
-		// there, and past the last mark the harness stops reading, ends the turn,
-		// and moves what is left onto the one road, where the work runs supervised.
+		// there. NOTHING HERE COUNTS ROUNDS to a ceiling any more: what moves a
+		// turn is the runaway net — this answer can no longer work where it is,
+		// read off what the fold above could not get rid of — and the work then
+		// runs supervised on the one road.
 		//
 		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
 		// the turn and never inside it, which is the whole of the wave that measured
@@ -1284,12 +1350,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil, marked) {
 			return true
 		}
-
-		// The ordinary stub citizen remains an end-of-turn pass: running it here
-		// would rewrite old turns in the middle of this one and change its cache
-		// economics. Only the current-turn fold belongs at every step boundary.
-		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
-		a.maybeCompact(ctx, hub)
 	}
 }
 
@@ -4727,6 +4787,31 @@ func (a *Agent) foldLocked() (int, string) {
 	// when this run actually reached it, since a post can fail and a fold that
 	// sends the model to a store holding nothing is the dead pointer again.
 	marker := foldMarker(len(folded), journal, from, to, a.chatlog.ref(a.messages[first]) != "")
+	// AND THE FOLD LEAVES BEHIND WHAT THE MODEL NEEDS TO CARRY ON.
+	//
+	// A marker naming a path is a POINTER, and a pointer is what a model follows
+	// when it notices it has lost something. The measured failure is that it does
+	// not notice: a turn whose oldest work was folded went on to re-open files it
+	// had already read and re-derive edits it had already made, because nothing in
+	// front of it said they existed. The state card (card.go) is the session's
+	// answer to "what is this conversation about" and is maintained after a turn;
+	// it is not, and was never meant to be, an account of the work IN one.
+	//
+	// SO THE FOLD WRITES THE ACCOUNT ITSELF, out of the messages it is about to
+	// take away, with NO MODEL CALL: where the turn has already been, what it put
+	// there and the opening line of each, and where it had got to. It is
+	// the mark reader's own account at a small budget — [foldAccount] and
+	// [checkpointDigest] are one transcript walk ([checkpointLedger]) and one
+	// eviction rule ([accountSections]) with two budgets, so a lane that changes
+	// what counts as an account of a turn changes both in one edit — and the
+	// budget is what makes this one a fold rather than a copy ([foldAccountBytes]).
+	//
+	// THE PERSON'S OWN MESSAGES NEED NO HELP FROM IT. They are never folded at all
+	// (see this function's own four rules above), which is the same protection the
+	// comparison harnesses spend a summariser to approximate.
+	if account := foldAccount(foldedMessages(a.messages, folded), foldAccountBytes); account != "" {
+		marker += "\n" + account
+	}
 	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
 	rebuiltReasoning := make([]provider.MessageReasoning, 0, cap(rebuilt))
 	rebuilt = append(rebuilt, a.messages[0])
@@ -4782,6 +4867,40 @@ func (a *Agent) turnContinuesLocked() bool {
 		}
 	}
 	return false
+}
+
+// foldAccountBytes is how much of an account of the folded work the marker
+// carries with it.
+//
+// IT IS THE ONE BOUND THAT KEEPS A FOLD A FOLD. The account is built by the same
+// function that builds a mark's digest, and that budget ([checkpointDigestBytes])
+// is sized for a reader being shown a whole turn — writing it into the
+// transcript would give back a fifth of what a pass on the default window is
+// trying to reclaim, and a pass whose marker grows with the run it replaces is
+// a pass that stops converging.
+//
+// A TENTH OF THE READER'S ACCOUNT. What the marker carries is two deduplicated
+// lists of places — one line each, no bodies — so a tenth is generous for every
+// fold that has been measured and is still an order of magnitude below the
+// reader's page. WHICH SECTIONS SURVIVE IS NOT THIS NUMBER'S JOB: [foldAccount]
+// names them, on the law that an account may not repeat what it is folding, so
+// moving this figure changes how many PLACES a very wide fold can name and can
+// never let the folded prose back in.
+const foldAccountBytes = checkpointDigestBytes / 10
+
+// foldedMessages is the run a fold is about to take away, in the order it
+// happened. It exists because the account above must be built from THOSE
+// messages and not from the transcript — an account of everything would tell the
+// model about work that is still in front of it, which is a marker repeating the
+// context it sits in.
+func foldedMessages(messages []ai.Message, folded map[int]bool) []ai.Message {
+	out := make([]ai.Message, 0, len(folded))
+	for index := range messages {
+		if folded[index] {
+			out = append(out, messages[index])
+		}
+	}
+	return out
 }
 
 // foldMarkerPrefix opens every fold marker. It is how [isCompactionNote]

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,10 +184,16 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
 
 	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	// A READING OWES ITS STAMP BEHIND THE PATH, so the fixture that owns this
+	// agent settles it — the same contract [Agent.Close] meets for a real
+	// session (placemeta.go's [Agent.SettleWrites]). A hand-built agent nothing
+	// closes would otherwise leave the write to land whenever, which on a busy
+	// box is after this test's own directory has been removed.
+	t.Cleanup(agent.SettleWrites)
 	agent.messages = []ai.Message{textMessage("system", "base")}
 	agent.system = "base"
 
-	agent.refreshElsewhere()
+	agent.refreshElsewhere(context.Background())
 	first := agent.elsewhereText
 	if !strings.Contains(first, "Fix the nil-map crash") || !strings.Contains(first, "Sweep the call sites") {
 		t.Fatalf("the first delivery says %q, want both halves", first)
@@ -194,6 +201,10 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	if !strings.Contains(volatileNote(agent), "<elsewhere>") {
 		t.Fatal("the block was built and never reached the note the request carries")
 	}
+	// The stamp is OWED on the path and written behind it (placemeta.go's
+	// [stampWriter]), so a test that reads one of those files back settles the
+	// writes first — which is that door's own stated contract.
+	agent.SettleWrites()
 	if LastTold(mine).IsZero() {
 		t.Fatal("the model was told and the stamp did not advance")
 	}
@@ -202,7 +213,7 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	// of the index a second time, and no second note lands, so the transcript
 	// the provider cached is still the transcript it is sent.
 	before := len(agent.messages)
-	agent.refreshElsewhere()
+	agent.refreshElsewhere(context.Background())
 	if agent.elsewhereText != first {
 		t.Fatalf("an unchanged project changed the block:\nwas %q\nnow %q", first, agent.elsewhereText)
 	}
@@ -217,6 +228,137 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	}
 }
 
+// ── WHAT THE READING OWES, AND WHEN IT MAY NOT OWE IT ───────────────────────
+
+// elsewhereRig is a real session — one this test can CLOSE — with another window
+// beside it on the same bucket and one landing in the index, which is the
+// smallest world in which the reading has something to say.
+func elsewhereRig(t *testing.T) (*Agent, string) {
+	t.Helper()
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	writeWindow(t, bucket, "theirs", "docs pass", time.Second,
+		PresenceTask{ID: "4", Title: "Sweep the call sites", State: string(TaskRunning)})
+	appendTaskIndex(filepath.Join(bucket, taskIndexName),
+		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
+
+	agent, err := newAgent(Config{
+		Workspace: bucket,
+		Place:     Place{Dir: mine, Workspace: bucket},
+		Model:     "test/model",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	return agent, mine
+}
+
+// THE STAMP THE READING OWES LANDS THROUGH THE SETTLE DOOR, which is the one
+// every deferred write in this session goes out through
+// ([Agent.SettleWrites], placemeta.go). A writer nothing settles is a write
+// that happens whenever, and a close that walks away from it re-tells a day of
+// landings.
+//
+// That it is OWED rather than performed on the path is held structurally
+// instead of here (taskdelta_law_test.go): [offpath.Write.Owe] starts its
+// performer at once, so a fixture asserting the file is not there yet would be
+// racing that goroutine.
+func TestTheToldStampLandsThroughTheSettleDoor(t *testing.T) {
+	agent, mine := elsewhereRig(t)
+
+	agent.refreshElsewhere(context.Background())
+
+	if !strings.Contains(agent.elsewhereText, "Fix the nil-map crash") {
+		t.Fatalf("the reading built no block to owe a stamp for: %q", agent.elsewhereText)
+	}
+	agent.SettleWrites()
+	if LastTold(mine).IsZero() {
+		t.Fatal("the owed stamp never landed: the reading's writer is not on the settle door")
+	}
+}
+
+// AND A CLOSE SETTLES WHAT THE READING OWED, because the owe is registered while
+// the session is still open and [Agent.Close] settles its deferred writes a
+// second time after the rounds. A stamp owed and dropped would re-tell a day of
+// landings; a stamp written after the close is the defect this whole change is
+// about.
+func TestACloseLandsTheStampTheReadingOwedBeforeIt(t *testing.T) {
+	agent, mine := elsewhereRig(t)
+
+	agent.refreshElsewhere(context.Background())
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if LastTold(mine).IsZero() {
+		t.Fatal("the close walked away from a stamp the reading owed before it")
+	}
+}
+
+// A READING THAT LANDS AFTER THE DOOR HAS SHUT OWES NOTHING AND SAYS NOTHING.
+//
+// It is held on a channel until the close has returned, and the watch
+// [readBeside] tells about its own landings is what says the reading is done —
+// not a guess about the scheduler (sidecar.go). Measured on the Spark,
+// 2026-09-12: without the refusal, thirteen runs in five thousand of one
+// `internal/session` fixture failed as `TempDir RemoveAll cleanup: directory not
+// empty`, and the file left behind in every one of them was this stamp — a red
+// that names whichever test happened to own the directory (#959).
+func TestTheElsewhereReadingWritesNothingOnceTheSessionHasClosed(t *testing.T) {
+	agent, mine := elsewhereRig(t)
+
+	watched := withBesideWatch(context.Background(), &besideWatch{})
+	release := make(chan struct{})
+	reading := readBeside(watched, func(read context.Context) struct{} {
+		<-release
+		agent.refreshElsewhere(read)
+		return struct{}{}
+	}, nil)
+
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	besideWatchOn(watched).quiet(watched)
+	reading.end()
+	// AND THE ASSERTION IS NOT A RACE IN EITHER DIRECTION: a reading that DID
+	// owe a stamp would have it on a performer of its own, so the negative is
+	// only honest once everything owed has been drained.
+	agent.SettleWrites()
+
+	if at := LastTold(mine); !at.IsZero() {
+		t.Fatalf("a closed session stamped its own folder: %v", at)
+	}
+	if _, err := os.Stat(filepath.Join(mine, toldName)); !os.IsNotExist(err) {
+		t.Fatalf("%s is in the folder of a session that has closed: %v", toldName, err)
+	}
+	if agent.elsewhereText != "" {
+		t.Fatalf("a closed session was handed a block: %q", agent.elsewhereText)
+	}
+}
+
+// AND A READING WHOSE OWN WINDOW HAS BEEN CLOSED DOES NOT WALK THE DISK. The
+// context is the turn's, and a reading that ignored it would have exactly the
+// lifetime the bare `go` it replaced had.
+func TestAReadingLetGoOfBeforeItRanReadsNothing(t *testing.T) {
+	agent, mine := elsewhereRig(t)
+
+	stopped, stop := context.WithCancel(context.Background())
+	stop()
+	agent.refreshElsewhere(stopped)
+
+	if agent.elsewhereText != "" {
+		t.Fatalf("a reading that was let go of answered anyway: %q", agent.elsewhereText)
+	}
+	agent.SettleWrites()
+	if at := LastTold(mine); !at.IsZero() {
+		t.Fatalf("a reading that was let go of stamped the folder: %v", at)
+	}
+}
+
 // A project with nobody else on it is a project with nothing to say, and the
 // block must not appear at all — not as a heading, not as "nothing new".
 func TestAProjectWithNoOtherWindowGetsNoBlock(t *testing.T) {
@@ -226,10 +368,16 @@ func TestAProjectWithNoOtherWindowGetsNoBlock(t *testing.T) {
 		t.Fatalf("session folder: %v", err)
 	}
 	agent := &Agent{config: Config{Place: Place{Dir: mine}}}
+	// A READING OWES ITS STAMP BEHIND THE PATH, so the fixture that owns this
+	// agent settles it — the same contract [Agent.Close] meets for a real
+	// session (placemeta.go's [Agent.SettleWrites]). A hand-built agent nothing
+	// closes would otherwise leave the write to land whenever, which on a busy
+	// box is after this test's own directory has been removed.
+	t.Cleanup(agent.SettleWrites)
 	agent.messages = []ai.Message{textMessage("system", "base")}
 	agent.system = "base"
 
-	agent.refreshElsewhere()
+	agent.refreshElsewhere(context.Background())
 	if agent.elsewhereText != "" {
 		t.Fatalf("a quiet project produced %q, want silence", agent.elsewhereText)
 	}
@@ -250,9 +398,12 @@ func TestATaskNodeIsNeverToldAboutOtherWindows(t *testing.T) {
 		PresenceTask{ID: "4", Title: "Sweep the call sites", State: string(TaskRunning)})
 
 	node := &Agent{config: Config{Place: Place{Dir: mine}, InTask: true}}
+	// A node owes nothing — it is never told — and settling is what proves it:
+	// a write left owed here would be one this fixture could not see.
+	t.Cleanup(node.SettleWrites)
 	node.messages = []ai.Message{textMessage("system", "base")}
 	node.system = "base"
-	node.refreshElsewhere()
+	node.refreshElsewhere(context.Background())
 	if node.elsewhereText != "" {
 		t.Fatalf("a task node was told %q", node.elsewhereText)
 	}

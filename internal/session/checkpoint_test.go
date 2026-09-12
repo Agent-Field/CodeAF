@@ -1736,7 +1736,7 @@ func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 		toolCallMessage("c3", "edit", `{"path":"./money.go","edits":[]}`),
 		{Role: "tool", ToolCallID: "c3", Content: []ai.ContentPart{{Type: "text", Text: "edited"}}},
 		textMessage("assistant", "the workflow is in; the currency module is still untouched"),
-	})
+	}, checkpointDigestBytes)
 
 	// THE ASK, VERBATIM AND FIRST. Everything else in the digest is measured
 	// against it, and it is the one thing on this road nobody rewrites.
@@ -1797,7 +1797,7 @@ func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 func TestTheDigestWritesNoEmptySections(t *testing.T) {
 	digest := checkpointDigest("count the rows in the ledger", []ai.Message{
 		toolCallMessage("c1", "read", `{"path":"./ledger.csv"}`),
-	})
+	}, checkpointDigestBytes)
 	if strings.Contains(digest, checkpointDigestWritten) {
 		t.Errorf("a turn that wrote nothing carries a heading saying so:\n%s", digest)
 	}
@@ -1806,7 +1806,7 @@ func TestTheDigestWritesNoEmptySections(t *testing.T) {
 	}
 	// AND A TURN WITH NOTHING IN IT AT ALL IS NOT A DIGEST. [Agent.readMark]
 	// spends nothing on one, which is the emptiness law reaching the bill.
-	if got := checkpointDigest("", nil); got != "" {
+	if got := checkpointDigest("", nil, checkpointDigestBytes); got != "" {
 		t.Errorf("an empty turn produced a digest:\n%s", got)
 	}
 }
@@ -1824,7 +1824,7 @@ func TestTheCompletionReaderKeepsTheCompleteAskOutsideItsBoundedEvidence(t *test
 	if !strings.Contains(page, middle) || !strings.HasPrefix(page, checkpointDigestAsked+"\n"+ask) {
 		t.Fatal("the completion reader lost part of the original ask")
 	}
-	evidence := checkpointDigest("", messages)
+	evidence := checkpointDigest("", messages, checkpointDigestBytes)
 	if len(evidence) > checkpointDigestBytes || !strings.HasSuffix(page, evidence) {
 		t.Fatalf("the evidence did not keep its independent bound: page=%d evidence=%d", len(page), len(evidence))
 	}
@@ -1861,7 +1861,7 @@ func TestTheDigestIsBoundedAndDropsTheOldestStepsFirst(t *testing.T) {
 		toolCallMessage("last-write", "write", `{"path":"./report.md"}`),
 		textMessage("assistant", "the last thing this turn said"))
 
-	digest := checkpointDigest(asked, messages)
+	digest := checkpointDigest(asked, messages, checkpointDigestBytes)
 
 	if len(digest) > checkpointDigestBytes {
 		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)
@@ -2400,7 +2400,7 @@ func TestAToolResultsTailReachesTheReader(t *testing.T) {
 	digest := checkpointDigest("run the suite and make it pass", []ai.Message{
 		toolCallMessage("c1", "bash", `{"command":"go test ./..."}`),
 		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	})
+	}, checkpointDigestBytes)
 
 	if !strings.Contains(digest, verdict) {
 		t.Fatalf("the one line that says how the ask is going never reached the reader:\n%s", digest)
@@ -2435,7 +2435,7 @@ func TestADigestOverBudgetDropsResultsBeforeItDropsTheAsk(t *testing.T) {
 	}
 	messages = append(messages, textMessage("assistant", "the last thing this turn said"))
 
-	digest := checkpointDigest(asked, messages)
+	digest := checkpointDigest(asked, messages, checkpointDigestBytes)
 
 	if len(digest) > checkpointDigestBytes {
 		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)

@@ -457,6 +457,22 @@ a cheap model asked "is this finished" answered `(done)` about half-finished wor
 of 18, and that is the one answer that quietly drops a handover you were owed. There is no
 cheaper reading of that question — there is only a wrong one.
 
+**And the mastermind row will not accept a model aforge ships as a worker.** Writing one of
+the cheap working models into `models.tiers.mastermind` is not an error and nothing refuses
+your setting — but `markreader` and `handoff` will not run on it, and aforge behaves exactly
+as it does with no mastermind at all: no second reader of a long answer, and a move that
+carries your own sentence rather than a written brief. **The rule is read off the three crews
+and never off a list of names**: a model that `frugal`, `balanced` or `max` seats at the
+working class or below is a working model, whatever row you put it on, and a model none of the
+three names is not refused at all — aforge has no opinion about a model it does not ship.
+
+**Why it refuses rather than obeys.** The row used to be checked only for being *filled in*.
+A profile carrying a flash model there satisfied that completely, and both of the questions
+that decide whether your answer is taken away from you — what is left, and what the worker is
+told — were then answered by the model measured saying `(done)` about half-finished work. A
+capability that cannot work is switched off rather than left quietly wrong. If you want that
+model doing the thinking, set it as the `high` or `worker` class, where it belongs.
+
 **`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
 the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
 the same reason: the failure it guards against is work that looks finished and is quietly
@@ -515,6 +531,21 @@ chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's
 roster, its room's status line and its finished card all name the model it actually ran
 on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
 `aforge do` — one row, every door.
+
+
+**One task does NOT take the worker seat: an answer that was moved.** When a long reply is
+taken out of the conversation because it cannot carry on where it is (*Tasks* — *An answer
+that runs long*), the task it becomes runs on **the model you were chatting on**, not on the
+worker class. A `task model` row you set still wins, because that is you naming one thing;
+the worker seat is the rung that is skipped.
+
+**Because that is not a task, it is your answer continuing somewhere else.** The worker class
+prices work that starts cold from a brief somebody wrote on purpose. A moved answer starts in
+the middle of something the model in front of you has already half done, and the only reader
+in the building holding what it found out is that model — so swapping it for a cheaper one at
+the moment the findings are handed over as a written summary is paying for the same loss
+twice. Measured on 2026-09-11: an answer moved onto the worker seat re-read every file the
+conversation had already opened.
 
 This is new: until the worker seat existed a task rode the model you were talking to, and
 the crew moved everything about a task except its cost.
@@ -879,7 +910,7 @@ another. That includes the catalog's own guess: with no `fallback models` row wr
 ordinary run falls back to the nearest same-class model, and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
-decides whether a long answer is moved to a task, and the writer of the brief that task opens
+says what is left of a long answer, and the writer of the brief a moved answer opens
 on, normally run on the thinking tier and on nothing else: with no crew they are skipped
 rather than handed to the model that just wrote the answer. Under this flag they run on your
 model like everything else, because you have said your model is the crew. Without the flag and
