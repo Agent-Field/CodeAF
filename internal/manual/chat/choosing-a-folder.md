@@ -460,10 +460,13 @@ same disk you do.
 **A change in a folder you chose asks you, and the answer is about the folder.** Before
 anything is written under a folder you attached, you get the ordinary approval card, and
 its reason names that folder: `a change in /Users/you/code/notes — the folder itself, not
-a copy`. Answer it and the call runs; press the key that stops it asking and **every**
-later change in that folder runs without asking for the rest of the conversation — a
-`bash` command in it too, which is the point of the answer being about the folder rather
-than about one tool. A new conversation asks again.
+a copy`.
+
+Which key you press decides how long the answer lasts, exactly as it does on any other
+card. A plain yes runs this one call. The **always** key banks it against **the folder** —
+so `bash` in that folder is covered too, which an answer about `edit` could never do — and
+nothing in that folder asks again for the rest of the conversation. A new conversation
+asks again, and `/permissions` is where you take a standing yes back.
 
 Two things that answer does **not** buy, both deliberate:
 
