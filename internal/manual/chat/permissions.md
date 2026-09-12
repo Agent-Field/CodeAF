@@ -109,15 +109,22 @@ answers.
 │ read  ~/notes/ideas.md                                            │
 │ read  ~/notes/log.md                                              │
 │                                                                   │
-│   1  allow all 4                                                  │
+│ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
-│ ▸ 3  deny all                                       safe answer   │
+│   3  deny all                                                     │
 ╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
-- **`3 deny all`** gives every one its own `deny`, and the pointer starts here,
-  marked `safe answer`, so `enter` on a frame you have not moved denies them all.
+  The pointer starts here when the calls are ordinary ones — the same place
+  `enter` lands on any one of them asked alone — so `enter` on a frame you have
+  not moved allows them all.
+- **`3 deny all`** gives every one its own `deny`. The pointer starts here
+  instead, marked `safe answer`, whenever one of the calls asked alone would
+  open on `deny` — one the asker recommended denying, say — so `enter` then
+  denies them all. A grave call, one the gate grades irreversible, never joins
+  a frame: it asks on its own with the pointer on `deny` (*What happens if you
+  just press `enter`?*, above).
 - **`2 one by one`** answers nothing: it opens the same approvals as tabs, where
   `←` `→` move between them and the last tab sends them all (questions.md,
   *Several questions at once*).

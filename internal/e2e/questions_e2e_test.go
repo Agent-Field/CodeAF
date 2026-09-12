@@ -892,11 +892,14 @@ func questionsGroup(t *testing.T) {
 		screenSays(t, screen, name, "the frame lists what each call wants")
 	}
 	screenSays(t, screen, say(t, "questionGroupApartWord"), "the way to answer them one at a time")
-	// AND THE POINTER IS ON THE ANSWER THAT LOSES NOTHING, which is the whole of
-	// the deny-first ruling as a person meets it. Nothing here read the pointer
-	// until this line, so four screens captured before the ruling stayed in the
-	// repository showing `▸ allow all 4` and no test could tell.
-	screenSays(t, screen, say(t, "questionGroupSafeWord"), "the pointer opens on deny all, and says why")
+	// AND THE POINTER IS ON THE GRANT: a `read` is an ordinary call, `enter` on
+	// an ordinary call is `allow once` (#985's ruling, read over the set), so
+	// the frame opens on `allow all 4` and no row of it says `safe answer` —
+	// the aside a pointer on `deny all` wears. Nothing here read the pointer
+	// until this line, so four screens captured before the ruling stayed in
+	// the repository showing `▸ allow all 4` and no test could tell; the ruling
+	// then made those screens right and the deny-first assertion here wrong.
+	screenSilent(t, screen, say(t, "questionGroupSafeWord"), "four ordinary reads open on allow all, so no row says why deny would be safe")
 	shot(t, r, "raised")
 
 	press(t, r, "2")

@@ -344,19 +344,30 @@ func permissionLab(t *testing.T, stakes session.Stakes) *questionLab {
 }
 
 // PERMISSIONS FROM ONE STEP ARE ONE FRAME: what each call wants, then `allow all
-// 4 · one by one · deny all`, and — on a costly call — the pointer on the answer
-// that loses nothing, exactly where each question's own pointer would be.
+// 4 · one by one · deny all`, with the pointer where each question's own pointer
+// would be, read over the set ([questionGroupStart]). Four ordinary calls each
+// open on their grant alone — `enter` on an ordinary call is `allow once`, the
+// 2026-09-11 ruling shipped as #985 — so the frame opens on `allow all 4`, and no
+// row says `safe answer`: that aside belongs to a pointer standing on `deny all`
+// (TestTheGroupPointerIsEachQuestionsOwnReadOverTheSet), and a frame wearing it
+// under a pointer on the grant would be a surface saying it had chosen deny when
+// it had not. This test was first written against #933's deny-first-while-
+// ungraded rule, merged sixty-nine seconds after #985 graded the calls, and it
+// held the old pointer down on `dev` for a day.
 func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 	lab := permissionLab(t, session.StakesCostly)
 	drawn := lab.plain()
 	for _, want := range []string{"allow these 4?", "internal/session/loop.go", "go.mod",
-		questionAllowAllWord + "4", questionApartWord, questionDenyAllWord, questionSafeWord} {
+		questionAllowAllWord + "4", questionApartWord, questionDenyAllWord} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("the permission frame does not say %q:\n%s", want, drawn)
 		}
 	}
-	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupDeny {
-		t.Fatalf("the pointer opened on row %d of a costly group, want deny all", got)
+	if strings.Contains(drawn, questionSafeWord) {
+		t.Fatalf("a frame of four ordinary calls says %q with its pointer on the grant:\n%s", questionSafeWord, drawn)
+	}
+	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupAllow {
+		t.Fatalf("the pointer opened on row %d of a group of ordinary calls, want allow all", got)
 	}
 	// "approve all of these" is one key, and it is each question's own grant.
 	lab.press("1")
