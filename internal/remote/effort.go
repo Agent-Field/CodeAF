@@ -36,13 +36,6 @@ type effortDoor interface {
 	SetConversationEffort(rung string) bool
 }
 
-// resolvedEffortForDoor is the per-model half of the dial, asserted separately
-// so an engine that predates it still advertises a dial ([effortKnown]) and
-// still answers for the conversation as a whole.
-type resolvedEffortForDoor interface {
-	ResolvedEffortFor(model string) string
-}
-
 // effortKnown is whether this engine has the whole dial. A partial one is no
 // dial at all: the surface draws the resolved rung and moves the stored one, so
 // an engine with one of the three would light a cell nothing could turn.
