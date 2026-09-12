@@ -1116,7 +1116,7 @@ func (a *app) errandPlace() (workspace, bucket string) {
 			return path, here
 		}
 	}
-	return errandHomeDir(), a.home.bucket
+	return a.errandHome, a.home.bucket
 }
 
 // errandBucketOf is the bucket one workspace's conversations are filed in, and
@@ -1150,7 +1150,19 @@ func (a *app) errandWorkspaceOf(dir string) string {
 // errandHomeDir is the `~` project: a reminder belongs to no repository, and
 // the person's own home directory is where a machine-wide item's work runs
 // ([standing.Item.Workspace] says the same). A process with no home directory
-// falls back to where it is standing, for the reason internal/home's Dir does.
+// falls back to where it is standing, which is the last ABSOLUTE answer there
+// is — and the answer has to be absolute, because it is written into an item's
+// own `Workspace` and read back by another process with another working
+// directory. `.` would match only the items some other run had also written `.`
+// for, so it would lose the machine-wide ones ([standing.Store.ForWorkspace]
+// compares the two cleaned paths), and it would draw as a literal `.` where the
+// composer's line draws `~`.
+//
+// IT IS READ ONCE, AT `open`, AND HELD ON [app.errandHome]. The frame reaches
+// the answer — `a.composerOpensAt` names where a send lands on every paint —
+// and a syscall there is one syscall per frame, which is the law in
+// framedisk_law_test.go. This function is what `open` calls to learn the fact;
+// nothing a paint can reach calls it, and the law is what says so.
 func errandHomeDir() string {
 	if dir, err := os.UserHomeDir(); err == nil && strings.TrimSpace(dir) != "" {
 		return dir
