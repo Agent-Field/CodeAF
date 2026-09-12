@@ -158,15 +158,6 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 	}
 	ref := PlaceRef{Path: dir, Chose: chose, Arrival: arrival, Referred: time.Now(), Repository: repository}
 	a.refer(ref)
-	// AND THE WORKING COPY IS STARTED NOW, NOT ON THE FIRST WRITE. Cutting one is
-	// a `git worktree add` or a whole recursive copy of the folder, and it used to
-	// happen INSIDE the tool call that first wrote a file — so the model's first
-	// `edit` on a referred repository sat there while git checked out a tree, with
-	// nothing on the screen to say why. Nothing about that work needs the write to
-	// have happened; everything it needs is known the moment the person names the
-	// folder, which is this moment, and there are seconds of a person reading their
-	// own screen to do it in (standingtree.go's [Agent.cutStandingTree]).
-	a.standingTreesOwed()
 	return ref, nil
 }
 
@@ -268,19 +259,6 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 	if !found {
 		return fmt.Errorf("this conversation is not about %s", dir)
 	}
-	// THE WORD WINS WHICHEVER WAY IT ARRIVES, and it always arrives second: the
-	// place is referred before anything can be said about it, so a copy has
-	// usually been taken by the time this runs. Saying "in place" therefore has to
-	// take one back rather than merely stop the next one, and clearing the word has
-	// to make one — which is the same sentence in both directions and is why this
-	// says only that the answer moved (standingtree.go's [Agent.treesAhead]).
-	//
-	// IT IS OWED AND NOT RUN. The person is on the other side of this call, and
-	// asking git whether a copy may go — or walking one that has no git — is work
-	// of exactly the kind that must not happen on their path. Nothing they do next
-	// depends on it: the mode was recorded under the lock above, so the very next
-	// write already goes where they said, whatever the copy is still doing.
-	a.standingTreesOwed()
 	a.stampPlaces()
 	return nil
 }

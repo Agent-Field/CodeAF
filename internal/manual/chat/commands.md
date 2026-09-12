@@ -196,9 +196,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
-| `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
-| `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
-| `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |

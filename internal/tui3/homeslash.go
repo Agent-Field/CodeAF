@@ -153,13 +153,13 @@ const (
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
 //	answers here                         a note, echoed onto home's own line
-//	runs on the conversation behind home  /land /workspace — and they say so
+//	runs on the conversation behind home  /workspace — and it says so
 //	a fresh conversation behind home     /new
 //	closes the conversation behind home  /quit
 //
-// AND EVERY ONE OF THEM LEAVES A SENTENCE ON HOME'S LINE. The three that act on
-// the conversation behind the screen are the ones this cost most: /new, /quit
-// and /land each did their work in a place nobody could see and said nothing at
+// AND EVERY ONE OF THEM LEAVES A SENTENCE ON HOME'S LINE. The ones that act on
+// the conversation behind the screen are the ones this cost most: /new and
+// /quit each did their work in a place nobody could see and said nothing at
 // all where the person was standing.
 
 // The fates. Each is a person-facing phrase drawn in the drop-up's margin and
@@ -211,7 +211,7 @@ func homeFate(word, rest string) string {
 		return fateQuit
 	case "new":
 		return fateFresh
-	case "land", "workspace":
+	case "workspace":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
 		"copy", "select", "rewind", "compact", "export":
