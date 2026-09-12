@@ -233,9 +233,37 @@ func (a *Agent) cutGeneration(cause error) bool {
 // spent on the turn after it — which is also what makes a reading that answers
 // late, into a turn that has already stopped waiting for it, harmless by
 // construction rather than by timing.
+//
+// AND ONLY ONE IS EVER OWED. Two boundary cuts inside one gap would be last-wins,
+// which is right rather than lossy: they ask for the same thing — the next
+// request cut so that a boundary arrives now — and one cut answers both.
 type owedCut struct {
 	cause error
 	turn  uint64
+}
+
+// dropOwedCut withdraws a cut owed on a reading's behalf BECAUSE THE BOUNDARY IT
+// EXISTED TO OPEN HAS ARRIVED WITHOUT IT.
+//
+// A cut is owed only to bring forward the moment a reading's answer can be spent.
+// When the turn reaches that moment on its own — the loop arrives at a boundary
+// and takes the answer there — the owed cut has nothing left to bring, and
+// spending it would cancel the next request for a reading that has already been
+// read. [sidecar.spent] keeps that from happening in almost every interleaving,
+// by refusing to deliver an interruption for an answer a taker has claimed; this
+// is the other side of the same fact, for the one instruction-wide window where
+// the interruption claims first and the taker takes anyway. It is exact rather
+// than racy: the take and the spend are both on the turn's own goroutine, so by
+// the time [Agent.beginGeneration] could spend the cut, the take has happened.
+//
+// It is spelled by cause because the owe is: a reading withdraws its own cut and
+// no other reading's.
+func (a *Agent) dropOwedCut(cause error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cutOwed.cause != nil && errors.Is(a.cutOwed.cause, cause) {
+		a.cutOwed = owedCut{}
+	}
 }
 
 // The two machine cuts, beside [errSteerCut] which is the person's.

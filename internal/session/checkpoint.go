@@ -2869,6 +2869,10 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 	if !ok {
 		return false
 	}
+	// AND THE BOUNDARY HAS ARRIVED, so a cut owed to open one is owed no longer.
+	// The drawing is in hand; cutting the next request now would stop a step for a
+	// reading that has already been read (steer.go's [Agent.dropOwedCut]).
+	a.dropOwedCut(errMarkCut)
 	read, mark, rounds := landed.read, landed.mark, landed.rounds
 	if !read.sketch.split() {
 		a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())

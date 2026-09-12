@@ -15,9 +15,11 @@ package session
 //   - a cut that arrived between two steps found nothing to cut and was dropped,
 //     though a drawing rides no transcript and has nowhere else to be spent.
 //
-// The four tests below are the two orderings, the property that keeps the owed
-// cut from reaching anybody else's turn, and the journal row on the one road
-// where a drawing genuinely can land too late.
+// The tests below are the two orderings, both directions of the claim that keeps
+// an interruption and a taker from both happening, the properties that keep an
+// owed cut from reaching anybody else's turn or outliving the boundary it was
+// owed for, and the journal row on the one road where a drawing genuinely can
+// land too late.
 
 import (
 	"context"
@@ -58,6 +60,83 @@ func TestADrawingIsTakeableAtTheBoundaryItsOwnCutOpened(t *testing.T) {
 	}
 	if answer != 7 {
 		t.Errorf("the boundary took %d, want the answer the reading landed with", answer)
+	}
+}
+
+// AND THE CLAIM IS WHAT THE ORDER IS FOR. Publishing the answer first would be a
+// straight trade — one dropped drawing for one interruption delivered into
+// whatever the turn does next — if nothing stopped the second. [sidecar.spent] is
+// what stops it: a taker that has claimed an answer has already reached the
+// boundary the interruption exists to buy, so there is nothing left to bring
+// forward and the interruption is never delivered.
+//
+// This is the suppression direction, which is the whole reason the claim exists.
+// It is deterministic: the reading is held on a channel until after the claim,
+// and the watch that [readBeside] tells about its own landings is what says the
+// reading is done rather than a guess about the scheduler.
+func TestAnAnswerAlreadyClaimedAtABoundaryRaisesNoInterruption(t *testing.T) {
+	watched := withBesideWatch(context.Background(), &besideWatch{})
+	release := make(chan struct{})
+	var raised atomic.Bool
+
+	side := readBeside(watched,
+		func(context.Context) int {
+			<-release
+			return 7
+		},
+		func(int) { raised.Store(true) })
+
+	// The boundary arrives first: the turn claims this answer for itself.
+	side.claim()
+	close(release)
+	besideWatchOn(watched).quiet(watched)
+
+	if raised.Load() {
+		t.Error("the reading interrupted the work for an answer a boundary had already claimed — " +
+			"a cut raised there lands on whatever the turn does next")
+	}
+	if answer, ok := side.take(); !ok || answer != 7 {
+		t.Errorf("the claimed answer took as (%d, %v), want the reading's own answer: suppressing the "+
+			"interruption must not cost the drawing", answer, ok)
+	}
+}
+
+// AND A CUT OWED FOR A DRAWING THE TURN HAS SINCE TAKEN IS OWED NO LONGER. The
+// claim above is one instruction wide, so an interruption can still win it while
+// a taker at that same boundary takes anyway. Nothing is lost when that happens —
+// the drawing is in hand — but the cut left behind would stop the next step for a
+// reading that has already been read, which before #956 was a harmless drop.
+// [Agent.dropOwedCut] is the other side of the claim, and it is exact rather than
+// racy: the take and the spend are both on the turn's own goroutine.
+func TestACutOwedForADrawingTheTurnHasTakenIsNotSpent(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	if !agent.cutGeneration(errMarkCut) {
+		t.Fatal("the cut was not owed at all")
+	}
+	// The boundary arrived without it: the drawing was taken here.
+	agent.dropOwedCut(errMarkCut)
+
+	ctx, generation := agent.beginGeneration(context.Background())
+	defer agent.endGeneration(generation)
+	if ctx.Err() != nil {
+		t.Errorf("the next step was cut for a drawing the turn had already read: %v", context.Cause(ctx))
+	}
+}
+
+// AND ONE READING DOES NOT WITHDRAW ANOTHER'S CUT. The owe is spelled by cause
+// because a drawing that reached its boundary says nothing about a cut somebody
+// else is still waiting to spend.
+func TestADrawingWithdrawsOnlyItsOwnOwedCut(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	agent.cutGeneration(errMarkCut)
+	agent.dropOwedCut(errors.New("session: somebody else's reading"))
+
+	ctx, generation := agent.beginGeneration(context.Background())
+	defer agent.endGeneration(generation)
+	if ctx.Err() == nil {
+		t.Error("another reading's boundary threw away the cut this drawing is still owed")
 	}
 }
 

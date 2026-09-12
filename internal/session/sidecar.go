@@ -86,17 +86,26 @@ type sidecar[T any] struct {
 	// It is an atomic because the decomposition row is written by the turn while
 	// a late reading may still be finishing.
 	asked atomic.Bool
-	// spent is the ORDER BETWEEN THE READING'S ONE POWER OVER THE WORK AND THE
-	// TAKER WHO WILL SPEND ITS ANSWER, and whichever of the two arrives first is
-	// the one that happens.
+	// spent GATES THE INTERRUPTION AND DOES NOT ORDER THE TAKE. A taker stores it
+	// and takes; the interruption is delivered only if it claims it FIRST. So an
+	// answer that has already reached a boundary raises no interruption, and a
+	// taker never waits for one.
 	//
 	// An `act` exists to bring the boundary where the answer can be spent FORWARD.
-	// So an answer that has ALREADY REACHED a boundary has nothing left for an
-	// interruption to bring, and an interruption raised after that would land on
-	// whatever the turn does next — which is the hazard the old act-before-settle
-	// order was reaching for and paid for with #956's dropped drawing. Claiming it
-	// here costs one atomic on each side and needs no lock, so `take` stays the
-	// closed-channel test loop.go's law requires it to be.
+	// An answer that has ALREADY REACHED a boundary has nothing left for one to
+	// bring, and an interruption raised after that would land on whatever the turn
+	// does next — which is the hazard the old act-before-settle order was reaching
+	// for and paid for with #956's dropped drawing. Claiming it here costs one
+	// atomic on each side and needs no lock, so `take` stays the closed-channel
+	// test loop.go's law requires it to be.
+	//
+	// IT IS A GATE AND NOT A FENCE, and the difference is the width of one
+	// instruction: between the settle closing and the claim being made, an
+	// interruption can still win the claim while a taker at that same boundary
+	// takes anyway. Nothing is lost when that happens — the answer is spent — but
+	// a cut raised for an answer already spent is a cut nobody needs, so the door
+	// that owes it drops it when the boundary it was owed for has arrived without
+	// it (steer.go's [Agent.dropOwedCut]).
 	spent atomic.Bool
 }
 
