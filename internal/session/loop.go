@@ -1313,15 +1313,41 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// (hooks.go). It is the one seam left in this loop that can end a turn out
 		// of a judgement, and a false is the turn carrying on exactly as it would
 		// have.
-		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil, marked) {
-			return true
-		}
-
+		// AND THE TRANSCRIPT IS BROUGHT DOWN BEFORE ITS WEIGHT IS PRICED. These
+		// two lines used to stand BELOW the rung above, and that order was the
+		// whole of a measured defect.
+		//
+		// THE RUNAWAY NET ASKS A QUESTION ABOUT A QUANTITY THIS LOOP IS ABOUT TO
+		// REDUCE. "This turn can no longer work where it is" is read off the
+		// conversation's weight against the line a fold fires at (checkpoint.go's
+		// [Agent.checkpointRound], inherit.go's [Agent.turnHasRunAway]) — and with
+		// the reading taken first, a turn whose last round pushed it over that line
+		// was moved out to a cold worker one statement before this build folded it
+		// back under. Measured 2026-09-11: a one-paragraph request ran forty rounds
+		// with most of its window free and spilled into a fresh task that re-read
+		// everything the conversation had already found out.
+		//
+		// A TURN LEAVES ONLY WHEN IT CANNOT CONTINUE, and the fold is what decides
+		// whether it can. So the order is the enforcement: everything this build
+		// can do to make room happens first, and the net reads what is actually
+		// left. Nothing is added to do it — the pass was already here, one
+		// statement away, and a second fold owned by the ceiling would have been
+		// two mechanisms for one shape.
+		//
+		// AND WHAT THE FOLD LEAVES BEHIND IS WHY THIS IS SAFE TO DO FIRST. The
+		// marker carries the account of the work it took — the places opened, the
+		// places written — so a reading taken after the fold still sees where the
+		// turn has been ([foldAccount]).
+		//
 		// The ordinary stub citizen remains an end-of-turn pass: running it here
 		// would rewrite old turns in the middle of this one and change its cache
 		// economics. Only the current-turn fold belongs at every step boundary.
 		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
 		a.maybeCompact(ctx, hub)
+
+		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil, marked) {
+			return true
+		}
 	}
 }
 

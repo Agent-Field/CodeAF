@@ -961,15 +961,6 @@ type checkpointMeter struct {
 	// said this message reads like work, and zero on every ordinary turn — see
 	// [checkpointMeter.tighten].
 	firstAt int
-	// boughtAt is the round THE LADDER'S FOOT STANDS ON, and zero on a turn that
-	// has never bought itself room ([checkpointMeter.compacted]).
-	//
-	// IT IS AN OFFSET AND NOT A COUNT OF COMPACTIONS. The rungs keep the spacing
-	// the two constants give them ([checkpointMarkAt]); what a compaction moves is
-	// only where they are measured from, so a turn that bought room pays the whole
-	// price again before it is read again and no new number is invented to bound
-	// how often that may happen.
-	boughtAt int
 	// outOfRoom says THE NET FIRED BECAUSE THIS TURN'S CONTEXT COULD NO LONGER
 	// HOLD ANOTHER STEP, and it is the one fact about a runaway that decides what
 	// happens next (inherit.go): a worker handed a context its own window cannot
@@ -1057,47 +1048,7 @@ func (m *checkpointMeter) markAt(n int) int {
 	if n == 1 && m.firstAt > 0 {
 		return m.firstAt
 	}
-	// AND A TURN THAT BOUGHT ITSELF ROOM CLIMBS THE SAME LADDER FROM WHERE IT
-	// BOUGHT IT. The rung spacing is [checkpointMarkAt] whether or not a
-	// compaction has happened; what moves is only where the ladder's foot stands
-	// ([checkpointMeter.compacted]).
-	return m.boughtAt + checkpointMarkAt(n)
-}
-
-// compacted is what THE CEILING DOES WHEN THE TURN CAN CARRY ON: the ladder is
-// put back at the foot, standing on the round the room was bought on.
-//
-// THE PRICE IS PAID AGAIN IN FULL, which is what keeps this bounded. The next
-// mark is [checkpointPrice] rounds of real work away and the two after it double
-// exactly as they did the first time, so a turn that compacts and then grinds is
-// read again, and again pays the whole ladder before it is asked to leave. What
-// ends it is not a count of compactions — a counter of those would be the magic
-// number this frame exists to avoid — but the one fact that says a turn cannot
-// carry on: a context the fold can no longer bring under the working set
-// ([Agent.checkpointCeiling]).
-//
-// A BELIEVED COMPLETION CLAIM IS NOT DISTURBED. `askAgainAt` bounds a CLAIM
-// rather than a cost, and a turn that bought room after saying it was finished
-// is still a turn that must be met if it carries on working.
-//
-// AND THE RUNAWAY LATCH IS NOT CLEARED EITHER, WHICH IS THE POINT. A turn that
-// bought room by folding is a turn whose transcript is now a summary of its
-// results rather than the results, and that is precisely the transcript a
-// promotion must not carry ([checkpointMeter.outOfRoom] states the law and the
-// measurement). So a turn that ran out of room once, compacted, and carried on
-// still takes the brief road with its findings compiled into it when it does
-// eventually leave. The latch bounds WHAT MAY TAKE the turn; this bounds WHEN it
-// is asked again; they are two facts and neither is the other's flag.
-func (m *checkpointMeter) compacted() {
-	if m == nil {
-		return
-	}
-	m.marks = 0
-	m.boughtAt = m.rounds
-	// THE RACE'S PULLED-DOWN FIRST RUNG IS SPENT AND NOT RE-ARMED. It was triage
-	// about the REQUEST — a reason to look sooner, once — and a turn that has now
-	// been read three times has evidence of its own that outranks it.
-	m.firstAt = 0
+	return checkpointMarkAt(n)
 }
 
 // tighten is what a raced both-yes DOES now, and it is the whole of the race's
@@ -2033,22 +1984,9 @@ const (
 	// reader had agreed to that.
 	checkpointDecisionLate = "late"
 
-	checkpointCeilingMoved = "moved"
-	// checkpointCeilingCompacted is the ceiling deciding the turn CAN carry on:
-	// the drawing named no independent parts, the transcript was compacted in
-	// place, and what came out of the fold sits inside the working set
-	// ([Agent.checkpointCeiling]).
-	//
-	// IT IS SPELLED APART FROM EVERY `dropped:` WORD BESIDE IT, and the difference
-	// is the whole of what this rung added. A drop is a handover that was
-	// considered and declined — nothing moved, and nothing about the turn changed
-	// either. This is a handover that was never owed: the turn bought itself room,
-	// the ladder went back to its foot ([checkpointMeter.compacted]), and the same
-	// meter will meet it again at the same price. A bench that spelled the two
-	// alike could not tell a turn that was let off from a turn that paid.
-	checkpointCeilingCompacted = "compacted"
-	checkpointCeilingNothing   = "dropped:nothing-left"
-	checkpointCeilingNoBrief   = "dropped:no-brief"
+	checkpointCeilingMoved   = "moved"
+	checkpointCeilingNothing = "dropped:nothing-left"
+	checkpointCeilingNoBrief = "dropped:no-brief"
 	// checkpointCeilingStopped is the ending a handover takes when the session's
 	// own goal owner read it and STOPPED THE RUN rather than let the work move
 	// ([Agent.endTurnUnderSteward]). It is spelled apart from the three above
@@ -3967,74 +3905,29 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 	return len(a.jobsWorkingNow()) > 0
 }
 
-// checkpointCeiling is the LAST RUNG OF THE LADDER, and its whole question is
-// whether this turn can carry on where it is. It reports whether the turn is
-// over.
+// checkpointCeiling is the ENDING every road that moves a running turn comes
+// through, and it reports whether the turn is over.
 //
-// ── A TURN LEAVES ONLY WHEN IT CANNOT CONTINUE ──
+// A TURN LEAVES ONLY WHEN IT CANNOT CONTINUE, and by the time anything reaches
+// here that has already been established somewhere else: the runaway net found
+// the turn could no longer work where it is, a sketch came back with independent
+// parts in it, a completion claim was disproved by a turn's worth of real work,
+// the unattended wall's share ran out, or the loop detector caught the answer
+// going in circles. NOTHING HERE COUNTS ROUNDS. The ladder's rungs climb no
+// further than the notes ([checkpointMeter.round]), which is the whole of the
+// 2026-09-11 ruling: how busy an answer has been says nothing about whether it
+// can finish where it is.
 //
-// This rung used to be an unconditional hand-over: past the last mark the work
-// moved, and the only thing that could stop it was the model declaring itself
-// finished. That priced a turn in ROUNDS and then spent a CONTEXT, which are not
-// the same currency and were never compared. Measured on 2026-09-11, a
-// one-paragraph request for a hover effect ran forty rounds with the great
-// majority of its window still free and was moved to a cold worker anyway: the
-// ceiling was wearing the clothes of a context valve without being one.
+// AND THE FOLD HAS ALREADY RUN BY THE TIME THE NET LOOKS. The step boundary
+// brings the transcript down before it prices it (loop.go's ordering, which
+// states the measured defect), so the quantity the net read is what this build
+// could not get rid of — and a turn that can be folded back under the line
+// carries on and never arrives here at all. That is the rung in front of this
+// one, and it is an ORDER rather than a mechanism, which is why there is nothing
+// of it in this file.
 //
-// So the ladder has a rung in front of the move, and it is the cheapest thing
-// the harness can do:
-//
-//  1. THE WORK IS READ, beside the turn, exactly as it is at the two marks below
-//     ([Agent.checkpointRound]). A drawing with INDEPENDENT PARTS in it moves the
-//     turn through [Agent.checkpointSettle], which is the road it always took —
-//     width is the one reading that says more than one pair of hands can hold
-//     this, and it is evidence FOR leaving.
-//  2. THE TURN COMPACTS IN PLACE, with the model-free pass this session already
-//     runs at every step boundary ([Agent.compact]): consumed results become
-//     pointers to their own bytes, the oldest assistant work becomes one line,
-//     and the person's own messages are never touched.
-//  3. AND THEN THE ONE FACT THAT DECIDES IS READ OFF THE RESULT. A context under
-//     the working set is a turn that can carry on; a context the fold cannot
-//     bring under it is a turn that genuinely cannot, and that one moves.
-//
-// ── AND THE FACT IT READS IS THE NET'S OWN ──
-//
-// "This turn cannot work where it is" already exists in this build, with one
-// arithmetic and one line: [Agent.contextRoomFor], which the runaway net reads a
-// few rungs down ([Agent.turnHasRunAway]) and the promotion gate reads about a
-// worker's window ([Agent.inheritFits]). This rung is the third reader of that
-// one sum, asked on both sides of a fold, and it may not be a fourth opinion
-// about how full is full: a ceiling that moved a turn the net would have called
-// fine — or kept one the net would have taken — would be two thresholds arguing
-// inside one ladder.
-//
-// THE HYSTERESIS IS THE FOLD'S, NOT A SECOND NUMBER. The line asked about here
-// is where a conversation must start folding; the fold itself stops at
-// [compactTarget], which is that line less half a reserve. So a turn handed back
-// a continuation is not sitting on its own trigger about to thrash — it is a
-// reserve below it — and nothing here has to name a gap to get that.
-//
-// AND A PASS THAT FOUND NOTHING IS NOT A REFUSAL. [ErrNothingToCompact] says the
-// transcript is already the person's words and the recent tail — which on a turn
-// with a free window is the ORDINARY case and the whole of the measured defect.
-// What is read is the estimate against the target, never whether the pass did
-// something.
-//
-// ── AND THE METER RE-ARMS FROM THE COMPACTION ──
-//
-// A turn that bought room starts renting again from the round it bought it on,
-// at the same price and the same doubling ([checkpointMeter.compacted]). So a
-// turn that compacts and then grinds is read again and pays the whole ladder
-// again before it is asked to leave, and a turn whose context can no longer be
-// folded under the working set leaves at the next ceiling. That is what bounds
-// this: the fold protects the running turn's own working memory, so a turn that
-// keeps working keeps growing what cannot be folded, and the answer to (3)
-// becomes "no" on its own.
-//
-// ── WHEN IT DOES MOVE ──
-//
-// EVERYTHING IT DOES THEN IS [Agent.handOverRunningTurn]'S. It contributes the
-// two things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
+// EVERYTHING IT DOES IS [Agent.handOverRunningTurn]'S. It contributes the two
+// things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
 // outran one pair of hands by measurement rather than by anybody's opinion, which
 // is the strongest evidence of breadth any door into the graph has; arming costs
 // nothing if it is wrong, because it only means the worker MAY discover the work
@@ -4047,26 +3940,7 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 // not a drawing ever arrived ([Agent.groundRead]). That is what keeps a move
 // forced by a full context from being a worse handover than a move forced by
 // width.
-//
-// AND EVERY WAY OUT WRITES ITSELF DOWN, the continuation included. What the
-// ceiling did to a turn used to exist nowhere, which is why the measured failure
-// could not be attributed without re-reading provider logs; a rung that can now
-// also say "carry on" would re-open exactly that hole if it said it silently.
 func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
-	// A TURN THE PERSON HAS LET GO OF NEITHER COMPACTS NOR MOVES. The handover
-	// road answers cancellation with a row of its own; this rung is above it, and
-	// rewriting a transcript that belongs to nobody would be work done for a turn
-	// that has already ended.
-	if ctx.Err() != nil {
-		return false
-	}
-	if a.checkpointCanCarryOn(ctx, hub) {
-		meter.compacted()
-		a.file.appendCeiling(journalCeiling{
-			Rounds: rounds, Seam: checkpointSeamCeiling, Decision: checkpointCeilingCompacted,
-		})
-		return false
-	}
 	verdict.Wide = true
 	// AND THE ROW IS NOT WRITTEN HERE. It is written by the function below, on
 	// every way out it has, because the ending is decided there and the two other
@@ -4074,43 +3948,6 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
 		checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict,
 		a.groundRead(read), taken).moved
-}
-
-// checkpointCanCarryOn is the ceiling's one fact: this turn compacts in place,
-// and then either its context sits inside the room the net measures or it does
-// not ([Agent.contextRoomFor]).
-//
-// IT MAKES NO MODEL CALL, which is what lets it stand in the middle of a running
-// turn at all. [Agent.compact] is the session's own model-free pass and is
-// reached here through the same door the automatic one uses, so a lane that
-// changes what a fold keeps changes what this reads in the same edit.
-//
-// AND A TURN THAT ALREADY HAS ROOM IS NOT COMPACTED TO FIND THAT OUT, which is
-// the emptiness law reaching a pass rather than a screen. Folding a transcript
-// that already fits would announce itself, hold a clock and settle to "nothing to
-// compact" — a stage a person watched for a decision that was never in doubt —
-// and the ordinary per-step pass already owns the question of when this
-// conversation is due a fold ([Agent.maybeCompact]). So the fold runs HERE only
-// where it could change the answer, which is the only reason this rung has to ask
-// for one at all.
-//
-// A PASS THAT FOUND NOTHING IS STILL AN ANSWER. The transcript is then the
-// person's own words and the recent tail, and whether that fits is exactly the
-// question being asked.
-func (a *Agent) checkpointCanCarryOn(ctx context.Context, hub *eventHub) bool {
-	if carried, room, known := a.contextRoomFor(a.model); !known {
-		// A WINDOW NOBODY CAN NAME CANNOT SAY A TURN HAS ROOM. It is the opposite
-		// fail direction from the net's, and it is the conservative one HERE for the
-		// same reason it is conservative THERE: a doubt may not keep a turn the
-		// harness has stopped reading, so with no figure to read the ceiling moves
-		// the turn exactly as it did before this rung existed.
-		return false
-	} else if carried <= room {
-		return true
-	}
-	_, _ = a.compact(ctx, hub)
-	carried, room, known := a.contextRoomFor(a.model)
-	return known && carried <= room
 }
 
 // handoffDigestBytes is how much of the account the HANDOFF's writer is shown,
