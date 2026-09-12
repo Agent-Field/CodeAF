@@ -340,52 +340,26 @@ func TestTheSenseSaysWhichSenseItIsUsing(t *testing.T) {
 // IT READS THE TREE ITSELF, so it runs on the laws gate of every pull request
 // (scripts/laws.sh finds it by this import).
 func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
-	set := token.NewFileSet()
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// theDoors are the two spellings of the one door, and theWrapper is the one
-	// caller that may pass an empty purpose.
+	files := sessionSources(t)
+	// theDoors are the two spellings of the one door. There is no exemption for a
+	// blank purpose any more and no apparatus to grant one: the single caller that
+	// keeps whatever the context already carries passes [purposeInherited], which
+	// says so in the place a reader is already looking.
 	theDoors := map[string]bool{"completeWithModel": true, "completeWithNamedModel": true}
-	const theWrapper = "modelRoutingCompleter"
-	purposes := 0
+	purposes, tags := 0, 0
 	// AND THE OTHER HALF OF THE SAME LAW. Three roads in this package build a
 	// [provider.Client] of their own — the memory tidy-up, a standing item's
 	// check, the document reader — because each needs a client shape the door
 	// does not make. They are allowed to; what they are not allowed to do is
 	// reach the wire anonymously, which all three did until #996.
 	//
-	// SO THE PURPOSE IS REQUIRED PER CALL AND NOT PER FILE. A file-level pairing
-	// would be satisfied by one road naming itself while the road beside it stays
+	// THE PURPOSE IS REQUIRED PER CALL AND NOT PER FILE. A file-level pairing is
+	// satisfied by one road naming itself while the road beside it stays
 	// anonymous, which is the shape of the failure this law exists for: the
-	// forgettable one is always the second one. Every completion made in a file
-	// that builds its own client carries a [withPurpose] on the context it is
-	// handed — inline, or through a local the purpose was folded into.
+	// forgettable one is always the second one.
 	ownClients := map[string]bool{}
-	type anonymous struct {
-		file string
-		line int
-		verb string
-	}
-	var unnamed []anonymous
-	ownCalls := 0
-	for _, entry := range entries {
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		file, err := parser.ParseFile(set, name, nil, 0)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		// within is the receiver type of the function being walked, so the one
-		// exemption is a property of where the call is rather than a file name.
-		within := ""
+	for name, file := range files {
 		ast.Inspect(file, func(node ast.Node) bool {
-			if decl, ok := node.(*ast.FuncDecl); ok {
-				within = receiverTypeName(decl)
-			}
 			call, ok := node.(*ast.CallExpr)
 			if !ok {
 				return true
@@ -394,40 +368,49 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 			if !ok {
 				return true
 			}
-			if selector.Sel.Name == "NewClient" && name != "clientdoor.go" {
-				ownClients[name] = true
-				return true
-			}
-			if selector.Sel.Name == "WithCallTag" && name != "clientdoor.go" {
-				t.Errorf("%s:%d calls provider.WithCallTag. The tag is spelled by the one door "+
-					"and nowhere else — pass a callPurpose to completeWithModel instead "+
-					"(clientdoor.go)", name, set.Position(call.Pos()).Line)
-				return true
+			switch selector.Sel.Name {
+			case "WithCallTag":
+				tags++
+				if name != "clientdoor.go" {
+					t.Errorf("%s:%d calls provider.WithCallTag. The tag is spelled by withPurpose "+
+						"and nowhere else — pass a callPurpose to completeWithModel instead "+
+						"(clientdoor.go)", name, sessionLine(call))
+				}
+			case "NewClient":
+				if name != "clientdoor.go" {
+					ownClients[name] = true
+				}
 			}
 			if !theDoors[selector.Sel.Name] || len(call.Args) < 2 {
 				return true
 			}
 			purposes++
-			if blankPurpose(call.Args[1]) && within != theWrapper {
-				t.Errorf("%s:%d reaches the wire with no purpose. Every request this package "+
-					"makes says what it is FOR, because a tag that can be forgotten is a tag "+
-					"that will be — and the call log cannot say what a build spent its night on "+
-					"(clientdoor.go's [callPurpose])", name, set.Position(call.Pos()).Line)
+			if blankPurpose(call.Args[1]) {
+				t.Errorf("%s:%d reaches the wire with a purpose spelled as a bare blank. Every "+
+					"request this package makes says what it is FOR, and the one call that keeps "+
+					"the caller's own word says THAT, by name: pass purposeInherited "+
+					"(clientdoor.go's [callPurpose])", name, sessionLine(call))
 			}
 			return true
 		})
 	}
+	// THE TAG IS SPELLED EXACTLY ONCE. Not "only in this file" — once, full stop,
+	// because [withPurpose] is now the single road to it and a second spelling
+	// beside it inside clientdoor.go would be the same drift starting over in the
+	// one place the law was not looking.
+	if tags != 1 {
+		t.Errorf("provider.WithCallTag is written %d times in this package; it is written once, "+
+			"by withPurpose, and every other road says what it is for by handing that function "+
+			"a callPurpose (clientdoor.go)", tags)
+	}
 	// SECOND PASS, over the files that build their own client. It is a second
 	// pass because a file has to be known to be one of those roads before its
 	// completions can be judged, and `provider.NewClient` may be written below
-	// the call it serves.
-	for file := range ownClients {
-		parsed, err := parser.ParseFile(set, file, nil, 0)
-		if err != nil {
-			t.Fatalf("%s: %v", file, err)
-		}
-		carries := contextsCarryingAPurpose(parsed)
-		ast.Inspect(parsed, func(node ast.Node) bool {
+	// the call it serves. It reads the SAME parse, not a new one.
+	ownCalls := 0
+	for name := range ownClients {
+		carries := contextsCarryingAPurpose(files[name])
+		ast.Inspect(files[name], func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
 			if !ok {
 				return true
@@ -438,31 +421,24 @@ func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
 			}
 			ownCalls++
 			if !purposeReaches(call.Args[0], carries) {
-				unnamed = append(unnamed, anonymous{file, set.Position(call.Pos()).Line, selector.Sel.Name})
+				t.Errorf("%s:%d calls %s on a client this package built itself, with a context "+
+					"that carries no purpose. A road that needs a client the one door does not "+
+					"make is allowed one; a road that reaches the wire anonymously is not, "+
+					"because the call log then cannot say what this build spent its night on. "+
+					"Wrap the context in withPurpose (clientdoor.go)",
+					name, sessionLine(call), selector.Sel.Name)
 			}
 			return true
 		})
-	}
-	for _, call := range unnamed {
-		t.Errorf("%s:%d calls %s on a client this package built itself, with a context that "+
-			"carries no purpose. A road that needs a client the one door does not make is "+
-			"allowed one; a road that reaches the wire anonymously is not, because the call "+
-			"log then cannot say what this build spent its night on. Wrap the context in "+
-			"withPurpose (clientdoor.go)", call.file, call.line, call.verb)
-	}
-	// AND THE SECOND PASS FOUND THE CALLS IT IS ABOUT. Three files that build a
-	// client and nought completions in them would pass in silence.
-	if ownCalls < 3 {
-		t.Fatalf("only %d completions were found in the %d files that build their own client; "+
-			"the law is reading the wrong tree", ownCalls, len(ownClients))
 	}
 	// AND THE LAW IS READING THE TREE IT THINKS IT IS. A walk that matched
 	// nothing would pass for ever, which is how a structural law rots.
 	if purposes < 8 {
 		t.Fatalf("only %d calls through the one door were found; the law is reading the wrong tree", purposes)
 	}
-	if len(ownClients) < 3 {
-		t.Fatalf("only %d files building their own client were found; the law is reading the wrong tree", len(ownClients))
+	if ownCalls < 3 {
+		t.Fatalf("only %d completions were found in the %d files that build their own client; "+
+			"the law is reading the wrong tree", ownCalls, len(ownClients))
 	}
 }
 

@@ -1746,6 +1746,14 @@ func (a *app) applyRolePin(row config.Setting, role roles.Role, model string) {
 		a.sheet.msg = err.Error()
 		return
 	}
+	// AND A PIN THIS BUILD NO LONGER ACTS ON IS SAID OUT LOUD to the person who
+	// is about to lose it. The row already DRAWS only the live pins
+	// (config.LivePinsAt) and this write will not put the dead one back, so
+	// without the line the row would quietly get shorter under their hands. It
+	// reads the raw stored text, which is the only place the dead word still is.
+	if note := config.RetiredPinNote(config.ModelRolesAt(a.profileDir)); note != "" {
+		a.sheet.msg = note
+	}
 	if model = strings.TrimSpace(model); model == "" {
 		delete(pins, string(role))
 	} else {

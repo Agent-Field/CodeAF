@@ -300,12 +300,7 @@ func (c modelRoutingCompleter) CompleteWithMessages(ctx context.Context, message
 	if model == "" {
 		model = c.agent.Model()
 	}
-	// NO PURPOSE, DELIBERATELY. This is the view of a live agent that leaves the
-	// package — internal/reflex and the media hands reach the wire through it —
-	// and each of those callers names its OWN call (reflex.go's "reflex"). A
-	// purpose stamped here would overwrite the one they stated with a word about
-	// the wrapper rather than about the request.
-	return c.agent.completeWithModel(ctx, "", messages, model, options...)
+	return c.agent.completeWithModel(ctx, purposeInherited, messages, model, options...)
 }
 
 // routedCompleter returns a completer safe to hand to a package that chooses a
@@ -482,18 +477,42 @@ const (
 	// indistinguishable from a turn that had lost its name. They carry the most
 	// money per call of anything nobody is waiting for.
 
-	// purposeConsolidate is the memory reflex's slow half: a batch of remembered
-	// things read together, hours after any of them was written.
-	purposeConsolidate callPurpose = "consolidate"
+	// EVERY WORD IN THIS BLOCK IS A WORD THAT IS NOT A ROLE. Where a purpose IS a
+	// role, the call site writes `callPurpose(roles.RoleX)` and no constant is
+	// declared here — restating a role's string would be the same word in two
+	// places, and the point of a small closed block is that what IS in it stands
+	// out. The memory tidy-up is [roles.RoleConsolidate] and says so at its own
+	// call; the two below are not roles at all.
+	//
 	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
-	// already gathered, run on every check of every item forever.
-	// The word is `standing-check` and not `sentinel`, which cmd/aforge already
-	// writes for the resident's quorum errand: two different calls under one tag
-	// is one reading of neither.
+	// already gathered, run on every check of every item forever. It is the ONE
+	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
+	// tag is `standing-check`, because cmd/aforge already writes `sentinel` for
+	// the resident's quorum errand and two different calls under one tag is one
+	// reading of neither.
 	purposeSentinel callPurpose = "standing-check"
 	// purposeDocument is a rung of the document reader — the model's own eyes on
-	// a PDF the `read` tool cannot open as text.
+	// a PDF the `read` tool cannot open as text. It is not a role because the
+	// reader resolves its model from the document settings and never from the
+	// role table (tools_doc.go).
 	purposeDocument callPurpose = "document"
+
+	// purposeInherited is the ONE PURPOSE THAT IS THE ABSENCE OF ONE, and it is
+	// named so that the absence is a statement rather than a gap.
+	//
+	// [modelRoutingCompleter] is the view of a live agent that LEAVES this
+	// package — internal/reflex and the media hands reach the wire through it —
+	// and each of those callers names its own call on the context before it gets
+	// here (reflex.go's "reflex"). A word stamped at this point would overwrite
+	// what they said with a word about the wrapper rather than about the request,
+	// so this one keeps whatever the caller already put there.
+	//
+	// It exists because the alternative was a law that had to KNOW about this
+	// call site: a walk that tracked which function it was inside, a name to
+	// compare against, and a reader for generic receivers — thirty lines of
+	// apparatus to excuse one bare `""`. A named constant says the same thing in
+	// the place a reader is already looking.
+	purposeInherited callPurpose = ""
 )
 
 // completeWithModel is [Agent.completerFor] joined to the one wire-model
@@ -515,28 +534,29 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		return nil, called, err
 	}
 	// THE PURPOSE BECOMES THE TAG, on the one line every request in this package
-	// passes over. An empty one is left alone rather than written as a blank: a
-	// tag nobody stated is what the log already knows how to say nothing about,
-	// and a row reading `""` would be worse than one reading nothing.
-	if purpose != "" {
-		ctx = provider.WithCallTag(ctx, string(purpose))
-	}
+	// passes over — through [withPurpose], which is the only function in
+	// internal/session that spells it, here and for the three roads that carry a
+	// client of their own.
+	ctx = withPurpose(ctx, purpose)
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 	return response, called, err
 }
 
-// withPurpose stamps a purpose on a context for a road that completes on a
-// client of its OWN, and it is the only thing in this package besides
-// [Agent.completeWithNamedModel] that may.
+// withPurpose stamps a purpose on a context, and it is THE ONE PLACE IN
+// internal/session THAT SPELLS `provider.WithCallTag` — a law says exactly once
+// (nohiddenwork_test.go).
 //
-// THE DOOR IS STILL THE ONLY PLACE THAT SPELLS THE TAG. `provider.WithCallTag`
-// appears twice in this file and nowhere else in internal/session — a law says
-// so (nohiddenwork_test.go) — and both spellings take a [callPurpose], which is
-// a closed vocabulary a reader can enumerate. What the three own-client roads
-// needed was not permission to write a tag; it was a door of their own that is
+// [Agent.completeWithNamedModel] calls it, so every request through the one door
+// is stamped here; so do the three roads that complete on a client of their own,
+// because each needs a client shape the door does not make. What those roads
+// needed was never permission to write a tag: it was a door of their own that is
 // the same door.
+//
+// AN EMPTY PURPOSE IS LEFT ALONE rather than written as a blank. A tag nobody
+// stated is what the log already knows how to say nothing about, and a row
+// reading `""` would be worse than one reading nothing.
 func withPurpose(ctx context.Context, purpose callPurpose) context.Context {
 	if purpose == "" {
 		return ctx

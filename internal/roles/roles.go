@@ -508,36 +508,24 @@ func Registered() []Role {
 	return roles
 }
 
-// ── the roles this build used to have ───────────────────────────────────────
-
-// retired names every role this build has deliberately stopped having, with the
-// one line that says what happened to it. IT ONLY EVER GROWS.
+// RoleKey is how a role name written by a person is compared: trimmed and
+// lower-cased.
 //
-// A ROLE THAT STOPS EXISTING IS STILL IN SOMEBODY'S config.json. `compaction`
-// was assigned a tier, described in the settings panel and offered as a pin for
-// months while nothing ever called it, so profiles carry `compaction:some/model`
-// rows that were true when they were typed. Deleting the constant took the row
-// off the panel and left the word in the file — and because the panel
-// re-serialises the WHOLE `models.roles` string on any pin, the next change to
-// ANY OTHER role was refused with `"compaction" is not a role` and every pin on
-// that machine became unchangeable until somebody hand-edited config.json.
+// IT IS ONE SPELLING BECAUSE A SECOND ONE EVENTUALLY DISAGREES. A row typed
+// `Compaction: x` and one typed `compaction:x` are the same pin, and every
+// reader that decides whether a word is a role has to answer that the same way
+// or one of them will recognise a name the others do not.
 //
-// So a reader DROPS what is retired rather than refusing it, and a writer never
-// puts it back (internal/config's ParseModelRoles and writeModelRoles). The
-// names stay here long after the code is gone, which is the whole point: this
-// map is the only memory the build has of a word it used to answer to, and
-// without it the word is indistinguishable from a typo.
-var retired = map[string]string{
-	"compaction": "a compaction has never asked a model; the role was assigned a tier and called by nothing",
-}
-
-// Retired reports whether `name` is a role this build deliberately stopped
-// having, and the line that says what happened to it. The comparison is the
-// same one [Registered] readers make — lower-case, trimmed — so a row typed
-// `Compaction: x` is recognised as the retired word and not as a new one.
-func Retired(name string) (string, bool) {
-	why, ok := retired[strings.ToLower(strings.TrimSpace(name))]
-	return why, ok
+// THERE IS NO LEDGER OF RETIRED ROLES, DELIBERATELY. One was written here and
+// then deleted: a map of the words this build used to answer to, so a dropped
+// pin could be told apart from a typo. It could not earn its keep. Both are a
+// pin no call will ever consult, both should stop being written back, and the
+// only reader who can act on either is the person adding a word right now —
+// which is the one place internal/config still refuses (its writeModelRoles).
+// Keeping the ledger meant every future deletion owed it an entry, and the day
+// somebody forgot, the old failure would come back exactly as it was.
+func RoleKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 // TierOf reports the tier a role resolves under, and false if the role was
