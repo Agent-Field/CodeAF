@@ -1,8 +1,12 @@
 package provider
 
 import (
+	"net/http"
 	"testing"
 	"time"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE GATE, MEASURED ──────────────────────────────────────────────────────
@@ -144,5 +148,118 @@ func TestTheTwoModelsKeepTwoGates(t *testing.T) {
 	one.NoteRefused(now.Add(time.Minute))
 	if two.TakenOver(now.Add(time.Minute)) {
 		t.Fatal("one model's bad afternoon took the other model's road with it")
+	}
+}
+
+// ── THE SHAPE-AWARE REFUSAL DOOR ────────────────────────────────────────────
+//
+// The measured loop (live chat, 2026-09-12): a takeover armed; the chooser's
+// narrowed demand answered 404; the gate counted THAT refusal, arming the
+// road again; four "Retry 1/2: relaxed the endpoint filter" lines, each paying
+// a full ~80k-token re-send, before the first rung went bare. The tests below
+// pin the split: only a BARE attempt's refusal is evidence about the router's
+// default, and the classifier reads the attempt's shape from the wire object
+// the request actually went out with.
+
+func TestANarrowedRefusalIsAboutOurChoiceNotTheRouter(t *testing.T) {
+	forgetRouterGates()
+	t.Cleanup(forgetRouterGates)
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}}
+	lanes.HeardPrefsCarried(client.config.BaseURL)
+	const model = "openrouter/shape-gate"
+	for range takeoverStrikes * 2 {
+		if client.noteRouterRefusal(model, "brass", false) {
+			t.Fatal("a refusal of our own demand claimed takeover")
+		}
+	}
+	if gateFor(model).TakenOver(time.Now()) {
+		t.Fatal("narrowed refusals took the road from the router")
+	}
+}
+
+func TestBareRefusalsArmTheTakeover(t *testing.T) {
+	forgetRouterGates()
+	t.Cleanup(forgetRouterGates)
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}}
+	lanes.HeardPrefsCarried(client.config.BaseURL)
+	const model = "openrouter/shape-gate"
+	if client.noteRouterRefusal(model, "brass", true) {
+		t.Fatal("one bare refusal armed the takeover; one is a queue draining")
+	}
+	if !client.noteRouterRefusal(model, "brass", true) {
+		t.Fatal("the second bare refusal did not arm the takeover")
+	}
+	if !client.routingGateTakenOver(model) {
+		t.Fatal("two bare refusals and the gate still lends the router the road")
+	}
+}
+
+func TestANarrowedRefusalCannotHoldTheRoad(t *testing.T) {
+	forgetRouterGates()
+	t.Cleanup(forgetRouterGates)
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}}
+	lanes.HeardPrefsCarried(client.config.BaseURL)
+	const model = "openrouter/shape-gate"
+	if client.noteRouterRefusal(model, "brass", true) {
+		t.Fatal("setup: one bare refusal armed")
+	}
+	if !client.noteRouterRefusal(model, "brass", true) {
+		t.Fatal("setup: two bare refusals did not arm")
+	}
+	gate := gateFor(model)
+	gate.mu.Lock()
+	held := gate.until
+	gate.mu.Unlock()
+	if client.noteRouterRefusal(model, "brass", false) {
+		t.Fatal("a narrowed refusal re-armed a held takeover")
+	}
+	gate.mu.Lock()
+	after := gate.until
+	gate.mu.Unlock()
+	if !after.Equal(held) {
+		t.Fatalf("a narrowed refusal moved the takeover's lapse from %v to %v", held, after)
+	}
+	if !client.routingGateTakenOver(model) {
+		t.Fatal("an armed takeover vanished under a narrowed refusal")
+	}
+}
+
+func TestTheThresholdCountsOnlyBareRefusals(t *testing.T) {
+	forgetRouterGates()
+	t.Cleanup(forgetRouterGates)
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}}
+	lanes.HeardPrefsCarried(client.config.BaseURL)
+	const model = "openrouter/shape-gate"
+	if client.noteRouterRefusal(model, "one", true) {
+		t.Fatal("one bare refusal armed")
+	}
+	if client.noteRouterRefusal(model, "two", false) {
+		t.Fatal("a narrowed refusal counted toward the bare threshold")
+	}
+	if !client.noteRouterRefusal(model, "three", true) {
+		t.Fatal("the SECOND bare refusal did not finish the arming")
+	}
+	if !client.routingGateTakenOver(model) {
+		t.Fatal("bare, narrowed, bare did not arm at exactly two bares")
+	}
+}
+
+func TestTheClassifierSpeaksTheAttemptsShape(t *testing.T) {
+	forgetRouterGates()
+	t.Cleanup(forgetRouterGates)
+	ledger, _ := testLedger()
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}, velocity: ledger}
+	lanes.HeardPrefsCarried(client.config.BaseURL)
+	const model = "openrouter/shape-gate"
+	paced := apiError(http.StatusTooManyRequests, []byte(
+		`{"error":{"message":"Provider returned error"}}`))
+
+	bare := client.refusalObject(&ai.Request{Model: model}, callKnobs{}, paced)
+	if !bare.AskedBare {
+		t.Fatal("a refusal with no membership-narrowing preference on the wire said the attempt was narrowed")
+	}
+	narrowed := client.refusalObject(&ai.Request{Model: model}, callKnobs{hedgeLane: "brass"}, paced)
+	if narrowed.AskedBare {
+		t.Fatal("a refusal of a rescue's one-machine demand said the attempt went out bare")
 	}
 }

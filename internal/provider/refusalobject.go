@@ -144,6 +144,15 @@ type laneRefusal struct {
 	// carried from the one classification so the dispatcher and surface never
 	// have to parse the refusal a second time.
 	Reset string
+	// AskedBare says the refused attempt went out with NO membership-narrowing
+	// preference — no pin, no rescue's demand, no strike list — so the refusal
+	// is evidence about the router's DEFAULT and may count toward a takeover
+	// (routefirst.go's [Client.noteRouterRefusal]). One false is "the shape was
+	// ours", the safest reading for a direct caller of [Client.laneRefusalFor]
+	// — a hedge arm, which is a demand of one machine by construction — and it
+	// is set true by the one classifier that holds the request's knobs
+	// ([Client.refusalObject]).
+	AskedBare bool
 }
 
 // struck reports whether there is a lane here for the ledger to WRITE OFF — a
@@ -283,7 +292,14 @@ func (c *Client) refusalObject(request *ai.Request, knobs callKnobs, err error) 
 		return laneRefusal{}
 	}
 	model := c.modelFor(request)
-	return c.laneRefusalFor(model, c.onlyLane(model, knobs), err)
+	refusal := c.laneRefusalFor(model, c.onlyLane(model, knobs), err)
+	// THE REFUSAL'S SHAPE IS READ FROM THE OBJECT THE WIRE CARRIED, for
+	// [laneRefusal.AskedBare]'s reason: membership-narrowing is a fact about
+	// the composed preference object, not about the decision that filled it,
+	// and re-composing it here is exact because the ONE choice the call was
+	// decided on is stamped on the knobs ([Client.withLaneChoice]).
+	refusal.AskedBare = !c.wirePreferences(model, knobs).membershipNarrowing()
+	return refusal
 }
 
 // laneRefusalFor is the same classification asked by a caller that already
