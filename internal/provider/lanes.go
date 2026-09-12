@@ -370,33 +370,52 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	// router's coarser model-list ceiling afterwards can only contradict that
 	// decision and make a serving lane look as though it refused the model.
 	demand := namedLanes(choice.Only)
+	// A PERSON'S OWN PIN IS READ ONCE, FOR BOTH DOORS BELOW (lanepin.go's
+	// [lanePinFor]). A person naming a machine wipes the cache pin off the
+	// demand here exactly as it wipes it off the order below: a heuristic
+	// about a cache is somebody's guess, and `pinned: cloudflare` is
+	// somebody's instruction.
+	person, retired := lanePinFor(model)
+	ownLane := person.pinned() != "" && !retired
+	// AND THE CACHE PIN IS ADMITTED BESIDE THE FRONTIER, NOT DROPPED BY IT. A
+	// demand is priced on latency times λ and tariff, and it never weighs
+	// cache residency — so a warm lane ranked second on speed fell off every
+	// forced set, the answerer became the next pin, and one measured chat
+	// session rotated through five machines in eight calls (GMICloud, Wafer,
+	// Novita, IoNet, Venice), each hop re-pricing eighty to a hundred thousand
+	// cold tokens at 4.7× the warm one. Admission is what makes the pin mean
+	// anything once a demand exists: advisory `provider.order` named the
+	// answering machine 29 % of the time over ten days of call log, while the
+	// strict preference's NAMED machine served 93 % — the pin goes IN the
+	// 93 % set, and it still leads the order composed over that set below.
+	if pinned != "" && len(demand) > 0 && !ownLane &&
+		!namesEndpoint(choice.Ignore, pinned) && !namesEndpoint(demand, pinned) {
+		demand = append(demand, pinned)
+	}
 	if len(demand) > 0 {
 		no := false
 		prefs.Only, prefs.Order, prefs.Sort = demand, nil, ""
 		prefs.AllowFallbacks = &no
 		prefs.MaxPrice = nil
 	}
-	// AND THE AFFINITY PIN YIELDS TO A REFUSAL, which is the one thing a warm
-	// prefix cannot buy its way past.
+	// AND THE PIN YIELDS TO EXACTLY TWO THINGS: A ROLE'S REFUSAL AND A
+	// PERSON'S OWN PIN. The demand above can no longer remove it — the law
+	// is admission, and the doors left standing are the two that must still
+	// remove it: a refusal the role declared (measured below) and a
+	// person's own lane row (lanepin.go, read where the order is composed
+	// below).
 	//
-	// THE MEASURED CASE IS WHY (2026-09-11 09:33). The cache pin latches onto
-	// whichever machine ANSWERED (affinity.go), and `provider.order` is advisory
-	// once `allow_fallbacks` is true — so one request that asked for one machine
-	// and was answered by another made that other machine the head of every
-	// order for the rest of the session, and the reflex tier's whole wait
-	// doubled. A saving on prefill cannot pay for a wait the role has already
-	// said it will not sit through; a machine in `choice.Ignore` is one the role
-	// refused on its own declared patience (internal/lane's beyondThePatience),
-	// and it goes on this body's `ignore` below rather than at the front of its
-	// order.
-	//
-	// AND A MACHINE OUTSIDE THE DEMAND IS THE SAME FACT STATED POSITIVELY. The
-	// admitted set is what the role would wait for; a machine that is not in it
-	// is one the frontier ruled out, and leading the order with it would either
-	// be ignored by the router or — under `allow_fallbacks: false` — name a
-	// machine the same object forbids.
-	if pinned != "" && (namesEndpoint(choice.Ignore, pinned) ||
-		(len(demand) > 0 && !namesEndpoint(demand, pinned))) {
+	// THE REFUSAL IS THE MEASURED CASE (2026-09-11 09:33). The cache pin
+	// latches onto whichever machine ANSWERED (affinity.go), and `provider.order`
+	// is advisory wherever `allow_fallbacks` is still true — so one request that
+	// asked for one machine and was answered by another made that other machine
+	// the head of every order for the rest of the session, and the reflex tier's
+	// whole wait doubled — a wait the role had already declared it would not sit
+	// through. A saving on prefill cannot pay for that wait, and a machine in
+	// `choice.Ignore` is one the role refused on its own declared patience
+	// (internal/lane's beyondThePatience), so it goes on this body's `ignore`
+	// below rather than at the front of its order.
+	if pinned != "" && namesEndpoint(choice.Ignore, pinned) {
 		pinned = ""
 	}
 	if len(choice.Order) > 0 {
@@ -407,8 +426,7 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		// pin is somebody naming the machine they want. Letting the cache jump
 		// the person would make `pinned: cloudflare, borrow when slow` mean "go
 		// wherever the last answer came from", which is not what the row says.
-		person, retired := lanePinFor(model)
-		if person.pinned() != "" && !retired {
+		if ownLane {
 			pinned = ""
 		}
 		if pinned != "" {

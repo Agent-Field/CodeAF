@@ -1257,12 +1257,11 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		// remaining attempts of this very call included (retry.go).
 		c.notePacedProvider(model, refusal.Lane, wait)
 		c.noteLaneRefused(model, refusal.Lane, "paced")
-		// AND THE ROUTER'S GATE HEARS THE SAME REFUSAL ONCE (routefirst.go).
-		// This is the one door every refusal of a named machine passes, so it
-		// is where the gate's "twice lately" is kept true: a 429 here, a 404
-		// below, an upstream fault beside them — one event, one strike, however
-		// the recovery above it goes.
-		if c.noteRouterChoice(model, refusal.Lane, "refused", false) {
+		// AND THE ROUTER'S GATE HEARS THE SAME REFUSAL ONCE, WITH THE ATTEMPT'S
+		// SHAPE (routefirst.go's [Client.noteRouterRefusal]): only a bare
+		// attempt's refusal is evidence about the router's default; a narrowed
+		// demand's refusal is a verdict on the pick, and the gate hears nothing.
+		if c.noteRouterRefusal(model, refusal.Lane, refusal.AskedBare) {
 			parkTakeoverLine(model)
 		}
 		return true
@@ -1284,12 +1283,12 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 	// count one refusal three times. The paced branch above is the one that
 	// was silent, and the one the 429 loop lived in.
 	c.refuseServing(model, refusal)
-	// AND THE GATE HEARS IT HERE, BESIDE THE STRIKE (routefirst.go) — the same
-	// door as the paced branch, for the same reason: one refusal of a named
-	// machine is one strike on the router's record, whether the machine said
-	// its queue was full or the pairing was impossible. An unasked machine
-	// (refusal.Unasked) teaches the gate nothing and never reaches this line.
-	if c.noteRouterChoice(model, refusal.Lane, "refused", false) {
+	// AND THE GATE HEARS IT HERE, BESIDE THE STRIKE, WITH THE ATTEMPT'S SHAPE
+	// (routefirst.go's [Client.noteRouterRefusal]): only a bare attempt's
+	// refusal is evidence about the router's default, exactly as in the paced
+	// branch. An unasked machine (refusal.Unasked) still teaches nothing and
+	// never reaches this line.
+	if c.noteRouterRefusal(model, refusal.Lane, refusal.AskedBare) {
 		parkTakeoverLine(model)
 	}
 	return c.velocity.pace(model, refusal.Lane, 0)

@@ -63,10 +63,13 @@ answer on it is being learned like any other.
 back refused (a 429, a machine that cannot serve the shape) or unusable (the
 thread lost, tool markup, a stream that had to be cut) — twice in a short while —
 aforge stops lending the router the choice and picks the machine itself, from the
-lanes it has been watching all along. The conversation says so once, in one
-sentence, and after about half an hour of good answers the choice is the
-router's again. Pinning a machine yourself in `/model` ends it there and then:
-your word outranks either of them.
+lanes it has been watching all along. Only a refusal the ROUTER earned counts:
+once aforge is the one choosing a machine — during a takeover, or under your
+pin — a refusal of that pick is about the pick, not another strike against
+the router, so a takeover's own demands cannot keep it alive. The conversation
+says so once, in one sentence, and after about half an hour of good answers the
+choice is the router's again. Pinning a machine yourself in `/model` ends it
+there and then: your word outranks either of them.
 
 **`openrouter` is `auto` without the safety.** It is the same router routing, and
 aforge never takes over no matter what comes back. Choose it when you would

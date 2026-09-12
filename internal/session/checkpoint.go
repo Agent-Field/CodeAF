@@ -223,6 +223,30 @@ const (
 	// where the telling stops and the ceiling begins.
 	checkpointNotes = checkpointMarks - 1
 
+	// checkpointFirstRungFloor is the lowest round the race's tightening may
+	// stand the FIRST mark on ([checkpointMeter.tighten]).
+	//
+	// The tightening exists for TRIAGE and not for haste: a raced both-yes has
+	// noticed early that this message reads like work, so the first LOOK moves
+	// sooner — and the reading that decides anything is still the sidecar's,
+	// taken over the work itself. What the race may never do is stand the note
+	// where the note has nothing to say. Measured on a real planning turn
+	// (2026-09-12): the verdict landed two rounds in, the first [taking stock]
+	// fired at round three over one issue and two listings — 43 KB of mostly
+	// listing noise — and the model waved the note past, which is what taught
+	// it the round-twenty note could be waved past too. A telling its reader
+	// has learned to ignore is not a cheap telling; it is the mechanism's
+	// credibility spent at a rung that held no facts worth weighing.
+	//
+	// SO THE FIRST RUNG NEVER STANDS BELOW HALF THE HANDOFF PRICE. The figure
+	// is the price divided by the ratio rather than a number of its own, so it
+	// cannot drift from the two constants it is a compromise between: early
+	// enough that a genuinely runaway turn is still met well ahead of the full
+	// price, late enough that the note's own facts line — the rounds, the
+	// files, the bytes (inherit.go's [turnFacts]) — is about real work and not
+	// about a turn that has barely started.
+	checkpointFirstRungFloor = checkpointPrice / checkpointRatio
+
 	// THE HANDOFF BRIEF IS SENT WITH NO CEILING, like everything else on this
 	// road. It used to carry 2000 — more room than the shaper's, because this
 	// document is written by a model with a turn's worth of findings in front of
@@ -1078,7 +1102,13 @@ func (m *checkpointMeter) tighten(verdict routeVerdict) {
 	// The boundary this is called at is the boundary [checkpointMeter.round] is
 	// about to count, so this fires the first mark HERE rather than one round
 	// later: the two are read in that order at one step boundary (loop.go).
-	m.firstAt = m.rounds + 1
+	//
+	// BUT NEVER BELOW THE FLOOR. A verdict that lands before the turn has run
+	// up facts worth weighing does not drag the mark down to where it landed;
+	// the mark waits at [checkpointFirstRungFloor], which says in the ladder's
+	// own unit why a note with nothing to weigh is worse than a note not yet
+	// sent.
+	m.firstAt = max(m.rounds+1, checkpointFirstRungFloor)
 }
 
 // checkpointWatchTools are the belt's two windows onto work this conversation

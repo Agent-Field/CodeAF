@@ -329,3 +329,235 @@ func TestTurnFoldKeepsUnactedResearchVerbatim(t *testing.T) {
 		t.Fatal("research that had not produced work was folded")
 	}
 }
+
+// appendToolRound writes one call-and-result pair into the agent's live
+// transcript, the way the fixtures above spell their rounds out one at a time.
+func appendToolRound(agent *Agent, id, name, args, output string) {
+	agent.messages = append(agent.messages,
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: id, Function: ai.ToolCallFunction{Name: name, Arguments: args},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{{Type: "text", Text: output}}},
+	)
+}
+
+// repeatedReadAgent builds a turn whose transcript holds 24 consumed, seen
+// tool rounds — about three times the working-set line — ready for the fold.
+func repeatedReadAgent(t *testing.T, rounds func(agent *Agent)) *Agent {
+	t.Helper()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.ContextWindow = bigTestWindow
+	})
+	agent.mu.Lock()
+	agent.running = true
+	agent.turnFloor = len(agent.messages)
+	rounds(agent)
+	agent.mu.Unlock()
+	return agent
+}
+
+func foldWholeTurn(t *testing.T, agent *Agent) []ai.Message {
+	t.Helper()
+	agent.mu.Lock()
+	consumed := consumedTurnReads(agent.messages, agent.turnFloor, len(agent.messages))
+	horizon := len(agent.messages)
+	agent.mu.Unlock()
+	agent.foldTurnOutputs(horizon, consumed, nil)
+	agent.mu.Lock()
+	messages := append([]ai.Message(nil), agent.messages...)
+	floor := agent.turnFloor
+	agent.mu.Unlock()
+	if len(messages) == floor {
+		t.Fatal("the fixture built no rounds")
+	}
+	return messages
+}
+
+// THREE OVERLAPPING SLICES OF ONE FILE: the oldest two become pointers naming
+// the path and the range each held — a recipe in the sentence family the
+// prompt already teaches — while the newest slice, the one the model is still
+// working from, stays byte-for-byte whole even though its batch was old enough
+// to fold. Distinct reads beside them keep the filed pointer they always got.
+func TestTurnFoldKeepsTheNewestSliceOfARepeatedlyReadFile(t *testing.T) {
+	output := turnFoldOutput()
+	slices := []string{
+		`{"path":"checkpoint.go","offset":10,"limit":50}`,
+		`{"path":"checkpoint.go","offset":40,"limit":50}`,
+		`{"path":"checkpoint.go","offset":80,"limit":50}`,
+	}
+	agent := repeatedReadAgent(t, func(agent *Agent) {
+		for round, args := range slices {
+			appendToolRound(agent, fmt.Sprintf("slice-%d", round), "read", args, output)
+		}
+		for round := 3; round < 24; round++ {
+			appendToolRound(agent, fmt.Sprintf("call-%d", round), "read",
+				fmt.Sprintf(`{"path":"round-%d.txt"}`, round), output)
+		}
+	})
+	agent.mu.Lock()
+	floor := agent.turnFloor
+	agent.mu.Unlock()
+
+	messages := foldWholeTurn(t, agent)
+
+	// The results of the three slices sit one after the other from the floor:
+	// assistant, result, assistant, result, assistant, result.
+	for round, want := range []string{"offset=10 limit=50", "offset=40 limit=50"} {
+		text := messageContentText(messages[floor+1+round*2])
+		if !strings.HasPrefix(text, stubMarker) {
+			t.Fatalf("slice %d was not folded: %.80q", round, text)
+		}
+		if !strings.Contains(text, "full: read checkpoint.go "+want) {
+			t.Fatalf("slice %d pointer = %q, want the read that brings the slice back", round, text)
+		}
+	}
+	if got := messageContentText(messages[floor+5]); got != output {
+		t.Fatalf("the newest slice of checkpoint.go was rewritten: %.80q", got)
+	}
+	// A read of a file named once is none of this rule's business: round 3 was
+	// old enough to fold and got the ordinary filed pointer, not a recipe.
+	distinct := messageContentText(messages[floor+7])
+	if !strings.HasPrefix(distinct, stubMarker) || strings.Contains(distinct, "full: read round-3.txt") {
+		t.Fatalf("a singly-read file folded into a recipe: %.80q", distinct)
+	}
+	if !holdsPrefix(messages, foldMarkerPrefix) {
+		t.Fatal("no fold note was written")
+	}
+	// AND THE ARITHMETIC IS THE OLD ARITHMETIC: the pass stops at the same
+	// headroom target with the kept-whole slice counted as buying nothing.
+	agent.mu.Lock()
+	after := turnToolBytes(agent.messages, floor)
+	agent.mu.Unlock()
+	if target := turnWorkingTarget(agent.window()) * bytesPerToken; after > target {
+		t.Fatalf("working set after the fold = %d bytes, want at most the %d-byte target", after, target)
+	}
+}
+
+// TWENTY-FOUR DIFFERENT FILES, READ ONCE EACH: no path repeats, so the
+// repeated-read rule fires nowhere and every folded result keeps the filed
+// pointer the pass has always written.
+func TestTurnFoldFilesReadsOfDistinctFilesAsBefore(t *testing.T) {
+	output := turnFoldOutput()
+	agent := repeatedReadAgent(t, func(agent *Agent) {
+		for round := range 24 {
+			appendToolRound(agent, fmt.Sprintf("call-%d", round), "read",
+				fmt.Sprintf(`{"path":"distinct-%d.txt"}`, round), output)
+		}
+	})
+
+	messages := foldWholeTurn(t, agent)
+
+	stubs := 0
+	for _, message := range messages {
+		text := messageContentText(message)
+		if message.Role != "tool" || !strings.HasPrefix(text, stubMarker) {
+			continue
+		}
+		stubs++
+		if strings.Contains(text, "full: read distinct-") {
+			t.Fatalf("a file read once folded into a re-read recipe: %.80q", text)
+		}
+	}
+	if stubs == 0 {
+		t.Fatal("a turn over the line folded nothing")
+	}
+}
+
+// A SINGLE read of a path is not a repeat: it folds under the old rule, with a
+// filed copy to point at, and never a recipe naming the file itself.
+func TestTurnFoldGivesASingleReadNoRecipe(t *testing.T) {
+	output := turnFoldOutput()
+	agent := repeatedReadAgent(t, func(agent *Agent) {
+		appendToolRound(agent, "solo", "read", `{"path":"solo.txt"}`, output)
+		for round := 1; round < 24; round++ {
+			appendToolRound(agent, fmt.Sprintf("call-%d", round), "read", `{"path":"daily.txt"}`, output)
+		}
+	})
+	agent.mu.Lock()
+	floor := agent.turnFloor
+	agent.mu.Unlock()
+
+	messages := foldWholeTurn(t, agent)
+
+	solo := messageContentText(messages[floor+1])
+	if !strings.HasPrefix(solo, stubMarker) {
+		t.Fatalf("the oldest result was not folded: %.80q", solo)
+	}
+	if strings.Contains(solo, "full: read solo.txt") {
+		t.Fatalf("a file read once points at itself: %.80q", solo)
+	}
+	if older := messageContentText(messages[floor+3]); !strings.Contains(older, "full: read daily.txt") {
+		t.Fatalf("an older slice of a repeated read = %.80q, want the recipe", older)
+	}
+}
+
+// BASH RESULTS ARE THE OLD RULE'S ALONE: they were never eligible batches in
+// this pass, and the repeated-read rule changes nothing about that — a fold
+// triggered by the reads beside them leaves every one byte-for-byte.
+func TestTurnFoldLeavesBashResultsToTheOlderRules(t *testing.T) {
+	output := turnFoldOutput()
+	var bashWanted []string
+	// Thirty rounds, every fourth a small bash result: the reads carry the
+	// working set over the line, the bash results only watch.
+	agent := repeatedReadAgent(t, func(agent *Agent) {
+		for round := range 30 {
+			call := fmt.Sprintf("call-%d", round)
+			if round%4 == 3 {
+				result := fmt.Sprintf("bash said %d", round)
+				bashWanted = append(bashWanted, result)
+				appendToolRound(agent, call, "bash", fmt.Sprintf(`{"command":"echo %d"}`, round), result)
+				continue
+			}
+			appendToolRound(agent, call, "read",
+				fmt.Sprintf(`{"path":"file-%d.txt"}`, round), output)
+		}
+	})
+
+	messages := foldWholeTurn(t, agent)
+
+	var bashGot []string
+	stubs := 0
+	for _, message := range messages {
+		text := messageContentText(message)
+		if message.Role != "tool" {
+			continue
+		}
+		if strings.HasPrefix(text, "bash said ") {
+			bashGot = append(bashGot, text)
+		}
+		if strings.HasPrefix(text, stubMarker) {
+			stubs++
+		}
+	}
+	if !reflect.DeepEqual(bashGot, bashWanted) {
+		t.Fatalf("bash results were touched\n got: %v\nwant: %v", bashGot, bashWanted)
+	}
+	if stubs == 0 {
+		t.Fatal("a turn over the line folded nothing")
+	}
+}
+
+// BELOW THE LINE, REPEATS CHANGE NOTHING. Three slices of one file are a
+// repeat the new rule can see, but the working-set trigger is the only trigger
+// this pass has: under it the transcript is byte-stable, fold note and all.
+func TestTurnFoldLeavesRepeatedReadsBelowTheLine(t *testing.T) {
+	output := turnFoldOutput()
+	agent := repeatedReadAgent(t, func(agent *Agent) {
+		for round, offset := range []int{10, 40, 80} {
+			appendToolRound(agent, fmt.Sprintf("slice-%d", round), "read",
+				fmt.Sprintf(`{"path":"checkpoint.go","offset":%d,"limit":50}`, offset), output)
+		}
+	})
+	agent.mu.Lock()
+	before := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+
+	_ = foldWholeTurn(t, agent)
+
+	agent.mu.Lock()
+	after := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("repeated reads below the working-set line were folded")
+	}
+}

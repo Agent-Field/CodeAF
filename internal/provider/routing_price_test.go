@@ -332,6 +332,87 @@ func TestAStrictLaneDemandCarriesNoPriceCeiling(t *testing.T) {
 	}
 }
 
+// ── THE CACHE PIN BESIDE THE FRONTIER ────────────────────────────────────
+
+// A warm lane the frontier did not name is admitted into the enforced set
+// rather than dropped, because a demand priced on speed alone rotates the
+// lineage through cold prefixes — measured at five machines in eight calls,
+// 4.7× the warm bill each hop.
+func TestACachePinOutsideTheFrontierIsAdmittedBesideIt(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{Only: []string{"Fireworks"}, Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if len(prefs.Only) != 2 || !namesEndpoint(prefs.Only, "Wafer") ||
+		!namesEndpoint(prefs.Only, "Fireworks") {
+		t.Fatalf("demand = %v, want the warm lane admitted beside the frontier", prefs.Only)
+	}
+	if len(prefs.Order) == 0 || prefs.Order[0] != "Wafer" {
+		t.Fatalf("order = %v, want the admitted pin still leading it", prefs.Order)
+	}
+	if prefs.AllowFallbacks == nil || *prefs.AllowFallbacks {
+		t.Fatalf("allow_fallbacks = %v, want it off on a demand no matter who joined it",
+			prefs.AllowFallbacks)
+	}
+	// The frontier priced every admitted lane, including the pin, so the
+	// ceiling still comes off — the same answer the strict-demand test above
+	// pins.
+	if prefs.MaxPrice != nil {
+		t.Fatalf("the admitted pin kept a ceiling: %+v", prefs.MaxPrice)
+	}
+}
+
+// A pin a role refused on its own declared patience is dropped even when a
+// demand exists, which is the 2026-09-11 measured case the admission must
+// not erase.
+func TestACachePinBeyondThePatienceIsDropped(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{
+		Only:   []string{"Fireworks"},
+		Order:  []string{"Fireworks"},
+		Ignore: []string{"Wafer"},
+	}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if namesEndpoint(prefs.Only, "Wafer") || namesEndpoint(prefs.Order, "Wafer") {
+		t.Fatalf("the refused lane still rode: %+v", prefs)
+	}
+	if !namesEndpoint(prefs.Ignore, "Wafer") {
+		t.Fatalf("the refusal was not carried onto ignore: %+v", prefs.Ignore)
+	}
+}
+
+// A person's own lane row clears the cache pin from the demand as well as
+// from the order, because a borrowable pin is an instruction and a cache is
+// a guess.
+func TestAPersonsOwnPinClearsTheCachePinFromTheDemand(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	RepinLane(LanePin{Lane: "Novita"})
+	t.Cleanup(func() { RepinLane(LanePin{}) })
+	choice := lanes.Choice{Only: []string{"Fireworks"}, Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if namesEndpoint(prefs.Only, "Wafer") || namesEndpoint(prefs.Order, "Wafer") {
+		t.Fatalf("the cache pin jumped the person: %+v", prefs)
+	}
+}
+
+// A chooser that demanded nothing leaves the advisory path exactly as it has
+// always been: the pin leads the order, no demand exists to join, and no
+// fallback switch is written.
+func TestNoDemandLeavesTheAdvisoryPathUntouched(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if prefs.Only != nil || prefs.AllowFallbacks != nil {
+		t.Fatalf("a demand came from nowhere: %+v", prefs)
+	}
+	if len(prefs.Order) != 2 || prefs.Order[0] != "Wafer" || prefs.Order[1] != "Fireworks" {
+		t.Fatalf("order = %v, want the pin still leading an advisory preference", prefs.Order)
+	}
+}
+
 // ── WHO ANSWERED ────────────────────────────────────────────────────────────
 
 // The slot is how a caller learns which endpoint served ITS call, rather than

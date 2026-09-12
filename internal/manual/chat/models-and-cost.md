@@ -2219,6 +2219,12 @@ runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. 
 result bytes remain in `logs/stubs/`, the model can `read` the path in each stub, and the
 session journal keeps the original result bytes.
 
+One shape of result needs no copy filed. When the turn has read the **same file several
+times**, the older slices point at the file itself — the stub names the path with the
+`offset` and `limit` that bring that slice back — and the newest slice is kept whole,
+because those bytes were never anywhere else to begin with. The journal keeps them too,
+as it keeps everything.
+
 **Rung 0 — what an old result looks like in the request.** Before any of the rungs below
 fire, the copy of the conversation that goes to the model already carries the tool results
 of *earlier* turns shortened. Your transcript and the session journal keep every byte; only
