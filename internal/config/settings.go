@@ -193,8 +193,8 @@ const (
 	// chosen for THINKING rather than for a price. Two roles ride it — the
 	// planner that amends an adaptive run's plan after every node, and the
 	// designer that writes a harness page everybody afterwards runs — and both
-	// were on the careful-work tier beside the compaction summary, which made one
-	// figure answer two unrelated bills: the careful calls are many and short,
+	// were on the careful-work tier beside the check on finished work, which made
+	// one figure answer two unrelated bills: the careful calls are many and short,
 	// these are few and decide what all the other calls do.
 	//
 	// It is the one row whose value may carry a LEVEL as well as a model
@@ -2181,8 +2181,8 @@ func (s *Settings) build() []Setting {
 		},
 		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
 		// actually configures for the calls aforge makes on its own — the name it
-		// gives a session, the summary a compaction writes, the plan an adaptive
-		// run steers by (internal/roles). Four rows, not one per feature: a new
+		// gives a session, the check on work a task says is finished, the plan an
+		// adaptive run steers by (internal/roles). Four rows, not one per feature: a new
 		// call joins a class and needs no row of its own.
 		//
 		// The crew row comes FIRST because it is the only one most people will
@@ -2233,7 +2233,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
 			Label: "careful work", EmptyLabel: "follows the conversation",
 			Hint: "the capable model for the things that must not be wrong — the check on " +
-				"finished task work, the summary a compaction keeps, reading an image.",
+				"finished task work, the brief a task is shaped into, reading an image.",
 			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
 			write: func(raw string) error { return writeTierModel(dir, ModelTierHigh, raw) },
 		},

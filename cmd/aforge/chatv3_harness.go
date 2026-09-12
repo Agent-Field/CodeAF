@@ -56,9 +56,9 @@ import (
 //     is handed to the bridge as the default every agent.loop node rides.
 
 // harnessTimeout bounds one node's completion. It matches internal/session's
-// own provider timeout: a harness node is a non-streamed call like the
-// compaction summary is, and the backstop is against a wedged endpoint rather
-// than a limit on how long a run may take.
+// own provider timeout: a harness node is a non-streamed call like the title
+// call is, and the backstop is against a wedged endpoint rather than a limit on
+// how long a run may take.
 const harnessTimeout = 10 * time.Minute
 
 // v3HarnessEntries is the registry as DETECTION reads it: one entry per saved
