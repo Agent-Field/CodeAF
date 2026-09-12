@@ -2679,9 +2679,10 @@ func (n *TaskNode) wasHandedOver() bool {
 	return n.handed
 }
 
-// decisionNote is HOW FAR THE NOTE THAT HANDS ONE NODE'S DECISION TO THE MODEL
-// HAS GOT, and it exists because the floor that takes a hand-over back has to
-// know whether the model was ever actually asked.
+// owesDecisionNote marks one node as having a note on its way to the model that
+// asks it to decide — and it is ONE BOOLEAN because there are only two states a
+// floor can act on: a question nobody has been given, and a question the model
+// has.
 //
 // THE WINDOW IS THE TURN THAT PUT THE QUESTION IN FRONT OF THE MODEL, NOT
 // WHICHEVER TURN HAPPENS TO END NEXT. A note lands on the steering queue and a
@@ -2693,45 +2694,39 @@ func (n *TaskNode) wasHandedOver() bool {
 // decision the person was holding again. Two hands on one question is the exact
 // thing the receipt exists to prevent.
 //
-// It is assignment.go's own law about a direction said to a node, said here
-// about a decision handed to the model: a line accepted after the last drain was
-// never in front of anybody, and the state it promises must not be spent on it.
-type decisionNote uint8
-
-const (
-	// decisionNoteNone is every node with nothing asking the model to decide it —
-	// including one the settle policy marked the model's whose news was folded
-	// into a parent's report rather than delivered ([Agent.postTaskMessage]).
-	decisionNoteNone decisionNote = iota
-	// decisionNoteOwed is a note a reader has taken and no request has carried:
-	// on a queue, or in a transcript no request has gone out since. The floor
-	// leaves this hold alone; the agent that owes the note hands it back itself
-	// if its turn ends with nothing following (agent.go's
-	// [Agent.handBackUnreadNotes]).
-	decisionNoteOwed
-	// decisionNoteRead is a note a request carried: the model has the question,
-	// and the turn it went out in is the window it has to answer in.
-	decisionNoteRead
-)
-
-// owesDecisionNote marks one node as having a note on its way to the model.
+// IT IS WRITTEN BEFORE THE NOTE IS SENT AND TAKEN BACK IF NOBODY TAKES IT
+// ([TaskNode.decisionNoteDropped]), never after. A mark written after the queue
+// has the note is a mark a reader that drains and requests first has already
+// cleared — and the node is then pinned owed for the life of the process, which
+// is a card that says aforge is deciding until the session ends.
 //
-// IT IS WRITTEN WHERE THAT BECOMES TRUE, which is two places because there are
-// two roads and they differ in exactly this. A press writes it in the same hold
-// as the owner ([TaskNode.holdsDecision]) because the press enqueues its own
-// note in the next breath and cannot fail to; a landing under
-// `task.settle = auto` writes it when a reader has actually taken the note,
-// because that news may be folded into a parent's report instead of delivered.
+// AND IT IS OWED AGAIN EVERY TIME, which is why nothing here asks what the mark
+// already said. A second note about the same node — a press after a landing, a
+// re-audit that lands while one is queued — is a question nobody has been given
+// yet, whatever became of the first.
 func (n *TaskNode) owesDecisionNote() {
 	if n == nil || n.graph == nil {
 		return
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	if n.decider != TaskAskOwnerModel || n.handNote != decisionNoteNone {
+	if n.decider != TaskAskOwnerModel {
 		return
 	}
-	n.handNote = decisionNoteOwed
+	n.noteOwed = true
+}
+
+// decisionNoteDropped is that in reverse, for the note that never reached
+// anybody: a delivery nobody accepted, or one folded into a parent's report
+// rather than queued ([Agent.postTaskMessage]). A hold owed a note that does not
+// exist is a card waiting on an answer nobody was ever asked for.
+func (n *TaskNode) decisionNoteDropped() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.noteOwed = false
 }
 
 // decidedBy reads who is holding one node's question, with the graph taken for
@@ -2752,7 +2747,7 @@ func (n *TaskNode) decidedBy() TaskAskOwner {
 // (task_run.go). A road that wrote only the owner would leave a receipt behind
 // and refuse the next press.
 func (n *TaskNode) givesBackLocked() {
-	n.decider, n.handed, n.handNote = TaskAskOwnerPerson, false, decisionNoteNone
+	n.decider, n.handed, n.noteOwed = TaskAskOwnerPerson, false, false
 }
 
 // holdsDecision writes who is holding one node's question. It is the graph's
@@ -2777,8 +2772,8 @@ func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
 	// AND THE NOTE IS OWED IN THE SAME HOLD AS THE OWNER. The press enqueues it
 	// in the next breath, and writing the two under one lock is what keeps a
 	// floor running in between from spending a press nobody has been given
-	// ([decisionNote]).
-	n.decider, n.handed, n.handNote = owner, true, decisionNoteOwed
+	// ([TaskNode.owesDecisionNote]).
+	n.decider, n.handed, n.noteOwed = owner, true, true
 }
 
 // TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person

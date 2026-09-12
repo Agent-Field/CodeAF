@@ -876,13 +876,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// which is exactly the news an outside reader wants (task_beat.go). It is
 		// nil for a conversation, whose liveness the presence file already carries
 		// (taskpresence.go).
-		// AND EVERY DECISION THIS TRANSCRIPT HOLDS A NOTE ABOUT IS A QUESTION THE
-		// MODEL HAS FROM HERE. It is on this line for the reason the beat and the
-		// clock below it are: this is the one place in this package where a
-		// request actually goes out, and a note that left the queue at a drain
-		// this turn was then cut short of has reached nobody
-		// (agent.go's [Agent.decisionNotesCarried]).
-		a.decisionNotesCarried()
 		a.config.beat.began()
 		// AND THE FIRST-TOKEN CLOCK, on the same line and for a related reason:
 		// this is the one place in this package where a request actually goes
@@ -897,6 +890,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		pace.sending(sentAt)
 		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
+		// AND A MODEL THAT ANSWERED HAS BEEN ASKED EVERY QUESTION THIS TRANSCRIPT
+		// WAS CARRYING. It is said at the ANSWER rather than on the line above
+		// where the request leaves, because a request that reaches no model —
+		// the ladder giving up on every machine, a cut context — asked nobody
+		// anything, and a decision marked read there would be a card handed back
+		// while the sentence that asks for it is still in the transcript, to be
+		// sent again next turn (agent.go's [Agent.decisionNotesCarried]).
+		if err == nil {
+			a.decisionNotesCarried()
+		}
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
 		// and everything the rest of the turn attributes — the usage rows, the
