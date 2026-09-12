@@ -288,19 +288,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// is the one place the two are converted, by doing the shaping.
 		agent.earlier = shapeEntries(replayed.earlier, file)
 		agent.earlierFloor = len(shapeEntries(restored[:replayed.overlap], file))
-		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
-		// session resumed onto a model without vision — the journal remembers
-		// the model it was written on, the person can start it on another — would
-		// otherwise re-send yesterday's base64 to a model that cannot read it,
-		// which is [Agent.SetModel]'s hole through the other door. The scrub is
-		// the same function both doors call, and it is done HERE because
-		// [replaySessionFile] is a pure function of the file: which model this
-		// session will ride, and whether it can see, are facts about the agent,
-		// and threading a capability closure into a file parser would put the
-		// question in the one layer that cannot answer it. No lock is taken for
-		// the reason nothing else in this constructor takes one — the agent is
-		// not reachable yet.
-		agent.scrubBlindImagePartsLocked(agent.model)
+		// A SESSION RESUMED ONTO A MODEL WITHOUT VISION NEEDS NOTHING DONE HERE,
+		// and that is worth a line because it used to. Yesterday's base64 comes
+		// back out of the journal whatever model this session opens on, and the
+		// rewrite that used to happen here — once, at the door, against the model
+		// the agent happened to start with — is now a question asked of every
+		// request as it is assembled (blindswap.go). A resume onto a blind model
+		// sends placeholders; a resume onto a blind model that the person then
+		// moves off shows the pictures again, which the one-way rewrite could
+		// never do.
 		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
 		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
 		// money it actually cost rather than the money this process has spent so
@@ -672,16 +668,6 @@ func (a *Agent) TurnModel() string {
 // (loop.go's completeWithRetry). It is a rescue and not a preference: what a
 // person set here is untouched, so the NEXT turn starts on the model they
 // picked, and the only way this field changes is somebody calling this.
-//
-// THE PICTURES ARE NOT MADE SAFE HERE, and that is the change this door owes
-// its own paragraph. A conversation carrying attached images carries them as
-// base64 in the live transcript, re-sent on every request after they arrived, so
-// moving onto a model that cannot see would send them to it with no gate in the
-// way — no image is being attached. The scrub therefore rides THE MODEL THE WORK
-// IS TALKING TO rather than the dial ([Agent.ridesOnLocked], steer.go): the dial
-// is a preference that may never be acted on, and under the law above a pick can
-// reach the request in flight, which a scrub that ran only here would have
-// missed by one request.
 func (a *Agent) SetModel(model string) { a.setModel(model) }
 
 // setModel is SetModel with the answer to "when does this land", which the doors
@@ -1640,10 +1626,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// the binding and the reading and the turn talked to one model through a
 	// client built for another. Everything that has to name the work in flight
 	// reads this latch afterwards ([Agent.TurnModel]).
-	// AND THE PICTURES ARE MADE SAFE FOR IT IN THE SAME BREATH, through the one
-	// door a move goes through (steer.go's [Agent.ridesOnLocked]), which scrubs
-	// only when the model actually moved.
-	a.ridesOnLocked(a.model)
+	// AND THE MODEL THE WORK IS ON IS PUBLISHED HERE TOO, not only by the loop's
+	// own [Agent.latchTheModel] on the other side of the goroutine hand-off: a
+	// surface that repainted in between read the model of the turn BEFORE this
+	// one. The two writes are the same value, and the loop's is the one that also
+	// takes the person's word.
+	a.riding = a.model
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is

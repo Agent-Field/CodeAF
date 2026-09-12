@@ -399,11 +399,11 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 // A session with no seer keeps its own model, and the rung fails the way it
 // always did: naming itself, in the words the person can act on.
 func (a *Agent) documentModel(kind documentKind) string {
-	model := a.Model()
+	model := a.ridingNow()
 	if kind != documentImage {
 		return model
 	}
-	if a.sightOf(model) == SightSees {
+	if sees, known := a.seesImages(model); sees && known {
 		return model
 	}
 	if seer := a.visionSeer(); seer != "" {

@@ -188,11 +188,26 @@ func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageRe
 // snapshotWithReasoning takes both aligned slices under one lock. THE SIDECAR
 // ALWAYS HAS THE TRANSCRIPT'S LENGTH, so no concurrent append can put model
 // working beside the wrong assistant message.
+//
+// AND IT IS THE ONE PLACE A REQUEST IS ASSEMBLED FROM THE TRANSCRIPT, which is
+// why the picture guard is here and nowhere else (blindswap.go states the whole
+// design). The messages that go out to a model known to be blind carry each
+// picture's placeholder; the transcript keeps the bytes, so a hop onto a
+// fallback that cannot see — which nobody asked for — cannot cost anybody a
+// screenshot, and hopping back shows it again.
+//
+// THE MODEL IS THE ONE THE WORK IS TALKING TO ([Agent.ridingNowLocked]) rather
+// than an argument, because a request is assembled after the boundary has taken
+// the person's word and after a rescue has moved the step: the field IS which
+// model this request is for, and a second copy of that fact passed down the call
+// chain is a second thing to get wrong.
 func (a *Agent) snapshotWithReasoning() ([]ai.Message, []provider.MessageReasoning) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.alignReasoningLocked()
 	messages := append([]ai.Message(nil), a.messages...)
+	sees, known := a.seesImages(a.ridingNowLocked())
+	messages = a.blindSafe(messages, sees, known)
 	hasReasoning := false
 	for _, carried := range a.messageReasoning {
 		if carried.Text != "" || len(carried.Details) > 0 {
