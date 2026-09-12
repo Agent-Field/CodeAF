@@ -212,6 +212,40 @@ func TestANewPinForAWordThatIsNotARoleIsStillRefused(t *testing.T) {
 	}
 }
 
+// AND THE SAME WORD IS REFUSED WHEN IT IS TYPED AND FORGIVEN WHEN IT IS FOUND,
+// which is the whole asymmetry in one test. `compaction` sitting in a file since
+// before the deletion is a sentence about a world that used to exist and the
+// person cannot act on being told about it; `compaction` typed into the row just
+// now is a person asking for something, who is owed an answer while they are
+// still looking at the box.
+//
+// THE BUG THIS PINS: the check asked [parseModelRoles] whether the word was
+// already stored, and that reader drops every retired word by design — so the
+// stored half read as the typed half and a machine with an old pin could not
+// save any change to any other pin. Nothing failed loudly; the row just would
+// not move.
+func TestATypedRetiredRoleIsRefusedEvenThoughAStoredOneIsForgiven(t *testing.T) {
+	profile := t.TempDir()
+	const stored = "compaction:openai/gpt-5-mini, title:openai/gpt-5-mini"
+	if err := writeText(profile, KeyModelRoles, stored); err != nil {
+		t.Fatalf("seeding the profile: %v", err)
+	}
+
+	// Found in the file: forgiven, and the rest of the row moves.
+	if err := writeModelRoles(profile, stored); err != nil {
+		t.Fatalf("the stored retired pin was refused: %v", err)
+	}
+
+	// Typed just now into a row that no longer has it: refused, by name.
+	err := writeModelRoles(profile, "title:openai/gpt-5-mini, compaction:some/model")
+	if err == nil {
+		t.Fatal("a retired role typed into the row was accepted silently")
+	}
+	if !strings.Contains(err.Error(), "compaction") {
+		t.Errorf("the refusal does not name the word the person typed: %v", err)
+	}
+}
+
 // AND A ROLE WITH NO TIER IS STILL A ROLE. `imagegen` never calls
 // roles.Register — a painter is chosen by a pin or not at all — so it is in the
 // vocabulary and not in the registry, and a reader that asked the registry threw
