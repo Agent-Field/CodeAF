@@ -584,5 +584,13 @@ func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 		if !strings.Contains(frame, open+slot.word) {
 			t.Fatalf("the %q heading is not painted in the places' heading ink", slot.word)
 		}
+		// AND ITS EXPLAINER RIDES ONE SHADE UNDER IT — after the heading and the
+		// separator, in the dim ink, for every panel the column holds it for.
+		if slot.explainer == "" {
+			continue
+		}
+		if !strings.Contains(frame, a.pal.dim(rowSep+slot.explainer)) {
+			t.Fatalf("the %q explainer is not painted dim beside its heading", slot.word)
+		}
 	}
 }
