@@ -2,9 +2,9 @@
 
 *Owner ruling 2026-09-09 (picks D1–D9 below are the orchestrator's defaults,
 owner may override any before its lane lands). Copy of record for every lane in
-the questions wave. Companions: `ideation/questions-first-class.md` (the
-thinking), `ideation/questions-audit.md` (the 21 mechanisms this replaces),
-`docs/design/task-states/DESIGN.md` (the `your call` tier this object opens
+the questions wave. This document carries the thinking and the list of the 21
+mechanisms it replaces; the drafts it was cut from are no longer in the tree.
+Companions: `docs/design/task-states/DESIGN.md` (the `your call` tier this object opens
 into), `docs/design/icons/DESIGN.md` / `internal/tui2/tokens` (every glyph).*
 
 ## The one sentence

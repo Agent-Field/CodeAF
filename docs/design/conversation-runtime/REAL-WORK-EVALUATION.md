@@ -12,7 +12,7 @@ repository changes.
 
 `bench/deepswe` already supplies containerized repository tasks and a separate
 network-disabled grader. Spark has all 113 task directories at
-`/home/santosh/src/swe-pro/tools/deepswe-bench/tasks`, in repository revision
+`<bench-root>/swe-pro/tools/deepswe-bench/tasks`, in repository revision
 `ecf7638b3705c2e08d2b10e38fcca8c70ee73f70`. Absence on the Mac is not absence of
 the corpus. Open PR #634 adds a chat door to this rig; inspect and reuse that work
 before implementing a second container/chat adapter.
