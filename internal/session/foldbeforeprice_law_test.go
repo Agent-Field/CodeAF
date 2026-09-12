@@ -32,7 +32,7 @@ import (
 	"testing"
 )
 
-// theFoldAndThePrice are the two calls whose order is the law, named for what
+// theFold and thePrice are the two calls whose order is the law, named for what
 // they do rather than for where they are: a fold that stops being called
 // `maybeCompact` still has to move this line.
 const (
@@ -46,11 +46,101 @@ func TestTheTranscriptIsFoldedBeforeItsWeightIsPriced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parsing loop.go: %v", err)
 	}
+	foldAt, priceAt := foldAndPriceIn(file, "runTurn")
+	if foldAt == token.NoPos || priceAt == token.NoPos {
+		t.Fatalf("runTurn no longer calls both %s and %s — the law is reading the wrong tree",
+			theFold, thePrice)
+	}
+	if foldAt > priceAt {
+		t.Errorf("%s stands at %s, AFTER %s at %s. The runaway net reads a weight this loop is "+
+			"about to reduce, so a turn whose last round pushed it over the line is moved out to a "+
+			"cold worker one statement before this build would have folded it back under — which is "+
+			"the 2026-09-11 defect this order exists to close.",
+			theFold, set.Position(foldAt), thePrice, set.Position(priceAt))
+	}
+}
 
-	var foldAt, priceAt token.Pos
+// AND THE LAW BITES. The shape it forbids is one statement away from the shape it
+// demands, so it is held to NAMING that shape rather than to being green on the
+// tree as it happens to stand today.
+func TestTheLawNamesAPriceReadBeforeTheFold(t *testing.T) {
+	for _, plant := range []struct {
+		what    string
+		source  string
+		ordered bool
+	}{{
+		what: "the order this loop had when the defect was measured",
+		source: `package session
+func (a *Agent) runTurn(ctx context.Context) bool {
+	for {
+		if a.checkpointRound(ctx) {
+			return true
+		}
+		a.foldTurnOutputs(ctx)
+		a.maybeCompact(ctx)
+	}
+}`,
+		ordered: false,
+	}, {
+		what: "a fold that was left behind in a branch the boundary does not take",
+		source: `package session
+func (a *Agent) runTurn(ctx context.Context) bool {
+	for {
+		if done {
+			a.maybeCompact(ctx)
+			return false
+		}
+		if a.checkpointRound(ctx) {
+			return true
+		}
+	}
+}`,
+		ordered: false,
+	}, {
+		what: "the order the loop has now",
+		source: `package session
+func (a *Agent) runTurn(ctx context.Context) bool {
+	for {
+		a.maybeCompact(ctx)
+		if a.checkpointRound(ctx) {
+			return true
+		}
+	}
+}`,
+		ordered: true,
+	}} {
+		set := token.NewFileSet()
+		file, err := parser.ParseFile(set, "plant.go", plant.source, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parsing the plant for %s: %v", plant.what, err)
+		}
+		foldAt, priceAt := foldAndPriceIn(file, "runTurn")
+		if foldAt == token.NoPos || priceAt == token.NoPos {
+			t.Fatalf("the plant for %s names neither call", plant.what)
+		}
+		if ordered := foldAt < priceAt; ordered != plant.ordered {
+			t.Errorf("%s: the law reads the fold as %s the price, want %s",
+				plant.what, before(ordered), before(plant.ordered))
+		}
+	}
+}
+
+func before(ordered bool) string {
+	if ordered {
+		return "before"
+	}
+	return "after"
+}
+
+// foldAndPriceIn reports where the fold and the price stand in one function.
+//
+// THE LAST FOLD IN THE FUNCTION IS THE STEP BOUNDARY'S. An earlier call is the
+// one the turn's own ending makes, and a law that took the FIRST would be
+// satisfied by a loop with the boundary pair still the wrong way round.
+func foldAndPriceIn(file *ast.File, name string) (foldAt, priceAt token.Pos) {
 	ast.Inspect(file, func(node ast.Node) bool {
 		function, ok := node.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "runTurn" {
+		if !ok || function.Name.Name != name {
 			return true
 		}
 		ast.Inspect(function, func(inner ast.Node) bool {
@@ -64,10 +154,6 @@ func TestTheTranscriptIsFoldedBeforeItsWeightIsPriced(t *testing.T) {
 			}
 			switch selector.Sel.Name {
 			case theFold:
-				// THE LAST ONE IN THE FUNCTION IS THE STEP BOUNDARY'S. An earlier
-				// call is the one the turn's own opening makes, and a law that
-				// took the first would be satisfied by a loop with the boundary
-				// pair still the wrong way round.
 				foldAt = call.Pos()
 			case thePrice:
 				priceAt = call.Pos()
@@ -76,15 +162,5 @@ func TestTheTranscriptIsFoldedBeforeItsWeightIsPriced(t *testing.T) {
 		})
 		return false
 	})
-
-	if foldAt == token.NoPos || priceAt == token.NoPos {
-		t.Fatalf("runTurn no longer calls both %s and %s — the law is reading the wrong tree", theFold, thePrice)
-	}
-	if foldAt > priceAt {
-		t.Errorf("%s stands at %s, AFTER %s at %s. The runaway net reads a weight this loop is "+
-			"about to reduce, so a turn whose last round pushed it over the line is moved out to a "+
-			"cold worker one statement before this build would have folded it back under — which is "+
-			"the 2026-09-11 defect this order exists to close.",
-			theFold, set.Position(foldAt), thePrice, set.Position(priceAt))
-	}
+	return foldAt, priceAt
 }
