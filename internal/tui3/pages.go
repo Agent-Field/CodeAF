@@ -1479,7 +1479,7 @@ func (a *app) placeChipped(row, chip string, width int, pal palette) string {
 func (a *app) scopeChip() string {
 	// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS ([shortPath],
 	// and [app.placePath] applies it to this window's own project). A raw
-	// `/home/santosh/work/aforge-v2` in this chip while the very next place drew
+	// `~/work/aforge-v2` in this chip while the very next place drew
 	// `aforge` would be one fact spelled two ways on two frames a `tab` apart,
 	// and the design draws the short form (SCREEN 2b's `here ~/aforge-v2`).
 	//

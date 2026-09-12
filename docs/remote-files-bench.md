@@ -3,7 +3,7 @@
 Measured 2026-08-24, `spark` → `blackmac`, over a Tailscale tailnet link over a direct WireGuard path between two machines on the public internet — not a local network.
 
 - **surface** — this machine, linux/arm64, running the local half in-process: `internal/remote`'s client, dialled exactly as `aforge chat --host` dials it.
-- **engine** — `blackmac`, Darwin arm64, running `aforge engine --no-host --workspace 'af-files-e2e'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `/Users/santoshkumar/af-files-e2e`.
+- **engine** — `blackmac`, Darwin arm64, running `aforge engine --no-host --workspace 'af-files-e2e'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `~/af-files-e2e`.
 - **wire** — v3 on both ends. The handshake refuses a mismatch at the door, so every number below is one protocol talking to itself.
 
 Reproduce, with a seeded workspace on the far machine (`note.txt`, `sub/inner.txt`, `five-mb.bin`, `twenty-mb.bin`) and an aforge from this branch on its PATH:

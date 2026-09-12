@@ -56,7 +56,7 @@ TASKDIR="$MARATHON_REPO/tasks/$TASK"
 IMAGE="${IMAGE:-swe-marathon/$TASK:v1.1}"
 
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
 # PI IS A NODE BUNDLE, NOT A BINARY, and mounting just the entry point is how
 # seven pi cells once died in 0 seconds with ERR_MODULE_NOT_FOUND: cli.js imports
 # sibling files from dist/bundle/chunks/. The whole package travels, and it is
@@ -92,7 +92,7 @@ SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-3600}"
 # registry test walks the tree and dies on `permission denied`. So artifacts are
 # written to $MAR_OUT (default ~/af-bench/marathon) and bench/oneroad/marathon/_results
 # is a SYMLINK to it — filepath.Walk does not follow symlinks.
-MAR_OUT="${MAR_OUT:-/home/santosh/af-bench/marathon}"
+MAR_OUT="${MAR_OUT:-$HOME/af-bench/marathon}"
 mkdir -p "$MAR_OUT"
 CELL="$MAR_OUT/$ARM-$TASK-$SEED"
 # A PREVIOUS CELL'S LEAVINGS MAY NOT BELONG TO US: a cell killed before its

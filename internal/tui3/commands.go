@@ -668,7 +668,7 @@ type menu struct {
 // three are here rather than spread around the surface:
 //
 //   - A '/' with a non-space in front of it opens nothing. That is the token
-//     rule, and it is what makes "/Users/santosh" one candidate rather than two.
+//     rule, and it is what makes "/Users/example" one candidate rather than two.
 //   - A filter that matches NOTHING closes the list. The word being matched is
 //     the whole run to the next space — "Users/santosh", "tmp/aforge" — so a
 //     path drops out within a couple of keystrokes and stays out; a backspace
