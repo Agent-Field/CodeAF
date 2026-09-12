@@ -187,10 +187,27 @@ func (c *Client) routingGateTakenOver(model string) bool {
 	return gateFor(model).TakenOver(laneNow())
 }
 
-// noteRouterChoice is the write side, called where an answer's lane is known.
-// Refused and bad move their own axes; a healthy answer moves both. It answers
-// whether THIS call armed the takeover, so the sentence a person reads is said
-// once, by the call that earned it, and never by the retry that follows.
+// noteRouterChoice is the write side for ANSWERS, called where an answer's lane
+// is known. Refused and bad move their own axes; a healthy answer moves both.
+// It answers whether THIS call armed the takeover, so the sentence a person
+// reads is said once, by the call that earned it, and never by the retry that
+// follows.
+//
+// A REFUSAL IS EVIDENCE ABOUT THE ROUTER'S DEFAULT ONLY WHEN THE ROUTER'S
+// DEFAULT WAS ASKED. A demand this process narrowed, that the router then
+// refused, is evidence about OUR CHOICE — and it must not hold the road. That
+// is what [Client.noteRouterRefusal] splits, and the measurement that priced
+// it: a live chat (2026-09-12) held four `Retry 1/2: relaxed the endpoint
+// filter` lines, because the takeover had armed on earlier refusals, and every
+// narrowed demand it then chose answered 404 — and counted as ANOTHER refusal,
+// arming the takeover again, each cost of the loop a full ~80k-token re-send
+// BEFORE the ladder's first rung could go bare. Only a bare refusal may count.
+//
+// THE ANSWER SIDES NEED NO SHAPE SPLIT. An answer that arrived is not a
+// refusal of anything: a good one is a queue drained, and an unusable one is a
+// verdict about the machine that spoke it, whichever spine chose it. So
+// NoteHealthy and NoteBad apply regardless of what the request demanded; only
+// the refusal axis narrows.
 func (c *Client) noteRouterChoice(model, served, reason string, accepted bool) (armed bool) {
 	model = laneModel(model)
 	if !c.carriesPreferences() || model == "" {
@@ -213,6 +230,21 @@ func (c *Client) noteRouterChoice(model, served, reason string, accepted bool) (
 		gate.NoteHealthy(now)
 		return false
 	}
+}
+
+// noteRouterRefusal is the refusal door, reached from velocity.go's
+// [Client.refuseLane] — the only door a refusal ever passes. It carries the
+// attempt's shape because the law above splits refusals on it: only a refusal
+// of a BARE attempt is evidence about the router's default, and only that may
+// count toward a takeover. A refusal of a demand this process narrowed is a
+// verdict about OUR CHOICE — the picker earned that, not the router — and the
+// gate hears nothing, which is what keeps a takeover's own narrowed demands
+// from re-arming the takeover that chose them.
+func (c *Client) noteRouterRefusal(model, served string, askedBare bool) (armed bool) {
+	if !askedBare {
+		return false
+	}
+	return c.noteRouterChoice(model, served, "refused", false)
 }
 
 // armTakeover puts the gate over for one model, and forgetRouterGates empties

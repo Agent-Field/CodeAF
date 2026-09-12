@@ -73,6 +73,21 @@ the life of the conversation. Starting in the "wrong" place is not a dead end,
 though: name the folder you actually meant with `/folder`, and the work goes
 there.
 
+## /status says an older build is holding this conversation
+
+On every launch aforge performs one sweep: it reads every presence file under
+`~/.aforge/v3/projects`, and if a live session there is running from an older
+rev than this binary's own, one line in the conversation names the pids. That
+is all `on an older build` means — the sweep warns. It never blocks, never
+locks, never kills.
+
+The `/status` build line shows the serving process's build: for a chat that is
+the process typed `aforge` with; for a conversation hosted by the resident
+engine (`engine --daemon`) it is still whatever binary the engine launched
+from. In both cases the fix is a close: close the older session or the older
+engine, and its next open runs this build. No line at launch means nothing
+stale is running.
+
 ## The flags you can start it with
 
 | Flag | What it does |
