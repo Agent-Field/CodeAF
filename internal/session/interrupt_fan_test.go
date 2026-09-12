@@ -70,7 +70,7 @@ func TestOneEscProducesAtMostOnePlannerPassAndOneTitleCall(t *testing.T) {
 	go func() { defer wg.Done(); _ = agent.readMark(context.Background()) }()
 	go func() {
 		defer wg.Done()
-		_, _ = agent.writeHandoff(context.Background(), asked, "", "")
+		_, _ = agent.writeHandoff(context.Background(), asked, "")
 	}()
 	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()
 	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()

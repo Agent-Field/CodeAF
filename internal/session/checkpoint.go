@@ -428,6 +428,11 @@ const (
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
 	checkpointDigestWritten = "WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)"
+	// checkpointDigestRead heads the places the turn OPENED and did not change.
+	// It says `already` because that is the whole of what it is for: a reader, or
+	// a worker, or the same turn after a fold, is being told which of these it has
+	// already paid to look at.
+	checkpointDigestRead = "PLACES ALREADY OPENED"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -956,6 +961,15 @@ type checkpointMeter struct {
 	// said this message reads like work, and zero on every ordinary turn — see
 	// [checkpointMeter.tighten].
 	firstAt int
+	// boughtAt is the round THE LADDER'S FOOT STANDS ON, and zero on a turn that
+	// has never bought itself room ([checkpointMeter.compacted]).
+	//
+	// IT IS AN OFFSET AND NOT A COUNT OF COMPACTIONS. The rungs keep the spacing
+	// the two constants give them ([checkpointMarkAt]); what a compaction moves is
+	// only where they are measured from, so a turn that bought room pays the whole
+	// price again before it is read again and no new number is invented to bound
+	// how often that may happen.
+	boughtAt int
 	// outOfRoom says THE NET FIRED BECAUSE THIS TURN'S CONTEXT COULD NO LONGER
 	// HOLD ANOTHER STEP, and it is the one fact about a runaway that decides what
 	// happens next (inherit.go): a worker handed a context its own window cannot
@@ -1043,7 +1057,47 @@ func (m *checkpointMeter) markAt(n int) int {
 	if n == 1 && m.firstAt > 0 {
 		return m.firstAt
 	}
-	return checkpointMarkAt(n)
+	// AND A TURN THAT BOUGHT ITSELF ROOM CLIMBS THE SAME LADDER FROM WHERE IT
+	// BOUGHT IT. The rung spacing is [checkpointMarkAt] whether or not a
+	// compaction has happened; what moves is only where the ladder's foot stands
+	// ([checkpointMeter.compacted]).
+	return m.boughtAt + checkpointMarkAt(n)
+}
+
+// compacted is what THE CEILING DOES WHEN THE TURN CAN CARRY ON: the ladder is
+// put back at the foot, standing on the round the room was bought on.
+//
+// THE PRICE IS PAID AGAIN IN FULL, which is what keeps this bounded. The next
+// mark is [checkpointPrice] rounds of real work away and the two after it double
+// exactly as they did the first time, so a turn that compacts and then grinds is
+// read again, and again pays the whole ladder before it is asked to leave. What
+// ends it is not a count of compactions — a counter of those would be the magic
+// number this frame exists to avoid — but the one fact that says a turn cannot
+// carry on: a context the fold can no longer bring under the working set
+// ([Agent.checkpointCeiling]).
+//
+// A BELIEVED COMPLETION CLAIM IS NOT DISTURBED. `askAgainAt` bounds a CLAIM
+// rather than a cost, and a turn that bought room after saying it was finished
+// is still a turn that must be met if it carries on working.
+//
+// AND THE RUNAWAY LATCH IS NOT CLEARED EITHER, WHICH IS THE POINT. A turn that
+// bought room by folding is a turn whose transcript is now a summary of its
+// results rather than the results, and that is precisely the transcript a
+// promotion must not carry ([checkpointMeter.outOfRoom] states the law and the
+// measurement). So a turn that ran out of room once, compacted, and carried on
+// still takes the brief road with its findings compiled into it when it does
+// eventually leave. The latch bounds WHAT MAY TAKE the turn; this bounds WHEN it
+// is asked again; they are two facts and neither is the other's flag.
+func (m *checkpointMeter) compacted() {
+	if m == nil {
+		return
+	}
+	m.marks = 0
+	m.boughtAt = m.rounds
+	// THE RACE'S PULLED-DOWN FIRST RUNG IS SPENT AND NOT RE-ARMED. It was triage
+	// about the REQUEST — a reason to look sooner, once — and a turn that has now
+	// been read three times has evidence of its own that outranks it.
+	m.firstAt = 0
 }
 
 // tighten is what a raced both-yes DOES now, and it is the whole of the race's
@@ -1840,15 +1894,13 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// was never reduced against, and a piece that settled in the seconds between
 	// the two reads would leave a drawing missing a part for work that is now
 	// back. One question, one answer, carried.
-	read.held = a.piecesStillOut()
-	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
 	// AND THE WORK EVIDENCE THE READER SAW RIDES BACK WITH WHAT IT DREW. The
 	// drawing is one line of letters; this bounded account is what a downstream
 	// writer can weigh beneath it (task_divide_sketch.go). The handoff page adds
 	// the complete ask in its own section, so carrying it here would send the
 	// same request twice.
-	read.digest = checkpointDigest("", snapshot)
-	return read
+	read.digest = checkpointDigest("", snapshot, checkpointDigestBytes)
+	return a.groundRead(read)
 }
 
 // checkpointRead is ONE mark's reading as an EVENT rather than as a drawing: the
@@ -1981,9 +2033,22 @@ const (
 	// reader had agreed to that.
 	checkpointDecisionLate = "late"
 
-	checkpointCeilingMoved   = "moved"
-	checkpointCeilingNothing = "dropped:nothing-left"
-	checkpointCeilingNoBrief = "dropped:no-brief"
+	checkpointCeilingMoved = "moved"
+	// checkpointCeilingCompacted is the ceiling deciding the turn CAN carry on:
+	// the drawing named no independent parts, the transcript was compacted in
+	// place, and what came out of the fold sits inside the working set
+	// ([Agent.checkpointCeiling]).
+	//
+	// IT IS SPELLED APART FROM EVERY `dropped:` WORD BESIDE IT, and the difference
+	// is the whole of what this rung added. A drop is a handover that was
+	// considered and declined — nothing moved, and nothing about the turn changed
+	// either. This is a handover that was never owed: the turn bought itself room,
+	// the ladder went back to its foot ([checkpointMeter.compacted]), and the same
+	// meter will meet it again at the same price. A bench that spelled the two
+	// alike could not tell a turn that was let off from a turn that paid.
+	checkpointCeilingCompacted = "compacted"
+	checkpointCeilingNothing   = "dropped:nothing-left"
+	checkpointCeilingNoBrief   = "dropped:no-brief"
 	// checkpointCeilingStopped is the ending a handover takes when the session's
 	// own goal owner read it and STOPPED THE RUN rather than let the work move
 	// ([Agent.endTurnUnderSteward]). It is spelled apart from the three above
@@ -2324,8 +2389,11 @@ func carryLine(line, carried string, top carryStep) string {
 //
 // AN EMPTY DIGEST IS THE HONEST ANSWER TO AN EMPTY TURN, and [Agent.readMark]
 // spends nothing on one.
-func checkpointDigest(asked string, messages []ai.Message) string {
-	ledger, written, results, moved := checkpointLedger(messages)
+func checkpointDigest(asked string, messages []ai.Message, budget int) string {
+	if budget <= 0 {
+		return ""
+	}
+	ledger, written, read, results, moved := checkpointLedger(messages)
 
 	var head strings.Builder
 	if asked = strings.TrimSpace(asked); asked != "" {
@@ -2339,31 +2407,55 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 	// section that grows without bound and the other three must not be squeezed out
 	// by it. A turn of ninety tool calls is exactly the turn whose last words and
 	// written things matter most.
-	var tail strings.Builder
-	if len(written) > 0 {
-		tail.WriteString(checkpointDigestWritten)
-		tail.WriteString("\n")
-		tail.WriteString(strings.Join(written, "\n"))
-		tail.WriteString("\n\n")
-	}
+	// AND THE TAIL ITSELF HAS AN ORDER OF EVICTION, which is what makes the
+	// budget rather than a second function the difference between the account a
+	// READER is shown and the account a FOLD leaves behind.
+	//
+	// The four sections are written in the order they are worth keeping: where
+	// the turn has already been and what it put there are FACTS THE TRANSCRIPT
+	// WILL NO LONGER HOLD once a fold has run, and the other two are commentary
+	// on a transcript that is still there. So a small budget — the fold's — comes
+	// out as the paths alone, and a reader's budget comes out as all four. One
+	// rule, and nobody has to choose sections by hand.
+	//
+	// AND A FOLD'S ACCOUNT MAY NOT REPEAT WHAT IT IS FOLDING. That is the same
+	// eviction read from the other side: the last thing said is prose the fold is
+	// giving up, and a marker that carried it would be the fold handing back the
+	// bytes it just took.
+	tail := accountSections{room: budget}
+	section := tail.add
+	tail.list(checkpointDigestWritten, written, checkpointOlderPlaces)
+	// AND THE PLACES ONLY OPENED ARE NOT A BOUNDARY SECTION. They are the LEDGER
+	// DEDUPLICATED — one line per place instead of one per call — so they take
+	// their room from the ledger's allowance and before it: a reader that can
+	// have only one of the two should have the compact one. What is written, how
+	// the work has moved and the last thing said stay above both, because none of
+	// them grows with the turn.
+	// AND WHERE THE TURN HAS ALREADY BEEN, which is the section a reader shown an
+	// account of the work was missing entirely. A ledger line says a place was
+	// opened and then competes for room with ninety others; this is the deduped
+	// list of them, and it is in the TAIL — fitted before the ledger — because it
+	// is the shortest statement of what the turn has already cost and the one a
+	// continuation most needs not to pay for twice.
 	// IT RIDES IN THE TAIL, which is the section fitted before the ledger, so the
 	// one line that says whether the work is moving cannot be squeezed out by
 	// ninety lines that say it was busy.
-	if line := moved.digestLine(); line != "" {
-		tail.WriteString(checkpointDigestMoved)
-		tail.WriteString("\n")
-		tail.WriteString(line)
-		tail.WriteString("\n\n")
-	}
-	if said := clip(checkpointLastSaid(messages), checkpointSaidBytes); said != "" {
-		tail.WriteString(checkpointDigestSaid)
-		tail.WriteString("\n")
-		tail.WriteString(said)
-		tail.WriteString("\n")
-	}
+	section(checkpointDigestMoved, moved.digestLine())
+	section(checkpointDigestSaid, clip(checkpointLastSaid(messages), checkpointSaidBytes))
 
 	var out strings.Builder
 	out.WriteString(head.String())
+	if len(read) > 0 {
+		// AND IT LEAVES THE LEDGER ITS OWN ELISION. A section that says how many
+		// lines it dropped writes that line whatever room is left, so a greedy
+		// section above it has to reserve the widest that line can be — the count
+		// can never exceed the whole ledger — or the digest ends one line over the
+		// bound and the final clip takes it off the LAST thing written, which is
+		// the tail nobody was supposed to be able to squeeze out.
+		places := accountSections{room: budget - out.Len() - tail.Len() - len(checkpointOlderSteps(len(ledger)))}
+		places.list(checkpointDigestRead, read, checkpointOlderPlaces)
+		out.WriteString(places.String())
+	}
 	if len(ledger) > 0 {
 		out.WriteString(checkpointDigestDone)
 		out.WriteString("\n")
@@ -2375,11 +2467,9 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		// The room reserved for that line is measured at its WIDEST — the count can
 		// never exceed the whole ledger — so a digest that ends up needing it cannot
 		// be pushed over the bound by saying so.
-		elision := func(dropped int) string {
-			return fmt.Sprintf("… and %d earlier steps\n", dropped)
-		}
+		elision := checkpointOlderSteps
 		kept, dropped := checkpointNewestThatFit(ledger,
-			checkpointDigestBytes-out.Len()-tail.Len()-len(elision(len(ledger))))
+			budget-out.Len()-tail.Len()-len(elision(len(ledger))))
 		if dropped > 0 {
 			out.WriteString(elision(dropped))
 		}
@@ -2406,7 +2496,7 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		elision := func(dropped int) string {
 			return fmt.Sprintf("… and %d earlier results\n", dropped)
 		}
-		room := checkpointDigestBytes - out.Len() - tail.Len() -
+		room := budget - out.Len() - tail.Len() -
 			len(checkpointDigestFound) - len("\n\n") - len(elision(len(results)))
 		kept, dropped := checkpointNewestThatFit(results, room)
 		if len(kept) > 0 {
@@ -2426,7 +2516,7 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 	// The final clip is a backstop and not the policy: the fitting above is what
 	// keeps the sections whole, and this is what guarantees the bound whatever a
 	// future section does.
-	return clip(strings.TrimSpace(out.String()), checkpointDigestBytes)
+	return clip(strings.TrimSpace(out.String()), budget)
 }
 
 // checkpointNewestThatFit keeps the NEWEST lines that fit in room, and reports
@@ -2466,8 +2556,9 @@ func checkpointNewestThatFit(lines []string, room int) ([]string, int) {
 // names no call this walk has seen is dropped rather than attached to whichever
 // line happens to be beside it: a digest that credited one tool's output to
 // another tool's line would be evidence that is worse than none.
-func checkpointLedger(messages []ai.Message) (ledger, written, results []string, moved workClock) {
+func checkpointLedger(messages []ai.Message) (ledger, written, read, results []string, moved workClock) {
 	seen := make(map[string]bool)
+	opened := make(map[string]bool)
 	// The clock is folded in on the same walk and for the same reason the other
 	// three are: it is the same facts read a fourth way — a call is a step, a
 	// writer's call is the work moving, a result is lines that were or were not
@@ -2478,6 +2569,16 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	at := make(map[*ai.ToolCall]int)
 	calls := make(map[*ai.ToolCall]string)
 	paired := toolResultCalls(messages)
+	// WHICH CALLS CAME BACK AT ALL, read once before the walk. The ledger walks
+	// forward and a call's result is behind it, so a rule about answeredness
+	// cannot be decided in the same pass without looking ahead — and looking
+	// ahead twice is the second walk this function exists to avoid.
+	writeWasAnswered := make(map[string]bool, len(paired))
+	for index, call := range paired {
+		if call != nil && messages[index].Role == "tool" {
+			writeWasAnswered[call.ID] = true
+		}
+	}
 	writeResult, writeStep := -1, 0
 	var writeInput string
 	for messageIndex, message := range messages {
@@ -2503,11 +2604,23 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 				calls[call] = line
 				at[call] = moved.steps
 			}
-			if !checkpointWriters[name] {
-				continue
-			}
 			path := checkpointArgumentNamed(call.Function.Arguments, "path")
 			if path == "" {
+				continue
+			}
+			if !checkpointWriters[name] {
+				// AND A CALL THAT NAMED A PLACE AND DID NOT CHANGE IT OPENED IT.
+				// This is derived from the ARGUMENT and never from the verb, which
+				// is the same law the ledger line itself is held to: a belt grows
+				// verbs, and a list of reading tools would be a list that is wrong
+				// about every one added after it was written. Anything carrying a
+				// `path` it did not write is a place this turn has already been —
+				// which is the one thing a reader of a folded transcript, or a
+				// worker opening cold, cannot get from anywhere else.
+				if !opened[path] {
+					opened[path] = true
+					read = append(read, path)
+				}
 				continue
 			}
 			// THE CLOCK MOVES ON EVERY WRITE AND THE LIST ONLY ON A NEW NAME. A
@@ -2518,6 +2631,27 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 				continue
 			}
 			seen[path] = true
+			// AND WHAT WAS PUT THERE IS SAID IN ITS OWN FIRST LINE, BUT ONLY ONCE
+			// THE WRITE CAME BACK.
+			//
+			// A path alone says a file was touched; the opening line of what went
+			// into it is what tells a reader WHICH of several plausible things this
+			// turn actually did — and it is the difference between a continuation
+			// that knows its own edits and one that re-reads them all to find out.
+			//
+			// AN UNANSWERED WRITE IS NOT EVIDENCE OF ITS OWN CONTENT, which is the
+			// law the results already keep ([checkpointWriteArgumentBytes]) said on
+			// this side: a call still in flight, or one that failed, has a payload
+			// that names what was ATTEMPTED, and printing it beside a path reads as
+			// a statement about the disk. So the path goes up either way and the
+			// head waits for the answer.
+			head := ""
+			if writeWasAnswered[call.ID] {
+				head = checkpointWriteHead(call.Function.Arguments, path)
+			}
+			if head != "" {
+				path += checkpointWroteArrow + head
+			}
 			written = append(written, path)
 		}
 		if message.Role != "tool" {
@@ -2551,7 +2685,52 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	if writeResult >= 0 {
 		results[writeResult] += writeInput
 	}
-	return ledger, written, results, moved
+	return ledger, written, read, results, moved
+}
+
+// checkpointWroteArrow joins a path to the opening of what was written into it.
+// It is the result arrow's sibling and is spelled the same way for the same
+// reason ([checkpointResultArrow]): a word here would read as a heading.
+const checkpointWroteArrow = " — "
+
+// checkpointWriteHead is the FIRST LINE of what one write or edit put on the
+// disk, and nothing at all when the call said nothing but a path.
+//
+// IT KNOWS NO ARGUMENT'S NAME BUT THE PATH'S, which is the law
+// [checkpointArgument] states and this obeys from the other side: the payload is
+// whatever string value came that is not the place it was going. Wire order
+// again — a model writes the path and then the thing — so the first such value
+// is the content on every verb that has one, including verbs nobody has written
+// yet.
+//
+// ONE LINE AND CLIPPED, because this rides in the section the fold leaves behind
+// as well as in the reader's account, and a section that carried the file would
+// be the transcript the fold just gave up.
+func checkpointWriteHead(arguments, path string) string {
+	decoder := json.NewDecoder(strings.NewReader(arguments))
+	if opening, err := decoder.Token(); err != nil {
+		return ""
+	} else if delimiter, ok := opening.(json.Delim); !ok || delimiter != '{' {
+		return ""
+	}
+	for decoder.More() {
+		if _, err := decoder.Token(); err != nil {
+			return ""
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return ""
+		}
+		said := strings.TrimSpace(checkpointArgumentValue(value))
+		if said == "" || said == path {
+			continue
+		}
+		if cut := strings.IndexByte(said, '\n'); cut >= 0 {
+			said = strings.TrimSpace(said[:cut])
+		}
+		return clip(said, checkpointLedgerBytes)
+	}
+	return ""
 }
 
 // checkpointResultTail is the END of what one call returned, bounded by
@@ -3601,7 +3780,7 @@ func (a *Agent) journalDecision(decision Decision) {
 // regression-wave economics: a small read-only turn is priced exactly as it was
 // before this existed and pays no reader.
 func turnLeftTheTreeUnchecked(messages []ai.Message) bool {
-	_, _, _, moved := checkpointLedger(messages)
+	_, _, _, _, moved := checkpointLedger(messages)
 	return moved.changedAt > 0 && moved.changedAt == moved.steps
 }
 
@@ -3701,9 +3880,9 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 func checkpointCompletionPage(asked string, messages []ai.Message) string {
 	asked = strings.TrimSpace(asked)
 	if len(checkpointDigestAsked)+1+len(asked) <= checkpointDigestBytes {
-		return checkpointDigest(asked, messages)
+		return checkpointDigest(asked, messages, checkpointDigestBytes)
 	}
-	evidence := checkpointDigest("", messages)
+	evidence := checkpointDigest("", messages, checkpointDigestBytes)
 	var out strings.Builder
 	out.WriteString(checkpointDigestAsked)
 	out.WriteString("\n")
@@ -3788,24 +3967,73 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 	return len(a.jobsWorkingNow()) > 0
 }
 
-// checkpointCeiling ends the turn and moves what is left of it onto the one
-// road. Past the last mark there is no branch back into the conversation on
-// account of the WORK — the work was read twice and the harness has stopped
-// reading — and it reports whether the turn is over.
+// checkpointCeiling is the LAST RUNG OF THE LADDER, and its whole question is
+// whether this turn can carry on where it is. It reports whether the turn is
+// over.
 //
-// THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a third
-// sketch: it is the model saying nothing remains at all
-// ([checkpointNothingLeft]) with no independent remainder named by the sketch. The ceiling
-// exists to move A GRIND somewhere it is watched, and a turn that is finishing is
-// not a grind — but a running model declaring itself finished is the model
-// grading its own work, which is exactly the reading this whole file was rebuilt
-// to stop relying on. It was measured doing it: a turn declared nothing was left
-// at the ceiling, the handover was dropped, and the same model then ground on for
-// twenty more rounds unwatched. So the drop is believed ONCE PER REQUEST and the
-// ceiling comes back to meet a turn that carries on working past its own claim
-// ([Agent.handOverRunningTurn], [checkpointMeter.believeDone]).
+// ── A TURN LEAVES ONLY WHEN IT CANNOT CONTINUE ──
 //
-// EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S. It contributes the
+// This rung used to be an unconditional hand-over: past the last mark the work
+// moved, and the only thing that could stop it was the model declaring itself
+// finished. That priced a turn in ROUNDS and then spent a CONTEXT, which are not
+// the same currency and were never compared. Measured on 2026-09-11, a
+// one-paragraph request for a hover effect ran forty rounds with the great
+// majority of its window still free and was moved to a cold worker anyway: the
+// ceiling was wearing the clothes of a context valve without being one.
+//
+// So the ladder has a rung in front of the move, and it is the cheapest thing
+// the harness can do:
+//
+//  1. THE WORK IS READ, beside the turn, exactly as it is at the two marks below
+//     ([Agent.checkpointRound]). A drawing with INDEPENDENT PARTS in it moves the
+//     turn through [Agent.checkpointSettle], which is the road it always took —
+//     width is the one reading that says more than one pair of hands can hold
+//     this, and it is evidence FOR leaving.
+//  2. THE TURN COMPACTS IN PLACE, with the model-free pass this session already
+//     runs at every step boundary ([Agent.compact]): consumed results become
+//     pointers to their own bytes, the oldest assistant work becomes one line,
+//     and the person's own messages are never touched.
+//  3. AND THEN THE ONE FACT THAT DECIDES IS READ OFF THE RESULT. A context under
+//     the working set is a turn that can carry on; a context the fold cannot
+//     bring under it is a turn that genuinely cannot, and that one moves.
+//
+// ── AND THE FACT IT READS IS THE NET'S OWN ──
+//
+// "This turn cannot work where it is" already exists in this build, with one
+// arithmetic and one line: [Agent.contextRoomFor], which the runaway net reads a
+// few rungs down ([Agent.turnHasRunAway]) and the promotion gate reads about a
+// worker's window ([Agent.inheritFits]). This rung is the third reader of that
+// one sum, asked on both sides of a fold, and it may not be a fourth opinion
+// about how full is full: a ceiling that moved a turn the net would have called
+// fine — or kept one the net would have taken — would be two thresholds arguing
+// inside one ladder.
+//
+// THE HYSTERESIS IS THE FOLD'S, NOT A SECOND NUMBER. The line asked about here
+// is where a conversation must start folding; the fold itself stops at
+// [compactTarget], which is that line less half a reserve. So a turn handed back
+// a continuation is not sitting on its own trigger about to thrash — it is a
+// reserve below it — and nothing here has to name a gap to get that.
+//
+// AND A PASS THAT FOUND NOTHING IS NOT A REFUSAL. [ErrNothingToCompact] says the
+// transcript is already the person's words and the recent tail — which on a turn
+// with a free window is the ORDINARY case and the whole of the measured defect.
+// What is read is the estimate against the target, never whether the pass did
+// something.
+//
+// ── AND THE METER RE-ARMS FROM THE COMPACTION ──
+//
+// A turn that bought room starts renting again from the round it bought it on,
+// at the same price and the same doubling ([checkpointMeter.compacted]). So a
+// turn that compacts and then grinds is read again and pays the whole ladder
+// again before it is asked to leave, and a turn whose context can no longer be
+// folded under the working set leaves at the next ceiling. That is what bounds
+// this: the fold protects the running turn's own working memory, so a turn that
+// keeps working keeps growing what cannot be folded, and the answer to (3)
+// becomes "no" on its own.
+//
+// ── WHEN IT DOES MOVE ──
+//
+// EVERYTHING IT DOES THEN IS [Agent.handOverRunningTurn]'S. It contributes the
 // two things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
 // outran one pair of hands by measurement rather than by anybody's opinion, which
 // is the strongest evidence of breadth any door into the graph has; arming costs
@@ -3813,25 +4041,129 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 // is wide and the evidence gate still refuses a division the material does not
 // support (task_divide.go).
 //
-// THE SKETCH RIDES ALONG WHEN THERE IS ONE, and it now does two jobs rather than
-// one. A drawing of what is left is exactly what the worker's first paragraph
-// should be — and where it draws INDEPENDENT PARTS it is a second mind stating
-// that work remains, which is the one reading that refuses a completion claim
-// ([Agent.handOverRunningTurn]).
+// THE DRAWING RIDES ALONG WHEN ONE HAS LANDED, and the half of the reading that
+// needs no model at all — what this conversation is still holding, and the
+// account of the work the writer downstream is shown — is built here whether or
+// not a drawing ever arrived ([Agent.groundRead]). That is what keeps a move
+// forced by a full context from being a worse handover than a move forced by
+// width.
 //
-// AND THIS IS THE ONE MOMENT THAT WRITES ITSELF DOWN. What the ceiling did to a
-// turn used to exist nowhere: a run where the handover was dropped and a run where
-// it never fired read identically in the file, which is why the measured failure
-// could not be attributed without re-reading provider logs. So one line, with the
-// round it fired on and what it decided (sessionfile.go's [journalCeiling]).
+// AND EVERY WAY OUT WRITES ITSELF DOWN, the continuation included. What the
+// ceiling did to a turn used to exist nowhere, which is why the measured failure
+// could not be attributed without re-reading provider logs; a rung that can now
+// also say "carry on" would re-open exactly that hole if it said it silently.
 func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
+	// A TURN THE PERSON HAS LET GO OF NEITHER COMPACTS NOR MOVES. The handover
+	// road answers cancellation with a row of its own; this rung is above it, and
+	// rewriting a transcript that belongs to nobody would be work done for a turn
+	// that has already ended.
+	if ctx.Err() != nil {
+		return false
+	}
+	if a.checkpointCanCarryOn(ctx, hub) {
+		meter.compacted()
+		a.file.appendCeiling(journalCeiling{
+			Rounds: rounds, Seam: checkpointSeamCeiling, Decision: checkpointCeilingCompacted,
+		})
+		return false
+	}
 	verdict.Wide = true
-	// AND THE ROW IS NOT WRITTEN HERE ANY MORE. It is written by the function
-	// below, on every way out it has, because the ending is decided there and the
-	// two other doors into it were leaving the file silent — see the seam
-	// constants above. This road's remaining job on that line is nothing.
+	// AND THE ROW IS NOT WRITTEN HERE. It is written by the function below, on
+	// every way out it has, because the ending is decided there and the two other
+	// doors into it were leaving the file silent — see the seam constants above.
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict, read, taken).moved
+		checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict,
+		a.groundRead(read), taken).moved
+}
+
+// checkpointCanCarryOn is the ceiling's one fact: this turn compacts in place,
+// and then either its context sits inside the room the net measures or it does
+// not ([Agent.contextRoomFor]).
+//
+// IT MAKES NO MODEL CALL, which is what lets it stand in the middle of a running
+// turn at all. [Agent.compact] is the session's own model-free pass and is
+// reached here through the same door the automatic one uses, so a lane that
+// changes what a fold keeps changes what this reads in the same edit.
+//
+// AND A TURN THAT ALREADY HAS ROOM IS NOT COMPACTED TO FIND THAT OUT, which is
+// the emptiness law reaching a pass rather than a screen. Folding a transcript
+// that already fits would announce itself, hold a clock and settle to "nothing to
+// compact" — a stage a person watched for a decision that was never in doubt —
+// and the ordinary per-step pass already owns the question of when this
+// conversation is due a fold ([Agent.maybeCompact]). So the fold runs HERE only
+// where it could change the answer, which is the only reason this rung has to ask
+// for one at all.
+//
+// A PASS THAT FOUND NOTHING IS STILL AN ANSWER. The transcript is then the
+// person's own words and the recent tail, and whether that fits is exactly the
+// question being asked.
+func (a *Agent) checkpointCanCarryOn(ctx context.Context, hub *eventHub) bool {
+	if carried, room, known := a.contextRoomFor(a.model); !known {
+		// A WINDOW NOBODY CAN NAME CANNOT SAY A TURN HAS ROOM. It is the opposite
+		// fail direction from the net's, and it is the conservative one HERE for the
+		// same reason it is conservative THERE: a doubt may not keep a turn the
+		// harness has stopped reading, so with no figure to read the ceiling moves
+		// the turn exactly as it did before this rung existed.
+		return false
+	} else if carried <= room {
+		return true
+	}
+	_, _ = a.compact(ctx, hub)
+	carried, room, known := a.contextRoomFor(a.model)
+	return known && carried <= room
+}
+
+// handoffDigestBytes is how much of the account the HANDOFF's writer is shown,
+// and it is the one number on this road that is not [checkpointDigestBytes].
+//
+// A MARK'S BUDGET IS A PRICE AND A HANDOFF'S IS A CAPACITY, and collapsing them
+// was the measured defect. [checkpointDigestTokens] is five thousand because a
+// mark's reading happens up to three times on a turn that is still running and a
+// mastermind reading a raw transcript costs more than the work it is judging.
+// The handoff is written ONCE, at the end, and what it produces is the ENTIRE
+// world of a worker that saw none of this — so the thing that should bound it is
+// not the price of looking again but how much the reader can actually hold.
+// Measured: the worker re-read every file the turn had already opened, because
+// the five thousand tokens it inherited carried no list of them.
+//
+// SO IT IS A SHARE OF THE WINDOW THE READER HAS, and the share is the one this
+// package already derives for exactly this question — what a fold may leave
+// behind and still be a fold. [Agent.compactTargetTokens] is the working set of
+// the CONVERSATION, and an account of the turn that filled the worker's working
+// set would leave it no room to work; the honest fraction is the headroom the
+// compaction machinery already keeps between the trigger and the target
+// ([compactTarget]), which is what the digest is: everything the handover is
+// allowed to spend of somebody else's window before the work starts.
+//
+// AND IT IS NEVER SMALLER THAN A MARK'S. A window nobody can name, or one too
+// small for the arithmetic to mean anything, answers the figure this road used
+// before the share existed — which is the honest floor rather than a handover
+// that carries less than a mark did.
+func (a *Agent) handoffDigestBytes() int {
+	window := a.trustedWindow()
+	if share := (window - compactThresholdOf(window)) * bytesPerToken; share > checkpointDigestBytes {
+		return share
+	}
+	return checkpointDigestBytes
+}
+
+// groundRead fills in the half of a mark's reading that needs NO MODEL: what
+// this conversation is still holding, the drawing reduced by it, and the account
+// of the work a downstream writer is shown.
+//
+// IT IS ONE FUNCTION BECAUSE THE TWO CALLERS MUST AGREE. [Agent.readMark] runs
+// it over the drawing it just paid for; the ceiling runs it over whatever
+// drawing happened to land, including none at all — a move forced by a full
+// context still owes the worker the custody reduction and the account, and a
+// second copy of this arithmetic would be a road that handed a worker a piece
+// this conversation is holding for want of a drawing.
+func (a *Agent) groundRead(read checkpointRead) checkpointRead {
+	read.held = a.piecesStillOut()
+	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
+	if read.digest == "" {
+		read.digest = checkpointDigest("", a.snapshot(), checkpointDigestBytes)
+	}
+	return read
 }
 
 // handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
@@ -4126,7 +4458,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with nothing in any file saying it had happened. So the ladder is walked
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
-	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	written, wrote := a.writeHandoff(ctx, asked, draft)
 	if ctx.Err() != nil {
 		a.endPhase()
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
@@ -4359,7 +4691,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, taskModelContinuation)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
@@ -4979,16 +5311,25 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 // that the person did not ask for, and a journal that could not name it would
 // leave a mastermind-priced line on the bill with nothing beside it saying what
 // it bought.
-func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (string, carryStep) {
+func (a *Agent) writeHandoff(ctx context.Context, asked, draft string) (string, carryStep) {
 	// THE REDIRECT IS THE BRIEF. A mastermind asked to rewrite the conversation
 	// after Esc is the 36-second stall (F14) and the second of the two planner
 	// passes one keystroke used to buy (F17).
 	if a.interrupt.redirecting() {
 		return "", carryStep{rung: carryRungHandoff, outcome: carrySkipped, reason: carryRedirect}
 	}
-	if strings.TrimSpace(digest) == "" {
-		digest = checkpointDigest(asked, a.snapshot())
-	}
+	// AND THE ACCOUNT IS BUILT FOR THIS READER AND NOT INHERITED FROM THE MARK'S.
+	//
+	// It used to arrive as a parameter — [checkpointRead.digest], whatever a mark
+	// had been shown — and that was the same document at [checkpointDigestBytes],
+	// a price for a reading taken up to three times on a turn that is still
+	// running. This is written ONCE, and what it produces is the entire world of a
+	// worker that saw none of the turn, so its bound is how much that reader can
+	// hold ([Agent.handoffDigestBytes]) and its snapshot is the turn AS IT ENDS
+	// rather than as it stood a mark ago. Measured 2026-09-11: a worker inheriting
+	// the mark's five thousand tokens re-read every file the conversation had
+	// already opened.
+	digest := checkpointDigest(asked, a.snapshot(), a.handoffDigestBytes())
 	page := checkpointHandoffPage(asked, a.stateCardText(), digest, draft)
 	if page == "" {
 		// NOTHING TO WRITE FROM IS NOT A DOCUMENT. A turn with no ask, no account
@@ -5177,4 +5518,109 @@ func briefIsProse(brief string) bool {
 		}
 	}
 	return false
+}
+
+// ── the account, and the two shapes of it ───────────────────────────────────
+
+// accountSections is a heading-and-body writer with a byte budget, and it is the
+// one place this file decides what a bounded account DROPS.
+//
+// THE ORDER OF THE CALLS IS THE ORDER OF EVICTION, which is what lets the same
+// sections serve a reader being shown a whole turn and a fold leaving a line
+// behind: a section that does not fit is not written at all rather than cut in
+// half, so what comes out of a small budget is the sections that were asked for
+// first, whole.
+//
+// A HEADING WITH NOTHING UNDER IT IS NOT WRITTEN AT ALL — the emptiness law,
+// applied to a document a model reads.
+type accountSections struct {
+	out  strings.Builder
+	room int
+}
+
+func (a *accountSections) add(heading, body string) {
+	if body == "" {
+		return
+	}
+	cost := len(heading) + 1 + len(body) + 2
+	if cost > a.room {
+		return
+	}
+	a.room -= cost
+	a.out.WriteString(heading)
+	a.out.WriteString("\n")
+	a.out.WriteString(body)
+	a.out.WriteString("\n\n")
+}
+
+// list is [accountSections.add] for a section that is MANY LINES and may not fit
+// whole: the newest that fit are kept and one line says how many older ones went.
+//
+// IT IS THE LEDGER'S OWN EVICTION RULE, READ FROM THE SAME FUNCTION
+// ([checkpointNewestThatFit]). A turn that opened four thousand places would
+// otherwise lose the whole list to an all-or-nothing fit, and the places it
+// opened most recently are the ones a continuation is about to reach for again.
+func (a *accountSections) list(heading string, lines []string, older func(int) string) {
+	if len(lines) == 0 {
+		return
+	}
+	room := a.room - len(heading) - 1 - 2 - len(older(len(lines)))
+	kept, dropped := checkpointNewestThatFit(lines, room)
+	if len(kept) == 0 {
+		return
+	}
+	body := strings.Join(kept, "\n")
+	if dropped > 0 {
+		body += "\n" + strings.TrimSuffix(older(dropped), "\n")
+	}
+	a.add(heading, body)
+}
+
+func (a *accountSections) String() string { return a.out.String() }
+func (a *accountSections) Len() int       { return a.out.Len() }
+
+// foldAccount is what a COMPACTION leaves in front of the model in place of the
+// work it is taking away (loop.go's [Agent.foldLocked]).
+//
+// IT IS THE FACTS THE TRANSCRIPT WILL NO LONGER HOLD, AND NOTHING ELSE. Where
+// the turn has already been and what it put there are the two things a
+// continuing answer cannot recover from anything in front of it — the state card
+// is written after a turn and is about the conversation, not about this turn's
+// work — so they are what the marker carries.
+//
+// AND AN ACCOUNT MAY NOT REPEAT WHAT IT IS FOLDING, which is why the ledger, the
+// results and the last thing said are absent rather than merely squeezed out by
+// a budget. Those are the bytes the fold is giving up; a marker that carried
+// them would be handing the transcript straight back, and a pass whose marker
+// grows with the run it replaces is a pass that stops converging. The pointer in
+// the marker above is the road to the words themselves.
+//
+// IT SHARES THE WALK AND THE FITTER WITH [checkpointDigest]. One reading of a
+// transcript, one rule about what a bounded account drops — two callers that
+// differ only in which sections they ask for and how much room they have.
+func foldAccount(messages []ai.Message, budget int) string {
+	if budget <= 0 {
+		return ""
+	}
+	_, written, read, _, _ := checkpointLedger(messages)
+	sections := accountSections{room: budget}
+	sections.list(checkpointDigestWritten, written, checkpointOlderPlaces)
+	sections.list(checkpointDigestRead, read, checkpointOlderPlaces)
+	return strings.TrimSpace(sections.String())
+}
+
+// checkpointOlderPlaces is the one line a list of places says when it could not
+// name them all. It is the ledger's elision in the unit this section counts in,
+// and it is a function so the room can be reserved at its widest before anything
+// is written — the count can never exceed the whole list.
+func checkpointOlderPlaces(dropped int) string {
+	return fmt.Sprintf("… and %d earlier", dropped)
+}
+
+// checkpointOlderSteps is the ledger's elision line, lifted out of the digest so
+// that a section fitted ABOVE the ledger can reserve the room it will need. A
+// section that writes its own elision whatever is left cannot be squeezed, so
+// everything above it has to leave that line's widest form behind.
+func checkpointOlderSteps(dropped int) string {
+	return fmt.Sprintf("… and %d earlier steps\n", dropped)
 }

@@ -287,3 +287,84 @@ func quoted(words []string) []string {
 	}
 	return out
 }
+
+// ── which class of model a model IS ─────────────────────────────────────────
+
+// CrewSeat is the HIGHEST class any shipped preset seats a model at, and false
+// for a model no preset names at all.
+//
+// IT EXISTS BECAUSE A TIER ROW IS A PROMISE AND NOT A FACT. The five rows say
+// which model answers which class of call; nothing until now said whether the
+// model named could answer it. Measured on 2026-09-11: a profile carrying a
+// flash model on the mastermind row got flash answers to both of the questions
+// that decide whether a running turn is taken away from somebody — and the
+// crew-only guard in front of those calls was satisfied, because it asks whether
+// a row EXISTS.
+//
+// THE TABLE IS ALREADY THE ANSWER AND IS NOT A LIST WRITTEN FOR THIS. Every
+// preset is a whole crew somebody would actually run, so a model's best seat
+// across the three is this codebase's own published statement of what that model
+// is good for: `deepseek-v4-flash` is the low and worker seat in every preset and
+// never anything more, and `glm-5.3-flash` is frugal's mastermind as well as
+// balanced's worker. A name list would be a second such statement, free to drift
+// from the one the shipped defaults are built out of the moment a preset moves.
+//
+// A MODEL NOBODY SHIPS ANSWERS false AND IS NOT REFUSED ANYWHERE. That is the
+// honest direction: this table knows about open-weight models on the pareto
+// front it was drawn from, and it is in no position to have an opinion about a
+// model somebody pinned that it has never seen. See [roles.TierFits].
+func CrewSeat(model string) (string, bool) {
+	model = strings.TrimSpace(model)
+	if at := strings.LastIndex(model, ":"); at > 0 {
+		model = model[:at]
+	}
+	if model == "" {
+		return "", false
+	}
+	best, found := "", false
+	for _, row := range crewModels {
+		for tier, seated := range row {
+			if !strings.EqualFold(strings.TrimSpace(seated), model) {
+				continue
+			}
+			if !found || tierRank(tier) > tierRank(best) {
+				best, found = tier, true
+			}
+		}
+	}
+	return best, found
+}
+
+// tierRank is a tier's place in [ModelTiers], which is ordered cheapest first —
+// so "higher" is a larger number and the order is read from the list every other
+// surface renders rather than from a second one written here.
+func tierRank(tier string) int {
+	for rank, candidate := range ModelTiers {
+		if candidate == tier {
+			return rank
+		}
+	}
+	return -1
+}
+
+// TierFits reports whether a model may answer a call of a given class, and it is
+// the predicate [roles.Ladder] consults on every tier rung.
+//
+// THE RULE IS ONE SENTENCE: a model this codebase ships at a LOWER class than
+// the call belongs to may not answer it. Everything else fits — a model seated
+// higher is somebody spending more than they had to, which is their business,
+// and a model no preset names is one nothing here knows enough to refuse.
+func TierFits(model, tier string) bool {
+	seat, known := CrewSeat(model)
+	if !known {
+		return true
+	}
+	return tierRank(seat) >= tierRank(tier)
+}
+
+// The fitness rule is handed to the roles package here, at the one moment both
+// halves exist. It lives THIS way round because the dependency only goes this
+// way: internal/roles imports nothing of the surface — that is its own stated
+// law — so the package that holds the crew table is the package that must
+// deliver the reading of it.
+func init() { roles.SetTierFits(TierFits) }

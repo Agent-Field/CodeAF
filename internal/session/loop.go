@@ -4755,6 +4755,30 @@ func (a *Agent) foldLocked() (int, string) {
 	// when this run actually reached it, since a post can fail and a fold that
 	// sends the model to a store holding nothing is the dead pointer again.
 	marker := foldMarker(len(folded), journal, from, to, a.chatlog.ref(a.messages[first]) != "")
+	// AND THE FOLD LEAVES BEHIND WHAT THE MODEL NEEDS TO CARRY ON.
+	//
+	// A marker naming a path is a POINTER, and a pointer is what a model follows
+	// when it notices it has lost something. The measured failure is that it does
+	// not notice: a turn whose oldest work was folded went on to re-open files it
+	// had already read and re-derive edits it had already made, because nothing in
+	// front of it said they existed. The state card (card.go) is the session's
+	// answer to "what is this conversation about" and is maintained after a turn;
+	// it is not, and was never meant to be, an account of the work IN one.
+	//
+	// SO THE FOLD WRITES THE ACCOUNT ITSELF, out of the messages it is about to
+	// take away, with NO MODEL CALL: where the turn has already been, what it put
+	// there and the opening line of each, and where it had got to. It is
+	// [checkpointDigest] at a small budget — the same function the mark's reader
+	// and the handoff writer are shown, so a lane that changes what counts as an
+	// account of a turn changes all three in one edit — and the budget is what
+	// makes it a fold rather than a copy ([foldAccountBytes], [foldAccount]).
+	//
+	// THE PERSON'S OWN MESSAGES NEED NO HELP FROM IT. They are never folded at all
+	// (see this function's own four rules above), which is the same protection the
+	// comparison harnesses spend a summariser to approximate.
+	if account := foldAccount(foldedMessages(a.messages, folded), foldAccountBytes); account != "" {
+		marker += "\n" + account
+	}
 	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
 	rebuiltReasoning := make([]provider.MessageReasoning, 0, cap(rebuilt))
 	rebuilt = append(rebuilt, a.messages[0])
@@ -4810,6 +4834,40 @@ func (a *Agent) turnContinuesLocked() bool {
 		}
 	}
 	return false
+}
+
+// foldAccountBytes is how much of an account of the folded work the marker
+// carries with it.
+//
+// IT IS THE ONE BOUND THAT KEEPS A FOLD A FOLD. The account is built by the same
+// function that builds a mark's digest, and that budget ([checkpointDigestBytes])
+// is sized for a reader being shown a whole turn — writing it into the
+// transcript would give back a fifth of what a pass on the default window is
+// trying to reclaim, and a pass whose marker grows with the run it replaces is
+// a pass that stops converging.
+//
+// A TENTH OF THE READER'S ACCOUNT. What the marker carries is two deduplicated
+// lists of places — one line each, no bodies — so a tenth is generous for every
+// fold that has been measured and is still an order of magnitude below the
+// reader's page. WHICH SECTIONS SURVIVE IS NOT THIS NUMBER'S JOB: [foldAccount]
+// names them, on the law that an account may not repeat what it is folding, so
+// moving this figure changes how many PLACES a very wide fold can name and can
+// never let the folded prose back in.
+const foldAccountBytes = checkpointDigestBytes / 10
+
+// foldedMessages is the run a fold is about to take away, in the order it
+// happened. It exists because the account above must be built from THOSE
+// messages and not from the transcript — an account of everything would tell the
+// model about work that is still in front of it, which is a marker repeating the
+// context it sits in.
+func foldedMessages(messages []ai.Message, folded map[int]bool) []ai.Message {
+	out := make([]ai.Message, 0, len(folded))
+	for index := range messages {
+		if folded[index] {
+			out = append(out, messages[index])
+		}
+	}
+	return out
 }
 
 // foldMarkerPrefix opens every fold marker. It is how [isCompactionNote]

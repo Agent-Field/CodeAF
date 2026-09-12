@@ -300,6 +300,11 @@ func writeSeamAgent(t *testing.T, completer Completer, also ...func(*Config)) (*
 		config.AskConsent = true
 		config.Divide = true
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		// AND THE TURN CANNOT CARRY ON WHERE IT IS. The ceiling lets an answer
+		// with room left compact and go on (checkpoint.go), so every fixture here
+		// — which is about what the SEAM does with a turn it is taking away — has
+		// to be a turn that would otherwise have been taken away.
+		checkpointNoRoomLeft(config)
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): checkpointMarkModel,
 		})

@@ -945,10 +945,16 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 		rounds := meter.rounds + 1
 		read := a.readMark(ctx)
 		a.journalMarkRead(read, checkpointMarks, rounds, read.sketch.carryOnDecision())
-		// NO READING HAS BEEN TAKEN FOR THIS ENDING YET — this is a step boundary
-		// and not a stopped turn — so the ceiling takes one of its own
-		// ([Agent.endTurnUnderSteward]).
-		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, nil) {
+		// AND IT GOES STRAIGHT TO THE MOVER RATHER THAN THROUGH THE CEILING.
+		// The ceiling's own rung asks whether the turn can carry on where it is
+		// and lets it when it can ([Agent.checkpointCeiling]); a turn the detector
+		// has caught going in circles is the one shape where that question is
+		// already answered — more room to repeat itself in is not a continuation —
+		// so this road keeps the ceiling's verdict and skips its rung.
+		verdict := meter.raced
+		verdict.Wide = true
+		if a.handOverRunningTurn(ctx, hub, turn, started, model,
+			checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict, read, nil).moved {
 			return true
 		}
 	}

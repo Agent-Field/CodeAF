@@ -1316,9 +1316,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// the frontier could start on the wrong one.
 		Frozen: spec.frozen,
 		// AND WHAT ITS BRIEF ASSUMES, carried from whoever wrote the brief
-		// (handoffcontract.go). Every door admits with nothing here except the
-		// two that ask a model for a handoff, which is the point: the harness
-		// never writes an expectation on anybody's behalf.
+		// (handoffcontract.go). Every door admits with nothing here except the two
+		// that ask a model for a handoff and the CONTINUATION road, which is the
+		// one brief with no author to write a manifest — there the harness reads
+		// the moved turn's own writes off its tool calls rather than out of
+		// anybody's prose ([Agent.continuationExpects]).
 		Expects: spec.expects,
 		// AND THE VERIFICATION IT DECLARED, from the same two doors and on the
 		// same terms: the harness never writes a check on anybody's behalf, and a
