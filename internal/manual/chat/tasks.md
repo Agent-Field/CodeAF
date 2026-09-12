@@ -329,6 +329,13 @@ That is the whole aim when work splits: the shortest wall time for the whole job
 a team of workers would take it, so however many independent pieces there are, they all
 start together.
 
+**A batch of two or more is settled together first, and it reads the asks in one read.**
+Where the parts overlap or do better as one with items, they are amended or refused
+together before any of them starts, on one mastermind-tier read; a batch too wide for
+one worker is not simply refused, it is reduced and then admitted. Where a quick task must
+hand out several quick tasks in one message, the same review runs first — one read of the
+whole fan before any of it spends a step. A review that cannot be had admits as written.
+
 **How many of them run at once is decided by memory, not by a number here.** Each piece
 that begins sets aside a footprint — one core's share of memory, or more where this
 session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
