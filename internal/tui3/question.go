@@ -709,44 +709,31 @@ func questionPointerStart(q session.Question) int {
 		}
 	}
 	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
-	// A PERMISSION OPENS ON THE ANSWER THAT LOSES NOTHING. `enter` takes the
-	// answer the pointer is on, so a pointer on the first answer of a gate over
-	// `rm -rf` or a force-push would make `enter` mean `allow once` on a call
-	// that cannot be taken back.
+	// THE STAKES SAY WHERE `enter` LANDS (owner ruling, 2026-09-11, shipped as
+	// #953). The gate now grades its own questions — internal/approval's
+	// always-ask shapes come through as [session.StakesIrreversible] and every
+	// other consent stays [session.StakesCostly] — so the pointer opens on the
+	// answer that loses nothing for a grave call and on the first answer for an
+	// ordinary one. `enter` takes the answer the pointer is on: `deny` over
+	// `rm -rf` or a force-push, `allow once` over an `ls`.
 	//
-	// DENY-FIRST UNTIL GRADED (owner ruling, 2026-09-11). The design ruling
-	// earlier the same day was that an ORDINARY call should open on `allow once`
-	// and only a grave one on deny — and it cannot be implemented from here yet,
-	// because NOTHING UPSTREAM GRADES A CALL. The engine's gate stamps
-	// [session.StakesCostly] on every consent it raises (session/consent.go), and
-	// `internal/approval` never produces [session.StakesIrreversible] at all, so a
-	// rule keyed on the stakes would read "ordinary" for `rm -rf /` exactly as
-	// loudly as for `git status` and the grave branch would be dead code that only
-	// a fixture could reach. A safety default that is right in the design and
-	// wrong in production is wrong.
+	// THE KEY IS THE STAKES AND ONLY THE STAKES. Reading the command's text or
+	// the tool's name here would be a second judgement beside internal/approval's
+	// that one day disagrees with it — the generic-and-meta law the engine half
+	// of #953 keeps by passing the grade through untouched.
 	//
-	// So the rule here stays the one that shipped — the hands-only test alone.
-	// [questionHandsOnly] DOES read the stakes, and that reading is the shape of
-	// the ruling rather than yet its behaviour: it lets a permission a lane marked
-	// plainly REVERSIBLE open on its first answer, and NO LANE PRODUCES ONE TODAY
-	// any more than one produces [session.StakesIrreversible]. Both branches are
-	// there and only the middle one is ever taken.
-	//
-	// THE GRADING IS ISSUE #953 and the order of work is written there: approval's
-	// always-ask shapes become [session.StakesIrreversible], `consentAsk` passes the
-	// grade through instead of stamping `costly` flat, and then — and only then —
-	// this line splits by stakes and the graded frame drops its `always` and its
-	// clock. Until #953 lands, `enter` on any permission denies.
-	//
-	// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer, in
-	// internal/session, is what says so out loud: it raises this engine's own
-	// `consentAsk` output for `rm -rf *` and FAILS the day that output is graded,
-	// naming the surface test to re-read. The seam is in ~/af-qv-P.report.md.
+	// THE MIDDLE CASE IS #933's DENY-FIRST, KEPT. A permission graded neither
+	// way — a hand-built question, a shape approval does not know yet — opens on
+	// the answer that loses nothing, because a pointer parked on `allow once`
+	// for a call nobody graded is a guess made with the person's one keystroke.
 	//
 	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
 	// proposal is unaffected: an asker that recommended an answer said so on the
 	// row a person is reading (`suggested`), and `enter` taking the
 	// recommendation IS the pointer's law.
+	if q.Ask == session.AskPermission && q.Stakes == session.StakesCostly {
+		return 0
+	}
 	if questionHandsOnly(q) {
 		return questionSafeAt(q)
 	}

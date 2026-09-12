@@ -191,27 +191,27 @@ func TestAPermissionOffersNoLifetimesUntilTheGateHonoursOne(t *testing.T) {
 	}
 }
 
-// WHERE THE POINTER OPENS IS NEVER READ OFF THE TOOL'S NAME, and a confirmation
-// is untouched by any of it.
+// WHERE THE POINTER OPENS IS NEVER READ OFF THE TOOL'S NAME — the stakes are
+// the only thing that moves it — and a confirmation is untouched by any of it.
 //
-// (That `enter` on a permission denies, whatever the stakes say, is
-// [TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall] in question_test.go
-// — it drives the key rather than reading the placement.)
+// (That the split itself is ordinary-allows-once and grave-denies is
+// [TestEnterOnAPermissionSplitsOnTheStakes] in question_test.go — it drives the
+// key rather than reading the placement.)
 func TestThePointerIsPlacedByWhatTheQuestionIsAndNotByWhichToolItNames(t *testing.T) {
 	gate := consentAsk()
-	safe := questionSafeAt(gate)
-	if got := questionPointerStart(gate); got != safe {
-		t.Fatalf("a permission opens on answer %d, not the one that loses nothing", got)
+	if got := questionPointerStart(gate); got != 0 {
+		t.Fatalf("an ordinary permission opens on answer %d, not `allow once`", got)
 	}
 	// The same question over a different call stands in the same place.
 	gate.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "read"}
-	if got := questionPointerStart(gate); got != safe {
+	if got := questionPointerStart(gate); got != 0 {
 		t.Fatalf("the pointer moved when the tool's name changed: %d", got)
 	}
 	gate.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "bash"}
 	gate.Stakes = session.StakesIrreversible
+	safe := questionSafeAt(gate)
 	if got := questionPointerStart(gate); got != safe {
-		t.Fatalf("the pointer moved when the stakes changed: %d", got)
+		t.Fatalf("a grave permission opens on answer %d, not the one that loses nothing", got)
 	}
 	// AND A CONFIRMATION KEEPS stop.go's LAW whatever its stakes say, because it
 	// was raised by a person's own gesture rather than arriving.
