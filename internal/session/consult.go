@@ -24,9 +24,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // RoleConsult is the second-opinion call. MASTERMIND, for RoleRouterConfirm's
@@ -97,7 +97,9 @@ func (a *Agent) consultTool() bare.Tool {
 // this belt answers: an empty question is a call the model can make again.
 func (a *Agent) startConsult(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed consultAnswer
-	_ = json.Unmarshal(args, &parsed)
+	if err := decodeToolArguments(args, &parsed); err != nil {
+		return invalidArgumentsPrefix + err.Error(), true, nil
+	}
 	parsed.Question = strings.TrimSpace(parsed.Question)
 	parsed.Context = strings.TrimSpace(parsed.Context)
 	if parsed.Question == "" {

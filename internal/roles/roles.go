@@ -181,6 +181,11 @@ const (
 	// consult.go, which owns the call and registers it). Mastermind, for
 	// RoleRouterConfirm's reason: a wrong answer here routes real spend.
 	RoleConsult Role = "consult"
+	// RoleQuickReview is the ONE reader a batch of ≥2 quick tasks gets before
+	// any of it starts (internal/session's quickfan.go, which owns the call).
+	// Mastermind, for RoleDivision's reason: the parts are read TOGETHER, and a
+	// cheap reader flattens merges it cannot see.
+	RoleQuickReview Role = "quickreview"
 	// RoleTaskName is the two or three words a piece of work is CALLED on the
 	// rail, the home card and the task list — made from the node's own gloss and
 	// brief when whoever started it left a raw sentence there instead of a name.
