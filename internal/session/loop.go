@@ -423,17 +423,20 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// conversation with no folder are both answered by one predicate
 	// ([Agent.tellsElsewhere]); asking it here keeps a reading that would return
 	// on its first line out of the watch, where it would be one more thing a
-	// fixture waits for and nothing at all beside the work. A nil `ask` is
-	// [readBeside]'s own way of saying there was no reading, and `end` takes the
-	// nil it answers.
-	ask := func(read context.Context) struct{} {
-		a.refreshElsewhere(read)
-		return struct{}{}
+	// fixture waits for and nothing at all beside the work.
+	//
+	// THE `ask` IS WRITTEN OUT HERE AND NOT HOISTED INTO A VARIABLE, because the
+	// set of readings the sidecar law watches is READ OFF THE TREE — whatever an
+	// inline [readBeside] ask calls is a reading, by construction
+	// (sidecar_law_test.go). A reading handed in through a name is a reading that
+	// law cannot see, which is how the next one stops being watched.
+	var elsewhere *sidecar[struct{}]
+	if a.tellsElsewhere() {
+		elsewhere = readBeside(ctx, func(read context.Context) struct{} {
+			a.refreshElsewhere(read)
+			return struct{}{}
+		}, nil)
 	}
-	if !a.tellsElsewhere() {
-		ask = nil
-	}
-	elsewhere := readBeside(ctx, ask, nil)
 	defer elsewhere.end()
 
 	// partial accumulates what the model has streamed for the CURRENT step.

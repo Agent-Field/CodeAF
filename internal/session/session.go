@@ -3017,6 +3017,11 @@ type Agent struct {
 	// would drop whichever of them was owed first.
 	toldStampOnce   sync.Once
 	toldStampWriter *stampWriter
+	// toldAtOwed is the latest instant that writer has been asked to stamp. It
+	// is kept because the writer coalesces by replacing its patch, and two
+	// readings over one conversation are not always owed in order
+	// ([Agent.oweToldStampLocked]).
+	toldAtOwed time.Time
 
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).

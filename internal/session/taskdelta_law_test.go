@@ -63,22 +63,30 @@ func owedStampLaw(set *token.FileSet, file *ast.File) (int, []string) {
 			}
 		}
 		complaints = append(complaints, fmt.Sprintf(
-			"%s: the told stamp is written here rather than owed — a stat, a marshal and a write on "+
-				"the path, under the lock every request goes through (#876). Hand it to "+
-				"[Agent.toldStamp]'s Owe and let [Agent.SettleWrites] land it.",
+			"%s: the told stamp is not owed to [Agent.toldStamp] here — either it is written straight "+
+				"onto the path, under the lock every request goes through (#876), or it is owed to "+
+				"another writer, whose patch replaces this one and drops the stamp. Hand it to "+
+				"a.toldStamp().Owe and let [Agent.SettleWrites] land it.",
 			set.Position(call.Pos())))
 		return true
 	})
 	return calls, complaints
 }
 
-// owedClosures is the span of every function literal handed to an `Owe`, which
-// is the one place in this package a write behind the path is performed.
+// owedClosures is the span of every function literal handed to THIS STAMP'S OWN
+// writer's `Owe`, which is the one place in this package the told stamp may be
+// performed.
+//
+// THE RECEIVER IS HALF THE LAW. A [stampWriter] coalesces by REPLACING its
+// patch, so a told stamp owed to the meta writer is a told stamp the next meta
+// stamp drops on the floor — a write that is off the path and also never
+// happens. Accepting any `Owe` would let that through while looking exactly as
+// green as the honest shape.
 func owedClosures(file *ast.File) [][2]token.Pos {
 	var spans [][2]token.Pos
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !namesFunction(call.Fun, "Owe") {
+		if !ok || !namesFunction(call.Fun, "Owe") || !owedToTheToldStamp(call.Fun) {
 			return true
 		}
 		for _, argument := range call.Args {
@@ -89,6 +97,20 @@ func owedClosures(file *ast.File) [][2]token.Pos {
 		return true
 	})
 	return spans
+}
+
+// owedToTheToldStamp reports whether this `Owe` is the told stamp's own —
+// `<something>.toldStamp().Owe(…)`.
+func owedToTheToldStamp(fun ast.Expr) bool {
+	selector, ok := fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	return namesFunction(receiver.Fun, "toldStamp")
 }
 
 // namesFunction reports whether this callee is the named function, however it is
@@ -121,7 +143,16 @@ func (a *Agent) refreshElsewhere() {
 }`,
 		complain: true,
 	}, {
-		what: "the stamp owed under the lock and performed behind it",
+		what: "a stamp owed to another writer, whose next patch replaces it",
+		source: `package session
+func (a *Agent) refreshElsewhere() {
+	a.mu.Lock()
+	a.metaStamp().Owe(func() { NoteTold(dir, now) })
+	a.mu.Unlock()
+}`,
+		complain: true,
+	}, {
+		what: "the stamp owed under the lock to its own writer and performed behind it",
 		source: `package session
 func (a *Agent) refreshElsewhere() {
 	a.mu.Lock()
