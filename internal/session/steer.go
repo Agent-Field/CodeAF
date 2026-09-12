@@ -360,6 +360,7 @@ type boundaryCut struct{ error }
 func opensABoundary(cause error) bool {
 	var boundary boundaryCut
 	return errors.As(cause, &boundary)
+}
 
 // errPersonCut is the third of the person's own cuts, beside [errSteerCut]: a
 // model they have just named reaching a request that has produced nothing they

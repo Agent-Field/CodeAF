@@ -117,7 +117,7 @@ func TestACutOwedForADrawingTheTurnHasTakenIsNotSpent(t *testing.T) {
 	// The boundary arrived without it: the drawing was taken here.
 	agent.dropOwedCut(errMarkCut)
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the next step was cut for a drawing the turn had already read: %v", context.Cause(ctx))
@@ -133,7 +133,7 @@ func TestADrawingWithdrawsOnlyItsOwnOwedCut(t *testing.T) {
 	agent.cutGeneration(errMarkCut)
 	agent.dropOwedCut(errors.New("session: somebody else's reading"))
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() == nil {
 		t.Error("another reading's boundary threw away the cut this drawing is still owed")
@@ -152,7 +152,7 @@ func TestACutAskedBeforeTheRequestExistsIsSpentByIt(t *testing.T) {
 		t.Fatal("a drawing that asked for a boundary between two steps was told its cut was spent " +
 			"on nothing; the drawing then waits out a whole extra step (#956)")
 	}
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	if ctx.Err() == nil {
 		t.Fatal("the request the owed cut was kept for went out uncut")
 	}
@@ -172,7 +172,7 @@ func TestACutWhoseReasonRidesTheTranscriptIsNotOwed(t *testing.T) {
 	if agent.cutGeneration(errRecallCut) {
 		t.Error("a recall with nothing to cut was told its one re-ask had been spent")
 	}
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the next request was cut for a block the transcript already carried: %v", context.Cause(ctx))
@@ -194,7 +194,7 @@ func TestACutTheTurnNeverSpentIsNotSpentOnTheNextTurn(t *testing.T) {
 	agent.turnSeq++
 	agent.mu.Unlock()
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the first request of the next turn was cut by the last turn's drawing: %v", context.Cause(ctx))
