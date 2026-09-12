@@ -790,9 +790,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// for and thrown away is a ledger line nobody can ever count.
 		//
 		// AND THIS IS ONE OF THE TWO PLACES THIS ENGINE WAITS ON A READING, for
-		// the reason the CEILING's own drawing is still read in line and the
-		// reason the guardian blocks: the turn is over, so there is nothing left
-		// to run beside. A deferred body runs when everything has already been
+		// the reason the guardian blocks: the turn is over, so there is nothing
+		// left to run beside. The CEILING used to be a third and is not any more —
+		// it is a rung a turn can carry on past, so a drawing awaited in front of
+		// it would be awaited in front of work about to continue
+		// (sidecar_law_test.go's `endingDoors` says it in the law's own words). A deferred body runs when everything has already been
 		// decided, which is what makes the wait honest here and nowhere else
 		// (sidecar.go's [sidecar.takeAtTheEnd], sidecar_law_test.go is the law).
 		// What it costs is bounded twice — by [checkpointSketchWindow] and by the

@@ -601,56 +601,82 @@ func checkpointWritingAgent(t *testing.T, completer Completer, mutate ...func(*C
 //
 // THE CEILING NO LONGER MOVES A TURN ON A COUNT OF ROUNDS. It asks first whether
 // the turn can carry on where it is — the transcript compacts in place and the
-// answer is whether what comes out sits inside the working set (checkpoint.go's
-// [Agent.checkpointCanCarryOn]) — and a toy transcript of forty small rounds
-// against a default window sits inside it with room to spare, which is the whole
-// of the defect the rung was built to close. So a test that means to watch a turn
-// LEAVE has to say that this one cannot stay, and it says it the way the product
-// says it: by naming a window there is no room in.
+// answer is whether what comes out sits inside the room the runaway net measures
+// (checkpoint.go's [Agent.checkpointCanCarryOn], inherit.go's
+// [Agent.contextRoomFor]) — and a toy transcript of forty small rounds against a
+// default window sits inside it with room to spare, which is the whole of the
+// defect the rung was built to close. So a test that means to watch a turn LEAVE
+// has to say that this one cannot stay, and it says it the way the product says
+// it: by being a conversation there is no room for.
 //
-// IT IS THE WINDOW AND NOT A SWITCH, because a switch would be a second way to
-// reach a decision the product reaches one way. A turn whose window is one token
-// is a turn no fold can bring under any working set, which is exactly and only
-// the condition the move road exists for.
+// IT IS A WORLD AND NOT A SWITCH, because a switch would be a second way to
+// reach a decision the product reaches one way.
+//
 // profileFullWord is the settings word for the whole prefix, read from the
 // package that owns it so this fixture cannot drift from the row.
 var profileFullWord = config.PromptProfileFull
 
+// checkpointFixtureWindow is the window these fixtures run in, and it is chosen
+// to sit BETWEEN the two lines this file cares about rather than under both.
+//
+// The question the fixture must make false is [Agent.checkpointCanCarryOn]: the
+// conversation against [compactThresholdOf] of this window. The question it must
+// NOT make true is the oversize guard's — the estimate against the WHOLE window
+// (loop.go) — because that one runs a compaction pass in front of every single
+// request, and a fixture that folded on every step would be testing the fold
+// rather than the seam. A window of one token made both true at once and was
+// measured doing exactly that: stub files written on every step of every case in
+// this file, and a TempDir cleanup racing a turn that had not quite finished.
+//
+// AND THE BELT IS THE ONE THE TURN HAD WHEN THE ROOM RAN OUT. A window under
+// 32,000 selects the lean prefix (promptprofile.go), which takes `propose_task`
+// and `tasks` off the belt — so a test that meant to watch a turn MOVE would
+// instead watch a turn with nowhere to move to, and would read as this rung
+// refusing rather than as the belt being different. The window here is a
+// statement about ROOM and must not be read as a statement about the model's
+// size, so the profile is pinned to the whole prefix beside it.
+const checkpointFixtureWindow = 24_000
+
+// checkpointHeavyPage is the WEIGHT, and it is on the page for the one reason
+// that makes this fixture honest rather than clever: THE PAGE IS THE ONE THING A
+// FOLD MAY NEVER TAKE.
+//
+// A fold stubs consumed results and folds old assistant work; it never touches
+// element zero and never touches the person's own words (loop.go). So a
+// conversation whose PAGE ALONE is over the line is a conversation no pass can
+// bring back under it — which is exactly and only the condition the move road
+// exists for, stated as a fact about the transcript instead of as a number
+// somebody tuned. A fixture that instead relied on forty toy rounds outweighing
+// the line was measured failing the other way the moment the rounds got smaller.
+//
+// The size is derived from the line it has to be over — half again as much page
+// as [compactThresholdOf] allows — so it cannot drift if the derivation moves,
+// and it stays well under the guard's whole-window line so the fixture is not
+// folding on every step.
+func checkpointHeavyPage() string {
+	over := compactThresholdOf(checkpointFixtureWindow) * bytesPerToken * 3 / 2
+	return "SYSTEM" + strings.Repeat(" x", over/2)
+}
+
 func checkpointNoRoomLeft(config *Config) {
-	// THE WINDOW IS SMALL AND NOT ABSURD, and the difference matters.
-	//
-	// The question this fixture has to make false is [Agent.checkpointCanCarryOn]:
-	// the transcript, after a fold, against [compactTarget] of this window. The
-	// question it must NOT make true is the oversize guard's — the estimate against
-	// the WHOLE window (loop.go) — because that one runs a compaction pass in front
-	// of every single request, and a fixture that folded on every step would be
-	// testing the fold rather than the seam. A window of one token made both true
-	// at once and was measured doing exactly that: stub files written on every step
-	// of every case in this file, and a TempDir cleanup racing a turn that had not
-	// quite finished.
-	//
-	// Twenty-four thousand sits between the two. The target it implies is nine
-	// thousand tokens, which every turn in this file is over by its ceiling, and
-	// the guard's line is the whole twenty-four, which none of them comes near. If
-	// the prefix ever grows past the guard's line or shrinks under the target, the
-	// move tests in this file fail and say so — which is the safe direction for a
-	// fixture to be wrong in.
-	config.ContextWindow = 24_000
-	// AND THE BELT IS THE ONE THE TURN HAD WHEN THE ROOM RAN OUT. A window under
-	// 32,000 selects the lean prefix (promptprofile.go), which takes `propose_task`
-	// and `tasks` off the belt — so a test that meant to watch a turn MOVE would
-	// instead watch a turn with nowhere to move to, and would read as this rung
-	// refusing rather than as the belt being different. The window here is a
-	// statement about ROOM and must not be read as a statement about the model's
-	// size.
+	config.ContextWindow = checkpointFixtureWindow
 	config.PromptProfile = profileFullWord
+	config.System = checkpointHeavyPage()
 }
 
 // checkpointRoomToCarryOn is the other world, and it is the ORDINARY one: a
 // window with room left in it, which is what almost every real conversation has
 // when its fortieth round comes round. A test that means to watch an answer
 // COMPACT AND CARRY ON says so with this.
-func checkpointRoomToCarryOn(config *Config) { config.ContextWindow = defaultContextWindow }
+func checkpointRoomToCarryOn(config *Config) {
+	config.ContextWindow = defaultContextWindow
+	// AND THE PAGE GOES BACK TO BEING A PAGE. [checkpointNoRoomLeft] put the
+	// weight there, and a fixture that means "this turn has room" must not be
+	// carrying the other fixture's ballast: the contrast between the two worlds is
+	// the whole assertion, and it should be readable here rather than inferred
+	// from one window being larger than some bytes.
+	config.System = "SYSTEM"
+}
 
 // AND THE DEFAULT HERE IS THE ROAD THIS FILE IS ABOUT. Nearly every test below
 // is a test of the HANDOVER — which rung wrote the brief, what the spec carries,
