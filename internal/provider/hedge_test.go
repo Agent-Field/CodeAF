@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -188,8 +189,17 @@ func newLaneRigWithPrice(
 // something about a channel. So the scenarios below state the ceiling they are
 // about and prove what this lane owns — that the ceiling is what acts when
 // nothing at all is believed, and that it acts through the wire.
+//
+// IT IS ALSO WHERE A HELD FIRST WORD IS BOUNDED. The ceiling stated here is the
+// only figure in a scenario that says how long the controller's word is worth
+// waiting for, so a hold asked for through [theControllersWord] is armed from
+// this one place and the bound cannot drift away from the ceiling it is taken
+// from.
 func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 	r.ceiling.Store(int64(ceiling))
+	if theWord != nil {
+		theWord.arm(ceiling)
+	}
 }
 
 // theControllersWord is a signal that closes once the waiting controller has
@@ -203,10 +213,26 @@ func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 // nothing was done at all. Every rung of the ladder releases it, not only the
 // one a given test is about, so a regression that acts differently fails on
 // its assertion rather than hanging here.
+//
+// AND THE WAIT IS BOUNDED BY THE SCENARIO'S OWN PATIENCE, NEVER BY THE PACKAGE
+// TIMEOUT. Nothing but the controller's word closes this channel, so a
+// controller that says nothing leaves the lane holding the call open until the
+// whole binary's deadline, and what the reader is handed is a clock naming
+// whichever test happened to be running — the shape this fixture was written to
+// remove everywhere else. [laneRig.patience] arms the bound as the scenario
+// states its ceiling; on expiry the hold opens so the scenario can end, and the
+// silence itself becomes the failure, said once and naming the last rung of the
+// waiting ladder a person was told about.
 func theControllersWord(t *testing.T) <-chan struct{} {
 	t.Helper()
-	spoken := make(chan struct{})
-	var once sync.Once
+	// ONE HOLD TO A SCENARIO. The bound is armed through the package's own
+	// [theWord], so a second word would take the first one's place and leave it
+	// waiting on exactly the deadline this exists to replace.
+	if theWord != nil {
+		t.Fatal("theControllersWord: a second hold in one scenario would leave the first one unbounded")
+	}
+	word := newControllersWord()
+	theWord = word
 	// The reader that was there is taken FIRST and only then chained, because a
 	// closure that assigns the handler it chains to is a write racing its own
 	// reads: [OnPhase] has installed it by the time the assignment happens, and
@@ -215,14 +241,149 @@ func theControllersWord(t *testing.T) <-chan struct{} {
 	OnPhase(func(news PhaseNews) {
 		switch news.Phase {
 		case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
-			once.Do(func() { close(spoken) })
+			word.speak()
 		}
+		word.heard(news)
 		if previous != nil {
 			previous(news)
 		}
 	})
-	t.Cleanup(func() { OnPhase(previous) })
-	return spoken
+	t.Cleanup(func() {
+		OnPhase(previous)
+		theWord = nil
+		close(word.over)
+		if word.armed.Load() {
+			<-word.watched
+		}
+		// THE SILENCE IS REPORTED HERE AND NOT FROM THE WATCHER, because a
+		// t.Errorf from a goroutine that has outlived its test is a panic and
+		// not a verdict. Cleanup runs on the test's own goroutine after the
+		// watcher has gone, so the sentence lands exactly once, on the test it
+		// belongs to.
+		if word.expired.Load() {
+			t.Error(word.silence())
+		}
+		// AN UNARMED HOLD IS THE PACKAGE TIMEOUT ALL OVER AGAIN, so a scenario
+		// that asks for the word and never states a patience is told so rather
+		// than left waiting on a channel nothing can close.
+		if !word.armed.Load() {
+			t.Error("theControllersWord was never bounded: the scenario stated no patience, so the wait would have run to the package timeout")
+		}
+	})
+	return word.spoken
+}
+
+// controllersWord is the hold one scenario has asked for on the controller's
+// first word: the channel the lane waits on, the bound the scenario's own
+// ceiling gives it, and the last rung of the ladder anybody was told about. It
+// is per-test state like the rig itself, because no test in this file runs in
+// parallel.
+type controllersWord struct {
+	spoken chan struct{}
+	once   sync.Once
+	// over is closed when the scenario ends and watched when the watcher has
+	// seen that and gone. The pair is what makes the watcher joinable, so no
+	// verdict of its can arrive after the test has returned.
+	over    chan struct{}
+	watched chan struct{}
+	armed   atomic.Bool
+	expired atomic.Bool
+	bound   time.Duration
+	last    struct {
+		mu     sync.Mutex
+		phase  Phase
+		detail string
+	}
+}
+
+// newControllersWord is the hold before anything has been asked of it: the
+// channel a lane waits on, the signal that ends the scenario, and the one the
+// watcher closes behind itself.
+func newControllersWord() *controllersWord {
+	return &controllersWord{
+		spoken:  make(chan struct{}),
+		over:    make(chan struct{}),
+		watched: make(chan struct{}),
+	}
+}
+
+// theWord is the hold the scenario under construction has asked for, if it has
+// asked for one. It is armed by [laneRig.patience], the one place a ceiling is
+// stated, so the bound and the ceiling are the same number.
+var theWord *controllersWord
+
+// heldWordSlack is how many of the scenario's own ceilings a hold may run for
+// before the silence is called out.
+//
+// THE MULTIPLE IS SLACK FOR THE WIRE AND NOT A SECOND CEILING: the controller
+// acts AT the ceiling and its rung still has to cross the reader that closes
+// the hold, so the bound has to sit past the ceiling — far enough that a busy
+// machine cannot make a working fixture look silent, near enough that a broken
+// one is named in the same breath instead of at the package deadline.
+const heldWordSlack = 3
+
+// arm bounds the hold by the ceiling the scenario stated and watches beside the
+// call, so the silence is reached whether the controller ever speaks or not.
+// Arming twice is the same scenario restating its ceiling, and the first bound
+// stands.
+func (word *controllersWord) arm(ceiling time.Duration) {
+	if !word.armed.CompareAndSwap(false, true) {
+		return
+	}
+	word.bound = ceiling * heldWordSlack
+	go func() {
+		defer close(word.watched)
+		timer := time.NewTimer(word.bound)
+		defer timer.Stop()
+		select {
+		case <-word.spoken:
+		case <-word.over:
+		case <-timer.C:
+			word.expired.Store(true)
+			// THE HOLD OPENS ANYWAY, because the sentence is only the verdict:
+			// a lane left in the hold is still holding a call open, and the
+			// scenario around it would run to the very deadline this bound was
+			// written to replace.
+			word.speak()
+		}
+	}()
+}
+
+// speak opens the hold. It is idempotent because the ladder has several rungs
+// that count as the controller having spoken, and the bound is one more.
+func (word *controllersWord) speak() { word.once.Do(func() { close(word.spoken) }) }
+
+// heard remembers the rung just posted, so a silence can name what a person WAS
+// told before the reporting stopped.
+func (word *controllersWord) heard(news PhaseNews) {
+	word.last.mu.Lock()
+	defer word.last.mu.Unlock()
+	word.last.phase, word.last.detail = news.Phase, news.Detail
+}
+
+// silence is the sentence a hold that never opened is failed with: who was
+// silent, the bound they were silent through, and the last thing a person was
+// told. It is a value rather than a t.Errorf so the claim can be read back
+// without a scenario and without a clock.
+func (word *controllersWord) silence() string {
+	return fmt.Sprintf(
+		"the controller never spoke: no rung of the waiting ladder was reported before %s; the last thing a person was told was %q",
+		word.bound, word.lastHeard())
+}
+
+// lastHeard is the rung a person was last told about, in the words a person
+// gets. A controller that said nothing at all leaves it empty, and "nothing" is
+// the honest report of that — a fact, not a blank.
+func (word *controllersWord) lastHeard() string {
+	word.last.mu.Lock()
+	defer word.last.mu.Unlock()
+	if word.last.phase == "" {
+		return "nothing"
+	}
+	if word.last.detail != "" {
+		return fmt.Sprintf("%s (%s)", word.last.phase, word.last.detail)
+	}
+	return string(word.last.phase)
 }
 
 // rigScale is how much shorter every bound a scenario is judged against is than
