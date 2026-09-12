@@ -34,6 +34,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,8 +52,21 @@ import (
 // spells perfectly well in two halves. So `source` is what must stand in the
 // sources, and it defaults to `screen` when the two agree.
 type tuiWord struct {
-	// screen is EXACTLY what the product draws, and what the suite waits for.
+	// screen is EXACTLY what the product draws, and what the suite waits for —
+	// or, on a row that names a [tuiWord.key], the WORD ALONE, because the
+	// punctuation between a key and its word is the product's to choose and
+	// [keyedWord] is where this suite writes it down.
 	screen string
+	// key is the key this word is offered on, where it is offered on one.
+	//
+	// A ROW THAT NAMES A KEY DOES NOT SPELL THE GAP ITSELF. The surface drew
+	// `[c] change` for a year and stopped in #933 — one key, one space, the word
+	// — and eleven rows of this table went on waiting for the brackets while
+	// their `source` (the word alone) kept the gate perfectly green. That is the
+	// hole issue #998 is: a needle half of which nothing checks. Naming the key
+	// here puts the whole needle through [keyedWord], so the next wave that
+	// respells the grammar respells one function and every row moves with it.
+	key string
 	// source is the substring that must still stand in `pkg`'s own non-test
 	// sources. Empty means "the source spells it exactly as the screen does".
 	source string
@@ -434,21 +448,21 @@ var tuiWords = map[string]tuiWord{
 			"four names",
 	},
 	"settleAccept": {
-		screen: "[a] accept",
-		source: "accept",
+		key:    "a",
+		screen: "accept",
 		pkg:    "internal/session",
 		why: "the answer a person presses. The key is the surface's and the WORD is the ask's, so a conflict " +
-			"card can read `[a] resolve it` on the same column without a second constant anywhere",
+			"card can read `a resolve it` on the same column without a second constant anywhere",
 	},
 	"settleNotRight": {
-		screen: "[n] not right",
-		source: "not right",
+		key:    "n",
+		screen: "not right",
 		pkg:    "internal/session",
 		why:    "the answer that says checked work is not finished, and drives the refused ending",
 	},
 	"settleTellIt": {
-		screen: "[s] tell it",
-		source: "tell it",
+		key:    "s",
+		screen: "tell it",
 		pkg:    "internal/session",
 		why: "the third column on every one of these cards: say something to the task rather than answering. " +
 			"It must be drawn, because a person with something to say who finds only yes and no presses one of them. " +
@@ -609,10 +623,9 @@ var tuiWords = map[string]tuiWord{
 	//
 	// docs/design/task-states/DESIGN.md is the ruling and these are its words on a
 	// real screen. THE WORDS ARE THE ENGINE'S and the KEYS ARE THE SURFACE'S,
-	// which is why several rows here are composed at the draw and name a `source`
-	// in internal/session: a card that read `[a] resolve it` on the same column
-	// where another reads `[a] accept` is one constant in each place and not two
-	// spellings of one answer.
+	// which is why several rows here name a `key` and a `source`: a card that
+	// reads `a resolve it` on the same column where another reads `a accept` is
+	// one constant in each place and not two spellings of one answer.
 	"taskDoneGlyph": {
 		screen: "✓",
 		pkg:    tokensPkg,
@@ -668,15 +681,15 @@ var tuiWords = map[string]tuiWord{
 			"they are searched for, and the two spaces are the panel's own column",
 	},
 	"settleConflictAnswers": {
-		screen: "a resolve it",
-		source: "resolve it",
+		key:    "a",
+		screen: "resolve it",
 		pkg:    "internal/session",
 		why: "a conflict's own two verbs on the same two columns. A conflict's yes is NOT an accept: it " +
 			"spends one more merge round, which is why the word is the ask's and not the card's",
 	},
 	"settleConflictNo": {
-		screen: "[n] drop it",
-		source: "drop it",
+		key:    "n",
+		screen: "drop it",
 		pkg:    "internal/session",
 		why: "the half of that row that stands even on an engine with no resolver door — the absence law " +
 			"drops each column on its own rather than taking the row down with it",
@@ -741,67 +754,72 @@ var tuiWords = map[string]tuiWord{
 	// written down here — a table of things a model happened to say would be a
 	// table of coincidences.
 	"questionChipTail": {
-		screen: "question · alt+a",
+		screen: " · alt+a",
 		source: "alt+a",
 		why: "the status line's chip, which is the one thing that is always there while anything is " +
-			"waiting — reachable from home, a room and every other page",
+			"waiting — reachable from home, a room and every other page. IT IS THE TAIL AND NOT THE " +
+			"WHOLE CHIP, as the name says: the chip leads with the QUESTION'S OWN HEAD now " +
+			"(`? delete the build directory? · alt+a`, question.go's questionSegment) and says " +
+			"`1 question` only where there is no head to show and `3 questions` where there are " +
+			"several. This row waited for the word `question` through all of that, which is the same " +
+			"rot as the bracketed keys beside it (#998)",
 	},
 	"questionLaterKeyWord": {
-		screen: "[esc] later",
-		source: "later",
+		key:    "esc",
+		screen: "later",
 		why: "`esc` IS LATER AND NOT CANCEL. The consent block spelled it `cancel` for a year and " +
 			"cancel meant deny; the block is not modal any more, so there is a way out that neither " +
 			"answers nor traps, and the word may not say cancelled",
 	},
 	"questionTakeThePickWord": {
-		screen: "[enter] take it",
-		source: "take it",
+		key:    "enter",
+		screen: "take it",
 		why:    "`enter` is offered ONLY where the asker named a pick — the emptiness law on a key",
 	},
 	"questionOpenKeyWord": {
-		screen: "o open full",
-		source: "open full",
+		key:    "o",
+		screen: "open full",
 		why: "the key to the page, drawn only where opening would show more than the block already " +
 			"does; a page that says what the row said is a page nobody should be sent to. It was " +
 			"`[o] open it` here for a wave after the surface stopped bracketing its keys, which is " +
 			"exactly the rot this gate exists for",
 	},
 	"questionChangeKeyWord": {
-		screen: "[c] change",
-		source: "change",
+		key:    "c",
+		screen: "change",
 		why: "taking an answer with words, on every form but the confirmation — whose two answers ARE " +
 			"the question and have no third reading a sentence could add",
 	},
 	"questionUndoKeyWord": {
-		screen: "[u] undo",
-		source: "undo",
+		key:    "u",
+		screen: "undo",
 		why: "the way back on a ratify row. The ladder's third rung acts FIRST and tells you after, so " +
 			"the undo is the whole of the bargain",
 	},
 	"questionTickKeyWord": {
-		screen: "[space] tick it",
-		source: "tick it",
+		key:    "space",
+		screen: "tick it",
 		why: "the checklist's own verb. A shape whose key is given up for width is a shape a person " +
 			"cannot discover is tickable, which is an ordinary list",
 	},
 	"questionBlankKeyWord": {
-		screen: "[tab] next blank",
-		source: "next blank",
+		key:    "tab",
+		screen: "next blank",
 		why:    "how a sentence with holes in it is walked through — the blanks shape's own verb, ranked with the answers so a hundred-column foot keeps it",
 	},
 	"questionPairAWord": {
-		screen: "[a] the first",
-		source: "the first",
+		key:    "a",
+		screen: "the first",
 		why:    "this-or-this, once per row: the left side",
 	},
 	"questionPairBWord": {
-		screen: "[b] the second",
-		source: "the second",
+		key:    "b",
+		screen: "the second",
 		why:    "and the right one",
 	},
 	"questionMoveItWord": {
-		screen: "[←→] move it",
-		source: "move it",
+		key:    "←→",
+		screen: "move it",
 		why: "the arrows on a dial. They are a SECOND row in the key table rather than a second word " +
 			"on the first, because `←→ pick` walks a confirmation's cursor and this changes the answer",
 	},
@@ -858,8 +876,8 @@ var tuiWords = map[string]tuiWord{
 			"a `?` there would be the surface asking for something it has already had",
 	},
 	"questionPageDetailWord": {
-		screen: "\u2192 detail",
-		source: "detail",
+		key:    "\u2192",
+		screen: "detail",
 		why: "the page's own key, and the one word that says it is the page and not the panel: two " +
 			"panes, and `\u2192` hands the arrows to the evidence beside the list. The page used to " +
 			"owe a `\u2039 back` crumb and to name the asker's answer `my pick`; it draws neither now " +
@@ -877,7 +895,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"questionRoomNoPickWord": {
 		screen: "nothing chosen yet",
-		why:    "the emptiness law in the foot: no pick, no `enter →` line",
+		why: "the emptiness law in the foot: no pick, no `enter →` line. IT IS READ AS AN ABSENCE " +
+			"NOW: since #789 the page opens where the block's pointer stood, so a page with answers " +
+			"on it always has one to send and this sentence belongs to the `something else…` row, " +
+			"which carries no key. The room scenario waited for it on a page that had just opened " +
+			"on `1 postgres` — the same rot as the bracketed keys, one law over (#998)",
 	},
 	"questionFilledWord": {
 		screen: "enter when it reads right",
@@ -911,8 +933,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "the compare table, built on the asker's own dimensions rather than on anything invented",
 	},
 	"questionTabKeyWord": {
-		screen: "←→ question",
-		source: "question",
+		key:    "←→",
+		screen: "question",
 		why: "SEVERAL QUESTIONS FROM ONE STEP ARE ONE PANEL: the key that moves between them is the one " +
 			"thing a set's bottom edge says that a panel of one does not (questionset.go)",
 	},
@@ -947,8 +969,8 @@ var tuiWords = map[string]tuiWord{
 			"is the tui3 suite's to hold, and the deny-first reading of it expired with the grading",
 	},
 	"consentOldOfferWord": {
-		screen: "enter take it",
-		source: "take it",
+		key:    "enter",
+		screen: "take it",
 		pkg:    tui3Pkg,
 		why: "the keys the panel writes into its bottom edge, which is how a screen says a question " +
 			"is up and waiting on a person. It was `allow? [1] allow once` — the approval gate's own " +
@@ -956,7 +978,8 @@ var tuiWords = map[string]tuiWord{
 			"spelling for a key (owner ruling 2026-09-11, hints pick A)",
 	},
 	"consentOldCancelWord": {
-		screen: "esc cancel",
+		key:    "esc",
+		screen: "cancel",
 		source: " cancel",
 		why: "and the word that block spells for `esc`. THE QUESTIONS WAVE RETIRED IT — `esc` is later " +
 			"and cancels nothing — so this row standing is the migration's own ledger, read off a screen",
@@ -1002,7 +1025,38 @@ func say(t *testing.T, name string) string {
 	if !ok {
 		t.Fatalf("no word named %q in tuiWords — add it to tuiwords_test.go rather than typing the literal here", name)
 	}
-	return word.screen
+	return word.spelling()
+}
+
+// keyedWord is THE ONE PLACE THIS SUITE PUTS A KEY BESIDE ITS WORD, and it is
+// the other door beside [say].
+//
+// A KEY'S WORD COMES FROM THE TABLE; A SCENARIO'S OWN ANSWER DOES NOT. The line
+// that asks `delete the build directory?` offers `1 delete it` because the
+// scenario told the model to offer it, so `delete it` is the scenario's word and
+// belongs in the scenario — but the `1 ` in front of it is the PRODUCT's key
+// grammar, and a scenario that pasted that punctuation is a scenario waiting for
+// a screen the surface may already have stopped drawing. It did: #933 took the
+// brackets off every key and nine needles in questions_e2e_test.go went on
+// waiting for `[1] delete it` for a fortnight of green untagged runs (#998).
+//
+// The gap is one space, which is what internal/tui3 composes on the answers row
+// (question.go's questionRowOffer), on the dim key row under it
+// (questionkeys.go's questionKeyWords) and on a landing's three columns. The
+// panel's stacked rows use two and are a different grammar; a needle about those
+// says so with its own spelling.
+func keyedWord(key, word string) string { return key + keyedGap + word }
+
+// keyedGap is that one space, named because three readers share it.
+const keyedGap = " "
+
+// spelling is the whole needle: the word on a plain row, and the key beside it
+// on a row that names one.
+func (w tuiWord) spelling() string {
+	if w.key == "" {
+		return w.screen
+	}
+	return keyedWord(w.key, w.screen)
 }
 
 // grep is what must still stand in the sources for this word to be honest.
@@ -1047,7 +1101,7 @@ func TestEveryWordTheTmuxSuiteWaitsForStillStandsInTheSurface(t *testing.T) {
 				"It is there because: %s.\n"+
 				"Either the surface lost a sentence it should still say, or the wave that respelled it "+
 				"owes this table the new words and internal/e2e/tui_e2e_test.go the new assertion.",
-				name, word.screen, dir, word.grep(), word.why)
+				name, word.spelling(), dir, word.grep(), word.why)
 		}
 	}
 }
@@ -1065,9 +1119,183 @@ func TestEveryWordInTheTableIsWaitedForBySomething(t *testing.T) {
 	for name, word := range tuiWords {
 		if !strings.Contains(suite, `"`+name+`"`) {
 			t.Errorf("nothing in the tmux suite asks for %s = %q any more (%s). "+
-				"Delete the row, or wait for it.", name, word.screen, word.why)
+				"Delete the row, or wait for it.", name, word.spelling(), word.why)
 		}
 	}
+}
+
+// TestNoNeedleSpellsAKeyTheSurfaceStoppedSpelling is the THIRD half of the gate,
+// and the one that closes the hole the other two left (issue #998).
+//
+// THE TABLE IS ONLY THE ONLY DOOR IF NOTHING WALKS PAST IT. #933 took the
+// brackets off every key on this surface — `[1] delete it` became `1 delete it`
+// — and the untagged gate stayed green through it, twice over:
+//
+//   - nine needles in questions_e2e_test.go were INLINE LITERALS, which
+//     [TestEveryWordTheTmuxSuiteWaitsForStillStandsInTheSurface] cannot see at
+//     all because it only reads the table; and
+//   - eleven rows of the table spelled `[c] change` in `screen` while their
+//     `source` said only `change`, so the gate checked the half that had not
+//     moved and never looked at the half that had.
+//
+// TestQuestionsE2E was 14 of 18 red for a fortnight of green pull requests on
+// that. So this walks the suite's own source with go/ast and refuses, in a
+// NEEDLE POSITION — an argument that is compared against a real screen — any
+// literal that spells a key:
+//
+//   - a key in square brackets, which nothing on this surface draws any more; and
+//   - an answer's own key and word pasted together (`1 delete it`), which is the
+//     product's grammar and belongs in [keyedWord].
+//
+// EVERY OTHER LITERAL IN A NEEDLE POSITION IS LEFT ALONE, and that is the law
+// and not a gap in it: the file header beside this one says why a sentence the
+// MODEL wrote is typed into the scenario that steered it, and a gate that
+// demanded a table row for `delete the build directory?` would be demanding a
+// source of truth for a coincidence.
+func TestNoNeedleSpellsAKeyTheSurfaceStoppedSpelling(t *testing.T) {
+	// THE TABLE IS READ AS DATA AND NOT AS SOURCE. Its rows are in this process,
+	// so a bracketed spelling is caught by looking at the map rather than by
+	// parsing the file that holds it — which also keeps this test's own patterns
+	// out of its own reach.
+	for name, word := range tuiWords {
+		if bracketedKey.MatchString(word.spelling()) {
+			t.Errorf("the table spells %s as %q, and this surface stopped bracketing its keys in #933. "+
+				"Name the key in the row's `key` field and leave the word in `screen`, so [keyedWord] "+
+				"spells the gap once.\nIt is there because: %s.", name, word.spelling(), word.why)
+		}
+	}
+	for file, calls := range suiteNeedleCalls(t) {
+		for _, call := range calls {
+			for _, needle := range call.needles {
+				lit, ok := needle.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				text, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					continue
+				}
+				switch {
+				case bracketedKey.MatchString(text):
+					t.Errorf("%s:%d: %s waits for %q, and this surface stopped bracketing its keys in #933. "+
+						"Say it with keyedWord(<key>, <word>), or with say(t, …) where the word is the product's.",
+						file, call.line, call.name, text)
+				case pastedAnswer.MatchString(text):
+					t.Errorf("%s:%d: %s waits for %q, which pastes an answer's key onto its word. "+
+						"The key grammar is the product's and moves without this file: say it with "+
+						"keyedWord(%q, %q).",
+						file, call.line, call.name, text, text[:1], text[2:])
+				}
+			}
+		}
+	}
+}
+
+// bracketedKey is a key of the question grammar in square brackets — the
+// spelling every form on this surface used until #933 and none uses now.
+var bracketedKey = regexp.MustCompile(`\[(?:[0-9A-Za-z=?]|space|tab|enter|esc|shift\+\S+|[` + "←→↑↓" + `]+)\]`)
+
+// pastedAnswer is a numbered answer's key with its word behind it, which the
+// suite may only compose through [keyedWord].
+//
+// IT IS THE DIGITS AND NOT THE LETTERS. `1`–`9` are the product's own keys on
+// every list of answers, so a needle that opens with one is always the grammar;
+// a needle that opens with a letter and a space is nearly always a sentence
+// (`a shape has nothing to choose`), and a law that refused those would be a law
+// people turn off.
+var pastedAnswer = regexp.MustCompile(`^[1-9] \S`)
+
+// needleCall is one call in the suite that compares something against a real
+// screen, with the arguments that are the comparison.
+type needleCall struct {
+	name    string
+	line    int
+	needles []ast.Expr
+}
+
+// screenReaders is every door in this package through which a string is held up
+// against a terminal, and WHICH OF ITS ARGUMENTS ARE THE STRING.
+//
+// The positions are named rather than "every literal in the call" because the
+// last argument of the three assertions is a MOMENT — prose naming what is being
+// proved, written for whoever reads the failure — and a law that read those as
+// needles would refuse `a shape has nothing to choose, so the foot says when to
+// press enter instead`, which is exactly the kind of false red that gets a gate
+// deleted.
+var screenReaders = map[string]struct {
+	from int // the first argument that is held against the screen
+	tail int // how many trailing arguments are not
+}{
+	"awaitQuestion": {from: 2},
+	"screenSays":    {from: 2, tail: 1},
+	"screenSilent":  {from: 2, tail: 1},
+	"screenEchoes":  {from: 2, tail: 1},
+	"waitFor":       {from: 1},
+	"statesAwait":   {from: 2},
+}
+
+// suiteNeedleCalls parses every test file in this package but this one and
+// returns each call on a screen-reading door with its needle arguments.
+//
+// IT PARSES RATHER THAN GREPS for the reason [readPackageSources] does: a
+// bracketed key inside a comment about the wave that removed brackets is history
+// and not a needle, and a byte-wise gate cannot tell the two apart.
+func suiteNeedleCalls(t *testing.T) map[string][]needleCall {
+	t.Helper()
+	dir := filepath.Join(moduleRoot(t), "internal", "e2e")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("the tmux suite is not where this gate expects it: %v", err)
+	}
+	found := map[string][]needleCall{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, "_test.go") || name == tuiWordsFile {
+			continue
+		}
+		set := token.NewFileSet()
+		file, err := parser.ParseFile(set, filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", name, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			door := callName(call.Fun)
+			where, ok := screenReaders[door]
+			if !ok || call.Ellipsis.IsValid() {
+				return true
+			}
+			if len(call.Args) <= where.from+where.tail {
+				return true
+			}
+			found[name] = append(found[name], needleCall{
+				name:    door,
+				line:    set.Position(call.Pos()).Line,
+				needles: call.Args[where.from : len(call.Args)-where.tail],
+			})
+			return true
+		})
+	}
+	if len(found) == 0 {
+		t.Fatalf("%s holds no scenario that reads a screen, which cannot be right", dir)
+	}
+	return found
+}
+
+// callName is the last name in a call's function expression: `screenSays` for a
+// plain call and `waitFor` for `r.waitFor`, which are the two shapes this suite
+// writes.
+func callName(fun ast.Expr) string {
+	switch at := fun.(type) {
+	case *ast.Ident:
+		return at.Name
+	case *ast.SelectorExpr:
+		return at.Sel.Name
+	}
+	return ""
 }
 
 // suiteSources is every test file in this package except this one, joined — the
