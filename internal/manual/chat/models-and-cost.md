@@ -57,12 +57,12 @@ If you have turned the mouse off (`ui.mouse`), only the command works.
 **The name you press is the model you move.** Out in the conversation that is the
 conversation's model. Inside a running task's room the status line at the very bottom
 names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
-from its next turn onward — and the first time that step has to be rescued, it is rescued
-onto your pick. Nothing else moves: not the conversation, not any other task.
+from its next request onward — and the first time that step has to be rescued, it is
+rescued onto your pick. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
-If the task's work is being checked when you press, there is no next turn left to move:
+If the task's work is being checked when you press, there is no request left to move:
 the pick is saved for the next run and the row keeps naming the model the work actually
 ran on. The room shows `next model <id>` while that choice is held.
 
@@ -77,6 +77,45 @@ the session learns that model's context window for compaction, a note appears re
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
+
+## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?
+
+**Your word wins at the next request, within a second, and never at the next turn.**
+
+It depends on one thing only: whether the request in flight has given you anything yet.
+
+- **Nothing has come back.** It is still reaching a machine, waiting out a pace, or
+  walking away from a refusal — the screen has your question on it and nothing else.
+  That request is **let go of at once** and asked again on the model you chose. Nothing
+  is lost, because nothing had arrived.
+- **Something has already come back.** That request **finishes on the model it started
+  on**, and everything the work asks for after it is on the new model. Killing a reply
+  you are reading would throw away words you have paid for and waited through.
+
+**Thinking counts as something coming back.** If the model is showing you its thinking —
+the `thought for …` line, or the thought itself open under `ctrl+e` — that is on your
+screen and it is not taken away from you, so your pick rides the next request rather
+than cutting this one. It is the same rule and the same reason: aforge never withdraws
+something you are looking at to obey you faster.
+
+The same rule holds inside a task's room, where it matters most: a task step is one turn
+and can run for twenty minutes, so "the next turn" would mean your pick did nothing today.
+The room tells you which of the two you got — `switching now`, or `the next request takes
+it`. See "Changing the model for one task while it is running" on the tasks page.
+
+**If it was already moving, it moves to yours.** When a model stops answering, aforge
+moves the work to another one on its own — a rescue, not a preference. A model you name
+while that is happening is the head of that chain: the move goes to yours, the line you
+read names yours, and everything after it is read off yours. This holds even when aforge
+has nowhere of its own left to go; naming a model is itself somewhere to go, so the turn
+moves instead of ending on "there is nowhere else to try".
+
+**What it does not do.** It does not stop the turn, and it does not throw away anything
+already in the conversation: a partial reply that had arrived stays where it is. It does
+not reach work that has already finished — a task being checked, or one that has landed,
+saves the pick for the next run instead. And it is not the same rule as the thinking
+level: a level you change lands on the next thing you ask, because setting a level is not
+redirecting work you are watching.
 
 ## Does aforge remember the model I picked, or does it go back to the default?
 
@@ -246,9 +285,15 @@ case the context window is left alone.
 In the conversation, `/model` changes the model you talk to. Inside an ordinary task, `/model` opens the picker for **that task only**, and
 `/model <slug>` changes that task. Clicking its model in the status line or
 **Task setup** opens the same picker. A filtered `/model` search keeps that
-same task scope. The change takes effect on the task's next turn; a response
-already in progress keeps its model. Other tasks and the conversation stay as
-before.
+same task scope. The change takes effect at the task's **next request**, which is
+within a second of your press and never a whole turn — a task step is one turn
+and can run for twenty minutes. If the request the step is inside has given you
+nothing yet — still reaching a machine, waiting out a pace, walking away from a
+refusal — that request is let go of at once and asked again on the model you
+chose, and the room says `switching now`. If anything has come back, including
+thinking you can see, it finishes on the model it started on and everything
+after it is on the new one, and the room says `the next request takes it`. Other
+tasks and the conversation stay as before.
 
 For a completed, incomplete or `your call` ordinary task, the picker saves the
 model for when you continue. It does not restart work or change the completed
@@ -377,7 +422,7 @@ under the class answering it, saying which model comes out. As shipped:
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
 | `routerconfirm` | mastermind | a second look before work starts itself |
-| `markreader` | mastermind | what is left of a long answer, and whether it has parts |
+| `markreader` | mastermind | what is left of an answer that is being taken out of your hands, drawn as parts |
 | `handoff` | mastermind | the instruction a handed-over turn gives whoever finishes it |
 | `division` | mastermind | the parts a worker hands its own work out in |
 
@@ -396,14 +441,17 @@ about to be spent; `division` reads a task's parts before any of them exists, an
 every part ever takes runs on the brief it leaves behind.
 
 `markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
-asked at most three times, and only on an answer that has already spent ten rounds of tool
-calls, plus once at the end of any answer that touched a tool at all — it reads the account of
-the work and says what is left of your question. **It runs beside the work rather than
-stopping it**: the next step of the answer goes out immediately and the reading happens
-alongside it, so a reading that says "carry on" — which is nearly all of them — costs you
-nothing at all. A reading that says the work has independent parts in it stops the step where
-it stands and hands the answer over. It used to be awaited, and a measured one held the work
-for 8.1 seconds to decide nothing. `handoff` writes the instruction the task
+asked **at most once during an answer** — only when that answer can no longer work where it
+is: its context full, the loop watch already spent, or the wall run out — plus once at the end
+of any answer that touched a tool at all. It reads the account of the work and says what is
+left of your question. **It runs beside the work rather than stopping it**: the next step of
+the answer goes out immediately and the reading happens alongside it. What it draws is the
+list the work carries on with; the step it lands beside is stopped either way, because the
+decision to stop was taken before it was asked. It used to be awaited, and a measured one held
+the work for 8.1 seconds to decide nothing. **A long answer no longer buys one of these
+every ten rounds**: the two earlier moments cost no call at all now — aforge tells the model
+what its answer has run up and the model decides for itself (*Tasks*, under *An answer that
+runs long is told*). `handoff` writes the instruction the task
 opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
 a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
 of 18, and that is the one answer that quietly drops a handover you were owed. There is no
@@ -1117,10 +1165,11 @@ the model went quiet mid-reply · moving to gpt-5-mini
 The turn finishes there and the cost lands against the model that actually answered. **It
 is a rescue, not a choice you made**: your model is untouched, `/status` still shows it,
 and your next message goes back to it. If it keeps stalling, `/model` is how you move for
-good.
+good — and it does not wait for the stall to finish: name a model while nothing has come
+back and that request is let go of and asked again on yours.
 
-Only when there is nowhere to go — you are on `--one-model`, or no chain resolves — does
-the turn end instead:
+Only when there is nowhere to go — you are on `--one-model`, or no chain resolves, **and
+you have not named a model yourself** — does the turn end instead:
 
 ```
 error: nothing came back from the model in 1m30s, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
@@ -1303,15 +1352,16 @@ there is no ceiling, only the deadline. That patience is the *call's* own, insid
 request. What happens when the whole request
 keeps failing — several 429s in a row, a `502` between them — is the next section.
 
-**Inside a task, picking another model is worth doing while this is happening.** The call in
-flight finishes on the model it started on, and so does the rest of that step — but a step
-being paced no longer just sits there: it moves to **the model you picked in the task's
-room**, rather than to the next name in your `fallback models` row, and it says so in the
-run's own log. Before 2026-09-11 a rate limit was the one failure that moved nothing at
-all, so a pick made over a stuck step was read only after something else had already
-rescued it. This is about a task's model; **a pick in a conversation you are sitting in
-front of still lands on your next message.** See *I changed the model but my task is still
-on the old one*.
+**Picking another model is worth doing while this is happening, and it is the fastest way
+out of it.** A call that is only waiting has given you nothing, so it is **let go of at
+once** and asked again on the model you named — within a second, in a task's room and in
+the conversation alike. A step being paced no longer just sits there. If the answer had
+already begun arriving, it finishes on the model it started on and the step's next request
+is on yours; either way the move goes to **the model you picked**, rather than to the next
+name in your `fallback models` row, and it says so in the run's own log. Before 2026-09-11
+a rate limit was the one failure that moved nothing at all, so a pick made over a stuck
+step was read only after something else had already rescued it. See *Can I switch models
+while it is replying* above, and *I changed the model but my task is still on the old one*.
 
 ## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
 
@@ -1345,10 +1395,10 @@ the model would not take the request · moving to gpt-5-mini
 The new model gets a whole give-up of its own — what the last one did says nothing about
 this one — and the cost lands against the model that actually answered. **It is a rescue,
 not a choice you made**: your model is untouched, `/status` still shows it, and your next
-message goes back to it. **In a conversation the chain is the whole of it** — a model you
-pick with `/model` applies to your next message and does not redirect a rescue that is
-already happening. Inside a task's room it is different, and *Changing the model for one
-task while it is running* on the tasks page says how.
+message goes back to it. **But a model you name is the head of that chain** — pick one with
+`/model` while the moving is happening and the next move goes to yours instead of to the
+next name in the row, in the conversation exactly as in a task's room. *Changing the model
+for one task while it is running* on the tasks page says what a room adds to that.
 
 **It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
 a refusal walked the four tries and then ended the turn, so a measured conversation on
@@ -3092,6 +3142,30 @@ line is tens of kilobytes and the ordinary cap would turn over after a few dozen
 calls. `aforge doctor` names the file and its size. Set `AFORGE_CALL_LOG=off` to
 write nothing at all, or `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere
 you can watch.
+
+## A log row says "let go of because you chose another model" — what that row is, did my call fail, was I charged for it
+
+**Nothing failed, and the row is there on purpose.** It is written when you name
+another model while a request is out that had given you nothing back — see *Can I
+switch models while it is replying* above. aforge let that request go and asked the
+model you chose instead, and the row is the record of the one it let go of:
+
+```
+let go of because you chose another model
+```
+
+- **It is not a failure and nothing is broken.** Your own word is what ended that
+  request. The reply you eventually read is on the model you picked.
+- **It is written down because it cost something.** aforge had already reached a
+  machine and may have been charged for getting there, and a long step that is later
+  read back should show where every second and every cent went — a request that
+  simply vanished from the log would make the arithmetic on that step wrong.
+- **It does not say your turn stopped.** Rows that mean *aforge itself ended the
+  turn* carry a door (`person stopped`, `taken over`); this one carries none,
+  because the turn carried on. Anything reading the log to ask "did this turn end"
+  will not count it.
+- **You will see one per pick**, so picking twice inside one wait writes two rows and
+  each names the request it ended.
 
 ## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
 

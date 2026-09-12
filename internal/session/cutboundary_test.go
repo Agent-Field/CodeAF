@@ -117,7 +117,7 @@ func TestACutOwedForADrawingTheTurnHasTakenIsNotSpent(t *testing.T) {
 	// The boundary arrived without it: the drawing was taken here.
 	agent.dropOwedCut(errMarkCut)
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the next step was cut for a drawing the turn had already read: %v", context.Cause(ctx))
@@ -133,7 +133,7 @@ func TestADrawingWithdrawsOnlyItsOwnOwedCut(t *testing.T) {
 	agent.cutGeneration(errMarkCut)
 	agent.dropOwedCut(errors.New("session: somebody else's reading"))
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() == nil {
 		t.Error("another reading's boundary threw away the cut this drawing is still owed")
@@ -152,7 +152,7 @@ func TestACutAskedBeforeTheRequestExistsIsSpentByIt(t *testing.T) {
 		t.Fatal("a drawing that asked for a boundary between two steps was told its cut was spent " +
 			"on nothing; the drawing then waits out a whole extra step (#956)")
 	}
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	if ctx.Err() == nil {
 		t.Fatal("the request the owed cut was kept for went out uncut")
 	}
@@ -172,10 +172,28 @@ func TestACutWhoseReasonRidesTheTranscriptIsNotOwed(t *testing.T) {
 	if agent.cutGeneration(errRecallCut) {
 		t.Error("a recall with nothing to cut was told its one re-ask had been spent")
 	}
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the next request was cut for a block the transcript already carried: %v", context.Cause(ctx))
+	}
+}
+
+// AND NEITHER IS THE WORD A PERSON SAYS. The model they named rides
+// [Agent.spokenModel] and the next request reads it at the latch, so a word said
+// between two requests is already carried without any cut — and owing one would
+// make [Agent.cutGeneration] answer true where nothing was cut, which the room
+// says out loud as `switching now` for a request that is not starting.
+func TestAWordSaidWithNothingRunningIsNotOwedACut(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	if agent.cutGeneration(errPersonCut) {
+		t.Error("a word said between two requests was told it had cut something")
+	}
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
+	defer agent.endGeneration(generation)
+	if ctx.Err() != nil {
+		t.Errorf("the request that was already going to carry their model was cut for it: %v", context.Cause(ctx))
 	}
 }
 
@@ -194,7 +212,7 @@ func TestACutTheTurnNeverSpentIsNotSpentOnTheNextTurn(t *testing.T) {
 	agent.turnSeq++
 	agent.mu.Unlock()
 
-	ctx, generation := agent.beginGeneration(context.Background())
+	ctx, generation := agent.beginGeneration(context.Background(), &reachedThePerson{})
 	defer agent.endGeneration(generation)
 	if ctx.Err() != nil {
 		t.Errorf("the first request of the next turn was cut by the last turn's drawing: %v", context.Cause(ctx))
@@ -242,10 +260,17 @@ func TestACarryOnDrawingLandingPastTheLastStepStillSaysContinue(t *testing.T) {
 	}
 }
 
-// drawingHeldPastTheLastStep runs one grinding turn that crosses its first mark
+// drawingHeldPastTheLastStep runs one grinding turn that reaches THE RUNAWAY NET
 // and HOLDS THE DRAWING until the turn's last step has already answered, which is
-// the one window where no boundary can follow. It returns the journaled mark and
-// handover rows.
+// the one window where no boundary can follow. It returns the mark row the
+// reading was bought for and the journaled handover rows.
+//
+// IT IS THE NET AND NOT THE FIRST MARK BECAUSE THE FIRST MARK BUYS NOTHING NOW
+// (#923): the rungs below the last one tell the turn what it has run up and ask
+// nobody anything, so the only reading a turn buys is the one at the net. The
+// context is what takes it there — every scripted round reports a fuller window
+// ([checkpointFillAt]) — and the note rungs' own rows are dropped below, because
+// a row that cost no call is not the row this fixture is about.
 //
 // THE DRAWING IS RELEASED BY THE QUESTION A TURN'S END ASKS, and that is what
 // makes this deterministic rather than a race: the remains reading is made after
@@ -256,7 +281,7 @@ func drawingHeldPastTheLastStep(t *testing.T, sketch string) ([]journalMark, []j
 	release := make(chan struct{})
 	var loosen sync.Once
 	var rounds atomic.Int64
-	toolRounds := int64(checkpointMarkAt(1))
+	toolRounds := int64(checkpointMarkAt(checkpointMarks))
 
 	// EVERY STEP ANSWERS BY SHAPE, so it does not matter which request rides which
 	// slot — the drawing's own call takes one of them while it waits.
@@ -289,10 +314,10 @@ func drawingHeldPastTheLastStep(t *testing.T, sketch string) ([]journalMark, []j
 		if round > toolRounds {
 			return textResponse("done"), nil
 		}
-		return toolResponseWithText(fmt.Sprintf("call-%d", round), "ls",
-			fmt.Sprintf(`{"path":"./%d"}`, round), "Working through the next path."), nil
+		return filling(toolResponseWithText(fmt.Sprintf("call-%d", round), "ls",
+			fmt.Sprintf(`{"path":"./%d"}`, round), "Working through the next path."), int(round)), nil
 	}
-	steps := make([]step, checkpointMarkAt(1)+checkpointSlack+4)
+	steps := make([]step, checkpointMarkAt(checkpointMarks)+checkpointSlack+4)
 	for index := range steps {
 		steps[index] = answer
 	}
@@ -306,5 +331,18 @@ func drawingHeldPastTheLastStep(t *testing.T, sketch string) ([]journalMark, []j
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
-	return journaledMarks(t, path), journaledCeilings(t, path)
+	return marksThatBoughtAReading(journaledMarks(t, path)), journaledCeilings(t, path)
+}
+
+// marksThatBoughtAReading drops the note rungs' rows. They are journaled with
+// [checkpointDecisionTold] and cost no call at all, so they are not rows about a
+// drawing and cannot be rows about one landing late.
+func marksThatBoughtAReading(marks []journalMark) []journalMark {
+	kept := make([]journalMark, 0, len(marks))
+	for _, mark := range marks {
+		if mark.Decision != checkpointDecisionTold {
+			kept = append(kept, mark)
+		}
+	}
+	return kept
 }

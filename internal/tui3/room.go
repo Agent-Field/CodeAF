@@ -175,7 +175,13 @@ func (a *app) roomSteerDoors() (taskSteerDoor, bool) {
 
 // taskModelDoor is the fourth door onto a node (internal/session's
 // [Agent.RetargetTask]): the person's explicit pick of another model for THIS
-// node, taking effect on its next turn.
+// node, taking effect on its next request.
+//
+// IT ANSWERS WHEN, and that is the whole of why the answer is not a bare error:
+// a step whose request has produced nothing the person could use lets go of it
+// and asks again on the new model at once, and a step whose answer is already
+// arriving finishes it first. Those are different things to wait for, so the
+// room says which one it got.
 //
 // IT IS ITS OWN INTERFACE for the reason [taskRoomAgent] is: a capability is
 // asserted, never required. An engine that can stream a node and be steered but
@@ -183,7 +189,7 @@ func (a *app) roomSteerDoors() (taskSteerDoor, bool) {
 // simply a fact with no door on it — which is the honest degraded state and the
 // same one every node that is not running is in.
 type taskModelDoor interface {
-	RetargetTask(id uint64, model string) error
+	RetargetTask(id uint64, model string) (session.ModelLanding, error)
 }
 
 // taskModelDoors is that door under this surface, when it has one.
@@ -242,7 +248,8 @@ func (a *app) retargetTask(id uint64, model string) {
 		a.note(taskModelUnavailableWord)
 		return
 	}
-	if err := door.RetargetTask(id, model); err != nil {
+	landing, err := door.RetargetTask(id, model)
+	if err != nil {
 		a.note(err.Error())
 		if a.room != nil && a.room.id == id {
 			a.roomNote(err.Error())
@@ -259,30 +266,49 @@ func (a *app) retargetTask(id uint64, model string) {
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 	if a.room != nil && a.room.id == id {
-		// AND THE TIMING IS WHAT IS TRUE. "Its next turn takes it" was true when
-		// it was written — the engine latched the model once per turn — and a
-		// turn is a whole step, so a person told it while a step was stuck waited
-		// for a boundary twenty minutes off and typed `continue` to try to force
-		// it — and it was ALSO the whole of what the room said, which is what made
-		// it read as "nothing happens until this finishes".
+		// AND THE TIMING IS WHAT IS TRUE, WHICH IS NOW TWO SENTENCES AND NOT ONE.
+		// "Its next turn takes it" was true when the engine latched the model once
+		// per turn, and a turn is a whole step, so a person who spoke while a step
+		// was stuck waited for a boundary twenty minutes off. "The next turn takes
+		// it; a rescue goes to it first" was the half-fix: the pick could only ride
+		// a move the step was already making. Neither is true here any more. The
+		// engine now answers which of the two things happened to the request that
+		// is out RIGHT NOW, and the room says that back — so the sentence is a
+		// report and not a promise, and there is nothing left for it to hedge with.
 		//
-		// SO IT SAYS THE HALF THAT ANSWERS THEM TOO, AND ONLY BECAUSE THAT HALF IS
-		// NOW TRUE. The very next move this step makes goes to the model chosen
-		// HERE — including when the step is being paced, which used to be the one
-		// failure that moved nothing (session's movesForFailure and
-		// nextNodeModel, both reading [TaskNode.standingModel]). So the wait ends
-		// at the pick rather than somewhere nobody named.
-		//
-		// IT IS A SENTENCE ABOUT THIS ROOM AND NOT ABOUT THE CONVERSATION. A
-		// `/model` typed out in the chat still lands on the next message; the
-		// standing pick is a fact on a NODE. Cutting the request in flight is a
-		// separate change to the turn loop's own law and is not this one.
-		timing := "the next turn takes it; a rescue goes to it first"
+		// A rescue is no longer worth a clause of its own. It was worth one while
+		// the pick had to wait for a move somebody else made; now the next request
+		// carries the pick whether it is a rescue, a retry or the step's own next
+		// step, so naming the rescue would name one road out of three.
+		timing := roomModelTiming(landing)
 		if taskSetupLater(a.roomNode()) {
-			timing = "saved for when you continue"
+			timing = roomModelSavedWord
 		}
 		a.roomNote("model · " + model + " · " + timing)
 	}
+}
+
+// The three things a room can truthfully say about when a pick lands, and the
+// whole of what the engine's answer is turned into
+// (internal/session's [session.ModelLanding]).
+//
+// `switching now` is the step having let go of a request nothing had come back
+// from; `the next request takes it` is an answer already arriving being allowed
+// to finish, and is also what a live node with nothing on the wire gets, which
+// is true of it. NEITHER EVER SAYS "TURN": a step is one turn and can run for
+// twenty minutes, and a person who read that about a step waiting on a pace they
+// could not see was told their pick would do nothing today.
+const (
+	roomModelNowWord   = "switching now"
+	roomModelNextWord  = "the next request takes it"
+	roomModelSavedWord = "saved for when you continue"
+)
+
+func roomModelTiming(landing session.ModelLanding) string {
+	if landing == session.ModelLandsNow {
+		return roomModelNowWord
+	}
+	return roomModelNextWord
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other

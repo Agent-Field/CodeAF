@@ -93,7 +93,7 @@ const taskAllowance = gitRootPatience + auditDeadline
 // share is moved.
 //
 // It is the register every line in this house is held to (checkpoint.go's
-// [checkpointSplitNote] states it): an observation, a middle dot, a promise, all
+// [checkpointCeilingNote] states it): an observation, a middle dot, a promise, all
 // lowercase, no full stop, nothing about machinery.
 //
 // WHAT IT OBSERVES IS THE CLOCK, because the clock is the only thing this seam

@@ -946,7 +946,7 @@ and the rate, the connection and the state word are readings, not controls.
 While a task **room** is open the row's left grows the room chip, the room's model and the
 machine answering for it — `⠋ Ship the parser fix · task glm-5.2 · via friendli` — in
 front of the ledger, and **pressing that name moves the task**, not the conversation: the
-same picker opens aimed at that node, and the task switches from its next turn onward. One
+same picker opens aimed at that node, and the task switches from its next request onward. One
 `esc` restores the row. Where the pick could not land the name is drawn and simply does
 not react: a task that has finished, failed, been stopped or needs your look, one that has
 not started, an adaptive run's page, or a node inside a run. The tasks page says the whole
@@ -3316,11 +3316,37 @@ same clock:
 | `running <tool>` | one call on the belt is executing |
 | `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work. The two are asked **at the same time** rather than one after the other, so this stage lasts as long as the slower of them and not both |
 | `checking whether this is safe to run` | the safety stand-in is being asked whether one command is plainly safe, before you are asked about it. This is **the one reading that really does come first** — it decides whether the command runs at all — and it answers in ten seconds or not at all |
-| `taking stock` | a second model is being shown an account of the work so far and asked what is left of what you asked for. **The work does not stop for it**: the next step goes out straight away and the reading happens alongside it. If the reading says what is left has independent parts in it, the step is stopped where it stands and the answer is handed over |
+| `taking stock` | a second model is being shown an account of the work so far and asked what is left of what you asked for. **The work does not stop for it**: the next step goes out straight away and the reading happens alongside it. It happens **once**, and only on a reply that can no longer work where it is — its context full, the loop watch already spent, the wall run out, or a reply that said it had finished and then worked on for another ten rounds. The step it lands beside is stopped whatever the reading says; what the reading supplies is the list the work carries on with (*Tasks*, under *When a reply is taken out of your hands*) |
 | `tidying` | the conversation is being compacted |
 | `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
 
 Each of them is taken off the screen the moment the wait ends.
+
+## Two things are called taking stock — the word on the status line and the `[taking stock]` line the model gets
+
+**They are different moments, and only one of them asks a model anything.**
+
+**`taking stock` in the phase words** is a wait, in the table above. A second model is being
+shown an account of the work and asked to draw what is left of your question. It happens
+**once in an answer**, at the moment that answer is being taken out of your hands — its
+context full, the loop watch spent, the wall run out, or a claim that it had finished
+disproved by ten more rounds of real work (*Tasks*, under *When a reply is taken out of your
+hands*).
+
+**`[taking stock]` at the head of a line is aforge talking to the model writing your
+answer**, and nobody is asked anything at all. After ten finished rounds of tool calls, and
+again after twenty, a note rides into the next request the answer was going to make anyway,
+carrying what this answer has run up and the roads on:
+
+```
+[taking stock] 10 rounds so far, 9 files opened, 116 KB of results in front of you. Three roads on, and the choice is yours: answer now from what you have; carry the rest on in a room, with `quick_task` and `inherit` set, which opens on this transcript as you are holding it; or hand out the parts you have not read yet. A worker that does not inherit opens on a brief about your work instead of on your work, and reads it all again. Nothing has been decided for you and nothing has been moved.
+```
+
+The brackets are the harness's own voice — the family `[stuck]` and `[silent]` belong to
+(*Keys*) — so the model can tell it from something you typed. **It is not drawn on your
+screen**: no phase word, no line in your transcript, no task started, nothing moved. What
+the answer does about it is the answer's own choice (*Tasks*, under *An answer that runs long
+is told, and decides for itself*).
 
 ## What happens when I send a message — does anything run before the model is asked, what runs before my answer, and why the wait is only the model
 

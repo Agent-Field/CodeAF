@@ -48,11 +48,14 @@ import (
 func TestTheMeterFiresOnlyAtTheGeometricMarks(t *testing.T) {
 	want := map[int]int{}
 	at := checkpointPrice
-	for mark := 1; mark <= checkpointMarks; mark++ {
+	// THE LADDER CLIMBS AS FAR AS THE NOTES AND NO FURTHER. The rung above them is
+	// the ceiling, and a count of finished rounds says nothing about whether a
+	// turn has run away ([checkpointNotes], inherit.go's [Agent.turnHasRunAway]).
+	for mark := 1; mark <= checkpointNotes; mark++ {
 		want[at] = mark
 		at *= checkpointRatio
 	}
-	if len(want) != checkpointMarks {
+	if len(want) != checkpointNotes {
 		t.Fatalf("two marks share a round, so the ladder is not geometric: %v", want)
 	}
 
@@ -75,8 +78,8 @@ func TestTheMeterFiresOnlyAtTheGeometricMarks(t *testing.T) {
 	if meter.rounds != last {
 		t.Errorf("the meter counted %d rounds of %d", meter.rounds, last)
 	}
-	if meter.marks != checkpointMarks {
-		t.Errorf("the meter climbed to %d of %d marks", meter.marks, checkpointMarks)
+	if meter.marks != checkpointNotes {
+		t.Errorf("the meter climbed to %d of %d note rungs", meter.marks, checkpointNotes)
 	}
 }
 
@@ -117,15 +120,14 @@ func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 		t.Fatalf("round %d gave mark %d, want the second mark at the ordinary rung",
 			checkpointMarkAt(2), mark)
 	}
-	for round := checkpointMarkAt(2) + 1; round < checkpointMarkAt(checkpointMarks); round++ {
+	// AND NOTHING STANDS ABOVE THE SECOND NOTE. The rung where the ceiling used to
+	// be is gone: a turn is taken out of a person's hands when it can no longer
+	// work where it is, never for having finished a number of rounds.
+	for round := checkpointMarkAt(2) + 1; round <= checkpointMarkAt(checkpointMarks)*checkpointRatio; round++ {
 		if mark := meter.round(true); mark != 0 {
-			t.Fatalf("round %d fired mark %d; the ceiling stands at %d",
-				round, mark, checkpointMarkAt(checkpointMarks))
+			t.Fatalf("round %d fired mark %d; the ladder stops at the %d notes",
+				round, mark, checkpointNotes)
 		}
-	}
-	if mark := meter.round(true); mark != checkpointMarks {
-		t.Fatalf("the ceiling gave mark %d at round %d, want %d",
-			mark, checkpointMarkAt(checkpointMarks), checkpointMarks)
 	}
 }
 
@@ -384,27 +386,6 @@ func TestTheCeilingLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
 	inTheHouseRegister(t, checkpointCeilingNote)
 }
 
-// AND THE SPLIT'S LINE, WHICH IS THE THIRD IN THE FAMILY AND SAYS SOMETHING THE
-// OTHER TWO CANNOT.
-//
-// The ceiling has watched an answer outrun its own price. This has had somebody
-// read the work and draw independent parts out of it, and at the first mark the
-// turn may be no time at all — so a line claiming it had run long would be a lie,
-// exactly as the race's old line claiming it four seconds in was.
-func TestTheSplitLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
-	const want = "this has parts · handing it to a task that can take them side by side"
-	if checkpointSplitNote != want {
-		t.Fatalf("the split line reads %q, want %q", checkpointSplitNote, want)
-	}
-	inTheHouseRegister(t, checkpointSplitNote)
-	if checkpointSplitNote == checkpointCeilingNote || checkpointSplitNote == taskEscalationNote {
-		t.Error("the split says what another moment says, and the three have seen different things")
-	}
-	if strings.Contains(checkpointSplitNote, "running long") {
-		t.Errorf("the split claims the turn has run long: %q", checkpointSplitNote)
-	}
-}
-
 // inTheHouseRegister is the shape every dim one-liner the harness writes over
 // somebody's turn is held to: an observation, a middle dot, a promise — one line,
 // lowercase, no full stop, no machinery vocabulary (internal/tui3's taskWideNote,
@@ -452,11 +433,35 @@ const (
 )
 
 // checkpointSlack is how many of a script's steps a grinding turn spends on
-// things that are not tool rounds: one read per mark, the dowry DRAFT at the end,
-// and the mastermind that writes the brief out of it. A script cut to the round
-// count alone runs out under the sidecar, and the scripted completer's
-// past-the-end answer would then be read as a sketch and as a brief.
-const checkpointSlack = checkpointMarks + 3
+// things that are not tool rounds: the ceiling's one read, the dowry DRAFT at the
+// end, the mastermind that writes the brief out of it, the namer — and THE STEPS
+// THAT RIDE BESIDE THE READING. That last one is the sidecar's own arithmetic
+// (sidecar.go): the drawing is started at the boundary that crosses the net and
+// spent at the boundary after it LANDS, so a turn whose rounds cost nothing —
+// which is every scripted turn — takes a few more of them in the gap. A script
+// cut to the round count alone runs out under the sidecar, and the scripted
+// completer's past-the-end answer would then be read as a sketch and as a brief.
+//
+// AND IT IS A PRICE'S WORTH BECAUSE THE GAP IS SCHEDULER-DEPENDENT. How many
+// rounds pass between the net firing and its drawing landing is not fixed —
+// nothing about the road promises a number — so a slack tight enough to fail
+// once in four runs is a test asserting the scheduler. [checkpointPrice] is the
+// unit this package already uses for "a turn's worth of work", and it is more
+// than the gap has ever been measured at.
+const checkpointSlack = checkpointPrice + checkpointMarks
+
+// checkpointClaimSlack is the slack for the fixtures whose turn ANSWERED THE
+// HANDOVER BY SAYING IT WAS FINISHED and then carried on working.
+//
+// A believed claim is charged once and disproved by [checkpointPrice] more
+// rounds of real work ([checkpointMeter.believeDone]), so a script that grinds
+// longer than that price stops testing the ending it is about — the ceiling
+// dropped over a turn nothing was left of — and starts testing the claim rung,
+// which is a different law with its own test
+// ([TestTheRunningModelsSayS0IsBelievedOnceAndThenMet]). A round short of
+// the price is the whole of the reason for this number, and it is still longer
+// than the sidecar gap [checkpointSlack] exists for has ever been measured at.
+const checkpointClaimSlack = checkpointPrice - 1
 
 // answerTheReadingsOffTheQueue installs the aside every handover fixture needs
 // ([scriptedCompleter.aside]).
@@ -646,8 +651,17 @@ func grindingSteps(count int, sketch, brief string) []step {
 			// Visible progress keeps this fixture about checkpoint pricing rather
 			// than the independent silent-turn ladder, which now ends a turn at its
 			// third warning before the ordinary forty-round ceiling.
-			return toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
-				"Working through the next path."), nil
+			//
+			// AND THE FIXTURE FILLS THE WINDOW AS IT GOES, because that is what the
+			// runaway net actually reads (inherit.go's [Agent.turnHasRunAway]): a
+			// turn is no longer taken away from a person for having finished forty
+			// rounds, it is taken away when its context can no longer hold another
+			// step. Scripting the provider's own prompt count is how a fixture says
+			// that without writing a hundred kilobytes of tool results — see
+			// [checkpointFillAt], which crosses the line on exactly the round the
+			// ceiling used to stand on.
+			return filling(toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
+				"Working through the next path."), round), nil
 		}
 	}
 	return steps
@@ -813,181 +827,165 @@ func putTestCommandOnPath(t *testing.T, name string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// ── the running model never sees any of it ──────────────────────────────────
+// ── the note rungs: the turn is told, and nobody is asked ───────────────────
 
-// THE MODEL ANSWERING THE TURN IS NEVER SENT THE CHECKPOINT.
+// THE FIRST TWO RUNGS TELL THE RUNNING TURN AND BUY NO READING AT ALL.
 //
-// This is the whole shape of the wave in one assertion. The question used to ride
-// the ambient note lane INTO the running turn, and it was ignored — answered with
-// a tool call instead of an answer — on between 17% and 53% of measured turns,
-// depending on the phrasing. So it is asked beside the turn now, of a different
-// model, and nothing about it reaches the conversation: no note in the transcript,
-// no line in any request the session model was sent.
-func TestTheRunningModelIsNeverSentTheCheckpoint(t *testing.T) {
-	rounds := checkpointMarkAt(checkpointMarks)
-	completer := &scriptedCompleter{steps: grindingSteps(rounds+checkpointSlack, checkpointChainSketch, "Finish it\nwhat is left over")}
+// This is the whole shape of the 2026-09-11 wave in one assertion. The question
+// used to be put to a SECOND MODEL shown an account of the work, which then
+// decided whether the model holding the work should stop doing it — and on the
+// measured failure it said `split` about a turn that had read ten files in 48
+// seconds. Now the harness states the facts and the roads, once, into the turn
+// itself, and the model that is holding what was read decides (inherit.go).
+func TestTheNoteRungsTellTheTurnAndAskNobodyAnything(t *testing.T) {
+	// Every round up to one short of the second rung, then an answer: the first
+	// note fires, the second does not, and the turn finishes on its own.
+	rounds := checkpointMarkAt(2) - 1
+	steps := append(grindingSteps(rounds, checkpointSplitSketch, ""), finalAnswer("here is what I found"))
+	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
-	ran := make(ranNodes, 2)
-	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
-	ran.await(t)
 
-	// NOT IN THE TRANSCRIPT. A note here would ride into the next request by
-	// itself, which is exactly how it used to reach the model.
+	// NOBODY WAS ASKED ANYTHING. Not once, over four times the price of a
+	// handover, with a drawing waiting in the script that would have said `split`.
+	if read := marksRead(completer); read != 0 {
+		t.Fatalf("the sidecar was asked %d times over %d rounds; the note rungs read nothing",
+			read, rounds)
+	}
+	// AND NOTHING WAS MOVED.
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were admitted by a note rung; a note moves nothing", count)
+	}
+
+	// THE NOTE IS IN THE TRANSCRIPT, ONCE, IN THE HARNESS'S OWN VOICE.
 	agent.mu.Lock()
 	messages := append([]ai.Message(nil), agent.messages...)
 	agent.mu.Unlock()
+	notes := 0
 	for _, message := range messages {
-		if strings.Contains(messageText(message), "[checkpoint]") {
-			t.Fatalf("the checkpoint is in the transcript as a %s: %q", message.Role, messageText(message))
+		if strings.Contains(messageText(message), checkpointChoiceLead) {
+			notes++
+			if message.Role != "user" {
+				t.Errorf("the note rode in as a %s; harness notes are user-role text", message.Role)
+			}
+			if !strings.Contains(messageText(message), checkpointChoiceRule) {
+				t.Errorf("the note carried no roads: %q", messageText(message))
+			}
+			if !strings.Contains(messageText(message), "rounds so far") {
+				t.Errorf("the note carried none of the turn's own figures: %q", messageText(message))
+			}
 		}
 	}
-	// AND NOT IN ANY REQUEST THE CONVERSATION'S OWN MODEL WAS SENT. The sidecar's
-	// own request carries it, and the sidecar rides the mastermind — which is the
-	// only honest way to tell the two apart, because both go down one client.
+	if notes != 1 {
+		t.Fatalf("%d notes reached the turn over %d rounds; one rung stands at %d and the next at %d",
+			notes, rounds, checkpointMarkAt(1), checkpointMarkAt(2))
+	}
+	// AND IT REACHED THE MODEL, which is the only thing that makes it a note
+	// rather than a line in a file: it is in a request the conversation's own
+	// model was actually sent.
+	carried := false
 	for index := range completer.requests() {
 		if completer.model(index) == checkpointMarkModel {
 			continue
 		}
 		for _, message := range completer.request(index) {
-			if strings.Contains(messageText(message), "[checkpoint]") {
-				t.Fatalf("request %d, on model %q, carried the checkpoint: %q",
-					index, completer.model(index), messageText(message))
+			if strings.Contains(messageText(message), checkpointChoiceRule) {
+				carried = true
 			}
 		}
 	}
-	// AND THE SIDECAR WAS ASKED, so this is a test about where the question went
-	// rather than about a question nobody asked.
-	if read := marksRead(completer); read != checkpointMarks {
-		t.Fatalf("the sidecar was asked %d times over %d rounds, want one per mark (%d)",
-			read, rounds, checkpointMarks)
+	if !carried {
+		t.Error("the note never reached a request the conversation's own model was sent")
 	}
-	for index := range completer.requests() {
-		if askedForSketch(completer.request(index)) && completer.model(index) != checkpointMarkModel {
-			t.Errorf("a mark was read by %q, want the mastermind %q",
-				completer.model(index), checkpointMarkModel)
-		}
+	// AND THE TURN ANSWERED, which is the point: it was told, not interrupted.
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), "here is what I found") {
+		t.Errorf("the turn did not finish its own answer; it ends with a %s saying %q",
+			last.Role, messageText(last))
 	}
 }
 
-// AND THE SIDECAR IS ASKED AT THE MARKS AND NOWHERE ELSE.
+// AND A PRODUCTIVE READ-ONLY TURN IS NEVER MOVED — the regression for the
+// measured failure of 2026-09-11.
 //
-// The cost of this mechanism on an ordinary turn is zero calls, and on a grinding
-// one it is bounded at three — one per mark, on a turn that has already spent ten
-// rounds of tool calls.
-func TestTheSidecarIsAskedOncePerMarkAndNotBetween(t *testing.T) {
-	// Every round up to one short of the second mark: the first mark fires, the
-	// second does not.
-	rounds := checkpointMarkAt(2) - 1
-	// The drawing is answered off the queue and spends no step
-	// ([answerTheReadingsOffTheQueue]), so the script is exactly the rounds.
-	steps := append(grindingSteps(rounds, checkpointChainSketch, ""), finalAnswer("done"))
+// Ten rounds, ten files, nothing written, a drawing in the script that says the
+// work has four independent parts. Under the old ladder that was a handover at
+// round ten and a worker that re-read 116 KB of results. Under this one it is a
+// note, and the answer finishes where it is.
+func TestATenRoundReadingTurnIsToldAndNotMoved(t *testing.T) {
+	rounds := checkpointMarkAt(1)
+	steps := append(grindingSteps(rounds, checkpointSplitSketch, ""), finalAnswer("the four panels draw from home.go"))
 	completer := &scriptedCompleter{steps: steps}
-	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {})
+	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(context.Background(), "how do the home panels get their data")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	collect(t, events)
+	collected := collect(t, events)
 
-	if read := marksRead(completer); read != 1 {
-		t.Fatalf("the sidecar was asked %d times over %d rounds; one mark stands at %d and the next "+
-			"at %d, so exactly one belongs here", read, rounds, checkpointMarkAt(1), checkpointMarkAt(2))
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were started out of a ten-round reading turn", count)
+	}
+	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
+		saidSomething(said, checkpointQuickNote) {
+		t.Fatalf("a reading turn was moved; notices were %q", said)
+	}
+	if read := marksRead(completer); read != 0 {
+		t.Errorf("a reading turn paid for %d readings", read)
+	}
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), "the four panels draw from home.go") {
+		t.Errorf("the turn did not answer; it ends with a %s saying %q", last.Role, messageText(last))
 	}
 }
 
-// ── a mark that says the work has parts ─────────────────────────────────────
+// ── a drawing with parts in it no longer moves a turn ───────────────────────
 
-// A SKETCH WITH PARTS IN IT HANDS THE TURN OVER, AT THE FIRST MARK.
+// A SKETCH WITH PARTS IN IT MOVES NOTHING AT A MARK.
 //
-// The one assertion the whole wave turns on. What the person reads is the split's
-// own line; what the worker opens on is the parts, named, above everything the
-// turn found out; and the road is armed BY A JUDGEMENT — a mastermind read this
-// transcript and drew independent parts out of it, which is what lets the division
-// reviewer adjudicate a floor refusal later (task_divide.go).
-func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
+// This was the assertion the previous wave turned on and it is exactly the thing
+// that was wrong: a second model shown an ACCOUNT of the work decided that the
+// model holding the work should stop. It is deleted rather than weakened. What a
+// drawing is FOR now is the checklist the promoted work carries, and it is read
+// once, at the ceiling, after the decision to move has already been taken
+// (inherit.go).
+func TestADrawingWithPartsNoLongerMovesATurnAtAMark(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	// Well past the first mark and one short of the second, so what fires here can
-	// only be the first and the script cannot run out from under a drawing that
-	// lands a round or two late on a loaded machine.
-	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(2)-1, checkpointSplitSketch, dowry)}
+	// Well past the first rung and one short of the second, with a drawing in the
+	// script that says the work has three independent parts.
+	rounds := checkpointMarkAt(2) - 1
+	steps := append(writingGrindSteps(rounds, checkpointSplitSketch, dowry), finalAnswer("all four are done"))
+	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
-	ran := make(ranNodes, 2)
-	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	collected := collect(t, events)
-	node := ran.await(t)
 
-	// EXACTLY ONE TASK, on the one road.
-	if count := admitted(graph); count != 1 {
-		t.Fatalf("%d tasks were admitted at the first mark, want exactly one", count)
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were admitted on a drawing at a mark; a mark moves nothing", count)
 	}
-	// AND IT WAS THE FIRST MARK THAT MOVED IT, which is what the request count is
-	// here to say: the turn never reached the SECOND rung, so the handover above
-	// belongs to the first one and to nothing else.
-	//
-	// THE BOUND IS THE NEXT RUNG AND NOT A HANDFUL OF CALLS, and that is a
-	// consequence of this wave rather than slack for its own sake. The drawing is
-	// no longer a wait in front of the work (checkpoint.go's [markAside]): it is
-	// started at the boundary that crosses the mark and spent at the next boundary
-	// it has landed by, so how many steps a turn rides between the two is a fact
-	// about the machine the test is running on. Counting them would be asserting
-	// the scheduler. What does not vary is the rung.
-	if completer.requests() >= checkpointMarkAt(2) {
-		t.Errorf("the turn made %d requests and reached the second mark at %d; the handover "+
-			"was supposed to be the first one, standing at %d",
-			completer.requests(), checkpointMarkAt(2), checkpointMarkAt(1))
+	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
+		saidSomething(said, checkpointQuickNote) {
+		t.Fatalf("the turn was moved; notices were %q", said)
 	}
-	// THE LINE, EXACTLY.
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
-		t.Fatalf("the split never said its line; notices were %q", noticeTexts(collected))
-	}
-	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
-		t.Error("a split at the first mark drew the ceiling's line")
-	}
-	// THE PERSON'S ASK RIDES IT VERBATIM.
-	if node.spec.request != asked {
-		t.Errorf("the task's request is %q, want the person's own words %q", node.spec.request, asked)
-	}
-	// THE SKETCH IS AT THE HEAD OF THE BRIEF, so the worker's divide_work has the
-	// parts already named — and the dowry is still under it.
-	if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS: A | B | C") {
-		t.Errorf("the brief does not open on the parts the sidecar drew:\n%s", node.spec.brief)
-	}
-	if !strings.Contains(node.spec.brief, "the validation workflow") {
-		t.Errorf("the legend did not reach the worker:\n%s", node.spec.brief)
-	}
-	if !strings.Contains(node.spec.brief, "everything this turn already found out") {
-		t.Errorf("the task lost what the turn learned:\n%s", node.spec.brief)
-	}
-	// ARMED, AND ARMED BY THE READER THAT READ THE WORK. The word matters: only a
-	// model's own reading lets the reviewer reconsider a below-floor division
-	// ([TaskNode.armedByJudgement]).
-	if got := node.armedBy(); got != armedJudged {
-		t.Errorf("the task was armed by %q, want the mark reader's judgement (%q)", got, armedJudged)
-	}
-	if !node.dividing() {
-		t.Error("a sketch that named three parts armed nothing")
-	}
-	// THE TURN IS OVER, and the transcript is not left with a question nobody
-	// answered — the next turn would open on it and answer it.
-	if last := lastMessage(agent); last.Role != "assistant" ||
-		!strings.Contains(messageText(last), checkpointSplitNote) {
-		t.Errorf("the turn did not end on its own line; the transcript ends with a %s saying %q",
-			last.Role, messageText(last))
+	// AND NOBODY WAS ASKED TO DRAW ANYTHING, which is the saving: the drawing in
+	// the script was never bought.
+	if read := marksRead(completer); read != 0 {
+		t.Errorf("the sidecar was asked %d times under the note rungs", read)
 	}
 }
 
@@ -1014,8 +1012,8 @@ func TestASketchSayingOneJobLetsTheTurnRunOn(t *testing.T) {
 	if count := admitted(graph); count != 0 {
 		t.Fatalf("%d tasks were started off a sketch that said the work was one job", count)
 	}
-	if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) ||
-		saidSomething(said, checkpointCeilingNote) {
+	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
+		saidSomething(said, checkpointQuickNote) {
 		t.Fatalf("a carry-on said something to the person: %q", said)
 	}
 	// AND THE DOWRY WAS NEVER ASKED FOR, which is what makes this free: a carry-on
@@ -1023,10 +1021,10 @@ func TestASketchSayingOneJobLetsTheTurnRunOn(t *testing.T) {
 	if asks := handoffAsks(completer); asks != 0 {
 		t.Errorf("a carry-on asked for the dowry %d times", asks)
 	}
-	// BOTH MARKS WERE READ, so this is two carry-ons rather than a mechanism that
-	// never fired.
-	if read := marksRead(completer); read != 2 {
-		t.Errorf("the sidecar was asked %d times over %d rounds, want both marks", read, rounds)
+	// AND NEITHER RUNG READ ANYBODY. Both notes fired over these rounds and both
+	// cost the turn one sentence and no model call (inherit.go).
+	if read := marksRead(completer); read != 0 {
+		t.Errorf("the sidecar was asked %d times over %d rounds of note rungs", read, rounds)
 	}
 	// AND THE TURN'S OWN ANSWER STANDS.
 	if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
@@ -1065,9 +1063,10 @@ func TestASidecarThatCannotBeReachedCarriesOnAndTheCeilingStillFires(t *testing.
 	collected := collect(t, events)
 	node := ran.await(t)
 
-	// NOTHING MOVED AT THE FIRST TWO MARKS.
-	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
-		t.Error("a reader that faulted still split the turn")
+	// NOTHING MOVED AT THE TWO NOTE RUNGS — they read nobody, so a reader that
+	// faulted could not have moved anything there in any case.
+	if saidSomething(noticeTexts(collected), checkpointQuickNote) {
+		t.Error("a reader that faulted still moved the turn before the net")
 	}
 	// AND THE CEILING MOVED IT ANYWAY, which is the whole of why the fail-open is
 	// safe.
@@ -1270,16 +1269,23 @@ func TestAtTheCeilingTheTurnEndsAndTheWorkMovesToOneWatchedTask(t *testing.T) {
 		t.Errorf("the turn did not end on its own line; the transcript ends with a %s saying %q",
 			last.Role, messageText(last))
 	}
-	// AND IT STOPPED WHERE IT SAID IT WOULD. What stands past the ceiling is the
-	// last mark's read, the handoff brief and the errand that names the session
-	// (title.go), and none of those is another tool round.
-	if completer.requests() > rounds+checkpointSlack {
-		t.Errorf("the turn made %d requests past a ceiling standing at %d rounds", completer.requests(), rounds)
+	// AND IT STOPPED WHERE IT SAID IT WOULD — bounded by the next doubling rather
+	// than by a handful of calls, for the reason every assertion about this road
+	// now is: the drawing rides BESIDE the work (sidecar.go), so how many steps a
+	// turn takes between the net firing and the drawing landing is a fact about
+	// the machine the test runs on. Counting them would be asserting the
+	// scheduler. What does not vary is that the turn ended nowhere near twice the
+	// round the net fired on.
+	if completer.requests() >= rounds*checkpointRatio {
+		t.Errorf("the turn made %d requests past a net that fired at %d rounds", completer.requests(), rounds)
 	}
-	// THE WORK WAS READ TWICE BEFORE THE HARNESS DECIDED, AND ONCE MORE TO BRIEF
-	// THE WORKER.
-	if read := marksRead(completer); read != checkpointMarks {
-		t.Errorf("the sidecar was asked %d times, want one read per mark (%d)", read, checkpointMarks)
+	// AND THE WORK WAS READ EXACTLY ONCE, AT THE CEILING. The two rungs under it
+	// buy no reading at all now: they tell the turn what it has spent and leave
+	// the deciding to the model holding the work (inherit.go), so the whole
+	// mechanism costs one mastermind call on the turns that reach the net and
+	// nothing whatever on the turns that do not.
+	if read := marksRead(completer); read != 1 {
+		t.Errorf("the sidecar was asked %d times, want the ceiling's one reading", read)
 	}
 }
 
@@ -1307,10 +1313,10 @@ func TestTheCeilingCarriesTheLastSketchIntoTheBrief(t *testing.T) {
 	collected := collect(t, events)
 	node := ran.await(t)
 
-	// A split fired at the FIRST mark here, so this is the same road arriving
-	// early — which is the honest thing to assert about a sidecar that saw parts.
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
-		t.Fatalf("a sketch with parts in it never split the turn; notices were %q", noticeTexts(collected))
+	// THE CEILING IS WHAT MOVED IT — a drawing with parts in it no longer moves a
+	// turn on its own, and the parts are still what head the brief.
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
+		t.Fatalf("the ceiling never moved the turn; notices were %q", noticeTexts(collected))
 	}
 	if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS: A | B | C") {
 		t.Errorf("the brief does not open on the parts:\n%s", node.spec.brief)
@@ -1341,8 +1347,8 @@ func TestTheCeilingHandsOverEvenWhenNobodyCanWriteTheBrief(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted, want exactly one", count)
 	}
-	if node.spec.brief != asked {
-		t.Errorf("with no brief written the task should run on the person's own words; it has %q",
+	if !strings.HasPrefix(node.spec.brief, asked) {
+		t.Errorf("with no brief written the task should open on the person's own words; it has %q",
 			node.spec.brief)
 	}
 }
@@ -1429,7 +1435,7 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted, want exactly one", count)
 	}
-	if node.spec.brief != asked {
+	if !strings.HasPrefix(node.spec.brief, asked) {
 		t.Errorf("the task runs on %q; a brief that is not prose falls back to the person's words %q",
 			node.spec.brief, asked)
 	}
@@ -1479,7 +1485,7 @@ func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
 	const answered = "all eight files are written and the smoke check passed"
 
 	rounds := checkpointMarkAt(checkpointMarks)
-	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft), finalAnswer(answered))
+	steps := append(grindingSteps(rounds+checkpointClaimSlack, checkpointDoneSketch, checkpointNothingLeft), finalAnswer(answered))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -1634,7 +1640,7 @@ func TestTheTurnsThatMustNeverBeCheckpointedAreNot(t *testing.T) {
 				t.Errorf("%s paid for %d mark readings", shape.name, read)
 			}
 			if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
-				saidSomething(said, checkpointSplitNote) {
+				saidSomething(said, checkpointQuickNote) {
 				t.Errorf("%s was moved off its own turn: %q", shape.name, said)
 			}
 			if count := admitted(graph); count != 0 {
@@ -1692,7 +1698,7 @@ func TestAnInterruptedTurnIsNotCheckpointed(t *testing.T) {
 	collected := collect(t, events)
 
 	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
-		saidSomething(said, checkpointSplitNote) {
+		saidSomething(said, checkpointQuickNote) {
 		t.Error("an interrupted turn was moved onto the rail")
 	}
 	if count := admitted(graph); count != 0 {
@@ -1975,23 +1981,39 @@ func TestEveryMarkReadIsJournaledWithItsDecisionAndItsCost(t *testing.T) {
 	if len(marks) != checkpointMarks {
 		t.Fatalf("%d marks were journaled over a turn that crossed %d", len(marks), checkpointMarks)
 	}
-	for index, mark := range marks {
+	// THE NOTE RUNGS COST NOTHING AND SAY SO. `told` is what they did — the turn
+	// was handed its own figures and the three roads on — and the emptiness law
+	// does the rest: no model, no cost, no sketch, because there was no call.
+	for index, mark := range marks[:checkpointNotes] {
 		if mark.N != index+1 {
 			t.Errorf("mark %d is journaled as rung %d", index+1, mark.N)
 		}
 		if mark.Rounds != checkpointMarkAt(index+1) {
 			t.Errorf("rung %d fired at round %d, want %d", mark.N, mark.Rounds, checkpointMarkAt(index+1))
 		}
-		if mark.Decision != checkpointDecisionContinue {
-			t.Errorf("rung %d decided %q, want %q", mark.N, mark.Decision, checkpointDecisionContinue)
+		if mark.Decision != checkpointDecisionTold {
+			t.Errorf("rung %d decided %q, want %q", mark.N, mark.Decision, checkpointDecisionTold)
 		}
-		if mark.Sketch != "A > B > C" {
-			t.Errorf("rung %d journaled the sketch as %q", mark.N, mark.Sketch)
+		if mark.Sketch != "" || mark.Model != "" || mark.CostUSD != 0 {
+			t.Errorf("rung %d journaled a reading (%q, %q, %v) for a rung that asks nobody anything",
+				mark.N, mark.Sketch, mark.Model, mark.CostUSD)
 		}
-		if mark.Model != checkpointMarkModel {
-			t.Errorf("rung %d was journaled against %q, want the mastermind %q",
-				mark.N, mark.Model, checkpointMarkModel)
-		}
+	}
+	// AND THE CEILING'S OWN READING IS THE ONE THAT IS PAID FOR.
+	last := marks[checkpointMarks-1]
+	if last.N != checkpointMarks || last.Rounds != rounds {
+		t.Errorf("the ceiling's reading is journaled as rung %d at round %d, want %d at %d",
+			last.N, last.Rounds, checkpointMarks, rounds)
+	}
+	if last.Decision != checkpointDecisionContinue {
+		t.Errorf("the ceiling's reading decided %q, want %q", last.Decision, checkpointDecisionContinue)
+	}
+	if last.Sketch != "A > B > C" {
+		t.Errorf("the ceiling journaled the sketch as %q", last.Sketch)
+	}
+	if last.Model != checkpointMarkModel {
+		t.Errorf("the ceiling's reading was journaled against %q, want the mastermind %q",
+			last.Model, checkpointMarkModel)
 	}
 	// AND THE CEILING SAYS WHAT IT DID WITH THE TURN, with the node that took it.
 	ceilings := journaledCeilings(t, path)
@@ -2015,8 +2037,8 @@ func TestEveryMarkReadIsJournaledWithItsDecisionAndItsCost(t *testing.T) {
 			reads++
 		}
 	}
-	if reads != checkpointMarks {
-		t.Errorf("%d call lines name the mark reader, want one per mark (%d)", reads, checkpointMarks)
+	if reads != 1 {
+		t.Errorf("%d call lines name the mark reader, want the ceiling's one reading", reads)
 	}
 }
 
@@ -2054,10 +2076,15 @@ func TestAMarkNobodyCouldReadIsJournaledAsAFailure(t *testing.T) {
 	if len(marks) != checkpointMarks {
 		t.Fatalf("%d marks were journaled, want one per rung", len(marks))
 	}
-	for _, mark := range marks {
-		if mark.Decision != checkpointDecisionFailed {
-			t.Errorf("rung %d journaled %q for a reader nobody could reach, want %q",
-				mark.N, mark.Decision, checkpointDecisionFailed)
+	// ONLY THE CEILING READS ANYTHING, so only the ceiling's rung can record a
+	// reader that was not there. The two under it told the turn and asked nobody.
+	if got := marks[checkpointMarks-1].Decision; got != checkpointDecisionFailed {
+		t.Errorf("the ceiling journaled %q for a reader nobody could reach, want %q",
+			got, checkpointDecisionFailed)
+	}
+	for _, mark := range marks[:checkpointNotes] {
+		if mark.Decision != checkpointDecisionTold {
+			t.Errorf("rung %d journaled %q, want %q", mark.N, mark.Decision, checkpointDecisionTold)
 		}
 	}
 	// AND THE CEILING STILL MOVED THE WORK, which is the recovery bound the whole
@@ -2087,6 +2114,73 @@ func TestAMarkNobodyCouldReadIsJournaledAsAFailure(t *testing.T) {
 // back, the claim is spent, and the work moves — on the person's own sentence,
 // because a continuation that spent its answer on the token wrote no instruction
 // to hand anybody.
+// AND THE BOUNDARY BETWEEN THOSE TWO OUTCOMES IS PINNED ON THE METER ITSELF,
+// WITH NO SCHEDULER IN IT.
+//
+// The two roads above are one fixture apart: a turn whose claim was believed and
+// which then worked fewer than [checkpointPrice] rounds is left alone, and the
+// same turn a round later is met again. Which side of that line a SCRIPTED turn
+// lands on depends on how many of its steps the sidecar's gap eats, so a fixture
+// is the wrong instrument for the boundary — it was measured failing 13 times in
+// 30 on one machine and never on another, for exactly that reason, and
+// [checkpointClaimSlack] is the answer to it. This asks the meter directly, both
+// sides of the line and in one place, so the law is pinned by arithmetic rather
+// than by a script's luck.
+func TestABelievedClaimIsMetAgainOnlyAfterAPriceOfRealRounds(t *testing.T) {
+	const asked = "write the eight files I listed and smoke-check them"
+
+	meter := &checkpointMeter{}
+	for meter.rounds < checkpointMarkAt(checkpointMarks) {
+		meter.round(true)
+	}
+	// THE NET FIRES AND THE CLAIM IS BELIEVED AT THE SAME BOUNDARY, which is the
+	// shape of the ending this is about: the reader drew `(done)`, the
+	// continuation said nothing was left, and the turn was left to finish.
+	meter.netFired, meter.netFiredAt = true, meter.rounds
+	if !meter.mayBelieveDone(asked) {
+		t.Fatal("a claim about a request nobody has claimed anything about was refused")
+	}
+	meter.believeDone(asked)
+	believedAt := meter.rounds
+
+	// A PRICE SHORT OF THE PRICE, NOTHING RINGS. Not the ladder, which is spent,
+	// and not the net, which is latched.
+	for round := 1; round < checkpointPrice; round++ {
+		if mark := meter.round(true); mark != 0 {
+			t.Fatalf("round %d of the claim's quiet rang rung %d; the quiet is %d rounds long",
+				round, mark, checkpointPrice)
+		}
+		if meter.netRested() {
+			t.Fatalf("the net was rested %d rounds after it fired, %d short of its price",
+				round, checkpointPrice-round)
+		}
+	}
+	// AND ON THE PRICE'S OWN ROUND IT IS MET, THROUGH THE METER AND NOT THE NET.
+	// The claim rung answers with the last rung whatever the latch says, because
+	// what it bounds is a claim the harness believed rather than a reading it
+	// bought.
+	if mark := meter.round(true); mark != checkpointMarks {
+		t.Fatalf("the round that disproved the claim rang rung %d, want %d", mark, checkpointMarks)
+	}
+	if worked := meter.rounds - believedAt; worked != checkpointPrice {
+		t.Errorf("the claim was met after %d rounds of work, want %d", worked, checkpointPrice)
+	}
+	// AND THE SECOND TIME THE CLAIM IS NOT BELIEVED AGAIN, which is what makes
+	// this rung an ending rather than a loop.
+	if meter.mayBelieveDone(asked) {
+		t.Error("the same claim about the same request was offered a second belief")
+	}
+	// AND A ROUND SPENT WATCHING WORK ALREADY OUT IS NOT ONE OF THE PRICE'S,
+	// which is the meter's own law and the reason this counts rounds of WORK.
+	watching := &checkpointMeter{}
+	watching.believeDone(asked)
+	for round := 0; round < 2*checkpointPrice; round++ {
+		if mark := watching.round(false); mark != 0 {
+			t.Fatalf("a batch that only watched rang rung %d", mark)
+		}
+	}
+}
+
 func TestTheRunningModelsSayS0IsBelievedOnceAndThenMet(t *testing.T) {
 	const asked = "write the eight files I listed and smoke-check them"
 
@@ -2094,7 +2188,13 @@ func TestTheRunningModelsSayS0IsBelievedOnceAndThenMet(t *testing.T) {
 	// draws independent parts either, which is the live cells' own shape and the
 	// one corroboration could say nothing useful about. The continuation says
 	// nothing is left, at the ceiling and at the rung that comes back after it.
-	rounds := checkpointMarkAt(checkpointMarks) + checkpointPrice + checkpointSlack
+	// THE SCRIPT IS LONG ENOUGH FOR THE CLAIM TO BE MET AND SPENT. A reading rides
+	// BESIDE the work (sidecar.go) and is spent at the head of a later loop, so
+	// the drop is not settled on the round the ceiling fired and the rung that
+	// comes back after it stands [checkpointPrice] rounds past THAT. Two prices
+	// and the ordinary tail is the room both of those need; a script that ended
+	// between them would be a test asserting the scheduler.
+	rounds := checkpointMarkAt(checkpointMarks) + 2*checkpointPrice + checkpointSlack
 	steps := append(grindingSteps(rounds, checkpointChainSketch, checkpointNothingLeft),
 		finalAnswer("done"))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -2117,7 +2217,7 @@ func TestTheRunningModelsSayS0IsBelievedOnceAndThenMet(t *testing.T) {
 	}
 	// AND IT MOVED ON THE PERSON'S OWN WORDS, because the continuation wrote no
 	// brief — the same fallback a dowry of machine markup gets.
-	if node.spec.brief != asked {
+	if !strings.HasPrefix(node.spec.brief, asked) {
 		t.Errorf("the task runs on %q, want the person's own sentence %q", node.spec.brief, asked)
 	}
 	// AND THE FILE SAYS BOTH THINGS THAT HAPPENED, in order: the claim believed,
@@ -2151,7 +2251,7 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 	const answered = "all eight files are written and the smoke check passed"
 
 	rounds := checkpointMarkAt(checkpointMarks)
-	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft),
+	steps := append(grindingSteps(rounds+checkpointClaimSlack, checkpointDoneSketch, checkpointNothingLeft),
 		finalAnswer(answered))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
@@ -2192,7 +2292,7 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 // is a reader stating that work remains — it cannot corroborate a claim that none
 // does.
 func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
-	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6,
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
 		checkpointSplitSketch, checkpointNothingLeft)}
 	agent := checkpointWritingAgent(t, completer)
 	ran := make(ranNodes, 2)
@@ -2208,7 +2308,7 @@ func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted at a split the running model declared finished", count)
 	}
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Errorf("the split never said its line; notices were %q", noticeTexts(collected))
 	}
 }
@@ -3076,6 +3176,23 @@ func TestExposureIsTheLastThingTheTurnDid(t *testing.T) {
 // handoffSteps is [grindingSteps] with the mastermind that WRITES the brief
 // scripted too: the sketch it draws at a mark, the draft the running model
 // writes, and the document the writer makes out of it.
+// checkpointFillAt is how full a scripted grinding turn's context is after
+// `round` finished rounds: a straight ramp that crosses [compactThresholdOf] at
+// the round the old ceiling stood on ([checkpointMarkAt] of the last rung), so
+// every fixture written against that round still ends where it always did — and
+// now ends for the reason the code actually gives.
+func checkpointFillAt(round int) int {
+	ceiling := checkpointMarkAt(checkpointMarks)
+	return compactThresholdOf(defaultContextWindow) * (round + 2) / ceiling
+}
+
+// filling makes one scripted response report that prompt count.
+func filling(response *ai.Response, round int) *ai.Response {
+	tokens := checkpointFillAt(round)
+	response.Usage = &ai.Usage{PromptTokens: tokens, CompletionTokens: 7, TotalTokens: tokens}
+	return response
+}
+
 func handoffSteps(count int, sketch, draft, written string) []step {
 	steps := grindingSteps(count, sketch, draft)
 	for index := range steps {
@@ -3408,13 +3525,16 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 		if count := admitted(graph); count != 0 {
 			t.Fatalf("%d tasks were started off a drawing of the conversation's own waiting", count)
 		}
-		if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) {
+		if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) {
 			t.Fatalf("the split line was said over a turn that was only waiting: %q", said)
 		}
-		// AND THE READER WAS ASKED, so this is a refusal rather than a mechanism
-		// that never fired.
-		if read := marksRead(completer); read != 2 {
-			t.Errorf("the sidecar was asked %d times over %d rounds, want both marks", read, rounds)
+		// AND NOBODY WAS ASKED TO READ ANYTHING, which is what makes the refusal
+		// free. The drawing that used to be bought at a mark and then thrown away
+		// over a turn like this one is not bought at all: the rungs below the net
+		// tell the turn and call nobody (inherit.go), and a turn spent watching
+		// work already out does not even move the ladder that far.
+		if read := marksRead(completer); read != 0 {
+			t.Errorf("the sidecar was asked %d times over %d rounds of watching", read, rounds)
 		}
 		// AND THE TURN'S OWN ANSWER STANDS.
 		if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
@@ -3424,7 +3544,7 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 	})
 
 	t.Run("real parts", func(t *testing.T) {
-		completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, "Finish the four pieces\nwhat is left")}
+		completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack, checkpointSplitSketch, "Finish the four pieces\nwhat is left")}
 		agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 		ran := make(ranNodes, 2)
 		graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
@@ -3439,8 +3559,8 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 		if count := admitted(graph); count != 1 {
 			t.Fatalf("%d tasks were admitted off three real parts, want exactly one", count)
 		}
-		if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
-			t.Fatalf("the split never said its line; notices were %q", noticeTexts(collected))
+		if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
+			t.Fatalf("the ceiling never said its line; notices were %q", noticeTexts(collected))
 		}
 		if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS: A | B | C") {
 			t.Errorf("the brief does not open on the parts the sidecar drew:\n%s", node.spec.brief)
@@ -3567,8 +3687,8 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 	if count := admitted(graph); count != 0 {
 		t.Fatalf("%d tasks were started off a turn that only watched", count)
 	}
-	if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) ||
-		saidSomething(said, checkpointCeilingNote) {
+	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||
+		saidSomething(said, checkpointQuickNote) {
 		t.Fatalf("a watching turn was told something happened to it: %q", said)
 	}
 	if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {

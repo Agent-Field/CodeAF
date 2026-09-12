@@ -614,9 +614,12 @@ A task is the same agent you talk to, with the same tools, in a quieter place.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
-document engine. It inherits **not the transcript** — one assembled brief is its whole
-world, and your own message is the first part of it (below, under *What the task actually
-reads*). The
+document engine. **The transcript it inherits only when it was promoted** — a quick task
+started with `inherit`, or a reply the ceiling carried on — and that one opens holding
+this conversation exactly as it stands, every result in it, reading none of it again
+(*tasks*, under *Can it keep what it read*). Every other task inherits **not the
+transcript**: one assembled brief is its whole world, and your own message is the first
+part of it (below, under *What the task actually reads*). The
 one thing it is given of what aforge remembers about you is the handful of lines its own
 brief needs: the conversation asks the router once, against that brief, and puts the
 answer at the top of the task's instructions (what-i-remember). The task itself never
@@ -1110,9 +1113,9 @@ request, the line shows its identity mark and name alone rather than an empty qu
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
 
-**That reply is priced exactly like one you typed.** It climbs the same three points, has the
-same ceiling, and is handed to a task the same way — see *An answer that runs long is read and
-moved* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
+**That reply is priced exactly like one you typed.** It climbs the same ladder, has the
+same ceiling, and is handed to a task the same way — see *When a reply is taken out of your
+hands* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
 minutes with nobody watching and then leave the session idle for seven and a half hours.
 
 ## Which task is this answer about
@@ -1811,9 +1814,9 @@ working task from a hung one.
 **asked to hand parts of it out**, and is waiting while a model on the thinking tier reads
 the parts and decides whether, and how.
 
-**A new task never waits on it.** When work is moved out of a reply that had parts in it
-(`this has parts · handing it to a task that can take them side by side`), the parts
-somebody drew are read **beside** the task's worker, which starts at once on the whole
+**A new task never waits on it.** When a reply is moved onto a task because it could no
+longer work where it was (`this is running long · moving it to a task that is watched and
+can split`), the parts drawn on the way out are read **beside** the task's worker, which starts at once on the whole
 brief — so a task that has just appeared shows its worker's own calls, not this word. When
 that reading answers: parts are handed out as workers of their own, each from the task's
 copy of the folder as it stood at that moment, and the task gathers their reports (the
@@ -2355,7 +2358,7 @@ the new one.
 **Frozen against drift is not frozen against you.** The one deliberate way to move a
 running task off its id is to walk into that task's room and press the model's name at
 the bottom of the screen: the picker opens aimed at that task, and choosing moves that
-task from its next turn onward — the conversation and every other task are untouched. A
+task from its next request onward — the conversation and every other task are untouched. A
 task that has already landed is refused, in the words `task 7 is done, not running`. The
 tasks page has the whole of it under "Changing the model for one task while it is
 running".

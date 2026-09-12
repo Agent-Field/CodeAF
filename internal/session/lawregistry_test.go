@@ -118,7 +118,11 @@ func lawElsewhere(t *testing.T, at string) string {
 	case "code":
 		// The harness messages a law can ride on, by the symbol a lane would go
 		// and edit. A name missing here is a message nobody has registered yet.
-		messages := map[string]string{"standingNewsRule": standingNewsRule}
+		messages := map[string]string{
+			"standingNewsRule":     standingNewsRule,
+			"checkpointChoiceRule": checkpointChoiceRule,
+			"carriedResultsRule":   carriedResultsRule,
+		}
 		text, known := messages[name]
 		if !known {
 			t.Fatalf("code:%s is not a message this test knows; add it beside standingNewsRule", name)
@@ -214,6 +218,22 @@ var lawRegistry = []lawUnit{
 	// itself and says what to do about itself, so the page explaining that
 	// message was the second copy of a rule the message already carries.
 	{id: "standing.news-is-not-a-request", class: lawEvent, at: "code:standingNewsRule", key: "Do not call stand again for it"},
+
+	// ── and the three laws of a turn that has run long (inherit.go). WHAT
+	// `inherit` DOES IS A FACT ABOUT ONE FIELD OF ONE VERB, so it rides that
+	// verb's schema and disappears with it — the page said it too for a while,
+	// and a page sentence is paid for by every request of every turn whether or
+	// not the belt carries the tool it is about. What choosing between the roads
+	// COSTS rides the note that announces the moment, because it is worth
+	// nothing until a turn is actually long enough to be told. The third is what
+	// a worker that could not be handed the transcript is handed instead, and it
+	// rides that document.
+	{id: "handoff.what-you-read-need-not-be-read-again", class: lawVerb, tool: "quick_task",
+		key: "Opens on this conversation"},
+	{id: "checkpoint.the-turn-chooses", class: lawEvent, at: "code:checkpointChoiceRule",
+		key: "A worker that does not inherit opens on a brief about your work"},
+	{id: "handoff.carried-results-already-happened", class: lawEvent, at: "code:carriedResultsRule",
+		key: "Do not run these again to see what they said"},
 }
 
 // lawPlace is one searchable region of the fixed prefix, named the way a lane

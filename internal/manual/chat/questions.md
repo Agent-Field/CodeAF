@@ -498,9 +498,17 @@ digit takes that answer at once. It starts on the answer the model recommended
 where there is one — and that answer carries **`◆ recommended`** at the right
 edge of its row, in every view, so the recommendation and the pointer are never
 the same mark saying two things. Where nobody but you may answer — every permission
-that is not plainly reversible, and anything irreversible — the pointer opens on
-the answer that loses nothing instead, and that answer says `safe answer`. So
-`enter` on a permission you have not moved the pointer on **denies the call**.
+that is not plainly reversible, and anything irreversible — nobody is allowed to
+recommend anything, so the answer that loses nothing says **`safe answer`**
+instead. That mark is on the row whenever the question has no recommendation,
+whatever the pointer is doing: it tells you where your way out is, not where you
+are standing.
+
+**Where the pointer opens on a permission depends on how much the call can cost
+you**, and that is the gate's judgement, not this block's: on an ordinary call it
+opens on `allow once`, and on a grave one — a call aforge always stops you for —
+it opens on `deny`. permissions.md, *What happens if you just press `enter`?*,
+says it in full.
 
 **Under the pointer, and only there**, the panel draws what that answer means:
 the note the asker wrote under it, and where it is the recommendation, why it
@@ -611,7 +619,7 @@ the row.
 | key | what it does |
 | --- | --- |
 | `1`–`9` | take that answer — these work straight away, except on the page a question opens into, where a digit walks the pointer to that answer and `enter` takes it |
-| `enter` | take the answer the pointer is on — it starts on the recommended one, and on a permission it starts on the answer that loses nothing, so `enter` on a permission you have not moved the pointer on **denies** |
+| `enter` | take the answer the pointer is on — it starts on the recommended one where there is a recommendation. On a permission it follows the stakes: **`allow once`** on an ordinary call, **`deny`** on a grave one (permissions.md, *What happens if you just press `enter`?*) |
 | `↑` `↓` `←` `→` | move the pointer (`↑↓` on the panel, `←→` on a one-row question; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers, `→` hands them to the evidence beside them and `←` takes them back |
 | `esc` | later. Nothing is cancelled — the question folds to one titled rule where it stood |
 | `space` | open a question that has been folded to its rule, while the box is empty |
