@@ -184,6 +184,12 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
 
 	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	// A READING OWES ITS STAMP BEHIND THE PATH, so the fixture that owns this
+	// agent settles it — the same contract [Agent.Close] meets for a real
+	// session (placemeta.go's [Agent.SettleWrites]). A hand-built agent nothing
+	// closes would otherwise leave the write to land whenever, which on a busy
+	// box is after this test's own directory has been removed.
+	t.Cleanup(agent.SettleWrites)
 	agent.messages = []ai.Message{textMessage("system", "base")}
 	agent.system = "base"
 
@@ -362,6 +368,12 @@ func TestAProjectWithNoOtherWindowGetsNoBlock(t *testing.T) {
 		t.Fatalf("session folder: %v", err)
 	}
 	agent := &Agent{config: Config{Place: Place{Dir: mine}}}
+	// A READING OWES ITS STAMP BEHIND THE PATH, so the fixture that owns this
+	// agent settles it — the same contract [Agent.Close] meets for a real
+	// session (placemeta.go's [Agent.SettleWrites]). A hand-built agent nothing
+	// closes would otherwise leave the write to land whenever, which on a busy
+	// box is after this test's own directory has been removed.
+	t.Cleanup(agent.SettleWrites)
 	agent.messages = []ai.Message{textMessage("system", "base")}
 	agent.system = "base"
 
@@ -386,6 +398,9 @@ func TestATaskNodeIsNeverToldAboutOtherWindows(t *testing.T) {
 		PresenceTask{ID: "4", Title: "Sweep the call sites", State: string(TaskRunning)})
 
 	node := &Agent{config: Config{Place: Place{Dir: mine}, InTask: true}}
+	// A node owes nothing — it is never told — and settling is what proves it:
+	// a write left owed here would be one this fixture could not see.
+	t.Cleanup(node.SettleWrites)
 	node.messages = []ai.Message{textMessage("system", "base")}
 	node.system = "base"
 	node.refreshElsewhere(context.Background())
