@@ -421,6 +421,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 			// memo keyed by tool could never do (folderconsent.go).
 			if folder, aimed := a.folderAimed(call); aimed {
 				a.rememberFolder(folder, answer.allow)
+				a.rememberGrant(call.Function.Name, grantMade{folder: folder})
 				return answer, nil
 			}
 			a.rememberConsent(call.Function.Name, answer.allow)
@@ -455,6 +456,12 @@ func (a *Agent) rememberConsent(tool string, allow bool) {
 type grantMade struct {
 	service    string
 	capability string
+	// folder is the attached folder a yes was banked against, where the question
+	// was about one (folderconsent.go). It is here rather than in a second
+	// registry for this type's whole reason: [Agent.undoGrant] has to know EVERY
+	// store a yes was written into, and a standing answer the receipt cannot take
+	// back is a permission with no way out of it.
+	folder string
 }
 
 // rememberGrant banks what a standing yes bought, keyed by the tool it was about
@@ -484,6 +491,12 @@ func (a *Agent) undoGrant(tool string) {
 	delete(a.consentMemo, tool)
 	made, granted := a.grants[tool]
 	delete(a.grants, tool)
+	if granted && made.folder != "" {
+		// BACK TO ASKING ABOUT THAT FOLDER. The answer was banked against the
+		// folder instead of against this tool, so deleting the tool's memo above
+		// would have taken back nothing at all (folderconsent.go).
+		delete(a.folderConsent, made.folder)
+	}
 	connected := a.connect
 	a.mu.Unlock()
 	if !granted || connected == nil || made.service == "" || made.capability == "" {

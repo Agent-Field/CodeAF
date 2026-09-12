@@ -190,3 +190,25 @@ func TestTheAttachedBlockDoesNotPromiseACopyOrALanding(t *testing.T) {
 		}
 	}
 }
+
+// AND A STANDING YES ABOUT A FOLDER CAN BE TAKEN BACK. The receipt's "changed
+// my mind" reaches [Agent.undoGrant], which has to know every store a yes was
+// written into — and a folder answer is written into a store the tool key does
+// not reach, so without the grant carrying the folder the undo would have
+// deleted nothing and the person would go on not being asked.
+func TestChangingYourMindTakesBackAFolderYes(t *testing.T) {
+	agent, attached := folderAgent(t)
+	agent.rememberFolder(attached, true)
+	agent.rememberGrant("edit", grantMade{folder: attached})
+
+	agent.undoGrant("edit")
+
+	if _, known := agent.rememberedFolder(attached); known {
+		t.Fatal("the folder is still answered after the person changed their mind")
+	}
+	edit := call("edit", `{"path":`+quoteJSON(filepath.Join(attached, "a.txt"))+`,"old":"x","new":"y"}`)
+	decision, _ := agent.decide(edit)
+	if decision.Action != approval.ActionPrompt {
+		t.Fatalf("the next change in the folder was judged %+v, want a question again", decision)
+	}
+}
