@@ -117,6 +117,23 @@ type Profile struct {
 	// Held on a channel the test never closes in time, the primary CANNOT
 	// finish first, and the assertion is about the rule again.
 	StallUntil <-chan struct{}
+	// FirstTokenUntil is THE SAME RULE FOR THE FIRST TOKEN, which StallUntil
+	// cannot hold: it only takes hold after StallAfter deltas, so a lane whose
+	// very first word must land after something else happens has no way to say
+	// so. With this set, the lane waits out its TTFT as scripted and then waits
+	// for the channel to close as well — the arm answers no sooner than both.
+	//
+	// A primary scripted to answer "a little after" a bound the caller enforces
+	// is the shape this is for. Sixty milliseconds against a ceiling of fifty
+	// rests on ten milliseconds of wall clock, which a starved machine eats:
+	// the caller's timer fires late, the first token arrives first, and the test
+	// asserts the slack between two figures instead of the rule it was written
+	// for. Held on a signal the caller itself raises, the order cannot invert.
+	//
+	// It holds the whole answer on the unstreamed path, where the first token
+	// and the last arrive together — a knob that silently did nothing on one of
+	// the two shapes would be a fixture lying about what it staged.
+	FirstTokenUntil <-chan struct{}
 	// FailWith is an HTTP status this lane answers with instead of streaming.
 	// Zero serves normally.
 	FailWith int
@@ -1198,6 +1215,10 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 		s.cancelled(lane.Name)
 		return
 	}
+	if !lane.heldWord(ctx) {
+		s.cancelled(lane.Name)
+		return
+	}
 
 	total := lane.Tokens
 	if total <= 0 {
@@ -1384,6 +1405,10 @@ func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock,
 		s.cancelled(lane.Name)
 		return
 	}
+	if !lane.heldWord(r.Context()) {
+		s.cancelled(lane.Name)
+		return
+	}
 	var answer strings.Builder
 	if lane.Answer != "" {
 		answer.WriteString(lane.Answer)
@@ -1411,6 +1436,22 @@ func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock,
 			"cost":              cost,
 		},
 	})
+}
+
+// heldWord waits for the signal [Profile.FirstTokenUntil] names, and reports
+// whether the lane may now speak: false is a client that went away while the
+// lane was still holding its first word, which is counted like any other
+// cancellation.
+func (lane Lane) heldWord(ctx context.Context) bool {
+	if lane.FirstTokenUntil == nil {
+		return true
+	}
+	select {
+	case <-lane.FirstTokenUntil:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // cancelled records a client that walked away. It is counted per lane because

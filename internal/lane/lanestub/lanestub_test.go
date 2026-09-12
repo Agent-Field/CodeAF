@@ -397,6 +397,51 @@ func TestAScriptedMinuteCostsNoWallTime(t *testing.T) {
 	}
 }
 
+// TestALaneHoldsItsFirstWordForASignal is [Profile.FirstTokenUntil], and what
+// it asserts is an ORDER rather than an interval: the answer cannot arrive
+// while the signal is open, however fast the machine running it is. The scripted
+// five seconds are spent on the fast clock before the hold is even reached, so
+// what keeps the stream from finishing is the channel and nothing else.
+func TestALaneHoldsItsFirstWordForASignal(t *testing.T) {
+	hold := make(chan struct{})
+	server := New(model, Lane{Name: "Held", Profile: Profile{
+		TTFT: 5 * time.Second, Rate: 1000, Tokens: 4, FirstTokenUntil: hold,
+	}})
+	defer server.Close()
+	clock := NewFast(time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC))
+	server.SetClock(clock)
+
+	done := make(chan []string, 1)
+	go func() {
+		done <- ask(t, context.Background(), server, `{"model":"`+model+`","stream":true,"messages":[]}`)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for server.Requests("Held") == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if server.Requests("Held") == 0 {
+		t.Fatal("the request never reached the lane")
+	}
+
+	select {
+	case <-done:
+		t.Fatal("the stream finished while its first word was still held")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(hold)
+
+	lines := <-done
+	if lines[len(lines)-1] != "data: [DONE]" {
+		t.Fatalf("the released stream did not finish: %d lines", len(lines))
+	}
+	// A HOLD SPENDS NO SCRIPTED TIME: the ledger is still the sum of the
+	// durations the script named, so a scenario's own arithmetic is untouched
+	// by how long the signal took to arrive.
+	if clock.Elapsed() > 6*time.Second {
+		t.Fatalf("the hold spent %s of scripted time", clock.Elapsed()-5*time.Second)
+	}
+}
+
 // TestALaneMayRefuse stages the failure the endpoint ladder reads.
 func TestALaneMayRefuse(t *testing.T) {
 	server := New(model, Lane{Name: "Busy", Profile: Profile{FailWith: http.StatusTooManyRequests}})

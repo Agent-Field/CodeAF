@@ -84,17 +84,6 @@ type routeCompleter struct {
 	// wrote. One call is enough to say so and four short of the write seam's own
 	// allowance, so the mark is still what moves the work.
 	writesFirst bool
-	// holdUntilRaced holds every CONVERSATION answer until this many PRE-TURN
-	// calls have been entered — one for the screen, two for the screen and the
-	// confirm.
-	//
-	// IT IS THE WHOLE OF WHAT MAKES A RACE TESTABLE. The read at the front of a
-	// turn no longer stands in front of anything: it is asked on a goroutine and
-	// the turn goes into the model on the same beat, so "the screen was asked
-	// once" is a statement about two threads unless the turn is made to wait for
-	// it somewhere. This is that somewhere, and it is in the FIXTURE rather than
-	// in the code under test — the point of the wave is that the code never waits.
-	holdUntilRaced int
 	// onAnswer is called with the conversation's answer number before it comes
 	// back, which is where a test that needs something to happen MID-TURN — an
 	// interrupt, most usefully — puts it.
@@ -110,7 +99,7 @@ type routeCompleter struct {
 	preQuestion  string
 }
 
-func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (c *routeCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	var request ai.Request
 	for _, option := range options {
 		_ = option(&request)
@@ -189,7 +178,17 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 	if len(request.Tools) == 0 {
 		return textResponse("(errand)"), nil
 	}
-	c.awaitRace()
+	// IT IS THE WHOLE OF WHAT MAKES A RACE TESTABLE. The read at the front of a
+	// turn no longer stands in front of anything: it is asked on a goroutine and
+	// the turn goes into the model on the same beat, so "the screen was asked
+	// once" is a statement about two threads unless the turn is made to wait for
+	// it somewhere. This is that somewhere, and it is in the FIXTURE rather than
+	// in the code under test — the point of the wave is that the code never
+	// waits. A turn with a watch on it ([watchReadings]) answers once every
+	// reading beside it has LANDED, not once its calls have been entered: a call
+	// entered is a verdict still to be parsed and settled, and the boundary after
+	// the first word used to find it there only when the machine was quiet.
+	answerWhenQuiet(ctx, request)
 	c.mu.Lock()
 	c.answers++
 	answer, round, hook := c.answer, c.answers, c.onAnswer
@@ -208,31 +207,6 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 			fmt.Sprintf(`{"path":"./%d"}`, round)), nil
 	}
 	return textResponse(answer), nil
-}
-
-// awaitRace holds the conversation until the race at the front of the turn has
-// got as far as this fixture needs it to. It spins rather than waiting on a
-// channel because nothing outside the completer can see the race at all, and it
-// always terminates: the only thing that ends a race early is the turn ending,
-// and the turn cannot end while it is waiting here.
-func (c *routeCompleter) awaitRace() {
-	for {
-		c.mu.Lock()
-		reached := c.preJudged+c.preConfirmed >= c.holdUntilRaced
-		c.mu.Unlock()
-		if reached {
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-// stopHolding lets the conversation answer freely from here on, for the tests
-// whose second turn has no race to wait for.
-func (c *routeCompleter) stopHolding() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.holdUntilRaced = 0
 }
 
 func (c *routeCompleter) asked() int {
@@ -553,13 +527,13 @@ func TestTheJudgeIgnoresATrivialTurn(t *testing.T) {
 // run and nothing about this turn is known except what the person typed. Here it
 // says no, the turn calls its tool, and the post-turn judge stays out of it.
 func TestATurnWithToolCallsIsNeverJudgedAfterwards(t *testing.T) {
-	completer := &routeCompleter{answer: "done", toolRounds: 1, holdUntilRaced: 1}
+	completer := &routeCompleter{answer: "done", toolRounds: 1}
 	agent, _, nodes := routeAgent(t, completer)
+	// The screen has answered before the tool runs, so "asked once, before the
+	// tool" is a fact about this turn rather than about two threads.
+	watchReadings(t, agent)
 
-	events, err := agent.Submit(context.Background(), routeAsk)
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
+	events := mustSubmit(t, agent, routeAsk)
 	collected := collect(t, events)
 	if completer.asked() != 0 {
 		t.Fatalf("the post-turn judge was asked %d times about a turn that called tools", completer.asked())
@@ -1038,10 +1012,13 @@ func racingAgent(t *testing.T, completer *routeCompleter) (*Agent, *routeRun, *r
 	// AND THE TURN TOUCHES THE DISK ONCE, so what it is handed to is the watched
 	// task these cases are about rather than a quick node (see [routeCompleter.writesFirst]).
 	completer.writesFirst = true
-	// Both judges have answered before the conversation says its first word, so
-	// the boundary after that word is a boundary with a verdict waiting at it.
-	completer.holdUntilRaced = 2
-	return routeAgent(t, completer)
+	// THE RACE HAS LANDED BEFORE THE CONVERSATION SAYS ITS FIRST WORD, so the
+	// boundary after that word is a boundary with a verdict waiting at it; and
+	// the drawing that boundary starts has landed before the next word, so the
+	// step it cuts is the step it lands in ([answerWhenQuiet]).
+	agent, runs, nodes := routeAgent(t, completer)
+	watchReadings(t, agent)
+	return agent, runs, nodes
 }
 
 // A REQUEST WITH SEVERAL INDEPENDENT DELIVERABLES IN IT IS LOOKED AT EARLY, AND
@@ -1408,7 +1385,6 @@ func TestAConversionSpendsTheGapOnce(t *testing.T) {
 	// THE VERY NEXT TURN is inside the gap the conversion opened, so the race is
 	// never even launched — no screen call, no confirm, no second task.
 	before, beforeConfirms := completer.preAsked(), completer.preConfirms()
-	completer.stopHolding()
 	second := collect(t, mustSubmit(t, agent, routeEnumerated))
 
 	if completer.preAsked() != before || completer.preConfirms() != beforeConfirms {
@@ -1594,11 +1570,11 @@ func TestASmallQuestionIsAnsweredWithNoPreTurnAsk(t *testing.T) {
 func TestTheRateLimitIsSharedByBothAsks(t *testing.T) {
 	completer := &routeCompleter{
 		answer: "Here is what I would look at.", verdict: routeYes, confirm: routeYes,
-		// The first turn's race is held in front of the answer so that "the screen
-		// was asked once" is a fact about this turn rather than about two threads.
-		holdUntilRaced: 1,
 	}
 	agent, _, nodes := routeAgent(t, completer)
+	// The first turn's race has landed before the answer, so that "the screen was
+	// asked once" is a fact about this turn rather than about two threads.
+	watchReadings(t, agent)
 
 	// TURN ONE starts work the POST-turn way: the pre-turn screen says no (its
 	// default), the answer comes back in words, and the judge behind it starts a
@@ -1642,11 +1618,11 @@ func TestARacedYesTheConfirmRefusesLetsTheTurnRunToItsEnd(t *testing.T) {
 		ahead:        routeAheadYes,
 		aheadConfirm: routeConfirmNo,
 		verdict:      `{"work": false}`,
-		// Both judges have been asked before the turn says a word, so the silence
-		// below is a refusal rather than a question still in flight.
-		holdUntilRaced: 2,
 	}
 	agent, _, nodes := routeAgent(t, completer)
+	// Both judges have landed before the turn says a word, so the silence below
+	// is a refusal rather than a question still in flight.
+	watchReadings(t, agent)
 
 	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
 
