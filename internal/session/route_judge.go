@@ -684,10 +684,17 @@ func (r *judgeRace) spendWhenItLands(apply func(judgeRuling)) {
 	if r == nil {
 		return
 	}
-	r.reading.spendWhenItLands(func(ruling judgeRuling) {
+	// AND THE PLACE ON THE SESSION'S LIFETIME IS RELEASED ON BOTH ROADS. The
+	// reading is taken by exactly one of this and [judgeRace.end], so exactly one
+	// of them calls `done` — but a sidecar that refuses to be taken would
+	// otherwise leave this reading counted for ever, and a closing session would
+	// wait out its whole grace for work that had already finished.
+	if !r.reading.spendWhenItLands(func(ruling judgeRuling) {
 		defer r.done()
 		apply(ruling)
-	})
+	}) {
+		r.done()
+	}
 }
 
 // end lets the reading go without waiting for it, for [routeRace.end]'s reason.
