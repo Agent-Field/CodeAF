@@ -170,7 +170,11 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headFrameSizes {
 		a.width, a.height = size.w, size.h
-		want := footEdges{rule: size.h - placeFootRows + 1, box: size.h - 2, status: size.h - 1}
+		// The box row is the row the PROMPT is on, which is the block's first of
+		// [homeDraftFloor] ([footOf] reads it back that way), so it stands as far
+		// above the last row as the floor is deep.
+		want := footEdges{rule: size.h - placeFootRows + 1,
+			box: size.h - 1 - homeDraftFloor, status: size.h - 1}
 		for _, to := range []page{pageNone, pageHome, pageTasks, pageNone} {
 			if to == pageNone {
 				a.showPage(pageNone)

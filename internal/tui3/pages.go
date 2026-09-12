@@ -1185,15 +1185,19 @@ func placeFrameWithBar(a *app, width, height int,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
 	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
-		// THE BOX HAS A FLOOR ([placeBoxFloor]), and the
-		// rows that make it up are added BELOW what was typed. Padding above would
-		// move the first line a person typed off the first row, and the caret's own
-		// row is derived by subtracting this block's height from the rows placed
-		// below — so a pad at the bottom moves both by the same amount and the
-		// caret stays on the letter it is on.
-		for floor := placeBoxFloor(height); len(draftRows) < floor; {
-			draftRows = append(draftRows, "")
-		}
+	}
+	// THE BOX HAS A FLOOR ([boxFloor]) AND EVERY BRANCH ABOVE IS HELD TO IT, the
+	// target's filter included. The rows that make it up are added BELOW what was
+	// typed: padding above would move the first line a person typed off the first
+	// row, and the caret's own row is derived by subtracting this block's height
+	// from the rows placed below — so a pad at the bottom moves both by the same
+	// amount and the caret stays on the letter it is on.
+	//
+	// An empty block means the box is at REST and the rows are drawn as its
+	// silhouette further down, so it is left empty here rather than padded into
+	// a surface a press could land in.
+	for floor := boxFloor(height); len(draftRows) > 0 && len(draftRows) < floor; {
+		draftRows = append(draftRows, "")
 	}
 	// THE BOX IS THE SAME HEIGHT TYPED IN OR NOT ([homeDraftFloor]). At rest it
 	// is the place's dim sentence with the same rows under it, so the one thing
@@ -1204,7 +1208,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// moment a letter landed would shift the list up under the hand that was
 	// reaching for it.
 	draftHeight := len(draftRows)
-	if floor := placeBoxFloor(height); draftHeight < floor {
+	if floor := boxFloor(height); draftHeight < floor {
 		draftHeight = floor
 	}
 	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
@@ -1379,7 +1383,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// (boxHeight is still zero above): these rows are the box's silhouette
 		// and not its surface, so a press on them falls through to the place
 		// underneath exactly as a press on the resting row always has.
-		for row := 1; row < placeBoxFloor(height); row++ {
+		for row := 1; row < boxFloor(height); row++ {
 			add("", nil)
 		}
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
@@ -1640,27 +1644,30 @@ const placeFootRows = 3 + homeDraftFloor
 // it and a row below it, which is the least that reads as a list at all.
 const placeBodyFloor = 3
 
-// placeBoxFloor is how many rows the composer occupies, and it is the same
-// number typed in or not ([homeDraftFloor]) — except on a frame with no room
-// for it.
+// boxFloor is how many rows the composer occupies, and it is the same number
+// typed in or not ([homeDraftFloor]) — in the conversation and on every place
+// — except on a frame with no room for it.
 //
 // A THREE-ROW BOX ON AN EIGHT-ROW TERMINAL IS THE LIST GONE. The foot already
 // spends a blank, a rule and a hint; holding three more open on top of a
-// four-row head leaves one body row, and the list a person came to read touches
-// the foot. So the floor is taken only while the body keeps [placeBodyFloor]
-// rows under it, and a frame too short falls back to the single row the box has
-// always drawn — the box stays usable, and what gives way is the emptiness
-// around it rather than the content above it.
+// four-row head leaves one body row, and the list a person came to read gives
+// way to the emptiness around the box. So the floor is taken only while the
+// body keeps [placeBodyFloor] rows under it, and a frame too short falls back to
+// the single row the box has always drawn — the box stays usable, and what gives
+// way is the space around it rather than the content above it.
 //
-// THE SAME ANSWER FEEDS THE HEIGHT AND THE DRAWING, so the rows the foot
-// reserves and the rows it then adds can never disagree. That is not tidiness:
-// they are read a hundred lines apart and a frame that reserved three and drew
-// one would lose a row off the top of the window, which is where the head is.
+// THE SAME ANSWER FEEDS THE HEIGHT AND THE DRAWING, so the rows a foot reserves
+// and the rows it then adds can never disagree. That is not tidiness: they are
+// read far apart on both surfaces, and a frame that reserved three and drew one
+// would lose a row off the top of the window, which is where the head is. It is
+// why the chat applies it inside [app.inputBlock], which its height and its
+// drawing both go through.
+//
 // It is handed the frame's own height rather than asking [app.size] for one,
 // because a frame is drawn at the height it was given — the rigs draw many
 // sizes through one app, and a floor decided from the window would be the wrong
 // floor for every frame but the last.
-func placeBoxFloor(height int) int {
+func boxFloor(height int) int {
 	if height-(placeHeadRows+placeFootRows) < placeBodyFloor {
 		return 1
 	}

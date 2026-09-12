@@ -254,8 +254,8 @@ const (
 // the caret exactly as the chat box's does (input.go's draftBlock).
 const homeDraftRows = 3
 
-// homeDraftFloor is how many rows home's foot box occupies ONCE SOMETHING IS
-// TYPED IN IT, however little that is.
+// homeDraftFloor is how many rows the composer occupies WHATEVER IS IN IT,
+// including nothing.
 //
 // A ONE-ROW BOX READS AS A RULE, NOT AS A PLACE TO TYPE. The box grew to fit
 // its draft and no further, so the commonest state — a question a sentence
@@ -273,17 +273,30 @@ const homeDraftRows = 3
 // by two that have to be kept apart.
 //
 // The rows are padded BELOW the draft, never above it, so the first line a
-// person types stays on the first row and the caret arithmetic in pages.go is
-// untouched — it derives the caret's row by subtracting this block's height
-// from the rows placed, and a pad at the bottom moves both by the same amount.
-// Past three rows the window still scrolls under the caret ([draftBlock]), so a
-// paste cannot push the list off the screen.
+// person types stays on the first row and the caret arithmetic is untouched —
+// it derives the caret's row by subtracting this block's height from the rows
+// placed, and a pad at the bottom moves both by the same amount. Past three
+// rows the window still scrolls under the caret ([draftBlock]), so a paste
+// cannot push the list off the screen.
 //
-// AT REST IT IS STILL ONE ROW. An empty box draws the place's own dim sentence
-// and nothing else, which is the list-first shape this screen is built on and
-// the emptiness law besides: a box nobody is typing in has nothing to show, and
-// three blank rows held open for it would be the cockpit this screen
-// deliberately is not.
+// AT REST IT IS THREE ROWS TOO, and that is the point rather than a side
+// effect: the one thing on this screen a person types into should be a block
+// they can see BEFORE they have typed anything, and a box that jumped from one
+// row to three on the first keystroke shifted the list up under the hand
+// reaching for it. The resting rows are the box's silhouette and not its
+// surface — the press span stays empty, so a click on them falls through to the
+// place underneath exactly as a click on the resting row always has, and the
+// emptiness law is untouched because the row still says nothing it does not
+// know.
+//
+// AND IT IS THE CHAT'S FLOOR AS WELL AS EVERY PLACE'S. The conversation's foot
+// and a place's foot are the same rows — a blank, the rule, the box, the last
+// line — and `esc` between them may not move any of them
+// (TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot, which is a defect
+// that was found and fixed once already). A floor that held on home alone would
+// put it straight back, so [boxFloor] is asked by the chat's [app.inputBlock]
+// and by every place's frame, and the number they are both held to is this one.
+// It lives here because home is where the reading that set it came from.
 const homeDraftFloor = 3
 
 // The sentences this surface says. Each is quoted in the manual exactly as it
