@@ -61,8 +61,15 @@ func TestAnAttachedFolderIsNamedToTheModelOnTheNextRequest(t *testing.T) {
 	if !strings.Contains(seen, workspace) {
 		t.Fatalf("the working directory %q is no longer named beside the attachment:\n%s", workspace, seen)
 	}
-	if !strings.Contains(seen, "REFERENCES AND NOT THE WORKING DIRECTORY") {
-		t.Fatalf("nothing tells the model an attached folder is not where work happens:\n%s", seen)
+	if !strings.Contains(seen, "THE WORKING DIRECTORY HAS NOT MOVED") {
+		t.Fatalf("nothing tells the model that attaching a folder did not move where it is standing:\n%s", seen)
+	}
+	// AND IT IS TOLD WHERE A WRITE UNDER THE ATTACHED PATH GOES. This block said
+	// the workspace was "still what may be written to" while the belt aimed every
+	// write into a copy of the folder — both halves wrong at once, and a model
+	// reasons from this paragraph for the rest of the turn (folderconsent.go).
+	if !strings.Contains(seen, "GO INTO THAT FOLDER ITSELF") {
+		t.Fatalf("nothing tells the model that a write under an attached folder reaches that folder:\n%s", seen)
 	}
 	// AND THE WORKSPACE ITSELF DID NOT MOVE, which is the product's own promise:
 	// attaching is not a `cd`.
