@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
@@ -3699,8 +3701,66 @@ func ModelRolesAt(profileDir string) string {
 // ParseModelRoles reads `title:openai/gpt-5-mini` into role → model. The value
 // is split at the FIRST colon only, because a model slug can carry one of its
 // own (`…/model:free`).
+//
+// A PIN FOR A ROLE THIS BUILD RETIRED IS DROPPED, NOT REFUSED (roles.Retired).
+// The row is a person's own text, kept as they typed it, so it outlives the
+// code that gave a word meaning — and refusing the whole row over one dead word
+// would make every OTHER pin on that machine unchangeable, because the panel
+// re-serialises the whole string on any change. Dropping is the reading that
+// leaves the rest of their sentence working.
 func ParseModelRoles(raw string) (map[string]string, error) {
-	return parsePairs(raw, "role")
+	pins, err := parsePairs(raw, "role")
+	if err != nil {
+		return nil, err
+	}
+	for name := range pins {
+		if why, gone := roles.Retired(name); gone {
+			noteRetiredRole(name, why)
+			delete(pins, name)
+		}
+	}
+	return pins, nil
+}
+
+// saidRetired is which dead role names this process has already explained, so a
+// row read on every settings draw says its line ONCE rather than once a frame.
+var saidRetired sync.Map
+
+func noteRetiredRole(name, why string) {
+	if _, already := saidRetired.LoadOrStore(strings.ToLower(strings.TrimSpace(name)), struct{}{}); already {
+		return
+	}
+	log.Printf("config: %q is no longer a role, so the model pinned to it is ignored — %s", name, why)
+}
+
+// withoutRetiredRoles is the person's own `models.roles` text with the pins for
+// retired roles taken out, and is the text itself when there are none.
+//
+// IT REBUILDS ONLY WHEN IT HAS TO. The row is stored verbatim so it reads back
+// the way it was typed; rewriting it on every save to normalise separators
+// would edit a person's sentence for no reason. When a dead word IS in there,
+// the rebuild is the price of never writing it out again.
+func withoutRetiredRoles(raw string) string {
+	kept := make([]string, 0, 8)
+	dropped := false
+	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	}) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		name, _, _ := strings.Cut(item, ":")
+		if _, gone := roles.Retired(name); gone {
+			dropped = true
+			continue
+		}
+		kept = append(kept, item)
+	}
+	if !dropped {
+		return raw
+	}
+	return strings.Join(kept, ", ")
 }
 
 // ModelFallbacksAt resolves the fallback chain as the person wrote it.
@@ -4033,7 +4093,12 @@ func writeModelRoles(profileDir, raw string) error {
 		}
 		return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
 	}
-	return writeText(profileDir, KeyModelRoles, raw)
+	// AND A DEAD WORD IS NEVER WRITTEN BACK. [ParseModelRoles] has already taken
+	// the retired pins out of the map above, so the refusal cannot see them; this
+	// takes them out of the TEXT, which is what is actually stored. Without it a
+	// person who changes any pin keeps re-saving a word this build stopped
+	// answering to, forever.
+	return writeText(profileDir, KeyModelRoles, withoutRetiredRoles(raw))
 }
 
 // roleNames is the registered roles as a sorted list of plain words, for the
