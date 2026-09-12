@@ -418,7 +418,7 @@ const fixedPrefixTarget = 48_000
 // person has before they have said anything.
 const (
 	fixedPrefixWaiver = 5_141
-	leanPrefixWaiver  = 13_420
+	leanPrefixWaiver  = 13_416
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
