@@ -662,7 +662,7 @@ func TestAWorkerTurnDoesNotSpendADecisionNobodyHasBeenGiven(t *testing.T) {
 	root := &TaskNode{graph: graph, id: 1, state: TaskRunning, spec: taskSpec{title: "the whole job"}}
 	piece := &TaskNode{
 		graph: graph, id: 2, parent: 1, state: TaskUnverified,
-		decider: TaskAskOwnerModel, handNote: decisionNoteOwed,
+		decider: TaskAskOwnerModel, noteOwed: true,
 		spec: taskSpec{title: "a piece of it"},
 	}
 	graph.nodes[1], graph.nodes[2] = root, piece
@@ -675,7 +675,7 @@ func TestAWorkerTurnDoesNotSpendADecisionNobodyHasBeenGiven(t *testing.T) {
 	// AND IT IS NOT A DOOR THAT STAYS SHUT. Once a request has carried the note,
 	// the next turn to end is the window closing, exactly as it always was.
 	graph.mu.Lock()
-	piece.handNote = decisionNoteRead
+	piece.noteOwed = false
 	graph.mu.Unlock()
 	worker.handBackUnsettled()
 	if piece.decider != TaskAskOwnerPerson {
@@ -702,8 +702,8 @@ func TestALandingHandedOverByPolicyIsNotSpentBeforeItsNoteIsCarried(t *testing.T
 	// AND THE REQUEST IS WHAT MAKES IT A QUESTION THE MODEL HAS.
 	agent.decisionNotesOwed = []uint64{node.id}
 	agent.decisionNotesCarried()
-	if got := decisionNoteOf(node); got != decisionNoteRead {
-		t.Fatalf("the note the request carried is %v, want it read", got)
+	if decisionNoteOwed(node) {
+		t.Fatal("the node still owes a question after the request carried its note")
 	}
 	agent.handBackUnsettled()
 	if node.decider != TaskAskOwnerPerson {
@@ -724,7 +724,7 @@ func TestWhatNoTurnWillEverCarryComesBackToThePerson(t *testing.T) {
 	node.holdsDecision(TaskAskOwnerModel)
 	agent.decisionNotesOwed = []uint64{node.id}
 	// The turn that would have carried it has ended with nothing following.
-	agent.handBackUnreadNotes()
+	agent.handBackUnread()
 	if node.decider != TaskAskOwnerPerson {
 		t.Fatalf("a press nothing was ever going to carry was left with the model (%q)", node.decider)
 	}

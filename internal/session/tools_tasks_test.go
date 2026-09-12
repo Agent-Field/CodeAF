@@ -717,8 +717,8 @@ func TestAPressNoRequestCarriedKeepsTheDecisionForTheTurnThatReadsIt(t *testing.
 	if err := agent.HandUnverifiedToModel(id); err != nil {
 		t.Fatalf("handing the decision over: %v", err)
 	}
-	if note := decisionNoteOf(graph.node(id)); note != decisionNoteOwed {
-		t.Fatalf("the press marked the node %v, want the note owed and unread", note)
+	if !decisionNoteOwed(graph.node(id)) {
+		t.Fatal("the press left the node owing the model no question")
 	}
 
 	// The floor, run by hand at the instant the turn in flight would run it.
@@ -773,12 +773,12 @@ func TestAnInterruptedTurnHandsBackThePressItNeverCarried(t *testing.T) {
 	})
 }
 
-// decisionNoteOf reads how far one node's decision note has got, under the lock
+// decisionNoteOwed reads whether a node is still owed a question, under the lock
 // every other reader of a node's fields takes.
-func decisionNoteOf(node *TaskNode) decisionNote {
+func decisionNoteOwed(node *TaskNode) bool {
 	node.graph.mu.Lock()
 	defer node.graph.mu.Unlock()
-	return node.handNote
+	return node.noteOwed
 }
 
 // TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing is the same press

@@ -138,6 +138,15 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// is what lets it sit here.
 	a.nudgePresence()
 	a.mu.Unlock()
+	// AND A DECISION THIS TURN WAS CARRYING AND NEVER ASKED COMES BACK TO THE
+	// PERSON. A hard stop starts no successor — that is what makes it hard — so a
+	// note the drain above just took is one nothing will ever put in front of the
+	// model, and the ordinary ending's own answer to that
+	// ([Agent.handBackUnread]) cannot reach here: the goroutine still running
+	// under this turn finds the number moved and cleans up nothing. Without it
+	// the card stayed `aforge is deciding` on work nobody was deciding, and the
+	// second press answered `already handed to aforge` with no way back.
+	a.handBackUnread()
 
 	// THE WAITS END FIRST, then the request is cut, then the surface is freed.
 	// The order is what makes the freeing honest: a hub closed before the waits
