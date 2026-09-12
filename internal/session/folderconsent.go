@@ -55,8 +55,8 @@ package session
 // critical-command table and the calls that act in the person's name still ask
 // whatever is remembered ([approval.AlwaysAsks]), and a session whose blanket
 // mode is `allow` — `tools.approvalMode: allow`, or `--yolo` — is never asked
-// anything here, because nothing in this file raises a decision. It only
-// rephrases one that was already going to be a question, and widens the answer.
+// anything here, because nothing in this file raises a decision. All it does to
+// one is rephrase a question that was already going to be asked.
 
 import (
 	"encoding/json"
