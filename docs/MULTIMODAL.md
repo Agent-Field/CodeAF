@@ -154,10 +154,11 @@ transcript guard closes the last hole: switching a conversation with
 attached images onto a blind model turns the image parts into their text
 placeholders instead of sending base64 to a model that cannot read it.
 
-**Deliberately deferred:** mic/voice-input in tui3 (the `internal/voice`
-machinery is real and waits on a surface wave), and `generate_music` as a
-separate verb (`speak` carries the endpoint until a music model earns a
-schema of its own).
+**Deliberately deferred:** mic/voice-input in tui3 — v1's own recorder and
+transcriber package was removed once no surface imported it, so a wave that
+wants a microphone builds the capture afresh against `internal/provider`'s
+`Transcribe` — and `generate_music` as a separate verb (`speak` carries the
+endpoint until a music model earns a schema of its own).
 
 ### Decision 9 — Perception is `read`'s job: a file is a file, in every modality
 
