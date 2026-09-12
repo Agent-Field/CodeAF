@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: the frame law sees a function that takes the surface as a parameter, and stops counting a press as a paint (#898)
+title: the frame law sees a surface passed as a parameter, and a press is not a paint (#898)
 pr: 977
 surface: [chat, build]
 invalidates:
