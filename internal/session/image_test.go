@@ -31,12 +31,12 @@ func writeImage(t *testing.T, directory, name, content string) string {
 	return path
 }
 
-// noGate leaves Config.SupportsImages nil — a caller that holds no catalog.
+// noGate leaves Config.SeesImages nil — a caller that holds no catalog.
 func noGate(*Config) {}
 
 // withVision is the gate saying yes.
 func withVision(config *Config) {
-	config.SupportsImages = func(string) bool { return true }
+	config.SeesImages = func(string) ModelSight { return SightOf(true) }
 }
 
 func imagePartURLs(message ai.Message) []string {
@@ -148,7 +148,7 @@ func TestSubmitImageRefusesAModelThatCannotSeeAndNamesIt(t *testing.T) {
 		// that holds no catalog must not be able to send parts to a model
 		// nobody has vouched for.
 		{"nil gate", noGate},
-		{"gate says no", func(config *Config) { config.SupportsImages = func(string) bool { return false } }},
+		{"gate says no", func(config *Config) { config.SeesImages = func(string) ModelSight { return SightOf(false) } }},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			completer := &scriptedCompleter{}
@@ -186,7 +186,7 @@ func TestSubmitImageRefusesAModelThatCannotSeeAndNamesIt(t *testing.T) {
 func TestSubmitImageGateFollowsTheCurrentModel(t *testing.T) {
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SupportsImages = func(model string) bool { return model == "vendor/sees" }
+		config.SeesImages = func(model string) ModelSight { return SightOf(model == "vendor/sees") }
 	})
 	path := writeImage(t, workspace, "shot.png", "BYTES")
 
@@ -494,12 +494,12 @@ func TestImagePartsReachTheWire(t *testing.T) {
 
 	workspace := t.TempDir()
 	agent, err := New(Config{
-		Workspace:      workspace,
-		Model:          "vendor/vision-model",
-		APIKey:         "test",
-		BaseURL:        server.URL,
-		System:         "SYSTEM",
-		SupportsImages: func(string) bool { return true },
+		Workspace:  workspace,
+		Model:      "vendor/vision-model",
+		APIKey:     "test",
+		BaseURL:    server.URL,
+		System:     "SYSTEM",
+		SeesImages: func(string) ModelSight { return SightOf(true) },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

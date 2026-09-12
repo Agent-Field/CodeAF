@@ -893,7 +893,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// session's model changes under /model (see [v3SeesImages]). It reads
 		// the SHELF, so a model picked out of a list somebody refreshed a moment
 		// ago is answered from that list rather than refused as unknown.
-		SupportsImages: v3SeesImages(proc.Shelf),
+		SeesImages: v3SeesImages(proc.Shelf),
 		// The published answer to "may this call carry this knob", which the
 		// adapter asks before it lets an optional field travel. It was wired to
 		// nothing on this path, so a reasoning level set with ctrl+t or
@@ -2117,34 +2117,44 @@ func v3AnswersText(outputs []string) bool {
 // The file is read at most once per session: it is the same rows for the whole
 // warming window, and re-reading it per message would put I/O on the message
 // path to learn nothing new.
-func v3SeesImages(models v3Catalog) func(string) bool {
+// AND IT ANSWERS IN THREE STATES, NOT TWO ([session.ModelSight]). A row this
+// door has actually read is a `sees` or a `blind`; a catalog that has not
+// answered yet and a disk cache that does not carry the id are `unknown`, and
+// the difference decides whether a person's screenshot survives. Until the third
+// state existed a cold catalog said `blind` in the same breath a warm one said
+// `sees`, for one id, one conversation, a minute apart — and the scrub that read
+// it took the pictures out of the transcript for good (internal/session's
+// blindswap.go states what each caller does with which answer).
+func v3SeesImages(models v3Catalog) func(string) session.ModelSight {
 	var once sync.Once
 	var cached []tui3.Model
-	return func(model string) bool {
+	return func(model string) session.ModelSight {
 		model = strings.TrimSpace(model)
 		if model == "" {
-			return false
+			return session.SightUnknown
 		}
 		if models != nil {
 			if rows := models.ModelsNow(); len(rows) > 0 {
 				for _, row := range rows {
 					if strings.EqualFold(strings.TrimSpace(row.ID), model) {
-						return v3ReadsImages(row.InputModalities)
+						return session.SightOf(v3ReadsImages(row.InputModalities))
 					}
 				}
 				// The catalog HAS answered and does not carry this id — a
-				// hand-typed slug, a model this router never listed. That is a
-				// no on the same terms as an unpublished modality.
-				return false
+				// hand-typed slug, a model this router never listed. Nothing has
+				// been READ about this model, so nothing is known about it: it is
+				// refused a picture like any unknown, and its pictures are left
+				// where they are like any unknown.
+				return session.SightUnknown
 			}
 		}
 		once.Do(func() { cached = tui3.CachedModels() })
 		for _, row := range cached {
 			if strings.EqualFold(strings.TrimSpace(row.ID), model) {
-				return v3ReadsImages(row.Input)
+				return session.SightOf(v3ReadsImages(row.Input))
 			}
 		}
-		return false
+		return session.SightUnknown
 	}
 }
 

@@ -673,6 +673,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// transcript another model was half-way through writing — and the boundary is
 	// what stops a person's pick waiting out a twenty-minute step.
 	//
+	// THE LATCH IS THE AGENT'S AND IS READ BACK, NOT TAKEN AGAIN HERE. It was
+	// stamped when the turn opened, under the lock that bound the client
+	// ([Agent.startTurnLocked]); reading the dial again on this side of the
+	// goroutine hand-off was a second latch of the same fact, one instant later,
+	// and a pick that landed in between made the two disagree. It is also what
+	// every sentence a person reads about this turn is drawn from
+	// ([Agent.TurnModel]), so the turn and the chrome cannot name two models.
+	//
 	// The effort rung is latched WITH it, in the same breath and for the same
 	// reason — and it is resolved for THIS model, so a swap mid-turn cannot
 	// leave the turn sending one model's level with another model's name. It is
@@ -869,6 +877,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// model that actually answered rather than the one that stopped.
 		if answered != "" && answered != model {
 			model = answered
+			a.rideModel(model)
 			rung = a.effortFor(model)
 		}
 		if err != nil {
@@ -1997,6 +2006,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// before it had answered once. It is [takeTheModel] above, the one
 			// place this step changes model, which the request boundary reaches
 			// through the same call.
+			//
+			// AND IT IS WHAT MOVES THE TURN'S PUBLISHED MODEL WITH IT, because a
+			// hop IS the turn changing what it is talking to — the one thing that
+			// may move it ([Agent.TurnModel], published by [Agent.rideModel]
+			// inside `freshModel`). Everything drawn about this turn from here on
+			// names the model that is actually answering: the phase clock above,
+			// the seam's model cell, and the sentence a mid-turn pick says about
+			// what it did not touch.
 			takeTheModel(to, theirs)
 			// The attempt counter is put one BEHIND its first rung, because the
 			// loop's own post-statement is what advances it.

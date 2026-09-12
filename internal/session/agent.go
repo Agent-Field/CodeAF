@@ -606,11 +606,45 @@ func (a *Agent) ContextTokens() int {
 	return a.estimateTokensLocked()
 }
 
-// Model returns the model the next request will use.
+// Model returns the model the next request will use — THE DIAL, which is what a
+// person's last choice set and not necessarily what anything is talking to right
+// now. [Agent.TurnModel] is the other question.
 func (a *Agent) Model() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.model
+}
+
+// TurnModel is THE MODEL THE TURN IN FLIGHT IS ON, and "" when nothing is in
+// flight.
+//
+// IT IS THE ONE SOURCE FOR EVERY SENTENCE ABOUT WORK THAT IS ALREADY RUNNING —
+// the phase clock the surface draws its model cell from (phasenews.go), the
+// sentence a mid-turn pick says about what it did not touch, the loop's own
+// latched model (loop.go). There is deliberately no second road: a fact with two
+// spellings is two facts, and the defect this exists for was exactly that — the
+// seam drew the dial's model beside an endpoint sighting from the wire, so one
+// line named two different models and neither cell was wrong on its own terms.
+//
+// IT IS a.riding PUBLISHED WITH THE EMPTINESS LAW ON IT, and not a second latch
+// beside it. The ladder already holds the model the step is talking to
+// (steer.go's [Agent.rideModel], written at the turn's own opening by
+// [Agent.latchTheModel] and moved only by a rescue's hop); what a surface needs
+// on top of that is the one thing [Agent.ridingNowLocked] deliberately does not
+// say — that there is no turn at all — because a cell that fell back to the dial
+// silently is the cell that named a model for seventeen minutes after the person
+// moved off it. So idle answers "", and the caller decides what an idle
+// conversation draws.
+func (a *Agent) TurnModel() string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.running {
+		return ""
+	}
+	return a.riding
 }
 
 // SetModel swaps the model, and A PERSON'S WORD WINS AT THE NEXT REQUEST.
@@ -627,6 +661,11 @@ func (a *Agent) Model() string {
 // arriving mid-stream cannot send one model the transcript another model was
 // half-way through writing (loop.go).
 //
+// SO WHAT THE CHROME SAYS ABOUT THE PICK IS [ModelLanding] AND NOT A GUESS. The
+// work goes on being drawn from [Agent.TurnModel] either way, which is what
+// makes the two sentences — the pick landed now, or the answer you are reading
+// finishes first — both true of the same screen.
+//
 // THE TURN ITSELF MAY STILL MOVE, and this is the one thing that moves it. A
 // step whose stream is cut over and over spends a budget and then hops to the
 // next model in the chain, announced, and the rest of that turn finishes there
@@ -634,13 +673,15 @@ func (a *Agent) Model() string {
 // person set here is untouched, so the NEXT turn starts on the model they
 // picked, and the only way this field changes is somebody calling this.
 //
-// AND IT IS WHERE THE PICTURES ARE MADE SAFE. A conversation carrying attached
-// images carries them as base64 in the live transcript, re-sent on every step
-// of every turn after they arrived; swapping onto a model that cannot see would
-// send them to it with no gate in the way, because no image is being attached
-// this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
-// three deliberate limits — the journal is untouched, the swap is one-way, and a
-// model that CAN see is handed everything unchanged.
+// THE PICTURES ARE NOT MADE SAFE HERE, and that is the change this door owes
+// its own paragraph. A conversation carrying attached images carries them as
+// base64 in the live transcript, re-sent on every request after they arrived, so
+// moving onto a model that cannot see would send them to it with no gate in the
+// way — no image is being attached. The scrub therefore rides THE MODEL THE WORK
+// IS TALKING TO rather than the dial ([Agent.ridesOnLocked], steer.go): the dial
+// is a preference that may never be acted on, and under the law above a pick can
+// reach the request in flight, which a scrub that ran only here would have
+// missed by one request.
 func (a *Agent) SetModel(model string) { a.setModel(model) }
 
 // setModel is SetModel with the answer to "when does this land", which the doors
@@ -688,7 +729,9 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// fact from the card's figure above and travels with the model rather than
 	// with the session (loop.go's [Agent.noteModelWindow]).
 	a.noteModelWindow(model)
-	a.scrubBlindImagePartsLocked(model)
+	// AND THE PICTURES ARE ONLY MADE SAFE WHEN NOTHING IS IN FLIGHT, which is
+	// the same guard [Agent.rebindClientLocked] is under above and for the same
+	// reason said about a different resource. THE TURN IN FLIGHT IS ON THE MODEL
 	a.mu.Unlock()
 	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
 	// session's own state; this is about a fetch somebody else will do, and a
@@ -1590,6 +1633,17 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	a.rebindClientLocked(a.model)
 	a.running = true
+	// AND THE TURN LATCHES THE MODEL IT WILL RUN ON, HERE, in the same breath as
+	// the client it was just bound to and under the same lock. The loop used to
+	// read the dial again on the other side of the goroutine hand-off, which
+	// left a window — small, but real — in which a person's pick landed between
+	// the binding and the reading and the turn talked to one model through a
+	// client built for another. Everything that has to name the work in flight
+	// reads this latch afterwards ([Agent.TurnModel]).
+	// AND THE PICTURES ARE MADE SAFE FOR IT IN THE SAME BREATH, through the one
+	// door a move goes through (steer.go's [Agent.ridesOnLocked]), which scrubs
+	// only when the model actually moved.
+	a.ridesOnLocked(a.model)
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is

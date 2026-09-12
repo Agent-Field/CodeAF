@@ -1278,19 +1278,26 @@ type Config struct {
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
 
-	// SupportsImages reports whether a model can read image content parts. It
-	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
-	// nil-is-permissive hook here, and deliberately so: a model that cannot see
-	// answers a message full of image parts with a 400 or, worse, with a
-	// confident description of nothing. "I don't know whether this model has
-	// vision" and "this model has vision" must not be spelled the same way, so a
-	// caller that holds no catalog gets a refusal it can read instead of a turn
-	// that fails on the wire.
+	// SeesImages reports what this build KNOWS about a model's eyes, in three
+	// answers and not two ([ModelSight]). NIL IS [SightUnknown], which is the
+	// honest reading of a caller that holds no catalog.
 	//
-	// It is a function of the model rather than a bool because the model moves:
+	// TWO DECISIONS READ IT AND THEY READ IT DIFFERENTLY, which is the whole
+	// reason it is not a bool. Sending pictures needs a positive YES: a model
+	// that cannot see answers a message full of image parts with a 400 or, worse,
+	// with a confident description of nothing, so [Agent.SubmitImage] refuses on
+	// anything but [SightSees]. Taking pictures OUT of a live transcript needs a
+	// positive NO: the scrub is one-way and the bytes do not come back
+	// (blindswap.go), so it runs on [SightBlind] and on nothing else. Spelled as
+	// one bool those two were forced to share a reading, and the shared reading
+	// was "unknown counts as blind" — which quietly destroyed a person's
+	// screenshot whenever a catalog fetch failed and the same model id answered
+	// differently than it had a minute earlier.
+	//
+	// It is a function of the model rather than a value because the model moves:
 	// /model swaps it mid-session (see [Agent.SetModel]), and the answer has to
 	// follow the model the next turn will actually ride.
-	SupportsImages func(model string) bool
+	SeesImages func(model string) ModelSight
 
 	// ReasoningProfile is the row's account of a model's thinking pass —
 	// whether it can be turned off, which effort words it takes — under the
@@ -2559,6 +2566,14 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// scrubbedFor is the model this transcript's pictures were last made safe
+	// for ([Agent.scrubBlindImagePartsLocked]). It is the memory that turns the
+	// scrub from something every turn does into something A SWAP does: empty
+	// until the first turn, and thereafter the id of whoever the pictures were
+	// last checked against. A conversation that never changes model therefore
+	// pays the check once, and an oracle that changes its mind about one id
+	// cannot reach back into a transcript nobody swapped.
+	scrubbedFor string
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -2614,6 +2629,18 @@ type Agent struct {
 	// same fact published, so the door that decides whether a pick is NEWS can
 	// compare against the model the work is on rather than the one the session
 	// remembers (steer.go's [Agent.rideModel]).
+	//
+	// IT IS ALSO WHAT EVERY SENTENCE ABOUT THE WORK IN FLIGHT IS DRAWN FROM,
+	// published to a surface by [Agent.TurnModel] with the emptiness law on it.
+	// a.model is THE DIAL — what the NEXT turn will use — and the two part
+	// company the moment somebody picks a model while work is running: on
+	// 2026-09-11 a pick made three seconds after a message left the
+	// conversation's chrome naming a model no request had been sent to for
+	// seventeen minutes. It is written at the turn's own opening and moved only
+	// by a move the work actually made, through the one door that also makes the
+	// pictures safe ([Agent.ridesOnLocked]), and it is NEVER CLEARED: `running`
+	// is the flag that says it means anything, and two flags to clear is one of
+	// them left set.
 	riding string
 	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
 	// waited on (memory.go's [recallAside]). It is under mu because

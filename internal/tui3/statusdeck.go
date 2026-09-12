@@ -152,7 +152,12 @@ func (a *app) deckTopRow(width int) string {
 // (view.go's [app.statusRow] tells that story).
 func (a *app) deckModelRow(width int) string {
 	right, plainRight := a.deckAmbient(width)
-	chip := a.modelWordAt(a.reasoningFor(a.model))
+	// AND THE LEVEL IS THE ONE SET ON THE MODEL THE WORD NAMES. The word is the
+	// model the engine is on ([app.wireModel]), so asking the dial's model for a
+	// level would spell one model's rung onto another model's name the moment
+	// somebody picks a model mid-turn — the levels are kept per model id
+	// (tui3.go's [Agent.ReasoningFor]), so the two really can differ.
+	chip := a.modelWordAt(a.reasoningFor(a.wireModel()))
 	// A ROOM RENAMES THIS ROW TOO, which is the wide row's own law at phone width
 	// (render.go's [app.identityParts]): row 1 has already renamed itself to the
 	// task, and a row 2 still naming the session's model would be the deck's half
@@ -424,8 +429,12 @@ func (a *app) deckItems() []deckItem {
 	// The model is its FULL routing address here, not its basename: the sheet is
 	// where the thing is recorded and where it is chosen, which is exactly where
 	// [app.identity] says the whole id belongs.
-	model := a.model
-	if level := a.reasoningFor(a.model); level != "" && model != "" {
+	// AND IT IS THE MODEL THE ENGINE IS ON, WITH ITS OWN LEVEL. The `lane` row
+	// directly below is looked up from the same id ([app.pinnedNow]), so the two
+	// are one reading and cannot name two models — which is what they did while
+	// this row read the dial and that one read the wire.
+	model := a.wireModel()
+	if level := a.reasoningFor(model); level != "" && model != "" {
 		model += ":" + level
 	}
 	add("model", model, deckActModel)

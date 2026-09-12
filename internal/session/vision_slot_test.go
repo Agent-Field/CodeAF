@@ -83,7 +83,7 @@ func TestWithNoResolverTheRolesLadderStillAnswers(t *testing.T) {
 func TestTheVisionFallbackRidesTheSlot(t *testing.T) {
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SupportsImages = func(model string) bool { return model == "vendor/slot-eyes" }
+		config.SeesImages = func(model string) ModelSight { return SightOf(model == "vendor/slot-eyes") }
 		withSlot(map[string]string{"vision": "vendor/slot-eyes"})(config)
 	})
 
@@ -114,7 +114,7 @@ func TestTheVisionFallbackRidesTheSlot(t *testing.T) {
 func TestASlotNamingTheBlindModelIsRefused(t *testing.T) {
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SupportsImages = func(string) bool { return false }
+		config.SeesImages = func(string) ModelSight { return SightOf(false) }
 		withSlot(map[string]string{"vision": "test/model"})(config)
 	})
 

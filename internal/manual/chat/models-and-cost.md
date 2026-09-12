@@ -72,7 +72,10 @@ were reading.
 
 Choosing a model does four things: the model is set on the session, the machine running
 the session learns that model's context window for compaction, a note appears reading
-`model · <model>`, and the choice is written into your profile.
+`model · <model>`, and the choice is written into your profile. **If a turn is still
+running when you pick, the note says what the switch did not touch** —
+`model · moonshotai/kimi-k3 — this turn finishes on zhipu/glm-5.3-flash` — because a turn
+finishes on the model it started on.
 
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the
@@ -964,8 +967,9 @@ use, and all five rungs are reachable here.
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
 `high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
 for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
-`⠿ auto` is what the line above the message box reads until something is dialled; no rung
-is the shipped one.
+`⠿ thinking auto` is what the line above the message box reads until something is dialled;
+no rung is the shipped one. That cell names its ladder — `thinking` — because `auto` on its
+own is also what the **lane** dial says, and the bare word was read as "lane: auto" twice.
 
 **The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
 beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max` —
@@ -991,7 +995,7 @@ Several things can name a rung, and the most specific one wins:
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
-`glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
+`glm-5.3-flash · ⠿ thinking high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
 conversation's rung and an item's rung climb one step each press and wrap from `max` back
 to `low`; they never go back to "nobody said". For this conversation, `/effort auto` and
@@ -1017,8 +1021,8 @@ A word that is none of the six changes nothing and prints them all. This is
 conversation hands out: a task worker starts at it.
 
 **It works over `--host` too.** The rung is set on the machine the conversation is running
-on and the word on your line is the one that machine resolved — `⠿ auto` included, on a
-hosted conversation nobody has dialled. Against an engine too old to know the ladder there
+on and the word on your line is the one that machine resolved — `⠿ thinking auto`
+included, on a hosted conversation nobody has dialled. Against an engine too old to know the ladder there
 is no rung on the line and neither the chord nor `/effort` offers one — a capability that
 cannot work is absent rather than broken.
 

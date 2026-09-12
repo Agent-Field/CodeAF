@@ -420,7 +420,7 @@ func (a *app) runStatusNote() tea.Cmd {
 // seamIdentity is the legend's left cluster out of a room, built to a budget,
 // and the columns its two doors occupy within it.
 //
-//	devbox · porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main*
+//	devbox · porting the parser · glm-5.3-flash · ⠿ thinking high · via deepinfra · main*
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //

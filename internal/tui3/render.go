@@ -1557,8 +1557,12 @@ func (a *app) waitingWords() string {
 		default:
 			word = retryWord
 		}
-	case modelBase(a.model) != "":
-		word = waitForWord + modelBase(a.model)
+	// THE WAIT NAMES THE MODEL BEING WAITED ON, which is the model the engine is
+	// on and not the one the picker last set ([app.wireModel]). `waiting for
+	// kimi-k3` under a seam reading `glm-5.3-flash` would be two models named on
+	// one screen about one wait.
+	case modelBase(a.wireModel()) != "":
+		word = waitForWord + modelBase(a.wireModel())
 	}
 	if clock := countUpWord(waited); clock != "" {
 		word += " · " + clock
@@ -2429,7 +2433,12 @@ func (a *app) servedRiderAt(width int) string {
 	if rider := a.laneRider(true); rider != "" {
 		return rider
 	}
-	sighting, ok := servedSighting(a.model)
+	// THE SIGHTING IS LOOKED UP UNDER THE MODEL THE ENGINE IS ON, because that is
+	// the model this row names ([app.wireModel]) and the desk is keyed by model:
+	// asking under the dial after a mid-turn pick finds the wrong machine, or no
+	// machine at all, for the name drawn beside it.
+	wire := a.wireModel()
+	sighting, ok := servedSighting(wire)
 	if !ok || sighting.Provider == "" {
 		return ""
 	}
@@ -2437,7 +2446,7 @@ func (a *app) servedRiderAt(width int) string {
 		return ""
 	}
 	served := strings.ToLower(sighting.Provider)
-	if strings.Contains(strings.ToLower(a.model), served) {
+	if strings.Contains(strings.ToLower(wire), served) {
 		return ""
 	}
 	// The name leads and the rate is the field after it, which is this segment's
@@ -2503,7 +2512,8 @@ func (a *app) modelRiderAt(width int) string {
 		}
 		return ""
 	}
-	sighting, ok := servedSighting(a.model)
+	// Under the model the engine is on, for [app.servedRiderAt]'s reason.
+	sighting, ok := servedSighting(a.wireModel())
 	if !ok || sighting.Provider == "" {
 		return ""
 	}

@@ -340,7 +340,16 @@ import (
 // half a minute while this surface had stopped waiting at ten seconds: the
 // person would be told their work did not start while it did. NEVER TO A
 // SENTENCE THAT IS FALSE.
-const Version = 16
+// AND 17 IS THE MODEL THE TURN IN FLIGHT IS ON ([Welcome.TurnModel],
+// [session.Facts.TurnModel]). The number moves because the surface draws a
+// SENTENCE off it — `this turn finishes on <model>` — and a version-16 engine
+// sends no such fact while its conversations still run turns: a surface that
+// filled the gap from the dial would say that sentence with the model the person
+// had just picked in both halves, which is a claim about the machine at the far
+// end that nothing at the far end made. NEVER TO A SENTENCE THAT IS FALSE: at
+// 16 the flag is absent, the surface draws the dial alone, and it says nothing
+// about what a turn in flight is finishing on.
+const Version = 17
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -1060,6 +1069,24 @@ type Welcome struct {
 	// nothing, and nothing on the screen offers to move a knob the far engine
 	// has never heard of.
 	Effort bool `json:"effort,omitempty"`
+
+	// TurnModel says this engine CAN NAME THE MODEL THE TURN IN FLIGHT IS ON —
+	// that its agent answers [session.Agent.TurnModel] and states it on the fact
+	// set it pushes ([session.Facts.TurnModel]).
+	//
+	// IT IS CARRIED FOR [Welcome.Effort]'S REASON, AND THE STAKES ARE HIGHER. A
+	// surface at this end holds a *remote.Agent, which ALWAYS has the method, so
+	// the assertion says yes for every connection and nothing about the far
+	// machine. And the ANSWER cannot separate them either: "" is a real answer
+	// here — an idle conversation with nothing in flight — so an engine that has
+	// never heard of the latch and a conversation that is simply not working are
+	// the same empty string.
+	//
+	// ABSENCE IS false AND false MEANS THE DIAL ALONE. The seam names what the
+	// person picked, which is what it named before this existed, and the switch
+	// says nothing about a turn in flight — because the only honest thing to say
+	// about a fact the far machine does not keep is nothing.
+	TurnModel bool `json:"turnModel,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather

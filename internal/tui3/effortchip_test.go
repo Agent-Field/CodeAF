@@ -35,6 +35,10 @@ type effortAgent struct {
 	turn effort.Rung
 	// installed is the install's own rung — the `effort` settings row.
 	installed effort.Rung
+	// perModel is a rung dialled onto ONE model id, which is how a person's
+	// ctrl+t in the picker stores one. It is what makes the seam's cell able to
+	// lie: the rung drawn beside a model must be that model's.
+	perModel map[string]effort.Rung
 	// sets is every word the surface handed to SetConversationEffort, in order,
 	// refusals included: what the chord WROTE is a different question from what
 	// the resolver then answered.
@@ -43,9 +47,20 @@ type effortAgent struct {
 
 func (e *effortAgent) ConversationEffort() string { return e.conversation.String() }
 
-func (e *effortAgent) ResolvedEffort() string {
+func (e *effortAgent) ResolvedEffort() string { return e.ResolvedEffortFor("") }
+
+// ResolvedEffortFor is that rung for ONE MODEL ID, which is what the seam's cell
+// asks for: the levels a picker sets live per model id, so the rung drawn beside
+// a model has to be that model's. `perModel` is those levels; an id with none
+// falls through to the conversation's scope exactly as the engine's resolver
+// does (internal/session's [Agent.effortFor]).
+func (e *effortAgent) ResolvedEffortFor(model string) string {
+	turn := e.turn
+	if rung, ok := e.perModel[model]; ok {
+		turn = rung
+	}
 	return effort.Resolve(effort.Scope{
-		Turn:         e.turn,
+		Turn:         turn,
 		Conversation: e.conversation,
 		Default:      e.installed,
 	}).String()
@@ -132,7 +147,7 @@ func TestTheSeamNamesTheResolvedThinkingRung(t *testing.T) {
 		t.Fatalf("the session started with a chosen rung: %q", got)
 	}
 	line := seamLine(t, a)
-	if !strings.Contains(line, "deepseek-v4 · "+glyphEffort+" high") {
+	if !strings.Contains(line, "deepseek-v4 · "+glyphEffort+" "+effortLadderWord+" high") {
 		t.Fatalf("the seam does not name the configured rung beside the model: %q", line)
 	}
 	// AND THE COLON SPELLING IS GONE. The level used to ride the model id —
@@ -145,7 +160,7 @@ func TestTheSeamNamesTheResolvedThinkingRung(t *testing.T) {
 	// And it follows the resolver rather than remembering anything: a rung set on
 	// the conversation moves the word on the next frame.
 	agent.conversation = effort.Max
-	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" max") {
+	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" max") {
 		t.Fatalf("the seam kept the old rung: %q", line)
 	}
 }
@@ -164,7 +179,7 @@ func TestAFreshConversationSaysAutoAndIsPressable(t *testing.T) {
 		t.Fatalf("the shipped session resolved to %q, want absence", got)
 	}
 	line := seamLine(t, a)
-	if !strings.Contains(line, "deepseek-v4 · "+glyphEffort+" "+effortAutoWord) {
+	if !strings.Contains(line, "deepseek-v4 · "+glyphEffort+" "+effortLadderWord+" "+effortAutoWord) {
 		t.Fatalf("a fresh conversation does not say auto beside the model: %q", line)
 	}
 	if !a.seamEffortSpan.pressable() {
@@ -176,7 +191,7 @@ func TestAFreshConversationSaysAutoAndIsPressable(t *testing.T) {
 	if got := agent.ConversationEffort(); got != "low" {
 		t.Fatalf("the first press off auto left the conversation at %q, want low", got)
 	}
-	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" low") {
+	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" low") {
 		t.Fatalf("the chord did not walk the cell onto low: %q", line)
 	}
 }
@@ -189,7 +204,7 @@ func TestEffortAutoPutsTheCellBackToAuto(t *testing.T) {
 	for _, word := range []string{"auto", "off"} {
 		agent, a := shipped(t)
 		a.slash("/effort high")
-		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" high") {
+		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" high") {
 			t.Fatalf("/effort high did not reach the seam: %q", line)
 		}
 
@@ -197,7 +212,7 @@ func TestEffortAutoPutsTheCellBackToAuto(t *testing.T) {
 		if got := agent.ConversationEffort(); got != "" {
 			t.Fatalf("/effort %s left the conversation at %q, want absence", word, got)
 		}
-		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortAutoWord) {
+		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" "+effortAutoWord) {
 			t.Fatalf("/effort %s did not put the cell back to auto: %q", word, line)
 		}
 		// It says what now decides, because `auto` on the seam reads like the dial
@@ -247,7 +262,7 @@ func TestAHostedConversationDrawsTheRungItsEngineAdmitsTo(t *testing.T) {
 		a.model, a.title = "deepseek/deepseek-v4", "porting the parser"
 
 		line := seamLine(t, a)
-		if drew := strings.Contains(line, glyphEffort+" high"); drew != known {
+		if drew := strings.Contains(line, glyphEffort+" "+effortLadderWord+" high"); drew != known {
 			t.Fatalf("an engine that says known=%v drew rung=%v: %q", known, drew, line)
 		}
 		drive(t, a, key(effortKey))
@@ -269,7 +284,7 @@ func TestTheRungKeepsItsColumnsWhenTheRiderComesAndGoes(t *testing.T) {
 	}, true)
 	served := seamLine(t, a)
 
-	if !strings.Contains(served, glyphEffort+" high · via quicksilver") {
+	if !strings.Contains(served, glyphEffort+" "+effortLadderWord+" high · via quicksilver") {
 		t.Fatalf("the rider does not follow the rung: %q", served)
 	}
 	if strings.Index(bare, glyphEffort) != strings.Index(served, glyphEffort) {
@@ -289,7 +304,7 @@ func TestANarrowSeamDropsTheRungRatherThanCuttingIt(t *testing.T) {
 		}
 		found := false
 		for _, rung := range effort.Rungs {
-			if strings.Contains(line, glyphEffort+" "+rung.String()) {
+			if strings.Contains(line, glyphEffort+" "+effortLadderWord+" "+rung.String()) {
 				found = true
 			}
 		}
@@ -314,7 +329,7 @@ func TestCtrlVCyclesTheConversationRungAndWraps(t *testing.T) {
 		if got := agent.ConversationEffort(); got != rung {
 			t.Fatalf("press %d left the conversation at %q, want %q", at+1, got, rung)
 		}
-		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+rung) {
+		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" "+rung) {
 			t.Fatalf("press %d drew %q, want %q", at+1, line, rung)
 		}
 	}
@@ -607,7 +622,7 @@ func TestPickingTheLaddersTopRowClearsTheRung(t *testing.T) {
 	if got := agent.ConversationEffort(); got != "" {
 		t.Fatalf("the top row left the conversation at %q, want absence", got)
 	}
-	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortAutoWord) {
+	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortLadderWord+" "+effortAutoWord) {
 		t.Fatalf("the seam did not come back to auto: %q", line)
 	}
 }

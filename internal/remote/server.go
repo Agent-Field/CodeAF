@@ -1143,7 +1143,11 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
 		// engine without a dial from a conversation whose dial is off.
-		Effort:     effortKnown(sess.agent),
+		Effort: effortKnown(sess.agent),
+		// And whether it can name the model the turn in flight is on, asked the
+		// same way and for the same reason: "" is a real answer here, so only the
+		// door can tell an idle conversation from an engine with no latch.
+		TurnModel:  turnModelKnown(sess.agent),
 		TaskSettle: taskSettleKnown(sess.agent),
 		// Whether this conversation's news reaches the surface at all, asked the
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot

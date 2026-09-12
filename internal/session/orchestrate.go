@@ -1093,7 +1093,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		AskConsent:       false,
 		InTask:           true,
 		writeScope:       node.WriteScope,
-		SupportsImages:   parent.SupportsImages,
+		SeesImages:       parent.SeesImages,
 		RolesSource:      parent.RolesSource,
 		// Beside the ladder it overrides, for task_run.go's reason.
 		OneModel:       parent.OneModel,

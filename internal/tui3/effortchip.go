@@ -13,7 +13,7 @@ import (
 // THE THINKING CHIP — how hard this conversation thinks, said beside the model
 // that is doing the thinking.
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+//	─ porting the parser · glm-5.3-flash · ⠿ thinking high · via deepinfra · main* ── / commands ─
 //	› what changed in the relay this week
 //
 // internal/effort landed the ladder and internal/session landed the dial, and
@@ -53,7 +53,7 @@ import (
 // the number the machine is running at, so the chip is drawn from the resolver
 // and the scope that decided it is nobody's business up here.
 //
-// ── AND ABSENCE IS A STATE, SO IT IS SAID: `⠿ auto` ────────────────────────
+// ── AND ABSENCE IS A STATE, SO IT IS SAID: `⠿ thinking auto` ───────────────
 //
 // THE SHIPPED SETTING IS ABSENCE — [effort.Ship] is [effort.None], nothing is
 // asked for and the model thinks however it thinks — so on an install nobody
@@ -66,9 +66,10 @@ import (
 // be built.
 //
 // A CONTROL THAT IS INVISIBLE UNTIL YOU HAVE ALREADY USED IT IS NOT A CONTROL
-// (CLAUDE.md's discoverability law). So absence is drawn, by name — `⠿ auto`,
-// the word the `thinking` settings row has offered for this state since the
-// ladder landed ([effortAutoWord]).
+// (CLAUDE.md's discoverability law). So absence is drawn, by name —
+// `⠿ thinking auto`, the ladder's own name ([effortLadderWord]) and the word the
+// `thinking` settings row has offered for this state since the ladder landed
+// ([effortAutoWord]).
 //
 // THIS IS NOT A BREACH OF THE EMPTINESS LAW. That law refuses a word for a
 // number nobody has — `$0.00`, `0 tok` — and auto is not zero thinking. It is a
@@ -176,6 +177,11 @@ type effortDialer interface {
 	// ResolvedEffort is the rung the next turn will actually ask for, whichever
 	// scope decided it.
 	ResolvedEffort() string
+	// ResolvedEffortFor is that rung FOR ONE MODEL ID, which is the question the
+	// seam's cell actually asks: the rung is drawn beside a model and must be
+	// that model's, and the levels the picker sets live per model id. An empty id
+	// is the dial, which is what an idle conversation's cell names.
+	ResolvedEffortFor(model string) string
 	// ConversationEffort is the rung THIS conversation was set to, "" when
 	// nobody has set one.
 	ConversationEffort() string
@@ -233,7 +239,7 @@ func (a *app) effortWord() string {
 // every mark on this surface.
 //
 // "" ONLY WHERE THERE IS NO DIAL, never where there is a dial nobody has turned:
-// that one says `⠿ auto`, for the reason the header gives at length. The two
+// that one says `⠿ thinking auto`, for the reason the header gives at length. The two
 // states were one string until 2026-09-09 and the cell was therefore missing on
 // every conversation of a shipped install, which is the whole defect.
 func (a *app) effortChipText() string {
@@ -241,7 +247,13 @@ func (a *app) effortChipText() string {
 	if !ok {
 		return ""
 	}
-	word := dial.ResolvedEffort()
+	// THE RUNG IS RESOLVED FOR THE MODEL THIS CELL SITS BESIDE, which is the
+	// model the engine is on and not the dial ([app.wireModel]). The levels the
+	// picker sets live per model id, so a person who dialled one model up and
+	// then picked another mid-turn had one model's name drawn next to the other
+	// model's level — and a fallback hop moved the turn's own rung (loop.go
+	// re-resolves for the model it hopped to) without moving the drawn one.
+	word := dial.ResolvedEffortFor(a.wireModel())
 	if word == "" {
 		word = effortAutoWord
 	}
@@ -249,7 +261,7 @@ func (a *app) effortChipText() string {
 	if a.pal.ascii || a.pal.linear {
 		mark = glyphEffortASCII
 	}
-	return mark + " " + word
+	return mark + " " + effortLadderWord + " " + word
 }
 
 // paintEffortChip is the chip's one cell of colour, in the two states that are

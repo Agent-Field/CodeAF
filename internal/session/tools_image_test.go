@@ -338,7 +338,7 @@ func TestGenerateImageUsageFoldsIntoTheSessionTotal(t *testing.T) {
 // blindWithVision is a session whose model cannot see and whose vision role
 // resolves to one that can.
 func blindWithVision(config *Config) {
-	config.SupportsImages = func(string) bool { return false }
+	config.SeesImages = func(string) ModelSight { return SightOf(false) }
 	config.RolesSource = pinnedSource(map[string]string{
 		roles.PinKey(roles.RoleVision): "vendor/eyes",
 	})
@@ -475,16 +475,16 @@ func TestVisionFallbackRefusesOnlyWhenNoVisionModelResolves(t *testing.T) {
 		mutate func(*Config)
 	}{
 		{"no settings at all", func(config *Config) {
-			config.SupportsImages = func(string) bool { return false }
+			config.SeesImages = func(string) ModelSight { return SightOf(false) }
 		}},
 		{"settings with nothing for vision", func(config *Config) {
-			config.SupportsImages = func(string) bool { return false }
+			config.SeesImages = func(string) ModelSight { return SightOf(false) }
 			config.RolesSource = pinnedSource(map[string]string{"roles.title": "cheap/model"})
 		}},
 		// A tier pointed at the model we just established cannot see is a
 		// configuration, not a capability.
 		{"vision resolves to the blind model itself", func(config *Config) {
-			config.SupportsImages = func(string) bool { return false }
+			config.SeesImages = func(string) ModelSight { return SightOf(false) }
 			config.RolesSource = pinnedSource(map[string]string{
 				roles.TierKey(roles.TierHigh): "vendor/blind",
 			})

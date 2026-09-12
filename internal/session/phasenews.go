@@ -399,9 +399,7 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	if a == nil {
 		return
 	}
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
+	model := a.newsModel()
 	now := time.Now()
 	if since.IsZero() {
 		since = now
@@ -435,6 +433,26 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	a.phase.held, a.phase.stop = news, stop
 	postPhaseNews(news)
 	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
+}
+
+// newsModel is THE MODEL A PIECE OF NEWS IS ABOUT: the turn in flight's latched
+// model while a turn is running, and the dial when nothing is.
+//
+// THE NEWS IS ABOUT THE ENGINE AND NOT ABOUT THE PICKER. Every stage a surface
+// draws — running a tool, checking an answer, tidying, taking stock — belongs to
+// a turn, and that turn is on one model from the moment it opened
+// ([Agent.TurnModel]). Reading the dial here was the engine half of one reported
+// line naming two models: a person picked kimi-k3 three seconds into a turn and
+// every stage posted afterwards claimed the seventeen minutes of glm-5.3-flash
+// that followed were kimi-k3's, while the endpoint sighting beside them went on
+// naming the machine that was really answering.
+//
+// THE DIAL IS THE RIGHT ANSWER WHEN NOTHING IS RUNNING, which is what an idle
+// surface should say: the model the next request will use.
+func (a *Agent) newsModel() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.ridingNowLocked()
 }
 
 // interruptPhase says a phase over the top of whatever the turn was already
@@ -476,9 +494,7 @@ func (a *Agent) endPhase() {
 	if a == nil {
 		return
 	}
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
+	model := a.newsModel()
 	// THE END OF A STAGE NAMES THE SAME SUBJECT THE START DID, or it would clear
 	// somebody else's clock: a surface files an empty phase by removing that
 	// subject's entry, and an unnamed end would take the conversation's row down

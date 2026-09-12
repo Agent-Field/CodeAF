@@ -1,0 +1,28 @@
+---
+kind: fixed
+title: the model on the seam is the model the engine is on, and the rung beside it says which ladder it is
+pr: 993
+surface: [chat, engine]
+invalidates:
+  - "The foot's model cell showed the model you last picked. No longer true: while a turn is running it names the model that turn is actually on, and only an idle conversation shows the dial. The door is `internal/tui3.app.wireModel`, which reads `session.Agent.TurnModel()` — the engine's own latch, asked directly and NEVER inferred from a news-desk entry, because a phase entry is deleted at the end of every request and every tool batch and a reading taken from its presence went empty between two steps of one turn. `TestTheSeamNamesTheModelTheTurnIsOnAndNotTheDial` is the law."
+  - "Only the seam's model cell read the model in flight. No longer true: every cell drawn beside it does — the `via` rider and its sighting lookups, the `waiting for <model>` word, the `@lane` pin, the `/status` model and lane rows (one reading now, not two), and the press targets behind the chip (`/model`, `/lane`, the picker's fold). `internal/tui3/wiremodel_law_test.go` is now a package-wide ratchet: every function that reads `a.model` is named in `dialReaders` with the reason it means the dial, and a new reader that is not named fails the build."
+  - "Over `--host` the surface had no way to know the model a far turn was on. No longer true: `session.Facts.TurnModel` crosses on the photograph the thinking rung already rides, `remote.Welcome.TurnModel` states whether the far engine keeps the fact, and the wire version is 17. Against a version-16 engine the seam draws the dial alone and `/model` says nothing about a turn in flight — a capability that cannot work is absent, not guessed."
+  - "The thinking rung on the seam was resolved for the dial. No longer true: it resolves for the model the cell names (`session.Agent.ResolvedEffortFor`, mirrored on `remote.Agent` and carried in `Facts.Thinking`). Reasoning levels live per model id, so a rung resolved for the dial drew one model's name beside another model's level, and a fallback hop moved the turn's rung without moving the drawn one."
+  - "`session.Config.SupportsImages func(string) bool` is gone, replaced by `SeesImages func(string) ModelSight` with three answers — `SightUnknown`, `SightBlind`, `SightSees`. Sending pictures needs a positive `sees`; taking them out of a live transcript needs a positive `blind`. As one bool the two shared the reading 'unknown counts as blind', which let a failed catalog fetch strip a conversation's pictures for good."
+  - "The blind-image scrub ran at the start of every turn. No longer true: it runs only when the model CHANGED since the last turn (`Agent.scrubbedFor`), so an oracle that answers differently twice for one id cannot reach back into a transcript nobody swapped. `TestAFlappingOracleCannotScrubAConversationThatNeverSwapped` and `TestASwapOntoAnUnknownModelKeepsThePictures` are the laws."
+  - "A vision turn sealed itself with `Agent.Model()`, the dial, while the looking model had run it. No longer true: the seal takes the seer, which is the model named in the reply's own `[vision: <model>]` prefix. `TestTheWorkInFlightIsSealedUnderItsOwnModel` is the law."
+  - "`session.Agent`'s phase news carried `a.model`, the dial. No longer true: every stage a turn posts — running, checking, tidying, taking stock — is stamped with the turn's latched model (`Agent.newsModel`), and a mid-turn `/model` changes none of them. The latch moves only when the turn itself hops to a fallback model, beside the `switching model` word that announces it."
+  - "`/model` mid-turn said nothing about the turn in flight, only about running tasks. No longer true: the note reads `model · <new> — this turn finishes on <old>`, derived from what the engine reports it is on, never from a surface flag."
+  - "`SetModel` scrubbed a blind model's pictures out of the live transcript immediately, under a running turn that was still sending them to a model that can see. No longer true: the scrub happens where the swap lands, at `Agent.startTurnLocked`, so the turn in flight keeps its images and the next turn starts clean."
+  - "`auto` beside the model meant the thinking rung, with nothing on the cell saying so — and `auto` is also the lane dial's word (`/model auto`, the `lane` row in `/settings`), which is why it was read as \"lane: auto\" twice. Now spelled `⠿ thinking auto`: the cell names its own ladder at every rung (`⠿ thinking high`, `~ thinking low` on a plain terminal), not only at the word that collided."
+  - "`runTurn` latched the turn's model by reading the dial again on its own side of the goroutine hand-off. No longer true: the latch is stamped under the same lock that binds the turn's client (`Agent.startTurnLocked`) and read back with `Agent.TurnModel()`, so a pick that lands between the two can no longer leave a turn talking to one model through a client built for another."
+---
+One rule closes all of it: THE CHROME NAMES THE MODEL THE ENGINE IS ON. A
+person sent a message at 22:48:15, opened the picker at 22:48:18 and chose
+kimi-k3 at 22:48:21; the turn had latched glm-5.3-flash and ran there for
+seventeen minutes and forty-one calls, which is exactly what `SetModel`
+promises. The seam read `moonshotai/kimi-k3 · auto · via wafer` throughout —
+the model cell from the picker's answer, the `via` cell from the endpoint of
+the request in flight — and neither cell was wrong on its own terms. There is
+one reading behind both cells now, and no second road: the model the turn is on
+travels on the phase news that already crosses a `--host` connection.

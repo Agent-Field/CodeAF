@@ -403,7 +403,7 @@ func (a *Agent) documentModel(kind documentKind) string {
 	if kind != documentImage {
 		return model
 	}
-	if a.config.SupportsImages != nil && a.config.SupportsImages(model) {
+	if a.sightOf(model) == SightSees {
 		return model
 	}
 	if seer := a.visionSeer(); seer != "" {

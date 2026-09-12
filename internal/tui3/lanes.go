@@ -1197,10 +1197,108 @@ const laneAtSign = "@"
 // lane at all, [app.routingOff]), and over a connection, where the pin in force
 // is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.routingOff || a.model == "" || a.modelIsDirect(a.model) {
+	model := a.wireModel()
+	if a.hosted() || a.routingOff || model == "" || a.modelIsDirect(model) {
 		return ""
 	}
-	return strings.ToLower(provider.PinnedFor(a.model))
+	return strings.ToLower(provider.PinnedFor(model))
+}
+
+// wireModel is THE MODEL THE ENGINE IS ON: the model of the request in flight
+// while there is one, and the dial when there is not.
+//
+// ── THE CHROME NAMES THE MODEL THE ENGINE IS ON ─────────────────────────────
+//
+// This is the law, and one line of one reported session is the whole argument
+// for it. A person sent a message, opened the picker three seconds later and
+// chose kimi-k3. The turn had already latched glm-5.3-flash and ran there for
+// seventeen minutes and forty-one calls — which is what [session.Agent.SetModel]
+// promises and what the engine did. The seam said
+// `moonshotai/kimi-k3 · auto · via wafer` for all of it: the model cell drawn
+// from [app.model], the picker's answer, and the `via` cell drawn from the
+// endpoint the request in flight had named. Two cells, two worlds, one line, and
+// neither cell wrong by its own reckoning.
+//
+// So both cells now come off ONE fact: [session.Agent.TurnModel], the model the
+// engine latched when this turn opened. It is the same fact the engine stamps on
+// every stage of the work it is doing ([session.Agent.newsModel]), so the `via`
+// machine and the name above it are two readings of one turn — and it crosses a
+// --host connection on the photograph the rung beside it already rides
+// (internal/remote's turnmodel.go), so there is no second road to keep alive.
+//
+// AND IT FALLS BACK TO THE DIAL RATHER THAN TO NOTHING. An idle conversation has
+// no request in flight and the honest word for it is the model the next one will
+// use, which is what a person just picked; the emptiness law is about figures
+// nobody has, and this is a figure everybody has.
+func (a *app) wireModel() string {
+	if model := a.turnModel(); model != "" {
+		return model
+	}
+	return a.model
+}
+
+// turnModel is [session.Agent.TurnModel] as it reaches this surface: the model
+// the turn in flight is on, and "" when nothing is in flight or when nothing at
+// the far end keeps the fact.
+//
+// IT IS THE ENGINE'S OWN FACT AND NOT A READING OF THE NEWS DESK. The first cut
+// of this took a live phase as proof that a turn was running and read the model
+// off it, which is wrong twice over: a phase entry is DELETED at the end of
+// every request and at the end of every tool batch (internal/provider's
+// [phaseClock.done], internal/session's [Agent.endPhase]), so between two steps
+// of one turn the desk is empty and the seam would fall back to the dial — the
+// cell flipping back and forth across every step boundary — and a pick that
+// landed in one of those gaps would find nothing to say `finishes on` about. The
+// latch has none of those holes: it is set when the turn opens and stands until
+// the turn ends.
+//
+// IT IS GATED ON THE SURFACE'S OWN STATE, never on a desk entry. `stateWorking`
+// is this window's answer to "is a turn in flight", kept by the stream it is
+// reading, and it is the same answer the composer's own hints are drawn from.
+//
+// AND A FAR ENGINE THAT DOES NOT KEEP THE FACT ANSWERS NOTHING, by the door it
+// stated at the welcome ([remote.Agent.TurnModelSupported]) — not by the empty
+// string, which is a real answer here. A capability that cannot work is absent
+// rather than broken: the seam names the dial, exactly as it did before this
+// existed, and the switch says nothing about a turn in flight.
+//
+// It is [app.wireModel] WITHOUT the fallback, and the two are kept apart for the
+// one caller that has to tell the difference: a switch mid-turn says what it did
+// not touch ([app.switchModel]), and a fallback to the dial would answer that
+// question with the model the person just picked — which is the sentence being
+// nothing at all.
+func (a *app) turnModel() string {
+	if a.state != stateWorking {
+		return ""
+	}
+	door, ok := a.turnModelDoor()
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(door.TurnModel())
+}
+
+// turnModelDoor is the slice of the session that names the model a turn is on,
+// and false where there is none.
+//
+// It is asserted on the agent rather than added to [Agent] on [effortDialer]'s
+// terms: every scripted agent in this package's own tests is an [Agent], and a
+// method added to that interface is a method thirty test doubles have to grow
+// before a model can be drawn.
+//
+// AND A CONNECTION ANSWERS FOR THE MACHINE AT THE OTHER END, exactly as it does
+// for the rung ([app.effortDial] states the whole argument): a *remote.Agent
+// always has the method, so the assertion alone says yes for every `--host`
+// session whatever the far engine can do.
+func (a *app) turnModelDoor() (interface{ TurnModel() string }, bool) {
+	if a.agent == nil {
+		return nil, false
+	}
+	door, ok := a.agent.(interface{ TurnModel() string })
+	if host, hosted := a.agent.(interface{ TurnModelSupported() bool }); hosted {
+		ok = ok && host.TurnModelSupported()
+	}
+	return door, ok
 }
 
 // modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),
@@ -1209,9 +1307,11 @@ func (a *app) pinnedNow() string {
 // A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
 // chrome never said it. The picker's row said `via inception` only while the
 // picker was open, the status rider said `via …` only for ten minutes after an
-// answer, and the frame's head read `mercury-2.5 · ⠿ auto` — whose `auto` is the
+// answer, and the frame's head read `mercury-2.5 · ⠿ auto` — whose `auto` was the
 // thinking rung, which the owner read as "lane: auto" and concluded the pin had
-// failed (2026-09-10). So the pin rides the one word every place that names the
+// failed (2026-09-10). That rung cell now names its own ladder
+// ([effortLadderWord]), so the collision it caused is gone from the other side
+// too; this half stands because a pin is still a fact the chrome owes a person. So the pin rides the one word every place that names the
 // model already draws: the seam, the status row's identity and the phone deck's
 // chip all take it from here, and none of them spells it.
 //
@@ -1230,9 +1330,15 @@ func (a *app) modelWord() string { return a.modelWordAt("") }
 // the model by a name nothing is filed under — which is how a person who had set
 // a level lost the live rate from the right edge of the row.
 func (a *app) modelWordAt(level string) string {
-	model := modelBase(a.model)
+	// THE ID IS THE ONE THE ENGINE IS ON and not the one the picker last set
+	// ([app.wireModel] is the law and the reported line it came from). Every
+	// place the chrome names this conversation's model takes its word from here
+	// — the seam, the status row, the phone deck's chip — so there is one answer
+	// on the frame however many cells spell it.
+	id := a.wireModel()
+	model := modelBase(id)
 	if !a.sources.Empty() {
-		service, bare := a.sources.For(a.model)
+		service, bare := a.sources.For(id)
 		model = service.Qualify(bare)
 	}
 	if model == "" {
@@ -1260,7 +1366,10 @@ func (a *app) openPickerFromChip() {
 	// THE FOLD HAS TO BE THE ONE THE CHIP NAMES, for [app.openLaneList]'s
 	// reason: a model the list does not carry leaves the cursor on row zero,
 	// and unfolding whatever sorted first would open somebody else's machines.
-	if chosen, ok := a.pick.choice(); ok && chosen.ID == a.model {
+	// AND THE MODEL IT IS ABOUT IS THE ONE THE CHIP SPELLS, which is the model the
+	// engine is on ([app.wireModel]) — hover.go's law: what lights is what the
+	// press acts on, and the press must land on the machine the word names.
+	if chosen, ok := a.pick.choice(); ok && strings.EqualFold(chosen.ID, a.wireModel()) {
 		a.pick.unfoldHere()
 	}
 }
@@ -1321,7 +1430,11 @@ func (a *app) openPickerFromChip() {
 // a machine the address already names is not said twice. The seam asks
 // [app.talkLaneRider] instead, which never suppresses.
 func (a *app) laneRider(timed bool) string {
-	return a.laneRiderFor(a.talkLaneStory(), a.model, "", timed, a.state == stateWorking)
+	// THE ID IT SPELLS IN FULL IS THE MODEL THE ENGINE IS ON, because that is the
+	// id the row beside it names ([app.wireModel]) and this one is read for
+	// exactly one thing — not saying a machine the id already carries twice. Read
+	// off the dial it would suppress against a name nobody drew.
+	return a.laneRiderFor(a.talkLaneStory(), a.wireModel(), "", timed, a.state == stateWorking)
 }
 
 // talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with

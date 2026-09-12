@@ -71,6 +71,20 @@ type Facts struct {
 	// the dial itself — and a fact named one thing in the protocol and another on
 	// the screen is two vocabularies for one ladder.
 	Thinking string `json:"thinking,omitempty"`
+	// TurnModel is THE MODEL THE TURN IN FLIGHT IS ON ([Agent.TurnModel]), and
+	// empty when nothing is in flight.
+	//
+	// IT IS A DIFFERENT FACT FROM [Welcome.Model], WHICH IS THE DIAL. The two
+	// part company the moment somebody picks a model while a turn is running: the
+	// turn finishes on the model it started on, every step and every retry of it,
+	// and the chrome has to be able to say so. It rides the photograph rather
+	// than a call because the seam draws it on every frame, which is the same
+	// bargain [Facts.Thinking] beside it makes.
+	//
+	// AN ENGINE THAT DOES NOT CARRY IT SENDS NOTHING, and a surface must be able
+	// to tell that from a genuinely idle conversation — which is what
+	// [remote.Welcome]'s own flag is for, exactly as it is for the dial.
+	TurnModel string `json:"turnModel,omitempty"`
 	// Places is the folders this conversation is about, newest first
 	// ([Agent.Places]) — the person's own attachments among them, told apart by
 	// [PlaceRef.Arrival].
@@ -151,13 +165,29 @@ func FactsOf(source FactSource) Facts {
 	if door, ok := source.(interface{ NeedsPerson() bool }); ok {
 		facts.NeedsPerson = door.NeedsPerson()
 	}
+	// AND THE MODEL THE WORK IN FLIGHT IS ON, asserted for the folders' reason.
+	// It is read BEFORE the rung because the rung is resolved FOR it.
+	if door, ok := source.(interface{ TurnModel() string }); ok {
+		facts.TurnModel = door.TurnModel()
+	}
 	// AND THE THINKING RUNG, ASSERTED FOR THE FOLDERS' REASON. A source with no
 	// dial on it is not a conversation thinking at nothing: it is one nobody can
 	// ask, and the surface at the other end of a wire must be able to tell those
 	// two apart — which is what [remote.Welcome]'s own flag is for. A CAPABILITY
 	// THAT CANNOT WORK IS ABSENT, NOT BROKEN, so the field stays empty here and
 	// the dial is simply not drawn.
-	if door, ok := source.(interface{ ResolvedEffort() string }); ok {
+	//
+	// AND IT IS RESOLVED FOR THE MODEL THE PHOTOGRAPH NAMES. The rung is drawn
+	// beside the model cell and the model cell names [Facts.TurnModel] while
+	// there is one, so resolving for the dial would put one model's name next to
+	// another model's level — the levels are per model id, so the two really can
+	// differ. A source that cannot resolve per model answers for the dial, which
+	// is what it always did.
+	if door, ok := source.(interface {
+		ResolvedEffortFor(model string) string
+	}); ok {
+		facts.Thinking = door.ResolvedEffortFor(facts.TurnModel)
+	} else if door, ok := source.(interface{ ResolvedEffort() string }); ok {
 		facts.Thinking = door.ResolvedEffort()
 	}
 	return facts

@@ -110,7 +110,10 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	// keeps the refusal cheap: nothing is read from disk for a model that could
 	// not have looked at it, and the fallback's own resolution is cheaper still.
 	model := a.Model()
-	if a.config.SupportsImages == nil || !a.config.SupportsImages(model) {
+	// A POSITIVE `sees` OR NOTHING. Unknown goes to the looking model exactly as
+	// blind does: neither is a model this build may hand base64 to
+	// ([ModelSight]).
+	if a.sightOf(model) != SightSees {
 		return a.visionTurn(ctx, text, images, model)
 	}
 
@@ -402,6 +405,12 @@ func visionUserMessage(text string, refs []journalPart) userMessage {
 // half is this function and it should move to agent.go beside the original.
 func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, live ai.Message, seer string) <-chan Event {
 	a.running = true
+	// AND THIS TURN'S MODEL IS THE LOOKING MODEL, because that is the only model
+	// this turn talks to: one call, to whoever can see the pictures. The chrome
+	// names the model the engine is on ([Agent.TurnModel]), and for the length of
+	// a vision turn the engine is on the seer — which is also what the reply is
+	// prefixed with, so the line and the reply agree.
+	a.ridesOnLocked(seer)
 	hub := newEventHub()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
@@ -511,13 +520,13 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 			partial.reset()
 		}
 		if ctx.Err() != nil {
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, seer)})
 			return false
 		}
 		if err == nil {
 			err = fmt.Errorf("session: %s returned no answer for the image", seer)
 		}
-		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started, a.Model())})
+		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started, seer)})
 		return false
 	}
 
@@ -530,7 +539,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	}
 	partial.reset()
 	a.record(textMessage("assistant", note+answer))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, seer)})
 	// The session may name itself off this exchange like any other: a
 	// conversation that opened with a photograph is still a conversation about
 	// something (title.go).

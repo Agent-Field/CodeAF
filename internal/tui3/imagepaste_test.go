@@ -449,12 +449,12 @@ func TestADroppedPicturesTokenAndBytesBothReachTheWire(t *testing.T) {
 	}
 
 	agent, err := session.New(session.Config{
-		Workspace:      dir,
-		Model:          "vendor/sees",
-		APIKey:         "test",
-		BaseURL:        server.URL,
-		System:         "SYSTEM",
-		SupportsImages: func(string) bool { return true },
+		Workspace:  dir,
+		Model:      "vendor/sees",
+		APIKey:     "test",
+		BaseURL:    server.URL,
+		System:     "SYSTEM",
+		SeesImages: func(string) session.ModelSight { return session.SightOf(true) },
 	})
 	if err != nil {
 		t.Fatalf("session.New: %v", err)

@@ -486,8 +486,37 @@ func (a *Agent) latchTheModel() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.spokenModel = ""
-	a.riding = a.model
+	a.ridesOnLocked(a.model)
 	return a.model
+}
+
+// ridesOnLocked publishes the model the work is talking to AND MAKES THE
+// TRANSCRIPT'S PICTURES SAFE FOR IT, because those are one event and not two.
+//
+// THE SCRUB BELONGS TO THE MOVE, NOT TO THE PICKER. A conversation carrying
+// attached images carries them as base64 in the live transcript and re-sends
+// them with every request, so the moment that matters is the moment the work
+// starts talking to a model that cannot see — whether that came from a person's
+// pick taken at the request boundary, a rescue hopping onto a fallback, or a
+// turn simply opening on the dial. [Agent.SetModel] scrubbing instead was the
+// old shape and it was wrong at both ends: it scrubbed for a preference that
+// may never be acted on, and under steer.go's law a pick can reach the REQUEST
+// in flight, which the picker's scrub would have missed by one request.
+//
+// AND ONLY WHEN THE MODEL ACTUALLY MOVED. A conversation that has never changed
+// model would otherwise ask the oracle on every turn, and that oracle can answer
+// differently twice for one id — a catalog fetch that failed after a cached one
+// succeeded turned `sees` into `blind` with nobody having touched the picker,
+// and the second turn of that conversation ate the person's screenshot. THE
+// MOVE IS THE SEAM, so the move — and nothing else — is what may scrub
+// (blindswap.go states the rule and its three limits).
+func (a *Agent) ridesOnLocked(model string) {
+	a.riding = model
+	if model == "" || strings.EqualFold(model, a.scrubbedFor) {
+		return
+	}
+	a.scrubBlindImagePartsLocked(model)
+	a.scrubbedFor = model
 }
 
 // rideModel publishes THE MODEL THE WORK IS ACTUALLY TALKING TO. The ladder has
@@ -506,7 +535,7 @@ func (a *Agent) latchTheModel() string {
 func (a *Agent) rideModel(model string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.riding = model
+	a.ridesOnLocked(model)
 }
 
 // ridingNowLocked is that fact when there is a step to have it, and the

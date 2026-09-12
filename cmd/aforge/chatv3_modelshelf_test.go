@@ -189,8 +189,8 @@ func TestTheShelfTakesTodaysListAndKeepsYesterdaysOnFailure(t *testing.T) {
 	if err != nil || len(rows) != 2 || at.IsZero() {
 		t.Fatalf("a landed refresh answered %d rows at %v, error %v", len(rows), at, err)
 	}
-	if !v3SeesImages(live)("vendor/shipped-this-morning") {
-		t.Fatal("the vision gate does not know the model the refresh brought")
+	if got := v3SeesImages(live)("vendor/shipped-this-morning"); got != session.SightSees {
+		t.Fatalf("the vision gate reads the model the refresh brought as %v", got)
 	}
 	cached := tui3.CachedModels()
 	if len(cached) != 2 || cached[1].ID != "vendor/shipped-this-morning" {
