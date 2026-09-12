@@ -2462,26 +2462,22 @@ type app struct {
 	// or had just clicked back into, was "away" — and away used to mean a
 	// question nobody could see (questiondelivery.go).
 	lastQuestionKey time.Time
-	// questionReach is PRESENCE-AWARE DELIVERY and BATCHED AT THE BOUNDARY in
-	// the ONE place both are decided (questiondelivery.go). It holds the quiet
-	// questions a step is still gathering and remembers which blocking question
-	// has already rung, so neither fact can be re-derived differently by home,
-	// by the phone or by a second page.
+	// questionReach is PRESENCE-AWARE DELIVERY in the ONE place it is decided
+	// (questiondelivery.go). It remembers which blocking question has already
+	// rung, so that fact cannot be re-derived differently by home, by the phone
+	// or by a second page.
 	questionReach questionDeliveryRule
-	// questionBatch is the sheet a step's boundary released, or nil
-	// (questionsheet.go). It is APART FROM [app.questions] rather than a flag on
-	// them, because a question in a sheet is not a question on the block: it has
-	// no settle stamp, no cursor and no rule offer, and the moment `enter` takes
-	// one out it gains all three.
-	questionBatch *questionSheet
-	// questionBatchFolded is `esc` on the sheet. It is THE SAME `later` the
-	// block's fold is — the questions stay open, the chip keeps counting them —
-	// and [app.raiseFolded] brings it back.
-	questionBatchFolded bool
-	// questionStepAt names the step quiet questions are being gathered under.
-	// It moves when the model speaks again or the turn ends, which is the
-	// boundary this surface can honestly see (questiondelivery.go).
-	questionStepAt int
+	// questionSetAt is where the panel stands on the set of questions one step
+	// raised — which tab is showing, the permission frame's pointer, and
+	// whether the person asked to go one by one (questionset.go). The set itself
+	// is never kept: it is read off [app.questions] on every frame.
+	questionSetAt questionSetState
+	// questionStaging is the step whose answers are being HELD rather than sent,
+	// and it is set for exactly the length of one keystroke or one press routed
+	// into a tab of that step's set ([app.questionSetKey]). An answer reaching
+	// the door at any other moment — from home, from another window, from the
+	// project's rule while nobody is here — goes straight through.
+	questionStaging string
 	// autonomyRules is this project's stored question rules as this surface last
 	// read them, or nil for "not read yet" (autonomysheet.go). Nil rather than
 	// an empty map is the difference between a project with no rules and a file
@@ -3182,11 +3178,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// door is parked again in the same breath, which is what keeps exactly
 		// one command waiting on it (doorbell.go).
 		return a, a.news.waitRing()
-
-	case questionGatherMsg:
-		// The step's own clock, going off (questionsheet.go). It releases the
-		// batch it was armed for and never a later one.
-		return a, a.questionBoundaryFor(msg.step)
 
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
@@ -5116,13 +5107,6 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	switch ev.Kind {
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
-		// THE STEP'S BOUNDARY IS THE MODEL SPEAKING AGAIN. Quiet questions
-		// raised while the tools were running arrive here, together, as the
-		// sheet (questionsheet.go's [app.questionBoundary]). It is a no-op on
-		// the overwhelmingly common delta, which is one with nothing gathered.
-		if cmd := a.questionBoundary(); cmd != nil {
-			after = tea.Batch(after, cmd)
-		}
 
 	case session.EventQuestion, session.EventQuestionWithdrawn, session.EventQuestionAnswered:
 		// THE OBJECT ALSO RIDES THE TURN'S OWN STREAM, and this is where a
@@ -5336,12 +5320,6 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
-		// AND A TURN ENDING IS THE LAST BOUNDARY THERE IS. A question the model
-		// raised in its final step has no next sentence to wait for, and one
-		// held past the end of the turn would be held forever.
-		if cmd := a.questionBoundary(); cmd != nil {
-			after = tea.Batch(after, cmd)
-		}
 		// Both notes go in BEFORE the turn settles, so they land under the reply
 		// they are about rather than above whatever is said next. What was
 		// CHANGED comes first and what it COST second: the files are the work,

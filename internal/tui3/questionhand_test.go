@@ -39,7 +39,7 @@ func TestAQuestionRaisedWhileNobodyWasThereIsStillOnTheBlock(t *testing.T) {
 	// AND THE PHONE AND THE BELL ARE WHAT AWAY ADDS ON TOP, never what it
 	// swaps the block for.
 	rule := newQuestionDeliveryRule()
-	out := rule.deliver(consentAsk(), "", questionAway, lab.at)
+	out := rule.deliver(consentAsk(), questionAway, lab.at)
 	if out.Pin == nil || !out.Phone {
 		t.Fatalf("away delivered %+v, want the block AND the phone", out)
 	}
@@ -65,31 +65,30 @@ func TestThePointerAndTheWindowComingForwardCountAsSomebodyBeingThere(t *testing
 	}
 }
 
-// THE SHEET TAKES NO KEYS FROM BEHIND A PAGE. It had no off-frame guard of its
-// own, so ↑↓, tab and the digits were taken from behind whatever the person was
-// actually looking at.
-func TestTheSheetTakesNoKeysFromBehindAPage(t *testing.T) {
-	a := newTestApp(&fakeAgent{})
-	a.questionBatch = newQuestionSheet([]session.Question{
-		sheetQuestion(1, session.AskPermission, "read vendor/?",
-			session.AnswerOption{Key: "1", Label: "allow once"}, session.AnswerOption{Key: "2", Label: "not now"}),
-		sheetQuestion(2, session.AskPermission, "write .github/?",
-			session.AnswerOption{Key: "1", Label: "allow once"}, session.AnswerOption{Key: "2", Label: "not now"}),
-	})
-	a.showPage(pageTasks)
-	if _, took := a.questionKey(key("down")); took {
-		t.Fatal("the sheet walked its cursor from behind a place")
+// A SET TAKES NO KEYS FROM BEHIND A PAGE. The sheet it replaced had no
+// off-frame guard of its own, so ↑↓, tab and the digits were taken from behind
+// whatever the person was actually looking at; the set is routed by the block's
+// own guards, in front of everything it does.
+func TestASetTakesNoKeysFromBehindAPage(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(setQuestion(1, "step:1", "read vendor/?"))
+	lab.raise(setQuestion(2, "step:1", "write .github/?"))
+	lab.tick(questionSettle * 2)
+	lab.a.showPage(pageTasks)
+	for _, k := range []string{"down", "right", "1", "enter"} {
+		if lab.press(k) {
+			t.Fatalf("the set took %q from behind a place", k)
+		}
 	}
-	if _, took := a.questionKey(key("1")); took {
-		t.Fatal("the sheet answered a question from behind a place")
-	}
-	if a.questionBatch.answeredCount() != 0 {
-		t.Fatalf("%d rows were answered from behind a page", a.questionBatch.answeredCount())
+	for _, q := range lab.a.questions {
+		if q.staged != nil {
+			t.Fatalf("question %d was answered from behind a page", q.question.ID)
+		}
 	}
 	// AND NOTHING OF IT IS DRAWN THERE EITHER, which is the same rule's other
 	// half: what is not on the frame is not on the keyboard.
-	if rows := a.questionRows(a.width); len(rows) != 0 {
-		t.Fatalf("the sheet drew %d rows from behind a place", len(rows))
+	if rows := lab.rows(); len(rows) != 0 {
+		t.Fatalf("the set drew %d rows from behind a place", len(rows))
 	}
 }
 

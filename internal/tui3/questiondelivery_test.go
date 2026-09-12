@@ -21,27 +21,28 @@ func deliveryQuestion(id uint64, ask session.AskKind, blocking bool) session.Que
 	}
 }
 
-func TestAQuietQuestionWaitsForItsStepAndABlockingOneDoesNot(t *testing.T) {
+// TestAQuietQuestionIsPinnedTheMomentItArrives is the gather's deletion, pinned.
+// Quiet questions raised inside a step used to be held until "the model spoke
+// again", and a question holding its own turn open could be held until it was
+// answered — which nobody could do, because it was not on the screen. The step
+// is on the question now ([session.Question.Batch]) and several from one step
+// are drawn together as one panel (questionset.go), so nothing is held at all.
+func TestAQuietQuestionIsPinnedTheMomentItArrives(t *testing.T) {
 	d := newQuestionDeliveryRule()
 	now := time.Date(2026, 9, 9, 12, 1, 0, 0, time.UTC)
-	if got := d.deliver(deliveryQuestion(1, session.AskChoice, false), "step:7", questionOnPage, now); got.Pin != nil {
-		t.Fatalf("a quiet question escaped its step: %#v", got)
+	quiet := deliveryQuestion(1, session.AskChoice, false)
+	quiet.Batch = "step:7"
+	if got := d.deliver(quiet, questionOnPage, now); got.Pin == nil {
+		t.Fatalf("a quiet question raised inside a step was held back: %#v", got)
 	}
-	if got := d.deliver(deliveryQuestion(2, session.AskPermission, true), "step:7", questionOnPage, now); got.Pin == nil {
-		t.Fatal("a blocking question was held for the boundary")
-	}
-	held := d.boundary("step:7")
-	if len(held) != 1 || held[0].ID != 1 {
-		t.Fatalf("boundary = %#v, want only the quiet question", held)
-	}
-	if again := d.boundary("step:7"); len(again) != 0 {
-		t.Fatalf("the boundary handed its batch over twice: %#v", again)
+	if got := d.deliver(deliveryQuestion(2, session.AskPermission, true), questionOnPage, now); got.Pin == nil {
+		t.Fatal("a blocking question was held back")
 	}
 }
 
 func TestAQuestionOnAnotherPageIsPinnedAndSaysWhereItWent(t *testing.T) {
 	d := newQuestionDeliveryRule()
-	got := d.deliver(deliveryQuestion(1, session.AskChoice, true), "", questionOtherPage, time.Now())
+	got := d.deliver(deliveryQuestion(1, session.AskChoice, true), questionOtherPage, time.Now())
 	if got.Pin == nil {
 		t.Fatal("a question on another page never reached the block")
 	}
@@ -56,17 +57,17 @@ func TestAwayTakesOnlyAMatureSafePickAndRingsOnce(t *testing.T) {
 	q := deliveryQuestion(1, session.AskChoice, true)
 	q.Policy = session.Policy{Kind: session.PolicyRecommendThenAuto, After: time.Minute}
 	d := newQuestionDeliveryRule()
-	got := d.deliver(q, "", questionAway, now)
+	got := d.deliver(q, questionAway, now)
 	if got.Answer == nil || got.Answer.DecidedBy != session.DecidedByDial || got.Answer.Key != "1" {
 		t.Fatalf("the rule did not take a mature reversible pick: %#v", got)
 	}
 	// A clarification is never taken by a clock, however mature the rule is.
 	q.ID, q.Ask = 2, session.AskClarification
-	got = d.deliver(q, "", questionAway, now)
+	got = d.deliver(q, questionAway, now)
 	if got.Answer != nil || !got.Phone || !got.Bell {
 		t.Fatalf("clarification away = %#v, want the phone and one bell", got)
 	}
-	if got = d.deliver(q, "", questionAway, now.Add(time.Second)); got.Bell {
+	if got = d.deliver(q, questionAway, now.Add(time.Second)); got.Bell {
 		t.Fatal("the same blocking question rang twice")
 	}
 }
@@ -76,19 +77,8 @@ func TestAnIrreversibleQuestionIsNeverTakenWhileNobodyIsThere(t *testing.T) {
 	q.Stakes = session.StakesIrreversible
 	q.Policy = session.Policy{Kind: session.PolicyDecide}
 	d := newQuestionDeliveryRule()
-	if got := d.deliver(q, "", questionAway, time.Now()); got.Answer != nil {
+	if got := d.deliver(q, questionAway, time.Now()); got.Answer != nil {
 		t.Fatalf("irreversible stakes were decided by the rule: %#v", got.Answer)
-	}
-}
-
-func TestAWithdrawnQuestionLeavesTheStepItWasGatheringIn(t *testing.T) {
-	d := newQuestionDeliveryRule()
-	q := deliveryQuestion(1, session.AskChoice, false)
-	_ = d.deliver(q, "step:1", questionOnPage, time.Now())
-	q.Withdrawn = &session.Withdrawal{Reason: "the plan changed"}
-	d.forget(q)
-	if held := d.boundary("step:1"); len(held) != 0 {
-		t.Fatalf("the boundary released a withdrawn question: %#v", held)
 	}
 }
 
@@ -190,26 +180,6 @@ func TestAnAnswerThisWindowAlreadyGaveIsNotDrawnTwice(t *testing.T) {
 	})
 	if len(a.questionRecords) != before {
 		t.Fatalf("the lane's echo of this window's own answer wrote a second row")
-	}
-}
-
-// TestAQuestionHoldingItsOwnStepOpenIsStillReleased is the deadlock the gather
-// clock exists to prevent: the `ask` tool blocks its turn until it is answered,
-// so a question held for "the model speaking again" would be held until the
-// model speaks, which cannot happen until the question is answered.
-func TestAQuestionHoldingItsOwnStepOpenIsStillReleased(t *testing.T) {
-	d := newQuestionDeliveryRule()
-	got := d.deliver(deliveryQuestion(1, session.AskPermission, false), "step:1", questionOnPage, time.Now())
-	if !got.Gather {
-		t.Fatal("a held question did not ask for the boundary's clock")
-	}
-	if got.Pin != nil {
-		t.Fatal("a held question was drawn anyway")
-	}
-	// The clock's own release names the step it was armed for, and hands the
-	// batch over exactly once.
-	if held := d.boundary("step:1"); len(held) != 1 {
-		t.Fatalf("the clock released %d questions, want the one that was held", len(held))
 	}
 }
 

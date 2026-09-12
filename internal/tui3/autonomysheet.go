@@ -320,3 +320,56 @@ func (a *app) readAutonomy() tea.Cmd {
 // autonomyChanged reads the rows again, so the next question raised wears what
 // was just written rather than what was there before it.
 func (a *app) autonomyChanged() tea.Cmd { return a.readAutonomy() }
+
+// questionShapeOrder is which kind of question goes above which, on this sheet's
+// rows and in anything else that lists the kinds.
+//
+// IT IS THE KIND TABLE'S OWN ORDER (docs/design/questions/DESIGN.md's "Kinds and
+// their defaults") AND NOT THE ALPHABET. The table is ordered by how much of the
+// person a question wants — a permission is a key, a judgement is a reading, a
+// clarification is a sentence only they can write — so a list in that order is
+// a list whose cheap rows are at the top. Sorting on the value's own spelling
+// would put `assumptions it made` above `asking permission` because of how the
+// two words happen to start.
+func questionShapeOrder(kind session.AskKind) int {
+	for i, one := range []session.AskKind{
+		session.AskPermission, session.AskChoice, session.AskJudgement,
+		session.AskClarification, session.AskConfirmation, session.AskLanding,
+		session.AskAssumption, session.AskRatify,
+	} {
+		if one == kind {
+			return i
+		}
+	}
+	return 99
+}
+
+// questionShapeWord is one kind of question in a person's words: this sheet's
+// row names and the note `D` leaves.
+//
+// NO MACHINERY VOCABULARY. [session.AskKind]'s own spellings are the engine's
+// nouns — `permission`, `judgement`, `ratify` — and three of them are words
+// about a taxonomy rather than about what is being asked. What goes on a
+// heading is what the rows under it have in common, said the way somebody would
+// say it out loud.
+func questionShapeWord(kind session.AskKind) string {
+	switch kind {
+	case session.AskPermission:
+		return "asking permission"
+	case session.AskChoice:
+		return "choosing"
+	case session.AskJudgement:
+		return "your judgement"
+	case session.AskClarification:
+		return "what you meant"
+	case session.AskConfirmation:
+		return "confirming"
+	case session.AskLanding:
+		return "your call"
+	case session.AskAssumption:
+		return "assumptions it made"
+	case session.AskRatify:
+		return "already done"
+	}
+	return ""
+}
