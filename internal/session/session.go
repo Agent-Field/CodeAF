@@ -3010,6 +3010,14 @@ type Agent struct {
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
 
+	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
+	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its
+	// OWN writer rather than a second patch on the one above because a
+	// [stampWriter] coalesces by REPLACING its patch: one writer for two files
+	// would drop whichever of them was owed first.
+	toldStampOnce   sync.Once
+	toldStampWriter *stampWriter
+
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).
 	toolCompact toolCompactMemo

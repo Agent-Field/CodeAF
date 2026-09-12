@@ -415,12 +415,25 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// its own idea of what a cancellation means, and this one had none at all —
 	// it was measured stamping a conversation's folder after that conversation
 	// had closed. Nothing takes its answer, because its answer IS the assignment
-	// it makes; what the door buys is the cancellation below and a reading the
-	// beside-watch can see, so a fixture waits on the fact instead of guessing.
-	elsewhere := readBeside(ctx, func(context.Context) struct{} {
-		a.refreshElsewhere()
+	// it makes; what the door buys is the cancellation — the reading carries the
+	// context it is given and obeys it ([Agent.refreshElsewhere]) — and a reading
+	// the beside-watch can see, so a fixture waits on the fact instead of guessing.
+	//
+	// AND A TURN THAT MAY NOT BE TOLD STARTS NO READING AT ALL. A task node and a
+	// conversation with no folder are both answered by one predicate
+	// ([Agent.tellsElsewhere]); asking it here keeps a reading that would return
+	// on its first line out of the watch, where it would be one more thing a
+	// fixture waits for and nothing at all beside the work. A nil `ask` is
+	// [readBeside]'s own way of saying there was no reading, and `end` takes the
+	// nil it answers.
+	ask := func(read context.Context) struct{} {
+		a.refreshElsewhere(read)
 		return struct{}{}
-	}, nil)
+	}
+	if !a.tellsElsewhere() {
+		ask = nil
+	}
+	elsewhere := readBeside(ctx, ask, nil)
 	defer elsewhere.end()
 
 	// partial accumulates what the model has streamed for the CURRENT step.
