@@ -40,6 +40,16 @@ package session
 //   - IT MAKES THE REMEMBERED ANSWER FOLDER-SHAPED. A standing yes to a question
 //     about a folder is a yes ABOUT THAT FOLDER, not about `edit` everywhere
 //     forever, and the next call under it — `bash` included — is covered by it.
+//     That half lives in consent.go, where the gate's memo already lives
+//     ([Agent.askAnswer] banks it, [Agent.rememberedAnswer] reads it back,
+//     [Agent.undoGrant] takes it away).
+//
+// AND THE PERSON'S OWN WORD IS WHAT SCOPES IT. A plain yes answers this call; it
+// is the "always" key that banks the folder for the rest of the conversation.
+// Widening a plain yes into a standing one would be the card lying by one word,
+// which is the exact failure [ConsentRule]'s doc comment was written about — so
+// the scope means here what it means everywhere else, and the manual says which
+// key buys what.
 //
 // THE GATE'S OWN FLOORS ARE UNTOUCHED. A rule that denies still denies, the
 // critical-command table and the calls that act in the person's name still ask
