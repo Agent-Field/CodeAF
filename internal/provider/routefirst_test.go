@@ -262,4 +262,18 @@ func TestTheClassifierSpeaksTheAttemptsShape(t *testing.T) {
 	if narrowed.AskedBare {
 		t.Fatal("a refusal of a rescue's one-machine demand said the attempt went out bare")
 	}
+	// A demand carried by the chooser reads the same way, and a belief ranked
+	// on Order alone is STILL a bare ask: the router picked the machine.
+	demand := lanes.Choice{Only: []string{"brass"}}
+	narrowedByChoice := client.refusalObject(&ai.Request{Model: model},
+		callKnobs{laneChoice: &demand}, paced)
+	if narrowedByChoice.AskedBare {
+		t.Fatal("a refusal of the chooser's admitted set said the attempt went out bare")
+	}
+	ranked := lanes.Choice{Order: []string{"brass"}}
+	bareByOrder := client.refusalObject(&ai.Request{Model: model},
+		callKnobs{laneChoice: &ranked}, paced)
+	if !bareByOrder.AskedBare {
+		t.Fatal("an advice-only Order made the attempt read as narrowed; advice leaves the pick to the router")
+	}
 }
