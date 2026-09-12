@@ -1195,9 +1195,17 @@ func placeFrameWithBar(a *app, width, height int,
 			draftRows = append(draftRows, "")
 		}
 	}
+	// THE BOX IS THE SAME HEIGHT TYPED IN OR NOT ([homeDraftFloor]). At rest it
+	// is the place's dim sentence with the same rows under it, so the one thing
+	// on this screen a person types into is a block they can see before they
+	// have typed anything — which is the whole point, since somebody who cannot
+	// find the box has nothing to type into it. It also means the foot does not
+	// move on the first keystroke: a box that jumped from one row to three the
+	// moment a letter landed would shift the list up under the hand that was
+	// reaching for it.
 	draftHeight := len(draftRows)
-	if draftHeight < 1 {
-		draftHeight = 1
+	if draftHeight < homeDraftFloor {
+		draftHeight = homeDraftFloor
 	}
 	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
 	// FOOT, and they are asked for separately because they are two different
@@ -1366,6 +1374,14 @@ func placeFrameWithBar(a *app, width, height int,
 	boxTop, boxHeight := len(lines), len(draftRows)
 	if len(draftRows) == 0 {
 		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
+		// AND THE REST OF THE BLOCK IS HELD OPEN UNDER IT, so the box is the same
+		// shape before the first keystroke as after it. The span stays EMPTY
+		// (boxHeight is still zero above): these rows are the box's silhouette
+		// and not its surface, so a press on them falls through to the place
+		// underneath exactly as a press on the resting row always has.
+		for row := 1; row < homeDraftFloor; row++ {
+			add("", nil)
+		}
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
 		// than left blinking at the frame's origin. The moment a character lands
 		// the box stops being empty and the caret comes back, in the box.

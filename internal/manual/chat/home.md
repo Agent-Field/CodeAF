@@ -714,9 +714,11 @@ does not step down a row when it does. Past three rows the window scrolls with t
 marked with `…` where the `›` was. Nothing you type is ever truncated out of view. There
 is no key to open a new line here (that is the chat box's `ctrl+j`).
 
-**An empty box is one row.** With nothing typed it draws the dim sentence about what this
-screen does and nothing else, because a box nobody is typing in has nothing to show. The
-three rows arrive with the first character.
+**An empty box is three rows too.** With nothing typed it draws the dim sentence about
+what this screen does on its first row and holds the other two open under it, so the one
+thing on this screen you type into is a block you can see *before* you have typed anything.
+It also means the foot does not move on the first keystroke: a box that jumped from one row
+to three the moment a letter landed would shift the list up under the hand reaching for it.
 
 **`alt+enter` is a task and not `ask here`.** On home and on every other place the chord
 opens the **composer layer**, where the three facts a task needs are settled — where, on

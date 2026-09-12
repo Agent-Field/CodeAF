@@ -298,8 +298,13 @@ func TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth(t *testing.T) {
 // that can be empty, at three sizes, and every edge has to be on the same row.
 //
 // placeFootRows is that foot at rest, counted: the blank over the rule, the rule
-// with the note on it, the composer and the hint.
-const placeFootRows = 4
+// with the note on it, the composer's [homeDraftFloor] rows and the hint.
+//
+// THE COMPOSER IS THE SAME HEIGHT AT REST AS IN USE, which is what makes this
+// number a constant at all. It was three when the box was one row and grew with
+// what was typed into it; a box that changed height moved this whole foot under
+// the hand, and the law below could only be stated about a resting screen.
+const placeFootRows = 3 + homeDraftFloor
 
 func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	type edges struct{ bar, headRule, blank, footRule, box, hint int }
@@ -309,7 +314,7 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	for _, size := range sizes {
 		height := size[1]
 		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
-			footRule: height - placeFootRows + 1, box: height - 2, hint: height - 1}
+			footRule: height - placeFootRows + 1, box: height - homeDraftFloor, hint: height - 1}
 	}
 	for _, lab := range labs {
 		for _, size := range sizes {
@@ -327,11 +332,16 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 			if strings.TrimSpace(rows[placeHeadRows-1]) == "" {
 				got.blank = placeHeadRows - 1
 			}
-			if strings.HasPrefix(rows[len(rows)-3], "─") {
-				got.footRule = len(rows) - 3
+			// THE RULE AND THE BOX ARE FOUND BY COUNTING BACK THROUGH THE
+			// COMPOSER'S OWN HEIGHT, not by two fixed offsets. The box is
+			// [homeDraftFloor] rows and its FIRST row is the one carrying the
+			// prompt, so the rule sits one above that and the rows between the
+			// prompt and the hint are the composer's own.
+			if at := len(rows) - 1 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], "─") {
+				got.footRule = at
 			}
-			if strings.HasPrefix(rows[len(rows)-2], " "+prompt) {
-				got.box = len(rows) - 2
+			if at := len(rows) - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
+				got.box = at
 			}
 			if got != want[size] {
 				t.Errorf("the %s place at %dx%d puts its edges at %+v, and every place puts them at %+v\n%s",
