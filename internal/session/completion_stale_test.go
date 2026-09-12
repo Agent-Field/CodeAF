@@ -95,11 +95,6 @@ func finishedAgent(t *testing.T, completer Completer, path string) *Agent {
 		config.Divide = true
 		config.Interactive = true
 		config.SessionFile = path
-		// AND THE TURN CANNOT CARRY ON WHERE IT IS, which is the world every
-		// ending in this file is about: the ceiling now lets an answer with room
-		// left compact and go on (checkpoint.go), so a fixture that means to watch
-		// a handover be DECLINED has to be one that would otherwise have happened.
-		checkpointNoRoomLeft(config)
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): checkpointMarkModel,
