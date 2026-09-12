@@ -75,6 +75,29 @@ and spending. A real stop never reaches the check and is never handed back for a
 done`, or `stopped`, or `your call`, in the words your screen is showing. Work running in
 **another aforge window** cannot be stopped from here — the window that owns it has to.
 
+## I pressed let aforge decide while it was answering — you decide did nothing, the card went back to your call straight away, which turn does aforge get
+
+Your press puts a line on the queue, and a queue is read **between steps** — so pressing
+while the answer is already streaming can mean that turn never sees it. What happens then:
+the card keeps saying `aforge is deciding`, aforge starts one more turn by itself to read
+the line, and **that** turn is the one it has to answer in. The card comes back to you at
+the end of it, whether or not aforge spent a verb on the decision.
+
+It used to come back within a moment of your press instead — before aforge had been asked
+anything — and aforge was then handed a decision you were holding again, which is two of
+you answering one question.
+
+**A turn you stop is the end of it.** Press `esc`, press stop twice, or have the turn fail,
+and nothing is coming that would put the question in front of aforge: the card draws its
+chips again straight away and the task counts on your home page as something needing you.
+Press it again when you want it asked. The same is true of a turn that ends having reached
+no model at all — a run of machines that all refused — because nothing was asked there
+either.
+
+**A task aforge is working on is different.** Its turns belong to the run that drives it and
+another one always follows, so a question handed over inside a task waits for the next turn
+of that run rather than coming back to you.
+
 ## I told aforge to decide and it still says your call — the model says there is no graph left, the task graph expired, I pressed let aforge decide twice
 
 Pressing `let aforge decide` on a your-call card hands **that one card** to the model
@@ -96,20 +119,6 @@ still means the newest task anywhere in the project that wears it, which is what
 second line about the same decision — and it is not shown to you as trouble, because the
 state it asks for is the state that already holds: the reason row goes on reading `aforge
 is deciding`. If you want it back, press `take it back` and the answers return to you.
-
-**If the card stayed `your call` and nothing above fits, the press landed after aforge's
-last question went out.** Your press puts a line on the queue, and a queue is read between
-steps — so pressing while the answer is already streaming can mean that turn never sees it.
-What happens then: the card keeps saying `aforge is deciding`, aforge starts one more turn
-by itself to read the line, and that turn is the one it has to answer in. The card comes
-back to you at the end of it, whether or not aforge spent a verb on it. It used to come
-back within a moment of your press instead, and the model was then handed a decision you
-were holding again — two of you answering one question.
-
-**A turn you stop is the end of it.** If you press `esc` — or the turn fails — before the
-line has been read, nothing is coming that would put the question in front of aforge, so
-the card draws its chips again straight away and the task counts on your home page as
-something needing you. Press `let aforge decide` again when you want it asked.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers

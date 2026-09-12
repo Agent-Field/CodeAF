@@ -175,7 +175,9 @@ say it may still say.
 if aforge's turn ends with the question still unanswered, the decision moves back to you
 and the card draws its chips, whether or not you noticed it had been handed over. The turn
 that counts is the one that actually read the question — hand it over while aforge is
-already mid-answer and it waits for the next turn rather than bouncing back unread. Where
+already mid-answer and it waits for the next turn rather than bouncing back unread, unless
+that turn was stopped or failed before any model saw it, in which case nothing is coming to
+ask and the chips return at once. Where
 aforge's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
 

@@ -4871,7 +4871,10 @@ chips under them, one ask rather than two.
 aforge is already mid-answer and the note can arrive too late for that turn to see — so the
 card keeps saying `aforge is deciding` and the question waits for the next turn, which is
 usually the one aforge starts by itself a moment later. It does not bounce straight back at
-you unread, and it does not arrive twice.
+you unread, and it does not arrive twice. **Unless nothing follows:** a turn you stopped, or
+one that failed before reaching a model, is the end of the road — nothing is coming that
+would ask the question, so the card draws its chips again at once and the task counts on
+home as something needing you (*Task controls*).
 
 **And closing aforge ends the turn too.** If you quit, crash or come back to the
 conversation later, a task aforge was deciding is yours again the moment the conversation
