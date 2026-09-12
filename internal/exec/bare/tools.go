@@ -174,7 +174,9 @@ func bashDescription(caps Caps) string {
 	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names. Optionally provide a timeout in seconds.", caps.MaxLines, sizeWord(caps.MaxBytes))
 }
 
-const editDescription = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes."
+// The merge sentence owns the whole of it; "do not include large unchanged
+// regions to connect distant changes" said the same thing twice.
+const editDescription = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits."
 
 const writeDescription = "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."
 
