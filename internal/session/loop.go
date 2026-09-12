@@ -3853,6 +3853,13 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, reconciled: true,
 	})
+	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
+	// way: EVERY request this session makes writes one, and a request whose
+	// usage block never arrived wrote none — so the journal's call lines summed
+	// to barely half the measured session's bill, and exactly the expensive
+	// half was missing. The row is evidence and never spend; the money moved
+	// through the door above and nowhere else.
+	a.file.appendCall(armCall(receipt))
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
@@ -3923,6 +3930,12 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 		answered = strings.TrimSpace(model)
 	}
 	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context})
+
+	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
+	// name the row above banks, so a turn that hopped seals one usage line per
+	// model instead of one sum under the last name standing
+	// ([sessionFile.appendUsage] is the reader, and the only one).
+	turn.addShare(answered, call)
 
 	a.file.appendCall(journalCall{
 		Model:      strings.TrimSpace(response.Model),

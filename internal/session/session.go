@@ -988,6 +988,41 @@ type Usage struct {
 	// and OpenAI-style prompt_tokens_details.cached_tokens.
 	CacheRead  int
 	CacheWrite int
+
+	// byModel is a TURN's own figures kept once per model that answered, keyed
+	// by the response's own name with the turn's latch standing in when the
+	// response names nothing — exactly [Agent.addUsage]'s resolution, because
+	// this is accumulated beside it. A turn that hopped models mid-way seals
+	// one usage line per model rather than one sum attributed to whichever
+	// name was standing last (see [sessionFile.appendUsage]); every other Usage
+	// — the session total, an auxiliary call's — leaves this nil, and nil is
+	// what keeps their lines exactly as they were.
+	byModel *modelShares
+}
+
+// modelShares is the breakdown itself, behind a pointer for one reason: Usage
+// is passed by value and compared against its zero value, and a bare map field
+// would make every one of those comparisons illegal. The pointer keeps Usage
+// the plain value it always was, and nil says "nobody kept a breakdown" —
+// which is every Usage but a turn's.
+type modelShares map[string]Usage
+
+// addShare folds one call's figures into the per-model breakdown. It is a
+// method and not arithmetic at the call site for the reason the field exists
+// at all: the share has to be the SAME six figures the call banked, and a sum
+// spelled twice is a sum that drifts.
+func (u *Usage) addShare(model string, call Usage) {
+	if u.byModel == nil {
+		u.byModel = &modelShares{}
+	}
+	share := (*u.byModel)[model]
+	share.Input += call.Input
+	share.Output += call.Output
+	share.CacheRead += call.CacheRead
+	share.CacheWrite += call.CacheWrite
+	share.CostUSD += call.CostUSD
+	share.Calls += call.Calls
+	(*u.byModel)[model] = share
 }
 
 // CachedShare is the fraction of this session's INPUT that came off a warm

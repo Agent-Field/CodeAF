@@ -319,6 +319,11 @@ planner, a harness run. Those are marked `aux` so a reader can tell the turn its
 the work done around it. A turn that spent nothing writes no line at all, because a zero is
 absence, not a fact worth a line.
 
+One exception to "one line per turn": a turn that was answered by **more than one model**
+— the model hopped mid-turn — writes **one line per model that answered**, each with that
+model's own tokens and money. A single sum could only name one of them, and naming the one
+standing at the end would hand the whole turn's bill to the wrong model.
+
 **On a resume these lines are added up, and that sum is the session's totals.** So `/cost`,
 `/status` and the status line show what the whole conversation has spent across every
 restart, not only what has happened since you reopened it. The spend ceiling reads the same
@@ -339,6 +344,13 @@ So aforge also writes one `call` line **per answered request**, carrying the mod
 answered, the endpoint that served it when the provider names one, tokens in, cache read,
 cache write, tokens out, and the provider's own figure for the money. A request the
 provider reported no usage for writes no line — a row of zeros would read as a fact.
+
+The one exception is a request whose usage block **never arrived** — a stream cut short,
+or a rescue arm that ran beside a slow answer. Those are exactly the expensive requests,
+and a record of only the cheap ones reads as a smaller bill than you paid. So when the
+provider's own **receipt** is fetched afterwards, the request writes its line then, marked
+with `arm`: `hedge` for a rescue arm, `reconciled` for any other late receipt. A receipt
+names no endpoint, so the line leaves that field out rather than guess.
 
 These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
 them, and a resume ignores them entirely, because every dollar on them is already in the
