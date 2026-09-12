@@ -92,10 +92,7 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 	}
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 	address, door := serviceCompartmentIdentity(service)
-	s.mu.RLock()
-	held, ok := s.direct[id]
-	rows := append([]tui3.Model(nil), held.models...)
-	s.mu.RUnlock()
+	held, rows, ok := s.compartment(id)
 	if ok && held.address == address && held.door == door && len(rows) > 0 {
 		return rows
 	}
@@ -119,6 +116,25 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 	return rows
 }
 
+// compartment is one service's compartment as it stands, with the rows already
+// copied so the caller walks its own list after the lock is let go.
+func (s *v3ModelShelf) compartment(id string) (serviceCompartment, []tui3.Model, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	held, ok := s.direct[id]
+	return held, append([]tui3.Model(nil), held.models...), ok
+}
+
+// stock writes one service's compartment. The cache-file write that pairs with
+// it runs in the caller, after the lock is let go: a refresh is answered from a
+// command off the event loop, and the disk half of it has no business holding
+// the shelf from the readers behind it.
+func (s *v3ModelShelf) stock(id, address, door string, models []tui3.Model) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.direct[id] = serviceCompartment{address: address, door: door, models: models}
+}
+
 // refreshService fetches a newly connected service into the same shelf /model
 // reads and writes both service-scoped caches. It is the connected-service twin
 // of refresh; the caller runs it as a command away from the event loop.
@@ -140,9 +156,7 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 		}
 		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 		address, door := serviceCompartmentIdentity(service)
-		s.mu.Lock()
-		s.direct[id] = serviceCompartment{address: address, door: door, models: append([]tui3.Model(nil), seed...)}
-		s.mu.Unlock()
+		s.stock(id, address, door, append([]tui3.Model(nil), seed...))
 		if err := tui3.WriteModelCacheFor(service.Source.ID, service.Address, seed); err != nil {
 			return nil, err
 		}
@@ -157,9 +171,7 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	rows := v3Models(fresh)
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 	address, door := serviceCompartmentIdentity(service)
-	s.mu.Lock()
-	s.direct[id] = serviceCompartment{address: address, door: door, models: append([]tui3.Model(nil), rows...)}
-	s.mu.Unlock()
+	s.stock(id, address, door, append([]tui3.Model(nil), rows...))
 	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
 	return rows, nil
 }

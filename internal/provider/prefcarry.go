@@ -268,13 +268,20 @@ func tellUncarriedPins(ctx context.Context) {
 	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
 		return
 	}
-	uncarriedMu.Lock()
-	owed := uncarriedLines
-	uncarriedLines = nil
-	uncarriedMu.Unlock()
-	for _, line := range owed {
+	for _, line := range takeUncarriedPins() {
 		Emit(ctx, StreamNotice, line)
 	}
+}
+
+// takeUncarriedPins hands over whatever is parked in one locked step, for
+// [takeRetiredPins]'s reason: the queue is emptied by the same critical
+// section that reads it, so a line is never said twice.
+func takeUncarriedPins() []string {
+	uncarriedMu.Lock()
+	defer uncarriedMu.Unlock()
+	owed := uncarriedLines
+	uncarriedLines = nil
+	return owed
 }
 
 // forgetUncarriedPins empties both halves. It is for tests, which must not

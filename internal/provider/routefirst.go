@@ -275,11 +275,18 @@ func tellTakeover(ctx context.Context) {
 	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
 		return
 	}
-	parkedTakeover.mu.Lock()
-	owed := parkedTakeover.lines
-	parkedTakeover.lines = nil
-	parkedTakeover.mu.Unlock()
-	for _, line := range owed {
+	for _, line := range takeParkedTakeovers() {
 		Emit(ctx, StreamNotice, line)
 	}
+}
+
+// takeParkedTakeovers drains the queue in one locked step, so the Emits that
+// follow run outside the lock: a notice that re-entered the provider would
+// otherwise meet the mutex its own door is holding.
+func takeParkedTakeovers() []string {
+	parkedTakeover.mu.Lock()
+	defer parkedTakeover.mu.Unlock()
+	owed := parkedTakeover.lines
+	parkedTakeover.lines = nil
+	return owed
 }

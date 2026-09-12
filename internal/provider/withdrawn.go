@@ -84,15 +84,21 @@ func (m *withdrawnMemo) carriedAgain(model string) {
 	if key == "" {
 		return
 	}
-	m.mu.RLock()
-	gone := m.gone[key]
-	m.mu.RUnlock()
-	if !gone {
+	if !m.isGone(key) {
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.gone, key)
+}
+
+// isGone is the cheap read that keeps the write lock off the common path: a
+// memo with nothing to clear is the ordinary case, and its cost is one RLock
+// on a path that has just paid for a network round trip.
+func (m *withdrawnMemo) isGone(key string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.gone[key]
 }
 
 // WithdrawnModel reports that this client has already been told the router does

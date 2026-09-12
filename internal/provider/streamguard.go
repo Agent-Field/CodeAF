@@ -1095,19 +1095,29 @@ func (w *stallWatch) cutIdle(waited time.Duration) {
 	if w == nil {
 		return
 	}
-	w.mu.Lock()
-	if w.tripped != nil {
-		w.mu.Unlock()
+	cut, cancel, tripped := w.tripIdle(waited)
+	if !tripped {
 		return
+	}
+	w.arm.boundApplied(cut)
+	cancel()
+}
+
+// tripIdle is [stallWatch.cutIdle]'s locked half: the first verdict claimed,
+// or false when a bound already ended this stream — a watch that has tripped
+// keeps its first verdict. The cancel is handed back for the caller to run
+// outside the lock, for [stallWatch.fire]'s reason.
+func (w *stallWatch) tripIdle(waited time.Duration) (cut *StreamCut, cancel context.CancelFunc, tripped bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.tripped != nil {
+		return nil, nil, false
 	}
 	if waited <= 0 {
 		waited = w.clock().Sub(w.quietSince)
 	}
 	w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
-	cut, cancel := w.tripped, w.cancel
-	w.mu.Unlock()
-	w.arm.boundApplied(cut)
-	cancel()
+	return w.tripped, w.cancel, true
 }
 
 // cut is the trip, or nil. It is read after the stream has died, to tell a

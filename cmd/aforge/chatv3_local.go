@@ -92,6 +92,15 @@ func (l *localLink) said() string {
 	return l.note
 }
 
+// noteDown records the note this dial is leaving. It is its own method so the
+// lock is let go before the attach below it, which is the slow half of the
+// dial and takes no part of this mutex.
+func (l *localLink) noteDown(note string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.note = note
+}
+
 // dial hands back a connection to this workspace's host, starting one when
 // nothing answers. It is called again by the redial loop, which is exactly what
 // it is for: a host that retired under a surface is replaced by a fresh one on
@@ -112,9 +121,7 @@ func (l *localLink) dial() (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	l.mu.Lock()
-	l.note = note
-	l.mu.Unlock()
+	l.noteDown(note)
 	return enginehost.Attach(l.workspace, func() error {
 		return enginehost.Spawn(l.workspace, self, "engine", "--daemon", "--workspace", l.workspace)
 	})

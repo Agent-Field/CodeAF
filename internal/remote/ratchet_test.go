@@ -4,13 +4,14 @@ import "strconv"
 
 // ratchetComplaint is what a ledger that may only shrink says when it has not.
 //
-// IT IS internal/ci's SENTENCE, SAID ONCE FOR THE SECOND LEDGER. That package's
-// `knownRedEntries` and this package's [surfaceDoorLedger] are the same shape —
-// a list of things that are wrong, a number beside it, and a rule that the
-// number only comes down — and a rule spelled twice is two rules that will one
-// day disagree about which direction is the red one. The second branch is the
-// half that is easy to forget and is the reason both exist: A RATCHET LEFT SLACK
-// WOULD LET THE NEXT CHANGE PUT AN ENTRY BACK WITH THE GATE GREEN THROUGHOUT.
+// IT WAS internal/ci's SENTENCE, SAID ONCE FOR THE SECOND LEDGER. That package's
+// known-red ratchet — burned to zero and deleted in #1012 — and this package's
+// [surfaceDoorLedger] were the same shape: a list of things that are wrong, a
+// number beside it, and a rule that the number only comes down. A rule spelled
+// twice is two rules that will one day disagree about which direction is the red
+// one. The second branch is the half that is easy to forget and is the reason
+// both exist: A RATCHET LEFT SLACK WOULD LET THE NEXT CHANGE PUT AN ENTRY BACK
+// WITH THE GATE GREEN THROUGHOUT.
 //
 // It lives in a test file because both callers are laws, and a law's vocabulary
 // is not something the shipped binary should carry (the size budget, SIZE-BUDGET).
