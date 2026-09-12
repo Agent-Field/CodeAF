@@ -62,6 +62,11 @@ const paceSlowReading = 3 * time.Second
 // wait at the end of a turn that is honest.
 const paceJudgeReading = 30 * time.Second
 
+// paceCutMargin is how long the recall takes in the re-ask fixture: long enough
+// that the cut lands a measurable distance after the send, short enough that it
+// still wins a race against a request that never answers at all.
+const paceCutMargin = 25 * time.Millisecond
+
 // ── the fixture ─────────────────────────────────────────────────────────────
 
 // paceCompleter answers the turn instantly and EVERY reading beside it slowly.
@@ -375,8 +380,13 @@ func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
 				return textResponse("reformatted"), nil
 			},
 		},
-		// Instant: this reading is meant to win the race.
-		slow: 0,
+		// FAST ENOUGH TO WIN THE RACE AND SLOW ENOUGH TO BE MEASURED. The first
+		// step above blocks on its own context, so any figure at all wins; a
+		// reading that answered instantly would cut the request inside the same
+		// millisecond it was sent, and the row's own price for the throw-away
+		// would round to nothing. That is a property of the fixture and not of
+		// the move, so the fixture is what moves.
+		slow: paceCutMargin,
 	}
 	agent, brain, journal := paceAgent(t, completer)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
@@ -395,6 +405,48 @@ func TestARecallThatLandsBeforeTheFirstWordIsAskedAgainWithIt(t *testing.T) {
 	// the block was routed, the answer was given with it, and nothing was dropped.
 	if !strings.Contains(completer.request(1), "prefers tabs over spaces in Go") {
 		t.Fatalf("the re-asked request did not carry the routed memory:\n%s", completer.request(1))
+	}
+	// AND THE ROW SAYS WHAT IT COST, which naming it never did.
+	//
+	// `SendMS` reads a millisecond on a turn like this because the first request
+	// really did leave in a millisecond — and was then thrown away, so the person
+	// waited the recall out regardless. A row that reported only the send would
+	// report this file's own law kept on a turn where a reading cost the person
+	// every second of its own duration, which is how the move went unpriced for
+	// as long as it did (memory.go's [recallAside.cutAt]).
+	//
+	// The assertion is that the figure EXISTS on a re-asked turn and not that it
+	// is any particular size: what it measures is a real provider's silence, and
+	// a bound on it here would be a bound on the fixture.
+	if pace.ReaskMS <= 0 {
+		t.Fatalf("the row names a re-ask and does not price it (reaskMs %d) — "+
+			"`recall:reasked` without the throw-away's life is a name nobody can weigh",
+			pace.ReaskMS)
+	}
+}
+
+// AND A TURN THAT DID NOT RE-ASK IS PRICED AT NOTHING, which is the emptiness
+// law on the same field: a figure written for a turn that threw nothing away
+// would be a measurement of something that did not happen.
+func TestATurnThatDidNotReAskPricesNoThrowAway(t *testing.T) {
+	completer := &paceCompleter{
+		steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("nothing to recall here"), nil
+		}},
+		slow:  paceSlowReading,
+		route: `{"inject":[],"cmd":null}`,
+	}
+	agent, brain, journal := paceAgent(t, completer)
+	remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
+
+	collect(t, mustSubmit(t, agent, "reformat this file the way I like it"))
+
+	pace := pacedTurn(t, journal)
+	if namesAside(pace.Aside, "recall:reasked") {
+		t.Fatalf("the decomposition names %v, want no re-ask on a routing that injected nothing", pace.Aside)
+	}
+	if pace.ReaskMS != 0 {
+		t.Fatalf("a turn that threw nothing away priced a throw-away at %dms", pace.ReaskMS)
 	}
 }
 

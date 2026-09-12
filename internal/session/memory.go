@@ -520,6 +520,39 @@ type recallAside struct {
 	// late says the block landed behind the first token and is riding the next
 	// step instead of this one. The turn's own decomposition row reads it.
 	late atomic.Bool
+	// cutAt is when the re-ask cut the request in flight, in Unix nanoseconds,
+	// and zero where no re-ask happened.
+	//
+	// ── WHY THE MOMENT AND NOT THE FACT ─────────────────────────────────────
+	//
+	// [recallAside.reasked] already says a re-ask happened, and the decomposition
+	// row already names it. What neither of them can say is what it COST, and
+	// without that the move cannot be judged at all.
+	//
+	// The turn's own law asserts `message → the main request on the wire ≤ 50 ms`,
+	// and a re-asked turn passes it: the first request really does leave in a
+	// millisecond. It is then THROWN AWAY. On the one such turn the ledger holds
+	// (2026-09-12T03:06Z), SendMS was 1 and the person waited 7,389 ms for their
+	// first word, because the request that carried it did not leave until the
+	// recall landed. The instrument reported the law kept on a turn where a
+	// reading cost the person seven seconds — satisfied in the letter by sending
+	// a request nobody intended to read.
+	//
+	// So the row carries how long the discarded request was on the wire, which is
+	// exactly the difference between the two moves available here: cutting and
+	// re-asking, and simply assembling the block before the first request. Both
+	// reach the first word at the same instant — the recall's own duration plus
+	// one time-to-first-token — and the re-ask pays for two requests to get
+	// there. Which is right depends on whether the second request is cheaper for
+	// having warmed the prefix cache, and that is a question about a population
+	// of turns rather than about one.
+	//
+	// THE LEDGER CANNOT ANSWER IT YET, WHICH IS WHY THIS IS AN INSTRUMENT AND NOT
+	// A RULE. `journalPace` landed days ago: there are three pace rows on disk
+	// and one of them has a recall beside it. Choosing between the two moves on
+	// n=1 would be a threshold nobody could derive, which is the one thing the
+	// architecture bar refuses outright.
+	cutAt atomic.Int64
 }
 
 // startRecallLocked launches the recall beside the title, from the one place a
@@ -598,6 +631,7 @@ func (r *recallAside) applyOrDefer() {
 	// keeps its one re-ask for a turn that actually needs one.
 	if r.agent.cutGeneration(errRecallCut) {
 		r.resent.Store(true)
+		r.cutAt.Store(time.Now().UnixNano())
 	}
 }
 
@@ -610,6 +644,19 @@ func (r *recallAside) wasLate() bool { return r != nil && r.late.Load() }
 
 // reasked reports that this turn spent its one cut-and-re-ask on the block.
 func (r *recallAside) reasked() bool { return r != nil && r.resent.Load() }
+
+// cutMoment is when the re-ask cut the request in flight, and the zero time
+// where there was none. See [recallAside.cutAt] for what it is for.
+func (r *recallAside) cutMoment() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	nanos := r.cutAt.Load()
+	if nanos == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nanos)
+}
 
 // end discards the recall, whether or not it has answered — [sidecar.end].
 func (r *recallAside) end() {
