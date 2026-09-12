@@ -41,11 +41,21 @@ func countImageParts(agent *Agent) int {
 	return count
 }
 
-// Switching onto a model without eyes turns the pictures into their
-// placeholders — once, naming the file, with the person's own words left
-// alone.
+// Moving onto a model without eyes turns the pictures into their placeholders —
+// once, naming the file, with the person's own words left alone.
+//
+// THE MOVE IS WHAT DOES IT, NOT THE PICK. A pick is a preference and may never
+// be acted on; what may not happen is a request going to a model that cannot see
+// with the base64 still in it. So the scrub rides the one door the model the
+// work is talking to changes through (steer.go's [Agent.ridesOnLocked]), and
+// this drives a turn after the pick rather than reading the transcript the
+// instant the picker closes.
 func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
-	completer := &scriptedCompleter{}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("seen"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("blind"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("still blind"), nil },
+	}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
 		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
 		config.SessionFile = writeableJournal(t)
@@ -60,8 +70,12 @@ func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 	}
 
 	agent.SetModel("vendor/blind")
+	if count := countImageParts(agent); count != 1 {
+		t.Fatalf("the pick alone took %d pictures away before any request went to the blind model", 1-count)
+	}
+	collect(t, mustSubmit(t, agent, "and now?"))
 	if count := countImageParts(agent); count != 0 {
-		t.Fatalf("%d image parts survived the swap onto a blind model", count)
+		t.Fatalf("%d image parts survived the move onto a blind model", count)
 	}
 	text := transcriptText(agent)
 	if !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
@@ -77,8 +91,9 @@ func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 	// Idempotent: a second swap between blind models rewrites nothing, because
 	// there is nothing left to rewrite.
 	agent.SetModel("vendor/blind-two")
-	if again := transcriptText(agent); again != text {
-		t.Fatalf("a second swap rewrote the transcript:\n%s", again)
+	collect(t, mustSubmit(t, agent, "and again?"))
+	if again := transcriptText(agent); !strings.Contains(again, text) {
+		t.Fatalf("a second move rewrote what the first one left:\n%s", again)
 	}
 }
 

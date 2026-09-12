@@ -1,14 +1,14 @@
 package session
 
-// THE LAW: A TURN IN FLIGHT IS ON ONE MODEL, IT SAYS WHICH, AND A SWAP MADE
-// UNDER IT CHANGES NOTHING ABOUT IT.
+// THE LAW: THE WORK IS ON ONE MODEL AT A TIME, IT SAYS WHICH, AND WHAT IS DRAWN
+// BESIDE IT IS THAT MODEL.
 //
-// [Agent.SetModel] has promised since it was written that a turn finishes on the
-// model it started on, and [TestSetModelAppliesFromTheNextTurn] has held it to
-// that on the wire. What was missing is everything that SAYS so: the phase news
-// a surface draws its model cell from carried the dial, so a pick made three
-// seconds into a turn re-labelled the whole of it, and the transcript's pictures
-// were taken away from a model that was in the middle of reading them.
+// steer.go decides WHEN a person's pick reaches the work — at the next request,
+// either by cutting one nothing had come back from or by letting an arriving
+// answer finish. What was missing is everything that SAYS so: the phase news a
+// surface draws its model cell from carried the dial, so a pick made three
+// seconds into a turn re-labelled the whole of it while every request went to
+// the old model.
 
 import (
 	"context"
@@ -19,23 +19,29 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// A swap made mid-turn leaves the turn's own model, the news about it, and the
-// pictures it is still sending exactly where they were — and lands whole at the
-// next turn, scrub included.
-func TestAMidTurnSwapLeavesTheRunningTurnAlone(t *testing.T) {
-	entered := make(chan struct{})
+// A pick made while an answer is ARRIVING leaves the work where it is: the model
+// the chrome names, the stages it posts, and the pictures it is still sending
+// all stay on the model that is writing the reply. This is the half of steer.go's
+// law that says a reply somebody is reading is theirs.
+func TestAPickWhileAnAnswerIsArrivingLeavesTheWorkWhereItIs(t *testing.T) {
+	spoke := make(chan struct{}, 1)
 	release := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			close(entered)
-			<-release
-			return toolResponse("c1", "ls", `{"path":"."}`), nil
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "here is the first half")
+			select {
+			case spoke <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return toolResponseWithText("c1", "ls", `{"path":"."}`, "here is the first half and the rest"), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("done"), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("on the new one"), nil
+			return textResponse("and the step after is on the new model"), nil
 		},
 	}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
@@ -49,64 +55,113 @@ func TestAMidTurnSwapLeavesTheRunningTurnAlone(t *testing.T) {
 	defer cancel()
 	events := mustSubmitImage(t, agent, ctx, "what is wrong with this?", []Image{{Path: path}})
 	select {
-	case <-entered:
+	case <-spoke:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the first step never started")
+		t.Fatal("the first request never streamed a word")
 	}
 	if got := agent.TurnModel(); got != "test/model" {
-		t.Fatalf("the turn in flight says it is on %q, want test/model", got)
+		t.Fatalf("the work in flight says it is on %q, want test/model", got)
 	}
 
 	agent.SetModel("vendor/blind")
 
-	// The dial moved and the turn did not. These are two different questions and
+	// The dial moved and the work did not. These are two different questions and
 	// this is the whole of the reported defect: the surface asked the first one
 	// and drew the answer as though it were the second.
 	if got := agent.Model(); got != "vendor/blind" {
 		t.Fatalf("the dial reads %q, want the model just picked", got)
 	}
 	if got := agent.TurnModel(); got != "test/model" {
-		t.Fatalf("the turn in flight moved to %q — SetModel touched work already running", got)
+		t.Fatalf("the work moved to %q while an answer was arriving on test/model", got)
 	}
-	// AND THE PICTURES ARE STILL THERE. The steps left in this turn are still
-	// going to a model that can see them; replacing them with placeholders here
-	// takes a person's screenshot away mid-read.
+	// AND THE PICTURES ARE STILL THERE. The request that is answering can see
+	// them; replacing them with placeholders here takes a person's screenshot
+	// away mid-read, and buys nothing.
 	if got := countImageParts(agent); got != 1 {
-		t.Fatalf("the running turn is left with %d pictures, want the 1 it started with", got)
+		t.Fatalf("the arriving answer is left with %d pictures, want the 1 it started with", got)
 	}
 
 	close(release)
 	collect(t, events)
 
-	// Every stage this turn posted after the swap named the model the turn was
-	// on. One of them is the tool run released above.
+	// Every stage posted while that answer was arriving named the model it was
+	// arriving from. One of them is the tool call it ended with.
 	said := false
 	for _, news := range phases.all() {
-		if news.Phase == "" {
+		if news.Phase == "" || news.Model == "vendor/blind" {
 			continue
 		}
 		said = true
 		if news.Model != "test/model" {
-			t.Fatalf("a %q stage of the turn was posted under %q, want the model the turn is on",
+			t.Fatalf("a %q stage was posted under %q, want the model the work was on",
 				news.Phase, news.Model)
 		}
 	}
 	if !said {
 		t.Fatal("the turn posted no stage at all, so the law was never exercised")
 	}
+	if got := agent.TurnModel(); got != "" {
+		t.Fatalf("an idle session claims work on %q", got)
+	}
+}
 
-	// AND THE SWAP LANDS WHOLE AT THE NEXT TURN — the model on the wire and the
-	// scrub together, because the one place a next turn begins is where both
-	// happen ([Agent.startTurnLocked]).
-	collect(t, mustSubmit(t, agent, "again"))
-	if got := completer.model(2); got != "vendor/blind" {
-		t.Fatalf("the next turn rode %q, want vendor/blind", got)
+// AND A PICK THAT CUTS THE REQUEST TAKES THE PICTURES WITH IT. This is the other
+// half of the law and the hole the first cut of this change left: when nothing
+// has come back the request is let go of and asked again ON THE NEW MODEL inside
+// the same turn, so a scrub that waited for the next TURN would have handed a
+// blind model a transcript full of base64 — the leak arriving by the one road
+// nobody would think to look down.
+func TestAPickThatCutsTheRequestTakesThePicturesWithIt(t *testing.T) {
+	out := make(chan struct{}, 1)
+	sent := make(chan []ai.Message, 1)
+	completer := &scriptedCompleter{steps: []step{
+		waitingRequest(out),
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			select {
+			case sent <- append([]ai.Message(nil), messages...):
+			default:
+			}
+			return textResponse("answered without the picture"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, func(config *Config) {
+		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
+		config.SessionFile = writeableJournal(t)
+	})
+	path := writeImage(t, workspace, "chart.png", "PHOTOBYTES")
+
+	ctx, cancel := deadline(20 * time.Second)
+	defer cancel()
+	events := mustSubmitImage(t, agent, ctx, "what is wrong with this?", []Image{{Path: path}})
+	select {
+	case <-out:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first request never went out")
+	}
+
+	agent.SetModel("vendor/blind")
+	collect(t, events)
+
+	if got := completer.model(1); got != "vendor/blind" {
+		t.Fatalf("the re-ask rode %q, want the model the person named", got)
+	}
+	// THE ASSERTION IS ON THE WIRE. What the blind model was actually handed is
+	// the only thing that answers this, because the transcript was right before
+	// this change too and the request was not.
+	select {
+	case messages := <-sent:
+		pictures := 0
+		for _, message := range messages {
+			pictures += len(imagePartURLs(message))
+		}
+		if pictures != 0 {
+			t.Fatalf("the request to the blind model carried %d pictures", pictures)
+		}
+	default:
+		t.Fatal("the re-ask never reached the completer")
 	}
 	if got := countImageParts(agent); got != 0 {
-		t.Fatalf("the turn on the blind model still carries %d pictures", got)
-	}
-	if got := agent.TurnModel(); got != "" {
-		t.Fatalf("an idle session claims a turn on %q", got)
+		t.Fatalf("%d pictures are still in the transcript the blind model is being sent", got)
 	}
 }
 

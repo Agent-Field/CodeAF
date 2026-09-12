@@ -99,7 +99,7 @@ func TestSwitchingModelMidTurnSaysWhatTheTurnKeeps(t *testing.T) {
 
 	a.switchModel("openai/gpt-5.4", 0)
 
-	want := "model · openai/gpt-5.4 — this turn finishes on " + wireLatched
+	want := "model · openai/gpt-5.4 — " + wireLatched + " is answering now, and " + roomModelNextWord
 	if got := plain(frame(a)); !strings.Contains(got, want) {
 		t.Fatalf("the switch said nothing about the turn in flight, want %q:\n%s", want, got)
 	}
@@ -125,7 +125,7 @@ func TestSwitchingModelSaysNothingExtraWhenNothingIsRunning(t *testing.T) {
 			a.state = stateIdle
 		}
 		a.switchModel(c.pick, 0)
-		if got := plain(frame(a)); strings.Contains(got, "this turn finishes on") {
+		if got := plain(frame(a)); strings.Contains(got, "is answering now") {
 			t.Fatalf("%s was told about a turn it has no business hearing about:\n%s", c.what, got)
 		}
 	}
