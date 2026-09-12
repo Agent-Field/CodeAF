@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The turn fold keeps the newest slice of a repeatedly read file and points the older ones at it
-pr: 1005
+pr: 1015
 surface: [engine, docs]
 invalidates:
   - "Every folded tool result used to be replaced by a pointer to a copy filed under the session's stubs folder. When one turn reads the same file several times, the older slices now fold to a pointer naming the file with the offset and limit that read it — no copy is filed — and the newest slice of the file stays whole."

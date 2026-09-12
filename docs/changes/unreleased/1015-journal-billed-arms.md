@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: billed arms journal their call lines, and a hopped turn seals one usage line per model
-pr: 1007
+pr: 1015
 surface: [chat, engine]
 invalidates:
   - "A transcript's `call` lines were written only for requests whose usage block arrived on the stream. A billed request reconciled from a late receipt — a hedge arm or a cut retry — now writes one too, marked `arm: hedge` or `arm: reconciled`; it is evidence like every call line and moves no total."

@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a `read` of lines the conversation already holds answers with a pointer
-pr: 1006
+pr: 1015
 surface: [engine, docs]
 invalidates:
   - "`read` fetched from disk on every call, no matter what was already in the transcript — measured: one planning chat issued eighteen reads of the same file as seven sliced ranges. A range fully covered by bytes the conversation still carries, with the file's stamp unmoved, now comes back as the one-line pointer `[already read] <path> lines X–Y …`, and a partial overlap or a changed file still fetches whole."

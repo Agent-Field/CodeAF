@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The race can no longer pull the first taking-stock mark below half the handoff price
-pr: 1004
+pr: 1015
 surface: [chat, engine]
 invalidates:
   - "A raced both-yes from the pre-turn route judge pulled the checkpoint's first mark down to the very step boundary the verdict landed on (`checkpointMeter.tighten` set `firstAt = rounds + 1`). Measured on a real planning turn (ded9ace743f58581, 2026-09-12): the verdict landed two rounds in, the first `[taking stock]` fired at round three over one issue and two listings — 43 KB of mostly listing noise — the model waved the note past, and the round-twenty note inherited that worthlessness. `firstAt` is now clamped at `checkpointFirstRungFloor`, derived as `checkpointPrice / checkpointRatio` (round 5 today): early enough to catch a runaway, late enough that the note's rounds, files and bytes are real. An unraced turn's ladder is byte-identical — rungs at 10, 20, 40."
