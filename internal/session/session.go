@@ -2589,6 +2589,11 @@ type Agent struct {
 	// words, and make a fresh request. It is under mu because Steer is the writer
 	// from the input goroutine while the loop installs and clears it.
 	generation *activeGeneration
+	// cutOwed is a cut that was asked for while `generation` was nil and whose
+	// reason rides no transcript, kept for the next request THIS TURN makes
+	// (steer.go's [owedCut]). It is under mu because the readings beside a turn
+	// raise it from their own goroutines while the loop installs generations.
+	cutOwed owedCut
 	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
 	// waited on (memory.go's [recallAside]). It is under mu because
 	// [Agent.startTurnLocked] writes it with the lock held and the turn's own

@@ -819,6 +819,195 @@ func watchLaw(set *token.FileSet, file *ast.File) []string {
 	return complaints
 }
 
+// ── AND THE ANSWER IS READABLE BEFORE THE INTERRUPTION IS DELIVERED ─────────
+//
+// #956 was one statement in the wrong order. [readBeside] published its answer
+// only once `act` had RETURNED, and `act` is the interruption — so the boundary
+// the cut bought arrived at a [sidecar.take] that is non-blocking by
+// construction, read the reading as still in flight, and let that boundary pass.
+// The turn paid for a whole extra step, and where that step was its last, a
+// drawing that said the work had independent parts in it was written down as a
+// carry-on and nothing was handed anywhere.
+//
+// THE PROPERTY IS STRUCTURAL AND SO IS THE LAW: inside the one door, the settle
+// closes BEFORE the `act` is called. It is written here rather than as a comment
+// in sidecar.go because the old order had a paragraph of its own explaining why
+// it was right, and the paragraph was what survived the reading.
+func TestTheAnswerIsReadableBeforeTheInterruptionIsDelivered(t *testing.T) {
+	set := token.NewFileSet()
+	var checked bool
+	for _, file := range parsePackage(t, set) {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "readBeside" || fn.Body == nil {
+				continue
+			}
+			checked = true
+			for _, complaint := range settleBeforeActLaw(set, fn) {
+				t.Error(complaint)
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("readBeside was not found in this package; the law is reading the wrong tree")
+	}
+}
+
+// AND IT BITES. The order the door was written in before #956, which reads like
+// nothing at all and cost a drawing the boundary its own cut had just bought.
+func TestTheLawNamesAnAnswerPublishedAfterItsInterruption(t *testing.T) {
+	source := `package session
+func readBeside[T any](ctx context.Context, ask func(context.Context) T, act func(T)) *sidecar[T] {
+	readCtx, stop := context.WithCancel(ctx)
+	side := &sidecar[T]{stop: stop, settled: make(chan struct{})}
+	go func() {
+		answer := ask(readCtx)
+		side.answer = answer
+		if act != nil && readCtx.Err() == nil {
+			act(answer)
+		}
+		close(side.settled)
+	}()
+	return side
+}`
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, "planted.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parsing the plant: %v", err)
+	}
+	fn := file.Decls[0].(*ast.FuncDecl)
+	complaints := settleBeforeActLaw(set, fn)
+	if len(complaints) == 0 {
+		t.Fatal("the law said nothing about an answer published after its own interruption — " +
+			"that is the order #956 was, and a law that is green on it is a comment")
+	}
+	if !strings.Contains(strings.Join(complaints, "\n"), "settled") {
+		t.Errorf("the law complained without naming the settle: %v", complaints)
+	}
+}
+
+// AND IT BITES ON THE RENAME, which is the way a structural law usually stops
+// guarding: nobody reorders the body, somebody renames the parameter, and a law
+// that matched the old spelling goes quiet while the door it guards keeps its
+// shape. The interruption here is called `raise`, is never called, and the
+// settle is closed on something that is not the settle — three ways for the law
+// to be green by accident, and it must be green on none of them.
+func TestTheLawNamesADoorThatNeverDeliversItsInterruption(t *testing.T) {
+	source := `package session
+func readBeside[T any](ctx context.Context, ask func(context.Context) T, raise func(T)) *sidecar[T] {
+	readCtx, stop := context.WithCancel(ctx)
+	side := &sidecar[T]{stop: stop, settled: make(chan struct{})}
+	go func() {
+		answer := ask(readCtx)
+		side.answer = answer
+		close(side.done)
+	}()
+	return side
+}`
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, "planted.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parsing the plant: %v", err)
+	}
+	complaints := settleBeforeActLaw(set, file.Decls[0].(*ast.FuncDecl))
+	joined := strings.Join(complaints, "\n")
+	if !strings.Contains(joined, "raise") {
+		t.Errorf("the law did not name the interruption it never delivers: %v", complaints)
+	}
+	if !strings.Contains(joined, "settled") {
+		t.Errorf("the law did not name the settle nobody closes: %v", complaints)
+	}
+}
+
+// settleBeforeActLaw is the property itself: within [readBeside], the statement
+// that closes `settled` precedes the one that delivers the interruption.
+//
+// IT FINDS THE INTERRUPTION BY ITS SHAPE AND NEVER BY ITS NAME, and that is not
+// fussiness. A law that matched the identifier `act` was satisfied by renaming
+// the parameter — the door would keep its shape, the body would keep the bug,
+// and nothing would say so. The reading and the interruption are told apart by
+// what they are: [readBeside] takes exactly two function parameters, the reading
+// ANSWERS (it has a result, and its call is what produces the answer) and the
+// interruption does NOT (it is called for what it does to the work). So the law
+// reads the signature, and every complaint below is a way of being green by
+// accident rather than by construction.
+func settleBeforeActLaw(set *token.FileSet, fn *ast.FuncDecl) []string {
+	var complaints []string
+	// The two function parameters, told apart by whether they answer.
+	reading, interruption := "", ""
+	if fn.Type.Params != nil {
+		for _, field := range fn.Type.Params.List {
+			signature, ok := field.Type.(*ast.FuncType)
+			if !ok {
+				continue
+			}
+			answers := signature.Results != nil && len(signature.Results.List) > 0
+			for _, name := range field.Names {
+				if answers {
+					reading = name.Name
+				} else {
+					interruption = name.Name
+				}
+			}
+		}
+	}
+	if reading == "" || interruption == "" {
+		return append(complaints, fmt.Sprintf("%s: readBeside no longer takes both a reading that answers "+
+			"and an interruption that does not — this law tells them apart by that and cannot read the "+
+			"door it guards (sidecar.go)", set.Position(fn.Pos())))
+	}
+	// The first close of the settle, and the first call of each parameter.
+	calls := map[string]token.Pos{}
+	var closed token.Pos
+	ast.Inspect(fn.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name, ok := call.Fun.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if name.Name == "close" {
+			// AND IT MUST BE THE SETTLE, not any channel that happens to be closed
+			// here: the answer becomes takeable when `settled` closes and nowhere else.
+			if len(call.Args) == 1 && closed == token.NoPos {
+				if field, ok := call.Args[0].(*ast.SelectorExpr); ok && field.Sel.Name == "settled" {
+					closed = call.Pos()
+				}
+			}
+			return true
+		}
+		if _, seen := calls[name.Name]; !seen {
+			calls[name.Name] = call.Pos()
+		}
+		return true
+	})
+	if closed == token.NoPos {
+		complaints = append(complaints, fmt.Sprintf("%s: readBeside closes no `settled` at all — a reading "+
+			"nobody can take is not a reading beside the work (sidecar.go)", set.Position(fn.Pos())))
+	}
+	if _, asked := calls[reading]; !asked {
+		complaints = append(complaints, fmt.Sprintf("%s: readBeside never calls its reading %q (sidecar.go)",
+			set.Position(fn.Pos()), reading))
+	}
+	acted, delivered := calls[interruption]
+	if !delivered {
+		// FAILING CLOSED IS THE POINT. An interruption the door never delivers is
+		// either a power a reading has lost or a law that has stopped looking.
+		return append(complaints, fmt.Sprintf("%s: readBeside never calls its interruption %q, so this law "+
+			"is guarding nothing — a reading's one power over the work is delivered here or nowhere "+
+			"(sidecar.go)", set.Position(fn.Pos()), interruption))
+	}
+	if closed != token.NoPos && closed > acted {
+		complaints = append(complaints, fmt.Sprintf("%s: readBeside delivers the reading's interruption %q "+
+			"before it closes `settled`, so the boundary that interruption opens can read the answer as "+
+			"still in flight and let it pass (#956). The answer is published first; sidecar.spent is what "+
+			"keeps a late interruption out of the next turn", set.Position(acted), interruption))
+	}
+	return complaints
+}
+
 func receiverNames(recv *ast.FieldList, want string) bool {
 	if recv == nil || len(recv.List) == 0 {
 		return false
