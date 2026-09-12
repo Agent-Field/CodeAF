@@ -621,12 +621,11 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	// directory not empty`, and the file left behind was this stamp.
 	//
 	// THE CHECK AND THE WRITES ARE ONE HOLD BECAUSE THE CHECK IS TRUE ONLY FOR
-	// AS LONG AS IT IS HELD — `Close` sets `closed` under this same lock. The
-	// shape is deliberate and temporary: #999 lands [Agent.writeIfOpen], the one
-	// door for exactly this — write nothing into a conversation that has closed,
-	// already carried by the memory pass and the phase news — and this region
-	// becomes a call to it with the three lines below as its closure. Nothing but
-	// those three lines belongs between the check and the unlock until it does.
+	// AS LONG AS IT IS HELD — `Close` sets `closed` under this same lock. That is
+	// [Agent.writeIfOpen] (agent.go), the one door for exactly this, and this
+	// reading is the third caller of it beside the memory pass and the phase
+	// heart: the three lines below are its closure and nothing else belongs
+	// inside them.
 	//
 	// AND THE TURN ENDING IS NOT THAT DOOR. The context is what stops this
 	// reading STARTING work — the walk above — and it deliberately does not stop
@@ -654,15 +653,11 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	// note the drain lands immediately before the next request, and not in
 	// message[0] where it used to sit: writing it there re-priced every message
 	// of the conversation behind it each time another window landed something.
-	a.mu.Lock()
-	if a.closed {
-		a.mu.Unlock()
-		return
-	}
-	a.oweToldStampLocked(dir, now)
-	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
-	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
-	a.mu.Unlock()
+	a.writeIfOpen(func() {
+		a.oweToldStampLocked(dir, now)
+		a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
+		a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
+	})
 }
 
 // toldStamp is the one deferred write this reading owes told.json.
