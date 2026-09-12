@@ -68,10 +68,15 @@ import (
 //	│ read  internal/session/agent.go                                      │
 //	│ read  go.mod                                                         │
 //	│                                                                      │
-//	│   1  allow all 4                                                     │
+//	│ ▸ 1  allow all 4                                                     │
 //	│   2  one by one                                                      │
-//	│ ▸ 3  deny all                                          safe answer   │
+//	│   3  deny all                                          safe answer   │
 //	╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────╯
+//
+// The pointer above stands on `allow all 4` because four reads are ordinary
+// calls: it opens where the members' own pointers would ([questionGroupStart]),
+// which the gate's grade decides (#953). A frame holding one call nobody graded
+// opens on `deny all` instead. `deny all` wears `safe answer` either way.
 //
 // ── THE LAWS, AND WHAT EACH ONE REFUSES ─────────────────────────────────────
 //
@@ -360,6 +365,26 @@ func questionGroupStart(set []questionShown) int {
 	return questionGroupAllow
 }
 
+// questionSetMarksSafe is [questionMarksSafe] read over the set: the frame marks
+// `deny all` only where EVERY member, asked on its own, would mark its own
+// refusal.
+//
+// IT IS THE SAME FOLD AS [questionGroupStart], for the same reason — the frame
+// is a way of answering these questions, never a second opinion about them.
+// `2 one by one` opens the very same questions as tabs, and a frame that marked
+// a row its tabs leave unmarked would change what the surface claims about them
+// between one keystroke and the next: a member whose asker picked an answer says
+// why the pointer is there with `◆ recommended` on the pick's own row, and a
+// reversible call is not a question only a person may answer at all.
+func questionSetMarksSafe(set []questionShown) bool {
+	for _, q := range set {
+		if !questionMarksSafe(q.question) {
+			return false
+		}
+	}
+	return len(set) > 0
+}
+
 // questionGroupPick is the frame's pointer, placed on first reading.
 func (a *app) questionGroupPick(set []questionShown) int {
 	state := a.questionSetNow(set)
@@ -372,9 +397,15 @@ func (a *app) questionGroupPick(set []questionShown) int {
 // A GROUPED PERMISSION CARRIES NO LIFETIME ROW, for the reason a single one
 // does not (questionscope.go's [questionScopes]): [session.Answer.Scope] never
 // reaches the consent gate, so a row saying `from now on` over four calls would
-// promise four times over what it cannot do once. The row comes back here with
-// the grading (#953) — one row for the set, moved together — and until then the
-// frame offers `t` to nobody.
+// promise four times over what it cannot do once. The frame offers `t` to
+// nobody.
+//
+// THIS WAS WRITTEN AS A PROMISE — "the row comes back here with the grading
+// (#953) — one row for the set, moved together". The grading landed
+// (f3a734ba1), and the row did NOT come back: nothing here changed and no test
+// went red, because the only thing guarding the promise was a comment. What is
+// owed, and whether it is owed at all, is issue #995; until somebody rules on
+// it this says what the code does rather than what a past change hoped for.
 
 // answerQuestionGroup is one of the frame's three rows taken.
 //
@@ -862,11 +893,22 @@ func (a *app) questionGroupRows(set []questionShown, width int) []string {
 	}
 	for row, word := range words {
 		aside := ""
-		if row == questionGroupDeny && pick == questionGroupDeny {
-			// THE SAFE ANSWER SAYS SO, for [app.questionPanelOption]'s reason:
-			// a pointer standing on one answer with nothing saying why reads as
-			// the surface having chosen.
-			aside = a.pal.dim(questionSafeWord)
+		if row == questionGroupDeny && questionSetMarksSafe(set) {
+			// `deny all` IS THE ANSWER THAT LOSES NOTHING, and it says so on the
+			// terms its own members would. It is the safe answer by construction
+			// — the frame forms only where every member has one
+			// ([questionGrantAndSafe]) and the row sends each question its own —
+			// and WHETHER THE MARK IS DRAWN is [questionMarksSafe], read over the
+			// set exactly as [questionGroupStart] reads the pointer's own rule.
+			//
+			// NOT UNDER THE POINTER, AND NOT UNCONDITIONALLY EITHER: both were
+			// tried and both drifted. Under the pointer was the same sentence
+			// only while a permission opened on `deny` for every call (#933), so
+			// the mark vanished from every ordinary frame once the gate graded
+			// (#953) — off the very frames whose pointer stands on the act.
+			// Unconditionally put it on sets whose own tabs draw no mark at all,
+			// so `2 one by one` contradicted the frame it was pressed from.
+			aside = a.questionSafeAside()
 		}
 		for _, line := range a.questionPanelRow(set[0], itoa(row+1), "", word, "", aside, 0, room, row == pick, a.questionHovering(questionHoverPanel, row)) {
 			a.questionBands = append(a.questionBands, questionBand{

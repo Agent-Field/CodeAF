@@ -1,6 +1,9 @@
 package tui3
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -332,6 +335,25 @@ func TestTheStepSurvivesADressedCopyArrivingSecond(t *testing.T) {
 
 // ── one permission frame ────────────────────────────────────────────────────
 
+// questionRowSaying is the ONE drawn row carrying `word`, for the assertions
+// that are about which row a mark landed on. A frame-wide
+// [strings.Contains] cannot tell `deny all  safe answer` from `allow all 4
+// safe answer`, and the difference between those two screens is the whole
+// question of whether a person can trust the mark.
+func questionRowSaying(t *testing.T, lab *questionLab, word string) string {
+	t.Helper()
+	var found []string
+	for _, row := range questionPlainRows(lab.rows()) {
+		if strings.Contains(row, word) {
+			found = append(found, row)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want exactly one row saying %q, got %d:\n%s", word, len(found), lab.plain())
+	}
+	return found[0]
+}
+
 func permissionLab(t *testing.T, stakes session.Stakes) *questionLab {
 	t.Helper()
 	lab := newQuestionLab(t)
@@ -344,19 +366,40 @@ func permissionLab(t *testing.T, stakes session.Stakes) *questionLab {
 }
 
 // PERMISSIONS FROM ONE STEP ARE ONE FRAME: what each call wants, then `allow all
-// 4 · one by one · deny all`, and — on a costly call — the pointer on the answer
-// that loses nothing, exactly where each question's own pointer would be.
+// 4 · one by one · deny all`, with the pointer exactly where each question's own
+// pointer would be — on an ORDINARY call, which four reads are, that is `allow
+// all` ([questionGroupStart] over [questionPointerStart], the gate's grade
+// deciding: #953).
+//
+// AND `deny all` SAYS `safe answer` THOUGH THE POINTER IS NOT ON IT. The frame
+// forms only where every member has an answer that loses nothing, so the row
+// always is one, and naming it matters MOST here — the pointer is standing on
+// the act. The frame said it only under its own pointer until this test read
+// the two rulings together: that was the same sentence while every permission
+// opened on `deny` (#933), and silence on every ordinary frame once the gate
+// graded.
 func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 	lab := permissionLab(t, session.StakesCostly)
 	drawn := lab.plain()
 	for _, want := range []string{"allow these 4?", "internal/session/loop.go", "go.mod",
-		questionAllowAllWord + "4", questionApartWord, questionDenyAllWord, questionSafeWord} {
+		questionAllowAllWord + "4", questionApartWord, questionDenyAllWord} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("the permission frame does not say %q:\n%s", want, drawn)
 		}
 	}
-	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupDeny {
-		t.Fatalf("the pointer opened on row %d of a costly group, want deny all", got)
+	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupAllow {
+		t.Fatalf("the pointer opened on row %d of an ordinary group, want allow all", got)
+	}
+	// AND THE MARK IS ON THE REFUSAL'S OWN ROW, asserted as a row and never as a
+	// substring of the frame: `strings.Contains(drawn, questionSafeWord)` passed
+	// just as happily with the mark moved onto `allow all`, which is the one
+	// reading that would tell a person their keystroke loses nothing when it
+	// grants four calls.
+	if row := questionRowSaying(t, lab, questionDenyAllWord); !strings.Contains(row, questionSafeWord) {
+		t.Fatalf("`deny all` does not carry %q:\n%s", questionSafeWord, drawn)
+	}
+	if row := questionRowSaying(t, lab, questionAllowAllWord+"4"); strings.Contains(row, questionSafeWord) {
+		t.Fatalf("`allow all` wears the mark that belongs to the refusal:\n%s", drawn)
 	}
 	// "approve all of these" is one key, and it is each question's own grant.
 	lab.press("1")
@@ -504,8 +547,85 @@ func TestTheGroupPointerIsEachQuestionsOwnReadOverTheSet(t *testing.T) {
 	if got := wary.a.questionGroupPick(wary.a.questionSet()); got != questionGroupDeny {
 		t.Fatalf("one question would open on deny alone, and the frame opened on row %d", got)
 	}
-	if !strings.Contains(wary.plain(), questionSafeWord) {
-		t.Fatalf("the pointer on deny all does not say why:\n%s", wary.plain())
+	// AND THIS FRAME MARKS NOTHING, because neither of its tabs would
+	// ([questionSetMarksSafe] over [questionMarksSafe]). The second question's
+	// asker picked an answer, so drawn alone its own row says `◆ recommended`
+	// rather than `safe answer` — something already says why the pointer is
+	// there — and a reversible call is not a question only a person may answer
+	// in the first place. A frame that marked here would be claiming, for one
+	// keystroke, something `2 one by one` then takes back.
+	if strings.Contains(wary.plain(), questionSafeWord) {
+		t.Fatalf("the frame marks a refusal its own tabs leave bare:\n%s", wary.plain())
+	}
+}
+
+// THE FRAME'S POINTER IS THE ENGINE'S OWN GRADE, AND NO MODEL IS NEEDED TO SAY SO.
+//
+// The live suite's needle for this frame is the `safe answer` mark, and the mark
+// is deliberately pointer-independent ([questionSetMarksSafe]) — so once it was,
+// nothing anywhere checked the FRAME's pointer against what the gate actually
+// stamps. That check cannot be left to a paid run: it is the difference between
+// `enter` granting four calls and refusing them.
+//
+// BOTH HALVES COME OFF THE ENGINE, for [TestEnterOnTheEnginesOwnPermissionDenies
+// TheCall]'s reason — a fixture that made up its own grade once described a frame
+// nobody meets. The grave object is read from internal/session/testdata, and the
+// ordinary answers are [session.AnswerOptions]'s own, not a list spelled here.
+func TestTheFrameOpensWhereTheEngineGradedTheCalls(t *testing.T) {
+	// THE CONTROL: the gate's own question about `rm -rf *` never joins a frame
+	// at all, so `allow all` can never carry one along with its neighbours.
+	raw, err := os.ReadFile(filepath.Join("..", "session", "testdata", "consentask-rm-rf.json"))
+	if err != nil {
+		t.Fatalf("read the engine's own consent question: %v", err)
+	}
+	var grave session.Question
+	if err := json.Unmarshal(raw, &grave); err != nil {
+		t.Fatalf("decode the engine's own consent question: %v", err)
+	}
+	if grave.Stakes != session.StakesIrreversible {
+		t.Fatalf("the file is no longer the gate's answer about a grave call: %q", grave.Stakes)
+	}
+	grave.Batch = "step:9"
+	guard := newQuestionLab(t)
+	if guard.a.questionJoinsSet(questionShown{question: grave}) {
+		t.Fatal("a call the gate graded irreversible joined a set: it is asked on its own, every time")
+	}
+
+	// AND THE ORDINARY CALLS: the grade the gate leaves on everything else, with
+	// the engine's own answers under it. Four reads, so `allow all 4` is a real
+	// bulk grant and not a frame of one.
+	lab := newQuestionLab(t)
+	for i, target := range []string{"notes/plan.md", "notes/todo.md", "notes/ideas.md", "notes/log.md"} {
+		q := setPermission(lab, uint64(i+1), "step:9", "read", target, session.StakesCostly)
+		q.Options = session.AnswerOptions(session.QuestionConsent)
+		lab.raise(q)
+	}
+	lab.tick(questionSettle * 2)
+	lab.rows()
+
+	set := lab.a.questionSet()
+	if len(set) != 4 {
+		t.Fatalf("the four ordinary reads did not make one frame: %d", len(set))
+	}
+	if got := lab.a.questionGroupPick(set); got != questionGroupAllow {
+		t.Fatalf("the pointer opened on row %d of a frame the gate graded ordinary, want allow all", got)
+	}
+	// `enter` ON AN UNTOUCHED FRAME, which is the claim a person's one keystroke
+	// rests on — read off the pointer rather than spelled as a row number.
+	if !lab.press("enter") {
+		t.Fatal("enter was not taken by the frame")
+	}
+	if len(lab.answer) != 4 {
+		t.Fatalf("enter sent %d answers, want each of the four its own", len(lab.answer))
+	}
+	grant, _, ok := questionGrantAndSafe(set[0].question)
+	if !ok {
+		t.Fatal("the engine's ordinary consent has no plain grant and safe answer")
+	}
+	for i, answer := range lab.answer {
+		if answer.Key != grant {
+			t.Fatalf("answer %d went out as %q, not the grant %q", i, answer.Key, grant)
+		}
 	}
 }
 
@@ -525,8 +645,16 @@ func TestOneByOneOpensTheSameSetAsTabs(t *testing.T) {
 // A GROUPED PERMISSION OFFERS NO LIFETIME AT ALL, and neither does a single one
 // (questionscope.go): the answer's scope never reaches the consent gate, so a
 // row saying `from now on` over four calls would promise four times over what it
-// cannot do once. THIS TEST FAILS THE DAY THE GRADING LANDS (#953), which is
-// when the row comes back — one row for the set, moved together.
+// cannot do once.
+//
+// THIS COMMENT USED TO SAY "THIS TEST FAILS THE DAY THE GRADING LANDS (#953),
+// which is when the row comes back — one row for the set, moved together". The
+// grading landed (f3a734ba1) and this test did not fail, because nothing here
+// was ever wired to the grading: the prophecy was load-bearing for exactly
+// nobody, and a green test that named the day it should turn red is worse than
+// no note at all. Whether the row is owed is issue #995, which is where that
+// decision now lives. What this test asserts is unchanged and true today: the
+// frame offers no lifetime, and takes no key for one.
 func TestAGroupedPermissionOffersNoLifetimeRow(t *testing.T) {
 	lab := permissionLab(t, session.StakesReversible)
 	drawn := lab.plain()

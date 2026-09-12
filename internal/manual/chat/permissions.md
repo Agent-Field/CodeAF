@@ -32,11 +32,10 @@ and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
 else. On a **grave one** — a call aforge will always stop you for, such as
 `rm -rf *`, a force-push, or anything sent out in your name — the pointer opens
-on `3 deny` instead, and that answer says `safe answer` on its row. So `enter`
-you have not aimed means "allow it once" when the call can be lived with and
-"no" when it cannot be taken back. On a grave call the pointer never opens on
-the act: allowing is a key you choose — `1`, or `↑` onto it and then `enter` —
-and refusing is the one that is already under your hand.
+on `3 deny` instead. So `enter` you have not aimed means "allow it once" when the
+call can be lived with and "no" when it cannot be taken back. On a grave call the
+pointer never opens on the act: allowing is a key you choose — `1`, or `↑` onto
+it and then `enter` — and refusing is the one that is already under your hand.
 
 Nothing on a permission is painted in the question's amber except the marks —
 the `?`, the pointer and the recommendation — because the command is the thing
@@ -96,6 +95,27 @@ the one on screen; they are answered oldest first, and each gets its own
 countdown when it reaches the front. **Approvals the same step asked for are not
 a queue** — they are one frame (the next section).
 
+## What does "safe answer" mean beside deny — the grey words on the refusal
+
+`3 deny` carries a dim **`safe answer`** at the right of its row. It names the
+answer that loses nothing: take it and the call does not run, nothing is written,
+and the model is told it was refused — you can always allow it next time it asks.
+
+**It is on every approval, ordinary ones included** — not only the grave ones,
+and not only when the pointer happens to be sitting there. Nobody but you may
+answer an approval, so nothing is allowed to recommend anything on one, and this
+mark is what stands in for a recommendation: it says where your way out is. That
+is worth most precisely when the pointer is on `1 allow once`, which is where an
+ordinary call opens.
+
+Where an asker DID recommend an answer you see **`◆ recommended`** on that row
+instead, and never both — two marks each claiming the pointer would be two
+answers telling you they are the one to take.
+
+On a terminal too narrow to draw the frame — under about sixty columns — the
+sheet has room for neither aside except `◆ recommended`; see *The approval
+question on a phone-sized terminal*.
+
 ## Several approvals at once — approve all of these, allow all, deny all, one by one
 
 When one batch of calls needs your ok more than once — four reads outside the
@@ -109,15 +129,17 @@ answers.
 │ read  ~/notes/ideas.md                                            │
 │ read  ~/notes/log.md                                              │
 │                                                                   │
-│   1  allow all 4                                                  │
+│ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
-│ ▸ 3  deny all                                       safe answer   │
+│   3  deny all                                       safe answer   │
 ╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
-- **`3 deny all`** gives every one its own `deny`, and the pointer starts here,
-  marked `safe answer`, so `enter` on a frame you have not moved denies them all.
+- **`3 deny all`** gives every one its own `deny`. It is the answer that loses
+  nothing, and on a terminal wide enough to draw the frame it says `safe answer`
+  on its row — whatever the pointer is on, because it is telling you where your
+  way out is, not where you are standing.
 - **`2 one by one`** answers nothing: it opens the same approvals as tabs, where
   `←` `→` move between them and the last tab sends them all (questions.md,
   *Several questions at once*).
@@ -126,6 +148,22 @@ answers.
 Each leaves its own receipt. There is no `how long` here, for the reason a
 single approval has none (*How long an answer lasts*). **An irreversible call
 never joins the frame**, and neither does an approval from another step.
+
+## If I press enter on a frame of approvals, does it allow all of them or deny them all
+
+It allows them all, on the ordinary calls a frame is made of. The pointer opens
+exactly where those same calls asked one at a time would put it — the rule is in
+*The question aforge asks before it runs a tool — which key allows a command,
+what `1`, `2` and `3` do*, read over the whole frame rather than written a second
+time here — so four reads, being **ordinary calls**, open on `1 allow all 4`, and
+`enter` on a frame you have not moved allows all four once.
+
+The frame opens on `3 deny all` instead when one of its approvals carries a
+**recommendation of its own** that is not the plain grant: the frame may not make
+`enter` mean yes where any single one of its questions, asked alone, would not.
+
+A **grave** call — one aforge always stops you for — never reaches a frame at
+all. It is asked on its own, every time, with the pointer on `deny`.
 
 ## I pressed ctrl+t while it was asking — where did the question go, and did my typing answer it
 
@@ -195,6 +233,12 @@ Two plain rules instead of a box, the head and the command between them, and the
 answers under. The pointer is the same pointer and it opens where the wide frame
 opens — `allow once` on an ordinary call, the answer that loses nothing on a
 grave one — so `enter` here does exactly what `enter` does there.
+
+**The sheet carries no `safe answer` mark**, and there is no `allow all` here
+either: at this width a batch of approvals is not drawn as one frame at all, and
+you answer the one on the sheet, then the next. The asker's `◆ recommended` is
+the only aside a sheet has room for. Widen the terminal past about sixty columns
+and the frame, the mark and `allow all N` come back.
 
 Each answer is a **band the full width of the sheet** — the whole row is the
 target, not just its key. The clock, where a question has one, keeps its own

@@ -938,10 +938,13 @@ var tuiWords = map[string]tuiWord{
 	},
 	"questionGroupSafeWord": {
 		screen: "safe answer",
-		why: "DENY-FIRST UNTIL THE CALLS ARE GRADED: the pointer on a grouped permission opens on the " +
-			"answer that loses nothing, and the row says why it is there. Without this on the screen " +
-			"the suite never checked the pointer at all, and four captured screens went on showing " +
-			"`allow all` under it long after the ruling moved (questionpanel.go's questionSafeWord)",
+		why: "THE FRAME NAMES ITS WAY OUT: `deny all` is the answer that loses nothing on every " +
+			"grouped permission — the frame forms only where every member has one — so the row says " +
+			"so wherever the pointer is standing. Four ordinary reads open on `allow all` now that " +
+			"the gate grades them (#953), which is exactly when a person needs the refusal named, " +
+			"and this line is what would catch the mark going missing (questionpanel.go's " +
+			"questionSafeWord). It was once read as proof of the pointer's own place; the pointer " +
+			"is the tui3 suite's to hold, and the deny-first reading of it expired with the grading",
 	},
 	"consentOldOfferWord": {
 		screen: "enter take it",

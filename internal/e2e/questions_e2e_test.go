@@ -892,11 +892,12 @@ func questionsGroup(t *testing.T) {
 		screenSays(t, screen, name, "the frame lists what each call wants")
 	}
 	screenSays(t, screen, say(t, "questionGroupApartWord"), "the way to answer them one at a time")
-	// AND THE POINTER IS ON THE ANSWER THAT LOSES NOTHING, which is the whole of
-	// the deny-first ruling as a person meets it. Nothing here read the pointer
-	// until this line, so four screens captured before the ruling stayed in the
-	// repository showing `▸ allow all 4` and no test could tell.
-	screenSays(t, screen, say(t, "questionGroupSafeWord"), "the pointer opens on deny all, and says why")
+	// AND THE FRAME NAMES THE ANSWER THAT LOSES NOTHING. Four reads are ordinary
+	// calls, so the pointer opens on `allow all 4` now that the gate grades them
+	// (#953) — which is precisely when the refusal must be marked, the pointer
+	// being on the act. The frame said it only under its own pointer for a
+	// while, and this line is what goes red the day the mark goes missing again.
+	screenSays(t, screen, say(t, "questionGroupSafeWord"), "the frame names its way out, wherever the pointer is")
 	shot(t, r, "raised")
 
 	press(t, r, "2")
