@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -265,26 +266,40 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	},
 }
 
-// purposeWords reads internal/session/clientdoor.go for the [callPurpose]
-// constants, because those ARE tags the moment the door writes one.
+// purposeWords and roleWords are the two vocabularies this law joins, each read
+// from the ONE FILE that declares it and each read ONCE per run.
 //
-// It is [roleWords] one package over and for its reason. The purposes that are
-// a role's own name need no entry — they arrive through the role vocabulary —
-// and these are the three or four that are not any role: the turn, a node's
-// turn, a saved program's step, the ceiling's draft rung.
-func purposeWords() []string {
-	var words []string
-	set := token.NewFileSet()
-	file, err := parser.ParseFile(set, filepath.Join(moduleRoot, "internal", "session", "clientdoor.go"), nil, 0)
+// They are [constWordsOfType] twice. The purposes that are a role's own name
+// need no entry in either table — they arrive through the role vocabulary — and
+// what is left in the door's own block is the handful that are not any role.
+var purposeWords = sync.OnceValue(func() []string {
+	return constWordsOfType(filepath.Join("internal", "session", "clientdoor.go"), "callPurpose")
+})
+
+var roleWords = sync.OnceValue(func() []string {
+	return constWordsOfType(filepath.Join("internal", "roles", "roles.go"), "Role")
+})
+
+// constWordsOfType reads one file for the string constants declared with one
+// named type, and PANICS ON AN EMPTY ANSWER.
+//
+// The panic is the point. This law joins two vocabularies by parsing the files
+// that declare them, and a parse that silently found nothing would make the join
+// trivially complete — every tag resolved, no row missing, the report quietly
+// wrong. A file renamed out from under it has to be loud.
+func constWordsOfType(relative, typeName string) []string {
+	path := filepath.Join(moduleRoot, relative)
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
 	if err != nil {
-		panic("reading internal/session/clientdoor.go: " + err.Error())
+		panic("reading " + relative + ": " + err.Error())
 	}
+	var words []string
 	ast.Inspect(file, func(node ast.Node) bool {
 		spec, isValue := node.(*ast.ValueSpec)
 		if !isValue || len(spec.Values) != 1 {
 			return true
 		}
-		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != "callPurpose" {
+		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != typeName {
 			return true
 		}
 		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
@@ -293,7 +308,7 @@ func purposeWords() []string {
 		return true
 	})
 	if len(words) == 0 {
-		panic("internal/session/clientdoor.go declares no callPurpose constants; this law is reading the wrong tree")
+		panic(relative + " declares no " + typeName + " constants; this law is reading the wrong tree")
 	}
 	return words
 }
@@ -398,75 +413,92 @@ func tagsTheBuildWrites(t *testing.T) map[string]string {
 	return found
 }
 
-// TestEveryRoleWordIsDeclaredWhereTheVocabularyIs fails a role named anywhere but
-// internal/roles.
+// TestEveryRoleWordIsDeclaredWhereTheVocabularyIs fails a role named anywhere
+// but internal/roles, in either spelling.
 //
-// [roleWords] parses ONE FILE — internal/roles/roles.go — because that is where
-// this build says the role vocabulary lives. A role constant declared at its own
-// call site is therefore invisible to it, and to every other reader that asks
-// this package what the roles ARE.
+// [roleWords] parses ONE FILE, because that is where this build says the role
+// vocabulary lives and because the tool that reads it cannot import the engine
+// to ask the registry at run time — a replay reader would pull in the whole
+// session package for a list of words. A role constant declared at its own call
+// site is therefore invisible to it, and to every other reader that asks what
+// the roles ARE.
 //
 // THE MEASURED FAILURE. `const spellOutRole roles.Role = "spellout"` lived in
-// internal/session/spellout.go. It registered correctly, resolved correctly and
-// tagged its call correctly — and then reached the cost report as a word nobody
-// had written down, which [roleOf] prices as a background errand with nobody
-// waiting. The spell-out is the one auxiliary a person sits and watches, so the
-// single call whose latency matters most was the one counted as if it did not.
-// Nothing failed; a number was quietly wrong.
+// internal/session/spellout.go. It registered, resolved and tagged its call
+// correctly — and reached the cost report as a word nobody had written down,
+// which [roleOf] prices as a background errand with nobody waiting. The
+// spell-out is the one auxiliary a person sits and watches, so the single call
+// whose latency matters most was the one counted as if it did not. Nothing
+// failed; a number was quietly wrong. `const standingSentinelRole roles.Role =
+// "sentinel"` was the second, caught by this law on the day it was written.
+//
+// BOTH SPELLINGS, because there are two. A declared type
+// (`x roles.Role = "w"`) and a conversion (`x = roles.Role("w")`) produce the
+// same constant and only the first has a Type for a reader to match on;
+// `roleRepair = roles.Role("repair")` was invisible to the first version of
+// this law. The second half — every word handed to [roles.Register] — is the
+// one that cannot be spelled around at all, because a role nothing registers
+// resolves under no tier.
 func TestEveryRoleWordIsDeclaredWhereTheVocabularyIs(t *testing.T) {
 	const home = "internal/roles/roles.go"
+	declared := map[string]bool{}
+	for _, word := range roleWords() {
+		declared[word] = true
+	}
 	walkBuildSources(t, func(path string, file *ast.File) {
-		if path == home {
-			return
-		}
 		ast.Inspect(file, func(node ast.Node) bool {
+			if call, isCall := node.(*ast.CallExpr); isCall {
+				if methodName(call.Fun) == "Register" && len(call.Args) > 0 {
+					if word, spelled := roleWordOf(call.Args[0]); spelled && !declared[word] {
+						t.Errorf("%s registers the role %q, which %s does not declare. A role's "+
+							"WORD belongs there beside the others — spelled out, not conjured at "+
+							"the call — because everything that reads the vocabulary reads that "+
+							"file and a word it cannot see is priced as an errand nobody is "+
+							"waiting on.", path, word, home)
+					}
+				}
+				return true
+			}
 			spec, isValue := node.(*ast.ValueSpec)
-			if !isValue || spec.Type == nil {
+			if !isValue || path == home {
 				return true
 			}
-			named, isSelector := spec.Type.(*ast.SelectorExpr)
-			if !isSelector || named.Sel.Name != "Role" {
-				return true
-			}
-			if pkg, isIdent := named.X.(*ast.Ident); !isIdent || pkg.Name != "roles" {
-				return true
-			}
-			for _, name := range spec.Names {
-				t.Errorf("%s declares the role %s. Every role's WORD belongs in %s, "+
-					"beside the others: a role declared at its call site resolves and tags "+
-					"correctly and is still invisible to everything that reads the "+
-					"vocabulary, which prices its calls as errands nobody is waiting on. "+
-					"Declare it there and keep the roles.Register call here.",
-					path, name.Name, home)
+			for index, name := range spec.Names {
+				spelled := isRoleType(spec.Type)
+				if !spelled && index < len(spec.Values) {
+					_, spelled = roleWordOf(spec.Values[index])
+				}
+				if spelled {
+					t.Errorf("%s declares the role %s. Every role's WORD belongs in %s, beside "+
+						"the others: a role declared at its call site resolves and tags correctly "+
+						"and is still invisible to everything that reads the vocabulary, which "+
+						"prices its calls as errands nobody is waiting on. Declare it there and "+
+						"keep the roles.Register call here.", path, name.Name, home)
+				}
 			}
 			return true
 		})
 	})
 }
 
-// roleWords reads internal/roles for the role vocabulary itself, because that
-// package's constants ARE tags the moment auxiliary.go writes one.
-func roleWords() []string {
-	var words []string
-	set := token.NewFileSet()
-	file, err := parser.ParseFile(set, filepath.Join(moduleRoot, "internal", "roles", "roles.go"), nil, 0)
-	if err != nil {
-		panic("reading internal/roles: " + err.Error())
+// isRoleType reports the `roles.Role` type spelled on a declaration.
+func isRoleType(expr ast.Expr) bool {
+	named, isSelector := expr.(*ast.SelectorExpr)
+	if !isSelector || named.Sel.Name != "Role" {
+		return false
 	}
-	ast.Inspect(file, func(node ast.Node) bool {
-		spec, isValue := node.(*ast.ValueSpec)
-		if !isValue || len(spec.Values) != 1 {
-			return true
-		}
-		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != "Role" {
-			return true
-		}
-		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
-			words = append(words, word)
-		}
-		return true
-	})
-	return words
+	pkg, isIdent := named.X.(*ast.Ident)
+	return isIdent && pkg.Name == "roles"
+}
+
+// roleWordOf reads a role written as a conversion — `roles.Role("repair")` —
+// and answers the word inside it.
+func roleWordOf(expr ast.Expr) (string, bool) {
+	call, isCall := expr.(*ast.CallExpr)
+	if !isCall || !isRoleType(call.Fun) || len(call.Args) != 1 {
+		return "", false
+	}
+	return stringLiteral(call.Args[0])
 }
 
 // moduleRoot is this package's place in the tree, which is two directories up.

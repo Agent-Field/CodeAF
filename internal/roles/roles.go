@@ -212,6 +212,15 @@ const (
 	// internal/session/subharness_intake.go, which owns the call.
 	RoleIntake Role = "intake"
 
+	// RoleRepair is the hands that fix what the cheap hands got wrong.
+	//
+	// THE TIER IS HIGH AND NOT THE MASTERMIND'S, for [RoleCareful]'s reason: a
+	// repair round is many turns of ordinary work done by a model that can be
+	// trusted with something subtle, not one answer that decides what every other
+	// call does. Registered from internal/session/repair_role.go, which owns the
+	// call.
+	RoleRepair Role = "repair"
+
 	// RoleSentinel is one standing item's cheap yes-or-no: is what this check
 	// found worth telling the person about.
 	//

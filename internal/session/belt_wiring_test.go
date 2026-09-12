@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -30,36 +29,21 @@ import (
 // a registry to design into, a runner to run what is designed, an adaptive
 // runner, and a surface that answers questions.
 
-// v3ShapedAgent is a conversation configured the way the interactive door
-// configures one.
+// v3ShapedAgent is the conversation the interactive door configures, which is
+// [shippedShapeAgent] and is not a second opinion about it.
+//
+// IT USED TO BE A SECOND OPINION, AND THAT WAS THE MEASURED HOLE. This function
+// built its own thin config — no memory store, no accounts hub, no standing
+// items, no saved programs, eighteen tools — and four tests weighed the shipping
+// door through it, including both prefix budgets. A machine somebody has
+// finished setting up carries five more tools and fourteen kilobytes more
+// prefix, so every one of those gates reported on a conversation nobody has.
+// There is ONE shipped shape now and this is a name for it.
 func v3ShapedAgent(t *testing.T) *Agent {
 	t.Helper()
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.AskConsent = true
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
-	})
-	return agent
+	return shippedShapeAgent(t)
 }
 
-// shippedShapeAgent is THE BELT A CONFIGURED MACHINE ACTUALLY CARRIES, and it is
-// built from [beltShapes]'s own first entry — "the shipping conversation, fully
-// wired" — so that there is one definition of that shape and the prefix gate and
-// the belt tests cannot come to disagree about it.
-//
-// IT IS NOT [v3ShapedAgent], AND THAT WAS A MEASURED HOLE. That one is a
-// conversation with no memory store, no accounts hub, no standing items and no
-// saved programs: eighteen tools where a machine somebody has finished setting
-// up carries twenty-three. The prefix gate weighed it and reported green at
-// 39,073 bytes while the shipped shape weighed 53,025 — over the cap the gate
-// was enforcing, invisibly, which is #576's shape exactly (a gate that passes
-// because it is pointed at something nobody runs).
 // shippedBeltShape names the row of [beltShapes] that IS the shipping
 // conversation, fully wired.
 //

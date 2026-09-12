@@ -95,7 +95,8 @@ import (
 //
 // ── WHAT IS OWED, AND WHERE IT HAS TO COME FROM ─────────────────────────────
 //
-// THE TARGET IS STILL 48,000 and the shipped prefix is 5,159 over it. The bill
+// THE TARGET IS STILL [fixedPrefixTarget] and the shipped prefix is over it by the
+// difference between the two constants below. The bill
 // is not spread thin — one tool is more than a quarter of the whole tool block:
 //
 //	stand                  9,607   the standing-item verb's schema
@@ -104,7 +105,7 @@ import (
 //	search_conversations   1,613
 //	watch                  1,396
 //
-// `stand` alone is nearly twice the next heaviest and more than the 5,159 owed.
+// `stand` alone is nearly twice the next heaviest and more than the whole overage.
 // It is not this file's to cut: what a tool's schema says is its contract with
 // the model, and trimming it is a change to what the model is told rather than
 // to a byte count. It belongs to whoever owns internal/session's standing belt,
@@ -383,13 +384,37 @@ import (
 // widest page at 19,114 and the fully-wired belt's tool block at 34,027 over
 // twenty-three tools, weighed as the widest machine pays for it ([widestBelt]).
 // There is no rounding in it and no headroom on it.
-const fixedPrefixBudget = 53_141
+const fixedPrefixBudget = fixedPrefixTarget + fixedPrefixWaiver
 
-// fixedPrefixTarget is where the shipped prefix has to get back to, and it is
-// the figure [fixedPrefixBudget] was before anybody weighed the right belt. It
-// is stated rather than enforced because a test that failed on it today would
-// fail on work nobody in this file can do (see the bill above).
+// fixedPrefixTarget is what the shipped prefix is SUPPOSED to be: the figure the
+// last diet aimed at and the one [fixedPrefixBudget] held until the right belt
+// was weighed.
+//
+// THE CAP IS THIS PLUS A WAIVER, AND THE WAIVER ONLY SHRINKS. See
+// [prefixWaivers] for what each arm owes today and why a number that is only
+// printed is a number nobody ever pays.
 const fixedPrefixTarget = 48_000
+
+// prefixWaivers is what each arm is over its target by, dated, in ONE PLACE.
+//
+// ── THE RULE, WHICH IS `.github/known-red.txt`'S RULE ────────────────────────
+//
+// A waiver only ever SHRINKS. A lane that takes bytes out lowers the figure in
+// the same commit; a lane that needs more takes it out of something that is
+// already being said twice. Raising one is a decision with somebody's name on it
+// in a diff, which is the entire difference between a debt and a floor.
+//
+// 2026-09-12, #996. Both arms were weighing a conversation nobody has — no
+// memory store, no accounts hub, no standing items, no saved programs — so both
+// waivers are the first honest measurement of a prefix that had never been
+// weighed, and neither is a wave's overspend. The bill is not spread thin:
+// `stand` is 9,607 bytes, more than a quarter of the full tool block and, on a
+// sixteen-thousand-token window, roughly one token in six of everything that
+// person has before they have said anything.
+const (
+	fixedPrefixWaiver = 5_141
+	leanPrefixWaiver  = 13_489
+)
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
 // G). promptprofile.go added a second shape of prefix for a model with a small
@@ -489,12 +514,11 @@ const fixedPrefixTarget = 48_000
 // roughly one token in six of everything that person has, spent before they have
 // said anything. [leanPrefixTarget] is what this has to come back to and the
 // test prints the shortfall on every green run.
-const leanPrefixBudget = 44_989
+const leanPrefixBudget = leanPrefixTarget + leanPrefixWaiver
 
-// leanPrefixTarget is where the lean prefix has to get back to: the figure
-// [leanPrefixBudget] was before anybody weighed the right belt. It is stated
-// rather than enforced, for [fixedPrefixTarget]'s reason — a test that failed on
-// it today would fail on work nobody in this file can do.
+// leanPrefixTarget is what the lean prefix is SUPPOSED to be: the figure
+// [leanPrefixBudget] held until the right belt was weighed. The cap is this plus
+// [leanPrefixWaiver], which only ever shrinks.
 const leanPrefixTarget = 31_500
 
 // leanWindow is the window the lean budget is weighed at. Sixteen thousand
@@ -648,37 +672,69 @@ func widestLoadCapability(config Config) string {
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
-	agent := shippedShapeAgent(t)
+	reportPrefix(t, prefixArm{
+		what:        "the fixed prefix",
+		definitions: widestBelt(t, shippedShapeAgent(t)),
+		page:        len(widestPage()),
+		budget:      fixedPrefixBudget,
+		target:      fixedPrefixTarget,
+		owed:        "see this file's head for the bill and who owes it",
+		howToPay: "every byte here is sent again on every request of every turn, so take the " +
+			"addition back out of something that already says it rather than raising the budget",
+	})
+}
 
-	definitions := widestBelt(t, agent)
-	block, err := json.Marshal(definitions)
+// prefixArm is one weighing: what to call it, what it carries, and the two
+// figures it is judged against.
+type prefixArm struct {
+	what        string
+	definitions []ai.ToolDefinition
+	page        int
+	budget      int
+	target      int
+	owed        string
+	howToPay    string
+}
+
+// reportPrefix weighs one arm, says what is still owed on a green run, and names
+// the bill biggest-first when the ratchet is broken.
+//
+// IT IS ONE FUNCTION BECAUSE THE TWO ARMS ARE ONE TEST with two sets of
+// constants. They were forty lines each, written twice, and the copies had
+// already drifted: only one of them printed its shortfall against the target,
+// so the arm carrying the larger debt was the arm that never mentioned it.
+func reportPrefix(t *testing.T, arm prefixArm) {
+	t.Helper()
+	block, err := json.Marshal(arm.definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, prompt := len(block), len(widestPage())
-	total := tools + prompt
-	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
-		total, total/4, prompt, tools, len(definitions))
-	// AND WHAT IS STILL OWED IS SAID ON EVERY GREEN RUN, because a debt nobody
-	// is reminded of is a debt that becomes the new floor. The ratchet passing
-	// is not the same fact as the prefix being the size it should be.
-	if total > fixedPrefixTarget {
-		t.Logf("it is %d bytes over the %d target — see this file's head for the bill "+
-			"and who owes it", total-fixedPrefixTarget, fixedPrefixTarget)
-	}
-
-	if total <= fixedPrefixBudget {
+	tools := len(block)
+	total := tools + arm.page
+	t.Logf("%s is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
+		arm.what, total, total/4, arm.page, tools, len(arm.definitions))
+	// AND THE DEBT IS ENFORCED, NOT LOGGED. It was a t.Logf, which is invisible:
+	// nothing in the Makefile passes -v, so the one line saying this prefix is
+	// thousands of bytes over what it is supposed to be was printed where no
+	// human and no CI log would ever show it. A debt nobody is reminded of is a
+	// debt that has quietly become the floor.
+	//
+	// So the TARGET is the cap, and the overage is a WAIVER: one dated figure per
+	// arm, in one place, which may only ever shrink ([prefixWaivers]). That is
+	// the known-red discipline — `.github/known-red.txt` and its ratchet — applied
+	// to bytes. A wave that grows the prefix has to raise a waiver, in a diff, with
+	// its name on it; nothing can drift.
+	if total <= arm.budget {
 		return
 	}
-
 	// THE FAILURE NAMES THE BILL, BIGGEST FIRST. A lane reading this has just
 	// grown one of these lines and has no other way to see which.
 	type weighed struct {
 		name  string
 		bytes int
 	}
-	heaviest := make([]weighed, 0, len(definitions))
-	for _, definition := range definitions {
+	heaviest := make([]weighed, 0, len(arm.definitions))
+	for _, definition := range arm.definitions {
 		encoded, err := json.Marshal(definition)
 		if err != nil {
 			t.Fatal(err)
@@ -686,20 +742,19 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 		heaviest = append(heaviest, weighed{definition.Function.Name, len(encoded)})
 	}
 	sort.Slice(heaviest, func(i, j int) bool { return heaviest[i].bytes > heaviest[j].bytes })
-
-	report := fmt.Sprintf("the fixed prefix is %d bytes (~%d tokens), over its %d budget by %d\n"+
-		"  prompts/system.md   %6d\n"+
+	report := fmt.Sprintf("%s is %d bytes (~%d tokens), over its %d budget by %d\n"+
+		"  the page            %6d\n"+
 		"  the tool block      %6d over %d tools\n"+
 		"the heaviest tools:\n",
-		total, total/4, fixedPrefixBudget, total-fixedPrefixBudget, prompt, tools, len(definitions))
+		arm.what, total, total/4, arm.budget, total-arm.budget, arm.page, tools, len(arm.definitions))
 	for index, tool := range heaviest {
 		if index == 8 {
 			break
 		}
 		report += fmt.Sprintf("  %-20s%6d\n", tool.name, tool.bytes)
 	}
-	t.Fatalf("%severy byte here is sent again on every request of every turn, so take the "+
-		"addition back out of something that already says it rather than raising the budget", report)
+	t.Fatalf("%sthe cap is the %d target plus a waiver of %d, and a waiver only ever shrinks "+
+		"([prefixWaivers]). %s", report, arm.target, arm.budget-arm.target, arm.howToPay)
 }
 
 // ── the lean arm ────────────────────────────────────────────────────────────
@@ -744,63 +799,23 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 	if !agent.config.promptProfile().lean() {
 		t.Fatalf("a %d-token window did not resolve to the lean profile, so this test is weighing the wrong arm", leanWindow)
 	}
-
-	definitions := widestBelt(t, agent)
-	block, err := json.Marshal(definitions)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// AND `ask` IS IN THE BLOCK, because it is pre-armed rather than shelved
-	// (promptprofile.go's [Config.prearmedGroups]). A lean belt that had to load
-	// its way to a question would be measured lighter here and be unable to ask
-	// one, which is the one regression this number could hide.
+	// ([Config.prearmedGroups]). A lean belt that had to load its way to a
+	// question would be measured lighter here and be unable to ask one, which is
+	// the one regression this number could hide.
 	if !agent.hasTool("ask") {
 		t.Fatal("`ask` is not carried on a lean belt: a one-call-per-message model cannot load-then-ask")
 	}
-	prompt := len(renderSystemAt(atAFixedPlace(agent.config), time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)))
-	tools := len(block)
-	total := tools + prompt
-	t.Logf("the lean prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
-		total, total/4, prompt, tools, len(definitions))
-	// AND THE DEBT IS SAID ON EVERY GREEN RUN, for [fixedPrefixTarget]'s reason:
-	// a ratchet passing is not the same fact as the number being what it should
-	// be, and this arm's shortfall is owed by the person with the least room.
-	if total > leanPrefixTarget {
-		t.Logf("it is %d bytes over the %d target — see [leanPrefixBudget] for the bill "+
-			"and who owes it", total-leanPrefixTarget, leanPrefixTarget)
-	}
-
-	if total <= leanPrefixBudget {
-		return
-	}
-	heaviest := make([]struct {
-		name  string
-		bytes int
-	}, 0, len(definitions))
-	for _, definition := range definitions {
-		encoded, err := json.Marshal(definition)
-		if err != nil {
-			t.Fatal(err)
-		}
-		heaviest = append(heaviest, struct {
-			name  string
-			bytes int
-		}{definition.Function.Name, len(encoded)})
-	}
-	sort.Slice(heaviest, func(i, j int) bool { return heaviest[i].bytes > heaviest[j].bytes })
-	report := fmt.Sprintf("the lean prefix is %d bytes (~%d tokens), over its %d budget by %d\n"+
-		"  the page            %6d\n"+
-		"  the tool block      %6d over %d tools\n"+
-		"the heaviest tools:\n",
-		total, total/4, leanPrefixBudget, total-leanPrefixBudget, prompt, tools, len(definitions))
-	for index, tool := range heaviest {
-		if index == 8 {
-			break
-		}
-		report += fmt.Sprintf("  %-20s%6d\n", tool.name, tool.bytes)
-	}
-	t.Fatalf("%sthis arm's number only ever comes down: shelve the verb, cut the law that is stated twice, "+
-		"or leave it — never raise the budget", report)
+	reportPrefix(t, prefixArm{
+		what:        "the lean prefix",
+		definitions: widestBelt(t, agent),
+		page:        len(renderSystemAt(atAFixedPlace(agent.config), time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))),
+		budget:      leanPrefixBudget,
+		target:      leanPrefixTarget,
+		owed:        "see [leanPrefixBudget] for the bill and who owes it",
+		howToPay: "this arm's number only ever comes down: shelve the verb, cut the law that is " +
+			"stated twice, or leave it — never raise the budget",
+	})
 }
 
 // TestAFrontierShapeIsUntouchedByTheProfile is the other half of the deal.
