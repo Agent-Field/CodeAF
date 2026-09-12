@@ -454,3 +454,55 @@ func TestALongRoomNameNeverCollapsesTheStatusLine(t *testing.T) {
 		}
 	}
 }
+
+// THE ROOM SAYS WHEN, AND IT SAYS THE TRUE ONE OF THE TWO.
+//
+// The sentence it used to say was `its next turn takes it`, and on 2026-09-11 it
+// was read by the owner over a task step thirteen minutes into a wait, where the
+// next turn was a promise about nothing. What the engine answers now is WHEN the
+// pick landed (internal/session's [session.ModelLanding]) and the room spells
+// exactly that — never the word "turn", because a step is one turn and can run
+// for twenty minutes.
+func TestTheRoomSaysWhenThePickLanded(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		landing session.ModelLanding
+		want    string
+	}{
+		{"a request nothing had come back from is let go of", session.ModelLandsNow, roomModelNowWord},
+		{"an answer already arriving finishes first", session.ModelLandsNextRequest, roomModelNextWord},
+		{"an engine too old to answer says the safe half", "", roomModelNextWord},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, fake := roomModelApp(t, "z-ai/glm-5.2")
+			fake.retargetLanding = tc.landing
+			a.retargetTask(9, "anthropic/claude-sonnet-5")
+
+			want := "model · anthropic/claude-sonnet-5 · " + tc.want
+			found := false
+			for _, entry := range a.room.entries {
+				if strings.Contains(plain(entry.text), want) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("the room never said %q; it said: %v", want, roomNotes(a))
+			}
+			for _, entry := range a.room.entries {
+				if strings.Contains(plain(entry.text), "turn takes it") {
+					t.Fatalf("the room still promises a TURN: %q", plain(entry.text))
+				}
+			}
+		})
+	}
+}
+
+// roomNotes is every line the open room has, for a failure that has to show what
+// was said instead.
+func roomNotes(a *app) []string {
+	var said []string
+	for _, entry := range a.room.entries {
+		said = append(said, plain(entry.text))
+	}
+	return said
+}

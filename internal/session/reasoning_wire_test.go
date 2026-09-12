@@ -166,9 +166,13 @@ func TestTheReasoningLevelReachesTheWireAndOffSendsNothing(t *testing.T) {
 	}
 }
 
-// The level is latched for the whole turn, exactly as the model is: a change
-// made while the agent is working lands at the next Submit and never half-way
-// through the one in flight.
+// The level is latched for the whole turn: a change made while the agent is
+// working lands at the next Submit and never half-way through the one in flight.
+//
+// IT IS NO LONGER THE MODEL'S RULE, and the two are deliberately different now —
+// a model a person names reaches the work at the next request (agent.go's
+// [Agent.SetReasoning] says why the acts differ; personsword_test.go holds the
+// model's side).
 func TestTheReasoningLevelIsLatchedForTheTurn(t *testing.T) {
 	server := newReasoningServer(t, askTool, answerOK)
 	agent := reasoningAgent(t, server, "vendor/model-a")

@@ -497,11 +497,22 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 type recallAside struct {
 	agent   *Agent
 	reading *sidecar[bool]
-	// token says the person has started reading the answer, so the request can no
-	// longer be re-asked without taking words off their screen. It is written by
-	// the turn's stream observer and read here, which is why it is an atomic and
-	// not a field under a.mu: the observer is called once per delta.
-	token atomic.Bool
+	// reached says whether the person has anything of this request in front of
+	// them, so it can no longer be re-asked without taking something off their
+	// screen. It is NOT this aside's own reading: it is the turn's, shared with
+	// every other door that asks the same question, and it is handed over by the
+	// loop ([reachedThePerson], steer.go). There were two readings of this once
+	// and they disagreed about a visible thought.
+	//
+	// IT IS AN ATOMIC POINTER FOR THE REASON THE FIELD IT REPLACED WAS AN ATOMIC
+	// BOOL: the two ends are two goroutines. The turn's own hands it over
+	// ([recallAside.watch]) while this aside's reading may already be answering
+	// from the sidecar's, and a plain pointer written on one and read on the
+	// other is a race whether or not it is ever observed. A nil load is simply a
+	// reading not handed over yet, which [reachedThePerson.did] already answers
+	// as "nothing has reached them" — the safe answer, and the one that was true
+	// at that instant.
+	reached atomic.Pointer[reachedThePerson]
 	// resent is the ONE re-ask this aside may buy. One, because a second would be
 	// a door that could cut generations forever, and because there is only ever
 	// one block to land.
@@ -561,11 +572,11 @@ func (a *Agent) takeRecall() *recallAside {
 	return aside
 }
 
-// sawToken records that the model has begun writing. Called from the turn's
-// stream observer on every delta, so it must stay this cheap.
-func (r *recallAside) sawToken() {
+// watch hands this aside the turn's own reading of what the person has in front
+// of them. The loop calls it once, with the reading its stream observer fills.
+func (r *recallAside) watch(reached *reachedThePerson) {
 	if r != nil {
-		r.token.Store(true)
+		r.reached.Store(reached)
 	}
 }
 
@@ -575,7 +586,7 @@ func (r *recallAside) applyOrDefer() {
 	if r == nil {
 		return
 	}
-	if r.token.Load() {
+	if r.reached.Load().did() {
 		r.late.Store(true)
 		return
 	}

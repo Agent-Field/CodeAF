@@ -1537,13 +1537,25 @@ func (a *app) waitingWords() string {
 	word := waitBareWord
 	switch {
 	case a.retrying:
-		word = retryWord
 		// AND IT SAYS WHICH TRY, out of the struct the feed's own row was
 		// composed from (failurerow.go's [failureDetail]). It is empty until the
 		// engine's retry event carries the arithmetic, and an empty detail draws
 		// nothing rather than an empty slot — the emptiness law.
-		if detail := failureDetail(a.lastAsk); detail != "" {
-			word += partDot + detail
+		detail := failureDetail(a.lastAsk)
+		switch {
+		case modelBase(a.lastAsk.next) != "":
+			// A MOVE SAYS THE MOVE AND NOTHING ELSE. The row this was composed from
+			// says `moving to kimi-k3` and does not say "trying again" beside it —
+			// the two readings of one moment may not disagree, which is the law this
+			// line is written to. And the difference is not cosmetic once a person's
+			// own word is one of the things that moves a step: somebody who picked a
+			// model and read "trying again" would be told their choice was a
+			// failure being recovered from (internal/session's errPersonCut).
+			word = " " + detail
+		case detail != "":
+			word = retryWord + partDot + detail
+		default:
+			word = retryWord
 		}
 	case modelBase(a.model) != "":
 		word = waitForWord + modelBase(a.model)
