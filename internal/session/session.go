@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -1717,6 +1718,20 @@ type Config struct {
 	// It is false for every conversation, and no surface sets it: the executor
 	// sets it on the config it builds for a node and nowhere else.
 	InTask bool
+
+	// crewRole is the crew role an agent answers for when it is built to ANSWER
+	// ONE QUESTION rather than to do work — the checker a node's landing waits on
+	// (task_audit.go's [Agent.newAuditAgent]) and nothing else today.
+	//
+	// It decides what this agent's calls are FOR in the router's vocabulary
+	// ([Agent.laneRole]), read from the same one table every errand's role is
+	// ([errandRole]). WITHOUT IT A CHECKER IS A WORKER TO THE ROUTER: it is
+	// InTask for the node's reason — nobody in a worktree to ask — and InTask
+	// alone made its calls a leaf's, planned with a working node's ceiling and
+	// patience rather than a gate's, which is what put the check's thirty-second
+	// share under a controller that would not act on a silent machine inside it
+	// (#941). A worker leaves it empty; the zero value is the node it always was.
+	crewRole roles.Role
 
 	// Errand marks this agent as the short exchange behind home's `ask here`
 	// (cmd/aforge's chatv3_exchange.go) rather than a conversation somebody

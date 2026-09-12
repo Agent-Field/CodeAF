@@ -1932,7 +1932,8 @@ one of those files — or what was left of the work turned out to be something n
 do at all, which stops the task's worker and lands this way (*A task that landed needing
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
-the six on the tasks page — `nobody could check it`, `the check did not pass it: <gaps>`,
+the six questions on the tasks page, and two of those questions have more than one sentence —
+`nobody could check it` or `the check ran out of time`, `the check did not pass it: <gaps>`,
 `conflicts with your branch: <files>`, `your branch changed the same files while it worked:
 <files>`, `design ready to approve`, `starts on your word`, `paused at the <amount> cap` —
 and each carries its own two answers.
@@ -1940,6 +1941,8 @@ and each carries its own two answers.
 The report under a landing nobody could judge leads with **the same question the row is
 asking** and then what was said — `nobody could check it — ` and the checker's own
 sentence, or `nobody could check it — the checker never answered` when nothing was said.
+When the clock is what stopped the check, it leads `the check ran out of time — ` instead,
+and the row says the same.
 A landing whose branch would not merge leads `conflicts with your branch — ` the same way,
 and one whose files moved under it leads `your branch changed the same files while it
 worked — `.
@@ -1948,24 +1951,26 @@ row's reason sentence, written once in each place so the two cannot disagree. Th
 `finished, but needs your look — ` any more: that lead was deleted with the state it named.
 
 **It is never said twice.** Several of the checker's own sentences already open with that
-same question — `nobody could check it in 5m0s`, `nobody could check it — asked twice, and
-neither call answered` — and where one of them does, that sentence IS the lead and nothing
-is put in front of it.
+same question — `nobody could check it — asked twice, and neither call answered`, `the check
+ran out of time before a call could be made — it had 1m0s` — and where one of them does,
+that sentence IS the lead and nothing is put in front of it.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
 `one call ran 2m30s without answering and was abandoned`,
-`nobody could check it in 5m0s`, `the checker answered neither way`. A call that was
-asked and hung is always named as that — the sentence about nobody being able to check
-is kept for the case it is true of, where the window was too small for a call to be made
-at all. The time in it is the window **the check** had — `5m0s` when it had a command to
-run, `1m0s` when the work named no check and there was nothing for it to run. It is not
-your window and there is nothing you missed: **a question to you is never on a timer.**
+`the check ran out of time before a call could be made — it had 5m0s`, `the checker answered
+neither way`. A call that was asked and hung is always named as that — the sentence about no
+call being made is kept for the case it is true of, where the window was too small for a
+call to be made at all. The time in it is the window **the check** had — `5m0s` when it had
+a command to run, `1m0s` when the work named no check and there was nothing for it to run.
+It is not your window and there is nothing you missed: **a question to you is never on a
+timer.**
 That sentence used to read `no answer in 5m0s, so nothing was accepted`, which said two
 things a clock is not entitled to say — that you had five minutes, and that a decision had
 been made. Nothing is accepted or refused by a window running out; the work waits for you,
 for as long as that takes. When two tries in a row got nothing, the first line is prefixed
-`nobody could check it — asked twice, and neither call answered — `.
+`nobody could check it — asked twice, and neither call answered — `, or `the check ran out
+of time — asked twice, and neither call answered — ` when the clock cut both.
 If time ran out before a second call could be made, it says that instead; it does not
 claim two attempts. These are checks of the work, not unanswered questions to you.
 
@@ -2009,6 +2014,13 @@ landing goes to whoever holds the decision and they settle it.
 
 ## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
 
+**The checker is told its window.** Every request it makes carries how long its call has
+left, and a model that thinks before it answers is given a thinking allowance sized to that
+time at the pace its machine is measured writing — so a reasoning model is told where to stop
+rather than cut off mid-thought. Its calls are planned as a gate's rather than a working
+task's — the patience every other reader of finished work gets — so a machine that stays
+silent is acted on inside the call rather than left to spend it.
+
 **No single call may spend the whole checking window.** The check is asked at most twice —
 one checker, then a fresh one with the same evidence, **on another model** where this
 install has one to move to (the same fallback chain a stalled conversation turn moves
@@ -2019,6 +2031,12 @@ again inside what is left. You may see this on the card:
 ```
 one call ran 2m30s without answering and was abandoned
 ```
+
+**A call that was cut keeps what it read.** When the checker had already opened files or run
+commands before its call was cut, the next ask goes to **the same checker**, over everything
+it read, asking only for its answer, with its thinking switched off — nothing it found is
+thrown away, and nothing is read twice. Only a checker cut before it had read anything is
+replaced by a fresh one.
 
 When the second call does answer, the landing is an ordinary finished landing with one line
 at the end of its evidence saying which try it was:
@@ -2034,11 +2052,16 @@ two goes.
 Sometimes there is no time for a second call: closing one checker and building another
 takes some of the window too, and a call that would get less than a tenth of it is not made
 at all — a bound that small guarantees the non-answer it would then be blamed for. The card
-keeps the first call's account and says why there was no second:
+keeps the first call's account and says why there was no second, and because the clock is
+what stopped the check, the row reads `your call · the check ran out of time`:
 
 ```
-one call ran 2m30s without answering and was abandoned · the window closed before a second
+the check ran out of time — one call ran 2m30s without answering and was abandoned · the window closed before a second
 ```
+
+That is **a fact about the checker, not about your work**: nothing merges on it, it says
+nothing about whether the work is right, and the work waits for your answer like any other
+`your call`.
 
 **Why the bound exists.** Without it, one hung stream could eat the whole five minutes on
 its own — measured at 183 seconds on one call, with no refusal and no error — and the check

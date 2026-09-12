@@ -42,6 +42,15 @@ import (
 )
 
 func TestTaskStatesE2E(t *testing.T) {
+	// THE SCRIPTED SUBTEST RUNS FIRST AND CARRIES ITS OWN GATE. #941's
+	// acceptance is a model that never answers its first call, which no real
+	// model can be asked to be reliably, so it is staged against a stub — no
+	// key, no cost, the same binary in the same terminal
+	// (checkerwindow_e2e_test.go). It is registered HERE, above the key gate,
+	// because a machine with no provider key must still pay a test that needs
+	// no provider.
+	t.Run("a_check_that_ran_out_of_time_still_lands_done", testStatesCheckRanOut)
+
 	requireTmuxAndKey(t)
 
 	t.Run("a_landing_that_worked_says_done_once", testStatesDone)
