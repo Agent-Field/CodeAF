@@ -126,6 +126,11 @@ type brainOptions struct {
 	// newClient builds provider clients. Nil is the real one; a test scripts a
 	// provider through it and drives the same brain every other caller drives.
 	newClient func(config.Config, string) (*liveClient, error)
+	// callWall is how long one completion on the two structuring slots may run.
+	// Zero is pool.DefaultCallWall, which is every caller but a test: a test
+	// names a wall it can reach in a second rather than sitting out four
+	// minutes of a model that never stops thinking (issue #927).
+	callWall time.Duration
 }
 
 // remainingWall reads what the errand's own context still leaves.
@@ -289,8 +294,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// none of it has an honest duration measured in minutes. A leaf is the other
 	// kind of thing: an agent loop with the executor's own deadline over it, where
 	// a long silence is often just a long tool call.
-	chatClient.WithCallWall(pool.DefaultCallWall)
-	planClient.WithCallWall(pool.DefaultCallWall)
+	callWall := opts.callWall
+	if callWall <= 0 {
+		callWall = pool.DefaultCallWall
+	}
+	chatClient.WithCallWall(callWall)
+	planClient.WithCallWall(callWall)
 	// The positive stopping condition, installed once for every path that can
 	// grow a running job. It is asked last, after rounds, nodes and the daily
 	// rail have all passed, so on the common path it is never asked at all; the
@@ -5373,7 +5382,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			return smallest(err)
 		}
 		if err != nil {
-			log.Printf("note: the plan for %s was drawn with faults (%v); running it as drawn", prefix, err)
+			log.Printf("note: the plan for %s was drawn with faults (%s); running it as drawn", prefix, pool.CauseInWords(err))
 		}
 		gatePlanDivision(graph, compiled.Goal)
 		// The acceptance checklist, on the one node that hands the finished
@@ -5394,7 +5403,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// shared prefix cold. It also carries the operator's reasoning setting.
 		contractUsage, err := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
-			log.Printf("note: could not write contracts: %v", err)
+			log.Printf("note: could not write contracts: %s", pool.CauseInWords(err))
 		}
 		// The planner talks to the provider through a raw client rather than
 		// through the billing seam, so its passes — spine, ground, fan-out,
@@ -5528,7 +5537,7 @@ func taskContract(ctx context.Context, settings config.Config, planClient *liveC
 	graph.Add(plan.Node{Kind: plan.KindWork, Summary: goal, Stage: 1})
 	usage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 	if err != nil {
-		log.Printf("note: could not write the working method: %v", err)
+		log.Printf("note: could not write the working method: %s", pool.CauseInWords(err))
 	}
 	journalPlanSpend(history, nil, planClient, "", usage)
 	return strings.TrimSpace(graph.Nodes[0].Contract)
@@ -5709,7 +5718,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			}}}, nil
 		}
 		if err != nil {
-			log.Printf("note: the remainder for %s was drawn with faults (%v); running it as drawn", prefix, err)
+			log.Printf("note: the remainder for %s was drawn with faults (%s); running it as drawn", prefix, pool.CauseInWords(err))
 		}
 		gatePlanDivision(graph, goal)
 		// AND THE JOB'S OWN RULES ARE STAMPED ON THE REMAINDER BEFORE ANY OF IT
@@ -5723,7 +5732,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		graph.SetConstraints(jobConstraints(history, anchor))
 		contractUsage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
-			log.Printf("note: could not write repair contracts: %v", err)
+			log.Printf("note: could not write repair contracts: %s", pool.CauseInWords(err))
 		}
 		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)

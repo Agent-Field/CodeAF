@@ -658,21 +658,21 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 	}
 }
 
-// presenceAskingWhole is [Agent.presenceAskingOptions] for a lane that can
-// describe its question COMPLETELY (question.go's [Question]).
+// presenceAskingWhole is [Agent.raiseQuestion] with the question's row on the
+// presence desk beside it, for a lane that home and every other window may
+// answer from the doorstep.
 //
 // It banks the same short form every older reader expects — the kind, the id,
-// one line and the answers — and the whole object beside it, and it banks the
-// question's WORDS where [Agent.OpenQuestions] reads them. The three go up and
-// come down together, because a lane that stopped waiting has stopped asking,
-// and a window still drawing the question would be offering a key the session
-// would drop.
-func (a *Agent) presenceAskingWhole(q Question) func() {
-	forgetWords := a.rememberQuestion(q)
+// one line and the answers — and the whole object beside it, and then raises the
+// question through the one door. The two go up and come down together, because a
+// lane that stopped waiting has stopped asking, and a window still drawing the
+// question would be offering a key the session would drop.
+func (a *Agent) presenceAskingWhole(q Question, announce func()) func() {
 	forgetDesk := a.presenceAskingQuestion(q)
+	letGo := a.raiseQuestion(q, announce)
 	return func() {
 		forgetDesk()
-		forgetWords()
+		letGo()
 	}
 }
 
@@ -712,6 +712,39 @@ func (a *Agent) presenceAskingQuestion(q Question) func() {
 			}
 		}
 		desk.mu.Unlock()
+		a.nudgePresence()
+	}
+}
+
+// presenceRestateQuestion writes one question at the desk again because a fact
+// ON it changed — today, its clock stopping ([Agent.holdAsk]).
+//
+// IT REPLACES THE ROW RATHER THAN ADDING ONE, and it is a replacement rather
+// than a withdrawal and a fresh raise because the question is the same question:
+// another window reading this file must see the countdown go, not see the
+// question disappear and come back. A row nobody banked is not created here —
+// there is nothing to restate about a question this desk was never told about.
+func (a *Agent) presenceRestateQuestion(q Question) {
+	desk := a.presence
+	if desk == nil {
+		return
+	}
+	found := false
+	desk.mu.Lock()
+	for at, ask := range desk.asks {
+		if ask.question.Kind != q.Kind || ask.question.ID != q.ID {
+			continue
+		}
+		restated := ask.question
+		restated.Options = q.Options
+		restated.Text = strings.TrimSpace(q.Head)
+		restated.Full = &q
+		desk.asks[at].question = restated
+		found = true
+		break
+	}
+	desk.mu.Unlock()
+	if found {
 		a.nudgePresence()
 	}
 }
@@ -933,7 +966,10 @@ func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
 	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
 	// session stopped on a question telling every other window it was `working`.
-	// [Agent.asked] is what the `ask` tool blocks its turn on (askwait.go);
+	// [Agent.asked] is the lane's book of what the model has asked (askwait.go),
+	// and the half of it that BLOCKS is what belongs here
+	// ([askedOfThePerson.anyLocked]): a question the asker said its turn would
+	// not wait for is a conversation that is working, not one waiting on you;
 	// the desk already carries the whole question beside it
 	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
 	// only this predicate that did not know to look. Measured in two terminals
@@ -1068,6 +1104,20 @@ func (a *Agent) presenceAsk() PresenceQuestion {
 	defer desk.mu.Unlock()
 	for _, ask := range desk.asks {
 		if ask.question.Kind == QuestionTask && automatic[ask.question.ID] {
+			continue
+		}
+		// A QUESTION NOTHING WAITS ON IS NOT ON THE WAITING DESK, on the ONE
+		// reading [askedOfThePerson.anyLocked] takes ([Question.Waiting]).
+		//
+		// This desk answers with its OLDEST row, and the row it answers with is
+		// the line every other window draws beside `waiting on you` and the
+		// question a key press there answers. A ratify or a question somebody
+		// asked back on keeps its row until it is answered — correctly, because
+		// it is still answerable — so a standing ratify beside a bash approval
+		// put the RATIFY's sentence on home under `waiting on you`, and pressing
+		// the key answered the ratify (2026-09-11). The row a person is told
+		// they are needed for has to be one that is actually waiting for them.
+		if full := ask.question.Full; full != nil && !full.Waiting() {
 			continue
 		}
 		return ask.question

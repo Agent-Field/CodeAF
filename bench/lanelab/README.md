@@ -76,8 +76,8 @@ go run ./bench/lanelab/gosim -proof -pace flat -trace           # one line per t
 implementation agreeing with the first is not evidence about the build. So
 `gosim` replays the same three scenarios against the code that ships:
 `lane.Default()`'s real ledger primed from this directory's sheet fixture at
-`lane.SheetWeight`, the real chooser, the real `lane.Watch`, the real
-`lane.DefaultBudget()`, over `internal/lane/lanestub` — the fake router, which
+`lane.SheetWeight`, the real chooser, the real `lane.Watch`, and the real purse
+the plan carries (`lane.Spending(lane.PlanFor(...))`), over `internal/lane/lanestub` — the fake router, which
 honours `provider.order`/`only`/`ignore`, names the serving lane on every chunk,
 sends a usage frame with the exact cost, and counts the streams a client
 abandoned. **The ship decision is taken on the Go run** (see

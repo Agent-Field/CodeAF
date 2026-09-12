@@ -676,7 +676,7 @@ func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotic
 	}
 	verdict, chosen := standVerdictOf(ex.view, answer)
 	ex.settle(verdict, chosen)
-	a.resolveStanding(ex, notice, action.Standing)
+	sent := a.resolveStanding(ex, notice, action.Standing)
 	if !action.Standing.Once {
 		// AND THE KEYBOARD GOES BACK TO THE LIST on a yes and on a no alike. The
 		// question is over either way, and a hand left in a pane with nothing
@@ -684,7 +684,7 @@ func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotic
 		// stays alive beside it — tab or a click brings it back for a follow-up.
 		ex.focused, ex.onOffer = false, false
 	}
-	return nil
+	return sent
 }
 
 // changeExchangeCard is the correction: nothing is created, the model
@@ -700,8 +700,7 @@ func (a *app) changeExchangeCard(ex *homeExchange, notice *session.StandingNotic
 	// model is going to answer it, so the strip and the state line have to start
 	// counting or the screen sits still while it does.
 	ex.startTurn(a.now())
-	a.resolveStanding(ex, notice, session.StandingAnswer{Change: words})
-	return nil
+	return a.resolveStanding(ex, notice, session.StandingAnswer{Change: words})
 }
 
 // asking reports whether a card is up AND still a question. It is what owns
@@ -1418,13 +1417,20 @@ func (ex *homeExchange) startTurn(now time.Time) {
 // a card in the first place — so the type assertion failing is unreachable
 // through anything a person can do, and answering nothing is the right thing to
 // do with a card that came from nowhere.
-func (a *app) resolveStanding(ex *homeExchange, card *session.StandingNotice, answer session.StandingAnswer) {
+func (a *app) resolveStanding(ex *homeExchange, card *session.StandingNotice, answer session.StandingAnswer) tea.Cmd {
 	if card == nil {
-		return
+		return nil
 	}
-	if door, ok := ex.agent.(standingAgent); ok {
+	door, ok := ex.agent.(standingAgent)
+	if !ok {
+		return nil
+	}
+	// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): the pane's agent is in
+	// another process exactly as the conversation's is.
+	return a.offLoop(func() func(bool) tea.Cmd {
 		door.ResolveStanding(card.ID, answer)
-	}
+		return nil
+	})
 }
 
 // offering reports whether `continue as a conversation` is on the pane: the
@@ -1579,7 +1585,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 				// thing on the column, and separating them would put a decision on
 				// a different part of the screen from the thing being decided.
 				at := len(out)
-				out = append(out, a.questionCardBody(*ex.ask, width)...)
+				out = append(out, a.questionPanelBody(*ex.ask, width)...)
 				ex.askAt = make([]int, len(ex.ask.question.Options))
 				for i := range ex.askAt {
 					ex.askAt[i] = -1

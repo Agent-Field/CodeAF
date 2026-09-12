@@ -1122,15 +1122,16 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	// than the kind's — a one-off reminder offers no `just once`, and a list
 	// that said otherwise would be a chip the session drops.
 	standing := a.standingAsk(id, *notice)
-	defer a.presenceAskingWhole(standing)()
 	// SET TO ZERO AND NOT MERELY LEFT ZERO. The field is on the card's shape
 	// and a caller could have filled it; this is the one place the law lives,
 	// so it is applied here rather than trusted upstream.
 	notice.Deadline = time.Time{}
 	card := *notice
-	hub.send(Event{Kind: EventStandingProposal, Tool: "stand", Standing: &card})
-	// AFTER the card, on EventQuestion's own ordering law.
-	a.emitQuestion(EventQuestion, standing, nil)
+	// The card is the lane's own announcement and the question follows it, on
+	// EventQuestion's own ordering law ([Agent.raiseQuestion] keeps it).
+	defer a.presenceAskingWhole(standing, func() {
+		hub.send(Event{Kind: EventStandingProposal, Tool: "stand", Standing: &card})
+	})()
 
 	select {
 	case answer := <-answers:
@@ -1519,7 +1520,16 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 		Subject: SubjectRef{Kind: SubjectOrder, ID: id, Name: strings.TrimSpace(notice.Item.Words)},
 		Options: StandingOptions(notice.Item),
 		Stakes:  StakesReversible,
-		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},
+		// AND THE TURN IS STOPPED ON IT, which this question did not say for a
+		// long time and which is simply true: [Agent.askStanding] parks the
+		// `stand` call on the answer and the card carries no clock at all, by
+		// law (standing_contract.go), so the conversation waits for as long as
+		// the card stands. A question that said otherwise was a window drawing
+		// `idle` over work that had stopped, and — once the waiting desk began
+		// reading [Question.Waiting] — a standing card that was not on the desk
+		// at all.
+		Blocking: Blocking{Turn: true},
+		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
 	}
 }
 

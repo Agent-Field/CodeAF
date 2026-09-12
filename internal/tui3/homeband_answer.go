@@ -203,19 +203,18 @@ func answerChips(question session.PresenceQuestion) []answerChip {
 	return chips
 }
 
-// answerChipLines paints them: the key bold in the question's own hue, the word
-// beside it in the same hue. Whole chips move to following rows when needed;
-// a card never hides an answer merely because the answers cannot share a row.
+// answerChipLines paints them: the KEY in the payload hue and the word beside it
+// in ordinary ink. Whole chips move to following rows when needed; a card never
+// hides an answer merely because the answers cannot share a row.
 //
-// IT IS THE CARD'S INK AND NOT THE CARD'S HELPER. consent.go's [app.paintOffer]
-// draws the same shape and cannot be borrowed — it asks whether the pointer is
-// over the block it belongs to, and there is no block here, only a card in a
-// column. What is shared is the thing that matters, which is that a key on this
-// surface is bold and AMBER wherever it is offered ON THIS SCREEN. These chips
-// are the answer to a question that has stopped a conversation, which is home's
-// one meaning of "waiting on you", and the places wave moved every reading of it
-// onto the one hue ([hueWarn]). consent.go's block, inside a conversation, keeps
-// the violet.
+// IT IS THE PANEL'S GRAMMAR ON A CARD (owner ruling 2026-09-11, colour pick C).
+// The whole chip used to be amber, on the argument that home's one meaning of
+// "waiting on you" is the warn hue — and the result was a card where the words a
+// person has to READ were the same colour as the mark that says to read them.
+// The amber stays on the marks: home's `?` on the row, the pointer, the pick.
+// consent.go's [app.paintOffer] draws the same shape and cannot be borrowed — it
+// asks whether the pointer is over the block it belongs to, and there is no
+// block here, only a card in a column.
 func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal palette) []string {
 	chips := answerChips(question)
 	if len(chips) == 0 {
@@ -223,7 +222,7 @@ func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal 
 	}
 	painted := make([]string, 0, len(chips))
 	for _, chip := range chips {
-		painted = append(painted, pal.warnBold(chip.key)+pal.warn(" "+chip.label))
+		painted = append(painted, pal.data(chip.key)+pal.ink(" "+chip.label))
 	}
 	return bandClauses(width, 0, func(s string) string { return s }, painted...)
 }
@@ -406,20 +405,26 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			// (consent.go's [app.answerWith]): the same receipt, the same record
 			// and the same annotated row as the same answer pressed in front of
 			// the question.
-			a.answerWith(action.Allow, action.Scope)
-			return nil, true
+			return a.answerWith(action.Allow, action.Scope), true
 		}
 		if a.agent != nil {
-			a.agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
-			return nil, true
+			// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): home's band
+			// answers over the same wire the block's keys do.
+			agent := a.agent
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
+				return nil
+			}), true
 		}
 	case session.QuestionTask:
-		if a.answerTaskWith(question.ID, key) {
-			return nil, true
+		if cmd, took := a.answerTaskWith(question.ID, key); took {
+			return cmd, true
 		}
 		if agent, ok := a.tasker(); ok {
-			agent.ResolveTask(question.ID, action.Task)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveTask(question.ID, action.Task)
+				return nil
+			}), true
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
@@ -441,8 +446,10 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			}
 		}
 		if agent, ok := a.stander(); ok {
-			agent.ResolveStanding(question.ID, action.Standing)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveStanding(question.ID, action.Standing)
+				return nil
+			}), true
 		}
 	}
 	return nil, false
@@ -463,16 +470,15 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 	if _, ok := whole.Option(key); !ok {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
-	answer := session.Answer{
-		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
-		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
-	}
-	if err := doors.ResolveQuestion(answer); err != nil {
-		return nil, false
-	}
-	return nil, true
+	// AND IT GOES THROUGH THE ONE ANSWERING DOOR (question.go's
+	// [app.answerQuestions]). Home had its own copy of the road — its own
+	// [app.offLoop], its own refusal sentence — and a second copy of a road is a
+	// second set of rules about what an answer does: this one wrote no receipt,
+	// left no sent stamp, and so read its own answer coming back down the
+	// questions lane as another window's. The question was never drawn on this
+	// page, so there is no row here to put back; everything else about answering
+	// is the same act and is now the same code.
+	return a.answerQuestion(questionShown{question: *whole}, session.Answer{
+		Key: key, Picked: []string{key},
+	}), true
 }

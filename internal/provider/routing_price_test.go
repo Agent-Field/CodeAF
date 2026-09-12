@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE PRICE OF SPEED ──────────────────────────────────────────────────────
@@ -324,7 +323,7 @@ func TestAStrictLaneDemandCarriesNoPriceCeiling(t *testing.T) {
 	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
 	choice := lanes.Choice{Only: []string{"Fireworks"}}
 	prefs := &providerPrefs{Sort: "latency", MaxPrice: &maxPrice{Prompt: 0.825, Completion: 2.475}}
-	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, &ai.Request{}, "")
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "")
 	if len(prefs.Only) != 1 || prefs.Only[0] != "Fireworks" {
 		t.Fatalf("strict preferences = %+v, want a demand for Fireworks", prefs)
 	}

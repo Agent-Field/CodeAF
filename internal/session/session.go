@@ -2448,18 +2448,28 @@ type Agent struct {
 	// Empty is the ordinary state and renders nothing at all, which is nearly
 	// every conversation: a person who has attached no folder is told about none.
 	placesText string
-	// recordText is the `the record` block message[0] carries (question.go's
-	// [DecisionsSection]) and recordKey is the state of `decisions.jsonl` it was
-	// rendered from — its size and its modification time, which both move when a
-	// line is appended, by this window or by another one.
+	// recordText is the `the record` block as the file now stands (question.go's
+	// [DecisionsSection]), re-rendered off every lock by [Agent.takeRecord] when
+	// the session opens and when a decision is written.
 	//
-	// IT IS CACHED BECAUSE message[0] IS REBUILT WHENEVER ANYTHING IN IT MOVES —
-	// a folder, a standing order, a memory set, a decision — and every one of
-	// those rebuilds used to open the file, scan it and unmarshal every line, for
-	// a string that changes only when a question is answered. The stat is the
-	// whole check, and it is cheap enough to make on every rebuild.
-	recordText string
-	recordKey  string
+	// recordShown is the one message[0] is CARRYING, and the two are different
+	// on purpose: a decision does not rewrite the system prompt, because one
+	// changed byte in front of the conversation re-prices all of it and the model
+	// has the answer in its own result either way. The carried snapshot is
+	// brought up to recordText whenever something else in message[0] moves —
+	// which is the moment the prefix is being paid for anyway
+	// ([Agent.refreshSystemLocked] holds the whole argument).
+	//
+	// systemHead is everything in message[0] AHEAD of the record — the base
+	// prompt, the attached folders, the standing orders — as it was last
+	// rendered, and it is the whole of how that moment is recognised.
+	recordText  string
+	recordShown string
+	systemHead  string
+	// recordRead says the file behind recordText has been read at least once.
+	// It is what makes the first rebuild — the conversation opening — the one
+	// reading of `decisions.jsonl` message[0] ever does for itself.
+	recordRead bool
 	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
 	// windows on this project landed and are running. It sits under mu beside
 	// cardText and rides where cardText rides, at the tail of the transcript —
@@ -2619,11 +2629,18 @@ type Agent struct {
 	// section could ask for.
 	steerSeq atomic.Uint64
 	// askSeq names the questions the model puts, and asked is what this session
-	// is parked on while they stand — one type with the three endings a parked
-	// ask has in it (askwait.go). The question words remain in questionWords;
-	// this holds only who is waiting.
+	// holds while they stand — one type with the endings a parked ask has in it,
+	// and with the question, the asker's own key names and the way down on each
+	// entry so a question can outlive the call that asked it (askwait.go). The
+	// question words remain in questionWords; this holds what the LANE knows.
 	askSeq atomic.Uint64
 	asked  askedOfThePerson
+	// stepSeq counts the requests this session has sent, which is how a question
+	// knows which STEP of a turn raised it ([Agent.stepToken], question.go's
+	// [Question.Batch]). It is an atomic for [Agent.steerSeq]'s reason: it is
+	// read from the goroutines a tool batch runs on, and a number that could only
+	// be taken under a.mu would be one an approval gate could not ask for.
+	stepSeq atomic.Uint64
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding
@@ -2751,6 +2768,10 @@ type Agent struct {
 	// agent's life only. It is never persisted — a session-scoped answer that
 	// outlived the session would be a settings change nobody made.
 	consentMemo map[string]bool
+	// grants is what each standing yes BOUGHT, keyed by tool, so that changing
+	// your mind on the receipt can take back all of it rather than the half this
+	// session happens to hold ([grantMade], consent.go).
+	grants map[string]grantMade
 
 	// connectAsks is the connect questions a person owes an answer to, keyed by
 	// the id the EventConnectAsk carried, and connectSeq is what names them

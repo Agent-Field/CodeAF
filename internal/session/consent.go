@@ -91,11 +91,6 @@ const ConsentWaiting = "waiting"
 type consentAnswer struct {
 	allow bool
 	scope ConsentScope
-	// choice is set only by [Agent.ResolveRecovery] (recovery.go), where the
-	// question has three answers and a bool has two. It is empty for every
-	// ordinary consent answer, and the escalation reads that emptiness as "a
-	// binary surface answered" rather than as a third option nobody picked.
-	choice RecoveryChoice
 }
 
 // ResolveConsent answers one EventConsentRequest. An id nobody is waiting on —
@@ -318,17 +313,7 @@ func notApprovedWording(err error) string {
 // end. A "don't ask me again" answer is remembered, because the question was
 // about a tool.
 func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
-	// AND ANOTHER WINDOW LEARNS THIS SESSION IS STOPPED ON SOMEBODY
-	// (taskpresence.go). The line is written HERE and handed down, because this
-	// is the lane whose question is about a TOOL and can therefore be described
-	// in one honest sentence; the stuck-turn question borrows the same lane to
-	// ask about a TURN (recovery.go), passes no line, and is therefore not
-	// offered to another window at all — a reason naming the tool it happened to
-	// be repeating would be a sentence nobody said, and three chips under it
-	// would be an answer to a question that was never asked. That question still
-	// makes the session say it is waiting, because presence counts the pending
-	// map and not the desk's.
-	answer, err := a.askAnswer(ctx, hub, call, decision, true, "needs your ok to run "+call.Function.Name)
+	answer, err := a.askAnswer(ctx, hub, call, decision)
 	return answer.allow, err
 }
 
@@ -341,17 +326,15 @@ func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decisi
 // interrupted turn ends. Nothing here holds a.mu across the wait — the lock
 // Interrupt needs must never be held by something waiting on a person.
 //
-// memo says whether a ConsentToolSession answer may be remembered for the tool.
-// It is true for the gate, whose question IS about a tool, and false for the
-// stuck question (recovery.go), which borrows this lane to ask about a TURN —
-// and where "and stop asking me" would otherwise write a standing approval for
-// a tool nobody was asked to approve.
-//
-// question is the one line another window may answer this from, and "" is a
-// question that stays in the window it was asked in (see [Agent.ask]). It is
-// banked AFTER the id is minted, because the id is what an answer from
-// somewhere else names.
-func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo bool, question string) (consentAnswer, error) {
+// THE QUESTION IS ALWAYS ABOUT A TOOL, and that is what makes it one another
+// window may answer from its one line. The stuck-turn question that used to
+// borrow this lane to ask about a TURN — with no line, no widening answer and
+// three answers where this has two — had no caller left and is deleted
+// (recovery.go), so every question this lane raises goes through the one door
+// whole and the gate's own words are the only ones it speaks in. It is banked
+// AFTER the id is minted, because the id is what an answer from somewhere else
+// names.
+func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (consentAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -366,51 +349,45 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	a.consent[id] = answers
 	a.mu.Unlock()
 
-	if question != "" {
-		// AND THE WHOLE QUESTION IS BANKED, not only the one line
-		// (question.go). The gate is the only thing in this program that knows
-		// the tool, the rule the policy matched and the gloss of the call, and
-		// until this it threw all three away the moment the event went out — so
-		// home, a second window and the phone had the sentence and nothing
-		// under it. The short form goes up beside it unchanged, for the builds
-		// that only ever read that.
-		defer a.presenceAskingWhole(a.consentAsk(id, call, decision, memo, question))()
+	// THE REQUEST NAMES THE ROW, and it is the lane's own announcement: the
+	// question itself goes out after it on the questions lane
+	// ([Agent.raiseQuestion] keeps that order), because a question attaches to
+	// a row a surface has already drawn — the order this lane already keeps
+	// against its batch's EventToolBegin rows, for the same reason.
+	announce := func() {
+		hub.send(Event{
+			Kind: EventConsentRequest,
+			ID:   id,
+			Tool: call.Function.Name,
+			// AND THE ID OF THE CALL IT IS ABOUT, for the reason the announcement
+			// carries one (loop.go): a batch can raise three bash questions at once,
+			// and a surface with no id can pair a question to a row only by tool name
+			// — oldest-of-that-tool, which is a guess. Here the guess is worse than a
+			// wrong row. The card reads the COMMAND off the row it paired to, so a
+			// question that landed on the wrong one lets a person read command A,
+			// press always, and bank a standing rule for command B.
+			CallID: call.ID,
+			// Hint is the same gloss every tool row carries, so a surface renders
+			// the question against the row it already drew; Rule is the policy's
+			// own words for why it is asking.
+			Hint: a.gloss(call),
+			Args: argsText(call),
+			Rule: decision.Rule,
+			// And whether the memo is even available, so a surface can leave the
+			// "always" key off a question it would be dropped on (see Event.Memo).
+			Memo: true,
+			// Silence is not a no. The card draws this so the wait mode is not a
+			// hidden deny timer (F41).
+			Wait: ConsentWaiting,
+		})
 	}
-
-	hub.send(Event{
-		Kind: EventConsentRequest,
-		ID:   id,
-		Tool: call.Function.Name,
-		// AND THE ID OF THE CALL IT IS ABOUT, for the reason the announcement
-		// carries one (loop.go): a batch can raise three bash questions at once,
-		// and a surface with no id can pair a question to a row only by tool name
-		// — oldest-of-that-tool, which is a guess. Here the guess is worse than a
-		// wrong row. The card reads the COMMAND off the row it paired to, so a
-		// question that landed on the wrong one lets a person read command A,
-		// press always, and bank a standing rule for command B.
-		CallID: call.ID,
-		// Hint is the same gloss every tool row carries, so a surface renders
-		// the question against the row it already drew; Rule is the policy's
-		// own words for why it is asking.
-		Hint: a.gloss(call),
-		Args: argsText(call),
-		Rule: decision.Rule,
-		// And whether the memo is even available, so a surface can leave the
-		// "always" key off a question it would be dropped on (see Event.Memo).
-		Memo: memo,
-		// Silence is not a no. The card draws this so the wait mode is not a
-		// hidden deny timer (F41).
-		Wait: ConsentWaiting,
-	})
-
-	// AND THE SAME QUESTION GOES OUT AS AN OBJECT ON THE QUESTIONS LANE, AFTER
-	// the request that named the row (question.go's EventQuestion). The order is
-	// the order this lane already keeps against its batch's EventToolBegin rows
-	// and for the same reason: a question attaches to a row a surface has
-	// already drawn.
-	if question != "" {
-		a.emitQuestion(EventQuestion, a.consentAsk(id, call, decision, memo, question), nil)
-	}
+	// AND THE WHOLE QUESTION IS BANKED, not only the one line (question.go). The
+	// gate is the only thing in this program that knows the tool, the rule the
+	// policy matched and the gloss of the call, and until it did it threw all
+	// three away the moment the event went out — so home, a second window and
+	// the phone had the sentence and nothing under it. The short form goes up
+	// beside it unchanged, for the builds that only ever read that.
+	defer a.presenceAskingWhole(a.consentAsk(id, call, decision), announce)()
 
 	select {
 	case answer := <-answers:
@@ -418,17 +395,22 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// already wrote the rule the person picked, and a memo beside it would be
 		// the coarse tool-wide yes this scope exists to stop making. See its
 		// doc for the consequence.
-		if memo && answer.scope == ConsentToolSession {
+		if answer.scope == ConsentToolSession {
 			// A STANDING YES ABOUT AN ACCOUNT IS A SETTING, NOT A MEMO. It is
 			// written where the settings sheet writes it, and it is written
 			// INSTEAD of the session memo rather than beside it: two records of
 			// one answer would drift the moment somebody set the row back to ask
 			// in the panel and went on not being asked here for the rest of the
 			// session. Everything else keeps the memo it always had.
-			if a.rememberCapability(call.Function.Name, json.RawMessage(call.Function.Arguments), answer.allow) {
+			// WHAT IT BOUGHT IS WRITTEN DOWN WHERE IT IS BOUGHT, so changing
+			// your mind on the receipt can take back exactly this and nothing
+			// else ([Agent.undoGrant]).
+			if made, wrote := a.rememberCapability(call.Function.Name, json.RawMessage(call.Function.Arguments), answer.allow); wrote {
+				a.rememberGrant(call.Function.Name, made)
 				return answer, nil
 			}
 			a.rememberConsent(call.Function.Name, answer.allow)
+			a.rememberGrant(call.Function.Name, grantMade{})
 		}
 		return answer, nil
 	case <-ctx.Done():
@@ -444,6 +426,59 @@ func (a *Agent) rememberConsent(tool string, allow bool) {
 		a.consentMemo = make(map[string]bool, 1)
 	}
 	a.consentMemo[tool] = allow
+}
+
+// grantMade is the standing half of a yes, remembered so it can be TAKEN BACK.
+//
+// A widening yes is written into more than one place, and which one depends on
+// what the tool is: an ordinary tool gets the session memo above, and a
+// connected service's tool gets a capability left on in the person's own account
+// settings ([Agent.rememberCapability]) INSTEAD of the memo. A revision that
+// only deleted the memo therefore said "the permission is taken back" on the
+// receipt while the account went on being allowed — so what was granted is
+// written down here at the moment it is granted, and [Agent.undoGrant] is the
+// one door that takes back all of it.
+type grantMade struct {
+	service    string
+	capability string
+}
+
+// rememberGrant banks what a standing yes bought, keyed by the tool it was about
+// — the same key the memo uses, because a second yes for one tool replaces the
+// first and undoing the newest is what changing your mind on a receipt means.
+func (a *Agent) rememberGrant(tool string, made grantMade) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.grants == nil {
+		a.grants = make(map[string]grantMade, 1)
+	}
+	a.grants[tool] = made
+}
+
+// undoGrant takes back everything a standing yes bought for one tool: the memo
+// that stops this session asking again, and the capability left on in the
+// person's account settings where the yes was written there instead.
+//
+// THE THIRD STORE IS THE SURFACE'S AND CANNOT BE REACHED FROM HERE. A yes given
+// as a RULE is written to the person's settings by the window that asked
+// (tui3's `app.rememberAlways`), where `/permissions` shows it; the surface
+// removes its own with `app.forgetAlways` on the same key press that sends the
+// revision. That is the whole of what this engine cannot do, and it is named
+// here so the next reader does not conclude there are two doors.
+func (a *Agent) undoGrant(tool string) {
+	a.mu.Lock()
+	delete(a.consentMemo, tool)
+	made, granted := a.grants[tool]
+	delete(a.grants, tool)
+	connected := a.connect
+	a.mu.Unlock()
+	if !granted || connected == nil || made.service == "" || made.capability == "" {
+		return
+	}
+	// BACK TO ASKING, NOT TO NO. The person is taking back a standing yes, and
+	// what they had before they gave it was a question — turning it into a
+	// refusal would deny the next call something they never said no to.
+	_ = connected.SetCapabilityState(made.service, made.capability, connect.StateAsk)
 }
 
 func (a *Agent) rememberedConsent(tool string) (bool, bool) {
@@ -495,55 +530,46 @@ var errAgentClosed = errors.New("session: agent is closed")
 // IT INVENTS NOTHING. The head is the line this lane already wrote for the
 // presence file, the reason is the POLICY'S OWN phrasing of why it is asking
 // (internal/approval's Rule), the evidence is the arguments the row already
-// carries, and the answers are answers.go's for this kind — narrowed by one
-// where the memo would do nothing, because an offer that is inert must not be
-// on screen (Event.Memo says the same thing about the same key).
+// carries, and the answers are answers.go's for this kind.
 //
 // THE STAKES ARE `costly` AND NOT `irreversible`, deliberately and for every
 // call alike. This gate does not know what a command will do — that judgement
 // is internal/approval's, and it is expressed as WHETHER TO ASK rather than as
 // how much is at stake — and a question that claimed `irreversible` on a `read`
 // would be crying wolf on the one word that is supposed to stop somebody.
-func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision, memo bool, question string) Question {
-	options := AnswerOptions(QuestionConsent)
-	if !memo {
-		kept := options[:0:0]
-		for _, option := range options {
-			if option.Widening {
-				continue
-			}
-			kept = append(kept, option)
-		}
-		options = kept
-	}
-	ask := Question{
+func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
+	return Question{
 		ID:      id,
 		Kind:    QuestionConsent,
 		Ask:     AskPermission,
 		Form:    FormLine,
 		Asker:   Asker{Kind: AskerEngine},
-		Head:    strings.TrimSpace(question),
+		Head:    consentHeadLead + call.Function.Name,
 		Reason:  consentReason(decision),
 		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
-		Options: options,
+		// AND WHICH STEP ASKED, so that three approvals raised by one tool batch
+		// are drawn and answered as the one thing they are (question.go's
+		// [Question.Batch]).
+		Batch:   a.stepToken(),
+		Options: AnswerOptions(QuestionConsent),
 		Stakes:  StakesCostly,
 		// THE TURN IS STOPPED ON IT AND NOTHING ELSE IS. The call is blocked
 		// inside its batch; the batch's other calls run in their own goroutines,
 		// and no task waits on this at all.
 		Blocking: Blocking{Turn: true},
-		Scope:    []AnswerScope{ScopeOnce},
+		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
+		// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
+		// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
+		// ALREADY THERE — two renderings of one call is how a person ends up
+		// approving something other than what they read. Copying them onto the
+		// question would also put a whole file's body into a presence file every
+		// window on the machine re-reads every few seconds.
 	}
-	if memo {
-		ask.Scope = append(ask.Scope, ScopeAlways)
-	}
-	// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
-	// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
-	// ALREADY THERE — two renderings of one call is how a person ends up
-	// approving something other than what they read. Copying them onto the
-	// question would also put a whole file's body into a presence file every
-	// window on the machine re-reads every few seconds.
-	return ask
 }
+
+// consentHeadLead opens the one line this lane's question is read by in every
+// window — home, a second terminal, the phone — and the tool's name closes it.
+const consentHeadLead = "needs your ok to run "
 
 // consentReason is why the gate is asking, in the policy's own words where it
 // gave any and in this lane's own sentence where it did not. The wording is

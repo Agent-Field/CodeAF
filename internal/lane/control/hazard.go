@@ -207,6 +207,10 @@ type hazard struct {
 	// this request: polling it every beat would be asking the same question of
 	// the same numbers.
 	refused bool
+	// entitled is the pace this question was SENT EXPECTING — see THE PACE A
+	// STREAM IS HELD TO below — and it is the one belief on this type that
+	// [Controller.Serving] may not overwrite.
+	entitled Survival
 	// z is the abnormality gate's threshold, in standard deviations of the
 	// governing survival's own log-normal. It is derived once from the shape of
 	// this request — see the derivation at the top of this file — because k is
@@ -225,6 +229,7 @@ func New(plan Plan) Controller {
 	}
 	return &hazard{
 		plan:     plan,
+		entitled: plan.Gap,
 		now:      plan.Began,
 		progress: plan.Began,
 		delta:    plan.Began,
@@ -292,7 +297,7 @@ func (h *hazard) Note(reading Reading) Act {
 				// The belief is per token, while one event may contain a whole
 				// batch. Normalize its interval so healthy batching keeps credit.
 				perToken := gap.Seconds() / float64(reading.Visible)
-				surprise := (math.Log(perToken) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
+				surprise := (math.Log(perToken) - h.pace()) / h.plan.Gap.Sigma
 				h.drift = h.drift*decay + surprise
 				h.weight = h.weight*decay + 1
 			}
@@ -309,6 +314,52 @@ func (h *hazard) Note(reading Reading) Act {
 		h.delta = h.now
 	}
 	return h.verdict()
+}
+
+// ── THE PACE A STREAM IS HELD TO IS NOT THE PACE OF WHOEVER ANSWERED ───────
+//
+// A MACHINE MAY NOT SET ITS OWN BAR, and until 2026-09-11 it did. The aggregate
+// credit test below measures each gap against [Plan.Gap], which
+// [Controller.Serving] re-points to the SERVING lane's own belief the moment the
+// stream says who is really answering — so a machine that has been collapsing all
+// afternoon is judged against the collapse. That is a closed circle: the more
+// this process learned about a slow machine, the less any stream it served could
+// ever read as slow. Measured that day, twice. One endpoint's believed rate had
+// already fallen to about six tokens a second; it then wrote 604 tokens in 86
+// seconds and 5,793 in 363, and both were "keeping up".
+//
+// THE BAR IS THE PACE THE QUESTION WAS SENT EXPECTING: the gap belief the plan
+// was BUILT with, which is the machine the choice named and the reason this
+// request went out at all. `provider.order` is advisory once fallbacks are on
+// (#850), so the machine that answers is routinely not the machine that was
+// asked for — and a router that substitutes a machine ten times slower has
+// handed the person something they were never offered. That is what this notices
+// and it is the whole of what it notices.
+//
+// IT IS NOT A RULE ABOUT SLOWNESS. Where the machine that answered IS the machine
+// that was asked for, the bar and the belief are the same number and nothing at
+// all changes — which is every ordinary request. A healthy stream on a machine a
+// third slower than the fleet's best is not touched, because nobody was promised
+// the fleet's best; they were promised this machine.
+//
+// AND A QUESTION SENT BLIND IS ENTITLED TO NOTHING IN PARTICULAR. With no belief
+// behind the head of the order there is no expectation to hold anybody to, so the
+// first belief that arrives becomes the bar ([hazard.Serving]) — which is the
+// behaviour this test has always had for a cold pair.
+
+// pace is that bar, as the log of the seconds between two visible tokens: the
+// same unit and sign convention [Plan.Gap] is in, so the surprise above is
+// unchanged arithmetic with a centre that cannot be moved by the machine being
+// judged.
+//
+// THE SPREAD IS STILL THE SERVING LANE'S, deliberately: how variable ONE gap is
+// is a property of the machine we are on, while where the gap OUGHT to sit is a
+// property of what this question was sent expecting.
+func (h *hazard) pace() float64 {
+	if h.entitled.Known() {
+		return h.entitled.Mu
+	}
+	return h.plan.Gap.Mu
 }
 
 // keepingUp reports whether the measured visible rate still earns progress.
@@ -337,6 +388,13 @@ func (h *hazard) Serving(lane string, first, gap Survival, now time.Time) {
 	}
 	if gap.Known() {
 		h.plan.Gap = gap
+		// AND THE BAR IS SET ONCE. A question sent with no belief at all is
+		// entitled to whatever the machine that answered it turns out to be; one
+		// sent expecting a pace keeps that expectation whoever answers. See THE
+		// PACE A STREAM IS HELD TO.
+		if !h.entitled.Known() {
+			h.entitled = gap
+		}
 	}
 	if first.Known() && h.phase == PhaseSilent {
 		h.plan.First = first
@@ -633,10 +691,12 @@ func (h *hazard) costAlt() (Alternative, bool) {
 // act is the ladder: which of the six this moment is, in the order
 // docs/ARCHITECTURE.md already sets.
 //
-// The purse is asked LAST and only when a hedge is really about to go out,
-// because asking it is spending it: [internal/lane.Budget.Allow] counts the arm
-// it allows, and a controller that polled it while deciding to report something
-// else would spend somebody's allowance on a decision nobody acted on.
+// The purse is asked LAST and only when a hedge is really about to go out.
+// It no longer SPENDS anything by being asked — there is no rolling allowance
+// left for a poll to drain ([internal/lane.Spending] is a reading of this
+// plan's own budget) — and it is still asked last, because a controller that
+// priced an arm while deciding to report something else would be pricing a
+// decision nobody took.
 // AND AT THE CEILING λ STOPS DECIDING. What a second is worth is what makes a
 // wait worth money, and for a role nobody is watching it is nothing — but the
 // ceiling is not about money at all. It is the promise that no call this build

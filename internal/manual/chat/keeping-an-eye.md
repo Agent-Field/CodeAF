@@ -297,7 +297,7 @@ every decision on this screen is put, and every answer carries what it costs bes
      1  yes, set it up   it keeps happening until you stop it
      3  just once        it happens now, and nothing is kept
      0  no               nothing happens, now or later
-   [enter] take it · [c] change · [esc] later · [↑↓] choose
+   enter take it · c change · esc later · ↑↓ choose
 ```
 
 - **`1 yes, set it up`** — it gets set up and starts happening, and goes on until you stop
@@ -319,7 +319,7 @@ every decision on this screen is put, and every answer carries what it costs bes
 Each answer is a row of its own and **a click anywhere along it takes that answer**. The
 digit takes it too.
 
-Answering leaves a line where the question was — `decided wants to keep an eye on: … → yes,
+Answering leaves a line where the question was — `✓ wants to keep an eye on: … → yes,
 set it up · you · 14:02` — and the card in the conversation settles with the answer and what
 it came to on its bottom edge: `yes, set it up · set up`.
 

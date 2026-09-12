@@ -420,7 +420,7 @@ That means the work is finished and nothing has confirmed the named command. End
 is better than spending the remaining hours re-running a suite over a green tree and then
 running out of time.
 
-## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
+## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing · it argued with itself about something already answered
 
 An unattended run with a budget looks at the work at the end of every reply: which
 pieces of work came home finished, and what the checks your work names said when
@@ -448,6 +448,21 @@ decides, not to the reply it stopped, so a piece of work landing and waking a fr
 reply cannot start the loop over. There is no number to raise and no setting for
 it. Before this, a run in that state repeated one identical line until its hours
 ran out.
+
+**And an ordinary conversation you are sitting in front of has the same floor.**
+There is no budget and nothing holds for the rest of the session — the next thing
+you type starts fresh — but within one reply the rule is identical: the second
+look that says exactly what the first one said ends the reply rather than putting
+it back to the model. The line names what repeated itself:
+
+```
+stopping here · nothing moved since the last look and what is left is the same — the missing zeta.txt has not been reported · saying it again would not change it
+```
+
+Before this, only an unattended run had that floor. A measured conversation had
+correctly reported that a file did not exist, and the reader claimed three times
+running that the missing file had not been reported: the reply spent three turns
+explaining that the observation was mistaken, and all three were on the screen.
 
 ## A task waiting on one that did not finish · work that will never start · it says something is still running
 

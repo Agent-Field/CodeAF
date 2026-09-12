@@ -346,24 +346,27 @@ registry is built PER TURN (`Agent.newEpisode`), because two of its citizens hol
 state that must not outlive a turn, and the episode is a required argument of
 `executeTool`, so a new call site cannot reach a tool without passing the gate.
 
-**Revert-then-refix is the third rung of the stuck ladder** (PMCoder,
-https://arxiv.org/abs/2608.06811, `internal/session/recovery.go`). Words are the
-right first move and a poor third one: by the third repetition what stands
-between the model and a working approach is usually the half-finished edit it is
-reading back. So the escalation the person already gets (D16) now carries the
-move — *"stuck: write ×3 — revert the 2 files this turn touched and retry from
-clean?"* — with three answers: **revert+retry / keep going / stop**. Only the
-person can trigger it, never a timer, never a task node, never a headless run.
-A file the turn CREATED is deleted; a MODIFIED tracked file is restored with
-`git checkout --`; anything else — no repository, untracked, outside the
-workspace — is left alone and NAMED ("not under git — restore by hand"), because
-a model re-attempting on a base it wrongly believes is clean is worse than no
-recovery at all. The set of files comes from a ledger written by two hooks that
-straddle the execution: `pre-action` stats the target (the only moment anybody
-can know whether a write creates or modifies), `post-feedback` records the calls
-that actually succeeded. The person's choice, what moved and what did not are one
-steering note in the journal. The stuck question never writes a consent memo — it
-borrows the consent lane but is not a question about a tool.
+**The turn keeps a ledger of what it changed** (PMCoder,
+https://arxiv.org/abs/2608.06811, `internal/session/recovery.go`). Two hooks
+straddle the execution: `pre-action` stats the target — the only moment anybody
+can know whether a write CREATES or MODIFIES a file — and `post-feedback` records
+the calls that actually succeeded. On that ledger a revert is exact: a file the
+turn created is deleted, a modified tracked file is restored with `git checkout
+--`, and anything else — no repository, untracked, outside the workspace — is
+left alone and NAMED ("not under git — restore by hand"), because a model
+re-attempting on a base it wrongly believes is clean is worse than no recovery
+at all.
+
+**The stuck question that offered it is DELETED** (2026-09-11, #910). It was to
+have been the third rung of the stuck ladder — *"stuck: write ×3 — revert the 2
+files this turn touched and retry from clean?"* with **revert+retry / keep going
+/ stop** — and it reached the person through nothing: it borrowed the consent
+gate's wait with an EMPTY question object and had no caller anywhere in the
+product. A capability that cannot work is absent rather than broken, so
+`QuestionRecovery`, `Agent.ResolveRecovery`, `RecoveryChoice` and `askAboutLoop`
+are gone. The ledger above and the revert it makes exact stay; what would put
+them to a person is not written yet. The escalation the person gets at the third
+repetition (D16) is words, as it always was.
 
 **Hysteresis is the law of the ladder** (PMCoder's phase hysteresis): forward
 progress is accepted immediately, backward movement needs repeated evidence. One

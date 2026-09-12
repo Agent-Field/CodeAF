@@ -393,3 +393,62 @@ func TestAPlanPauseReportsEvenWhenAFallbackExists(t *testing.T) {
 		t.Fatalf("a paused plan retained a recovery move: %s", verdict)
 	}
 }
+
+// ── A NAMED REFUSAL IS A MOVE, WHATEVER NUMBER IT WORE ──────────────────────
+//
+// THE LAW: when the router relays somebody else's no and says whose, the fact is
+// about that machine. The status belongs to the upstream and decides nothing —
+// a 400, a 502 and a 429 from one pool are one fact and earn one answer.
+//
+// THE MEASURED FAILURE (2026-09-11 14:39–14:41). `Status == 429` was asked
+// before `Upstream != ""`, so the commonest named refusal in ten days of the log
+// was read as the account's own ceiling: eight sends to one pool over ninety
+// seconds, with six other machines on the same model answering in under five.
+func TestANamedRefusalIsTheMachinesWhateverStatusItWore(t *testing.T) {
+	for _, status := range []int{400, 403, 404, 429, 500, 502, 503} {
+		verdict := Classify(Evidence{
+			Status: status, Upstream: "Wafer", FallbackAvailable: true, Attempt: 1,
+		}, Limits{})
+		if verdict.Class != Transport {
+			t.Errorf("a %d relayed from a machine classified as %s, want %s", status, verdict.Class, Transport)
+		}
+		if verdict.Reason != ReasonRefused {
+			t.Errorf("a %d relayed from a machine reads %q, want %q", status, verdict.Reason, ReasonRefused)
+		}
+		if !verdict.Rotate {
+			t.Errorf("a %d relayed from a machine did not ask to be served by somebody else", status)
+		}
+	}
+}
+
+// AND A 429 THAT NAMED NOBODY IS THE ACCOUNT'S OWN CEILING, which is a different
+// sentence and a different pair of moves: the wait it asked for, and then
+// another model. It used to borrow "the provider could not serve it", which is
+// the wrong claim twice — the provider can serve it, and nothing about it is the
+// model's fault.
+func TestAnUnnamedPaceIsTheAccountsOwnCeiling(t *testing.T) {
+	verdict := Classify(Evidence{Status: 429, Attempt: 1, FallbackAvailable: true}, Limits{})
+	if verdict.Class != Transport {
+		t.Errorf("an account-wide pace classified as %s, want %s", verdict.Class, Transport)
+	}
+	if verdict.Reason != ReasonPaced {
+		t.Errorf("an account-wide pace reads %q, want %q", verdict.Reason, ReasonPaced)
+	}
+	if verdict.Reason == ReasonRefused {
+		t.Error("an account-wide pace was blamed on a machine nobody named")
+	}
+}
+
+// AND THE PREDICATE IS THE ONE SPELLING OF IT. Three sites ask "is this refusal
+// about a machine" — the classifier, the reason, and the transport's own walk —
+// and a second spelling would be a second answer.
+func TestNamedReadsTheUpstreamAndNothingElse(t *testing.T) {
+	for _, row := range []struct {
+		upstream string
+		want     bool
+	}{{"", false}, {"   ", false}, {"Wafer", true}} {
+		if got := (Evidence{Upstream: row.upstream}).Named(); got != row.want {
+			t.Errorf("Named() on upstream %q = %v, want %v", row.upstream, got, row.want)
+		}
+	}
+}

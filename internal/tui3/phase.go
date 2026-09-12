@@ -83,12 +83,14 @@ type PhaseNews = session.PhaseNews
 // nothing and the older readings underneath take over again.
 const phaseWindow = provider.PhaseWindow
 
-// phaseNewsMsg wakes the loop so a frame is drawn for a phase that changed
-// somewhere other than a keystroke. It carries nothing — [PostPhaseNews] has
-// already put the news on the desk — because a message that carried the news
-// would be a second copy of it, arriving after the first. It is the lane news's
-// own shape (lanes.go's [laneNewsMsg]) said again for the other seam.
-type phaseNewsMsg struct{}
+// newsMsg wakes the loop so a frame is drawn for news that arrived from
+// somewhere other than a keystroke — a phase that changed ([PostPhaseNews]) or a
+// sighting a finished answer left ([PostLaneNews]). It carries nothing, because
+// the news is already on the desk by the time it arrives and a message that
+// carried it would be a second copy, arriving after the first. It is ONE
+// message for both seams because both ask for the same thing, a frame, and one
+// frame answers any number of them (doorbell.go's coalescing).
+type newsMsg struct{}
 
 // newsDeskKeys is every name one piece of news is filed under on either of this
 // package's two desks — this file's phases and lanes.go's sightings.
@@ -601,6 +603,13 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// what this surface did before — is a person watching a line that says
 		// nothing while a real wait runs.
 		return []rowField{rowSay("all lanes slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
+	case provider.PhaseBelowPace:
+		// THE ANSWER IS ARRIVING AND IT IS TOO SLOW TO READ, and there is no
+		// faster machine to move it to. It is a different sentence from the one
+		// above because it is a different fact — words ARE appearing — and a
+		// person told "still waiting" while watching text arrive would stop
+		// believing this row. The clock is the wait's own and it counts up.
+		return []rowField{rowSay("answering slowly"), rowSay("nowhere faster"), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying, provider.PhaseTakingStock:
 		// THREE WORDS WITH ONE SHAPE: a stage named by nothing but itself, and
 		// the clock a person is reading it against. `taking stock` shares the arm

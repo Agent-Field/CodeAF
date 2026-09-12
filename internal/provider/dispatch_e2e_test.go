@@ -176,9 +176,12 @@ func TestOneDeadlineBoundsEverything(t *testing.T) {
 // limits, and a healthy fourth the sheet doubts.
 //
 // WHAT IT ASSERTS IS WHAT THE PERSON GOT. Four sends, each machine asked once,
-// an answer, an ordinal they could count in, and NOT ONE router sentence on the
-// screen. On the binary this design was written against it was nine identical
-// sends to one machine over three minutes and then a turn that ended.
+// an answer, a `switching` line NAMING the machine it is walking to, and NOT ONE
+// router sentence on the screen. The ordinal belongs to the retry loop, which is
+// not what moved here: a walk between MACHINES says where it is going.
+//
+// On the binary this design was written against it was nine identical sends to
+// one machine over three minutes and then a turn that ended.
 func TestTheScreenshotScenarioAnswersThroughTheFourthMachine(t *testing.T) {
 	pool := &scriptedPool{
 		roster: []string{"DeepInfra", "Io Net", "Fireworks", "GMICloud"},
@@ -236,13 +239,22 @@ func TestTheScreenshotScenarioAnswersThroughTheFourthMachine(t *testing.T) {
 		t.Errorf("the walk paid %s of waiting for three moves to other machines: %v", believed, asked)
 	}
 
-	// AND THE PERSON READ AN ORDINAL AND NO ROUTER SENTENCE.
-	moving, ok := told.find(PhaseRetrying)
+	// AND THE PERSON READ THE MOVE AND NO ROUTER SENTENCE.
+	//
+	// IT IS THE WALK'S OWN SENTENCE AND NOT THE RETRY LOOP'S. This test asked for
+	// [PhaseRetrying] and its ordinal until 2026-09-11, and never reached the
+	// assertion: the call it stages died on the first machine's 404 (the walk was
+	// bounded by a rolling allowance that had nothing to do with this question),
+	// so nobody noticed that a walk between MACHINES says [PhaseSwitching] and
+	// names the one it is going to. Naming the machine is the better sentence of
+	// the two and it is what ships; the ordinal belongs to the retry loop, which
+	// is not what moved here.
+	moving, ok := told.find(PhaseSwitching)
 	if !ok {
 		t.Fatal("a call that walked three refusing machines told the person nothing")
 	}
-	if !strings.Contains(moving.Detail, " of ") {
-		t.Fatalf("the phase read %q, want an ordinal a person can count in", moving.Detail)
+	if moving.Then == "" {
+		t.Fatalf("the phase named no machine to switch to: %+v", moving)
 	}
 	for _, news := range told.all() {
 		for _, machinery := range []string{"429", "404", "API error", "No allowed providers"} {

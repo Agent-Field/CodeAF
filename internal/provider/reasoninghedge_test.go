@@ -158,7 +158,7 @@ func TestAThinkingStallStillObeysTheBudget(t *testing.T) {
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 2, 250)
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 
 	report := &HedgeReport{}
 	ctx := WithHedgeReport(talking(), report)

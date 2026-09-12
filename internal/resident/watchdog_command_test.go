@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -98,10 +99,39 @@ func TestAStalledCommandStrikesAndTheQueueBehindItProceeds(t *testing.T) {
 	if receipt.Body != stalledReceipt {
 		t.Fatalf("stall receipt = %q, want %q", receipt.Body, stalledReceipt)
 	}
-	for _, line := range []string{"the model stopped answering twice", "try again"} {
+	// THE RECEIPT NAMES THE CAUSE (issue #927): a command that died of time is a
+	// model that was still thinking, and "stopped answering" was the one account
+	// of that event which was false.
+	for _, line := range []string{"the model thought past its time twice", "try again"} {
 		if !strings.Contains(receipt.Body, line) {
 			t.Errorf("stall receipt does not say %q: %q", line, receipt.Body)
 		}
+	}
+	if strings.Contains(receipt.Body, "stopped answering") {
+		t.Errorf("stall receipt still blames a silence that never happened: %q", receipt.Body)
+	}
+}
+
+// TestTheCommandRailAdmitsTheHonestCommandThatStruckIt is the command wall's
+// figure checked against the run that proved the old one wrong (issue #927).
+//
+// Its first command, from the run's own call log: a compile of 225 seconds, a
+// grounding pass that thought to the four-minute call wall — which now ends in
+// one ask for the answer that thought reached, under a wall of its own — the
+// longest of its spine samples at 165 seconds, and a fan-out still running when
+// ten minutes struck. Nothing in that command was dishonest, and the rail has to
+// admit it with the rest of the splice still to come.
+func TestTheCommandRailAdmitsTheHonestCommandThatStruckIt(t *testing.T) {
+	measured := 225*time.Second + pool.LongestCall + 165*time.Second
+	if measured <= 10*time.Minute {
+		t.Fatalf("the measured command is %s, inside the old ten-minute rail; this test no longer describes #927", measured)
+	}
+	if commandWall <= measured {
+		t.Fatalf("the command rail is %s and #927's honest command had spent %s before its fan-out answered", commandWall, measured)
+	}
+	if commandWall != spliceRounds*pool.LongestCall {
+		t.Fatalf("the command rail is %s, want %d rounds of the longest walled call (%s) — it is counted in calls",
+			commandWall, spliceRounds, pool.LongestCall)
 	}
 }
 

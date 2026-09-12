@@ -534,7 +534,7 @@ func rawSetupFrame(a *app) string {
 // every line. Cutting the panel out first is what makes "the panel says X" a
 // question with an answer.
 func showcasePanel(a *app) []string {
-	box := showBoxOf(a.pal)
+	box := framePiecesOf(a.pal)
 	rows := strings.Split(rawSetupFrame(a), "\n")
 	top, left := -1, -1
 	for i, row := range rows {
@@ -542,7 +542,7 @@ func showcasePanel(a *app) []string {
 		if at < 0 {
 			continue
 		}
-		top, left = i, strings.LastIndex(row[:at], box.tl)
+		top, left = i, strings.LastIndex(row[:at], box.tl+box.edge)
 		break
 	}
 	if top < 0 || left < 0 {
@@ -566,7 +566,7 @@ func showcasePanel(a *app) []string {
 	out := []string{cut(rows[top])}
 	for _, row := range rows[top+1:] {
 		edge := cut(row)
-		if !strings.HasPrefix(edge, box.v) && !strings.HasPrefix(edge, box.bl) {
+		if !strings.HasPrefix(edge, box.side) && !strings.HasPrefix(edge, box.bl) {
 			break
 		}
 		out = append(out, edge)
@@ -580,7 +580,7 @@ func showcasePanel(a *app) []string {
 // panelWords is the panel as one line of words, which is how a sentence that
 // wrapped inside a thirty-two-cell box is asserted.
 func panelWords(a *app) string {
-	box := showBoxOf(a.pal)
+	box := framePiecesOf(a.pal)
 	rows := showcasePanel(a)
 	said := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -590,7 +590,7 @@ func panelWords(a *app) string {
 		if len(runes) < 2 {
 			continue
 		}
-		said = append(said, strings.Trim(string(runes[1:len(runes)-1]), box.h))
+		said = append(said, strings.Trim(string(runes[1:len(runes)-1]), box.edge))
 	}
 	return strings.Join(strings.Fields(strings.Join(said, " ")), " ")
 }
@@ -654,17 +654,17 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 
 // THE PANEL IS FRAMED, AND THE FRAME IS THE POINT.
 //
-// The right-hand side is the one bordered thing on this surface, and it is
-// bordered so it cannot be read as a second column of the form. So the border is
-// asserted: all four corners, on every row of the panel, at the width the design
-// gives it — and the terminal that cannot be trusted with box drawing gets the
-// three characters every terminal can draw instead.
+// The right-hand side is framed so it cannot be read as a second column of the
+// form — by the one frame (frame.go) every framed thing on this surface wears. So
+// the frame is asserted: all four corners, on every row of the panel, at the
+// width the design gives it — and the terminal that cannot be trusted with box
+// drawing gets the frame's own ASCII run instead, two plain rules and no sides.
 func TestTheExamplePanelIsFramedAndFallsBackToAscii(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		a, _ := controlsApp(t, nil)
 		a.pal = newPalette(tokens.ANSI256, ascii)
 		a.settleSetupDemo()
-		box := showBoxOf(a.pal)
+		box := framePiecesOf(a.pal)
 		panel := showcasePanel(a)
 		if len(panel) < 8 {
 			t.Fatalf("ascii=%v: no panel on the frame:\n%s", ascii, rawSetupFrame(a))
@@ -677,7 +677,7 @@ func TestTheExamplePanelIsFramedAndFallsBackToAscii(t *testing.T) {
 			t.Fatalf("ascii=%v: the panel has no bottom edge: %q", ascii, foot)
 		}
 		for _, row := range panel[1 : len(panel)-1] {
-			if !strings.HasPrefix(row, box.v) || !strings.HasSuffix(row, box.v) {
+			if !strings.HasPrefix(row, box.side) || !strings.HasSuffix(row, box.side) {
 				t.Fatalf("ascii=%v: the panel leaks out of its frame: %q", ascii, row)
 			}
 		}

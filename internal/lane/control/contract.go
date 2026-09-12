@@ -263,10 +263,25 @@ type Alternative struct {
 
 // Purse is the spend rail the controller asks before it acts.
 //
-// It is an interface rather than a figure because the answer depends on what
-// has been spent in the last hour, which is not this package's business to
-// know. A purse that refuses is FINAL for that moment: the controller records
-// the refusal and does not poll it.
+// It is an interface rather than a figure because what a call may spend is
+// assembled where a call's role and its prices are both known, which is not this
+// package's business. A purse that refuses is FINAL for that moment: the
+// controller records the refusal and does not poll it.
+//
+// ── IT IS THIS CALL'S OWN BUDGET AND NEVER A WINDOW'S ───────────────────────
+//
+// It was a rolling process-wide allowance until 2026-09-11 — two rescues in any
+// twenty requests and a tenth of the last hour's bill — and that shape is the
+// measured defect. A count per window cannot tell the request that needs a
+// rescue from the nineteen that do not, so it refuses by arrival order: on the
+// owner's task that day the hazard said act at its ceiling, the allowance said
+// no, and one machine wrote 604 tokens in 86 seconds with a person watching.
+// What a rescue costs is a fact about THIS call — the prompt at this model's
+// price plus what the second arm may write, which [Alternative.Extra] already
+// carries — and what it may cost is a fact about [Plan.SpendUSD]. HOW MANY ARMS
+// ONE QUESTION MAY HAVE AT ONCE IS A DIFFERENT QUESTION AND IT HAS ITS OWN
+// ANSWER (internal/provider's maxArms); a purse that also counted them would be
+// two mechanisms for one shape.
 type Purse interface {
 	Allows(usd float64, now time.Time) bool
 }
@@ -302,9 +317,37 @@ type Plan struct {
 	// [TurnGiveUp]). A zero moment is NO deadline, which is the honest reading
 	// for a plan somebody built by hand and the reason [Plan.Spent] asks.
 	Deadline time.Time
-	// SpendUSD is what this whole call may cost, zero being unbounded. It is
-	// the second half of one budget: the purse below bounds one ACT, and this
-	// bounds the call that keeps taking them.
+	// SpendUSD is what this call may spend on RESCUING ITSELF, zero being
+	// unbounded. It is the second half of one budget: the deadline above bounds
+	// how long, and this bounds how much.
+	//
+	// IT IS DERIVED AND IT IS NOT A KNOB. The money a call may spend buying its
+	// wait back is what that wait is worth to whoever is waiting through it, and
+	// that is two factors: how long it may still be, and what one second of it is
+	// worth to them.
+	//
+	//	SpendUSD = GiveUp × (λ / AttentionValue) / AttentionValue
+	//
+	// [Plan.Lambda] is SECONDS PER DOLLAR — a dollar buys `AttentionValue`
+	// seconds of somebody's attention back — so the rate at the top of the scale
+	// is `1 / AttentionValue` dollars a second, and `λ / AttentionValue` is how
+	// much less this role's seconds are worth than that. A wait nobody is sitting
+	// through is worth a quarter of one somebody is, which is what
+	// `lane.UnattendedValue` says and all this reads off it.
+	//
+	// AND THE DISCOUNT MUST BE A MULTIPLIER, WHICH IS THE BUG IT WAS SHIPPED
+	// WITH. `GiveUp / λ` reads the same ratio upside down: the smaller λ of an
+	// unwatched call makes its seconds four times DEARER, so a conversation a
+	// person was reading got $1.00 to rescue itself and a background task node
+	// got $12.00 — the one rail in front of a rescue sized in the opposite order
+	// to who is waiting. `lane.spendable` carries the derivation and
+	// `lane.worth` is the arithmetic; the law that no watched second may be worth
+	// less than an unwatched one is beside them.
+	//
+	// Nothing else in this build states a per-call dollar ceiling, and a figure
+	// invented here would be a number nobody measured deciding what somebody's
+	// time is worth. A plan built by hand carries zero, which is unbounded — the
+	// honest reading for a plan nobody priced.
 	SpendUSD float64
 	// Moves is what this question has already tried, shared by every arm of it.
 	// A nil log is empty and decides nothing.
@@ -330,6 +373,28 @@ type Plan struct {
 	// never climb. It is set by the one caller that holds such a refusal's own
 	// body (internal/provider's dispatch.go, [Client.recoverFromRefusal]).
 	ShapeRefused bool
+	// AccountRefused says the last refusal was about the ACCOUNT and not about
+	// the machine that relayed it: a router with a pool behind this model asked
+	// the whole key to slow down and named no pool while doing it. Every machine
+	// it could have picked is behind the same ceiling.
+	//
+	// IT IS [Plan.ShapeRefused]'S SIBLING AND THE SAME KIND OF FACT: something
+	// [Next] cannot see for itself, because the serving set of such a request is
+	// usually OPEN — nobody named a pool — and an open set has another machine in
+	// it forever ([Plan.serving]). That rule is sound only because each body
+	// carries a longer exclusion list than the last, and an account ceiling is
+	// exactly the refusal that gives the list nothing to grow by. Without this
+	// field the generator answered it with a machine move every time and the
+	// dispatcher sent the identical bytes again behind a doubling wait, for as
+	// long as the deadline lasted — ninety seconds of `waiting` on 2026-09-11
+	// with nothing whatever changing between the sends.
+	//
+	// A BASE WITH NO POOL BEHIND IT IS NOT THIS. An endpoint that paces us and
+	// has one machine is saying "come back later" and repeating really is all
+	// there is; what makes a pace an ACCOUNT'S is that a set exists and the
+	// refusal named none of it. The one caller that holds the refusal decides
+	// both halves (internal/provider's dispatch.go).
+	AccountRefused bool
 	// Role is who the call is being made for, spelled as `lane.Role` spells it.
 	// It is carried rather than looked up so the dispatcher, the hazard and the
 	// row all read the same word.
@@ -367,6 +432,13 @@ type Plan struct {
 	Alts []Alternative
 	// Pinned says a person named this lane themselves. It changes the ACT and
 	// never the arithmetic: where an unpinned call hedges, a pinned one asks.
+	//
+	// IT IS NOT "THE REQUEST NAMED MACHINES". Nearly every request names
+	// machines — the chooser demands the set it admitted — and a set this
+	// process admitted is this process's to leave the moment it stops working.
+	// Only a person's own word turns a rescue into a question, which is why
+	// what fills this is carried from the one place that knows one was spoken
+	// (`internal/lane`'s Choice.Pinned) and never counted off a list of names.
 	Pinned bool
 	// Purse is the spend rail, nil when nothing bounds it.
 	Purse Purse

@@ -285,9 +285,9 @@ func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
 	asks, stop := agent.WatchQuestions()
 	t.Cleanup(stop)
 
-	question := Question{ID: 1, Kind: QuestionAsk, Asker: Asker{Kind: AskerModel}, Head: "Which painting genres do you like?"}
+	question := Question{ID: 1, Kind: QuestionAsk, Ask: AskChoice, Asker: Asker{Kind: AskerModel}, Head: "Which painting genres do you like?"}
 	agent.mu.Lock()
-	agent.asked.parkLocked(question.ID)
+	agent.asked.parkLocked(&askOpen{q: question})
 	agent.mu.Unlock()
 	forget := agent.rememberQuestion(question)
 

@@ -39,6 +39,20 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	if name == "" {
 		return
 	}
+	if stage, known := stagedDemos[name]; known {
+		// A FIXTURE THAT NEEDS SOMETHING IN THE TRANSCRIPT STAGES IT FIRST. A
+		// permission is ABOUT a call, and the panel reads the call's own row
+		// rather than repeating it (questionpanel.go's law: two renderings of one
+		// command is how a person approves something other than what they read),
+		// so a fixture that skipped the row would be a picture of the panel's
+		// fallback rather than of the panel.
+		a.raiseQuestion(questionShown{question: stage(a)})
+		_ = a.questionRows(a.width)
+		for i := range a.questions {
+			a.questions[i].shown = a.questions[i].shown.Add(-questionSettle)
+		}
+		return
+	}
 	if build, known := blockDemos[name]; known {
 		// AND THE BLOCK'S OWN FIXTURES, on the same terms and for the same
 		// reason. The five lanes that moved onto it in the questions wave — the
@@ -62,7 +76,8 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	if !known {
 		return
 	}
-	a.raiseQuestionRoom(questionShown{question: build(), shown: a.now()})
+	q := build()
+	a.raiseQuestionRoom(questionShown{question: q, shown: a.now(), pick: questionPointerStart(q)})
 	// THE SETTLE GUARD IS SPENT BEFORE THE FIRST FRAME on a fixture, and only on
 	// a fixture. It exists to protect a person from a page that appeared under a
 	// hand already moving; a page raised by the launch itself appeared under
@@ -244,11 +259,17 @@ func demoQuestionLayout() session.Question {
 // OWN BUILDERS wherever there is one, so a fixture cannot drift from the thing
 // it is a picture of.
 var blockDemos = map[string]func() session.Question{
-	"standing":      demoStandingCard,
-	"harness-offer": demoHarnessOffer,
-	"design":        demoHarnessDesign,
-	"connect":       demoConnectOffer,
-	"connect-key":   demoConnectKey,
+	// THE EVIDENCE ON THE PANEL (lane R): the page's own worked example and its
+	// layout case, raised onto the block instead of the page, so the list with
+	// the evidence beside it — and, narrower, unfolded under the pointer — can be
+	// seen without a model.
+	"evidence":        demoQuestionReading,
+	"evidence-layout": demoQuestionLayout,
+	"standing":        demoStandingCard,
+	"harness-offer":   demoHarnessOffer,
+	"design":          demoHarnessDesign,
+	"connect":         demoConnectOffer,
+	"connect-key":     demoConnectKey,
 }
 
 // demoStandingCard is the reminder a turn proposed: a choice with four answers
@@ -305,4 +326,85 @@ func demoConnectOffer() session.Question {
 // no yes to press, a way out, and the box under it collecting the key.
 func demoConnectKey() session.Question {
 	return session.ConnectQuestion("demo-notion", "Notion", true, "paste your Notion key", true)
+}
+
+// ── the three the surface raises about something already on screen ──────────
+
+// stagedDemos are the fixtures that need a row in the transcript before the
+// question means anything. They are given the app rather than returning a bare
+// question, because what a permission is ABOUT is a call that is already drawn.
+var stagedDemos = map[string]func(*app) session.Question{
+	"permission":   demoPermission,
+	"irreversible": demoIrreversible,
+	"weighed":      demoWeighed,
+}
+
+// demoPermission is the ordinary gate: a command a person has to read, the tool
+// that wants it named in the frame's top edge as an aside, and the three answers
+// this engine offers for one.
+func demoPermission(a *app) session.Question {
+	return a.demoConsent("bash", "rm -rf build/", session.StakesCostly,
+		[]session.AnswerScope{session.ScopeOnce, session.ScopeProject, session.ScopeAlways})
+}
+
+// demoIrreversible is the same gate over a call that cannot be taken back: the
+// pointer opens on the answer that loses nothing, there is no clock, and
+// `always` is not offered at all.
+func demoIrreversible(a *app) session.Question {
+	q := a.demoConsent("bash", "git push --force origin main", session.StakesIrreversible,
+		[]session.AnswerScope{session.ScopeOnce})
+	// The widening answer goes with the scope that offered it, which is the
+	// engine's own narrowing where the memo would do nothing (consent.go).
+	kept := q.Options[:0:0]
+	for _, option := range q.Options {
+		if option.Widening {
+			continue
+		}
+		kept = append(kept, option)
+	}
+	q.Options = kept
+	return q
+}
+
+// demoConsent is the shape both gates share, built from the engine's own
+// answers for this kind so a fixture cannot drift from the thing it pictures.
+func (a *app) demoConsent(tool, command string, stakes session.Stakes, scope []session.AnswerScope) session.Question {
+	call := "demo-call-" + tool
+	a.entries = append(a.entries, entry{
+		kind: entryTool, tool: tool, text: tool + " " + command, turn: a.turn,
+		status: toolConsent, stale: true, callID: call,
+	})
+	return session.Question{
+		ID: 7, Kind: session.QuestionConsent, Ask: session.AskPermission,
+		Form: session.FormLine, Asker: session.Asker{Kind: session.AskerEngine},
+		Head:     "run a command in your project",
+		Reason:   "this shape of command is not on the allow list",
+		Subject:  session.SubjectRef{Kind: session.SubjectCall, CallID: call, Name: tool},
+		Options:  session.AnswerOptions(session.QuestionConsent),
+		Stakes:   stakes,
+		Blocking: session.Blocking{Turn: true},
+		Scope:    scope,
+	}
+}
+
+// demoWeighed is the ordinary panel: a choice whose answers carry what each one
+// costs, with a pick, its reason, its confidence and what would change its mind.
+// It is the drawing most questions in this program get, and it had no fixture.
+func demoWeighed(*app) session.Question {
+	return session.Question{
+		ID: 8, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   "which store should the session index sit on?",
+		Reason: "a schema change is next and it is cheaper before there are rows",
+		Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "SQLite", Consequence: "one file beside the conversation · already a dependency"},
+			{Key: "2", Label: "JSONL", Consequence: "append-only · nothing new to build against"},
+			{Key: "3", Label: "BoltDB", Consequence: "fastest reads · one more dependency to carry"},
+		},
+		Pick: &session.Pick{
+			Key: "1", Reason: "it survives a crash mid-write and the rest do not",
+			Confidence: session.ConfidenceFairly, WouldChange: "the index ever has to be read from another machine",
+		},
+	}
 }

@@ -33,9 +33,12 @@ import (
 //     alternative. A call with nowhere to go still has a ceiling, still reports
 //     and still writes down what it did.
 //  2. MANY ARMS, ONE PURSE. A question may become more than two requests. What
-//     bounds it is money — [lanes.Budget], asked before every arm — and
-//     [maxArms] as the absolute cap on one question, never a boolean that says
-//     a rescue has already been spent.
+//     bounds it is money — THIS CALL'S OWN ([control.Plan.SpendUSD], asked
+//     through [hedgeRace.affordsLocked] before every arm) — and [maxArms] as the
+//     absolute cap on one question, never a boolean that says a rescue has
+//     already been spent. It was a rolling process-wide allowance until
+//     2026-09-11 and that is the shape the purse must never take again: a count
+//     spread over twenty requests refuses by arrival order.
 //  3. THE PERSON HEARS ONE VOICE. Every arm streams, and one of them is ever
 //     the SPEAKER. The others' deltas are held, and are replayed only if one of
 //     them wins — after a plain notice, because text that was on the screen and
@@ -168,7 +171,6 @@ type hedgeRace struct {
 	observer StreamObserver
 	report   *HedgeReport
 	phase    *phaseClock
-	budget   *lanes.Budget
 	base     context.Context
 	messages []ai.Message
 	options  []ai.Option
@@ -272,7 +274,6 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		observer: observer,
 		report:   HedgeReportFrom(ctx),
 		phase:    phaseClockFrom(ctx),
-		budget:   currentHedgeBudget(),
 		speaker:  0,
 		winner:   -1,
 		held:     map[int][]StreamEvent{},
@@ -469,9 +470,6 @@ func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Re
 // than the race actually spent.
 func (r *hedgeRace) accountForTheAbandoned(seen map[int]armResult) {
 	r.drainArms(seen)
-	now := waitNow()
-	r.budget.NoteRequest(now)
-	r.budget.NoteSpend(r.spent(seen), now)
 }
 
 // drainArms collects what the arms report as they stop, for at most
@@ -516,7 +514,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, control: r.build(plan), began: now}
+	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now}
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)
@@ -670,10 +668,16 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		if r.rescueOnStall(from, act) {
 			return
 		}
+		// AND A REPORT IS STILL A MOVE. Nothing could be started for this
+		// question; the next one need not meet the same machine.
+		r.exhaust(from, act)
 		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
 		// start. Saying nothing here is the 90s hang: the stream guard is
-		// the next thing that acts, and `/model` is never named.
+		// the next thing that acts, and `/model` is never named. The door is
+		// the NOTICE; the phase is [hedgeRace.theWait]'s either way, because a
+		// person reads the last word said and not the first.
 		if r.tellFirstPrompt("", quietWords(act.Silence), false) {
+			r.theWait(act)
 			return
 		}
 		r.tellTheWait(act)
@@ -688,8 +692,123 @@ func (r *hedgeRace) act(from int, act control.Act) {
 	}
 }
 
-// hedge is another arm: budgeted, to a machine nobody has asked yet, and never
-// past [maxArms].
+// exhaust is the move a live wire below the pace still has when no second
+// request can be started, and the sentence that goes with it.
+//
+// ── A REPORT USED TO BE THE END OF THE STORY, AND IT IS NOT ─────────────────
+//
+// [control.Report] means "nothing can be started about this wait". Until
+// 2026-09-11 that is all it did: the row said `action report`, and the question
+// went on being answered by the machine that had earned the report, at the pace
+// that earned it. The measured case is one endpoint writing 604 tokens in 86
+// seconds with a person watching a single nudge and nothing else.
+//
+// Two things are still true when nothing can be started, and this is both of
+// them.
+//
+// THE MACHINE IS SPENT FOR THIS QUESTION. [control.Next] is the one move
+// generator and it never hands back a machine already on the plan's move log, so
+// writing the SERVING machine down there is the whole of "no arm and no attempt
+// of this question goes back to it" — the same law and the same list a refusal
+// already writes into (dispatch.go), asked of a machine that answered instead of
+// one that refused. It is asked of [control.Next] rather than decided here: a
+// question with nowhere else to go gets [control.MoveNone] and nothing is
+// written, because taking away the only machine there is would be worse than the
+// pace.
+//
+// THE PERSON IS TOLD SOMEWHERE ELSE. [PhaseBelowPace] is the word for a stream
+// writing too slowly to read, and it is [hedgeRace.theWait]'s to say: this
+// function used to say it too and was then overwritten one statement later by
+// the phase [hedgeRace.tellTheWait] sets, so the person read the wrong sentence.
+// One mechanism per shape — the move is this function's, the word is not.
+func (r *hedgeRace) exhaust(from int, act control.Act) {
+	if r == nil || act.Reason != control.RateReason {
+		return
+	}
+	served := r.armServed(from)
+	if served == "" {
+		return
+	}
+	if move := control.Next(r.plan, r.plan.Moves.List()); move.Kind == control.MoveMachine {
+		r.claimMove(served)
+	}
+}
+
+// armServed is the machine one arm's stream said was answering it, empty while
+// nothing has named one — the attribution law, kept here as everywhere else.
+func (r *hedgeRace) armServed(index int) string {
+	r.mu.Lock()
+	arm := r.armAt(index)
+	r.mu.Unlock()
+	if arm == nil {
+		return ""
+	}
+	return arm.watch.lane()
+}
+
+// planCannotPay is what a row says when the one thing that stopped a rescue was
+// the CALL'S OWN BUDGET: what this question may spend buying its wait back,
+// which is its patience converted through λ ([control.Plan.SpendUSD]).
+//
+// IT REPLACED THE WORD `budget`, WHICH NAMED THE WRONG THING. That word meant a
+// rolling process-wide allowance — two rescues in any twenty requests — so a row
+// carrying it said "some other request spent this one's rescue", which is a fact
+// about arrival order and not about this call at all. There is no such
+// allowance any more (internal/lane's hedge.go), and a refusal that reaches a
+// row now names the only rail there is.
+const planCannotPay = "plan cannot pay"
+
+// affords reports whether this call's own budget can pay for one more arm on
+// this machine.
+//
+// IT IS THE ONE DOOR, asked by the controller's hedge, by the stall rescue, by
+// the walk past a refusal and by the surface before it draws a countdown over a
+// rescue — because a promise the rail was always going to refuse is the surface
+// lying about the machinery ([hedgeRace.affordableAlt]). It ASKS AND DOES NOT
+// SPEND ([lane.Spending]), so asking it twice over one silence costs nothing and
+// no question is charged for an arm it never started.
+func (r *hedgeRace) affords(alt string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.affordsLocked(alt)
+}
+
+// affordsLocked is the same reading for a caller already holding the lock. A
+// plan with no purse is UNBOUNDED and not empty: nobody priced it, which is the
+// state of every plan a test or a bench builds by hand.
+func (r *hedgeRace) affordsLocked(alt string) bool {
+	if r.plan.Purse == nil {
+		return true
+	}
+	return r.plan.Purse.Allows(r.altPrice(alt), waitNow())
+}
+
+// altPrice is what THE PLAN says one more arm on this machine adds to the bill.
+//
+// IT IS THE NUMBER THE CONTROLLER ASKS THE PURSE WITH, and that is the whole
+// reason it is read off the plan rather than worked out again here.
+// [control.Alternative.Extra] is priced once, where the plan is built
+// (internal/lane's watch.go), from the frontier entry this race would send to;
+// [hazard.reachable] asks the purse with it before it decides whether there is a
+// move, and [hedgeRace.affordsLocked] asks the purse with it before the arm
+// leaves. One rail, one price, two readers — and two estimates for one bound is
+// how a rail and the decision in front of it come to disagree about what this
+// question can afford, which is the shape the deleted allowance had.
+//
+// A MACHINE THE PLAN NEVER NAMED HAS NO PRICE ON IT, and the frontier's own
+// estimate is the honest answer there rather than a refusal: that is the walk
+// past a refusal, which sends somewhere the controller was never offered.
+func (r *hedgeRace) altPrice(alt string) float64 {
+	for _, candidate := range r.plan.Alts {
+		if equalLane(candidate.Lane, alt) {
+			return candidate.Extra
+		}
+	}
+	return r.estimateLocked(alt, r.expected)
+}
+
+// hedge is another arm: paid for out of the call's own budget, to a machine
+// nobody has asked yet, and never past [maxArms].
 func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	var why string
 	wanted := alt
@@ -699,13 +818,13 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 		r.recordHedge(wanted, why, false)
 		return
 	}
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		r.mu.Lock()
 		r.refused = true
-		r.rememberRefusalLocked("budget")
+		r.rememberRefusalLocked(planCannotPay)
 		r.releaseMove(alt)
 		r.mu.Unlock()
-		r.recordHedge(alt, "budget", false)
+		r.recordHedge(alt, planCannotPay, false)
 		return
 	}
 	r.mu.Lock()
@@ -762,11 +881,11 @@ func (r *hedgeRace) recordHedge(alt, reason string, fired bool) {
 // rescueOnStall starts the second arm a stall is owed, without waiting for
 // the primary to die.
 //
-// THE PURSE STILL GATES THIS. A wait at the ceiling is the role's bound, but
-// answering it with another request is spending and follows the same law as
-// every other hedge. claim is asked `past` so an earlier refusal may be
-// reconsidered if the rolling budget has since opened; [lanes.Budget.Allow]
-// makes the decision again at the moment the rescue would start.
+// THE CALL'S OWN BUDGET STILL GATES THIS. A wait at the ceiling is the role's
+// bound, but answering it with another request is spending and follows the same
+// law as every other hedge. claim is asked `past` so an earlier refusal may be
+// reconsidered — a machine that has sat past the ceiling without dying must not
+// go unanswered because a slowness hedge was refused a moment earlier.
 func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	if r == nil || r.base == nil || r.base.Err() != nil {
 		return false
@@ -776,10 +895,10 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 		r.rememberRefusal(why)
 		return false
 	}
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		r.mu.Lock()
 		r.refused = true
-		r.rememberRefusalLocked("budget")
+		r.rememberRefusalLocked(planCannotPay)
 		r.releaseMove(alt)
 		r.mu.Unlock()
 		return false
@@ -844,9 +963,13 @@ func (r *hedgeRace) tellFirstPrompt(alt, quiet string, rescuing bool) bool {
 		if strings.TrimSpace(alt) == "" {
 			r.phase.switching("/model", quiet)
 		}
-	} else {
-		r.phase.allSlow("")
 	}
+	// AND IT DOES NOT SAY THE WAIT'S OWN WORD. It used to set [PhaseAllSlow]
+	// here on the non-rescuing branch, which is the same word
+	// [hedgeRace.theWait] is about to choose and, whenever the wait was a live
+	// wire below its pace, the WRONG one — said second, so it is the one left on
+	// the screen. One decision, one place: this function owes the notice and the
+	// `/model` door, and the phase belongs to whoever knows why the wait exists.
 	if r.observer != nil {
 		r.observer(StreamEvent{Kind: StreamNotice, Delta: notice, Session: session})
 	}
@@ -889,7 +1012,7 @@ func (r *hedgeRace) claim(preferred string, past bool) (lane, why string) {
 	// caller stops at a refusal, which is what keeps one refusal from
 	// becoming a poll.
 	if r.refused && !past {
-		return "", "budget"
+		return "", planCannotPay
 	}
 	// AND THE RESERVATION IS A MOVE ON THE PLAN. [control.MoveLog.Add] answers
 	// false for a machine this question has already taken, so the claim and the
@@ -1051,14 +1174,45 @@ func (r *hedgeRace) tellTheWait(act control.Act) {
 	already := r.reported
 	r.reported = true
 	r.mu.Unlock()
-	if already {
+	// THE ROW IS WRITTEN ONCE AND THE WORD IS NOT. What may not be repeated is
+	// the finish row's account of the FIRST thing that acted on this question —
+	// a second report overwriting it would lose the one the person waited
+	// through. The sentence on the screen is the opposite: it describes the wait
+	// that is happening NOW, so a wait whose character changes owes a new word.
+	// Behind the latch it was neither said again nor said at all, which is how a
+	// rate report that arrived after any earlier report left the person reading
+	// whatever the earlier one had said.
+	if !already {
+		r.report.note(func(report *HedgeReport) {
+			if report.action == "" {
+				report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
+			}
+		})
+	}
+	r.theWait(act)
+}
+
+// theWait is THE ONE PLACE THAT CHOOSES THE WORD for a wait nothing can be done
+// about, and there are two of them because there are two waits.
+//
+// A person reads the LAST thing said, not every thing said. Until 2026-09-11
+// this decision was made twice on one path — [hedgeRace.exhaust] said
+// [PhaseBelowPace] and then [hedgeRace.tellFirstPrompt] or [hedgeRace.tellTheWait]
+// said [PhaseAllSlow] over the top of it a statement later — so the sentence
+// left on the screen was `all lanes slow · still waiting` for a stream that was
+// visibly writing. That is the sentence [PhaseBelowPace] exists to replace, and
+// a test that scans every phase ever emitted cannot tell the two apart.
+//
+// THE REASON PICKS IT, because the reason is the difference. A rate report is a
+// wire that IS answering and answering too slowly to read, and there is text on
+// the screen to prove it; everything else that reaches here — a drift report, an
+// escalate, a silence with no lane left — is a wait with nothing arriving, which
+// is what `all lanes slow · still waiting` describes.
+func (r *hedgeRace) theWait(act control.Act) {
+	if act.Kind == control.Report && act.Reason == control.RateReason {
+		r.phase.belowPace("")
 		return
 	}
-	r.report.note(func(report *HedgeReport) {
-		if report.action == "" {
-			report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
-		}
-	})
 	r.phase.allSlow(r.waitWords(act))
 }
 
@@ -1111,7 +1265,7 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 	if alt == "" || refused || full {
 		return "", false
 	}
-	return alt, r.budget.Affordable(waitNow(), r.estimate(alt, r.expected))
+	return alt, r.affords(alt)
 }
 
 // walk is the second rung: the rescue we sent was refused or broke, nobody has
@@ -1122,7 +1276,8 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 // by the controller; this is a response to a lane that has FAILED, and the
 // request it replaces is already gone. That is why it is not gated by the
 // purse's earlier refusal — one refusal must not spend the rescue a slow lane
-// is still owed — and why it is gated by the budget and by [maxArms] instead.
+// is still owed — and why it is gated by the call's own budget and by [maxArms]
+// instead.
 //
 // THE PRIMARY IS NEVER WALKED FROM. An arm that is still streaming has not
 // failed, and the controller is the only thing allowed to give up on it.
@@ -1158,7 +1313,7 @@ func (r *hedgeRace) walk(from int, cause error) {
 	r.mu.Lock()
 	index := len(r.arms)
 	r.mu.Unlock()
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		return
 	}
 	r.report.started(refusal.news(alt))
@@ -1414,9 +1569,12 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 //
 // IT READS THE SAME LANE THE WALK WILL CLAIM. A name in the frontier is not a
 // walk when the wire has since struck that lane, the arm cap is full, or the
-// purse will refuse its estimated cost. Affordable is only a reading here;
-// [hedgeRace.walk] still reserves the spend through [lanes.Budget.Allow] at the
-// moment it starts the arm.
+// purse will refuse its price. IT IS ONLY A READING, AND NOTHING RESERVES
+// ANYTHING. The purse asks and never spends ([lane.Spending]), so this reading
+// and the one [hedgeRace.walk] takes when it really starts the arm are the same
+// question asked twice at no cost — which is the single property the whole rail
+// now rests on, and the reason no question is ever charged for an arm it did
+// not send.
 //
 // THE WALK DELIBERATELY IGNORES r.refused. A refusal to fund a hedge against
 // slowness does not deny the rescue owed after a lane actually fails, which is
@@ -1432,7 +1590,7 @@ func (r *hedgeRace) walkAvailable() bool {
 		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
-		return r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected))
+		return r.affordsLocked(lane)
 	}
 	return false
 }
@@ -1501,7 +1659,7 @@ func (r *hedgeRace) takeRefusal(body []byte) bool {
 		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
-		if !r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected)) {
+		if !r.affordsLocked(lane) {
 			return false
 		}
 		r.ladderOwed = true
@@ -1674,7 +1832,6 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 	r.withdraw()
 	r.mu.Lock()
 	arms := append([]*hedgeArm(nil), r.arms...)
-	hedged := len(arms) > 1
 	model := r.model
 	r.mu.Unlock()
 	// The model as the ANSWER spelled it, because a router may pin a variant
@@ -1717,16 +1874,15 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 			lanes.Default().Ledger().Note(sighting)
 		}
 	}
-	// The two denominators of the budget: every dollar this adapter is seen to
-	// spend, and every request it is seen to make. Both are noted on every
-	// watched call, hedged or not — the rate limit is counted in REQUESTS rather
-	// than in minutes, so a request that never reports leaves the allowance
-	// looking emptier than it is.
-	now := waitNow()
-	r.budget.NoteRequest(now)
-	r.budget.NoteSpend(r.spent(seen), now)
+	// AND NOTHING IS BILLED TO A WINDOW. There were two rolling denominators here
+	// — every dollar this adapter was seen to spend and every request it was seen
+	// to make — and both belonged to a process-wide allowance that no longer
+	// exists (internal/lane's hedge.go). What a call may spend is its own budget,
+	// asked before an arm goes out and never tallied afterwards, so the only money
+	// this loop still adds up is what the ROW says: the waste, which is a figure a
+	// person reads and not a rail anything is decided on.
 	winner, loser, primary := "", "", ""
-	var waste, second float64
+	var waste float64
 	for _, arm := range arms {
 		if arm.index == result.index {
 			winner = laneOf(arm)
@@ -1743,16 +1899,6 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 		if arm.index == 0 {
 			primary = laneOf(arm)
 		}
-		if arm.index > 0 {
-			// EVERY RESCUE IS CHARGED, not only the first one. The walk can put
-			// a third and a fourth request on the wire, and a budget that only
-			// ever saw the second would let a walk spend the session's whole
-			// share while believing it had spent one arm's.
-			second += r.armCost(seen, arm)
-		}
-	}
-	if hedged {
-		r.budget.NoteHedge(second, now)
 	}
 	r.report.note(func(report *HedgeReport) {
 		report.winner, report.loser, report.primary = winner, loser, primary

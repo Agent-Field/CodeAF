@@ -488,7 +488,7 @@ what the task itself produced.
 
 **Only a round that fails reaches you.** The task then lands as
 **`your call · conflicts with your branch: <the files>`**, its chips read
-`[a] resolve it · [n] drop it · [s] tell it`, and the report names the files that changed
+`a resolve it · n drop it · s tell it`, and the report names the files that changed
 on both sides:
 
 `conflicts with your branch — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
@@ -1982,7 +1982,7 @@ identical either way.
 and every other headless door run with no surface to raise a card on, no settings panel and
 nobody to read a landing that says it is waiting on somebody — so a task that needs a look
 there would stop the run for good, and that was measured stopping a ten-hour run. Such a
-session takes the same road your own `[d] let aforge decide this one` takes: aforge reads the
+session takes the same road your own `d let aforge decide this one` takes: aforge reads the
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
@@ -2100,9 +2100,9 @@ your branch changed the same files while it worked: internal/tui3/home.go
 ```
 
 That is the same question a merge conflict asks — two versions of one file, and only you
-know which survives — so it takes the same two answers: **`[a] resolve it`** brings your
+know which survives — so it takes the same two answers: **`a resolve it`** brings your
 branch into the task's branch, checks the two changes together and lands the work, and
-**`[n] drop it`** keeps the branch and takes nothing. It does **not** read `nobody could
+**`n drop it`** keeps the branch and takes nothing. It does **not** read `nobody could
 check it`: this work was checked, and it held.
 
 **It is never handed to the model**, whatever `task.settle` says, for the reason a conflict
@@ -3037,6 +3037,13 @@ permit-everything policy would still stop and ask about is refused outright:
 argument is on `divide_work`, where each part declares what its own checker may run — and a
 check every part declares is taken off all of them and given once to the task that divided
 them, which is the only one that can honestly make it after its parts are home.
+
+That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
+for you: the row in the conversation reads only `the call was refused`, the task's card
+reads `not started · the call was refused`, and the sentence itself — the field name, the
+quoted command, the repair — stays in the tool's own result, where the model reads it and
+fixes the call, and behind `ctrl+o` on that row for you if you ask. A command that genuinely
+ran and failed is the opposite case, and its row still opens with its own output.
 
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the

@@ -347,7 +347,7 @@ func TestASpentCapStopsBuyingAndReturnsTheWork(t *testing.T) {
 // new journal, the next rung of the fallback chain, and no road back down.
 func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 	agent, node, path := boundaryGateAgent(t, nil)
-	if agent.movesForFailure(node, malformedUpstream("Together"), io.Discard) {
+	if agent.movesForFailure(node, node.runModel(), malformedUpstream("Together"), io.Discard) {
 		t.Fatal("four bad responses moved a whole task onto a dearer model")
 	}
 	// A refusal the ROUTER made on its own account is our own bytes being read
@@ -360,7 +360,7 @@ func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 	// MOVE is unchanged — this is still not the wire, so the node does not stay —
 	// and that is why the assertion below is about the class rather than about
 	// the answer.
-	if !agent.movesForFailure(node, refusalOf(400, "no endpoints found that support tool use", "", ""), io.Discard) {
+	if !agent.movesForFailure(node, node.runModel(), refusalOf(400, "no endpoints found that support tool use", "", ""), io.Discard) {
 		t.Fatal("a request no endpoint will ever serve was held on the same model")
 	}
 	rows := journaledFailures(t, path)

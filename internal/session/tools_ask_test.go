@@ -50,10 +50,7 @@ func TestAskToolRoundTripsTheWholeAnswer(t *testing.T) {
 	if err := a.ResolveQuestion(want); err != nil {
 		t.Fatal(err)
 	}
-	var got Answer
-	if err := json.Unmarshal([]byte(<-done), &got); err != nil {
-		t.Fatal(err)
-	}
+	got := askAnswerRead(t, <-done)
 	if got.Change != want.Change || got.Reframe != want.Reframe || len(got.AskedBack) != 1 || got.Comments["2"] != "portable" {
 		t.Fatalf("answer did not round trip: %+v", got)
 	}
@@ -76,10 +73,7 @@ func TestAssumptionsStandAfterTheClock(t *testing.T) {
 	if err != nil || failed {
 		t.Fatalf("ask failed: %q %v %v", text, failed, err)
 	}
-	var answer Answer
-	if err := json.Unmarshal([]byte(text), &answer); err != nil {
-		t.Fatal(err)
-	}
+	answer := askAnswerRead(t, text)
 	if strings.Join(answer.Picked, ",") != "1,2" || answer.DecidedBy != DecidedByDial {
 		t.Fatalf("assumptions did not stand: %+v", answer)
 	}
@@ -121,14 +115,27 @@ func TestAutonomyPersistsPerProjectAndFillsPolicy(t *testing.T) {
 	}
 }
 
+// THE RECORD REACHES THE MODEL, and answering does not re-price the
+// conversation to put it there. A decision is written to the file the gate
+// reads, and the copy message[0] carries is brought up to date the next time
+// that message is rebuilt for a reason of its own.
 func TestTheRecordRidesInModelContext(t *testing.T) {
 	a := askTestAgent(t, true)
 	a.recordDecision(DecisionRecord{Head: "Which format?", Labels: []string{"json"}, By: DecidedByPerson, At: time.Now()})
 	a.mu.Lock()
+	a.standingText = "\n\nstanding orders\n- ship on Fridays"
+	a.refreshSystemLocked()
 	got := a.messages[0].Content[0].Text
 	a.mu.Unlock()
 	if !strings.Contains(got, "the record\n- Which format? → json") {
 		t.Fatalf("system context has no record: %q", got)
+	}
+	// AND THE GATE READS THE FILE ITSELF, which is what the record is for: it
+	// answers the same question without anybody having rebuilt anything.
+	again := Question{Head: "Which format?", Reason: "it is not settled", Stakes: StakesReversible,
+		Ask: AskChoice, Options: []AnswerOption{{Key: "1", Label: "json"}, {Key: "2", Label: "yaml"}}}
+	if err := again.Check(a.Decisions()); err == nil {
+		t.Fatal("the gate let a settled question through")
 	}
 }
 
@@ -152,9 +159,23 @@ func TestAnExplainedOverrideBecomesAForgettablePreference(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-done
-	memories, err := a.Memories("compact reports")
-	if err != nil || len(memories) == 0 || !strings.Contains(memories[0].Text, "compact reports are easier") {
-		t.Fatalf("preference was not kept: %+v, %v", memories, err)
+	// THE PREFERENCE IS WRITTEN BESIDE THE ANSWER AND NEVER IN FRONT OF IT
+	// (question.go's [Agent.rememberOverride]): the answer's own door returns
+	// the moment the lane has it, and the memory lands a moment later.
+	var memories []MemoryLine
+	var err error
+	deadline = time.After(5 * time.Second)
+	for {
+		memories, err = a.Memories("compact reports")
+		if err == nil && len(memories) > 0 && strings.Contains(memories[0].Text, "compact reports are easier") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("preference was not kept: %+v, %v", memories, err)
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	if _, err := a.Forget("compact reports"); err != nil {
 		t.Fatal(err)

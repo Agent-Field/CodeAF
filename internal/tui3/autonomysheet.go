@@ -13,7 +13,7 @@ package tui3
 //	landing          decide yourself
 //	assumptions      recommend, auto in 10m
 //	already done     ask me
-//	/autonomy <kind> ask · recommend <duration> · decide
+//	/autonomy <kind> ask · recommend [duration] · decide
 //
 // ── WHY IT IS PER PROJECT AND NOT PER PROFILE ──
 //
@@ -38,6 +38,8 @@ package tui3
 // is worse than one that says why.
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"strings"
 	"time"
 
@@ -55,7 +57,7 @@ const (
 	// door. An earlier draft put `· change` on every row, which is a word with
 	// no key behind it — furniture that tells somebody a thing is changeable
 	// without telling them how.
-	autonomyUsageWord = "/autonomy <kind> ask · recommend <duration> · decide"
+	autonomyUsageWord = "/autonomy <kind> ask · recommend [duration] · decide"
 	// autonomyNoProjectWord is the refusal for a conversation with no project to
 	// store rules in. It says what is missing rather than that something failed.
 	autonomyNoProjectWord = "this conversation has no project to keep question rules in"
@@ -85,14 +87,36 @@ type autonomyAgent interface {
 	Autonomy() map[session.AskKind]session.Policy
 }
 
-// autonomySheetText is the whole sheet as one block of prose, which is how a
-// slash command answers on this surface.
-func (a *app) autonomySheetText() string {
+// sayAutonomy is `/autonomy` with nothing after it: the rows read off the loop
+// and then written into the conversation as one block.
+//
+// THE READ IS THE COMMAND'S WHOLE WORK, so there is nothing to draw
+// optimistically and nothing to put back if it refuses — unlike a keystroke that
+// changes a row, which decides what a person sees immediately and repairs itself
+// on a refusal (offloop.go). A command that has not answered yet has simply not
+// printed yet, which is what every other slash command that asks the engine does.
+func (a *app) sayAutonomy() tea.Cmd {
 	agent, ok := a.agent.(autonomyAgent)
 	if !ok {
-		return autonomyNoProjectWord
+		a.noteBlock(autonomyNoProjectWord)
+		return nil
 	}
-	rules := agent.Autonomy()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		rules := agent.Autonomy()
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			a.noteBlock(a.autonomySheetText(rules))
+			return nil
+		}
+	})
+}
+
+// autonomySheetText is the whole sheet as one block of prose, which is how a
+// slash command answers on this surface. The rows are handed in because reading
+// them is a door ([app.sayAutonomy]).
+func (a *app) autonomySheetText(rules map[session.AskKind]session.Policy) string {
 	lines := make([]string, 0, len(autonomyKinds)+2)
 	lines = append(lines, autonomyHeadWord)
 	for _, kind := range autonomyKinds {
@@ -134,14 +158,58 @@ func shortAutonomyDuration(after time.Duration) string {
 	return after.Round(time.Second).String()
 }
 
-func (a *app) changeAutonomy(words string) string {
+// changeAutonomy is `/autonomy <kind> <rule>`: the sheet's own rows, changed
+// from the box.
+//
+// IT SAYS WHAT IT READ AT ONCE AND WHAT THE ENGINE SAID WHEN THE ENGINE SAYS IT.
+// Everything a bad line can be told from the words is answered on the keystroke;
+// writing the rule is a call to the engine's process and goes through a command
+// (offloop.go), so the line about the rule lands on the frame after it was
+// written rather than holding the window for the round trip.
+func (a *app) changeAutonomy(words string) tea.Cmd {
+	kind, rule, refused := autonomyLineOf(words)
+	if refused != "" {
+		a.noteBlock(refused)
+		return nil
+	}
+	agent, ok := a.agent.(autonomyAgent)
+	if !ok {
+		a.noteBlock(autonomyNoProjectWord)
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.SetAutonomy(kind, rule)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err != nil {
+				// THE ENGINE'S REFUSAL IS THE PERSON'S TO READ, whole. It
+				// already ends in something they can do, and re-wording it here
+				// would be a second account of one rule.
+				a.noteBlock(strings.TrimSpace(err.Error()))
+				return nil
+			}
+			a.noteBlock(string(kind) + " · " + autonomyRuleWord(rule) + " · for this project")
+			// AND THE READING IS TAKEN AGAIN, as a command of its own: the rule
+			// that now exists is what the NEXT question raised must wear on its
+			// clock, and a fold may not ask a door itself (offloop.go).
+			return a.autonomyChanged()
+		}
+	})
+}
+
+// autonomyLineOf reads `<kind> <rule> [duration]` into the two things the door
+// takes, and says what is wrong with a line it cannot read. IT IS THE ONE
+// READING: the refusals and the write below read the same words the same way.
+func autonomyLineOf(words string) (session.AskKind, session.Policy, string) {
 	parts := strings.Fields(words)
 	if len(parts) < 2 {
-		return autonomyUsageWord
+		return "", session.Policy{}, autonomyUsageWord
 	}
 	kind := autonomyKindNamed(parts[0])
 	if kind == "" {
-		return "there is no question kind called " + parts[0] + " · " + autonomyUsageWord
+		return "", session.Policy{}, "there is no question kind called " + parts[0] + " · " + autonomyUsageWord
 	}
 	// THE TWO REFUSALS ARE THE ENGINE'S AND ARE NOT RE-SPELLED HERE. Its door
 	// turns down a rule over a confirmation and over a clarification, in its own
@@ -153,29 +221,24 @@ func (a *app) changeAutonomy(words string) string {
 	case "decide":
 		rule.Kind = session.PolicyDecide
 	case "recommend":
-		if len(parts) != 3 {
-			return autonomyUsageWord
+		// A LENGTH IS OPTIONAL. `recommend` on its own takes the engine's own
+		// default, which is the one derivation of that figure (session's
+		// [autonomyClock]); naming a duration is how somebody who wants a
+		// different one says so.
+		rule.Kind = session.PolicyRecommendThenAuto
+		if len(parts) == 3 {
+			after, err := time.ParseDuration(parts[2])
+			if err != nil || after <= 0 {
+				return "", session.Policy{}, "that duration is not understood: " + parts[2]
+			}
+			rule.After = after
+		} else if len(parts) != 2 {
+			return "", session.Policy{}, autonomyUsageWord
 		}
-		after, err := time.ParseDuration(parts[2])
-		if err != nil || after <= 0 {
-			return "that duration is not understood: " + parts[2]
-		}
-		rule.Kind, rule.After = session.PolicyRecommendThenAuto, after
 	default:
-		return "choose ask, recommend <duration>, or decide"
+		return "", session.Policy{}, "choose ask, recommend [duration], or decide"
 	}
-	agent, ok := a.agent.(autonomyAgent)
-	if !ok {
-		return autonomyNoProjectWord
-	}
-	if err := agent.SetAutonomy(kind, rule); err != nil {
-		// THE ENGINE'S REFUSAL IS THE PERSON'S TO READ, whole. It already ends
-		// in something they can do, and re-wording it here would be a second
-		// account of one rule.
-		return err.Error()
-	}
-	a.autonomyChanged()
-	return string(kind) + " · " + autonomyRuleWord(rule) + " · for this project"
+	return kind, rule, ""
 }
 
 // autonomyKindNamed reads one word as a question kind, by the engine's own
@@ -198,10 +261,16 @@ func autonomyKindNamed(word string) session.AskKind {
 // shape of question. It is what puts `· your rule` on a running clock
 // ([app.questionClockWord]).
 //
-// IT IS READ WHEN A QUESTION IS RAISED AND NEVER ON THE DRAW PATH. The rows
-// live in a file, and the draw path is rebuilt from nothing on every frame; a
-// read per frame would be a file opened sixty times a second to answer a
-// question whose answer changes when somebody types a slash command.
+// IT READS THE CACHE AND NEVER THE DOOR. The rules are a call to another
+// process — bare `aforge` talks to its engine over a socket like every hosted
+// window does — and this is asked from the update loop, where a surface may not
+// wait on a network (offloop.go's law, and its structural test). So the ask is
+// [app.readAutonomy], fired once on [app.Init] and again whenever a rule is
+// written, and this line only ever reads what came back.
+//
+// AND IT IS READ WHEN A QUESTION IS RAISED AND NEVER ON THE DRAW PATH. The draw
+// path is rebuilt from nothing on every frame; the answer changes when somebody
+// types a slash command.
 //
 // AND AN ABSENT DOOR IS NO RULE RATHER THAN AN UNKNOWN ONE. A surface with no
 // autonomy door — a fake in a test, a conversation with no project — has no
@@ -210,21 +279,44 @@ func (a *app) autonomyRuled(kind session.AskKind) bool {
 	if kind == "" {
 		return false
 	}
-	if a.autonomyRules == nil {
-		agent, ok := a.agent.(autonomyAgent)
-		if !ok {
-			return false
-		}
-		rules := agent.Autonomy()
-		if rules == nil {
-			rules = map[session.AskKind]session.Policy{}
-		}
-		a.autonomyRules = rules
-	}
 	rule, ok := a.autonomyRules[kind]
 	return ok && rule.Kind != "" && rule.Kind != session.PolicyAsk
 }
 
-// autonomyChanged forgets the cached rows, so the next question raised reads
-// what was just written rather than what was there before it.
-func (a *app) autonomyChanged() { a.autonomyRules = nil }
+// readAutonomy asks this project's question rules off the update loop and folds
+// them in. It is [app.Init]'s and nothing else's to call on the way up.
+//
+// AND IT RE-STAMPS THE QUESTIONS ALREADY OPEN. `WatchQuestions` replays
+// everything still waiting the moment a surface attaches, so the ordinary resume
+// path raises questions BEFORE this answer lands — and [questionShown.ruled] is
+// consumed as the tail of a running countdown (`start it in 9s · your rule`). A
+// question that drew without that tail is a clock a person cannot see the reason
+// for, which is the one thing DESIGN.md calls NEVER A HIDDEN RULE. So the fold
+// stamps what is already on screen rather than only what arrives next.
+func (a *app) readAutonomy() tea.Cmd {
+	agent, ok := a.agent.(autonomyAgent)
+	if !ok {
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		rules := agent.Autonomy()
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if rules == nil {
+				rules = map[session.AskKind]session.Policy{}
+			}
+			a.autonomyRules = rules
+			for i := range a.questions {
+				a.questions[i].ruled = a.autonomyRuled(a.questions[i].question.Ask)
+			}
+			a.touch()
+			return nil
+		}
+	})
+}
+
+// autonomyChanged reads the rows again, so the next question raised wears what
+// was just written rather than what was there before it.
+func (a *app) autonomyChanged() tea.Cmd { return a.readAutonomy() }

@@ -52,14 +52,16 @@ import (
 // `enter` that took it. So [hopCard.rows] is a snapshot: what is drawn is what
 // was true when the card opened, and the only thing that moves is the cursor.
 //
-// ── THE CARD HAS NO BORDER, AND THE DEPTH IS THE WHOLE OF WHAT SAYS `LAYER` ──
+// ── THE CARD WEARS THE ONE FRAME, AND THE DEPTH IS WHAT SAYS `LAYER` ────────
 //
-// This surface draws no boxes (home.go's preview card states the same law), so
-// the card is not framed: the body behind it is repainted at the FAINTEST stop
-// of the depth ladder ([composerFade], depthfade.go) and the card's own rows are
-// left at full ink. The contrast between the two is the layer. That is the same
-// move SCREEN 2e's composer layer makes over a place, one mechanism rather than
-// two, and it is why nothing underneath has a word to say about being under one.
+// This header used to say the card had no border, while the card drew one — a
+// dim rounded box of its own, one of three copies of the same six pieces on this
+// surface. It is drawn by the one frame now (frame.go, owner ruling 2026-09-11),
+// dim, on the card's own raised ground. What says `layer` is still the depth:
+// the body behind it is repainted at the FAINTEST stop of the depth ladder
+// ([composerFade], depthfade.go) and the card's own rows are left at full ink.
+// That is the same move SCREEN 2e's composer layer makes over a place, one
+// mechanism rather than two, and the frame only says where the card ends.
 //
 // The rows themselves are home's rows — the same glyph door, the same bold
 // subject, the same dim tail dropped in the same order (switcher.go's
@@ -1060,18 +1062,6 @@ const (
 	hopTightSubject = 20
 )
 
-// hopBox is the six pieces of the border, and the ascii floor under them. The
-// flag is the palette's own ([palette.ascii]), whose one job in this codebase is
-// exactly this question.
-type hopBox struct{ tl, tr, bl, br, h, v string }
-
-func hopBoxOf(pal palette) hopBox {
-	if pal.ascii {
-		return hopBox{tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|"}
-	}
-	return hopBox{tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│"}
-}
-
 // hopMinBody is the shortest body the card will draw itself into: two border
 // rows, the head, its blank, one conversation, and a row of air above and below.
 const hopMinBody = 8
@@ -1084,7 +1074,6 @@ const hopMinBody = 8
 // says what the keys are and the borders say where the card ends; a box that ate
 // either to show one more row would be a box a person cannot get out of.
 func (a *app) hopCardLines(width, height int, pal palette) []string {
-	box := hopBoxOf(pal)
 	if !a.hopShowing() || width < 12 || height < 5 {
 		return nil
 	}
@@ -1093,12 +1082,15 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	inner := width - 2
 	room := inner - 2*hopPad
 	pad := strings.Repeat(" ", hopPad)
-	// THE BORDER IS DIM — the tier this surface says its own furniture in (a
-	// rule, a seam, a connector). An accent border would be the box announcing
-	// itself, and what has to be read here is the list inside it.
-	edge := func(left, fill, right string) string {
-		return surface(pal.dim(left+strings.Repeat(fill, inner)+right), width)
-	}
+	// THE BORDER IS THE ONE FRAME (frame.go), and it is dim — the tier this
+	// surface says its own furniture in (a rule, a seam, a connector). An accent
+	// border would be the box announcing itself, and what has to be read here is
+	// the list inside it. The card's own raised ground is the frame's ground, so
+	// the edge stands on the surface the rows stand on.
+	//
+	// topEdge is the one row the frame draws above the rows laid out below,
+	// which every row index recorded for the pointer counts.
+	const topEdge = 1
 	// The rows a person reads are laid out at `room` and then set inside the
 	// borders whole, so the band on the cursor's row covers the padding too —
 	// which is what makes it read as a row of the card rather than a highlight
@@ -1132,7 +1124,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		default:
 			body = surface(body, inner)
 		}
-		return surface(pal.dim(box.v), 1) + body + surface(pal.dim(box.v), 1)
+		return body
 	}
 
 	a.hop.spots = nil
@@ -1142,7 +1134,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if height >= 9 {
 		verticalPad = 1
 	}
-	lines := []string{edge(box.tl, box.h, box.tr)}
+	lines := []string{}
 	if verticalPad > 0 {
 		lines = append(lines, inside("", false, false))
 	}
@@ -1159,7 +1151,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		title := a.hop.rows[a.hop.at].title
 		if ansi.StringWidth(title) > min(hopSubjectCol, room-hopGlyphCol-2) {
 			preview = railWrap(title, room)
-			maxLines := min(3, max(0, height-len(lines)-foot-2))
+			maxLines := min(3, max(0, height-len(lines)-topEdge-foot-2))
 			if len(preview) > maxLines {
 				preview = preview[:maxLines]
 				if maxLines > 0 {
@@ -1172,11 +1164,11 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if previewHeight > 0 {
 		previewHeight++
 	}
-	available := max(1, height-len(lines)-foot-previewHeight)
+	available := max(1, height-len(lines)-topEdge-foot-previewHeight)
 	start := max(0, a.hop.at-available+1)
 	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
-		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: at})
+		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
 		hovered := a.hot.kind == hoverHop && a.hot.index == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
 	}
@@ -1186,10 +1178,10 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			lines = append(lines, inside(pal.ink(line), false, false))
 		}
 	}
-	if footWord != "" && len(lines)+1+verticalPad < height {
+	if footWord != "" && len(lines)+topEdge+1+verticalPad < height {
 		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
 		if a.hop.say == "" {
-			a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
+			a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: -1})
 		}
 		ink := pal.dim
 		if hovered {
@@ -1200,7 +1192,8 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if verticalPad > 0 {
 		lines = append(lines, inside("", false, false))
 	}
-	return append(lines, edge(box.bl, box.h, box.br))
+	out, _ := framed{ground: surface}.draw(pal, width, lines)
+	return out
 }
 
 // hopFoot is the one line under the rows: what the card just said, or the fold

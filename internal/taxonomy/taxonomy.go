@@ -407,6 +407,30 @@ type Evidence struct {
 	SpentUSD float64
 }
 
+// Named reports that ONE MACHINE OWNED THIS REFUSAL: the router relayed
+// somebody else's no and said whose, so the fact is about that machine and
+// about nothing else — not the model, not the account, not the request.
+//
+// IT IS THE WHOLE DIFFERENCE BETWEEN A MOVE AND A WAIT, AND IT OUTRANKS THE
+// STATUS. A refusal that named a machine is answered by another machine,
+// whatever number it wore: the machine is taken off the next body and the next
+// body goes out at once. A refusal that named NOBODY is the account's own
+// ceiling or the router's reading of our own bytes — every machine answers it
+// identically, nothing can be taken off the next body, and the only moves left
+// are a wait and then another model.
+//
+// THE MEASURED FAILURE IS THE ORDER THIS REPLACED (2026-09-11 14:39–14:41, the
+// owner's own task on deepseek/deepseek-v4.1-flash). `Status == 429` was asked
+// before `Upstream != ""`, so a per-machine `(via Wafer: … temporarily
+// rate-limited upstream)` rode the account-limiter road — wait, double, send the
+// same order again — for eight sends and ninety seconds, while six other
+// machines on the same model were answering in under five.
+//
+// It is a method rather than a comparison at each site because "is this refusal
+// about a machine" is asked by the classifier, by the reason, and by the
+// transport's own walk, and three spellings would be three answers.
+func (e Evidence) Named() bool { return strings.TrimSpace(e.Upstream) != "" }
+
 // Verdict is the boundary's answer: what it was, what to do, and one phrase
 // saying why — which is what the journal line carries.
 type Verdict struct {
@@ -536,9 +560,12 @@ func Classify(e Evidence, l Limits) Verdict {
 //     it arrives under whatever status the router felt like using — so asking
 //     the status first would file it as the wire or as the work depending on the
 //     day.
-//  4. Then the status. 5xx and 429 are the wire by definition. A 4xx that NAMED
-//     an upstream is that upstream's refusal and another endpoint may serve it,
-//     so it is transport too — this is the shape the measured 400s arrived in.
+//  4. Then WHO REFUSED, and only after that the status. A refusal that NAMED an
+//     upstream is that upstream's and another endpoint may serve it, whatever
+//     number it wore — this is the shape the measured 400s arrived in and the
+//     shape nine out of ten measured 429s arrive in ([Evidence.Named]). Then the
+//     status: 5xx is the wire by definition, and a 429 that named nobody is the
+//     account's own ceiling, which is the wire with no machine to move to.
 //     So is a ROUTING refusal (the account's own settings included): the router
 //     emptied its endpoint set on a list or a setting, nobody was asked, and
 //     somewhere else can serve it. So is a WITHDRAWN model, whose somewhere else
@@ -582,11 +609,22 @@ func classOf(e Evidence) Class {
 		return Transport
 	}
 	switch {
+	// A MACHINE THAT NAMED ITSELF IS ASKED BEFORE ANY STATUS, because the status
+	// on a relayed refusal is the UPSTREAM'S and says nothing about what to do
+	// with it: a 400, a 502 and a 429 relayed from one pool are one fact — that
+	// pool said no — and the move for all three is the next pool. Asking the
+	// number first filed the commonest of them, the 429, as the account's own
+	// ceiling and bought ninety seconds of waiting on one machine ([Evidence.Named]
+	// carries the measurement).
+	case e.Named():
+		return Transport
 	case e.Status >= 500:
 		return Transport
+	// AND A 429 THAT NAMED NOBODY IS THE ACCOUNT'S OWN CEILING, which is the wire
+	// too: it is a queue rather than a judgement about the model or the work. Its
+	// moves are the wait it asked for and then another model, because there is no
+	// machine to rotate to — every one of them is behind the same ceiling.
 	case e.Status == 429:
-		return Transport
-	case e.Status >= 400 && strings.TrimSpace(e.Upstream) != "":
 		return Transport
 	case e.Status >= 400 && (e.Routing || e.Account):
 		return Transport

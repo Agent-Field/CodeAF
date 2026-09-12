@@ -114,6 +114,16 @@ const (
 	GCollapsed
 	GExpanded
 	GScopeUp
+	GPointer
+	GRecommended
+	GFrameTopLeft
+	GFrameTopRight
+	GFrameBottomLeft
+	GFrameBottomRight
+	GFrameEdge
+	GFrameSide
+	GFrameTeeDown
+	GFrameTeeUp
 	GTarget
 	GTruncated
 	GEllipsis

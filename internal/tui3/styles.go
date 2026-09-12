@@ -30,7 +30,8 @@ import (
 //	add     #A3BE8C   a diff's + lines, and a write's line count
 //	del     #C67173   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
-//	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
+//	                  (the question hue was a violet of its own here until
+//	                  2026-09-11; it is the amber below now — see [hueWarn])
 //	data    #91C5D4   the payload rule's datum — a model id, a figure, a key
 //	                  chord inside a quiet line (see [hueData])
 //
@@ -60,32 +61,25 @@ import (
 //	NoColor    no SGR at all, weight included: a terminal told not to style is
 //	           not styled halfway
 //
-// ── THE FIFTH COLOUR, AND WHY IT IS THE ONLY ONE ──
+// ── THERE IS NO FIFTH COLOUR, AND THE VIOLET IS RETIRED ──
 //
-// Violet is the identity wheel's question hue, and D11 reserves it: it is spent
-// on the moment the agent is WAITING FOR A PERSON and on nothing else — the
-// consent question, its glyph, its choices, and the word in the status line.
-// Nothing decorative may take it, because its whole value is that seeing it
-// anywhere means exactly one thing.
+// A question had a hue of its own here for a year — a violet (#C08FE8 dark,
+// #6F3FA8 light), reserved for the moment the agent is WAITING FOR A PERSON and
+// spent on the whole of it: the head, every answer, every key, the word in the
+// status line. The owner retired it on 2026-09-11 (colour pick C) and the reason
+// was not the hue. It was the AREA: home and the places had always said the same
+// "waiting on you" in amber on ONE MARK, so the one object a person must act on
+// was the one thing this surface said in two vocabularies, and a block painted
+// four rows deep in a colour nobody else used read as an alarm rather than as a
+// question.
 //
-// #C08FE8 rather than nord's own #B48EAD, which is the hue this table would
-// otherwise have borrowed: at that saturation nord's purple sits within a few
-// values of the body ink on a dark terminal, and the defect being fixed here is
-// a person who could not tell the surface was waiting for them. A question hue
-// that has to be looked for is not a question hue.
-//
-// It is also not the softer #C3A6E6 this wave first authored, and the reason is
-// the second rung of the ladder: #C3A6E6's nearest xterm-256 neighbour is 146,
-// WHICH IS THE ACCENT'S. On every 256-colour terminal the question would have
-// been painted the same colour as the person's own › glyph — the exact failure
-// this hue exists to prevent, arriving through the fallback nobody looked at.
-// #C08FE8 resolves to 140, which is a violet and is nothing else on this
-// surface. Any future change here owes the same check.
-//
-// Its sixteen-colour degradation is `heavy` (bold), which is the same answer
-// this table gives every hue that LEADS. The question is never carried by
-// colour alone: the glyph is a "?", the status line says "waiting · your call"
-// in words, and the choices name their keys.
+// SO THE QUESTION IS AMBER AND THE AMBER IS STROKE, NEVER FILL. [palette.ask]
+// paints with `warn` — the same amber every other surface already spent on
+// waiting — and it touches the marks alone: the `?` at the head, the `▸` the
+// pointer stands on, the `◆` beside a recommendation. The words are ink and the
+// asides are dim, exactly as they are in a paragraph of conversation, because a
+// question IS a paragraph of the conversation and its frame is what says it is
+// one object. A law test in this package fails a row painted in the hue.
 //
 // ── THE SIGNAL BAND, AND THE TWO TIERS THAT ARE NOT IN IT ───────────────────
 //
@@ -335,18 +329,17 @@ var (
 	hueAdd  = mustHue("#A3BE8C", heavy)
 	hueDel  = mustHue("#C67173", quiet)
 	hueBad  = mustHue("#D08770", heavy)
-	hueAsk  = mustHue("#C08FE8", heavy)
-	// hueWarn is the SIXTH colour, and since the places wave it carries two
-	// readings that are the same reading: A BOUND ABOUT TO BE REACHED, and A
-	// PERSON BEING WAITED ON. Home used to say the second of those in two colours
-	// — the `needs you` mark and the answer chips in the violet of [hueAsk],
-	// the "finished, needs your look" glyph in this amber — which meant the
-	// screen had two ways to say the one thing a person is meant to act on. They
-	// are settled here, on the colour that was already right for the glyph, and
-	// they are the same reading because both are the machine saying "this stops
-	// unless you do something". The chat's own consent block keeps [hueAsk]: a
-	// question inside a conversation is a different object from a row on a list,
-	// and moving it is the owner's call rather than this wave's.
+	// hueWarn is the SIXTH colour, and it carries two readings that are the same
+	// reading: A BOUND ABOUT TO BE REACHED, and A PERSON BEING WAITED ON. Home
+	// used to say the second of those in two colours — the `needs you` mark and
+	// the answer chips in a violet of their own, the "finished, needs your look"
+	// glyph in this amber — which meant the screen had two ways to say the one
+	// thing a person is meant to act on. They were settled here for the places
+	// first, and on 2026-09-11 the owner moved the conversation's questions onto
+	// it as well (colour pick C): [palette.ask] paints with this hue, on a
+	// question's three marks and on no word, and the violet is retired from both
+	// ladders. They are the same reading because both are the machine saying
+	// "this stops unless you do something".
 	//
 	// A deadline thirty seconds out is not a failure and
 	// must not wear the failure hue — the call may still land — but it is no
@@ -399,14 +392,15 @@ var (
 	hueData = mustHue("#91C5D4", heavy)
 	// hueViolet was the SHELL OPERATOR's hue until the transcript restraint
 	// greyed shell grammar down to the reading tiers (shellx.go) — it is held
-	// in the table, currently unspent, and it is deliberately NOT the question
-	// hue above.
+	// in the table and is currently unspent.
 	//
-	// The fifth colour's law is that seeing #C08FE8 means one thing — a person
-	// is being waited on — so a pipe in a command line may not wear it. This is
-	// a dimmer, greyer violet a whole tier below it: 97 rather than 140 in the
-	// 256 fallback, so the two never collapse into each other on the rung where
-	// hues get rounded. It is the one hue both ladders share, because it is
+	// IT IS NOT THE RETIRED QUESTION VIOLET AND NEVER WAS. That one was #C08FE8,
+	// a whole tier brighter (140 rather than 97 in the 256 fallback), kept apart
+	// from this so a pipe in a command line could not be mistaken for a person
+	// being waited on; it was retired from both ladders on 2026-09-11 and a
+	// question is amber on its marks now (see the colour note at the top of this
+	// file). This hue survives that ruling untouched, because it never carried
+	// the question's meaning. It is the one hue both ladders share, because it is
 	// mid-tone by construction and reads on a dark terminal and a white page
 	// alike.
 	hueViolet = mustHue("#8F6FA8", quiet)
@@ -634,8 +628,6 @@ var lightTaskRing = []hue{
 //	add     #A3BE8C   #7BA23F   nord's green has no contrast on white
 //	del     #C67173   #B55B64   already dark enough; barely moves
 //	bad     #D08770   #C57A3C   soft orange-red, one step down
-//	ask     #C08FE8   #6F3FA8   THE QUESTION HUE, inverted rather than dimmed:
-//	                            it has to lead on a page too
 //	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
 //	                            wants the same warning as dark amber
 //	data    #91C5D4   #2C8A9E   the datum's cyan, deepened for the page the
@@ -679,7 +671,6 @@ var (
 	lightAdd  = mustHue("#7BA23F", heavy)
 	lightDel  = mustHue("#B55B64", quiet)
 	lightBad  = mustHue("#C57A3C", heavy)
-	lightAsk  = mustHue("#6F3FA8", heavy)
 	lightWarn = mustHue("#A6791F", heavy)
 	// The data hue inverted for the page, the same way the accent was: deeper
 	// and less saturated rather than pale. L 39.6 sits inside the light signal
@@ -733,7 +724,7 @@ var (
 //	what is true of it  p.muted                 [hueMuted]   #7FA6C9
 //	demoted prose       p.narr                  [hueNarr]    #848FA6
 //	the margin          p.dim                   [hueDim]     #6B7280
-//	NEEDS A HUMAN       p.warn / p.ask          [hueWarn]    #EBCB8B
+//	NEEDS A HUMAN       p.warn / p.ask          [hueWarn]    #EBCB8B (one hue)
 //	ALIVE               p.accent                [hueAccent]  #9DC3E6
 //	MONEY               p.money                 [hueMoney]   #90D0AA
 //
@@ -758,14 +749,16 @@ var (
 //     on a place, because a lifted datum on a screen with three meanings lifts by
 //     being the SUBJECT tier, which is what SCREEN 2a says every hierarchy step
 //     past the fourth must do.
-//   - [hueAsk]'s violet becomes the amber, because home used to say "a person is
-//     needed" in two colours and the design says it in one.
+//   - the question hue became the amber, because home used to say "a person is
+//     needed" in two colours and the design says it in one. Since 2026-09-11 that
+//     is true of the conversation too ([palette.ask]), so this one is no longer a
+//     re-point: there is nothing left to retire.
 //   - [hueAdd]'s olive — the tick on work that landed — becomes the second voice,
 //     because the glyph already says it landed and a hue saying it again spends
 //     the screen's colour budget on the least urgent fact on it.
 //
-// The conversation keeps all three, untouched: a question inside a conversation
-// is a different object from a row on a list.
+// The conversation keeps the other two, untouched: a datum inside a conversation
+// and a landed diff are different objects from a row on a list.
 //
 // The ONE hue that survives outside the design's three is [hueBad]'s orange-red.
 // It is a deviation and it is flagged rather than hidden: the design's own token
@@ -801,11 +794,11 @@ type ramp struct {
 	// that is still arriving ([hueLive]). It sits beside ink rather than in a
 	// table of its own because it is the same ladder — the body, said louder for
 	// as long as it is still being said.
-	live               hue
-	add, del, bad, ask hue
-	warn               hue
-	data               hue
-	violet             hue
+	live          hue
+	add, del, bad hue
+	warn          hue
+	data          hue
+	violet        hue
 	// money is what a thing cost ([hueMoney]). It is named apart from `add` for
 	// the reason that hue's own note gives: landing and paying are two events.
 	money hue
@@ -824,7 +817,7 @@ type ramp struct {
 
 var darkRamp = ramp{
 	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, narr: hueNarr, dim: hueDim,
-	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
+	add: hueAdd, del: hueDel, bad: hueBad, warn: hueWarn,
 	data: hueData, violet: hueViolet, money: hueMoney, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
 	ring: taskRing,
@@ -832,7 +825,7 @@ var darkRamp = ramp{
 
 var lightRamp = ramp{
 	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, narr: lightNarr, dim: lightDim,
-	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
+	add: lightAdd, del: lightDel, bad: lightBad, warn: lightWarn,
 	data: lightData, violet: hueViolet, money: lightMoney, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
 	ring: lightTaskRing,
@@ -858,15 +851,13 @@ var lightRamp = ramp{
 // place that reached past it for the authored table would be the one surface in
 // the program that ignored the answer.
 //
-// `ask` AND `warn` BECOME ONE COLOUR. On a place, "a person is being waited on"
-// and "a bound is about to be reached" are the same sentence — something stops
-// here unless you do something — and the design paints them with one hue. The
-// amber is the one the conversation already warns in, which is the hue home
-// already used for the needs-your-look mark before any of this. The conversation
-// keeps its violet question and its yellow warning as two.
+// `ask` AND `warn` WERE MADE ONE COLOUR HERE FIRST, and since 2026-09-11 they
+// are one colour everywhere: "a person is being waited on" and "a bound is about
+// to be reached" are the same sentence — something stops here unless you do
+// something — so [palette.ask] paints with `warn` on every surface and this
+// function has nothing left to re-point for it.
 func placeRampFrom(base ramp) ramp {
 	out := base
-	out.ask = base.warn
 	// `data` becomes the body ink: the payload rule lifts a datum out of a quiet
 	// line, and on a screen with three meanings it lifts by being the SUBJECT
 	// rather than by taking a fourth colour.
@@ -1354,8 +1345,18 @@ func (p palette) fading() bool {
 	return false
 }
 
-// ask is the question hue: the consent block, and nothing else on this surface.
-func (p palette) ask(s string) string { return p.paint(s, p.ramp.ask) }
+// ask is THE QUESTION HUE, and it is the amber every other surface already says
+// "waiting on you" in ([hueWarn], owner ruling 2026-09-11, colour pick C).
+//
+// IT IS A ROLE AND NOT A SECOND COLOUR. The conversation spent a violet of its
+// own on questions — and spent it on whole rows, which is COLOUR IS STROKE,
+// NEVER FILL broken on the one object a person must act on — while home, the
+// places, the chip and the tab said the same thing in amber. One meaning, two
+// hues, and the violet is retired from both ladders. The name stays because it
+// says WHY a cell is painted: a caller asking for `ask` is saying "this mark is
+// a question", which is a different sentence from "this bound is nearly spent",
+// and the day the two want different colours again there is one place to move.
+func (p palette) ask(s string) string { return p.paint(s, p.ramp.warn) }
 
 // askBold is what the question's own marker takes — the hue and the weight
 // together, so the row a person has to answer leads on a truecolor terminal and

@@ -118,15 +118,22 @@ func TestNoQuestionIsDrawnOnTheStartPage(t *testing.T) {
 func TestAPressWhereAHiddenQuestionUsedToBeAnswersNothing(t *testing.T) {
 	lab := questionUnderStart(t, consentAsk())
 	_ = frame(lab.a)
-	if len(lab.a.questionSpans) == 0 {
-		t.Fatal("the visible question wrote no answer spans")
+	// A PERMISSION IS THE PANEL, so its targets are BANDS — a whole row each,
+	// counted from the top of the block (questionpanel.go). It was a row of
+	// spans when this test was written, and the fact being held is the same
+	// either way: the map moves with the draw.
+	if len(lab.a.questionBands) == 0 {
+		t.Fatal("the visible question wrote no answer targets")
 	}
-	x := lab.a.questionSpans[0].from
-	y := chromeRowY(t, lab.a, lab.a.questionSpanRow)
+	band := lab.a.questionBands[0]
+	x := band.span.from + 1
+	y := chromeRowY(t, lab.a, band.row)
 
 	drive(t, lab.a, key(newChatChord))
 	_ = frame(lab.a)
-	if lab.a.questionPress(x, y) {
+	// The press hands back the command an answer travels on now (offloop.go), so
+	// what is read is whether it was TAKEN.
+	if _, took := lab.a.questionPress(x, y); took {
 		t.Fatal("a press where the hidden question used to be was taken")
 	}
 	if len(lab.answer) != 0 || lab.a.questionCount() != 1 {
@@ -205,5 +212,41 @@ func TestAVisibleQuestionStillAnswersItsNumber(t *testing.T) {
 
 	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
 		t.Fatalf("the visible question answered as %+v", lab.answer)
+	}
+}
+
+// A WAITING PERMISSION MUST NOT MAKE `ctrl+t` A DEAD KEY, and on a short
+// terminal it did — silently, which is the worst of the three things a key can
+// do (lane T found it merging this branch with lane F's).
+//
+// [app.chromeHeight] charges the body region for [app.questionHeight], and a
+// permission hangs in a frame now: eleven rows where it used to be one. At sixty
+// by twenty that took the whole body, so [app.openChatStart] read
+// `viewHeight() <= 0` and returned nothing at all. The measurement was of a
+// frame that never exists — the block is NOT drawn while the start page is up
+// ([app.questionRows] returns nothing on `startingChat`), so those rows come
+// back to the body the moment the page opens.
+func TestAWaitingPermissionDoesNotMakeTheStartPageRefuseSilently(t *testing.T) {
+	lab := questionUnderStart(t, consentAsk())
+	// SIXTY BY SIXTEEN IS THE REPRO ON THIS BRANCH: the panel is eleven rows and
+	// the chrome fifteen, so the body region with the block on it is exactly
+	// nothing. THE PRECONDITION IS ASSERTED AND NEVER SKIPPED — a test that
+	// stepped over its own repro would go green without running it, which is the
+	// shape of #576 said about one test instead of a suite.
+	lab.a.width, lab.a.height = 60, 16
+	if got := len(lab.rows()); got < 8 {
+		t.Fatalf("the fixture's permission is %d rows; this test is about a tall one", got)
+	}
+	if got := lab.a.viewHeight(); got > 0 {
+		t.Fatalf("the repro needs a frame whose body the block takes whole; this one has %d rows left", got)
+	}
+	drive(t, lab.a, key(newChatChord))
+	if !lab.a.startingChat() {
+		t.Fatal("ctrl+t did nothing and said nothing over a waiting permission")
+	}
+	// AND THE PAGE HAS THE ROWS IT MEASURED FOR: the block is gone while it is
+	// up, so the body it was promised is the body it got.
+	if got := lab.a.viewHeight(); got <= 0 {
+		t.Fatalf("the start page opened onto a body of %d rows", got)
 	}
 }

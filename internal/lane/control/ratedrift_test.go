@@ -229,3 +229,85 @@ func TestHealthyBatchedTokensKeepTheirProgressCredit(t *testing.T) {
 		}
 	}
 }
+
+// ── A STREAM FROM A MACHINE NOBODY ASKED FOR ───────────────────────────────
+
+// TestARouterSubstitutingATenTimesSlowerMachineIsNoticed is the 2026-09-11
+// shape, in the numbers it happened in. The question went out expecting the
+// machine the choice named — believed at sixty tokens a second — and the router
+// answered from one believed at seven. Every gap is then perfectly ordinary FOR
+// THE MACHINE THAT ANSWERED, which is exactly why nothing used to notice: the
+// bar moved to whoever picked up.
+func TestARouterSubstitutingATenTimesSlowerMachineIsNoticed(t *testing.T) {
+	p := plan()
+	// What the choice named, and the reason this request went out at all.
+	p.Gap = logNormal(1/60.0, 0.6)
+	p.Expected = 1200
+	p.Ceiling = 10 * time.Second
+	p.Lambda = 0
+
+	watch := New(p)
+	// And the machine that really answered, with its own — correct, learned —
+	// belief that it writes at seven a second.
+	watch.Serving("other", Survival{}, logNormal(1/7.3, 0.6), epoch)
+
+	var acted Act
+	for token := 1; token <= 604; token++ {
+		act := watch.Note(Reading{At: at(token * 137), Visible: 1})
+		if act.Kind != None && acted.Kind == None {
+			acted = act
+		}
+	}
+	if acted.Kind == None {
+		t.Fatal("a stream ten times slower than the machine the question asked for was never acted on")
+	}
+	if acted.Reason != RateReason {
+		t.Fatalf("reason = %q, want %q", acted.Reason, RateReason)
+	}
+	// The whole wait the person really paid was 86 seconds, because a stream
+	// that is writing is not a silence and nothing read it as one. The promise
+	// is the role's own ceiling, counted from the last credited progress, and
+	// one beat's slack over it is the reading the stream happened to land on.
+	if acted.Silence > p.Ceiling+time.Second {
+		t.Fatalf("acted after %s of silence, past the %s ceiling", acted.Silence, p.Ceiling)
+	}
+}
+
+// TestAMachineAnsweringAtTheRateItWasAskedForIsNeverJudgedSlow is the other half
+// and the false-positive bound. The same collapsed machine, asked for on
+// purpose: nobody was promised anything faster, so nothing here is abnormal and
+// the bar and the belief are one number.
+func TestAMachineAnsweringAtTheRateItWasAskedForIsNeverJudgedSlow(t *testing.T) {
+	p := plan()
+	p.Gap = logNormal(1/7.3, 0.6)
+	p.Expected = 1200
+	p.Ceiling = 10 * time.Second
+	p.Lambda = 0
+
+	watch := New(p)
+	watch.Serving("head", Survival{}, logNormal(1/7.3, 0.6), epoch)
+	for token := 1; token <= 604; token++ {
+		if act := watch.Note(Reading{At: at(token * 137), Visible: 1}); act.Reason == RateReason {
+			t.Fatalf("a machine answering at exactly the rate it was asked for was called collapsed at token %d: %+v", token, act)
+		}
+	}
+}
+
+// TestAQuestionSentBlindIsEntitledToNothingInParticular is the cold pair, where
+// there is no expectation to hold anybody to: the first belief that arrives
+// becomes the bar, and a machine matching its own belief is left alone.
+func TestAQuestionSentBlindIsEntitledToNothingInParticular(t *testing.T) {
+	p := plan()
+	p.Gap = Survival{}
+	p.Expected = 1200
+	p.Ceiling = 10 * time.Second
+	p.Lambda = 0
+
+	watch := New(p)
+	watch.Serving("other", Survival{}, logNormal(1/7.3, 0.6), epoch)
+	for token := 1; token <= 604; token++ {
+		if act := watch.Note(Reading{At: at(token * 137), Visible: 1}); act.Reason == RateReason {
+			t.Fatalf("a question sent with no belief judged its answer slow at token %d: %+v", token, act)
+		}
+	}
+}

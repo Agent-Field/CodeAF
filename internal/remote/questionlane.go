@@ -42,6 +42,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -154,3 +155,15 @@ func (a *Agent) WatchQuestions() (<-chan session.Event, func()) {
 // questions, because a window that does not draw questions has not been sent
 // any and has nothing to report about them.
 func (a *Agent) OpenQuestions() []session.Question { return a.c.asked.list() }
+
+// HoldQuestion stops one question's clock on the far machine without making a
+// key wait for the connection — [Agent.HoldTask]'s shape, for every lane. There
+// is no answer to carry back: what a person sees is the question said again with
+// its countdown gone, on the questions lane.
+func (a *Agent) HoldQuestion(kind session.QuestionKind, token string) {
+	c := a.c
+	go func() {
+		defer guard.Recover("remote/question hold")
+		_, _ = c.call(nil, MethodQuestionHold, QuestionHoldArgs{Kind: kind, Token: token})
+	}()
+}

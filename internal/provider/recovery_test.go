@@ -76,7 +76,6 @@ func vetoEverythingBut(rig *laneRig, vetoed ...string) {
 // never hands the caller the 404.
 func TestTheMeasuredRefusalRaceEndsInAnAnswerOnTheFirstAttempt(t *testing.T) {
 	rig := newLaneRig(t, "recovery/measured", measuredLanes(true)...)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 
 	vetoEverythingBut(rig, "DeepSeek", "Io Net", "Novita")
 	told := &notices{}
@@ -126,7 +125,6 @@ func TestTheMeasuredRefusalRaceEndsInAnAnswerOnTheFirstAttempt(t *testing.T) {
 // routing 404 that the walk had already acted on.
 func TestAnExhaustedRaceSettlesOnTheMostActionableError(t *testing.T) {
 	rig := newLaneRig(t, "recovery/actionable", measuredLanes(false)...)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 
 	vetoEverythingBut(rig, "DeepSeek", "Io Net")
 	ctx := WithLaneChoice(talking(), measuredChoice(rig.model))
@@ -198,7 +196,6 @@ func TestAnAccountExclusionIsLearnedOnceForEveryModel(t *testing.T) {
 		}
 	}
 	rig := newLaneRig(t, "recovery/account-a", serving()...)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	modelB := "openrouter/recovery/account-b"
 	rig.server.Model(modelB, serving()...)
 
@@ -271,7 +268,6 @@ func TestARescueOnAFullPoolGoesBackToTheRaceAtOnce(t *testing.T) {
 		lanestub.Lane{Name: "Fireworks", Profile: lanestub.Profile{Paced: true}},
 		lanestub.Lane{Name: "Novita", Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 19}},
 	)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	vetoEverythingBut(rig, "Fireworks", "Novita")
 	choice := lanes.Choice{Order: []string{"DeepSeek"}}
 	for _, lane := range []string{"DeepSeek", "Fireworks"} {

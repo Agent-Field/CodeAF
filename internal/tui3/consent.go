@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"strings"
 	"time"
 
@@ -481,18 +483,18 @@ func (a *app) shaping() bool { return a.questionBeating() }
 // IT GOES THROUGH THE ONE DOOR ([app.answerQuestion]) and not past it, so an
 // answer given on home leaves the same receipt, the same record and the same
 // annotated row as the same answer given here.
-func (a *app) answerWith(allow bool, scope session.ConsentScope) {
+func (a *app) answerWith(allow bool, scope session.ConsentScope) tea.Cmd {
 	open := a.consentOpen()
 	if open == nil {
-		return
+		return nil
 	}
 	key := consentKeyFor(allow, scope)
 	if key == "" {
-		return
+		return nil
 	}
 	head := *open
-	a.answerQuestion(head, session.Answer{
-		Key: key, Picked: []string{key}, Scope: questionScopeOf(head.question, key),
+	return a.answerQuestion(head, session.Answer{
+		Key: key, Picked: []string{key}, Scope: questionScopeOf(head, key),
 	})
 }
 

@@ -55,7 +55,6 @@ func cheapestExcludedRig(t *testing.T, name string, offered ...lanestub.Lane) *l
 	rig := newLaneRigWithPrice(t, name, func(string) (float64, float64, bool) {
 		return firstPartyIn, firstPartyOut, true
 	}, offered...)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	if !lanes.WireSheet(rig.server.URL(), "", sheetFetcher{}, false) {
 		t.Fatal("the sheet would not take the stub as its base")
 	}

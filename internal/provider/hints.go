@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+	"time"
 )
 
 // Effort is OpenRouter's unified reasoning-effort knob. The empty value means
@@ -106,6 +107,21 @@ type effortRequest struct {
 	// economy is less specific than the seat's pin, while a correctness bound
 	// on this answer is more specific than both.
 	required bool
+
+	// wall is how long the one completion this request belongs to is allowed
+	// to take, when a wall bounds it, and lane is the machine the request
+	// asked for. They are the two facts a budget is DERIVED from rather than
+	// stated (effortladder.go's [Client.wallBudget]), and they ride here for
+	// budget's own reason: the allowance a wall implies is the other half of
+	// the same decision about the thinking pass, and a key of its own could
+	// disagree with the level it is spent at.
+	//
+	// The lane is not set by anybody who builds a request. It is folded in by
+	// [effortFrom] from the choice already on the context, because a budget is
+	// sized against the machine that will write it and the choice is made
+	// after the wall is applied.
+	wall time.Duration
+	lane string
 }
 
 // WithReasoningEffort scopes a harness phase default to one call. The harness
@@ -143,6 +159,9 @@ func ReasoningEffortFrom(ctx context.Context) Effort {
 
 func effortFrom(ctx context.Context) effortRequest {
 	request, _ := ctx.Value(effortContextKey{}).(effortRequest)
+	if request.wall > 0 {
+		request.lane = askedFor(ctx)
+	}
 	return request
 }
 

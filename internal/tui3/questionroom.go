@@ -46,93 +46,42 @@ import (
 // while the box is EMPTY, exactly as `x` (stop) is taken on this surface today,
 // so a person mid-sentence never loses a keystroke to a question.
 //
-// ── THE ROWS, DRAWN HERE SO THEY STAY TRUE ──
+// ── THE PAGE IS DRAWN IN questionpage.go ──
 //
-// The body region, at 92 columns, a choice with three answers and the first one
-// open. `?` is [tokens.GNeedsHuman]; an answer's LABEL is the question hue and
-// the weight together, exactly as the card spells one; an answer's body is ink;
-// every attribution, consequence, reason and confidence is dim.
+// This file is the page's STATE and its KEYS: what the reader is standing on,
+// what the foot has composed, and what each key does. How it is laid out — the
+// two panes at a hundred columns and wider, the one column narrower, the two
+// windows and what a press reaches — is questionpage.go's, drawn with the
+// evidence renderer every question drawing shares (questionevidence.go).
 //
-// ── THE HIERARCHY, WHICH IS THE POINT OF THE SHAPE ──
+// ── THE POINTER, AND THE WAYS TO MOVE IT ──
 //
-// Three tiers and every row is one of them: the heading you scan for, the
-// sentence you read, the asides you weigh. Each aside says which aside it is —
-// `then ·`, `why this one ·`, `would switch if` — because they are all dim and
-// all one sentence long, and a page that drew them bare gave a person four
-// identical grey rows to tell apart by reading them in full (the owner,
-// 2026-09-10: "the same line and next line in options look same and a bit
-// weird"). One blank row closes an open answer, so the next heading is not
-// merely a different indent.
-//
-//	‹ back                                                     question · 1 of 1
-//	? which store should the ledger sit on?
-//	  the model · a schema change is next and it is cheaper before rows exist
-//	  the turn waits on it · task 12 goes on without it
-//
-//	  what it showed you
-//	    where the rows are today
-//	      app ──▶ sqlite
-//
-//	  ▾ 1 postgres                                         my pick · fairly sure
-//	      rows already carry a foreign key into it, and the migration is one file
-//	      then · the ledger and the rest of the project share one connection
-//	      why this one · it is the only store the reporting job already reads
-//	      would switch if the ledger ever has to run without a server
-//
-//	      what it would look like
-//	        app ──▶ pg ──▶ report
-//	      › keep the sqlite file as the source of truth
-//	      ? does the reporting job read it directly
-//	      ↳ it does, over the same connection string
-//
-//	  ▸ 2 sqlite
-//	  ▸ 3 a file per day
-//
-// And the foot, pinned above the box exactly where every other question on this
-// surface sits (view.go's chrome stack):
-//
-//	answering 1 postgres · with keep the sqlite file · once
-//	[enter] take it · [esc] later · [x] compare · [?] ask back · [↑↓] choose
-//
-// ── THE POINTER, AND THE THREE WAYS TO MOVE IT ──
-//
-// `↑`/`↓` walk the answers; `→` opens the one under the pointer and `←` folds
-// it; `enter` takes it, which is the block's own law arriving on the page
-// (#789). A digit still answers at once, from anywhere. And a click on an
-// answer's row moves the pointer onto it and opens it, with a second click on
-// the same row being `enter` — one press to read, one to decide
-// ([app.questionRoomPress] says why it is two).
+// `↑`/`↓` walk the answers and the evidence beside them follows; `enter` takes
+// the answer the pointer is on, which is the block's own law arriving on the
+// page (#789); a digit moves the pointer straight to its answer. Where there are
+// two panes, `→` hands the arrows to the evidence so a long diagram can be read
+// to its end and `←` hands them back. And a click on an answer's row moves the
+// pointer onto it, with a second click on the same row being `enter` — one press
+// to read, one to decide ([app.questionRoomPress] says why it is two).
 //
 // ── ALIGNMENT, STATED ONCE ──
 //
 // DESIGN.md: "Head at the gutter; option rows indented one key-cell; answers row
-// indented like the options". So the head and the back crumb start at column 0,
-// everything under them is indented [questionIndent], and an option's own body
-// is indented one further key-cell so the word and the body cannot be misread as
-// two answers. The three widths below are the whole of the page's geometry and
-// nothing computes its own.
+// indented like the options". So everything on the page is indented
+// [questionIndent], the answers' rows are the panel's own, and a shape's parts
+// are indented one further key-cell ([questionBodyIndent]) so a part and what is
+// written under it cannot be misread as two answers.
 
 const (
 	// questionIndent is the one key-cell every row under the head is indented by.
 	questionIndent = "  "
-	// questionBodyIndent is an option's body, one key-cell further in: the digit,
-	// the space and the fold mark are what it clears.
+	// questionBodyIndent is what is written under one part of a shape — a note
+	// on a checklist row, the exchange under a pair — one key-cell further in
+	// than the part: the key, its space and its mark are what it clears.
 	questionBodyIndent = "      "
-	// questionAttachIndent is where the question's OWN evidence sits: under its
-	// one dim title, and one step in from it, so a diagram never starts at the
-	// gutter while every sentence beside it is indented.
-	questionAttachIndent = "    "
-	// questionRoomFloor is the narrowest page that still draws sections. Below it
-	// there is no room for a fold mark, a digit and a word, and the page draws
-	// the linear shape every form owes the reader tier.
-	questionRoomFloor = 34
 	// questionCompareFloor is where the compare table stops being a table.
 	// DESIGN.md: "compare stacks under 80 cols".
 	questionCompareFloor = 80
-	// questionLayoutFloor is where a two-pane layout block stops being two panes.
-	// DESIGN.md: "two pre-formatted panes side by side above 100 cols, stacked
-	// below".
-	questionLayoutFloor = 100
 )
 
 // The words this page says, spelled once. Every one of them is in the person's
@@ -144,20 +93,12 @@ const (
 	// differently from the status line beside it would read as a different
 	// program.
 	questionSep = " · "
-	// questionBackWord is the crumb out. It names `esc` because a page a person
-	// walked into has to say how they leave it, which is room.go's own rule.
-	questionBackWord = "back"
-	// questionPickWord marks the asker's own pick. It is the asker saying which
-	// one it would take, never a default that happens on its own — a question
-	// with a clock says so in its own row (S1's card), and this page never
-	// pretends the pick is one.
-	questionPickWord = "my pick"
 	// questionWouldSwitchWord opens the line that is the most useful thing on the
 	// page: what would change the asker's mind. A person who disagrees with a
 	// pick usually disagrees with exactly this.
 	questionWouldSwitchWord = "would switch if "
-	// questionThenWord and questionWhyWord label the two dim lines under an
-	// open answer, and they exist because four grey sentences stacked in one
+	// questionThenWord and questionWhyWord label two of the dim lines of an
+	// answer's case (questionevidence.go), and they exist because four grey sentences stacked in one
 	// column read as one grey paragraph nobody can tell apart — the owner,
 	// 2026-09-10, on a page exactly like that: "make sure there is some
 	// textual hierarchy in design in options like the same line and next line
@@ -298,16 +239,17 @@ type questionRoom struct {
 	// act on. It is an index into the options rather than a key so an empty
 	// option list is simply focus 0 on nothing.
 	focus int
-	// open says which sections are expanded. A room OPENS ON ITS PICK — the one
-	// answer a person most wants to read is the one the asker would take — and
-	// everything else starts folded, which is what makes the page a page rather
-	// than a wall.
-	open map[int]bool
-	// compare swaps the sections for the table `x` draws.
+	// compare swaps the answers for the table `x` draws.
 	compare bool
-	// picked is what the foot would send. It is a slice because a checklist and a
-	// run of pairs both answer with several keys, and [session.Answer.Picked] is
-	// the field that carries them.
+	// reading is the arrows handed to the evidence pane (`→`): `↑`/`↓` scroll it
+	// rather than walking the answers, until `←` hands them back or the pointer
+	// moves by any other road.
+	reading bool
+	// picked is what a CHECKLIST's foot would send: the rows ticked, in the order
+	// they were ticked. A list of answers has no second state to hold — `enter`
+	// takes the answer the pointer is on ([app.questionRoomSends]) — so a page
+	// whose choice and pointer could disagree is a page that can send an answer
+	// nobody is looking at.
 	picked []string
 	// scope is how long the answer lasts, and it is only ever one the question
 	// offered ([session.Question.Scope]).
@@ -341,31 +283,37 @@ type questionRoom struct {
 	// drawn where the foot was, because a refusal a person cannot see is an
 	// answer that silently did nothing.
 	refused string
-	// The reader's own position, on room.go's terms: it is HERE so that leaving
-	// restores the conversation without having moved it.
+	// The reader's own positions, on room.go's terms: they are HERE so that
+	// leaving restores the conversation without having moved it. offset is the
+	// list's window (or the one column's), and detail is the evidence pane's.
 	offset int
-	// The row cache, rebuilt on content or width and at no other time.
+	detail int
+	// The row cache, rebuilt on content or size and at no other time.
 	rows []row
-	// spots is which ANSWER each cached row belongs to, or -1 for a row that
-	// belongs to none — the whole of how a press and a hover find an option on
-	// this page.
+	// spots is what a press on each cached row reaches (questionpage.go's
+	// [questionSpot]).
 	//
 	// IT IS WRITTEN BY THE DRAWING AND READ BY THE POINTER, which is the bargain
 	// every hit-test on this surface keeps (hover.go's law): what lights is
 	// exactly what a press acts on, because both of them are reading the row the
-	// layout actually wrote. Only an answer's OWN row is a target — its body is
-	// prose, a diagram and the person's own notes, and a click that answered a
-	// question because somebody aimed at a diagram would be the worst press on
-	// this surface.
-	spots []int
-	width int
-	dirty bool
+	// layout actually wrote.
+	spots []questionSpot
+	// seam is the column the two panes meet at on the cached rows, or -1.
+	seam   int
+	height int
+	width  int
+	dirty  bool
 }
 
 // questionRoomOpen reports whether a question page is up. It is the one reading
 // every geometric question about the body region goes through, exactly as
 // [app.roomOpen] is for a node's page.
 func (a *app) questionRoomOpen() bool { return a.qroom != nil }
+
+// questionPageShows reports whether the page is up over this very question.
+func (a *app) questionPageShows(q questionShown) bool {
+	return a.qroom != nil && a.qroom.head.token() == q.token()
+}
 
 // raiseQuestionRoom puts the page over the conversation.
 //
@@ -378,31 +326,30 @@ func (a *app) raiseQuestionRoom(head questionShown) {
 	q := head.question
 	room := &questionRoom{
 		head:     head,
-		open:     map[int]bool{},
 		comments: map[string]string{},
 		asks:     map[string]*questionAsk{},
 		scope:    questionDefaultScope(q),
 		shown:    a.now(),
 		dirty:    true,
+		// NO SEAM UNTIL THE BODY HAS DRAWN ONE. The foot's rule reads this rather
+		// than working the split out a second time, so before the first lay it
+		// must say "one column" — a junction is a claim about where the body
+		// split, and on the frame a page opens in the body has not answered yet.
+		seam: -1,
 	}
-	// THE PAGE OPENS ON THE PICK. Every other section starts folded, so what a
-	// person meets is the asker's own answer with its reason and its evidence
-	// under it, and the alternatives one key away — which is the order they will
-	// read them in anyway.
-	//
-	// AND WHERE THERE IS NO PICK THE POINTER STARTS WHERE THE BLOCK'S DOES
-	// ([questionPointerStart]): on the answer that loses nothing, wherever the
-	// question marks one. `enter` takes the answer the pointer is on, so the two
-	// forms may not disagree about which answer that is — a page whose pointer
-	// began one row above the block's would make one key mean two things
-	// depending on which size the question happened to be drawn at.
-	room.focus = questionPointerStart(q)
-	if q.Pick != nil && room.focus < len(q.Options) &&
-		strings.TrimSpace(q.Options[room.focus].Key) == strings.TrimSpace(q.Pick.Key) {
-		room.open[room.focus] = true
-	}
+	// THE PAGE OPENS WHERE THE BLOCK'S POINTER STOOD. A person who walked to the
+	// second answer and pressed `o` to read it opened the page ABOUT the second
+	// answer, and the block's pointer itself started where the law puts it
+	// ([questionPointerStart]: the asker's pick, or the answer that loses nothing
+	// where nobody but a person may answer). `enter` takes the answer the
+	// pointer is on, so the two sizes of one question may not disagree about
+	// which answer that is.
+	room.focus = head.pick
 	room.input = newQuestionInput(q)
 	a.qroom = room
+	if walk := a.questionRoomWalk(); room.focus < 0 || room.focus >= walk {
+		room.focus = questionPointerStart(q)
+	}
 	a.touch()
 }
 
@@ -416,6 +363,22 @@ func (a *app) closeQuestionRoom() {
 	}
 	a.qroom = nil
 	a.touch()
+}
+
+// closeQuestionPage closes the page when it is open OVER THIS QUESTION, and
+// leaves it alone otherwise.
+//
+// IT IS THE ONE DOOR FOR "THIS QUESTION IS OVER" (question.go's
+// [app.closeQuestion] and [app.withdrawQuestion] both call it), because the two
+// ways a question ends are the two ways a page is left standing on a decision
+// that has been made: answered here or in another window, and withdrawn by the
+// asker. Either way the rows underneath are gone, so a page still drawing them
+// is a page answering for a question nobody is waiting on.
+func (a *app) closeQuestionPage(token string) {
+	if a.qroom == nil || a.qroom.head.token() != token {
+		return
+	}
+	a.closeQuestionRoom()
 }
 
 // questionDefaultScope is the scope the foot starts on: the narrowest one the
@@ -453,123 +416,7 @@ func (a *app) questionRoomTouched() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The page.
-
-// questionRoomRows is the whole body region: the crumb, the head, the
-// attribution, and then either the option sections or the compare table.
-func (a *app) questionRoomRows(width int) []row {
-	room := a.qroom
-	if room == nil || width <= 0 {
-		return nil
-	}
-	if a.questionDrainReplies() {
-		room.dirty = true
-	}
-	if !room.dirty && room.width == width && room.rows != nil {
-		return room.rows
-	}
-	out := make([]row, 0, 32)
-	spots := make([]int, 0, 32)
-	add := func(text string) {
-		out = append(out, row{text: text, entry: -1})
-		spots = append(spots, -1)
-	}
-
-	add(a.questionCrumb(width))
-	for _, line := range a.questionHeadRows(width) {
-		add(line)
-	}
-	add("")
-	// THE QUESTION'S OWN EVIDENCE COMES BEFORE THE ANSWERS AND NOT AFTER THEM.
-	// It used to be drawn last, untitled, at the head's indent — so a page whose
-	// asker had drawn a picture per answer ended in a run of unowned diagrams
-	// that read as a second page begun halfway down the first (the owner,
-	// 2026-09-10: "the layout org and everything seems really bad"). It is
-	// evidence about the WHOLE decision, which is the thing a person weighs
-	// BEFORE they weigh one answer against another, so it is said first, once,
-	// under a title that says what it is.
-	for _, line := range a.questionAttachRows(width) {
-		add(line)
-	}
-	switch {
-	case room.compare:
-		for _, line := range a.questionCompareRows(width) {
-			add(line)
-		}
-	case room.input.kind != session.InputNone:
-		// A STRUCTURED INPUT REPLACES THE OPTION SECTIONS AND NEVER SITS UNDER
-		// THEM. DESIGN.md's ladder puts structured input one rung BELOW the
-		// question — blanks, a checklist, this-or-this, a dial are the answer
-		// itself, not a garnish on a list of answers — so a question that carries
-		// one is drawn as that shape and the options, where it has any, are the
-		// shape's own rows.
-		for _, line := range a.questionInputRows(width) {
-			add(line)
-		}
-	default:
-		lines, owners := a.questionOptionRows(width)
-		for i, line := range lines {
-			add(line)
-			spots[len(spots)-1] = owners[i]
-		}
-	}
-	room.rows, room.spots, room.width, room.dirty = out, spots, width, false
-	return out
-}
-
-// questionCrumb is the way out and where you are, on one row: the crumb at the
-// gutter and the question's place in what is open on the right.
-func (a *app) questionCrumb(width int) string {
-	back := a.pal.dim(a.icon(tokens.GScopeUp) + " " + questionBackWord)
-	if width < questionRoomFloor {
-		return fit(back, width)
-	}
-	return back
-}
-
-// questionHeadRows are the head and the attribution under it, and they are the
-// contract DESIGN.md writes for this page: "asked by · why now · what is paused
-// on it · what goes on without it".
-//
-// ALL FOUR OR AS MANY AS ARE TRUE. The emptiness law governs every one of them —
-// a question with no reason draws no reason line, and one that nothing is
-// waiting on says so rather than leaving a person to guess whether the silence
-// means everything or nothing.
-func (a *app) questionHeadRows(width int) []string {
-	room := a.qroom
-	if room == nil {
-		return nil
-	}
-	out := make([]string, 0, 4)
-	mark := a.pal.ask(a.icon(tokens.GNeedsHuman))
-	head := strings.TrimSpace(room.head.question.Head)
-	lines := wrap(head, max(1, width-2))
-	for i, line := range lines {
-		if i == 0 {
-			out = append(out, mark+" "+a.pal.ink(line))
-			continue
-		}
-		out = append(out, questionIndent+a.pal.ink(line))
-	}
-	// The asker and the reason share a row: they are one sentence — who is asking
-	// and why now — and two rows for it would push the answers off a short page.
-	attribution := questionAskerWord(room.head.question.Asker)
-	if reason := strings.TrimSpace(room.head.question.Reason); reason != "" {
-		if attribution != "" {
-			attribution += questionSep
-		}
-		attribution += reason
-	}
-	if attribution != "" {
-		for _, line := range wrap(attribution, max(1, width-len(questionIndent))) {
-			out = append(out, questionIndent+a.pal.dim(line))
-		}
-	}
-	if blocking := questionBlockingWord(room.head.question.Blocking); blocking != "" {
-		out = append(out, questionIndent+a.pal.dim(fit(blocking, max(1, width-len(questionIndent)))))
-	}
-	return out
-}
+// What the page says about the question, in words other drawings share.
 
 // questionBlockingWord is the third attribution row: what is paused on this
 // question and what carries on regardless.
@@ -605,81 +452,6 @@ func questionTasksWord(ids []string) string {
 	return strconv.Itoa(len(ids)) + " tasks"
 }
 
-// questionOptionRows draws the answers as sections.
-//
-// ONE ROW PER ANSWER WHEN FOLDED, and the whole of it when open: the fold mark,
-// the digit, the word, and — on the asker's own pick — `my pick` with its
-// confidence, dim, on the right. Opening one adds its body, its consequence
-// lines, its blocks, and, on the pick, the reason and what would change its mind.
-func (a *app) questionOptionRows(width int) ([]string, []int) {
-	room := a.qroom
-	if room == nil || len(room.head.question.Options) == 0 {
-		return nil, nil
-	}
-	out := make([]string, 0, len(room.head.question.Options)*4)
-	owners := make([]int, 0, len(room.head.question.Options)*4)
-	for i, opt := range room.head.question.Options {
-		out = append(out, a.questionOptionHead(i, opt, width))
-		owners = append(owners, i)
-		if !room.open[i] {
-			continue
-		}
-		body := a.questionOptionBody(i, opt, width)
-		out = append(out, body...)
-		for range body {
-			owners = append(owners, -1)
-		}
-	}
-	return out, owners
-}
-
-// questionOptionHead is the one row an answer always has.
-func (a *app) questionOptionHead(i int, opt session.AnswerOption, width int) string {
-	room := a.qroom
-	mark := tokens.GCollapsed
-	if room.open[i] {
-		mark = tokens.GExpanded
-	}
-	lead := questionIndent + a.pal.dim(a.icon(mark)) + " "
-	key := opt.Key
-	if key == "" {
-		key = strconv.Itoa(i + 1)
-	}
-	// THE LABEL IS THIS SECTION'S HEADING AND IS DRAWN AS ONE: the question hue
-	// and the weight together, which is exactly how the card already spells an
-	// answer's word. It was the body's own ink, so a heading and the paragraph
-	// under it were one column of identical grey and the page had no hierarchy
-	// at all (the owner, 2026-09-10).
-	row := lead + a.pal.askBold(key+" "+strings.TrimSpace(opt.Label))
-	// The pick's badge is right-aligned, dim, and cut before the word is: a page
-	// too narrow to say `my pick · fairly sure` still has to say which answers
-	// there are.
-	if room.head.question.Pick != nil && room.head.question.Pick.Key == opt.Key {
-		badge := questionPickWord
-		if c := questionConfidenceWord(room.head.question.Pick.Confidence); c != "" {
-			badge += questionSep + c
-		}
-		row = questionRightAlign(row, a.pal.dim(badge), width)
-	}
-	// WHAT THE FOOT WOULD SEND WEARS THE GROUND LADDER'S *SELECTED* STEP AND
-	// THE ANSWER THE POINTER IS MERELY STANDING ON WEARS ITS CURSOR STEP. That
-	// is the ladder's own distinction and it is the reason the two are not one
-	// band: `selected` is "this is the chosen thing" and `cursor` is "the keys
-	// land here", and a page that painted them alike would answer "which one
-	// did I choose" with the row somebody happened to have walked to.
-	//
-	// AND THE POINTER LIGHTS THE SAME ROW A PRESS ACTS ON, which is hover.go's
-	// law: this row is the target, its body is not, and nothing else on the
-	// page brightens under a pointer because nothing else on it answers.
-	switch {
-	case a.questionTaken(opt.Key):
-		row = a.pal.selected(fit(row, width), width)
-	case i == room.focus, a.hoveringQuestionOption(i):
-		row = a.pal.cursor(fit(row, width), width)
-	}
-	return fit(row, width)
-}
-
 // questionConfidenceWord is how sure the asker is, in the asker's own three
 // words. It is dim beside the pick and never a number: a percentage on a
 // judgement is a machine pretending to have measured something.
@@ -693,69 +465,6 @@ func questionConfidenceWord(c session.Confidence) string {
 		return "not sure"
 	}
 	return ""
-}
-
-// questionOptionBody is everything under an open answer, in the order a person
-// reads it: what it means, what it costs, what it would look like, and — where
-// this is the pick — why the asker would take it and what would change its mind.
-func (a *app) questionOptionBody(i int, opt session.AnswerOption, width int) []string {
-	room := a.qroom
-	inner := max(1, width-len(questionBodyIndent))
-	out := make([]string, 0, 8)
-	// AN ANSWER WITH NO BODY DRAWS NO ROW FOR ONE. [wrap] answers an empty string
-	// with a single empty line — which is right for a paragraph and wrong here,
-	// where it would be a blank row claiming the asker said something.
-	if body := strings.TrimSpace(opt.Body); body != "" {
-		for _, line := range wrap(body, inner) {
-			out = append(out, questionBodyIndent+a.pal.ink(line))
-		}
-	}
-	// EVERY LINE UNDER THE BODY SAYS WHICH LINE IT IS. The consequence, the
-	// asker's reason and what would change its mind are all dim and all one
-	// sentence long, so on a page that drew them bare they were three
-	// indistinguishable grey rows a person had to read in full to find out
-	// which was which. Each carries its own word now, and the words are the
-	// ones somebody would use out loud.
-	if c := strings.TrimSpace(opt.Consequence); c != "" {
-		out = append(out, a.questionAsideRows(questionThenWord+c, inner)...)
-	}
-	if room.head.question.Pick != nil && room.head.question.Pick.Key == opt.Key {
-		if why := strings.TrimSpace(room.head.question.Pick.Reason); why != "" {
-			out = append(out, a.questionAsideRows(questionWhyWord+why, inner)...)
-		}
-		if change := strings.TrimSpace(room.head.question.Pick.WouldChange); change != "" {
-			out = append(out, a.questionAsideRows(questionWouldSwitchWord+questionAfterIf(change), inner)...)
-		}
-	}
-	// THE EVIDENCE SITS UNDER THE ANSWER IT BELONGS TO, at the body's own
-	// indent, with a blank row before each so two diagrams can never run into
-	// one another.
-	for _, block := range opt.Blocks {
-		out = append(out, "")
-		out = append(out, a.questionBlockRows(block, len(questionBodyIndent), width)...)
-	}
-	out = append(out, a.questionNoteRows(opt.Key, len(questionBodyIndent), width)...)
-	// AND ONE BLANK ROW CLOSES AN OPEN ANSWER, so the next answer's heading is
-	// separated from the paragraph above it by something other than an indent.
-	// It is the cheapest half of the hierarchy and the one a person reads
-	// without noticing they are reading it.
-	out = append(out, "")
-	_ = i
-	return out
-}
-
-// questionAsideRows is one labelled dim line under an answer — the consequence,
-// the asker's reason, what would change its mind.
-//
-// THEY ARE ALL DIM AND THAT IS THE LAW (DESIGN.md's hue rule: "the pick's
-// reason and every attribution are dim; option bodies are ink"), so the label
-// and not the ink is what tells one from the next.
-func (a *app) questionAsideRows(text string, inner int) []string {
-	out := make([]string, 0, 2)
-	for _, line := range wrap(text, inner) {
-		out = append(out, questionBodyIndent+a.pal.dim(line))
-	}
-	return out
 }
 
 // questionAfterIf makes the asker's own sentence read as the tail of `would
@@ -817,7 +526,7 @@ func (a *app) questionNoteRows(part string, indent, width int) []string {
 	}
 	if ask := room.asks[part]; ask != nil {
 		for i, line := range wrap(strings.TrimSpace(ask.asked), inner) {
-			lead := a.pal.ask(a.icon(tokens.GNeedsHuman) + " ")
+			lead := a.pal.warnBold(a.icon(tokens.GNeedsHuman)) + " "
 			if i > 0 {
 				lead = "  "
 			}
@@ -839,71 +548,19 @@ func (a *app) questionNoteRows(part string, indent, width int) []string {
 	return out
 }
 
-// questionAttachRows are the blocks the QUESTION carries, as opposed to the
-// ones hanging off one answer: evidence about the whole decision.
-//
-// THEY ARE ONE TITLED SECTION AND NOT A TAIL. They used to be drawn last, with
-// no heading, at the head's own indent — so a page whose asker had drawn a
-// picture per answer ended in a run of diagrams belonging to nobody, starting
-// at the gutter while every sentence above them was indented. Under a title
-// that says what they are, at an indent of their own, they read as the one
-// thing they are ([questionRoomRows] says why they are drawn first).
-func (a *app) questionAttachRows(width int) []string {
-	room := a.qroom
-	if room == nil || len(room.head.question.Attach) == 0 || room.compare {
-		return nil
-	}
-	title := fit(questionAttachWord, max(1, width-len(questionIndent)))
-	out := []string{questionIndent + a.pal.dim(title)}
-	for i, block := range room.head.question.Attach {
-		if i > 0 {
-			out = append(out, "")
-		}
-		out = append(out, a.questionBlockRows(block, len(questionAttachIndent), width)...)
-	}
-	return append(out, "")
-}
-
-// questionTaken reports whether the foot would send this key.
-func (a *app) questionTaken(key string) bool {
-	room := a.qroom
-	if room == nil || key == "" {
-		return false
-	}
-	for _, k := range room.picked {
-		if k == key {
-			return true
-		}
-	}
-	return false
-}
-
-// questionRightAlign puts a badge at the right edge of a row, or drops it where
-// the row has no room. It is the one place this page measures, and it measures
-// the PAINTED strings, because that is what the terminal draws.
-func questionRightAlign(left, right string, width int) string {
-	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
-	if gap < 2 {
-		return left
-	}
-	return left + strings.Repeat(" ", gap) + right
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // The foot: what the answer would be, and the keys.
 
-// questionFootHeight is how many rows the pinned foot takes: two while the
-// question is open, one while it is reporting a refusal, none otherwise.
+// questionFootHeight is how many rows the pinned foot takes: two while the page
+// is open and none otherwise, whatever the foot is saying.
 //
 // THERE IS NO ANSWERED HEIGHT, because an answered question has no page: the
 // page folds on the answer and the receipt is the block's ([app.questionAnswer]
-// says why).
+// says why). AND NO SHORTER ONE: a foot that was one row while it reported a
+// refusal moved the whole page up a row under the person reading it.
 func (a *app) questionFootHeight() int {
 	if a.qroom == nil {
 		return 0
-	}
-	if a.qroom.refused != "" {
-		return 1
 	}
 	return 2
 }
@@ -911,47 +568,69 @@ func (a *app) questionFootHeight() int {
 // questionFootRows is the foot, pinned above the box exactly where every other
 // question on this surface sits (view.go's chrome stack).
 //
-// TWO ROWS AND NEVER MORE. The first says what enter would send — the pick, what
-// was typed beside it, how many parts were commented on, and the scope — and the
-// second is the keys. A foot that grew with the question would push the box off
-// a short screen, which is the one thing a page that promises never to take the
-// keyboard cannot do.
+//	────────────────────────────────────────┴─── answering 1 SQLite · 1 noted ────
+//	  ↑↓ choose · enter take it · esc later · → detail      c change · x compare
+//
+// TWO ROWS AND NEVER MORE. The first is the rule that closes the page — meeting
+// the seam where there are two panes — with what `enter` would send written into
+// it the way the frame writes words into an edge; the second is the keys, the
+// ones that answer at the left and the ones that say something about the decision
+// at the right, which is the panel's two tiers on one row (hints pick A). While
+// the box is pointed at a part, or `d` is waiting for its second press, or the
+// engine refused, the rule says that instead and the row under it says how to
+// leave it. A foot that grew with the question would push the box off a short
+// screen, which is the one thing a page that promises never to take the keyboard
+// cannot do.
 func (a *app) questionFootRows(width int) []string {
 	room := a.qroom
 	if room == nil || width <= 0 {
 		return nil
 	}
-	if room.refused != "" {
-		return []string{a.pal.warn(fit(room.refused, width))}
+	// THE RULE THAT CLOSES THE PAGE IS DRAWN IN THE PAGE'S OWN FRAME, NOT THE
+	// TERMINAL'S. The body is charged for the task column ([app.bodyWidth]) and
+	// the foot is chrome drawn at the full frame width, so a rule spanning
+	// `width` ran on under the rail while the page's top rule stopped at the
+	// body's edge — two edges of one object ending in different columns. With
+	// the column up on a 140-cell terminal the body is still wide enough to
+	// split, which is exactly when it showed.
+	rule := func(words string) string {
+		return besideRule(a.pal, a.bodyWidth(), a.questionRoomSeam(), tokens.GFrameTeeUp, words)
 	}
-	if room.deciding {
-		return []string{
-			a.pal.ask(fit(a.questionDecideLine(), width)),
-			a.pal.dim(fit(questionDecideAgain, width)),
-		}
-	}
-	if room.decidingKind {
-		return []string{
-			a.pal.ask(fit(a.questionDecideKindLine(), width)),
-			a.pal.dim(fit(questionDecideKindAgain, width)),
-		}
+	switch {
+	case room.refused != "":
+		return []string{rule(a.pal.warn(room.refused)), a.questionRoomOfferRow(width)}
+	case room.deciding:
+		return []string{rule(a.pal.ink(a.questionDecideLine())), "  " + a.pal.dim(fit(questionDecideAgain, width-2))}
+	case room.decidingKind:
+		return []string{rule(a.pal.ink(a.questionDecideKindLine())), "  " + a.pal.dim(fit(questionDecideKindAgain, width-2))}
 	}
 	if prompt := a.questionPromptWord(); prompt != "" {
-		return []string{
-			a.pal.ask(fit(prompt, width)),
-			a.pal.dim(fit(a.questionSaying(), width)),
-		}
+		return []string{rule(a.pal.ink(prompt)), "  " + a.pal.dim(fit(a.questionSaying(), width-2))}
 	}
-	return []string{
-		a.questionComposeRow(width),
-		a.questionRoomOfferRow(width),
-	}
+	return []string{rule(a.questionComposeWords()), a.questionRoomOfferRow(width)}
 }
 
-// questionPromptWord is the sentence that replaces the compose row while the box
-// is pointed at a part rather than at the answer: `c`, `?` and `n` each say what
-// the box is writing now, because a box whose meaning changed silently is a box
-// that puts a comment into the answer.
+// questionRoomSeam is where the page's two panes meet, or -1 on a page of one
+// column.
+//
+// IT IS WHAT THE BODY ACTUALLY DREW, read back rather than worked out again.
+// [app.questionRoomView] stores the seam of the layout it painted, and the body
+// is laid before the chrome that carries this foot ([app.chatFrameLines] calls
+// bodyRows and then chrome), so the junction the foot draws cannot be a column
+// the body did not split at. Recomputing it here was the same arithmetic in a
+// second place, and the moment [app.questionPageListWant] changed, the two edges
+// of one frame would have met the seam in different columns.
+func (a *app) questionRoomSeam() int {
+	if a.qroom == nil {
+		return -1
+	}
+	return a.qroom.seam
+}
+
+// questionPromptWord is the sentence that replaces the compose words while the
+// box is pointed at a part rather than at the answer: `c`, `?` and `n` each say
+// what the box is writing now, because a box whose meaning changed silently is a
+// box that puts a comment into the answer.
 func (a *app) questionPromptWord() string {
 	room := a.qroom
 	switch {
@@ -965,52 +644,72 @@ func (a *app) questionPromptWord() string {
 	return ""
 }
 
-// questionSaying is the dim second row under a prompt: what the box holds so
-// far, or the way out of it.
+// questionSaying is the dim second row under a prompt: the way out of it.
 func (a *app) questionSaying() string {
 	return "esc " + questionKeyWord(questionLaterKey)
 }
 
-// questionComposeRow is the first foot row: `pick · with · notes · scope`.
-func (a *app) questionComposeRow(width int) string {
+// questionRoomSends is what `enter` would send from the page right now: the
+// answers and the words.
+//
+// IT IS ONE READING, asked by `enter` ([app.questionRoomEnter]) and by the foot
+// that says what `enter` would send ([app.questionComposeWords]), so the two
+// cannot disagree. On a list of answers it is the answer the pointer is on, with
+// whatever is in the box as the words that go with it; on `something else…` it
+// is the words alone; on a checklist it is the rows ticked.
+func (a *app) questionRoomSends() ([]string, string) {
 	room := a.qroom
+	words := strings.TrimSpace(a.input.String())
+	if room.input.kind != session.InputNone {
+		return append([]string{}, room.picked...), words
+	}
+	if key := questionOptionKeyAt(room.head.question, room.focus); key != "" {
+		return []string{key}, words
+	}
+	return nil, words
+}
+
+// questionComposeWords is what the foot's rule says `enter` would send:
+// `answering 1 postgres · with keep the sqlite file · 1 noted · just this once`.
+// It is ink where there is something to send and dim where there is not.
+func (a *app) questionComposeWords() string {
+	room := a.qroom
+	keys, words := a.questionRoomSends()
 	parts := make([]string, 0, 4)
 	switch {
-	case len(room.picked) > 0:
+	case len(keys) > 0:
+		parts = append(parts, questionAnsweringWord+a.questionPickedWord(keys))
 	case room.input.kind == session.InputBlanks || room.input.kind == session.InputPairs ||
 		room.input.kind == session.InputDial || room.input.kind == session.InputText:
 		parts = append(parts, questionFilledWord)
-	default:
+	case words == "":
 		parts = append(parts, questionNoPickWord)
 	}
-	if len(room.picked) > 0 {
-		parts = append(parts, questionAnsweringWord+a.questionPickedWord())
-	}
-	if said := strings.TrimSpace(a.input.String()); said != "" {
-		parts = append(parts, questionWithWord+said)
+	if words != "" {
+		parts = append(parts, questionWithWord+words)
 	}
 	if n := len(room.comments); n > 0 {
 		parts = append(parts, strconv.Itoa(n)+questionNotesWord)
 	}
-	// THE SCOPE IS ON THE ROW ONLY WHERE THERE IS A CHOICE OF IT. A question that
-	// offered one scope has no decision to show, and drawing `once` beside every
-	// answer would teach people to stop reading the word.
-	if len(room.head.question.Scope) > 1 {
+	// THE SCOPE IS SAID ONLY WHERE THERE IS A CHOICE OF IT. A question that
+	// offered one lifetime has no decision to show, and drawing `once` beside
+	// every answer would teach people to stop reading the word.
+	if len(questionScopes(room.head.question)) > 0 {
 		parts = append(parts, questionScopeWord(room.scope))
 	}
 	line := strings.Join(parts, questionSep)
-	if len(room.picked) == 0 {
-		return a.pal.dim(fit(line, width))
+	if len(keys) == 0 && words == "" {
+		return a.pal.dim(line)
 	}
-	return a.pal.ask(fit(line, width))
+	return a.pal.ink(line)
 }
 
-// questionPickedWord is what was chosen, in keys and words: `1 postgres`, or
+// questionPickedWord is what would be sent, in keys and words: `1 postgres`, or
 // `1 postgres, 3 a file per day` on a checklist.
-func (a *app) questionPickedWord() string {
+func (a *app) questionPickedWord(keys []string) string {
 	room := a.qroom
-	words := make([]string, 0, len(room.picked))
-	for _, key := range room.picked {
+	words := make([]string, 0, len(keys))
+	for _, key := range keys {
 		if opt, ok := room.head.question.Option(key); ok && strings.TrimSpace(opt.Label) != "" {
 			words = append(words, key+" "+strings.TrimSpace(opt.Label))
 			continue
@@ -1097,14 +796,27 @@ func (a *app) questionSetDial() tea.Cmd {
 		a.questionRoomTouched()
 		return nil
 	}
-	if err := door.SetAutonomy(room.head.question.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
-	room.refused = questionDecideKindDone
-	a.questionRoomTouched()
-	return nil
+	// THE RULE IS WRITTEN FROM A COMMAND (offloop.go) and the foot says what the
+	// engine said about it — which is the one thing here worth waiting to know,
+	// because the engine refuses a rule over a clarification and over anything
+	// destructive. What it does not do is hold the frame while it waits.
+	kind := room.head.question.Ask
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := door.SetAutonomy(kind, session.Policy{Kind: session.PolicyDecide})
+		return func(here bool) tea.Cmd {
+			if !here || a.qroom == nil || a.qroom != room {
+				return nil
+			}
+			if err != nil {
+				room.refused = strings.TrimSpace(err.Error())
+			} else {
+				room.refused = questionDecideKindDone
+				a.autonomyChanged()
+			}
+			a.questionRoomTouched()
+			return nil
+		}
+	})
 }
 
 // questionOfferKeys is which of the grammar's keys this question offers, and it
@@ -1115,40 +827,46 @@ func (a *app) questionOfferKeys() []questionVerb {
 	return a.questionAnswerKeys(a.qroom.head, formsRoom)
 }
 
-// questionOfferRow spells that offer as the one row a person reads. The words
-// and the give-up order are the table's; the painting is
-// [app.questionVerbParts]'s, so the foot of a page and the answers row of a card
-// are the same row drawn in two places.
+// questionRoomOfferRow is the foot's row of keys: the keys that answer at the
+// left, and the ones that say something about the decision at the right — the
+// panel's two tiers (hints pick A), laid on one row because the page has the
+// width the panel's frame does not.
+//
+// BOTH HALVES ARE THE ONE KEY ROW ([app.questionKeyRow]), each dropped by rank
+// until it fits, and the quieter half is given up whole before the half that
+// answers loses anything.
 func (a *app) questionRoomOfferRow(width int) string {
 	head := a.qroom.head
 	keys := a.questionOfferKeys()
+	room := max(width-2*len(questionIndent), 1)
+	left := a.questionKeyRow(head, questionKeysOnTier(keys, keyPrimary), room)
+	row := questionIndent + left
+	spare := room - ansi.StringWidth(left) - 2*len(questionKeyGap)
+	if right, ok := a.questionKeyRowWithin(head, questionKeysOnTier(keys, keySecondary), spare); ok {
+		row = questionRightAlign(row, right, width-len(questionIndent))
+	}
+	return row
+}
+
+// questionKeyRowWithin is the one key row at a width, or false where not even
+// its most valuable key fits — a tier that would be cut mid-word is left off.
+func (a *app) questionKeyRowWithin(q questionShown, keys []questionVerb, width int) (string, bool) {
+	if len(keys) == 0 || width <= 0 {
+		return "", false
+	}
 	for {
-		parts := a.questionVerbParts(head, keys, false)
-		line := strings.Join(parts, "")
-		if ansi.StringWidth(line) <= width {
-			return a.questionPaintOffer(parts)
+		if ansi.StringWidth(questionKeyWords(q, keys)) <= width {
+			return a.paintQuestionKeys(q, keys), true
+		}
+		if len(keys) == 1 {
+			return "", false
 		}
 		dropped, ok := questionDropVerb(keys)
 		if !ok {
-			return a.pal.dim(fit(line, width))
+			return "", false
 		}
 		keys = dropped
 	}
-}
-
-// questionPaintOffer paints the alternating word/key pairs
-// [app.questionVerbParts] builds: the keys are what a person scans for, so they
-// are the only bold cells on the row.
-func (a *app) questionPaintOffer(parts []string) string {
-	var b strings.Builder
-	for i, part := range parts {
-		if i%2 == 1 {
-			b.WriteString(a.pal.dim(part))
-			continue
-		}
-		b.WriteString(a.pal.ask(part))
-	}
-	return b.String()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1193,7 +911,13 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		return a.questionRoomEnter(), true
 	case "up", "down":
-		a.questionMoveFocus(map[string]int{"up": -1, "down": 1}[key])
+		// WHILE THE ARROWS ARE THE EVIDENCE PANE'S (`→`) THEY SCROLL IT, and
+		// everywhere else they walk the answers.
+		if delta := map[string]int{"up": -1, "down": 1}[key]; room.reading {
+			a.questionRoomScrollDetail(delta)
+		} else {
+			a.questionMoveFocus(delta)
+		}
 		return nil, true
 	}
 	// AND THE BOX IS A BOX WHILE IT IS POINTED AT A PART. `c`, `?` and `n` each
@@ -1227,20 +951,23 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		room.refused = ""
 		a.questionRoomTouched()
 	}
-	// `→` OPENS AN ANSWER AND `←` FOLDS IT, which is the other half of the walk
-	// `↑`/`↓` began: a person reading a page of folded sections reaches sideways
-	// to open one, and on this page they were reaching at nothing at all — the
-	// row said `[←→] choose` and neither key did anything (the owner,
-	// 2026-09-10: "no arrow or click").
+	// `→` HANDS THE ARROWS TO THE EVIDENCE PANE AND `←` HANDS THEM BACK, which
+	// is the sideways half of the walk `↑`/`↓` began: the pane beside the list
+	// can be taller than the page, and a diagram whose end is below the fold is
+	// read by moving INTO the pane rather than by reaching for the wheel.
 	//
-	// IT IS READ AFTER THE BOX AND BEFORE THE OFFER TABLE for two separate
-	// reasons. After the box, because `←` inside a sentence somebody is typing
-	// is the caret and nothing else. Before the table, because where the
-	// question carries a shape of its own — a dial, a hole with choices — the
-	// side arrows are that shape's ([needMoves]), and the two can never both be
-	// true on one page.
+	// IT IS READ AFTER THE BOX AND BEFORE THE REST OF THE TABLE for two separate
+	// reasons. After the box, because `←` inside a sentence somebody is typing is
+	// the caret and nothing else. Before the rest, because where the question
+	// carries a shape of its own — a dial, a hole with choices — the side arrows
+	// are that shape's ([needMoves]), and the two can never both be true on one
+	// page. A side arrow the foot is not offering does nothing at all, which is
+	// the page's law about keys it did not draw.
 	if room.input.kind == session.InputNone && (key == "left" || key == "right") {
-		a.questionFoldFocus(key == "right")
+		if a.questionRoomOffers(key) {
+			room.reading = key == "right"
+			a.questionRoomTouched()
+		}
 		return nil, true
 	}
 	// NO KEY DOES ANYTHING THAT IS NOT DRAWN ON SCREEN RIGHT NOW, which is the
@@ -1298,8 +1025,11 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		head := room.head
 		a.closeQuestionRoom()
 		return a.questionUndo(head), true
-	case questionOpenKey:
-		room.open[room.focus] = !room.open[room.focus]
+	case questionScopeKey:
+		// `t` CHANGES THE LIFETIME AND NOTHING ELSE, exactly as it does on the
+		// panel (questionscope.go): nothing is written and nothing is answered,
+		// and the foot's rule says the lifetime the answer would go out with.
+		room.scope = questionScopeAfter(room.head.question, room.scope)
 	case questionLaterKey:
 		a.closeQuestionRoom()
 		return nil, true
@@ -1334,6 +1064,14 @@ func (a *app) questionRoomOffers(key string) bool {
 			if key == "shift+up" || key == "shift+down" {
 				return true
 			}
+		case questionDetailKey:
+			if key == "right" {
+				return true
+			}
+		case questionAnswersKey:
+			if key == "left" {
+				return true
+			}
 		case questionBlankKey:
 			if key == "shift+tab" {
 				return true
@@ -1343,58 +1081,48 @@ func (a *app) questionRoomOffers(key string) bool {
 	return false
 }
 
-// questionMoveFocus walks the sections, and it is bounded rather than wrapping:
+// questionMoveFocus walks the answers, and it is bounded rather than wrapping:
 // a list that jumps from the last row to the first is a list a person loses
 // their place in.
 func (a *app) questionMoveFocus(delta int) {
 	room := a.qroom
-	n := len(room.head.question.Options)
-	if room.input.kind != session.InputNone {
-		n = room.input.count()
-	}
+	n := a.questionRoomWalk()
 	if n == 0 {
 		return
 	}
-	at := room.focus + delta
-	if at < 0 {
-		at = 0
-	}
-	if at >= n {
-		at = n - 1
-	}
+	at := questionClamp(room.focus+delta, 0, n-1)
 	if room.input.kind != session.InputNone {
 		room.input.focus = at
 	}
 	room.focus = at
+	a.questionRoomShowFocus()
 	a.questionRoomTouched()
 }
 
-// questionFoldFocus opens the answer the focus is on, or folds it.
-//
-// AN ANSWER THAT IS ALREADY OPEN DOES NOT RE-OPEN AND ONE ALREADY FOLDED DOES
-// NOT RE-FOLD, which is what makes holding `→` down safe: the key states what
-// it wants rather than toggling, so a person who cannot see whether a section
-// is open still knows exactly what each arrow will do to it.
-func (a *app) questionFoldFocus(open bool) {
+// questionRoomScrollDetail moves the evidence pane's window by one row while the
+// arrows are the pane's, bounded at both ends.
+func (a *app) questionRoomScrollDetail(delta int) {
 	room := a.qroom
-	if room == nil || room.focus < 0 || room.focus >= len(room.head.question.Options) {
-		return
-	}
-	room.open[room.focus] = open
+	lay := a.questionRoomLay(a.bodyWidth(), a.viewHeight())
+	room.detail = questionWindowStart(room.detail+delta, len(lay.pane), lay.region)
 	a.questionRoomTouched()
 }
 
-// questionFocusOption is the answer the focus is standing on, and false where
-// the page is drawing a shape rather than a list of answers.
-func (a *app) questionFocusOption() (session.AnswerOption, bool) {
-	room := a.qroom
-	if room == nil || room.input.kind != session.InputNone {
-		return session.AnswerOption{}, false
+// questionScopeAfter is the lifetime after `now` in the question's own list of
+// them, narrowest first, coming back round to the narrowest after the widest.
+// It is the panel's walk (questionscope.go's [questionScopes]) read from the
+// page's own state.
+func questionScopeAfter(q session.Question, now session.AnswerScope) session.AnswerScope {
+	scopes := questionScopes(q)
+	for i, one := range scopes {
+		if one == now {
+			return scopes[(i+1)%len(scopes)]
+		}
 	}
-	if room.focus < 0 || room.focus >= len(room.head.question.Options) {
-		return session.AnswerOption{}, false
+	if len(scopes) > 0 {
+		return scopes[0]
 	}
-	return room.head.question.Options[room.focus], true
+	return now
 }
 
 // questionFocusKey is the part the focus is on, as the key a comment is filed
@@ -1410,29 +1138,28 @@ func (a *app) questionFocusKey() string {
 	return room.head.question.Options[room.focus].Key
 }
 
-// questionRoomPick takes one of the answers by its digit.
+// questionRoomPick is a digit on the page: the pointer goes straight to that
+// answer, and the evidence beside the list is that answer's.
 //
-// A CHECKLIST ADDS AND EVERY OTHER SHAPE REPLACES. Pressing 2 on a choice means
-// "2, not 1"; pressing 2 on a list of things to tick means "and 2" — and a
-// single rule for both would either make a choice accumulate or make a checklist
-// impossible to fill.
+// ON THE PAGE A DIGIT MOVES AND DOES NOT SEND. The page is where a person reads
+// before deciding, and the digit is the fastest way to put an answer's evidence
+// in front of them; `enter` is the decision. A CHECKLIST TICKS instead, because
+// pressing 2 on a list of things to tick means "and 2".
 func (a *app) questionRoomPick(key string) {
 	room := a.qroom
 	opt, ok := room.head.question.Option(key)
 	if !ok {
 		return
 	}
-	for i := range room.head.question.Options {
-		if room.head.question.Options[i].Key == key {
-			room.focus = i
-		}
+	if at, found := questionOptionAt(room.head.question, key); found {
+		room.focus = at
 	}
 	if room.input.kind == session.InputChecklist {
 		room.picked = questionToggleOne(room.picked, opt.Key)
 		return
 	}
-	room.picked = []string{opt.Key}
-	room.open[room.focus] = true
+	room.reading = false
+	a.questionRoomShowFocus()
 }
 
 // questionToggleOne adds a key or takes it away, keeping the order the person
@@ -1504,30 +1231,20 @@ func (a *app) questionRoomEnter() tea.Cmd {
 		}
 		return a.questionAnswer(session.Answer{Reframe: said, DecidedBy: session.DecidedByPerson})
 	}
+	// ENTER SENDS WHAT THE FOOT SAYS IT WOULD ([app.questionRoomSends]): the
+	// answer the pointer is on with whatever is in the box beside it, which is
+	// the block's own law arriving on the page (#789: "every answer has a
+	// pointer the arrows walk and enter takes"). It costs nothing on a page
+	// nobody has walked, because the page opens where the block's pointer stood.
+	//
 	// THE EMPTINESS LAW ON THE MOST IMPORTANT KEY ON THE PAGE: `enter` with
-	// nothing chosen and nothing typed does nothing at all, because there is no
-	// answer for it to send. The foot already says `nothing chosen yet`.
-	// ENTER TAKES THE ANSWER THE POINTER IS ON. It is the block's own law
-	// arriving on the page (#789: "every answer has a pointer the arrows walk
-	// and enter takes"), and it costs nothing on a page nobody has walked,
-	// because the page OPENS on the asker's pick — so `enter` straight off a
-	// fresh room still takes the recommendation, exactly as it always did.
-	if len(room.picked) == 0 && said == "" {
-		if opt, ok := a.questionFocusOption(); ok && strings.TrimSpace(opt.Key) != "" {
-			room.picked = []string{opt.Key}
-		} else if room.head.question.Pick != nil {
-			room.picked = []string{room.head.question.Pick.Key}
-		}
-	}
-	if len(room.picked) == 0 && said == "" && room.input.kind == session.InputNone {
+	// nothing to send — `something else…` and an empty box — does nothing at
+	// all, and the foot already says `nothing chosen yet`.
+	keys, words := a.questionRoomSends()
+	if len(keys) == 0 && words == "" && room.input.kind == session.InputNone {
 		return nil
 	}
-	answer := session.Answer{
-		Picked:    append([]string{}, room.picked...),
-		Change:    said,
-		DecidedBy: session.DecidedByPerson,
-	}
-	return a.questionAnswer(answer)
+	return a.questionAnswer(session.Answer{Picked: keys, Change: words, DecidedBy: session.DecidedByPerson})
 }
 
 // questionHandOver is the second press of `d`: the asker's own pick, recorded as
@@ -1581,20 +1298,17 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		})
 	}
 	room.input.fill(&answer)
-	door, ok := a.agent.(questionDoor)
-	if !ok {
+	if _, ok := a.agent.(questionDoor); !ok {
 		room.refused = questionNoDoorWord
 		a.questionRoomTouched()
 		return nil
 	}
-	if answer.DecidedBy == "" {
-		answer.DecidedBy = session.DecidedByPerson
-	}
-	if err := door.ResolveQuestion(answer); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
+	// AND THE DOOR IS ASKED THROUGH THE ONE ANSWERING ROAD (question.go's
+	// [app.answerQuestions]), which is where the sent stamp, the record, the
+	// off-loop call and the reopen all live. This page had a copy of every one
+	// of those beside it, and a copy of a road is a second set of rules about
+	// what an answer does the first day one of them moves.
+	sent := a.answerQuestion(room.head, answer)
 	a.input.reset()
 	// THE ANSWER IS THE RECORD, AND THERE IS ONE RECORD.
 	//
@@ -1615,9 +1329,8 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	// waiting underneath it. Measured on a real screen before either half of
 	// this landed: an answer given on this page, in this window, drew
 	// `another window` on its own receipt.
-	a.closeQuestion(room.head, answer)
 	a.closeQuestionRoom()
-	return nil
+	return sent
 }
 
 // questionNoDoorWord is what the foot says on a session that can draw a question
@@ -1675,145 +1388,21 @@ func questionHasDimensions(q session.Question) bool {
 	return false
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// The geometry, on room.go's own terms.
-
-// questionRoomWindow is the page's visible slice and the padding under it. It is
-// [app.window]'s shape over this page's rows and this page's offset, which is
-// what makes `esc` restore the conversation without having moved it.
-//
-// THE PADDING FALLS BELOW A SHORT PAGE, exactly as it does under a short
-// conversation and under a short room. A question with two answers reads from
-// the top like everything else on this surface.
-func (a *app) questionRoomWindow(width, height int) ([]row, int) {
-	if height <= 0 {
-		return nil, 0
-	}
-	rows := a.questionRoomRows(width)
-	offset := a.questionRoomOffsetFor(len(rows), height)
-	end := min(offset+height, len(rows))
-	visible := rows[offset:end]
-	if pad := height - len(visible); pad > 0 {
-		return visible, pad
-	}
-	return visible, 0
-}
-
-// questionRoomOffsetFor clamps the reader's position.
-//
-// IT ANCHORS AT THE TOP AND NEVER AT THE LIVE EDGE, which is where it parts
-// company with a node's page. A room follows work that is still arriving, so it
-// sticks to the bottom; a question is FINISHED the moment it is drawn — the head
-// is the first thing to read and nothing will be appended under it — so a page
-// that opened at its foot would open on the least useful row it has.
-func (a *app) questionRoomOffsetFor(total, height int) int {
-	room := a.qroom
-	bottom := max(0, total-height)
-	if room == nil || room.offset < 0 {
-		return 0
-	}
-	return min(room.offset, bottom)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// The pointer.
-
-// questionRoomOptionAt is which answer the pointer is on, and false where it is
-// on none of them.
-//
-// It is [app.roomRowAt]'s arithmetic answered in this page's coordinates — the
-// frame pins rows above the body, the page hangs from the top with the slack
-// below it, and the window starts wherever the reader scrolled to — read
-// against the row-to-answer map the drawing wrote ([questionRoom.spots]).
-func (a *app) questionRoomOptionAt(y int) (int, bool) {
-	room := a.qroom
-	top := a.bodyTop()
-	if room == nil || top < 0 {
-		return 0, false
-	}
-	height := a.viewHeight()
-	rows := a.questionRoomRows(a.bodyWidth())
-	offset := a.questionRoomOffsetFor(len(rows), height)
-	end := min(offset+height, len(rows))
-	at := y - top + offset
-	if at < offset || at >= end || at >= len(room.spots) || room.spots[at] < 0 {
-		return 0, false
-	}
-	return room.spots[at], true
-}
-
-// questionRoomPress resolves a click on the page and reports whether it took
-// one.
-//
-// ONE PRESS OPENS AN ANSWER AND THE NEXT ONE TAKES IT, which is the only shape
-// that can be both discoverable and safe. A page where the first click answered
-// would answer a question with evidence somebody had not read yet; a page where
-// no click ever answered would be a page a person has to leave the mouse to
-// finish. So the first press moves the pointer onto that answer and opens it —
-// the same thing `↓` then `→` do — and a press on the answer the pointer is
-// already standing on, open, is `enter`.
-//
-// A PRESS ANYWHERE ELSE ON THE PAGE FALLS THROUGH AND DOES NOTHING, which is
-// this surface's law about empty space (app.go's [app.press]): the bodies, the
-// diagrams and the person's own notes are prose, and prose has no gesture.
-//
-// IT IS ASKED ABOUT THE ROW ALONE AND NOT ABOUT THE COLUMN, which is the one
-// place this page parts company with a run's. An answer's row is the whole
-// width of the page — the fold mark at one end and the pick's badge at the
-// other — so a press that had to land on the word would be a press a person has
-// to aim.
-func (a *app) questionRoomPress(y int) (tea.Cmd, bool) {
-	room := a.qroom
-	if room == nil {
-		return nil, false
-	}
-	// THE SETTLE GUARD IS THE POINTER'S TOO. A click that arrived less than
-	// [questionSettle] after the page was drawn was aimed at whatever was on
-	// screen before it, and a mouse is no better at stopping than a hand is.
-	if a.now().Sub(room.shown) < questionSettle {
-		return nil, true
-	}
-	at, ok := a.questionRoomOptionAt(y)
-	if !ok {
-		return nil, false
-	}
-	if at != room.focus || !room.open[at] {
-		room.focus, room.open[at] = at, true
-		a.questionRoomTouched()
-		return nil, true
-	}
-	if key := strings.TrimSpace(room.head.question.Options[at].Key); key != "" {
-		a.questionRoomPick(key)
-	}
-	a.questionRoomTouched()
-	return a.questionRoomEnter(), true
-}
-
-// questionRoomScroll moves the page's window.
-func (a *app) questionRoomScroll(delta int) {
-	room := a.qroom
-	if room == nil {
-		return
-	}
-	total := len(a.questionRoomRows(a.bodyWidth()))
-	bottom := max(0, total-a.viewHeight())
-	room.offset = questionClamp(room.offset+delta, 0, bottom)
-	a.touch()
-}
-
 // askBackCmd sends one sentence to the asker WITH THE QUESTION STILL OPEN.
 //
 // DESIGN.md gives this two seams — "sent to the asker through ResolveQuestion's
 // AskedBack seam (E1) or the ordinary turn with the question still open" — and
-// the ordinary turn is the one that exists today: there is no engine door that
-// takes a question about a question and answers it without resolving anything.
-// So the sentence goes in as a message, the question stays up, and the reply
-// lands back on the row it was asked from ([app.questionDrainReplies]).
+// BOTH now exist. [app.askBack] is the one place that chooses between them, and
+// it chooses by asking [session.AnswerResolves] rather than by listing lanes, so
+// the page and the block cannot end up sending the same gesture two ways.
 //
-// THE ROW REMEMBERS WHERE THE TRANSCRIPT WAS. That is the whole of how the reply
-// is found: everything the model says after the sentence went in is a candidate,
-// and the first settled thing it says is the answer. Nothing is parsed and
-// nothing is guessed — a person can read both rows and see for themselves.
+// THE ROW REMEMBERS WHERE THE TRANSCRIPT WAS, down either road. That is the
+// whole of how the reply is found: everything the model says after the sentence
+// went in is a candidate, and the first settled thing it says is the answer.
+// Nothing is parsed and nothing is guessed — a person can read both rows and see
+// for themselves. The seam does not change that, because what it returns is the
+// parked call's RESULT: the model answers in its ordinary reply, in the
+// transcript, where this was already looking (tools_ask.go's `askedBackLead`).
 func (a *app) askBackCmd(part, text string) tea.Cmd {
 	room := a.qroom
 	if room == nil {
@@ -1822,7 +1411,7 @@ func (a *app) askBackCmd(part, text string) tea.Cmd {
 	if ask := room.asks[part]; ask != nil {
 		ask.after = len(a.entries)
 	}
-	return a.submit(text)
+	return a.askBack(room.head, part, text)
 }
 
 // questionDrainReplies fills in any ask-back whose answer has since arrived. It

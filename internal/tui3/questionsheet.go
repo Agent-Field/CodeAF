@@ -352,7 +352,7 @@ func (a *app) questionSheetRows(s *questionSheet, width int) []string {
 		return nil
 	}
 	out := make([]string, 0, len(s.questions)+4)
-	out = append(out, a.questionMark()+" "+a.pal.ask(fit(
+	out = append(out, a.questionMark()+" "+a.pal.ink(fit(
 		itoa(len(s.questions))+plural(" question", len(s.questions))+questionSheetTogether, width-2)))
 	group := session.AskKind("")
 	for i, q := range s.questions {
@@ -381,10 +381,13 @@ func (a *app) questionSheetRows(s *questionSheet, width int) []string {
 // [session.AnswerOption.Key], never numbered by position, so `2` means what that
 // question says `2` means on the row it is drawn on and nothing else.
 func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, width int) string {
-	cursor, plainCursor := a.pal.ask("  "), "  "
+	// THE POINTER IS THE POINTER EVERYWHERE (owner ruling 2026-09-11): `▸`, in
+	// the one amber the marks wear, and never the fold's own chevron — which is
+	// a different claim on every other row of this surface.
+	cursor, plainCursor := "  ", "  "
 	if at == s.cursor {
-		plainCursor = a.icon(tokens.GCollapsed) + " "
-		cursor = a.pal.ask(plainCursor)
+		plainCursor = a.icon(tokens.GPointer) + " "
+		cursor = a.pal.warnBold(a.icon(tokens.GPointer)) + " "
 	}
 	answer, given := s.answered(q)
 	// EACH ROW WEARS ITS OWN SHAPE'S MARK. A sheet is questions of several
@@ -407,7 +410,7 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 	}
 	text := plainCursor + plainMark + " " + head
 	if tail == "" {
-		return a.pal.ask(fit(text, width))
+		return fit(cursor+mark+" "+a.pal.ink(head), width)
 	}
 	// THE ANSWERS ARE IN A COLUMN, AND THE COLUMN IS SET BY THE LONGEST
 	// SENTENCE IN THE SHEET RATHER THAN BY THE EDGE OF THE SCREEN.
@@ -423,17 +426,19 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		column = width - ansi.StringWidth(tail)
 	}
 	if column < ansi.StringWidth(text)+2 {
-		return a.pal.ask(fit(text+"  "+tail, width))
+		return fit(cursor+mark+" "+a.pal.ink(head)+"  "+a.pal.dim(tail), width)
 	}
 	gap := column - ansi.StringWidth(text)
-	// Painted in pieces rather than nested, for [app.questionCardOptionRows]'s
+	// Painted in pieces rather than nested, for [app.questionPanelOption]'s
 	// reason: these hues are raw SGR with an explicit reset, so a colour inside
 	// a colour ends the outer one early.
-	line := cursor + mark + a.pal.ask(" "+head) + strings.Repeat(" ", gap)
-	if given {
-		return line + a.pal.dim(tail)
-	}
-	return line + a.pal.ask(tail)
+	//
+	// THE WORDS ARE INK AND THE ANSWERS DIM, which is the panel's own grammar on
+	// a list: the sheet used to paint every cell of every row in the question
+	// hue, so a batch of five questions was five amber rows and the mark that
+	// says which of them is still waiting had nothing to stand out from.
+	line := cursor + mark + " " + a.pal.ink(head) + strings.Repeat(" ", gap)
+	return line + a.pal.dim(tail)
 }
 
 // answerColumn is where every row's answers begin: one cell past the longest
@@ -464,10 +469,10 @@ func questionSheetAnswers(q session.Question) string {
 	return strings.Join(parts, " · ")
 }
 
-// questionSheetOffer is the sheet's answers row, built from the one key table
-// and degraded the way every other answers row on this surface is: the tail
-// goes from the end backwards until what is left fits, and `s` and `esc` are
-// never given up ([app.questionOffer] states the same law for the block).
+// questionSheetOffer is the sheet's keys row. It is the ONE key row
+// ([app.questionKeyRow]) with the sheet's own words on the verbs: the key in the
+// payload hue, its word dim, given up from the end backwards until what is left
+// fits, and `s` and `esc` never given up.
 //
 // `s` WEARS ITS COUNT, which is the emptiness law read forwards: a send key
 // that said nothing about how much it would send is a key a person presses to
@@ -489,32 +494,11 @@ func (a *app) questionSheetOffer(s *questionSheet, width int) string {
 		}
 		keys = append(keys, verb)
 	}
-	for {
-		parts := make([]string, 0, len(keys)*4)
-		for _, verb := range keys {
-			if len(parts) > 0 {
-				parts = append(parts, "", " · ")
-			}
-			parts = append(parts, "["+questionKeySpelling(verb.key)+"]", " "+verb.word)
-		}
-		plain := "  " + strings.Join(parts, "")
-		if ansi.StringWidth(plain) <= width {
-			out := a.pal.ask("  ")
-			for i, part := range parts {
-				if i%2 == 1 {
-					out += a.pal.askBold(part)
-					continue
-				}
-				out += a.pal.ask(part)
-			}
-			return out
-		}
-		dropped, ok := questionDropVerb(keys)
-		if !ok {
-			return a.pal.ask(fit(plain, width))
-		}
-		keys = dropped
+	q := questionShown{}
+	if s.cursor >= 0 && s.cursor < len(s.questions) {
+		q.question = s.questions[s.cursor]
 	}
+	return "  " + a.questionKeyRow(q, keys, max(width-2, 0))
 }
 
 // ── the sheet on this surface ───────────────────────────────────────────────
@@ -627,9 +611,11 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch key {
 	case "up", "shift+tab":
+		a.aimSheet()
 		a.moveSheetCursor(-1)
 		return nil, true
 	case "down", "tab":
+		a.aimSheet()
 		a.moveSheetCursor(1)
 		return nil, true
 	}
@@ -642,9 +628,18 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch key {
 	case questionEnterKey:
 		return a.openSheetRow()
-	case questionSendKey:
-		return a.sendSheet()
-	case questionAlikeKey:
+	case questionSendKey, questionAlikeKey:
+		// THE SHEET'S TWO VERBS ARE THE BOX'S UNTIL SOMEBODY AIMS AT THE SHEET,
+		// which is the block's law and is sharper here: `s` and `g` are about the
+		// WHOLE batch, so a letter taken from somebody starting a sentence sends
+		// a list they had not even walked (questionkeys.go's THE BOX KEEPS THE
+		// FIRST LETTER).
+		if !a.sheetHasTheHand() {
+			return nil, false
+		}
+		if key == questionSendKey {
+			return a.sendSheet()
+		}
 		return a.sameSheetAnswer()
 	}
 	// A DIGIT ANSWERS THE ROW THE CURSOR IS ON, which is ONE KEY GRAMMAR read
@@ -716,10 +711,6 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	if len(answers) == 0 {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
 	// THE ANSWER IS THE RECORD, AND A BATCH IS NOT AN EXCEPTION TO IT. Every
 	// other way of answering on this surface leaves the dim line where the
 	// question was ([app.closeQuestion]); the sheet was resolving through the
@@ -732,16 +723,22 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	for _, q := range a.questionBatch.questions {
 		asked[sheetRow{kind: q.Kind, id: q.ID, ref: q.Ref}] = q
 	}
-	cmds := make([]tea.Cmd, 0, len(answers))
+	// AND A SHEET IS THE LIST DOOR'S OWN CASE. `s` is one gesture over several
+	// questions, which is exactly what [app.answerQuestions] is: one command,
+	// the doors asked IN ORDER on one goroutine, each row's receipt written on
+	// the keystroke and each refusal coming back against its own row. It used to
+	// batch one [app.offLoop] per answer — as many goroutines as rows, in
+	// whatever order they happened to finish — beside a hand-rolled copy of the
+	// record and the reopen.
+	sending := make([]questionAnswer, 0, len(answers))
 	for _, answer := range answers {
-		one := answer
-		if q, ok := asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]; ok {
-			shown := questionShown{question: q}
-			a.recordQuestion(shown, one)
-			a.countQuestionYes(shown, one)
+		q, found := asked[sheetRow{kind: answer.Kind, id: answer.ID, ref: answer.Ref}]
+		if !found {
+			continue
 		}
-		cmds = append(cmds, func() tea.Msg { _ = doors.ResolveQuestion(one); return nil })
+		sending = append(sending, questionAnswer{q: questionShown{question: q}, answer: answer})
 	}
+	cmd := a.answerQuestions(sending)
 	a.questionBatch = nil
 	a.questionBatchFolded = false
 	if len(held) > 0 {
@@ -755,7 +752,7 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 		}
 	}
 	a.touch()
-	return tea.Batch(cmds...), true
+	return cmd, true
 }
 
 // sheetRow is one question's identity as both a [session.Question] and a
@@ -767,4 +764,28 @@ type sheetRow struct {
 	kind session.QuestionKind
 	id   uint64
 	ref  string
+}
+
+// aimSheet and sheetHasTheHand are questionkeys.go's THE BOX KEEPS THE FIRST
+// LETTER on the batch form. The hand is a TOKEN there, and the sheet's own two
+// verbs are about the whole batch rather than one row — so what the sheet asks
+// is whether the hand is on ANY row it is holding, and walking it aims at the
+// row the cursor lands on.
+func (a *app) aimSheet() {
+	if a.questionBatch == nil || a.questionBatch.cursor >= len(a.questionBatch.questions) || a.questionBatch.cursor < 0 {
+		return
+	}
+	a.aimQuestion(questionTokenOf(a.questionBatch.questions[a.questionBatch.cursor]))
+}
+
+func (a *app) sheetHasTheHand() bool {
+	if a.questionHand == "" || a.questionBatch == nil {
+		return false
+	}
+	for _, q := range a.questionBatch.questions {
+		if questionTokenOf(q) == a.questionHand {
+			return true
+		}
+	}
+	return false
 }

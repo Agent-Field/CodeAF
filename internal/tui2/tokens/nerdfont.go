@@ -174,6 +174,63 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphScopeUp, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
+		// THE POINTER IS A NAVIGATION MARK AND SHARES ITS BYTE IN BOTH TIERS, for
+		// the fold marks' reason above: an FA caret is an icon a size up and a
+		// weight heavier, and a pointer that shouted would be the loudest cell on
+		// a question whose words are meant to be read.
+		ID: GPointer, Name: "Pointer", Meaning: "the answer your enter takes (always amber)",
+		Plain: GlyphPointer, UsualTint: Amber, Geometry: true,
+	},
+	{
+		// THE RECOMMENDED MARK IS A PICTOGRAPH, so the tier may draw it: an
+		// outline star is the one icon every reader already takes for "this is
+		// the suggested one", and the outline and not the filled star is this
+		// table's register (the attention mark's own repick says why). Its word
+		// `recommended` stands beside it wherever there is room, so the ASCII
+		// spelling can be the character a reader names as a star.
+		ID: GRecommended, Name: "Recommended", Meaning: "the asker's pick (always amber)",
+		Plain: GlyphRecommended, NerdFont: "\uF006", NFName: "nf-fa-star_o",
+		ASCII:     "*",
+		UsualTint: Amber, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+
+	// -- the one frame (geometry: box drawing IS the right character) --------
+	//
+	// The frame's ASCII run is the frame's own (internal/tui3/frame.go), as
+	// every grid's is: two plain rules and no sides.
+	{
+		ID: GFrameTopLeft, Name: "FrameTopLeft", Meaning: "the frame: its top-left corner",
+		Plain: GlyphFrameTopLeft, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameTopRight, Name: "FrameTopRight", Meaning: "the frame: its top-right corner",
+		Plain: GlyphFrameTopRight, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameBottomLeft, Name: "FrameBottomLeft", Meaning: "the frame: its bottom-left corner",
+		Plain: GlyphFrameBottomLeft, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameBottomRight, Name: "FrameBottomRight", Meaning: "the frame: its bottom-right corner",
+		Plain: GlyphFrameBottomRight, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameEdge, Name: "FrameEdge", Meaning: "the frame: its top and bottom edge",
+		Plain: GlyphFrameEdge, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameSide, Name: "FrameSide", Meaning: "the frame: its sides",
+		Plain: GlyphFrameSide, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameTeeDown, Name: "FrameTeeDown", Meaning: "the frame: where the rule above two panes meets the seam between them",
+		Plain: GlyphFrameTeeDown, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameTeeUp, Name: "FrameTeeUp", Meaning: "the frame: where the rule below two panes closes the seam between them",
+		Plain: GlyphFrameTeeUp, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
 		ID: GTarget, Name: "Target", Meaning: "where the next thing goes — the destination of a draft",
 		// Tinted with the identity of the room the draft will land in, exactly as
 		// the steer prompt is: both of them are about somewhere that does not

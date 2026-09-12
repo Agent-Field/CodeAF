@@ -98,8 +98,6 @@ func TestWatchedFaultUsesFundedAlternativeBeforeRepeatingTheFailedRequest(t *tes
 		fmt.Fprint(w, "data: {\"provider\":\"B\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"The replacement answered normally.\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 	}))
 	client.wait = func(context.Context, time.Duration) error { waits.Add(1); return nil }
-	SetHedgeBudget(lanes.NewBudget(1, 0))
-	t.Cleanup(func() { SetHedgeBudget(nil) })
 	// This request overrides the client's default model. A refusal for that
 	// default must not take away an alternative serving the requested model.
 	const model = "vendor/override"
@@ -119,10 +117,12 @@ func TestStrictPinDoesNotWalkToAnotherEndpointAfterTransportFailure(t *testing.T
 	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0, 0, false,
 		answering(reply{status: 503, body: `{"error":{"message":"temporarily unavailable","metadata":{"provider_name":"A"}}}`}))
 	client.wait = func(context.Context, time.Duration) error { return nil }
-	SetHedgeBudget(lanes.NewBudget(1, 0))
-	t.Cleanup(func() { SetHedgeBudget(nil) })
 	choice := choiceFor(client.config.Model, time.Second)
-	choice.Only, choice.Order = []string{"A"}, nil
+	// A STRICT PIN IS THE PERSON'S OWN WORD AND IT SAYS SO. `Only` alone is what
+	// every routed call now carries — the set the chooser admitted, which this
+	// build may leave the moment it stops working — so the scenario has to state
+	// the fact it is about rather than leave it to be inferred from one name.
+	choice.Only, choice.Order, choice.Pinned = []string{"A"}, nil, true
 	ctx := WithLaneChoice(WithStreamObserver(talking(), func(StreamEvent) {}), choice)
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the only permitted endpoint failed but the request succeeded")
@@ -147,7 +147,7 @@ func TestBorrowableUserPreferenceLeadsBothWarmAndDifferentCacheEndpoints(t *test
 			request := &ai.Request{Messages: userMessages("continue")}
 			ctx := client.withLaneChoice(lineage("warm"), request)
 			choice, _ := laneChoiceFromContext(ctx)
-			prefs := client.wirePreferences(model, knobsFrom(ctx), request)
+			prefs := client.wirePreferences(model, knobsFrom(ctx))
 			if lanes.HeadOf(choice) != "brass" || prefs == nil || len(prefs.Order) == 0 || prefs.Order[0] != "brass" {
 				t.Fatalf("cache displaced the person's choice: choice=%+v prefs=%+v", choice, prefs)
 			}

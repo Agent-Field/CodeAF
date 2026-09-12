@@ -239,6 +239,29 @@ func Next(plan Plan, history []Move) Move {
 	shape := shapeReached(history)
 	for {
 		candidates := plan.serving()
+		// 0. A REFUSAL ABOUT THE ACCOUNT HAS ALREADY ANSWERED FOR EVERY MACHINE
+		// AND EVERY SHAPE. It is a ceiling over the whole key, so every machine
+		// behind the model is behind it, no field of the request can get under
+		// it, and the exclusion list the machine walk depends on has nothing to
+		// grow by — the next body would be the body that was just refused, sent
+		// to whoever sent it back ([Plan.AccountRefused]). What is left is the
+		// comeback the refusal named, once, and then the model, which is the
+		// session's and is always faster than a window.
+		if plan.AccountRefused {
+			//
+			// AND THE WAIT NAMES NO MACHINE, because no machine earned it. The
+			// head of the serving set is this build's best belief about where the
+			// next request would go; writing it here would file the account's own
+			// ceiling against a machine that had nothing to do with it, on the
+			// log line and in the sentence a person reads.
+			if plan.Comeback > 0 && !madeKind(history, MoveWait) {
+				return Move{
+					Kind: MoveWait, Model: plan.Model,
+					Shape: shape, Wait: plan.Comeback,
+				}
+			}
+			return Move{Kind: MoveNone, Model: plan.Model}
+		}
 		// 0. A REFUSAL ABOUT THE SHAPE HAS ALREADY ANSWERED FOR EVERY MACHINE.
 		// The router read our own bytes and said no endpoint can serve them, so
 		// walking machines would buy the identical sentence from each of them;
@@ -251,6 +274,7 @@ func Next(plan Plan, history []Move) Move {
 			// makes the next send a different request rather than the same one.
 			// There is nothing here to walk and nothing to run out of, so the
 			// deadline is the whole bound.
+			//
 			if len(candidates) == 0 {
 				return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
 			}

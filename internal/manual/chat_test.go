@@ -63,6 +63,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
+		// An answer is a message now (docs/design/questions/DESIGN.md), and the
+		// three things that fall out of it are asked in the words somebody
+		// reaches for: the work going on around a question, changing their mind
+		// afterwards, and a clock that went with the recommendation.
+		{"can you keep working while I decide", "questions"},
+		{"can I change my answer", "questions"},
+		{"why did it go with the recommended answer", "questions"},
+		// And the two a person asks the moment they regret a yes: one about the
+		// permission itself, one about the key that hands it back.
+		{"how do I take back a permission I allowed", "permissions"},
+		{"how do I stop the countdown on a question", "questions"},
 		// The two marks a question can open with that are NOT the amber `?`, and
 		// the countdown that goes with one of them. Somebody meeting either has
 		// no name for it and describes the shape, so both are asked that way.
@@ -84,6 +95,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
+		// And lane R's three, in the asker's own words: the owner asked for
+		// exactly these sentences (2026-09-11) and each one is a person
+		// describing the drawing rather than naming a key.
+		{"show me the options side by side", "questions"},
+		{"open it bigger", "questions"},
+		{"what does each option look like", "questions"},
 		{"compare the options it gave me", "questions"},
 		{"how do I comment on one option", "questions"},
 		{"ask it something before I decide", "questions"},
@@ -2539,6 +2556,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"fetch the newest models", "commands"},
 		{"could not fetch the model list", "commands"},
 		{"I pressed 1 on the stop card and it did not stop", "keys"},
+		// The one case where the key looked broken and was not: a bare `x` with
+		// several rows on screen. The keys page is the page that holds the rule,
+		// and the probe is the sentence said at the screen in the moment.
+		{"I pressed x and it just typed x", "keys"},
+		{"how do I stop a task from the chat without opening it", "keys"},
 		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},

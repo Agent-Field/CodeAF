@@ -131,11 +131,6 @@ const (
 	// QuestionFuel is an adaptive run standing at its fuel gate
 	// (orchestrate.go, [Agent.ResolveOrchestrate]).
 	QuestionFuel QuestionKind = "fuel"
-	// QuestionRecovery is a turn caught going in circles, asking what to do
-	// about ITSELF (recovery.go, [Agent.ResolveRecovery]). It borrows the
-	// consent lane's wait and is deliberately answerable only in the window
-	// that raised it, so it is never offered to another one.
-	QuestionRecovery QuestionKind = "recovery"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
 )
@@ -627,6 +622,18 @@ type Answer struct {
 	// the person taking the work over rather than by an answer to it. It is
 	// meaningful on [QuestionSubharnessAsk] alone.
 	TakingOver bool `json:"takingOver,omitempty"`
+	// Revises says this is a NEW ANSWER TO A QUESTION ALREADY SETTLED — the
+	// person changing their mind from the receipt — rather than a second click
+	// on a question somebody else has already answered.
+	//
+	// IT IS THE ONE BIT THAT TELLS THOSE TWO APART, and without it the second is
+	// what every late answer looks like: answers.go's own law is that a late
+	// answer is ignored and nothing says so, which is exactly right for a key
+	// pressed in another window a moment too slowly and exactly wrong for
+	// somebody who has just read the receipt and decided otherwise.
+	// [Agent.ResolveQuestion] takes it to the lane's own revise, which refuses
+	// where a decision cannot be walked back.
+	Revises bool `json:"revises,omitempty"`
 }
 
 // Keys is what was picked, however the answer spelled it: [Answer.Picked] where

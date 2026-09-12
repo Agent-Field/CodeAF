@@ -583,10 +583,14 @@ func compactTitle(raw string) string {
 
 // cleanTitle takes the first line and strips the things a model adds against
 // the instruction: the throat-clearing it opens with ("Title:", "Sure, here is
-// the name:"), the MARKDOWN it emphasises with, surrounding quotes, a trailing
+// the name:"), the MARKUP it emphasises with, surrounding quotes, a trailing
 // full stop, and the separators of a name answered as a SLUG. Then it REFUSES an
-// answer that is not a name at all — the instruction handed back, or an opener
-// with nothing behind it.
+// answer that is not a name at all — the instruction handed back, an opener with
+// nothing behind it, or A CLAUSE ABOUT THE SPEAKER RATHER THAN A NAME FOR THE
+// WORK ([opensAsPlan]). That last refusal is what keeps a namer that answered
+// its plan from being shortened into a label: it runs HERE, before any caller
+// cuts the answer to a few words, because the front of "I'll start by creating
+// the four bakery landing pages" is not a name at any length.
 //
 // The slug is the one worth explaining. The instruction asks for words, and a
 // model that has spent its life reading identifiers sometimes answers
@@ -621,7 +625,7 @@ func cleanTitle(raw string) string {
 		title = strings.Join(strings.Fields(title), " ")
 	}
 	title = clip(strings.TrimSpace(title), titleLimit)
-	if namesTheInstruction(title) || unusableName(title) {
+	if namesTheInstruction(title) || unusableName(title) || opensAsPlan(title) {
 		return ""
 	}
 	return title
@@ -748,6 +752,21 @@ func namesTheInstruction(name string) bool {
 	return false
 }
 
+// isOpener reads the words in front of a colon and says whether they are an
+// announcement. Either end decides it: an interjection at the front ("sure,
+// here is the name"), or one of the words a label ends on at the back ("title",
+// "session name", "the session is about", "the title is").
+func isOpener(words []string) bool {
+	if isInterjection(words[0]) {
+		return true
+	}
+	switch words[len(words)-1] {
+	case "title", "name", "is", "about", "called", "answer", "caption", "full", "tab":
+		return true
+	}
+	return false
+}
+
 // openerLimit and openerWords bound what may be read as throat-clearing. A
 // label is short and stands at the very front; anything longer is a sentence
 // the model meant, and cutting at a colon inside one would take half a name
@@ -800,7 +819,16 @@ func stripOpener(title string) string {
 func stripInterjection(title string) string {
 	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
 		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
-			title = strings.TrimSpace(title[cut+1:])
+			return strings.TrimSpace(title[cut+1:])
+		}
+	}
+	// AND IT NEEDS NO PUNCTUATION WHEN "SO" IS CARRYING IT. A model writing the
+	// way somebody talks opens "okay so the bakery pages" with no comma at all,
+	// and `so` after an agreement is that comma spelled as a word. Something has
+	// to be left behind it, or this would strip an answer down to nothing.
+	if fields := strings.Fields(title); len(fields) > 2 && strings.EqualFold(fields[1], "so") {
+		if words := normalizedWords(fields[0]); len(words) == 1 && isInterjection(words[0]) {
+			return strings.Join(fields[2:], " ")
 		}
 	}
 	return title
@@ -830,26 +858,80 @@ func allOpenerWords(words []string) bool {
 	return true
 }
 
-// isOpener reads the words in front of a colon and says whether they are an
-// announcement. Either end decides it: an interjection at the front ("sure,
-// here is the name"), or one of the words a label ends on at the back ("title",
-// "session name", "the session is about", "the title is").
-func isOpener(words []string) bool {
-	if isInterjection(words[0]) {
-		return true
-	}
-	switch words[len(words)-1] {
-	case "title", "name", "is", "about", "called", "answer", "caption", "full", "tab":
-		return true
-	}
-	return false
+// ── an answer that was never a name ─────────────────────────────────────────
+//
+// A REASONING MODEL NARRATES ITS PLAN BEFORE IT FOLLOWS ONE, and a call asking
+// for a name does not stop it doing that. Measured in the field (#942), with
+// every tier and role pinned to a reasoning model, the namer answered "I'll
+// start by creating the four bakery landing pages one at a time." — 264
+// completion tokens about what it was about to do. The reader took the first
+// three words of it and a task stood on the rail called `I'll start by`, while
+// the node's own record still carried the person's words right beside the name
+// it had been given.
+//
+// THE CUT IS WHAT MADE A SENTENCE LOOK LIKE A LABEL. Nothing refused an answer
+// for being a sentence; it was shortened until it was the right length to pass
+// for a name. So an answer is refused BY ITS SHAPE AND AT ANY LENGTH: a name is
+// a noun phrase, and a clause about the speaker is not one. A noun phrase that
+// merely ran long ("launch post for existing users") is still cut to three
+// words and is still a name.
+//
+// THE TEST IS THE GRAMMAR AND NOT A LIST OF SENTENCES: a first-person subject,
+// followed by the word that makes it the subject of something about to happen —
+// an auxiliary, the remnant the fold in [normalizedWords] leaves of one written
+// as a contraction, or the person `let` is addressed about. BOTH HALVES ARE
+// REQUIRED, which is what keeps a real name that opens on one of those words
+// ("I/O error fix") out of it.
+//
+// The throat-clearing a plan opens on — "First, I will …", "Okay so I'll …" —
+// is NOT a second rule here. It is an opener, and [stripInterjection] is the one
+// place this file takes an opener off an answer, so it is taken off there and
+// this reads what is left.
+
+// planSubjects is who a plan is about. The fold in [normalizedWords] reads every
+// mark as a space, so a contraction arrives as its stem and a remnant ("I'll" is
+// "i ll", "let's" is "let s") and the pronoun itself is the only spelling that
+// has to be written down. It sits beside [openerVocabulary] because the two are
+// the same kind of thing: the words a model reaches for when it is not
+// answering the question it was asked.
+var planSubjects = map[string]bool{"i": true, "we": true, "let": true, "lets": true}
+
+// planPredicates is the word that follows that subject when the sentence is
+// about what the speaker is about to do: the auxiliary or modal a finite clause
+// hangs on, the remnant a contraction leaves of one, or the person `let` is
+// addressed about. IT IS A CLOSED CLASS OF GRAMMAR AND NOT A LIST OF OBSERVED
+// SENTENCES, which is why it is this short and why a preamble nobody has met yet
+// is already refused.
+var planPredicates = map[string]bool{
+	"ll": true, "m": true, "ve": true, "d": true, "re": true, "s": true,
+	"will": true, "would": true, "shall": true, "should": true, "can": true,
+	"could": true, "may": true, "might": true, "must": true, "am": true,
+	"is": true, "are": true, "was": true, "were": true, "have": true,
+	"has": true, "had": true, "do": true, "does": true, "did": true,
+	"need": true, "going": true, "me": true, "us": true,
 }
 
-// isInterjection is the handful of words a model agrees with the request in
-// before it answers it.
+// opensAsPlan reports whether an answer opens as a clause about the speaker
+// rather than as a name for the work. It runs on the REPAIRED answer and before
+// any caller cuts it, because the shape it refuses is the FRONT of a sentence:
+// read after the cut to three words it would be handed "I'll start by", which
+// is the same three words a label would have been.
+func opensAsPlan(title string) bool {
+	words := normalizedWords(title)
+	return len(words) > 1 && planSubjects[words[0]] && planPredicates[words[1]]
+}
+
+// isInterjection is the handful of words a model clears its throat with before
+// it answers: the agreement it opens on, and the SEQUENCING ADVERB a plan
+// narrates itself with ("First, I will write the four pages"). They are one list
+// because they are one thing to a reader — a word about the answering rather
+// than about the work — and because the plan a reasoning namer opens on (#942)
+// has to have its opener taken off it HERE, before [opensAsPlan] reads what is
+// left, or the pronoun that decides it is never the first word.
 func isInterjection(word string) bool {
 	switch word {
-	case "sure", "ok", "okay", "certainly", "absolutely", "here", "heres":
+	case "sure", "ok", "okay", "certainly", "absolutely", "here", "heres",
+		"first", "next", "then", "now", "alright", "so":
 		return true
 	}
 	return false

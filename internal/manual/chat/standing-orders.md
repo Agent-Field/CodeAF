@@ -71,14 +71,20 @@ line** instead of guessing. It applies your sentence to the work in front of it 
 says something like *if you want this to hold for future work here too, say so and I'll
 set it standing*. A card you did not ask for is worse than a question.
 
-## Always do it this way — coding style rules, conventions and preferences
+## Always do it this way — coding style rules, how I want it to write, conventions and preferences
 
-*Always do it this way. A coding style rule. Our conventions. My preferences.*
+*Always do it this way. A coding style rule. How I want it to write things. Our
+conventions. My preferences.*
 
 "Always run the tests before you tell me it works." "Never touch the public API in this
 repo." "We use tabs here." "Prefer small commits." None of these has a time in it, and
 none of them is waiting for anything to happen. They are simply true, and they stay
 true.
+
+None of this kind has to be about code. A rule for **how you want it to write** is the
+same shape and is kept the same way — "always write in full sentences, never bullet
+lists", "use our spelling, not the American one", "keep replies short". What aforge keeps
+is your sentence; what your sentence is about is yours to choose.
 
 aforge keeps that kind as a standing order that **holds**. It never fires, it is never
 checked, and it costs nothing. What it does instead is ride into the world of the work

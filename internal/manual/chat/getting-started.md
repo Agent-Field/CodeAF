@@ -1,5 +1,15 @@
 # Getting started — the first-time setup
 
+## I just installed it — what is the first thing to do after installing aforge
+
+Run `aforge`. That is the whole of it: the installer leaves the program at
+`~/.aforge/bin/aforge` and asks nothing else of you, and the setup described below is the
+only setup there is. It opens by itself the first time, so there is no command to go
+looking for and nothing to configure by hand first.
+
+The install line itself — and updating to a newer build — is on the *running from the
+terminal* page, under *How do I install or update aforge*.
+
 ## Getting started — first time setup, what happens the first time I run aforge
 
 The first time `aforge` opens on a profile with nothing in it, the chat does not open on

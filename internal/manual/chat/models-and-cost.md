@@ -57,7 +57,8 @@ If you have turned the mouse off (`ui.mouse`), only the command works.
 **The name you press is the model you move.** Out in the conversation that is the
 conversation's model. Inside a running task's room the status line at the very bottom
 names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
-from its next turn onward. Nothing else moves: not the conversation, not any other task.
+from its next turn onward — and the first time that step has to be rescued, it is rescued
+onto your pick. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
@@ -1250,22 +1251,39 @@ conversation, and the retry starts the reply from the beginning.
 
 ## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
 
-A provider that answers `429` is pacing aforge, not failing. That is not an error, so the
-call moves rather than giving up: the machine that said "not yet" is taken off the next
-request and another machine serving the same model is asked at once, for as long as the
-turn's own patience lasts — **90 seconds** for a turn you are sitting in front of. Work
-that left the conversation gets far more: four and a half minutes for a task's own call,
-nine for a standing pass. There is no count of attempts anywhere in this; see *How long
-aforge keeps trying*.
+A provider that answers `429` is pacing aforge, not failing. What happens next depends
+entirely on **who** it says is out of room, and the two answers are different roads.
 
-Two things happen while it waits. If the refusal names *which* endpoint hit its limit —
-routers often do, when the limit is one provider's shared pool rather than your account —
-that endpoint is avoided on every request after it, so the next attempt queues somewhere
-else. And the wait itself is capped at a minute however long the provider asked for, so a
-provider naming tomorrow morning does not park your turn.
+**A rate limit that names a machine is a move, not a wait.** Routers usually do name one —
+the limit is some provider's shared pool rather than your account, and it arrives as
+`(via Wafer: … is temporarily rate-limited upstream.)`. That endpoint is taken off the next
+request and another machine serving the same model is asked **at once, with no wait at
+all**, for as long as the turn's own patience lasts — **90 seconds** for a turn you are
+sitting in front of, four and a half minutes for a task's own call, nine for a standing
+pass. There is no count of attempts anywhere in this; see *How long aforge keeps trying*.
 
-**When that patience runs out, the refusal goes back to your turn**, which moves to the
+**A rate limit that names nobody is your whole account**, and there is no machine to step
+around: every machine behind the model is behind the same ceiling. aforge waits **once**,
+for exactly as long as the answer itself asked for — capped at a minute, so a provider
+naming tomorrow morning does not park your turn, and not at all when it asked for nothing —
+and then moves to another model. A second machine would only spend the same allowance
+faster; a different model is not on that allowance at all. On your screen it reads
+`we are being asked to slow down`. *Machines behind a model* in the lanes page is the
+longer account of both roads.
+
+**And a machine that goes on answering after you have stepped around it ends the walk.**
+When the next request says "not that one" and that one serves it anyway, routing cannot
+help this request, so aforge stops asking and hands the refusal up rather than buying the
+same answer a third time.
+
+**When the patience runs out, the refusal goes back to your turn**, which moves to the
 next model in your `fallback models` row — the next section is what that looks like.
+
+*Until 2026-09-11 a named rate limit took the account road too: the identical request went
+back to the machine that had just refused it, behind a wait that doubled each time — 0.7s,
+1.4, 2.8, 5.6 and on — for the whole of the give-up. One measured task spent eight sends on
+one machine over ninety seconds while six other machines on the same model were answering
+in under five.*
 
 There used to be a second, quieter move here: the call itself would switch models and say
 `Retry 1/1: Falling back to openai/gpt-5-mini`. That is gone. **Your model is changed in
@@ -1285,6 +1303,16 @@ there is no ceiling, only the deadline. That patience is the *call's* own, insid
 request. What happens when the whole request
 keeps failing — several 429s in a row, a `502` between them — is the next section.
 
+**Inside a task, picking another model is worth doing while this is happening.** The call in
+flight finishes on the model it started on, and so does the rest of that step — but a step
+being paced no longer just sits there: it moves to **the model you picked in the task's
+room**, rather than to the next name in your `fallback models` row, and it says so in the
+run's own log. Before 2026-09-11 a rate limit was the one failure that moved nothing at
+all, so a pick made over a stuck step was read only after something else had already
+rescued it. This is about a task's model; **a pick in a conversation you are sitting in
+front of still lands on your next message.** See *I changed the model but my task is still
+on the old one*.
+
 ## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
 
 Yes. **A model that will not take your request at all is given up on the same way a model
@@ -1292,24 +1320,35 @@ that goes quiet is: aforge finishes the reply on the next model in your `fallbac
 row**, or on the nearest same-class model in the catalog when you have written no row.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
-your model, a `502`, a torn connection, a deadline — is sent again, up to **four times in
-all**, waiting 2s, then 4s, then 8s, with a dim line each time:
+your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each
+time:
 
 ```
 the model would not take the request · asking again · 2 of 4
 ```
 
-When all four are gone, the turn does not end. It moves, and says so before the next words
-appear in a different voice:
+**There is no count of tries.** The `2 of 4` is which machine behind your model is being
+asked, out of how many aforge knows of — so it counts down real places left to go, and it
+draws no number at all when nobody has named a set. What bounds the whole thing is the
+give-up above, one deadline in your own time: 90 seconds on a turn you are sitting in front
+of, four and a half minutes for a task's own call. A machine that named a comeback is
+waited for exactly that long; a fault nobody named a wait for is asked again behind a wait
+that doubles.
+
+When that give-up is gone, the turn does not end. It moves, and says so before the next
+words appear in a different voice:
 
 ```
 the model would not take the request · moving to gpt-5-mini
 ```
 
-The new model gets a full four tries of its own — what the last one did says nothing about
+The new model gets a whole give-up of its own — what the last one did says nothing about
 this one — and the cost lands against the model that actually answered. **It is a rescue,
 not a choice you made**: your model is untouched, `/status` still shows it, and your next
-message goes back to it.
+message goes back to it. **In a conversation the chain is the whole of it** — a model you
+pick with `/model` applies to your next message and does not redirect a rescue that is
+already happening. Inside a task's room it is different, and *Changing the model for one
+task while it is running* on the tasks page says how.
 
 **It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
 a refusal walked the four tries and then ended the turn, so a measured conversation on
@@ -2791,7 +2830,7 @@ later does not wait on it, and a probe that fails teaches nothing and changes no
 you for it, and aforge's own figures do not include it. The next section says why, what
 it adds up to, and where to see it.
 
-## Spend that /cost does not show — why the typing measurement is missing from the figures
+## Spend that /cost does not show — why the typing measurement is missing from the figures, and how to stop aforge sending requests you did not ask for
 
 There is exactly one request aforge makes that its own money figures do not count: the
 **one-token measurement** it sends while you are typing, to warm the connection and time
@@ -2861,6 +2900,8 @@ It moves off that endpoint when the endpoint stops earning it:
 A successful answer with no reported cache hit keeps its place. The prefix may have changed, the old cache may have expired, or the endpoint may have omitted its cache accounting. That answer can warm the next request; switching immediately would make it cold again. The slow-response monitor still applies.
 
 The same stable identity also travels in OpenRouter's session header so a successful cold request can establish continuity before the first reported cache hit. A changed opening after compaction keeps that identity.
+
+**Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, your standing orders, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a standing order agreed.
 
 Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
 

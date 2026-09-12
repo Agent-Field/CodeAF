@@ -358,8 +358,18 @@ func TestACloseEndsTheConversationForEverybody(t *testing.T) {
 // ── the waiting room ────────────────────────────────────────────────────────
 
 func TestAQuestionRaisedInAnEmptyRoomIsWaitingOnTheNextAttach(t *testing.T) {
-	agent := &fakeAgent{}
-	sess := heldSession(agent)
+	// The engine has this consent question open, which is what the waiting room
+	// is reconciled against now that no resolve-door empties it by hand
+	// (held.go's [heldSet.keepOnly]).
+	far := &askingFake{fakeAgent: &fakeAgent{}, open: []session.Question{
+		{Kind: session.QuestionConsent, ID: 7},
+	}}
+	agent := far.fakeAgent
+	sess := NewSession(&Engine{
+		Agent:       far,
+		Workspace:   "/home/somebody/api",
+		SessionFile: "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+	}, true)
 
 	l := dialSession(t, sess)
 	l.hello(Hello{Version: Version})
@@ -539,7 +549,7 @@ func (sess *Session) liveSeq(id uint64) uint64 {
 func (sess *Session) heldCount() int {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return sess.held.outstanding()
+	return sess.heldOutstandingLocked()
 }
 
 func waitForEngine(t *testing.T, done func() bool) {

@@ -74,6 +74,40 @@ const (
 	GlyphExpanded  = "▾"
 	GlyphScopeUp   = "‹" // scope header / go up
 
+	// GlyphPointer is THE PERSON'S POINTER ON A QUESTION: the answer `enter`
+	// takes. It is the fold mark's own small triangle, and deliberately so —
+	// both say "this row, and your key goes into it" — but it is a SLOT of its
+	// own because a question's pointer is amber and moves under a hand, where a
+	// fold mark is a dim fact about a section; one slot for both was the
+	// question's page drawing `▸` for "folded" beside `▸` for "you are here"
+	// (docs/design/questions/DESIGN.md, 2026-09-11).
+	GlyphPointer = "▸"
+	// GlyphRecommended is THE ASKER'S PICK: the answer the thing asking would
+	// take, drawn at the right edge of that answer's row with the word
+	// `recommended` beside it. It is amber, like the other two marks of a
+	// question, and it is a filled shape where the pointer is a triangle so the
+	// two can stand on one row and never be read as each other.
+	GlyphRecommended = "◆"
+
+	// The one frame (internal/tui3/frame.go): a rounded, dim edge around the
+	// one object on the surface that is waiting for a person (a question), and
+	// around the few sheets raised over the page on purpose. Box drawing is
+	// already the right character for a grid, so these are geometry: the tier
+	// never touches them, and a terminal refused box drawing gets the frame's
+	// own ASCII run (two plain rules, no sides), which the frame draws itself.
+	GlyphFrameTopLeft     = "╭"
+	GlyphFrameTopRight    = "╮"
+	GlyphFrameBottomLeft  = "╰"
+	GlyphFrameBottomRight = "╯"
+	GlyphFrameEdge        = "─"
+	GlyphFrameSide        = "│"
+	// The two junctions are where a frame's rule meets the seam between two
+	// panes laid side by side (internal/tui3/panes.go): the rule above the panes
+	// drops into the seam and the rule below closes it. They are the same
+	// geometry as the rest of the frame, so they are drawn at the same floor.
+	GlyphFrameTeeDown = "┬"
+	GlyphFrameTeeUp   = "┴"
+
 	// GlyphTarget is WHERE THE NEXT THING GOES, and it is the one mark in this
 	// vocabulary about a destination rather than about a state. Home's rule wears
 	// it in front of the folder and the model the next conversation will open on
@@ -394,6 +428,16 @@ func Glyphs() []GlyphInfo {
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
+		{"Pointer", GlyphPointer, '▸', false},
+		{"Recommended", GlyphRecommended, '◆', true},
+		{"FrameTopLeft", GlyphFrameTopLeft, '╭', true},
+		{"FrameTopRight", GlyphFrameTopRight, '╮', true},
+		{"FrameBottomLeft", GlyphFrameBottomLeft, '╰', true},
+		{"FrameBottomRight", GlyphFrameBottomRight, '╯', true},
+		{"FrameEdge", GlyphFrameEdge, '─', true},
+		{"FrameSide", GlyphFrameSide, '│', true},
+		{"FrameTeeDown", GlyphFrameTeeDown, '┬', true},
+		{"FrameTeeUp", GlyphFrameTeeUp, '┴', true},
 		{"Target", GlyphTarget, '→', true},
 		{"Truncated", GlyphTruncated, '⋯', false},
 		{"Ellipsis", GlyphEllipsis, '…', true},

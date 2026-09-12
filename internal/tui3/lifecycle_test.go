@@ -243,11 +243,15 @@ func TestElapsedWordSpellsEveryScale(t *testing.T) {
 
 // ── 2. the consent question, unmissable ─────────────────────────────────────
 
-// THE VIOLET. The question is the one thing on this surface painted in the
-// fifth colour, and it is painted in it everywhere at once: the row, the
-// choices, and the word in the status line. Anything less was the defect — a
-// person who could not tell the agent had stopped and was waiting for them.
-func TestTheConsentQuestionIsVioletEverywhereAtOnce(t *testing.T) {
+// THE AMBER. A question is marked in the one hue this surface spends on waiting
+// for a person, and it is marked everywhere at once: the row it is about, the
+// question itself, and the word in the status line. Anything less was the defect
+// — a person who could not tell the agent had stopped and was waiting for them.
+//
+// It was a violet of its own until the owner retired it (2026-09-11, colour pick
+// C): home, the places, the chip and the tab had always said this in amber, and
+// one meaning may not wear two hues.
+func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 	agent, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),
 		consentEvent(9, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
@@ -257,11 +261,11 @@ func TestTheConsentQuestionIsVioletEverywhereAtOnce(t *testing.T) {
 	typeLine(t, a, "clean it")
 
 	// The authored question hue, on the wire, as truecolor.
-	violet := "\x1b[38;2;192;143;232m"
+	violet := "\x1b[38;2;235;203;139m"
 	painted, _, _, _ := a.chrome(a.width)
 	block := strings.Join(painted, "\n")
 	if !strings.Contains(block, violet) {
-		t.Fatalf("the question block is not violet:\n%q", block)
+		t.Fatalf("the question block carries no mark in the question hue:\n%q", block)
 	}
 	offer := painted[2] // the rule sits above the block: [rule, call, offer, …]
 	if !strings.Contains(offer, "allow?") {
@@ -291,16 +295,16 @@ func TestTheConsentQuestionIsVioletEverywhereAtOnce(t *testing.T) {
 		t.Fatalf("the status line does not say the surface is waiting: %q", plain(status))
 	}
 	if !strings.Contains(status, violet) {
-		t.Fatalf("the status line's state is not violet: %q", status)
+		t.Fatalf("the status line's state is not in the question hue: %q", status)
 	}
 	if strings.Contains(plain(status), "working") {
 		t.Fatalf("a blocked turn still calls itself working: %q", plain(status))
 	}
 }
 
-// Answered, the violet goes: a question hue left on screen for a question
-// nobody is being asked is the hue meaning two things.
-func TestAnsweringTheQuestionEndsTheViolet(t *testing.T) {
+// Answered, the question hue goes: a hue left on screen for a question nobody is
+// being asked is the hue meaning two things.
+func TestAnsweringTheQuestionEndsTheQuestionHue(t *testing.T) {
 	_, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),
 		consentEvent(9, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
@@ -310,8 +314,8 @@ func TestAnsweringTheQuestionEndsTheViolet(t *testing.T) {
 	settleAsk(a)
 	drive(t, a, key("1"))
 
-	violet := "\x1b[38;2;192;143;232m"
-	if got := frame(a); strings.Contains(got, violet) {
+	amber := "\x1b[38;2;235;203;139m"
+	if got := frame(a); strings.Contains(got, amber) {
 		t.Fatalf("the question hue outlived the question:\n%q", got)
 	}
 	if plain(a.status(a.width)) == waitingWord {
@@ -343,10 +347,15 @@ func TestTheEditPreviewAppearsOnAnnouncementAndCollapsesIntoTheStat(t *testing.T
 	if strings.Contains(plain(toolRowText(t, a)), "+1") {
 		t.Fatalf("a queued edit drew its stat: %q", plain(toolRowText(t, a)))
 	}
-	// The header is the question hue's dimmer half, never plain dim ink.
+	// The header is DIM, like every other word about a call that has not run
+	// yet. It wore the question hue until the questions wave took the amber back
+	// to the marks (owner ruling 2026-09-11, colour pick C): the `?` in the
+	// gutter is what says a person is being waited on, and a second colour on a
+	// word meaning "not yet" was the hue spent on something that is not a
+	// question at all.
 	for _, r := range rows(a) {
-		if strings.Contains(plain(r.text), "pending") && !strings.Contains(r.text, a.pal.ask("pending")) {
-			t.Fatalf("the pending header is not in the question hue: %q", r.text)
+		if strings.Contains(plain(r.text), "pending") && !strings.Contains(r.text, a.pal.dim("pending")) {
+			t.Fatalf("the pending header is not dim: %q", r.text)
 		}
 	}
 

@@ -1538,18 +1538,20 @@ func (a *app) taskOption(id uint64, key string) (session.AnswerOption, bool) {
 // annotated card as the same key pressed in front of the question. The one
 // caller is home's errand band, where a person answers a question from the page
 // rather than from the conversation it was asked in (homeband_answer.go).
-func (a *app) answerTaskWith(id uint64, key string) bool {
+func (a *app) answerTaskWith(id uint64, key string) (tea.Cmd, bool) {
 	for _, open := range a.questions {
 		if open.question.Kind != session.QuestionTask || open.question.ID != id {
 			continue
 		}
 		if _, ok := open.question.Option(key); !ok {
-			return false
+			return nil, false
 		}
-		a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}})
-		return true
+		// THE ANSWER'S OWN SENDING RIDES BACK WITH IT. The door is asked from
+		// the command rather than from the loop (offloop.go), so a caller that
+		// dropped this would be a key the engine never heard.
+		return a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}}), true
 	}
-	return false
+	return nil, false
 }
 
 // holdTask is what a keystroke means to a clock that ANSWERS.
@@ -2216,7 +2218,16 @@ const (
 	// run is over, so it is named only while the row under the cursor could take
 	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
 	// person looks to the end of the line for.
-	railHoldKeys = "↑↓ move · →← tree · enter open · " + railWidenChord + " wide"
+	//
+	// AND `x` IS NAMED ONLY WHERE IT IS TRUE, which is the stop card's own
+	// carve-out in the law that a letter is a letter the moment there is a box to
+	// type into (stop.go): a held roster with its cursor on a stoppable row is the
+	// one posture where `x` means stop and nothing else, so the line names it there
+	// and keeps quiet about it everywhere else. It is the whole answer to the
+	// person who pressed `x` over an empty box and watched a letter appear — the
+	// key works the moment the roster is being driven, and this line is where that
+	// is said out loud (#892).
+	railHoldKeys = "↑↓ move · →← tree · enter open · " + stopRaiseKey + " stop · " + railWidenChord + " wide"
 	railHoldHint = railHoldKeys + " · esc"
 	// The footer names both answers the handle can give. A bare "w" in a column
 	// of counts is a keystroke nobody would risk pressing, and a handle whose

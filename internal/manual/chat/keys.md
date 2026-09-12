@@ -2279,8 +2279,11 @@ you say what you want changed instead. The saved-shapes pages describe the row i
 
 **`x` asks to stop the work.** It is taken on the roster's focused row and inside a
 room or an adaptive run's page, and only over an empty message box — the moment there
-is a sentence in the box it is the letter `x`. It never stops anything by itself: it
-raises a card, and the card is answered below.
+is a sentence in the box it is the letter `x`. When the roster does not hold the keyboard
+and exactly one stoppable task row is visible, `x` takes that row straight away, because
+there is nothing to choose between; with two or more rows it does nothing until `alt+t`
+gives the roster a cursor to aim with. It never stops anything by itself: it raises a
+card, and the card is answered below.
 
 The tasks pages describe what rooms and the roster are for.
 
@@ -2293,7 +2296,7 @@ The tasks pages describe what rooms and the roster are for.
      Its work halts; the branch it wrote on is kept.
      1  stop it
      2  keep going
-   [enter] take it · [esc] keep going · [←→] choose
+   enter take it · esc keep going · ←→ choose
 ```
 
 The head is the question and nothing else; the sentence under it is the promise —
@@ -2346,7 +2349,7 @@ or a part of one it handed out itself:
 **`d` you decide is not on a landing's row.** The three answers and the way out are the
 whole of it, and no key on this surface ever does something that is not drawn on the screen
 in front of you. Where a landing draws each answer on a line of its own — the one road that
-does, because its `[a]` moves files of yours — `[d] you decide` is on it. The standing
+does, because its `[a]` moves files of yours — `d you decide` is on it. The standing
 choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
 letter that hands one landing over changes nothing about the next one.
 
@@ -2354,8 +2357,8 @@ While `task.settle` is `auto` the reason row also reads `aforge is deciding`; th
 stay drawn, and pressing one yourself is how you take the question back.
 
 **The words on `a` and `n` change with the question and the keys never do.** A card whose
-branch clashed with yours reads `[a] resolve it · [n] drop it`; one the check did not pass
-reads `[a] accept anyway`. There is always a third column, `[s] tell it`.
+branch clashed with yours reads `a resolve it · n drop it`; one the check did not pass
+reads `a accept anyway`. There is always a third column, `s tell it`.
 
 **`check again` is not offered.** aforge retries a check that never answered by itself,
 on another model, before the card ever appears — so there is nothing left for you to
@@ -2371,7 +2374,7 @@ message box must be **empty**, with no panel, picker or copy mode up. A letter t
 sentence stays a letter, always.
 
 Once answered the letters go away and the receipt every question leaves takes their place,
-`decided <the card's head> → accept · you · 14:02 · c change`: the answer in the card's own
+`✓ <the card's head> → accept · you · 14:02 · c change`: the answer in the card's own
 words (`accept`, `not right`, `resolve it`, `drop it`), who decided and when (the questions
 page has the shape). The task's report then leads `you took this as done` or
 `incomplete — you said it is not finished`. `d` decides nothing yet: the answers stay drawn
@@ -2457,7 +2460,7 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context. The answers to a landing that is your
    call are not on that card: they are on the question block above the message box,
-   where each of `[a] accept`, `[n] not right` and `[s] tell it` is its own target and a
+   where each of `a accept`, `n not right` and `s tell it` is its own target and a
    press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click

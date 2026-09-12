@@ -19,6 +19,24 @@ A picture with **✗** on it is a screen that does NOT keep the contract. Those 
 the findings the suite is red on, and they are here for the same reason the rest
 are: what a lane owes next is easier to see than to describe.
 
+> **THESE PICTURES WERE TAKEN BEFORE THE OWNER'S RULINGS OF 2026-09-11 AND HAVE
+> NOT BEEN RE-TAKEN** — except the eight under *The evidence beside the answers*,
+> which are of the drawing those rulings asked for. What moved: every question now hangs in the one frame
+> (`internal/tui3/frame.go`), the question's violet is retired and its amber is
+> on the three marks only, the keys stand in two tiers, the receipt opens with
+> `✓` rather than the word `decided`, a permission's pointer is placed by the
+> stakes, and a permission that offers more than one lifetime draws them under
+> its answers. The captions below still describe the moment each picture is of;
+> the drawing in them is a wave out of date. Re-taking them costs a live model
+> and about ninety minutes — the command is above.
+>
+> **Without a model:** `scripts/qv-drive.sh` opens this worktree's own binary in
+> a tmux session of its own, on a throwaway home, with one of
+> `internal/tui3/questiondemo.go`'s fixtures named in the environment, and saves
+> what the terminal drew — every view, at 120/96/56 columns, in both themes and
+> both glyph tiers. It is how the drawings above were checked on a real screen
+> the day they changed.
+
 ---
 
 ## The line
@@ -53,6 +71,9 @@ and when: `start it in 27s · your rule`.*
 
 ## The room
 
+**The room below is the page as it was before 2026-09-11.** It is two panes now, and
+the pictures of that are further down under *The evidence beside the answers*.
+
 A page over the conversation, in the task-room idiom. The turn under it keeps
 streaming; `esc` restores the conversation with its scroll untouched.
 
@@ -86,6 +107,58 @@ differently spelled. One of them is owed a deletion.*
 
 ![the answer reaches the asker](screens/the-room-compares-annotates-asks-back-and-sends-reply.png)
 *The model's next turn, with the pick and the typed words in the tool result behind it.*
+
+## The evidence beside the answers, and the page as two panes
+
+**These eight are the only pictures in this folder taken after the owner's rulings of
+2026-09-11**, and they are taken a different way: `~/af-qv-reports/R/drive.sh` opens
+this worktree's own binary in a tmux session on a throwaway home with a fixture named
+in the environment (`AFORGE_QUESTION_DEMO`, `internal/tui3/questiondemo.go`), so they
+cost no model and can be re-taken in seconds. The marks that show as `▯` are the plain
+glyph floor rendering in a font the renderer does not have; the terminal draws `?`, `◆`
+and `✓`.
+
+![the evidence beside the answers](screens/the-evidence-stands-beside-the-answers-panel-140.png)
+*The block above the box, at 140 columns (preview pick A). The answers keep the left,
+and the evidence of the one the pointer is on — its word, what it means, `then ·`,
+`why this one ·`, `would switch if`, `confidence ·`, and the diagram it drew — stands
+beside them. Walking the pointer changes the right-hand side and nothing else.*
+
+![unfolded under its row](screens/the-evidence-stands-beside-the-answers-unfold-96.png)
+*The same question at 96 columns (preview-narrow pick B). There is no room for two, so
+the evidence unfolds under the answer's own row — and that row gives up its `then` line
+to it rather than saying it twice. A panel never takes more than half the frame, so the
+rest is cut on a row that says how much is left and the way to it:
+`… 4 more lines · o open full`.*
+
+![the page as two panes](screens/the-page-is-two-panes-140.png)
+*`o`, at 140 columns (page pick A). The same split with the frame's height: the rules
+above and below meet the seam at `┬` and `┴`, the foot's first row says what `enter`
+would send, and the second carries the page's own two tiers of keys in place of the
+legend.*
+
+![the arrows move into the evidence](screens/the-page-is-two-panes-detail-140.png)
+*After `→`. The foot swaps `↑↓ choose · … · → detail` for `↑↓ scroll · ← back to the
+answers`: while the arrows are the pane's they move the pane, and the key that gives
+them back is on the row. A key that is not drawn does nothing.*
+
+![one column](screens/the-page-is-two-panes-column-96.png)
+*The page at 96 columns. One column, the answer the pointer is on unfolded under its
+row, the others each keeping their row — the same lines as the pane, stacked.*
+
+![the phone](screens/the-page-is-two-panes-phone-56.png)
+*And at 56. The head's attribution wraps to a row of its own, the second tier of keys is
+given up from the right, and the evidence is still whole.*
+
+![the layout block](screens/the-page-is-two-panes-layout-140.png)
+*A layout block on the page: the asker's two drawings side by side, which they are here
+because each one's widest line fits its half — the block decides on its content now,
+not on a width.*
+
+![the plain tier](screens/the-page-is-two-panes-ascii-110.png)
+*110 columns on the light theme with the plain glyph floor: the rules are `-` runs, the
+seam is a blank column, and the junctions are edge characters. A column of `|` down
+every row is punctuation a screen reader says aloud on every line.*
 
 ## Fill in the blanks
 

@@ -103,6 +103,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
+	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 }
 
@@ -1949,6 +1950,15 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
+	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
+	// This terminal was launched on a fresh transcript nothing has been said in,
+	// so the one session it stands in is the launch's own untitled conversation —
+	// and the page this door opened is the one that used to draw it as its raw
+	// sixteen-hex id. The word is what the row must answer to now, and it is the
+	// same word home's own column spells for a chat nothing has named, so the
+	// wait holds both the name and the one spelling of it.
+	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
+	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
 	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
 	// foot offers the record rather than the room — which is the mode this test
 	// is about.

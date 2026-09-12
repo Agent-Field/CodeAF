@@ -192,9 +192,22 @@ than pictographs, so they are geometry and neither tier swaps the byte.
 | it took something for granted and went on | `GAssumed` | `≈` | nf-fa-lightbulb_o | `~` |
 | it did the reversible thing and is telling you | `GSettled` | `✓` | nf-fa-check | `+` |
 | it no longer needs answering | `GWithdrawn` | `⊘` | nf-fa-ban | `-` |
+| the answer your enter takes | `GPointer` | `▸` | *(geometry — same byte)* | *(the question draws `>`)* |
+| the asker's pick | `GRecommended` | `◆` | nf-fa-star_o | `*` |
 
-**Only the first is amber**, and that is the reason there are four slots rather
-than one. An assumptions card, a ratify line and a withdrawn line are all things
+And the ONE frame a question hangs in (`internal/tui3/frame.go`, owner ruling
+2026-09-11): `GFrameTopLeft` `╭`, `GFrameTopRight` `╮`, `GFrameBottomLeft` `╰`,
+`GFrameBottomRight` `╯`, `GFrameEdge` `─`, `GFrameSide` `│` — geometry, so no
+tier touches them, and on a terminal refused box drawing the frame draws its own
+ASCII run: two plain rules of `-` and no sides. The `/folder` chooser, the
+`ctrl+k` switcher card and the onboarding panel are drawn by the same frame, and
+the rounded corners are owned runes (`internal/iconlaw`), so no surface can spell
+a fifth box of its own.
+
+**Of the first four, only the first is amber** — and the pointer and the pick
+are amber too, because they are the question's own marks (colour pick C: the
+marks carry the hue and every word is ink). That is the reason there are four
+state slots rather than one. An assumptions card, a ratify line and a withdrawn line are all things
 the asker has already decided; drawing any of them with the attention mark tells
 a person to answer something that is not asking them anything, which is how the
 one hue that means "waiting on you" stops meaning it. `GAssumed` and `GWithdrawn`

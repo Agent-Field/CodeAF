@@ -234,6 +234,24 @@ type Lane struct {
 	// that left only it — gets the router's real refusal, body and metadata
 	// both ([accountRefusal]).
 	AccountExcluded bool
+
+	// Unvetoable is a machine the router GOES ON SERVING however loudly the
+	// request vetoes it: `provider.ignore` names it and the next body lands
+	// there again anyway.
+	//
+	// IT IS THE ONE STATE A CALL CANNOT ROUTE ITS WAY OUT OF, and it is what the
+	// live router did on 2026-09-11 14:39: eight consecutive sends on
+	// deepseek/deepseek-v4.1-flash came back `(via Wafer: … temporarily
+	// rate-limited upstream)` while six other machines on the same model were
+	// answering. The name in a relayed refusal is the UPSTREAM's, and an upstream
+	// label is not always a name the router will route around — so a veto written
+	// from it can change nothing at all, and the call has to be able to find that
+	// out rather than spend its whole deadline discovering it eight times.
+	//
+	// A test stages it to assert what a call does when its veto does not take.
+	// Nothing else in this stub cares: [pick] applies every other filter exactly
+	// as before.
+	Unvetoable bool
 }
 
 // ── THE CLOCK ───────────────────────────────────────────────────────────────
@@ -389,6 +407,18 @@ type Server struct {
 	// envelope is `code: "context_length_exceeded"` and nothing else about it
 	// tells a reader that (internal/provider's overflowRefusal).
 	refusesWith *stagedRefusal
+	// keyPaced is the ACCOUNT'S OWN CEILING: every completion comes back 429
+	// with this comeback in its body and NO pool named, while the endpoints page
+	// goes on publishing the whole pool. It is the router's own rate limit on a
+	// key rather than any machine's queue, and it is the one refusal a scenario
+	// cannot stage by describing a lane — no lane is implicated, because the
+	// router never asked one.
+	//
+	// A zero duration is a ceiling that says nothing about when to come back,
+	// which is the commoner shape and a different scenario: there is then no
+	// legal repeat at all.
+	keyPaced   time.Duration
+	keyPacedOn bool
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -523,6 +553,20 @@ func (s *Server) RefusesWith(status int, message, code string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refusesWith = &stagedRefusal{status: status, message: message, code: code}
+}
+
+// PacesTheKey makes this router answer every completion with the account's own
+// ceiling — 429, `retry_after` in the body, no pool named — while still
+// publishing the model's whole pool on its endpoints page.
+//
+// IT IS THE SHAPE THE VETO CANNOT ANSWER. Every machine behind the model is
+// behind the same ceiling, so there is nothing to put in `provider.ignore` and
+// nothing a relaxed shape gets under; the only moves are the comeback it names
+// and then another model. It is set before any request is made.
+func (s *Server) PacesTheKey(comeback time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keyPaced, s.keyPacedOn = comeback, true
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -798,6 +842,14 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "this base is having an afternoon", "")
 		return
 	}
+	if s.keyPacedOn {
+		comeback := s.keyPaced
+		s.mu.Unlock()
+		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT. Nothing served
+		// this request: the ceiling is over the key and the router never picked.
+		writeKeyPace(w, comeback)
+		return
+	}
 	if staged := s.refusesWith; staged != nil {
 		s.mu.Unlock()
 		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT, exactly as for
@@ -833,7 +885,11 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 			Only: record.Only, Order: record.Order, MaxPrice: record.MaxPrice,
 			Ignore: append(append([]string(nil), record.Ignore...), lane.Name),
 		})
-		if !more {
+		// AND A MACHINE THAT CANNOT BE VETOED CANNOT BE FALLEN PAST either: the
+		// veto this loop writes is the same veto [pick] declines to honour for it
+		// ([Lane.Unvetoable]), so asking again would hand back the same machine
+		// for ever.
+		if !more || equalName(next.Name, lane.Name) {
 			break
 		}
 		s.mu.Lock()
@@ -940,7 +996,10 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 		if len(ask.Only) > 0 && !names(ask.Only, lane.Name) {
 			continue
 		}
-		if names(ask.Ignore, lane.Name) {
+		// A VETO THE ROUTER WILL NOT HONOUR IS NOT A FILTER ([Lane.Unvetoable]).
+		// The request said the name and the router serves the machine anyway,
+		// which is the shape a relayed upstream label produces.
+		if names(ask.Ignore, lane.Name) && !lane.Unvetoable {
 			continue
 		}
 		// The account's own settings are the router's last filter and it
@@ -952,6 +1011,15 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 	}
 	if len(allowed) == 0 {
 		return Lane{}, serving, false
+	}
+	// AND A MACHINE THE ROUTER WILL NOT ROUTE AROUND ANSWERS FIRST, whatever the
+	// request ranked or vetoed ([Lane.Unvetoable]). `order` is advisory once
+	// fallbacks are on and `ignore` is a name this router declines to honour, so
+	// the request has said everything it can say and the machine answers anyway.
+	for _, lane := range allowed {
+		if lane.Unvetoable {
+			return lane, serving, true
+		}
 	}
 	for _, wanted := range ask.Order {
 		for _, lane := range allowed {
@@ -1467,6 +1535,22 @@ func writeCodedError(w http.ResponseWriter, status int, message, code string) {
 		failure["code"] = code
 	}
 	writeJSON(w, status, map[string]any{"error": failure})
+}
+
+// writeKeyPace is the account ceiling on the wire: a 429 naming no pool, with
+// the comeback where this router really puts it. `retry_after` was on not one of
+// 1,106 paced rows' HEADERS in the ten days to 2026-09-10, and in the body every
+// time — which is why the transport reads both and why this writes the one the
+// live router writes.
+func writeKeyPace(w http.ResponseWriter, comeback time.Duration) {
+	body := map[string]any{"error": map[string]any{
+		"message": "Rate limit exceeded for this key",
+		"code":    http.StatusTooManyRequests,
+	}}
+	if comeback > 0 {
+		body["error"].(map[string]any)["retry_after"] = int(comeback.Seconds())
+	}
+	writeJSON(w, http.StatusTooManyRequests, body)
 }
 
 func writeError(w http.ResponseWriter, status int, message, lane string) {

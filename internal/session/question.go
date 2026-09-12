@@ -131,6 +131,42 @@ const (
 	AskRatify AskKind = "ratify"
 )
 
+// askKinds is every shape a question can be, in the order the ladder climbs
+// them. It is the list a schema offers an asker ([askSchemaJSON] writes its enum
+// from it), so a kind this package can read is a kind the asker is offered and
+// nothing else is.
+var askKinds = []AskKind{AskPermission, AskChoice, AskJudgement, AskClarification, AskConfirmation, AskLanding, AskAssumption, AskRatify}
+
+// Waits reports whether a question of this shape STOPS ANYTHING. Every kind
+// does but one: a ratify says something reversible was already done and offers
+// the chance to unwind it, so the asker carries on the moment it is shown and
+// the person answers it — or does not — in their own time.
+//
+// IT IS READ AT BOTH ENDS AND IS THE ONE READING. The lane that raises the
+// question parks a call on it only where something waits (tools_ask.go), the
+// presence file counts only those as this session being stopped on somebody
+// (taskpresence.go's [Agent.waitingOnPerson]), and a surface counts the same
+// ones in the line that says how many questions are open — a `? 1 question`
+// beside a row that settled itself is a person told they are needed when they
+// are not.
+func (k AskKind) Waits() bool { return k != AskRatify }
+
+// Waiting reports whether ANYTHING IS STOPPED on this question — the one
+// reading of "is somebody being waited for", and the only one the waiting desk,
+// the presence file and the open-question cap are allowed to take.
+//
+// IT IS TWO TERMS AND BOTH ARE NEEDED. [AskKind.Waits] is the SHAPE: a ratify
+// waits on nobody by definition, whatever else it carries, and a ratify that
+// carried a blocking of its own would otherwise be back on the waiting desk —
+// which is the defect this exists for. [Blocking.Blocks] is the FACT: what the
+// lane that raised it says is actually paused, the turn or a task.
+//
+// The defect, measured on 2026-09-11: a standing ratify and a bash approval
+// standing at once, and home said `waiting on you` with the RATIFY's line on it
+// — because the desk answered with its oldest row and nothing asked whether
+// that row was waiting for anything. Pressing the key answered the ratify.
+func (q Question) Waiting() bool { return q.Ask.Waits() && q.Blocking.Blocks() }
+
 // needsOptions reports whether a kind is meaningless without at least two
 // answers written down. A clarification's answer is words the asker did not
 // have, an assumption's is "all of these stand", and a ratification's is "it is
@@ -163,6 +199,10 @@ const (
 	// answered together.
 	FormSheet QuestionForm = "sheet"
 )
+
+// questionForms is every form, smallest first, which is the order the schema
+// offers them in and the order a surface may promote through.
+var questionForms = []QuestionForm{FormLine, FormCard, FormRoom, FormSheet}
 
 // AskerKind is WHO is asking, which is the attribution a surface draws dim
 // beside the head. It is never machinery vocabulary: a person reads "the model
@@ -225,6 +265,11 @@ const (
 	// [SubjectRef.Ref] and read out in [SubjectRef.Name].
 	SubjectAccount SubjectKind = "account"
 )
+
+// subjectKinds is every kind of subject a question can be about, and SubjectNone
+// is not among them: a question about nothing in particular says so by leaving
+// the subject out.
+var subjectKinds = []SubjectKind{SubjectCall, SubjectNode, SubjectPage, SubjectRun, SubjectOrder, SubjectAccount}
 
 // SubjectRef names the row a question is about, AND THE ROW IS DRAWN ONCE.
 //
@@ -327,6 +372,9 @@ const (
 	BlankTime BlankKind = "time"
 )
 
+// blankKinds is every kind of blank, in the order the schema offers them.
+var blankKinds = []BlankKind{BlankText, BlankPath, BlankNumber, BlankChoice, BlankTime}
+
 // Blank is one field of a small form: what it is called, what goes in it, and
 // what it already holds. THE DEFAULT IS AN ANSWER ALREADY GIVEN — a person who
 // changes nothing has answered the question, which is the whole reason a form
@@ -352,6 +400,11 @@ type Dial struct {
 	Default float64  `json:"default"`
 	Labels  []string `json:"labels,omitempty"`
 }
+
+// inputKinds is every shape of extra input, in the order the schema offers
+// them. InputNone is not among them: it is the zero value and an asker says it
+// by leaving input out.
+var inputKinds = []InputKind{InputText, InputBlanks, InputChecklist, InputPairs, InputDial}
 
 // InputShape is what a person may give BESIDES a pick. Its zero value is
 // InputNone, which is the ordinary case: most questions are answered by
@@ -393,6 +446,11 @@ const (
 	// that says the question was worth asking.
 	ConfidenceUnsure Confidence = "unsure"
 )
+
+// confidences is every value [Confidence] takes, in the order the schema offers
+// them. It is the whole of what a surface can draw
+// (internal/tui3's questionConfidenceWord).
+var confidences = []Confidence{ConfidenceSure, ConfidenceFairly, ConfidenceUnsure}
 
 // Pick is the asker's own answer to its own question, and it is a POINTER on
 // [Question] so that "I have no pick" is spelled once. A question with no pick
@@ -472,6 +530,9 @@ const (
 	StakesIrreversible Stakes = "irreversible"
 )
 
+// stakesKinds is the three, cheapest first.
+var stakesKinds = []Stakes{StakesReversible, StakesCostly, StakesIrreversible}
+
 // PolicyKind is what may answer a question without a person present.
 type PolicyKind string
 
@@ -513,6 +574,28 @@ type Blocking struct {
 // Blocks reports whether anything at all is waiting on this question.
 func (b Blocking) Blocks() bool { return b.Turn || len(b.Tasks) > 0 }
 
+// questionOutlivesTurn reports whether the turn that raised a question may end
+// without it.
+//
+// IT IS KEYED ON WHAT THE QUESTION IS AND NEVER ON ITS KIND. Two things let a
+// question outlive its turn and there is no third: the asker said it would read
+// the answer whenever it came ([Question.Later]), or something that outlives the
+// turn is itself waiting on it — a task, which goes on standing there after the
+// conversation has moved on. Everything else is retired with the turn that
+// raised it, which is what keeps unanswered ratifies and questions somebody
+// asked back on from piling up in [Agent.OpenQuestions], on the presence desk
+// and against [QuestionCap].
+//
+// IT IS NOT [Question.Waiting], and the two are spelled apart on purpose
+// because they are two different questions. That one asks whether anything is
+// STOPPED on this question right now, and the waiting desk reads it; this one
+// asks whether the question may still stand once the turn is over, and only the
+// sweep at the end of a turn reads it. A question nothing waits on may perfectly
+// well outlive its turn — that is exactly what a non-blocking `ask` is for.
+func questionOutlivesTurn(q Question) bool {
+	return q.Later || len(q.Blocking.Tasks) > 0
+}
+
 // AnswerScope is HOW LONG an answer lasts, and it is the person's to choose
 // among the scopes the question offered.
 //
@@ -535,6 +618,9 @@ const (
 	// never assumed, and a row answered by one says so with a way to change it.
 	ScopeAlways AnswerScope = "always"
 )
+
+// answerScopes is every lifetime an answer can have, narrowest first.
+var answerScopes = []AnswerScope{ScopeOnce, ScopeTask, ScopeProject, ScopeAlways}
 
 // DecidedBy is WHO answered, and it is the field that makes a decision record
 // worth keeping: a person reading the record months later wants to know whether
@@ -673,6 +759,27 @@ type Question struct {
 	// Blocking is what is paused on it. Its zero value means NOTHING is, which
 	// is the honest reading for a ratification and for most landings.
 	Blocking Blocking `json:"blocking,omitzero"`
+	// Batch is WHICH STEP OF A TURN RAISED IT, and it is the one thing on this
+	// object that is about the question's NEIGHBOURS rather than about itself: a
+	// model that calls three tools at once can put three questions on somebody's
+	// screen in the same instant, and those are one thing to answer rather than
+	// three ([Agent.stepToken] mints it, and the lanes raised from inside a tool
+	// batch — the approval gate and the model's own `ask` — are the ones that
+	// carry it). Empty is a question raised outside any step, which is every
+	// landing and every fuel gate: those have no neighbours to group with.
+	Batch string `json:"batch,omitempty"`
+	// Later says THE ASKER IS NOT WAITING FOR THIS and will read the answer
+	// whenever it comes, so the turn that raised it may end without it. It is
+	// the model's own word about its own question — the `ask` tool sets it when
+	// the call says nothing is blocked on the turn — and it is what keeps such a
+	// question off the sweep that retires everything a turn leaves behind
+	// ([questionOutlivesTurn]).
+	//
+	// A RATIFY DOES NOT CARRY IT, and that is not an oversight: a ratify says
+	// something reversible was already done and is answered in the person's own
+	// time, but it belongs to the turn that did the thing, and one still
+	// standing when that turn ends is a question about work nobody is doing.
+	Later bool `json:"later,omitempty"`
 	// Scope are the lifetimes an answer may carry, in the order they are
 	// offered. Empty means the answer is [ScopeOnce] and nothing wider was ever
 	// on the table.
@@ -766,6 +873,15 @@ func errQuestionUnknownPick(key string) error {
 	return fmt.Errorf(
 		"the pick names %q, which is not one of the answers this question offers: pick one of them, or add it to the list",
 		key)
+}
+
+// errQuestionStillOpen is the refusal for a question that is already standing
+// unanswered. It names the question rather than merely refusing, because what
+// the asker has to do about it is nothing: the answer reaches it as a message
+// when the person gives one (tools_ask.go's [Agent.answerAsk]).
+func errQuestionStillOpen(q Question) error {
+	return fmt.Errorf("already asked and still open: %s — their answer will reach you as a message",
+		strings.TrimSpace(q.Head))
 }
 
 // errQuestionDecided is the refusal for a question a record already answers. It
@@ -935,6 +1051,17 @@ type DecisionRecord struct {
 	// preference is later written from. Empty is the ordinary case and nothing
 	// is drawn for it.
 	Why string `json:"why,omitempty"`
+	// Was is what this decision replaced, in the words it was read under, and it
+	// is filled on a CHANGED decision alone ([Answer.Revises]).
+	//
+	// THE LINE HAS TO SAY IT OR THE RECORD READS AS A CONTRADICTION. Two lines
+	// with the same head and different answers is exactly what a person changing
+	// their mind leaves behind, and a reader — the model, the mark reader, the
+	// person three days later — cannot tell that from the program having asked
+	// the same thing twice and got two answers. Measured on the Spark,
+	// 2026-09-11: a side-call read the record, found "Hello" and a file saying
+	// "Hola", and set about "fixing" the file.
+	Was []string `json:"was,omitempty"`
 	// At is when.
 	At time.Time `json:"at"`
 }
@@ -1019,6 +1146,11 @@ func (r DecisionRecord) LineClauses() []DecisionClause {
 	clauses := []DecisionClause{{Text: strings.TrimSpace(r.Head) + " → " + r.Words()}}
 	if change := strings.TrimSpace(r.Change); change != "" {
 		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 2})
+	}
+	if len(r.Was) > 0 {
+		// IT IS NEVER GIVEN UP. A changed decision that dropped the clause
+		// saying so is the contradiction this field exists to prevent.
+		clauses = append(clauses, DecisionClause{Text: "changed from " + strings.Join(r.Was, ", ")})
 	}
 	if by := strings.TrimSpace(string(r.By)); by != "" {
 		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By)})
@@ -1172,14 +1304,68 @@ func (a *Agent) recordDecision(record DecisionRecord) {
 	if err != nil {
 		return
 	}
-	if _, err := file.Write(line); err == nil {
+	if _, err := file.Write(line); err != nil {
 		_ = file.Close()
-		a.mu.Lock()
-		a.refreshSystemLocked()
-		a.mu.Unlock()
 		return
 	}
 	_ = file.Close()
+	// AND THE SYSTEM PROMPT IS NOT REWRITTEN HERE, which is the whole of what
+	// answering costs now. message[0] sits in front of every message there is,
+	// so one changed byte in it re-prices the whole conversation at the uncached
+	// rate on the very next request (memory.go's [Agent.refreshSystemLocked]) —
+	// and every `allow once` came through this line. What the model reads about
+	// this decision is the answer's own result, which is in front of it either
+	// way; what the record is FOR is the gate, which reads the file
+	// ([Question.Check]). The section message[0] carries is a snapshot taken
+	// whenever that message is rebuilt for some other reason, and it is rendered
+	// here, off the lock, so the rebuild never reads a file (memory.go's
+	// [Agent.takeRecord]).
+	a.takeRecord()
+}
+
+// SecretAnswer reports whether what a person types into this question is a
+// CREDENTIAL rather than a sentence — an API key, a token, the half of an
+// address that authorises it.
+//
+// IT IS THE ONE READING OF [InputShape.Secret], and far more hangs on it than
+// how a box is drawn: [withoutSecretWords] takes a secret's words off every
+// copy of the answer that leaves the lane that asked for them, so a key never
+// reaches the record, the questions lane, a `--host` frame or the model's
+// prompt. A surface asks the same question to mask its box.
+func (q Question) SecretAnswer() bool { return q.Input.Secret }
+
+// withoutSecretWords is one answer as EVERYTHING BUT THE LANE THAT ASKED FOR IT
+// may see it: the pick kept, every word the person typed gone.
+//
+// A SECRET IS SPENT ON THE LANE AND NOWHERE ELSE. By the time this runs the
+// lane has already been handed the real answer ([Agent.applyToLane]) — connect
+// has the key and has stored it where keys are stored — and what is left is
+// enough to say that a key arrived, when, and who gave it, which is the whole
+// of what a record is for. What is dropped is the key itself.
+//
+// IT IS ENFORCED IN ONE PLACE BECAUSE THE READERS ARE THE PROBLEM. An answer
+// leaving [Agent.ResolveQuestion] takes four roads at once — the decision file
+// on disk, the questions lane every window and every `--host` frame reads, the
+// preference [Agent.rememberOverride] would write, and message[0]'s own
+// snapshot of the record, which is the model's next request — and a rule kept
+// at four doors is a rule that is kept at three. Observed on 2026-09-11: an
+// OpenRouter key typed into the connect box was written to decisions.jsonl,
+// rendered into the system prompt as `with: sk-or-…` and sent to the provider.
+//
+// EVERY TYPED FIELD GOES, not only the one the lane reads. A person pasting a
+// key has no idea which box the engine will read it out of, and a key in the
+// wrong field is still a key on disk.
+func withoutSecretWords(q Question, answer Answer) Answer {
+	if !q.SecretAnswer() {
+		return answer
+	}
+	answer.Change = ""
+	answer.Reframe = ""
+	answer.Why = ""
+	answer.Comments = nil
+	answer.Blanks = nil
+	answer.AskedBack = nil
+	return answer
 }
 
 // decisionRecordOf is the record one answered question leaves behind. The question
@@ -1208,6 +1394,20 @@ func decisionRecordOf(q Question, answer Answer) DecisionRecord {
 }
 
 // ── raising, withdrawing, and the words a question said ─────────────────────
+
+// stepToken names the step of the turn now running: one token shared by every
+// question the SAME tool batch raises, and a different one after the next
+// request goes out.
+//
+// IT IS THE TURN'S OWN COUNT AND NOT A NEW CLOCK. [episode.decisionBegins]
+// advances it at the one moment a step begins — immediately before a request is
+// sent, where the transcript horizon is already stamped — so a question raised
+// while that request's tools run wears the number of the request that asked for
+// them. A conversation with no turn running carries whatever the last step was,
+// which is why only the lanes raised from INSIDE a batch wear it.
+func (a *Agent) stepToken() string {
+	return "step:" + strconv.FormatUint(a.stepSeq.Load(), 10)
+}
 
 // questionToken is how one question is keyed in [Agent.questionWords]: the lane
 // and the lane's own token, joined. The lane is part of the key because two
@@ -1242,6 +1442,14 @@ func (a *Agent) rememberQuestion(q Question) func() {
 	// is said about it.
 	return func() { a.WithdrawQuestion(q.Kind, q.Token(), questionGoneReason(q)) }
 }
+
+// putBackQuestion banks the words of a question whose answer was REFUSED, which
+// is the one road back onto the book that is not a raise: the question was
+// claimed a moment ago by the answer this door would not take, nothing was
+// decided, and the question is still on screen and still has to be answerable.
+// It says nothing on the lane, because nothing happened that a surface did not
+// already know ([Agent.raiseQuestion] is the door for a question that is new).
+func (a *Agent) putBackQuestion(q Question) { _ = a.rememberQuestion(q) }
 
 // claimQuestion takes one question's words OFF the book and answers them, or
 // false where nothing was banked.
@@ -1361,9 +1569,54 @@ func (a *Agent) WatchQuestions() (<-chan Event, func()) {
 	}
 }
 
+// raiseQuestion is THE ONE DOOR EVERY LANE RAISES A QUESTION THROUGH, and it is
+// the whole of a question's life on the questions lane: raised here, then
+// answered through [Agent.ResolveQuestion] or withdrawn through the func this
+// hands back — never anything else, and never one without the other.
+//
+// IT EXISTS BECAUSE FIVE LANES HAD HALF OF IT. The model's `ask`, consent, a
+// task proposal, a standing card and a landing banked their words and spoke on
+// this lane; connect, the harness offer and design, a sub-harness intake card, a
+// running sub-harness's own question and an adaptive run at its fuel gate only
+// sent their own turn event. A window that learned one of those from the
+// replay a lane opens with had nothing that would ever close it — no answered,
+// no withdrawn — so it went on saying somebody was needed after the question
+// was settled, in every window but the one that answered it. A lane that goes
+// through here cannot be raised without the words that make the answer and the
+// withdrawal speak.
+//
+// THE ORDER IS THE LAW, and it lives here so no lane has to keep it. The words
+// are banked FIRST, because a surface that has the lane's own event can answer
+// before the next line runs and an answer that finds no words is an answer
+// nobody records or announces. The lane's own announcement goes SECOND (announce,
+// nil for a lane that has none) — the tool row, the consent request, the card —
+// because a question attaches to a row a surface has already drawn. The
+// question goes out on its own lane LAST.
+//
+// letGo is the lane's to call when it stops waiting, and calling it for a
+// question somebody answered does nothing: the answer claimed the words first
+// ([Agent.claimQuestion]), and letting go of a question nobody answered is
+// withdrawing it.
+func (a *Agent) raiseQuestion(q Question, announce func()) (letGo func()) {
+	if q.Asked.IsZero() {
+		q.Asked = time.Now()
+	}
+	letGo = a.rememberQuestion(q)
+	if announce != nil {
+		announce()
+	}
+	a.emitQuestion(EventQuestion, q, nil)
+	// AND EVERY OTHER WINDOW LEARNS AT ONCE. Home, the switcher and a second
+	// terminal read the presence file, which is otherwise rewritten on its
+	// heartbeat; a question somebody is needed for is the one fact worth not
+	// waiting a beat to say.
+	a.nudgePresence()
+	return letGo
+}
+
 // AskQuestion is the door an asker inside this engine puts a question through:
-// the gate, then the event, then the words banked for every surface that will
-// draw it. It answers the func that takes the words back down, and a refusal
+// the gate, then [Agent.raiseQuestion] with the question's row on the presence
+// desk beside it. It answers the func that takes both back down, and a refusal
 // answers a func that does nothing — a question that did not pass the gate was
 // never raised and has nothing to retire.
 //
@@ -1388,9 +1641,7 @@ func (a *Agent) AskQuestion(q Question) (func(), error) {
 	// were already standing — which is the opposite of what a question object is
 	// for. Observed: three `ask` calls waiting and home drawing the conversation
 	// as `working`.
-	forget := a.presenceAskingWhole(q)
-	a.emitQuestion(EventQuestion, q, nil)
-	return forget, nil
+	return a.presenceAskingWhole(q, nil), nil
 }
 
 // checkQuestion is [Question.Check] plus the one bound that belongs to the SET
@@ -1406,14 +1657,32 @@ func (a *Agent) checkQuestion(q Question) error {
 	if err := q.Check(a.Decisions()); err != nil {
 		return err
 	}
-	if q.Subject.Kind == SubjectNone {
-		return nil
-	}
+	// AND A QUESTION THAT IS STILL ON SOMEBODY'S SCREEN IS NOT ASKED TWICE. It
+	// is [decidedAlready]'s twin one step earlier: that one refuses a question a
+	// record has answered, this one refuses a question nobody has answered YET —
+	// which a lane could not raise before questions began outliving the call that
+	// asked them (tools_ask.go's [askOpen]) and can now. The refusal says where
+	// the answer will arrive, because the asker's next move is to carry on.
+	head := questionFold(q.Head)
 	open := 0
 	for _, other := range a.OpenQuestions() {
-		if other.Subject == q.Subject && other.Token() != q.Token() {
+		if other.Token() == q.Token() && other.Kind == q.Kind {
+			continue
+		}
+		if head != "" && questionFold(other.Head) == head && other.Subject == q.Subject {
+			return errQuestionStillOpen(other)
+		}
+		// AND THE CAP COUNTS WHAT IS WAITING, on the same one reading the
+		// waiting desk takes ([Question.Waiting]). The thing it protects is a
+		// person's attention on one piece of work that has STOPPED; a ratify
+		// beside it stopped nothing, and holding a slot for one would refuse the
+		// question that actually needs answering.
+		if q.Subject.Kind != SubjectNone && other.Subject == q.Subject && other.Waiting() {
 			open++
 		}
+	}
+	if q.Subject.Kind == SubjectNone {
+		return nil
 	}
 	if open >= QuestionCap {
 		return fmt.Errorf(
@@ -1430,6 +1699,10 @@ func (a *Agent) checkQuestion(q Question) error {
 // [Agent.ResolveConsent]'s terms: the thing is already gone, and there is
 // nobody left to tell.
 func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
+	// THE LOOK AND THE TAKING ARE ONE HOLD, so "withdrawn exactly once" is true
+	// rather than nearly true: two callers that both read a standing question
+	// before either deleted it would both go on to announce the withdrawal, and
+	// every window would draw the sentence twice.
 	q, said := a.claimQuestion(kind, token, false)
 	if !said {
 		return
@@ -1449,6 +1722,10 @@ func (a *Agent) sayWithdrawn(q Question, reason string) {
 		At:     time.Now(),
 	}
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
+	// AND EVERY OTHER WINDOW LEARNS AT ONCE, for the reason the raise does
+	// ([Agent.raiseQuestion]): a question that is no longer being asked must not
+	// go on saying somebody is needed for a beat of the heartbeat.
+	a.nudgePresence()
 }
 
 // sweepQuestions withdraws every question whose lane has stopped waiting on it
@@ -1496,7 +1773,7 @@ func (a *Agent) sweepQuestions() {
 // needing them.
 func questionGoneReason(q Question) string {
 	switch q.Kind {
-	case QuestionConsent, QuestionRecovery:
+	case QuestionConsent:
 		return "the turn moved on without it"
 	case QuestionTask:
 		if !q.Deadline.IsZero() {
@@ -1565,6 +1842,26 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if strings.TrimSpace(answer.Key) == "" {
 		answer.Key = answer.FirstKey()
 	}
+	// A REVISION IS THE OTHER THING AN ANSWER CAN BE, and it takes its own road
+	// for one reason: every lane below is a resolver handing an answer to
+	// somebody WAITING for it, and a question that has been settled has nobody
+	// waiting. [Agent.reviseLane] applies it and answers what was asked, so the
+	// record and the announcement below are made exactly as they are for a first
+	// answer — a changed decision is a decision, and it is kept and said the
+	// same way.
+	if answer.Revises {
+		q, prior, err := a.reviseLane(answer)
+		if err != nil {
+			return err
+		}
+		record := decisionRecordOf(q, answer)
+		if prior != nil {
+			record.Was = decisionRecordOf(q, *prior).Labels
+		}
+		a.recordDecision(record)
+		a.emitQuestion(EventQuestionAnswered, q, &answer)
+		return nil
+	}
 	// THE WORDS ARE CLAIMED BEFORE THE LANE IS TOUCHED. The lane is about to
 	// return and let go of this question, and letting go of one nobody answered
 	// is withdrawing it ([Agent.rememberQuestion]) — so an answer that had not
@@ -1582,12 +1879,37 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 		q = a.questionForLandingAnswer(answer)
 	}
 	if err := a.applyToLane(answer); err != nil {
+		if errors.Is(err, errAnswerSettled) {
+			// THE LOSER OF A RACE RECORDS NOTHING AND SAYS NOTHING. Somebody
+			// else's answer to this question got there first — the clock and a
+			// person can both reach this door in the same instant — and it has
+			// already been recorded, announced and given to the model. Writing a
+			// second record here is how the record and the windows came to show
+			// one answer while the model had been told the other. The question is
+			// NOT put back: it really is answered.
+			return nil
+		}
 		// NOTHING WAS DECIDED, SO NOTHING IS FORGOTTEN. The question is still a
 		// question and still has to be drawn.
 		if said && resolvesQuestion(answer) {
-			a.rememberQuestion(q)
+			a.putBackQuestion(q)
 		}
 		return err
+	}
+	// AND A SECRET'S WORDS GO NO FURTHER THAN THE LANE THAT ASKED FOR THEM,
+	// which has just had them on the line above. Everything below this point
+	// writes, keeps or announces the answer, and none of it may carry a key
+	// ([withoutSecretWords] says why it is enforced here and not at each
+	// reader).
+	answer = withoutSecretWords(q, answer)
+	// AN ANSWER THAT DID NOT END THE QUESTION ENDS HERE. A steer on a landed
+	// task, a change asked of a design, a question asked back on the model's own
+	// `ask`: all three send WORDS and leave the question standing
+	// ([AnswerResolves]), so there is no decision to record and nothing to
+	// announce as answered — a lane event saying so would close the question in
+	// every window but this one, over a decision nobody has made yet.
+	if !resolvesQuestion(answer) {
+		return nil
 	}
 	// THE RECORD IS WRITTEN FROM THE QUESTION AND THE ANSWER TOGETHER, and it is
 	// written after the lane took it: a decision recorded for work that was never
@@ -1596,16 +1918,49 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// record whose question cannot be read back is a line nobody can act on.
 	if said {
 		a.recordDecision(decisionRecordOf(q, answer))
-		if strings.TrimSpace(answer.Why) != "" && q.Pick != nil && answer.FirstKey() != q.Pick.Key {
-			// An explained override is a durable preference, not merely a note on
-			// this decision. The existing memory door keeps it forgettable.
-			_, _ = a.RememberScoped("prefers "+strings.TrimSpace(answer.Why), memoryScopeForAnswer(answer.Scope))
-		}
+		a.rememberOverride(q, answer)
 	}
 	if said || landingSaid {
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
+	// AND EVERY OTHER WINDOW LEARNS THE SESSION IS NO LONGER STOPPED, on the
+	// beat the answer lands rather than on the presence heartbeat's next tick:
+	// home, the switcher and a second terminal all read that file, and a `needs
+	// you` that stands for another five seconds after a key was pressed is the
+	// oldest complaint about this lane ([Agent.raiseQuestion] says the same for
+	// the raise).
+	a.nudgePresence()
 	return nil
+}
+
+// rememberOverride keeps the person's own reason for going against the pick, as
+// a durable preference rather than a note on one decision. The existing memory
+// door keeps it forgettable.
+//
+// IT RUNS BESIDE THE ANSWER AND NEVER IN FRONT OF IT. [Agent.RememberScoped]
+// weighs the new line against what is already kept, which is a model call
+// (memory.go's applyCandidate) — and this door is the one a person's keystroke
+// is waiting on, over a wire with a deadline on it. A preference written a
+// moment later is worth exactly what one written now is; a key that did not
+// land for as long as a reflex call takes is not.
+func (a *Agent) rememberOverride(q Question, answer Answer) {
+	why := strings.TrimSpace(answer.Why)
+	if why == "" || q.Pick == nil || answer.FirstKey() == q.Pick.Key {
+		return
+	}
+	scope := memoryScopeForAnswer(answer.Scope)
+	// AND IT IS A TRACKED BACKGROUND PASS AND NOT A BARE `go`, on the one
+	// mechanism every background memory pass in this package uses
+	// ([Agent.startMemoryJob]): the work is registered, so [Agent.Close] waits
+	// for it rather than leaving a reflex call writing into a store the session
+	// has finished with, and it is refused outright once the session is closing.
+	if !a.startMemoryJob() {
+		return
+	}
+	go func() {
+		defer a.memoryJobs.Done()
+		_, _ = a.RememberScoped("prefers "+why, scope)
+	}()
 }
 
 // questionForLandingAnswer is the words a landing answer is ABOUT, captured
@@ -1662,6 +2017,13 @@ func resolvesQuestion(answer Answer) bool { return AnswerResolves(answer) }
 //     rewrites it and puts it in front of you again ([HarnessChangeKey]).
 func AnswerResolves(answer Answer) bool {
 	switch answer.Kind {
+	case QuestionAsk:
+		// AND ASKING BACK IS NOT ANSWERING. The third answer to the model's own
+		// question is a question: "what do you mean by the second one?" sends the
+		// words and leaves the decision where it was, which is what the block and
+		// the room both draw while they go on holding it (tools_ask.go's
+		// [Agent.answerAsk] does the engine's half).
+		return !onlyAsksBack(answer)
 	case QuestionLanding:
 		return answer.FirstKey() != LandingTellKey
 	case QuestionHarness:
@@ -1674,6 +2036,17 @@ func AnswerResolves(answer Answer) bool {
 	return true
 }
 
+// onlyAsksBack reports whether all this answer carries is words FOR the asker:
+// something asked back, with no key picked and nothing said beside a pick. An
+// answer that asks back AND decides — the room's own compose step sends both —
+// is an answer, and the exchange rides along in the record.
+func onlyAsksBack(answer Answer) bool {
+	if len(answer.AskedBack) == 0 {
+		return false
+	}
+	return len(answer.Keys()) == 0 && strings.TrimSpace(answer.Words()) == ""
+}
+
 // applyToLane hands one answer to the resolver that owns it. Every arm here is
 // a call to a function that already existed and is already what a surface
 // calls; nothing in this switch decides anything for itself.
@@ -1682,14 +2055,12 @@ func (a *Agent) applyToLane(answer Answer) error {
 	words := answer.Words()
 	switch answer.Kind {
 	case QuestionAsk:
-		// The delivery cannot block and the entry is the ownership, so this is
-		// one call under one lock rather than the read-unlock-send it was
-		// (askwait.go). An answer to an ask that has already ended finds nothing
-		// parked and is nothing to do.
-		a.mu.Lock()
-		a.asked.answerLocked(answer.ID, answer)
-		a.mu.Unlock()
-		return nil
+		// THE MODEL'S OWN LANE DELIVERS RATHER THAN RELEASES (asklane.go): the
+		// answer reaches the call parked on it where there is one, and the
+		// conversation's own queue where there is not. The delivery cannot block
+		// and the claim is the ownership, so the handover is one locked step
+		// rather than the read-unlock-send it was.
+		return a.answerAsk(answer)
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		if answer.Kind == QuestionStanding && key == "" && words != "" {
 			// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION, and it is not a
@@ -1746,12 +2117,6 @@ func (a *Agent) applyToLane(answer Answer) error {
 		case QuestionStanding:
 			a.ResolveStanding(answer.ID, action.Standing)
 		}
-		return nil
-	case QuestionRecovery:
-		// The stuck-turn question borrows the consent lane's wait and has three
-		// answers where consent has two, so it is answered through its own
-		// resolver with the choice the option key names (recovery.go).
-		a.ResolveRecovery(answer.ID, RecoveryChoice(key))
 		return nil
 	case QuestionConnect:
 		// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER
@@ -2083,7 +2448,7 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
-	return a.said(QuestionConnect, id, ConnectQuestion(id, "", ask.needsKey, "", false))
+	return a.said(QuestionConnect, id, ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret))
 }
 
 // ConnectQuestion is that object, and it is ONE BUILDER for the two roads it
@@ -2292,7 +2657,16 @@ func (a *Agent) standingQuestion(id uint64) Question {
 		Subject: SubjectRef{Kind: SubjectOrder, ID: id},
 		Options: AnswerOptions(QuestionStanding),
 		Stakes:  StakesReversible,
-		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},
+		// AND THE TURN IS STOPPED ON IT, which this question did not say for a
+		// long time and which is simply true: [Agent.askStanding] parks the
+		// `stand` call on the answer and the card carries no clock at all, by
+		// law (standing_contract.go), so the conversation waits for as long as
+		// the card stands. A question that said otherwise was a window drawing
+		// `idle` over work that had stopped, and — once the waiting desk began
+		// reading [Question.Waiting] — a standing card that was not on the desk
+		// at all.
+		Blocking: Blocking{Turn: true},
+		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
 	})
 }
 

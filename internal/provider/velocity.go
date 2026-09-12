@@ -347,7 +347,7 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // pinning anything is never asked, never answers, and its requests are
 // byte-for-byte the requests it got before this law existed. The moment somebody
 // pins a lane, that pin IS the asking.
-func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPrefs {
 	if !c.carriesPreferences() {
 		return nil
 	}
@@ -406,7 +406,14 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 	// — so when there is a belief its order replaces the ranking above. When
 	// there is not, and on the first call of every fresh machine there is not,
 	// nothing here changes and the request goes out exactly as it always did.
-	c.applyLaneChoice(prefs, model, knobs, request, held)
+	//
+	// IT NO LONGER TAKES THE REQUEST, and the absence is the whole of this
+	// change: the belief is asked ONCE PER CALL rather than once per encode
+	// ([Client.withLaneChoice]), so by the time the object is being composed
+	// there is nothing left to ask — only the call's own answer to read off its
+	// knobs. A parameter kept "in case the encoder needs to decide again" would
+	// be the door back to the defect.
+	c.applyLaneChoice(prefs, model, knobs, held)
 	return prefs
 }
 
@@ -420,14 +427,14 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 // half could not see the demand [hedgePreference] adds afterwards, so a pinned
 // request was offered no first rung and climbed every other one still pinned to
 // the machine that had refused it (issue #266).
-func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+func (c *Client) wirePreferences(model string, knobs callKnobs) *providerPrefs {
 	if knobs.noProvider {
 		// THE ONE ENCODE THAT ASKS THE OPPOSITE QUESTION. See [callKnobs] —
 		// this is the widened retry that finds out whether a base's 400 was
 		// about the field, and it can only find out by sending none.
 		return nil
 	}
-	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
+	prefs := hedgePreference(c.providerPreferences(model, knobs), knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
 	}
@@ -455,13 +462,28 @@ func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Requ
 // ── WHAT IT MAY NARROW AND WHAT IT MAY NOT ──────────────────────────────────
 //
 // `order` and `ignore` are RANKINGS AND VETOES and both are ours, so a refusing
-// machine is simply struck from the first and added to the second. `only` is a
-// DEMAND, and a demand is somebody's instruction rather than this build's
-// opinion: a person's strict pin or a rescue's one machine. So a demand is
-// narrowed only while something is left in it — two machines demanded and one
-// refusing leaves the other — and a demand down to its last machine is left
-// exactly as it stands, which is the one legal same-machine move (retry.go's
-// [Client.handBack] decides what happens to it).
+// machine is simply struck from the first and added to the second.
+//
+// `only` IS A DEMAND AND IT DEPENDS HOW WIDE. A request that demanded ONE
+// machine — a person's strict pin, or the machine a rescue's arm exists to try —
+// is left exactly as it stands, whatever has refused it: there is no other
+// machine for the next body to go to, so the one legal same-machine repeat is
+// [control.Next]'s to authorize and the ladder's first rung is what takes the
+// field off. That question is [demandedLane]'s and it is asked of it here rather
+// than answered again: it is the same door the veto law's exemption reads and
+// the same reading [requestSet] confines the plan to, so the set this narrows,
+// the set the plan walks and the machine the law exempts cannot disagree.
+//
+// A DEMAND THE BELIEF MADE IS OURS, AND IT EMPTIES. It is the admitted set
+// (internal/lane's demandOf), so a machine in it that has refused this call is a
+// machine this build no longer wants — struck, like the ranking — and when every
+// name has gone the demand goes with it. Keeping the last one is what asked a
+// pool of two, with one refusing, to serve the request from the refuser while
+// `allow_fallbacks: false` forbade the router the healthy machine it would
+// otherwise have found. With the demand gone the router has its whole roster
+// back for the one body that needs it, and the CALL still walks the set it
+// decided on, because the plan reads the choice rather than this object
+// ([requestSet]) and [control.Next] never returns a machine already tried.
 //
 // A CALL THAT HAS BEEN REFUSED BY NOBODY CHANGES NOTHING, which is every call
 // on every healthy path: the object is returned untouched and the request is
@@ -484,9 +506,10 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 		return &providerPrefs{Ignore: refused}
 	}
 	narrowed := *prefs
+	alone, _ := demandedLane(knobs)
 	for _, name := range refused {
-		if kept := keepingServable(narrowed.Only, name); kept != nil {
-			narrowed.Only = kept
+		if alone == "" {
+			narrowed.Only = withoutEndpoint(narrowed.Only, name)
 		}
 		narrowed.Order = withoutEndpoint(narrowed.Order, name)
 		// A DEMANDED MACHINE IS NEVER ALSO VETOED. The two fields would then say
@@ -497,18 +520,19 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 			narrowed.Ignore = append(narrowed.Ignore, name)
 		}
 	}
-	return &narrowed
-}
-
-// keepingServable is a demand with one machine taken out of it, or nil when
-// taking it out would leave nothing to demand. A demand nobody can serve is the
-// router answering "no allowed providers are available" before it asks anybody,
-// which is a round trip spent to be told what this process already knew.
-func keepingServable(only []string, name string) []string {
-	if len(only) < 2 || !namesEndpoint(only, name) {
-		return nil
+	// AND A DEMAND WITH NOTHING LEFT IN IT IS NO DEMAND. The field would
+	// otherwise be dropped from the encoded body by `omitempty` while
+	// `allow_fallbacks: false` stayed on it, which says "these machines and no
+	// others" about no machines at all — the router's own "no allowed providers
+	// are available", bought with a round trip. Both come off together, so the
+	// one body that had nowhere left to go carries the request the way a request
+	// with no belief behind it has always been carried.
+	if prefs.Only != nil && len(narrowed.Only) == 0 {
+		narrowed.Only = nil
+		yes := true
+		narrowed.AllowFallbacks = &yes
 	}
-	return withoutEndpoint(only, name)
+	return &narrowed
 }
 
 // membershipNarrowing reports whether this preference object carries a
@@ -1217,7 +1241,7 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error,
 // CONFIGURED. A base that is not a router gets a ledger with one row in it, not
 // no ledger. Nothing reaches the wire that was not already allowed to:
 // [Client.providerPreferences] returns nil for `routing off` and for a base that
-// does not carry a preference, and [Client.laneChoiceFor] answers no choice for
+// does not carry a preference, and [Client.drawLaneChoice] answers no choice for
 // the first — so the reading is kept and the steering is not. What it buys is
 // that a refusal is still a fact anybody can act on: the retry loop's own
 // exclusions, the stream cut's [StreamCut.Rerouted], the wall, the frontier.

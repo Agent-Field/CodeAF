@@ -392,7 +392,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// this line writes ([Client.relaxationPlan]). It read only the ledger's half
 	// of it for a while, could not see the demand a rescue adds, and offered a
 	// pinned request no first rung at all (issue #266).
-	wire.Provider = c.wirePreferences(model, knobs, &scrubbed)
+	wire.Provider = c.wirePreferences(model, knobs)
 	// AND WHETHER THE ASK WAS REALLY MADE IS RECORDED WHERE IT IS REALLY
 	// WRITTEN. A base answers the #433 question with what comes back from a
 	// request that carried a preference, and the widened retry that follows a
@@ -414,12 +414,15 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 // ordinary per-call or run-wide economy, while a request marked required is a
 // correctness bound on this particular answer and wins. A pin is explicit so
 // an unknown catalog row cannot erase an operator's own choice, and it never
-// carries a budget because class-value notation has no budget form.
+// carries a budget because class-value notation has no budget form. The wall
+// and the lane are not the caller's economy but facts about the completion, so
+// they survive the pin: a pinned word still stands, and a pin that sends
+// nothing still leaves a pass the wall has to speak for.
 func (c *Client) effortAsked(requested effortRequest) effortRequest {
 	if c.config.Effort == EffortNone || requested.required {
 		return requested
 	}
-	return effortRequest{effort: c.config.Effort, explicit: true}
+	return effortRequest{effort: c.config.Effort, explicit: true, wall: requested.wall, lane: requested.lane}
 }
 
 // resolveEffort decides whether the knob may travel, and in what shape.
@@ -435,6 +438,14 @@ func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
 	if effort == EffortOff && c.reasoningUnstoppable(model) {
 		return c.lowestEffort(model)
 	}
+	// A WALL THAT SPEAKS NEEDS A LEVEL TO RIDE ON, and the level is the one the
+	// pass runs at anyway: a request that sent nothing to a model that thinks
+	// regardless carries its wall's budget ([Client.wallBudget]) on the level
+	// that model would have thought at, so nothing about the depth changes but
+	// where it ends. The budget is the half that travels (reasoningFor).
+	if effort == EffortNone && c.wallBudget(model, requested) > 0 {
+		return c.runningEffort(model, EffortNone)
+	}
 	return effort
 }
 
@@ -445,18 +456,20 @@ func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
 // no level is a shape nothing above this layer ever asked for. Past that it
 // answers to the memo — a model this process has already watched reject the
 // field gets the rung it can actually serve, which is high without a budget.
+//
+// THE SMALLER ALLOWANCE WINS when a rung states one and a wall implies another,
+// because both are ceilings on the same pass and a pass given the larger would
+// be cut by the smaller.
 func (c *Client) resolveReasoningBudget(model string, requested effortRequest) int {
 	requested = c.effortAsked(requested)
-	if requested.budget <= 0 {
+	if c.resolveEffort(model, requested) == EffortNone || reasoningBudgetRefused(model) {
 		return 0
 	}
-	if c.resolveEffort(model, requested) == EffortNone {
-		return 0
+	walled := c.wallBudget(model, requested)
+	if requested.budget > 0 && (walled == 0 || requested.budget < walled) {
+		return requested.budget
 	}
-	if reasoningBudgetRefused(model) {
-		return 0
-	}
-	return requested.budget
+	return walled
 }
 
 // requestedEffort applies the catalog gate. The catalog is consulted first

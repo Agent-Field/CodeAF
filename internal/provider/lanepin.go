@@ -15,11 +15,13 @@ import (
 // `lane.<slot>` row and the `lane.guard` row (internal/config's settings.go),
 // resolved once by the surface and handed down.
 //
-// IT IS A PROCESS-WIDE KNOB AND NOT A FIELD ON Config, for [SetHedgeBudget]'s
-// reason and one more. The reason it shares: the row is about a SESSION and not
-// about an adapter, and two clients in one process — the conversation's and a
-// tool loop's own — must not hold two different answers to "which machine did
-// they ask for". The reason of its own: the row is written WHILE THE PROCESS IS
+// IT IS A PROCESS-WIDE KNOB AND NOT A FIELD ON Config, for two reasons. The row
+// is about a SESSION and not about an adapter, and two clients in one process —
+// the conversation's and a tool loop's own — must not hold two different answers
+// to "which machine did they ask for". (The other process-wide knob this used to
+// cite, `SetHedgeBudget`, is deleted: what a call may spend rescuing itself is a
+// figure on its own plan now and not a switch anybody throws.) And the row is
+// written WHILE THE PROCESS IS
 // RUNNING, by the picker (internal/tui3's pinLane), and a pin that only took
 // effect at the next launch would be a promise this build did not keep. A
 // settings read per request would keep it too — at the cost of a disk read in
@@ -156,25 +158,21 @@ func PinnedFor(model string) string {
 }
 
 // SetLaneGuard turns the speed guard on or off, and it is the ONE switch: it
-// moves the hedge budget and the probe together, because both are the same
-// promise to a person — that this build may spend a little extra to keep an
-// answer moving — and a row that turned off half of it would be a row nobody
-// could reason about.
+// moves the rescue and the probe together, because both are the same promise to
+// a person — that this build may spend a little extra to keep an answer moving —
+// and a row that turned off half of it would be a row nobody could reason about.
 //
-// OFF IS A BUDGET THAT ALLOWS NOTHING rather than a flag the race consults. The
-// budget is already the one gate every hedge passes through ([hedgeRace.hedge]),
-// so a zero allowance is the whole of "do not rescue" with no second path to
-// keep in step. The probe reads the flag directly, because a probe is not
-// budgeted in dollars — it is gated on whether anybody is waiting.
+// OFF IS A PURSE THAT REFUSES EVERYTHING rather than a flag the race consults.
+// The purse is already the one gate every rescue passes through
+// ([hedgeRace.affords]), so a purse that says no is the whole of "do not rescue"
+// with no second path to keep in step — and it is written onto the plan where
+// every arm of the question reads it (waitplan.go). The probe reads the flag
+// directly, because a probe is not priced in dollars: it is gated on whether
+// anybody is waiting.
 func SetLaneGuard(on bool) {
 	lanePinMu.Lock()
 	laneGuard = on
 	lanePinMu.Unlock()
-	if on {
-		SetHedgeBudget(nil)
-		return
-	}
-	SetHedgeBudget(lanes.NewBudget(0, 0))
 }
 
 // LaneGuardOn reports whether the speed guard is on.
@@ -315,7 +313,7 @@ func pinRetired(lane, model string) bool {
 // questions, a pin that moved between them let one request go out demanding the
 // machine the person had just stopped asking for — the row read under the first
 // lock and the retirement under the second belonging to two different rows. The
-// pair is one fact about one moment (lanes.go's [Client.laneChoiceFor]).
+// pair is one fact about one moment (lanes.go's [Client.drawLaneChoice]).
 func lanePinFor(model string) (LanePin, bool) {
 	// THE MODEL IS FOLDED BEFORE THE LOCK IS TAKEN and the lane half of the key
 	// is read under it, which is what makes this one read rather than two:

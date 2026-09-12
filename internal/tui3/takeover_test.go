@@ -29,8 +29,20 @@ import (
 // column is thirty-six cells at its narrowest and every sentence longer than
 // that is laid over two rows ([wrap]), so an assertion that looked line by line
 // would be testing the width of the terminal rather than the words on it.
+// cardSays reads a card the way a person does — as words, wherever the wrapping
+// put them — and the frame's own sides are not words, so they come out before
+// the rows are joined (frame.go draws them on every row now).
 func cardSays(card []string, phrase string) bool {
-	return strings.Contains(strings.Join(strings.Fields(strings.Join(card, " ")), " "),
+	rows := make([]string, 0, len(card))
+	for _, row := range card {
+		rows = append(rows, strings.Map(func(r rune) rune {
+			if r == '│' || r == '╭' || r == '╮' || r == '╰' || r == '╯' {
+				return ' '
+			}
+			return r
+		}, row))
+	}
+	return strings.Contains(strings.Join(strings.Fields(strings.Join(rows, " ")), " "),
 		strings.Join(strings.Fields(phrase), " "))
 }
 

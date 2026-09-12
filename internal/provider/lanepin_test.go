@@ -74,7 +74,7 @@ func TestAStrictPinRanksNothingAndStillKnowsWhereToOffer(t *testing.T) {
 	)
 	pinned(t, LanePin{Lane: "brass"})
 
-	choice, made := client.laneChoiceFor(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
+	choice, made := client.drawLaneChoice(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
 	if !made {
 		t.Fatal("a pin made no choice at all")
 	}
@@ -130,9 +130,9 @@ func TestABorrowablePinLeadsTheOrderAndKeepsARescue(t *testing.T) {
 	// lane a rescue would go to is the chooser's sampled business and not this
 	// test's — what a borrowable pin promises is that it did not take one away.
 	request := &ai.Request{Model: model, Messages: userMessages("hello")}
-	withPin, _ := client.laneChoiceFor(callKnobs{}, model, request)
+	withPin, _ := client.drawLaneChoice(callKnobs{}, model, request)
 	SetLanePin(LanePin{})
-	without, _ := client.laneChoiceFor(callKnobs{}, model, request)
+	without, _ := client.drawLaneChoice(callKnobs{}, model, request)
 	rescues := func(choice lanes.Choice) int {
 		return len(lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now()).Alts)
 	}
@@ -165,7 +165,7 @@ func TestTheOpenRouterRowSendsTodaysRequest(t *testing.T) {
 	if ask.Sort != "latency" {
 		t.Fatalf("sort = %q, want the sort word this build sent before lanes existed", ask.Sort)
 	}
-	if _, made := client.laneChoiceFor(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")}); made {
+	if _, made := client.drawLaneChoice(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")}); made {
 		t.Fatal("a row asking for no lane still made a lane choice")
 	}
 }
@@ -186,8 +186,8 @@ func TestTheGuardOffRefusesEveryHedgeAndEveryProbe(t *testing.T) {
 	t.Cleanup(func() { SetLaneGuard(before) })
 
 	SetLaneGuard(false)
-	if currentHedgeBudget().Allow(client.clock(), 0.0001) {
-		t.Fatal("the budget allowed a rescue with the guard off")
+	if plan := client.planFor(context.Background(), lanes.Choice{}, model, 0); plan.Purse.Allows(0.0001, client.clock()) {
+		t.Fatal("the purse allowed a rescue with the guard off")
 	}
 	if !InstallLaneProber(client, nil) {
 		t.Fatal("the prober refused a router client")
@@ -198,10 +198,10 @@ func TestTheGuardOffRefusesEveryHedgeAndEveryProbe(t *testing.T) {
 		t.Fatalf("%d requests went out with the guard off, want none", got)
 	}
 
-	// And back on, the same budget answers the same question the other way.
+	// And back on, the same plan answers the same question the other way.
 	SetLaneGuard(true)
-	if !currentHedgeBudget().Allow(client.clock(), 0.0001) {
-		t.Fatal("the budget refused a rescue with the guard on")
+	if plan := client.planFor(context.Background(), lanes.Choice{}, model, 0); !plan.Purse.Allows(0.0001, client.clock()) {
+		t.Fatal("the purse refused a rescue with the guard on")
 	}
 }
 

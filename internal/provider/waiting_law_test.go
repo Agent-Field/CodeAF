@@ -201,7 +201,7 @@ func TestAPinnedLaneCanRaiseAnOffer(t *testing.T) {
 	)
 	pinned(t, LanePin{Lane: "brass"})
 
-	choice, made := client.laneChoiceFor(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
+	choice, made := client.drawLaneChoice(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
 	if !made {
 		t.Fatal("a pin made no choice at all, so nothing downstream is watched")
 	}
@@ -212,7 +212,11 @@ func TestAPinnedLaneCanRaiseAnOffer(t *testing.T) {
 	// is a question nobody can answer — and the request would then report the
 	// wait and leave a person watching a machine they chose go quiet.
 	plan := lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now())
-	plan.Pinned = len(choice.Only) > 0
+	// AND THE PLAN READS THE CHOICE'S OWN WORD FOR IT, exactly as `planFor`
+	// does. Counting `Only` here would be a second idea of what a pin is, and
+	// since the chooser began demanding its admitted set it would be the wrong
+	// one: every ordinary call would read as pinned.
+	plan.Pinned = choice.Pinned
 	if !plan.Pinned {
 		t.Fatal("a strict pin did not read as pinned, so a stall would rescue away from a machine a person named")
 	}

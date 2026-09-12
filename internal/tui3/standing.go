@@ -672,11 +672,16 @@ func (a *app) answerStanding(answer session.StandingAnswer, verdict, chosen stri
 	if card == nil || card.settled() {
 		return nil
 	}
+	var sent tea.Cmd
 	if agent, ok := a.stander(); ok {
-		agent.ResolveStanding(card.id, answer)
+		// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go).
+		sent = a.offLoop(func() func(bool) tea.Cmd {
+			agent.ResolveStanding(card.id, answer)
+			return nil
+		})
 	}
 	a.dropStandingQuestion(card.id)
-	return a.settleStanding(card, verdict, chosen)
+	return tea.Batch(sent, a.settleStanding(card, verdict, chosen))
 }
 
 // settleStanding writes what was decided onto the row and clears the box the

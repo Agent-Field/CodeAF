@@ -231,7 +231,7 @@ func TestTheConnectOfferNamesTheAccountAndTwoAnswers(t *testing.T) {
 	if !strings.Contains(joined, session.ConnectAskReason) {
 		t.Fatalf("the card never says why it is asking:\n%s", joined)
 	}
-	for _, want := range []string{"1  connect", "2  not now"} {
+	for _, want := range []string{"1 connect", "2 not now"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the card is missing %q:\n%s", want, joined)
 		}
@@ -359,8 +359,14 @@ func TestTheConnectOfferIsAnsweredByThePointer(t *testing.T) {
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
 	connectSettled(t, a)
 
-	y := connectAnswerY(t, a, "1  connect")
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	// THE ANSWER'S OWN CELLS ARE THE TARGET on a question drawn as one row: the
+	// spans the layout wrote say where they are (question.go's [choiceSpan]),
+	// exactly as the bands do on the panel.
+	y := connectAnswerY(t, a, "1 connect")
+	if len(a.questionSpans) == 0 {
+		t.Fatal("the row recorded no answer to press")
+	}
+	drive(t, a, tea.MouseClickMsg{X: a.questionSpans[0].from + 1, Y: y, Button: tea.MouseLeft})
 	if len(agent.resolved) != 1 || !agent.resolved[0].approve {
 		t.Fatalf("the press answered %+v, want an approval", agent.resolved)
 	}
@@ -373,7 +379,7 @@ func TestAPressThatMissesTheConnectAnswersFallsThrough(t *testing.T) {
 	agent, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
 	connectSettled(t, a)
-	if a.questionPress(a.width-1, 0) {
+	if _, took := a.questionPress(a.width-1, 0); took {
 		t.Fatal("a press on a row the block never drew was taken by it")
 	}
 	if len(agent.resolved) != 0 {
