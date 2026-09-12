@@ -1975,6 +1975,10 @@ type app struct {
 	// Nil history is a surface with no ↑, which is what --no-history is.
 	history History
 	hist    recall
+	// drafts is the kill ring: the sentences the whole-box clears took, newest
+	// first (draftring.go). The same ↑ walk visits them in front of the sent
+	// history, drawn dim, and /drafts lists them.
+	drafts draftRing
 
 	// draftFile is where the unsent sentence is kept between sessions
 	// (draft.go); empty means it is not kept at all.
@@ -2563,6 +2567,18 @@ type app struct {
 	// lost them.
 	recentSessions func() []Session
 	resume         func(file string) (Agent, error)
+}
+
+// noteKilled is the door every whole-box clear goes through BEFORE the words
+// go: the sentence in the box, if there is one, goes on the kill ring
+// (draftring.go), so a clear that was a mistake is one ↑ away rather than
+// retyped. Clears that hand the words on — a send, the rewind's stash — are
+// not kills and do not call here. A conversation switch DOES (detach.go's
+// [app.clearConversation]): the sidecar that picks the sentence up answers
+// only while that conversation is still kept, and the ring is what still has
+// the words if it is let go first.
+func (a *app) noteKilled() {
+	a.drafts.push(a.input.value)
 }
 
 // landingKeysWord is the opening line of every session: the keys the status
