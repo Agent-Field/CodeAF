@@ -112,7 +112,13 @@ func TestAWokenTurnIsReadAgainstTheRequestItsResultBelongsTo(t *testing.T) {
 	completer := &scriptedCompleter{steps: delegateThenAnswerSteps(&reader, func() string {
 		return checkpointNothingLeft
 	})}
-	agent := checkpointAgent(t, completer)
+	// AND THE CONVERSATION HAS ROOM, which is what these cases are about: a
+	// multi-turn transcript whose earlier answer has to still be there when the
+	// third turn is read. The handover fixtures run with no room left on purpose
+	// (checkpoint_test.go's [checkpointNoRoomLeft]), and a turn with no room is a
+	// turn whose older answers are folded away — which is correct and is a
+	// different question from the one being asked here.
+	agent := checkpointAgent(t, completer, checkpointRoomToCarryOn)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
 	// 1. The work is delegated and the turn ends.

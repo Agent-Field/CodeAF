@@ -572,7 +572,36 @@ func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 		add(call(value))
 	}
 	if value, ok := read(src, TierKey(tier)); ok {
-		add(call(value))
+		// AND A TIER ROW IS READ FOR FITNESS AND NOT ONLY FOR PRESENCE.
+		//
+		// A ROW THAT EXISTS IS NOT A MODEL THAT CAN ANSWER. The crew-only callers
+		// — the reader that decides whether a running turn is taken away from
+		// somebody, the writer of the document a worker then lives inside — pass
+		// no floor precisely so that the running model cannot mark its own work,
+		// and until this line the only thing standing behind that refusal was
+		// whether somebody had written SOMETHING on the row. A profile carrying a
+		// flash model on the mastermind row satisfied it completely, and the two
+		// answers that decide a turn's fate were a flash model's: measured
+		// answering `(done)` on half-finished work fifteen times out of eighteen
+		// (internal/session/checkpoint.go carries the run).
+		//
+		// SO A ROW NAMING A MODEL THIS INSTALL SHIPS AT A LOWER CLASS IS NOT A
+		// RUNG. It is derived and never listed: [SetTierFits] is handed the crew
+		// table's own reading of which class each shipped model belongs to
+		// (internal/config's CrewSeat), and a model that table has never seen
+		// fits — this package refuses what it knows is wrong, never what it merely
+		// does not recognise.
+		//
+		// A PIN IS NOT GATED, and that asymmetry is deliberate. `roles.<role>` is
+		// one person naming one model for one call, which is the most specific
+		// thing anybody can say and the rung this ladder exists to honour; a tier
+		// row is a statement about a whole CLASS of call, made once, usually by a
+		// preset, and it is the one that can be wrong without anybody meaning it.
+		// The session floor is not gated either — it is the model the person is
+		// already talking to, and a crew-only caller has already declined it.
+		if fits(value, tier) {
+			add(call(value))
+		}
 	}
 	// THE SESSION MODEL IS NOT SPLIT. It is the id a running conversation is on,
 	// and whatever effort that conversation was dialled to belongs to the person
@@ -641,6 +670,50 @@ func PatienceFor(role Role) time.Duration {
 // which model it ends up on.
 func Pinned(src Source, role Role) (string, bool) {
 	return read(src, PinKey(role))
+}
+
+// ── whether a model is fit for the class of call it was put on ──────────────
+
+// tierFits is the reading of that question this process was given, and nil in a
+// process that was given none.
+//
+// IT IS A SEAM AND NOT A TABLE for this package's own stated reason: roles
+// imports nothing of the surface, and which models are which class is a fact
+// about the shipped crew, which lives in internal/config. A process that never
+// installs one — a test of the ladder itself, a tool that links this package
+// alone — refuses nothing, which is the same answer an unrecognised model gets
+// and for the same reason.
+var tierFits func(model, tier string) bool
+
+// SetTierFits installs the reading of which class a model belongs to. It is
+// called once, from the package that owns the crew table, and calling it twice
+// is a second answer to a question that has one — so the last caller wins and
+// there is deliberately no second registry here.
+func SetTierFits(reading func(model, tier string) bool) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	tierFits = reading
+}
+
+// TierFits reports whether a model may answer a call of a tier's class. With no
+// reading installed, or with a value that names no model, the answer is yes.
+func TierFits(value string, tier Tier) bool { return fits(value, tier) }
+
+// fits is [TierFits] over the raw row value, level and all: the level is part of
+// how a tier value is written and never part of which model it names, so it is
+// dropped by the reading rather than by every caller.
+func fits(value string, tier Tier) bool {
+	registryMu.RLock()
+	reading := tierFits
+	registryMu.RUnlock()
+	if reading == nil {
+		return true
+	}
+	model, _ := SplitEffort(strings.TrimSpace(value))
+	if strings.TrimSpace(model) == "" {
+		return true
+	}
+	return reading(model, string(tier))
 }
 
 // TierModel reports the model configured for a tier — rung 2 alone.

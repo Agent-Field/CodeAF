@@ -150,3 +150,45 @@ ever the journal. Neither invents a file to open.
 
 Scrolling up above the fold on the screen also still shows the words; what shrank is the
 model's copy, not yours. The fold is not unrecoverable.
+
+## What a fold leaves behind so the answer can carry on — it forgot the files it had already read, it re-read everything after compacting, does compaction lose what I was working on
+
+**Your own messages are never folded.** Every sentence you typed stays in the model's window
+word for word, however many passes run. A fold takes the oldest *assistant* work and the tool
+results answering it, and nothing else — a question you asked and never got answered is the
+one thing nothing else could reconstruct.
+
+**And the marker carries a short account of the work that went.** Under the `[folded …]` line
+aforge writes, with no model call and no summary, what it can state as fact from the messages
+it is taking away:
+
+```
+[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
+WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)
+internal/tui3/tasks.go — func (t *tasksTable) header(width int) string {
+PLACES ALREADY OPENED
+internal/tui3/tasks.go
+internal/tui3/palette.go
+```
+
+**Where it has already been and what it put there — and nothing else.** The written places
+carry the opening line of what went into them, because a path alone says a file was touched
+and not which of several plausible things was done to it. The places it only *opened* are
+listed as paths, and that is the list a continuing answer needs most: it is the work it has
+already paid for.
+
+**The one-line-per-call list and the text that came back are deliberately absent.** Those are
+exactly the bytes the fold is giving up, so a marker that carried them would be handing the
+conversation straight back — and a pass whose marker grows with the run it replaces never
+stops firing. The pointer above is the road to the words themselves.
+
+**This is why a compacted answer does not start over.** Before it existed, the marker was a
+pointer and nothing more: a model that had lost the older half of its own turn went on to
+re-open files it had already read and re-derive edits it had already made, because nothing in
+front of it said they were there. The pointer is still there for the words themselves — it is
+the recovery floor — but the account is what stops the answer needing it.
+
+**It is the same account the second reader of a long answer is shown, narrowed.** One walk over
+the messages and one rule about what a bounded account drops serve both, so the two can never
+disagree about what a turn did — they differ only in which sections they ask for and how much
+room they have.

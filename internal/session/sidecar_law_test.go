@@ -58,9 +58,15 @@ const theWaitingVerb = "takeAtTheEnd"
 // the turn" and "this function ends the turn somewhere". Adding a call site on
 // one of those roads needs no edit here; awaiting a reading anywhere a turn can
 // still CARRY ON fails the build no matter what it is called.
+// AND `checkpointCeiling` IS NOT ONE OF THEM ANY MORE. It was, while the ceiling
+// was an unconditional hand-over and its drawing was read in line on the way out
+// of the turn. It is now a rung a turn can CARRY ON PAST — it compacts in place
+// and the meter re-arms (checkpoint.go) — so a reading awaited on the way to it
+// is a reading awaited in front of work that is about to continue, which is
+// exactly what this law is for. Its own drawing rides beside the turn with the
+// two marks below it and it makes no model call of its own.
 var endingDoors = map[string]bool{
 	"handOverRunningTurn": true,
-	"checkpointCeiling":   true,
 	"sealTurn":            true,
 }
 
@@ -149,23 +155,15 @@ func (a *Agent) checkpointRound(ctx context.Context, aside *markAside) bool {
 	}
 }
 
-// AND THE LAW IS NOT MERELY LOUD. The four shapes that are honest — the
-// ceiling's own drawing, the two handovers, and the turn's exit — must pass it,
-// or a law nobody can satisfy is a law somebody deletes.
+// AND THE LAW IS NOT MERELY LOUD. The shapes that are honest — the handovers,
+// which really do move the turn somewhere else, and the turn's own exit — must
+// pass it, or a law nobody can satisfy is a law somebody deletes.
 func TestTheLawLetsAnEndingReadInLine(t *testing.T) {
 	readings := map[string]bool{"readMark": true}
 	for _, honest := range []struct {
 		what   string
 		source string
 	}{{
-		what: "the ceiling, which has already decided to move the turn",
-		source: `package session
-func (a *Agent) checkpointRound(ctx context.Context) bool {
-	read := a.readMark(ctx)
-	a.journalMarkRead(read)
-	return a.checkpointCeiling(ctx, read)
-}`,
-	}, {
 		what: "a handover that reads the work it is about to move",
 		source: `package session
 func (a *Agent) checkpointWriting(ctx context.Context) bool {

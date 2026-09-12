@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
@@ -596,11 +597,74 @@ func checkpointWritingAgent(t *testing.T, completer Completer, mutate ...func(*C
 
 // checkpointAgent is a watched conversation with a mastermind the mark can be
 // read by. Everything else is [newTestAgent]'s.
+// checkpointNoRoomLeft is the world a test of the MOVE ROAD has to be run in.
+//
+// THE CEILING NO LONGER MOVES A TURN ON A COUNT OF ROUNDS. It asks first whether
+// the turn can carry on where it is — the transcript compacts in place and the
+// answer is whether what comes out sits inside the working set (checkpoint.go's
+// [Agent.checkpointCanCarryOn]) — and a toy transcript of forty small rounds
+// against a default window sits inside it with room to spare, which is the whole
+// of the defect the rung was built to close. So a test that means to watch a turn
+// LEAVE has to say that this one cannot stay, and it says it the way the product
+// says it: by naming a window there is no room in.
+//
+// IT IS THE WINDOW AND NOT A SWITCH, because a switch would be a second way to
+// reach a decision the product reaches one way. A turn whose window is one token
+// is a turn no fold can bring under any working set, which is exactly and only
+// the condition the move road exists for.
+// profileFullWord is the settings word for the whole prefix, read from the
+// package that owns it so this fixture cannot drift from the row.
+var profileFullWord = config.PromptProfileFull
+
+func checkpointNoRoomLeft(config *Config) {
+	// THE WINDOW IS SMALL AND NOT ABSURD, and the difference matters.
+	//
+	// The question this fixture has to make false is [Agent.checkpointCanCarryOn]:
+	// the transcript, after a fold, against [compactTarget] of this window. The
+	// question it must NOT make true is the oversize guard's — the estimate against
+	// the WHOLE window (loop.go) — because that one runs a compaction pass in front
+	// of every single request, and a fixture that folded on every step would be
+	// testing the fold rather than the seam. A window of one token made both true
+	// at once and was measured doing exactly that: stub files written on every step
+	// of every case in this file, and a TempDir cleanup racing a turn that had not
+	// quite finished.
+	//
+	// Twenty-four thousand sits between the two. The target it implies is nine
+	// thousand tokens, which every turn in this file is over by its ceiling, and
+	// the guard's line is the whole twenty-four, which none of them comes near. If
+	// the prefix ever grows past the guard's line or shrinks under the target, the
+	// move tests in this file fail and say so — which is the safe direction for a
+	// fixture to be wrong in.
+	config.ContextWindow = 24_000
+	// AND THE BELT IS THE ONE THE TURN HAD WHEN THE ROOM RAN OUT. A window under
+	// 32,000 selects the lean prefix (promptprofile.go), which takes `propose_task`
+	// and `tasks` off the belt — so a test that meant to watch a turn MOVE would
+	// instead watch a turn with nowhere to move to, and would read as this rung
+	// refusing rather than as the belt being different. The window here is a
+	// statement about ROOM and must not be read as a statement about the model's
+	// size.
+	config.PromptProfile = profileFullWord
+}
+
+// checkpointRoomToCarryOn is the other world, and it is the ORDINARY one: a
+// window with room left in it, which is what almost every real conversation has
+// when its fortieth round comes round. A test that means to watch an answer
+// COMPACT AND CARRY ON says so with this.
+func checkpointRoomToCarryOn(config *Config) { config.ContextWindow = defaultContextWindow }
+
+// AND THE DEFAULT HERE IS THE ROAD THIS FILE IS ABOUT. Nearly every test below
+// is a test of the HANDOVER — which rung wrote the brief, what the spec carries,
+// what the journal says, which phase the person sees — and a handover only
+// happens to a turn that cannot carry on. Leaving the window at the product's
+// default would mean each of those tests silently exercised the carry-on road
+// and asserted its way through a turn that never moved. The few tests that are
+// about WHEN a ceiling moves pass [checkpointRoomToCarryOn] and say so.
 func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
 	t.Helper()
 	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
+		checkpointNoRoomLeft(config)
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): checkpointMarkModel,
 		})
@@ -1736,7 +1800,7 @@ func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 		toolCallMessage("c3", "edit", `{"path":"./money.go","edits":[]}`),
 		{Role: "tool", ToolCallID: "c3", Content: []ai.ContentPart{{Type: "text", Text: "edited"}}},
 		textMessage("assistant", "the workflow is in; the currency module is still untouched"),
-	})
+	}, checkpointDigestBytes)
 
 	// THE ASK, VERBATIM AND FIRST. Everything else in the digest is measured
 	// against it, and it is the one thing on this road nobody rewrites.
@@ -1797,7 +1861,7 @@ func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 func TestTheDigestWritesNoEmptySections(t *testing.T) {
 	digest := checkpointDigest("count the rows in the ledger", []ai.Message{
 		toolCallMessage("c1", "read", `{"path":"./ledger.csv"}`),
-	})
+	}, checkpointDigestBytes)
 	if strings.Contains(digest, checkpointDigestWritten) {
 		t.Errorf("a turn that wrote nothing carries a heading saying so:\n%s", digest)
 	}
@@ -1806,7 +1870,7 @@ func TestTheDigestWritesNoEmptySections(t *testing.T) {
 	}
 	// AND A TURN WITH NOTHING IN IT AT ALL IS NOT A DIGEST. [Agent.readMark]
 	// spends nothing on one, which is the emptiness law reaching the bill.
-	if got := checkpointDigest("", nil); got != "" {
+	if got := checkpointDigest("", nil, checkpointDigestBytes); got != "" {
 		t.Errorf("an empty turn produced a digest:\n%s", got)
 	}
 }
@@ -1824,7 +1888,7 @@ func TestTheCompletionReaderKeepsTheCompleteAskOutsideItsBoundedEvidence(t *test
 	if !strings.Contains(page, middle) || !strings.HasPrefix(page, checkpointDigestAsked+"\n"+ask) {
 		t.Fatal("the completion reader lost part of the original ask")
 	}
-	evidence := checkpointDigest("", messages)
+	evidence := checkpointDigest("", messages, checkpointDigestBytes)
 	if len(evidence) > checkpointDigestBytes || !strings.HasSuffix(page, evidence) {
 		t.Fatalf("the evidence did not keep its independent bound: page=%d evidence=%d", len(page), len(evidence))
 	}
@@ -1861,7 +1925,7 @@ func TestTheDigestIsBoundedAndDropsTheOldestStepsFirst(t *testing.T) {
 		toolCallMessage("last-write", "write", `{"path":"./report.md"}`),
 		textMessage("assistant", "the last thing this turn said"))
 
-	digest := checkpointDigest(asked, messages)
+	digest := checkpointDigest(asked, messages, checkpointDigestBytes)
 
 	if len(digest) > checkpointDigestBytes {
 		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)
@@ -2254,7 +2318,8 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 	steps := append(grindingSteps(rounds+checkpointClaimSlack, checkpointDoneSketch, checkpointNothingLeft),
 		finalAnswer(answered))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps},
+		func(config *Config) { config.SessionFile = path })
 	graph := stubbedGraph(agent, func(node *TaskNode) {
 		node.finish("done", nil, "", "")
 		node.graph.complete(node, TaskDone)
@@ -2400,7 +2465,7 @@ func TestAToolResultsTailReachesTheReader(t *testing.T) {
 	digest := checkpointDigest("run the suite and make it pass", []ai.Message{
 		toolCallMessage("c1", "bash", `{"command":"go test ./..."}`),
 		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	})
+	}, checkpointDigestBytes)
 
 	if !strings.Contains(digest, verdict) {
 		t.Fatalf("the one line that says how the ask is going never reached the reader:\n%s", digest)
@@ -2435,7 +2500,7 @@ func TestADigestOverBudgetDropsResultsBeforeItDropsTheAsk(t *testing.T) {
 	}
 	messages = append(messages, textMessage("assistant", "the last thing this turn said"))
 
-	digest := checkpointDigest(asked, messages)
+	digest := checkpointDigest(asked, messages, checkpointDigestBytes)
 
 	if len(digest) > checkpointDigestBytes {
 		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)

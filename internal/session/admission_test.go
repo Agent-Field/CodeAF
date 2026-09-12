@@ -226,7 +226,7 @@ func TestAdmissionNeverReadsAMissingOutcomeAsSuccess(t *testing.T) {
 		t.Errorf("a call with no result was reported as returning: %s", got.line())
 	}
 	// AND A FAILURE OUTRANKS A SUCCESS OF THE SAME AGE when the room runs out.
-	if compiled.Evidence[0].Call != "bad" && len(compiled.Evidence) == admissionHandlesKept {
+	if compiled.Evidence[0].Call != "bad" {
 		t.Errorf("the failure was not preferred: %+v", compiled.Evidence)
 	}
 }

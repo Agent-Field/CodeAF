@@ -34,10 +34,10 @@ const (
 	// the middle rather than cut off ([elide]), because a person's last sentence
 	// is where a constraint most often is.
 	admissionQuoteLimit = 600
-	// admissionQuotesKept and admissionHandlesKept bound how many of each one
-	// admission carries.
-	admissionQuotesKept  = 8
-	admissionHandlesKept = 6
+	// admissionQuotesKept bounds how many of the person's own turns one admission
+	// carries. THE CALLS ARE NOT BOUNDED BY A COUNT AT ALL — see the selection in
+	// [AdmissionContext.evidence] for why the byte budget is the whole rule there.
+	admissionQuotesKept = 8
 	// admissionInputLimit bounds the opening of a call's arguments — enough to
 	// recognise the call, never a claim to be the whole of it.
 	admissionInputLimit  = 240
@@ -57,9 +57,8 @@ const (
 	// admissionWindow bounds the walk rather than the selection — how far back
 	// the compiler looks, deep enough for a long working turn and its batches.
 	admissionWindow = 200
-	// admissionOutcomesKept bounds the per-call outcome map, generously next to
-	// admissionHandlesKept because the compiler selects the newest calls out of a
-	// long turn.
+	// admissionOutcomesKept bounds the per-call outcome map, generously, because
+	// the compiler selects the newest calls out of a long turn.
 	admissionOutcomesKept = 512
 )
 
@@ -413,11 +412,24 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 		}
 		return handles[one].order > handles[two].order
 	})
-	kept := make([]found, 0, admissionHandlesKept)
+	// THE BUDGET IS THE WHOLE BOUND, AND THE COUNT THAT STOOD IN FRONT OF IT IS
+	// GONE.
+	//
+	// Six was a number with no quantity behind it, and it was measured costing the
+	// thing this compilation exists to carry: on the turn behind the 2026-09-11
+	// census the conversation had made SIXTY-TWO calls and the worker that took
+	// the work was handed six of them, so it re-opened almost everything the turn
+	// had already read. Two bounds on one selection is one bound too many —
+	// whichever bites first is the real rule, and a count bites first on exactly
+	// the long working turn whose handles are worth carrying.
+	//
+	// So what is left is `room`, which is [admissionBudget] less what the rest of
+	// the context has already spent, and it is a bound with a reason: it is how
+	// much of somebody else's window this may take before their work begins.
+	// Every handle is charged its own rendered cost, the newest and the failed
+	// ones are weighed first, and a selection stops when the room does.
+	kept := make([]found, 0, len(handles))
 	for _, candidate := range handles {
-		if len(kept) >= admissionHandlesKept {
-			break
-		}
 		cost := handleCost(candidate.handle)
 		if cost > room {
 			continue

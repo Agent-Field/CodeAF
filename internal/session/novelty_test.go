@@ -362,7 +362,7 @@ func TestTheDigestSaysWhenTheWorkLastChanged(t *testing.T) {
 				{Type: "text", Text: strings.Join(sameRunNewClock(round), "\n")}}},
 		)
 	}
-	digest := checkpointDigest("measure it", messages)
+	digest := checkpointDigest("measure it", messages, checkpointDigestBytes)
 	if !strings.Contains(digest, checkpointDigestMoved) {
 		t.Fatalf("digest has no moved section:\n%s", digest)
 	}
@@ -377,7 +377,7 @@ func TestTheDigestSaysWhenTheWorkLastChanged(t *testing.T) {
 		t.Fatalf("digest does not measure what those results brought:\n%s", digest)
 	}
 	// AN EMPTY TURN STILL SAYS NOTHING AT ALL.
-	if got := checkpointDigest("", nil); got != "" {
+	if got := checkpointDigest("", nil, checkpointDigestBytes); got != "" {
 		t.Fatalf("an empty turn produced a digest: %q", got)
 	}
 }
