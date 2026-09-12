@@ -267,6 +267,25 @@ var callSiteRoles = map[string]lane.Role{
 	// runs on the program's own model rather than on any role's. Nobody is
 	// reading its stream and nobody is waiting on its first word.
 	"subharness": lane.RoleAuxiliary,
+	// ── two of the three roads that carry their own provider client ─────────
+	//
+	// Each builds a client the one door does not make and completes on it
+	// directly (internal/session/clientdoor.go's withPurpose), and all three
+	// reached this file with NO TAG AT ALL until #996 — so the errand this build
+	// runs most often with nobody there was priced as anonymous. The third,
+	// `consolidate`, already had a row below because internal/roles has that
+	// word: the tidy-up and the role are the same errand and the same reading.
+	//
+	// internal/session/standing_run.go: one standing item's yes-or-no, on every
+	// check of every item forever. It is spelled `standing-check` and NOT
+	// `sentinel`, which is already the resident's own quorum errand above and is
+	// judged: this one sets lane.RoleStanding on its own context, and pricing it
+	// as a judge would put a wait nobody is having into the table.
+	"standing-check": lane.RoleStanding,
+	// internal/session/tools_doc.go: the model's own eyes on a document the
+	// `read` tool cannot open as text. A TOOL CALL INSIDE A TURN, so somebody IS
+	// waiting — the one of the three whose seconds are a person's.
+	"document": lane.RoleTalk,
 	// The same function, in a task. WHICH LEAF ROLE IT IS CANNOT BE READ FROM
 	// THE ROW — laneRole asks `someoneIsWatching()` at the moment of the call
 	// and nothing records the answer — so the unattended reading is taken,
@@ -314,7 +333,6 @@ var callSiteRoles = map[string]lane.Role{
 	"designer":      lane.RoleDesign,
 	"division":      lane.RoleDesign,
 	"title":         lane.RoleAuxiliary,
-	"compaction":    lane.RoleAuxiliary,
 	"vision":        lane.RoleAuxiliary,
 	"imagegen":      lane.RoleAuxiliary,
 	"worker":        lane.RoleAuxiliary,

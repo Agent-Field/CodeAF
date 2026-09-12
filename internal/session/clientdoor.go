@@ -466,6 +466,34 @@ const (
 	// digest when this one cannot be had — and naming them alike would put the
 	// dearest call on the road and its cheap understudy on the same row.
 	purposeHandoffDraft callPurpose = "handoff-draft"
+
+	// ── the three roads that carry their own client ─────────────────────────
+	//
+	// These do not come through [Agent.completeWithNamedModel] at all: each
+	// builds a [provider.Client] of a shape the door does not make — a longer
+	// timeout, static routing pinned to the parent's choice, a document config
+	// with its own key rule — and completes on it directly. That is a real
+	// difference and not an oversight, so the answer is not to force them
+	// through the door; it is to make them say the same word the door says.
+	//
+	// THEY REACHED THE CALL LOG WITH NO TAG AT ALL UNTIL THIS PR, which meant the
+	// two slowest unattended errands this build makes — a memory tidy-up and a
+	// standing item's check, both of which run while nobody is there — were
+	// indistinguishable from a turn that had lost its name. They carry the most
+	// money per call of anything nobody is waiting for.
+
+	// purposeConsolidate is the memory reflex's slow half: a batch of remembered
+	// things read together, hours after any of them was written.
+	purposeConsolidate callPurpose = "consolidate"
+	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
+	// already gathered, run on every check of every item forever.
+	// The word is `standing-check` and not `sentinel`, which cmd/aforge already
+	// writes for the resident's quorum errand: two different calls under one tag
+	// is one reading of neither.
+	purposeSentinel callPurpose = "standing-check"
+	// purposeDocument is a rung of the document reader — the model's own eyes on
+	// a PDF the `read` tool cannot open as text.
+	purposeDocument callPurpose = "document"
 )
 
 // completeWithModel is [Agent.completerFor] joined to the one wire-model
@@ -497,6 +525,23 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 	return response, called, err
+}
+
+// withPurpose stamps a purpose on a context for a road that completes on a
+// client of its OWN, and it is the only thing in this package besides
+// [Agent.completeWithNamedModel] that may.
+//
+// THE DOOR IS STILL THE ONLY PLACE THAT SPELLS THE TAG. `provider.WithCallTag`
+// appears twice in this file and nowhere else in internal/session — a law says
+// so (nohiddenwork_test.go) — and both spellings take a [callPurpose], which is
+// a closed vocabulary a reader can enumerate. What the three own-client roads
+// needed was not permission to write a tag; it was a door of their own that is
+// the same door.
+func withPurpose(ctx context.Context, purpose callPurpose) context.Context {
+	if purpose == "" {
+		return ctx
+	}
+	return provider.WithCallTag(ctx, string(purpose))
 }
 
 type unavailableCompleter struct{ err error }

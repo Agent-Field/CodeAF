@@ -379,11 +379,11 @@ import (
 // `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
 // TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
 // change to that test's mind and not only to the bytes.
-// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,159 bytes on 2026-09-12: the
-// widest page at 19,114 and the fully-wired belt's tool block at 34,045 over
+// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,141 bytes on 2026-09-12: the
+// widest page at 19,114 and the fully-wired belt's tool block at 34,027 over
 // twenty-three tools, weighed as the widest machine pays for it ([widestBelt]).
 // There is no rounding in it and no headroom on it.
-const fixedPrefixBudget = 53_159
+const fixedPrefixBudget = 53_141
 
 // fixedPrefixTarget is where the shipped prefix has to get back to, and it is
 // the figure [fixedPrefixBudget] was before anybody weighed the right belt. It
@@ -462,7 +462,40 @@ const fixedPrefixTarget = 48_000
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
 // budget above is kept under: a lane that takes bytes out lowers it in the same
 // commit, and nothing ever raises it again.
-const leanPrefixBudget = 31_500
+//
+// ── AND THEN IT TURNED OUT TO BE WEIGHING A CONVERSATION NOBODY HAS ─────────
+//
+// Every figure above is real and every one of them was measured against
+// [leanShapedAgent], which built a conversation with NO memory store, NO
+// accounts hub, NO standing items and NO saved programs — sixteen tools. A
+// person on a small window who has finished setting aforge up carries `stand`
+// (9,607 bytes by itself), `remember` and `search_conversations`, none of which
+// [Config.leanCapabilityGroups] shelves, and their prefix is 44,989 bytes.
+//
+// So the arm that exists to protect the person with the LEAST room to spare was
+// out by 13,489 bytes, which is more than the whole budget it was enforcing.
+// That is #576's shape and it is the same hole the full arm above had, found in
+// the same review: a gate pointed at something nobody runs passes without having
+// tested anything, every day, in both directions.
+//
+// THE FIGURE IS THE MEASUREMENT NOW, with no headroom — the argument for slack
+// was written when this number came off a diet that had just been paid for, and
+// a number that has never been honestly weighed has not earned any. What the
+// slack bought (a shared page that can still move by a couple of hundred bytes)
+// is now bought by the full arm's 53,141, which both arms read the page through.
+//
+// WHAT IS OWED IS THE SAME BILL THE FULL ARM OWES, and it falls harder here:
+// `stand` alone is 9,607 bytes on a sixteen-thousand-token window, which is
+// roughly one token in six of everything that person has, spent before they have
+// said anything. [leanPrefixTarget] is what this has to come back to and the
+// test prints the shortfall on every green run.
+const leanPrefixBudget = 44_989
+
+// leanPrefixTarget is where the lean prefix has to get back to: the figure
+// [leanPrefixBudget] was before anybody weighed the right belt. It is stated
+// rather than enforced, for [fixedPrefixTarget]'s reason — a test that failed on
+// it today would fail on work nobody in this file can do.
+const leanPrefixTarget = 31_500
 
 // leanWindow is the window the lean budget is weighed at. Sixteen thousand
 // tokens is the shape the profile was written for — a local open-weight model —
@@ -684,6 +717,13 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 	total := tools + prompt
 	t.Logf("the lean prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
 		total, total/4, prompt, tools, len(definitions))
+	// AND THE DEBT IS SAID ON EVERY GREEN RUN, for [fixedPrefixTarget]'s reason:
+	// a ratchet passing is not the same fact as the number being what it should
+	// be, and this arm's shortfall is owed by the person with the least room.
+	if total > leanPrefixTarget {
+		t.Logf("it is %d bytes over the %d target — see [leanPrefixBudget] for the bill "+
+			"and who owes it", total-leanPrefixTarget, leanPrefixTarget)
+	}
 
 	if total <= leanPrefixBudget {
 		return
