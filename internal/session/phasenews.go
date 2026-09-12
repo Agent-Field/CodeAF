@@ -555,7 +555,22 @@ func (a *Agent) beatHeldPhase(stop chan struct{}) {
 // is already shut ([Agent.writeIfOpen]), so nothing can be added to the count
 // while it waits.
 func (a *Agent) waitForPhaseBeats() {
-	a.phaseBeats.Wait()
+	// AND THE JOIN IS GRACED LIKE EVERY OTHER ONE THE QUIT MAKES
+	// ([Agent.waitForTitle]). A beat's whole remaining life once its stop is
+	// closed is one `select` and a return, so this grace has never expired and
+	// should not; what it buys is the law the close keeps everywhere else —
+	// nothing the quit waits for can hold the person's own exit open.
+	settled := make(chan struct{})
+	go func() {
+		a.phaseBeats.Wait()
+		close(settled)
+	}()
+	timer := time.NewTimer(closeGrace)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
 }
 
 // sayHeldPhaseAgain re-says the phase this beat belongs to and reports whether
