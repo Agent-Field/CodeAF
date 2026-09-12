@@ -3877,3 +3877,22 @@ func TestTheCarriedOnNoteSaysWhatWasObserved(t *testing.T) {
 		t.Fatalf("a note with no observation behind it invented one:\n%s", bare)
 	}
 }
+
+// THE FLOOR PROBE: no matter when the race lands, the first mark stands at or
+// above [checkpointFirstRungFloor].
+func TestTheRaceLandedAtAnyRoundTheFloorHolds(t *testing.T) {
+	for patchAt := 0; patchAt <= 12; patchAt++ {
+		m := &checkpointMeter{}
+		m.rounds = patchAt
+		m.tighten(routeVerdict{Work: true})
+		if m.firstAt < checkpointFirstRungFloor {
+			t.Fatalf("race at round %d: firstAt = %d below floor %d", patchAt, m.firstAt, checkpointFirstRungFloor)
+		}
+		for steps := 0; steps < 20; steps++ {
+			fired := m.round(true)
+			if fired == 1 && m.rounds < checkpointFirstRungFloor {
+				t.Fatalf("race at round %d: first mark fired at %d below floor %d", patchAt, m.rounds, checkpointFirstRungFloor)
+			}
+		}
+	}
+}
