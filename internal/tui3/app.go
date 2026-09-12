@@ -2939,7 +2939,6 @@ func (a *app) noteStaleBuilds() {
 	a.noteFacts(fmt.Sprintf("%d session(s) on an older build · e.g. pid %d rev %.8s · they move to this build when closed", len(rows), pretty.PID, pretty.Build), "older build", pretty.SessionID)
 }
 
-
 func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c", helpAskKey) }
 
 // resumedWord opens the line a session says on the frame it opens over a
