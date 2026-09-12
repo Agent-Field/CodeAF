@@ -256,18 +256,6 @@ func TestTheNamingCallSendsNoCeilingAndDoesNotEscalate(t *testing.T) {
 	}
 }
 
-// thoughtOnly is what a mandatory-reasoning model hands back when the whole
-// ceiling went on thinking: a real, successful, paid-for response with a
-// length-shaped finish and not one visible character in it. This is the exact
-// shape measured against the owner's own endpoint, and it is the shape that
-// made every room in the rail untitled.
-func thoughtOnly(finish string) *ai.Response {
-	return &ai.Response{Choices: []ai.Choice{{
-		Message:      ai.Message{Role: "assistant"},
-		FinishReason: finish,
-	}}}
-}
-
 // An empty answer is not a name. The room keeps saying "untitled", which is the
 // true answer, and the next turn is another chance.
 func TestAnUnusableAnswerLeavesTheRoomUntitled(t *testing.T) {

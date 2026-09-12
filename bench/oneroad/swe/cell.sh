@@ -37,11 +37,11 @@ SEED="${SEED:-s1}"
 
 SWE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONEROAD="$(cd "$SWE/.." && pwd)"
-DATASET="${DATASET:-/home/santosh/src/senior-swe-bench-v2026.06}"
+DATASET="${DATASET:-$HOME/src/senior-swe-bench-v2026.06}"
 TASKDIR="$DATASET/tasks/$TASK"
 
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
 # PI IS A NODE BUNDLE, NOT A BINARY, and mounting just the entry point is how
 # all seven pi cells died in 0 seconds with ERR_MODULE_NOT_FOUND. ~/.local/bin/pi
 # is a symlink into a node_modules package whose cli.js imports sibling files
@@ -71,7 +71,7 @@ POLL="${POLL:-10}"
 # So the artifacts are written to $SWE_OUT (default ~/af-bench/swe) and
 # bench/oneroad/swe/_results is a SYMLINK to it — filepath.Walk does not follow
 # symlinks, so no walker in the repository can descend into a running cell.
-SWE_OUT="${SWE_OUT:-/home/santosh/af-bench/swe}"
+SWE_OUT="${SWE_OUT:-$HOME/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 CELL="$SWE_OUT/$ARM-$TASK-$SEED"
 # A PREVIOUS CELL'S LEAVINGS MAY NOT BELONG TO US. The container writes its

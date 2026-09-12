@@ -492,6 +492,13 @@ const (
 // still move. A wave that needs more than this is a wave that takes something
 // out first.
 //
+// THE HELD-RANGES WAVE PAID FOR THE ROUND-TRIP PRICE IT TEACHES (2026-09-12).
+// The read tool's description says a call costs one round trip and a range
+// already in the conversation answers as a pointer (bare/tools.go's
+// [readDescription], the ledger in heldreads.go). The sentence was priced
+// into the lean arm's headroom — 87 bytes came in, 9 came back out of the
+// description's redundant "the rest", and the lean prefix sits 5 under its
+// budget.
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
 // budget above is kept under: a lane that takes bytes out lowers it in the same
 // commit, and nothing ever raises it again.

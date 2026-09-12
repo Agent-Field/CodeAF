@@ -343,9 +343,7 @@ func phaseListening() bool {
 // the wrong place. The one live reader hands the news to a desk and asks for a
 // frame.
 func postPhase(news PhaseNews) {
-	phaseMu.RLock()
-	reader := phaseReader
-	phaseMu.RUnlock()
+	reader := phaseReaderNow()
 	if reader == nil {
 		return
 	}
@@ -356,6 +354,15 @@ func postPhase(news PhaseNews) {
 		news.Since = news.At
 	}
 	reader(news)
+}
+
+// phaseReaderNow is the registered reader, read in its own locked half: the
+// post that follows runs outside the lock, because a reader that works pays
+// for it in the wrong place (see [postPhase]).
+func phaseReaderNow() func(PhaseNews) {
+	phaseMu.RLock()
+	defer phaseMu.RUnlock()
+	return phaseReader
 }
 
 // ── THE ONE CLOCK A REQUEST KEEPS ───────────────────────────────────────────
@@ -417,10 +424,7 @@ const phaseBeat = time.Second
 // clock read taken before the nil check moved every figure they assert by one
 // step. A seam that is free only when it is switched off is not free.
 func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
-	phaseMu.RLock()
-	listening := phaseReader != nil
-	phaseMu.RUnlock()
-	if !listening {
+	if !phaseListening() {
 		return nil
 	}
 	return &phaseClock{

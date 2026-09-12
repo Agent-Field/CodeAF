@@ -48,6 +48,7 @@ package session
 // present half's is "now"; neither needs a number.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -149,6 +150,14 @@ func LastTold(dir string) time.Time {
 // a turn into a fault. A TORN WRITE COSTS ONE REPEAT — an unparsable stamp reads
 // as no stamp, and the next delivery is the bounded first one again, which is
 // the harmless direction to fail in.
+//
+// IT ONLY EVER MOVES FORWARD. Two readings can be in flight over one
+// conversation — the second turn's starts while the first turn's is still
+// walking the index — and they are written behind the path ([Agent.toldStamp]),
+// so the order they LAND in is not the order they were taken in. An older stamp
+// landing last would re-read landings the model has already been told about,
+// which [deltaRemember] would then de-duplicate away: news that is never told.
+// Reading before writing costs one open of a file this call has to open anyway.
 func NoteTold(dir string, at time.Time) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" || at.IsZero() {
@@ -157,6 +166,9 @@ func NoteTold(dir string, at time.Time) {
 	// The folder may not exist for a memory-only conversation; creating one for
 	// a stamp alone would invent a session on disk that nothing else believes in.
 	if _, err := os.Stat(dir); err != nil {
+		return
+	}
+	if was := LastTold(dir); !was.Before(at) {
 		return
 	}
 	raw, err := json.Marshal(toldStamp{Schema: deltaToldSchema, ToldAt: at.UTC()})
@@ -526,11 +538,26 @@ func deltaLine(text string) string {
 // refreshElsewhere reads what the other windows on this project have landed and
 // have out, and puts it in front of the model.
 //
-// IT RUNS IN THE TURN GOROUTINE AND NOT UNDER a.mu, for [Agent.refreshMemory]'s
-// reason said about disk instead of a provider: this opens the project index and
-// one small JSON per live window, and a read of a shared directory must never be
-// the thing a person's keystroke waits behind. The lock is taken once at the
-// end, for the assignment.
+// IT IS A READING BESIDE THE WORK AND GOES THROUGH THE ONE DOOR FOR THAT SHAPE
+// ([readBeside], sidecar.go), for [Agent.refreshMemory]'s reason said about disk
+// instead of a provider: this opens the project index and one small JSON per
+// live window, and a read of a shared directory must never be the thing a
+// person's keystroke waits behind. It was a bare `go` of its own until it was
+// measured writing its stamp into a conversation's folder after that
+// conversation had closed — which is what an unowned goroutine is, and what
+// sidecar.go exists to stop there being a fifth of.
+//
+// SO IT TAKES THE READING'S OWN CONTEXT AND OBEYS IT, at the two points where
+// obeying it costs anything: before the walk, and again before the assignment.
+// A reading that ignored its context would have exactly the lifetime the bare
+// `go` had, and the door would be decoration.
+//
+// AND NOTHING IT WRITES HAPPENS ON THE PATH. The stamp is OWED under the lock
+// and performed behind it ([Agent.toldStamp], placemeta.go's [stampWriter]) —
+// `a.mu` is the lock every request goes through, and a stat-marshal-write inside
+// it is the exact shape #876 took out of the meta stamp. The owe is registered
+// while the session is still open, which is what puts it ahead of `closed` and
+// therefore inside the settle [Agent.Close] already performs.
 //
 // THE FIRST TURN IS SESSION OPEN. A model does not exist between the
 // constructor and its first request, so there is no earlier moment at which it
@@ -540,19 +567,36 @@ func deltaLine(text string) string {
 // EVERYTHING ABOUT IT FAILS QUIET. A conversation with no folder, a project with
 // no index, an unreadable stamp: each answers an empty block, and a turn with an
 // empty block is a turn exactly as it would have been.
-func (a *Agent) refreshElsewhere() {
+func (a *Agent) refreshElsewhere(ctx context.Context) {
+	// THE SAME PREDICATE THE CALL SITE ASKED, asked again by the door that acts
+	// on it — [Question.Revisable]'s shape exactly: one reading of who may be
+	// told, asked by the loop that decides whether to start a reading at all and
+	// by the door that would otherwise tell a task node something its contract
+	// took away (loop.go, [Agent.tellsElsewhere]).
 	if !a.tellsElsewhere() {
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
+	a.mu.Lock()
+	if a.closed {
+		// A CLOSED SESSION DOES NOT EVEN WALK THE INDEX. The check is here, at
+		// the first thing this reading does with the lock, rather than only at
+		// the assignment: a project index and one JSON per live window is disk
+		// nobody will ever read the answer to.
+		a.mu.Unlock()
+		return
+	}
+	mine := a.sessionID()
+	a.mu.Unlock()
+
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	now := time.Now()
 	since := LastTold(dir)
 	if since.IsZero() {
 		since = now.Add(-deltaFirstReach)
 	}
-	a.mu.Lock()
-	mine := a.sessionID()
-	a.mu.Unlock()
 
 	// THE FILE AND NOT [Agent.TaskIndex]. That door merges THIS session's live
 	// graph over the file, and this half of the block is by definition about
@@ -562,21 +606,104 @@ func (a *Agent) refreshElsewhere() {
 		[]string{mine, a.config.Place.ID()}, since, deltaLandedRows)
 	live := a.Elsewhere().Tasks()
 
-	// The stamp advances HERE, before the block is assembled, because the block
-	// is going into the very next request either way: the assignment below
-	// cannot fail, and a stamp written after it would be a stamp a panic could
-	// skip. The short memory ([deltaRemember]) is what makes advancing it safe.
-	NoteTold(dir, now)
-
+	// ── EVERYTHING THIS READING CHANGES, UNDER ONE HOLD OF THE LOCK ──────────
+	//
+	// NOTHING IT COULD SAY WOULD REACH ANYBODY once the session has closed, so a
+	// closed session takes neither the block nor the stamp. It is the ask lane's
+	// own law about a clock that ran out after the door shut
+	// ([Agent.askClockRanOut]), said about a reading instead of a decision, and
+	// it is what makes "nothing armed outlives the session that armed it"
+	// (steer_grace.go) true of this goroutine: a reading still in flight when
+	// [Agent.Close] runs either owes its stamp BEFORE `closed` is set — and the
+	// close's own settle then lands it — or finds the door shut and leaves the
+	// folder alone. Measured on the Spark, 2026-09-12: thirteen runs in five
+	// thousand of one asklane fixture failed as `TempDir RemoveAll cleanup:
+	// directory not empty`, and the file left behind was this stamp.
+	//
+	// THE CHECK AND THE WRITES ARE ONE HOLD BECAUSE THE CHECK IS TRUE ONLY FOR
+	// AS LONG AS IT IS HELD — `Close` sets `closed` under this same lock. The
+	// shape is deliberate and temporary: #999 lands [Agent.writeIfOpen], the one
+	// door for exactly this — write nothing into a conversation that has closed,
+	// already carried by the memory pass and the phase news — and this region
+	// becomes a call to it with the three lines below as its closure. Nothing but
+	// those three lines belongs between the check and the unlock until it does.
+	//
+	// AND THE TURN ENDING IS NOT THAT DOOR. The context is what stops this
+	// reading STARTING work — the walk above — and it deliberately does not stop
+	// the answer landing: `elsewhereText` is not this turn's, it is the
+	// conversation's, and the note the next request opens with reads it
+	// ([Agent.landVolatileLocked]). That is the bargain loop.go states in so many
+	// words, "a read that lands after the first request rides the next step", and
+	// it is the difference between a slow disk costing one turn and a slow disk
+	// costing every turn: dropped here, the next reading starts from the same
+	// unmoved `since` and re-walks the same index, forever, delivering nothing on
+	// a machine where the walk outlasts a short turn.
+	//
+	// AND THE STAMP IS OWED WITH THE ASSIGNMENT RATHER THAN AHEAD OF THE READS.
+	// It says THIS SESSION'S MODEL WAS TOLD, and the assignment is the last
+	// moment at which that can still be arranged: after it the block is in
+	// `elsewhereText` and the next request carries it. That is not the same as
+	// the model having READ it, and this stamp cannot honestly claim more than it
+	// — `elsewhereTold` lives in memory alone, so a process that stops between
+	// here and the next request loses those rows from the block while the stamp
+	// says they were told. What the old order — stamping before the reads —
+	// bought over this was nothing at all, and what it cost was that same loss
+	// over the whole of the walk, plus every session that closed during one.
+	//
+	// The assignment itself puts the block at the tail of the transcript, in the
+	// note the drain lands immediately before the next request, and not in
+	// message[0] where it used to sit: writing it there re-priced every message
+	// of the conversation behind it each time another window landed something.
 	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
+	a.oweToldStampLocked(dir, now)
 	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
-	// The assignment alone: the block reaches the model at the tail of the
-	// transcript, in the note the drain lands immediately before the first
-	// request of this turn ([Agent.landVolatileLocked]), and not in message[0]
-	// where it used to sit. Writing it there re-priced every message of the
-	// conversation behind it each time another window landed something.
 	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
 	a.mu.Unlock()
+}
+
+// toldStamp is the one deferred write this reading owes told.json.
+//
+// It is [Agent.metaStamp]'s shape for [Agent.metaStamp]'s reason, and the two
+// are separate writers because a [stampWriter] coalesces by replacing its patch:
+// sharing one would let a meta stamp drop a told stamp owed a moment earlier.
+// Built on first use, so a conversation that is never told starts no goroutine.
+func (a *Agent) toldStamp() *stampWriter {
+	a.toldStampOnce.Do(func() { a.toldStampWriter = &stampWriter{} })
+	return a.toldStampWriter
+}
+
+// oweToldStampLocked owes the stamp for the reading that has just landed, and
+// the INSTANT IT WRITES IS THE LATEST ONE OWED rather than the last one owed.
+//
+// A [stampWriter] coalesces by REPLACING its patch, so two owes collapse into
+// the later CLOSURE — which is the same thing as the later instant only while
+// the owes are ordered, and there is one window in this session where they are
+// not. [Agent.Abandon] releases `a.mu` before it cancels, so an older reading
+// can be inside this function while a newer one, started by the turn that
+// replaced it, is already through: the older closure would then be the survivor
+// and would write a stamp BEHIND the block the model has actually been handed,
+// which re-reads landings it was told about and [deltaRemember] then
+// de-duplicates into news nobody is ever told.
+//
+// So the instant is kept beside the writer under `a.mu` and only ever moves
+// forward, and the patch writes what is kept rather than what it closed over.
+// [NoteTold]'s own forward-only guard is the same law one layer down, against
+// the other process on the same folder; this one is about this session's own two
+// readings, which that guard cannot see because they are minted from one clock.
+func (a *Agent) oweToldStampLocked(dir string, at time.Time) {
+	if at.After(a.toldAtOwed) {
+		a.toldAtOwed = at
+	}
+	a.toldStamp().Owe(func() {
+		a.mu.Lock()
+		owed := a.toldAtOwed
+		a.mu.Unlock()
+		NoteTold(dir, owed)
+	})
 }
 
 // tellsElsewhere reports whether this agent is one that may be told about other

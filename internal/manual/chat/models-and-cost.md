@@ -2218,6 +2218,12 @@ runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. 
 result bytes remain in `logs/stubs/`, the model can `read` the path in each stub, and the
 session journal keeps the original result bytes.
 
+One shape of result needs no copy filed. When the turn has read the **same file several
+times**, the older slices point at the file itself — the stub names the path with the
+`offset` and `limit` that bring that slice back — and the newest slice is kept whole,
+because those bytes were never anywhere else to begin with. The journal keeps them too,
+as it keeps everything.
+
 **Rung 0 — what an old result looks like in the request.** Before any of the rungs below
 fire, the copy of the conversation that goes to the model already carries the tool results
 of *earlier* turns shortened. Your transcript and the session journal keep every byte; only
@@ -2668,7 +2674,7 @@ lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        weighs speed against price each answer — cloudflare now · recommended
+   ● auto        router routes; aforge takes over if answers turn bad — cloudflare now · recommended
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
@@ -2926,10 +2932,10 @@ Settings → Providers has two rows under **routing**:
 
 | Value | What it does |
 |---|---|
-| `auto` | aforge weighs speed against price on each answer and picks the lane that wins |
+| `auto` | the router routes, and aforge takes over choosing the machine if its answers start coming back refused or unusable — handing it back once it has been well for a while |
 | `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
-| `openrouter` | no lane is asked for; the router balances on price |
+| `openrouter` | no lane is asked for; the router balances on price, and aforge never takes over |
 
 The pinned rungs are missing until aforge has measured something — there is no honest
 lane to name yet, so the walk is `auto` ↔ `openrouter`.

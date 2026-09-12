@@ -81,7 +81,7 @@ error: no device called "nosuchdevice" is paired with this machine — `aforge d
 -- exit 1
 
 === aforge logs --run nosuchrun
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
 no row in this log carries a run id yet
 -- exit 0
 

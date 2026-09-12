@@ -251,7 +251,10 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 		// BEFORE THE EXCHANGE says to a question it has never heard of. It
 		// cannot be asked whether it is busy either, so it is never ended from
 		// here — a person is told, in words, what is true and what to type.
-		return "", &staleHost{reason: staleEngineHostSentence(false)}
+		// NO ANSWER CARRIES NO WORKSPACE OF ITS OWN, so the one this process
+		// asked about is the one named: it is the workspace whose socket just
+		// refused, which is exactly what a person has to stop.
+		return "", &staleHost{reason: staleEngineHostSentence(false, workspace)}
 	case err != nil:
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
@@ -265,9 +268,9 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 			return busyEngineHostSentence(host.Busy), nil
 		}
 		if errors.Is(err, enginehost.ErrHostBusy) {
-			return "", &staleHost{reason: staleEngineHostSentence(true)}
+			return "", &staleHost{reason: staleEngineHostSentence(true, hostWorkspace(host, workspace))}
 		}
-		return "", &staleHost{reason: staleEngineHostSentence(false)}
+		return "", &staleHost{reason: staleEngineHostSentence(false, hostWorkspace(host, workspace))}
 	}
 	// IT WENT, and it went without a fight: whatever it was holding, it was
 	// holding nothing that could not be let go. The window opens on the fresh
@@ -290,15 +293,47 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 // being unable to say WHICH half was old. The name is this machine's own
 // hostname, the same one every window in a shared conversation is labelled with
 // ([remote.MachineName]).
-func staleEngineHostSentence(busy bool) string {
+// IT NAMES THE WORKSPACE IN THE COMMAND, and that is the half this sentence was
+// missing. `aforge engine --stop` with NO `--workspace` resolves to the HOME
+// directory ([engineWorkspace]), never to the workspace being complained about —
+// so a person reading this line inside a checkout, and typing it exactly as
+// written, stopped their healthy home host and left the offending one running.
+// The line then came back on the next launch, forever, which is how a stale host
+// on this machine outlived eight rebuilds and twenty-two hours.
+// [sessionHeldElsewhereSentence] in chatv3.go already spells the flag for this
+// exact reason and names this function as its voice; this is that voice saying
+// the same thing.
+//
+// The workspace comes from the host's OWN answer ([remote.HostSelf.Workspace]),
+// not from what this process thinks it opened: the sentence is about the machine
+// that will not let go, so the words a person types have to name what IT is
+// holding. An answer that carries no workspace keeps the bare command rather
+// than inventing a path.
+func staleEngineHostSentence(busy bool, workspace string) string {
 	name := remote.MachineName()
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	if busy {
-		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on %s", name, name)
+	stop := "aforge engine --stop"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + workspace
 	}
-	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run aforge engine --stop on %s", name, name)
+	if busy {
+		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run %s on %s", name, stop, name)
+	}
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run %s on %s", name, stop, name)
+}
+
+// hostWorkspace is what the host says it is holding, and what this process asked
+// about when the host did not say. The host's own answer is preferred because
+// the sentence is about the machine that will not let go — but a build old
+// enough to leave the field empty must not cost a person the flag, and the
+// workspace asked about is the same directory in every case that reaches here.
+func hostWorkspace(host remote.HostSelf, asked string) string {
+	if held := strings.TrimSpace(host.Workspace); held != "" {
+		return held
+	}
+	return asked
 }
 
 // busyEngineHostSentence is the one line a person reads when their conversation

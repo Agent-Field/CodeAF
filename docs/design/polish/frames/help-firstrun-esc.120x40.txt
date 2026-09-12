@@ -1,6 +1,6 @@
                                                                                           │ + /task
-  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                │
-  73decce3d3d5/scratchpad/help-first/.aforge/v3/projects/-tmp-claude-1001--home-santosh-  │ + /standing
+  · resumed /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-                │
+  73decce3d3d5/scratchpad/help-first/.aforge/v3/projects/-tmp-claude-1001--home-example-  │ + /standing
   af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-first-                      │
   proj/d40ce624bb5c046f/transcript.jsonl                                                  │
   · esc interrupts · ctrl+c twice quits                                                   │

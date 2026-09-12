@@ -1022,7 +1022,7 @@ account, alternating request by request so a slow ten minutes hits both:
 - **Arm X** is `dev` as it stands. **Arm Y** is this design.
 - **The labels are opaque** until the numbers are in. The operator does not know
   which is which while reading them, because the person who built a thing is the
-  worst possible reader of its first run — `ideation/provider-routing.md` Part IV
+  worst possible reader of its first run — `docs/design/routing/provider-routing.md` Part IV
   records a live test that congratulated itself, and this is the guard against a
   second one.
 - **One price table for both arms**, and the diff is what is judged: p90 wait,

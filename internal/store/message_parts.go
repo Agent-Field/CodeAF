@@ -55,8 +55,9 @@ const (
 	// PartEnded says how the turn that produced this message ended.
 	PartEnded PartKind = "ended"
 	// PartRoomSwitch says the conversation continues in another room, and names
-	// it. It is the one cross-seam contract of the chats layer (chat-simplify
-	// 5.4): when a thread splits, the engine journals this part on a row in the
+	// it. It is the one cross-seam contract of the chats layer (the August 2026
+	// chat-simplification audit, no longer in the tree, 5.4): when a thread splits,
+	// the engine journals this part on a row in the
 	// OLD room and the surface applies it on its ordinary poll — composer and
 	// view re-point, and the head simply serves the new room. The coupling is
 	// journal-only on purpose. An in-process channel between the answer gate and

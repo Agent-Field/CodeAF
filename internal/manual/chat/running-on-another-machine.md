@@ -174,15 +174,21 @@ as another build. Three things can be true:
   you. The connection is refused instead, in these words:
 
 ```
-engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on spark
+engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop --workspace /home/you/project on spark
 ```
 
 A copy too old to answer the question at all is refused the same way and left alone,
 because a process that cannot say whether it is busy is not one to guess about:
 
 ```
-engine: spark is still holding this conversation on an older aforge — run aforge engine --stop on spark
+engine: spark is still holding this conversation on an older aforge — run aforge engine --stop --workspace /home/you/project on spark
 ```
+
+**The `--workspace` in that line is not decoration — type it.** `aforge engine --stop`
+with no `--workspace` stops whatever is holding your **home directory**, not the folder the
+sentence is about. Without the flag you stop a healthy engine, leave the one being
+complained about running, and read the same line again the next time you open aforge. The
+sentence spells the workspace out so the command you copy is the command that works.
 
 One nobody connects to again lets itself go on its own: it notices that the file it was
 started from has been removed or rebuilt, and retires the next time it is holding nothing.

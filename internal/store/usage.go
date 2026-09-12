@@ -750,14 +750,6 @@ type SpendSlice struct {
 	CachedTokens     int
 }
 
-func (slice *SpendSlice) add(other SpendSlice) {
-	slice.Runs += other.Runs
-	slice.Cost += other.Cost
-	slice.PromptTokens += other.PromptTokens
-	slice.CompletionTokens += other.CompletionTokens
-	slice.CachedTokens += other.CachedTokens
-}
-
 // RoomSpend is what one room of conversation has cost, split by how well the
 // journal can say so.
 //

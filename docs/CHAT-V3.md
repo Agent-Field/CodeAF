@@ -230,11 +230,12 @@ to model behavior.
 
 **Module shape.** `internal/session` (the agent: Serve loop, pi-exact turn
 machinery from `exec/bare`, embedded prompt templates as data, one file per
-tool family), `internal/gate` (the one seam), `internal/tui3` (the surface:
-app/shell/panes plus independent rail, room, gate, palette widgets over the
-v2-style `Backend`/`Commander`/`Streams` interfaces). The agent never imports
-the surface; the surface never imports the agent; both meet at the store.
-Every seam is an interface narrow enough to fake in a test.
+tool family), and `internal/tui3` (the surface: app/shell/panes plus independent
+rail, room, gate, palette widgets over the v2-style
+`Backend`/`Commander`/`Streams` interfaces). An earlier package served as the
+one seam. The agent never imports the surface; the surface never imports the
+agent; both meet at the store. Every seam is an interface narrow enough to fake
+in a test.
 
 ## Decision 9 — Compaction follows omp, minus the rasterizer
 

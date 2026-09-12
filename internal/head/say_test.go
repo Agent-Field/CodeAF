@@ -9,7 +9,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// Interim speech (chat-simplify §2.8B).
+// Interim speech (the August 2026 chat-simplification audit, no longer in the
+// tree, §2.8B).
 //
 // Everything the head said used to be the last thing it did. "Have a quick look
 // and tell me what you find" was answered by a silence the length of the looking

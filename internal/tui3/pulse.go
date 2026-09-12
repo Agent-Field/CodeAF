@@ -14,10 +14,9 @@ package tui3
 // the day has cost against what it is allowed, and what time it is, without
 // reading a single row.
 //
-// THE WORDS AND THE ORDER ARE THE DESIGN'S, EXACTLY. SCREEN 2b and SCREEN 3b of
-// docs/design/home-rethink/SCREENS.txt draw this line; FIDELITY.md item 2 is the
-// owner's instruction to follow them to the letter, and every clause below is
-// quoted from them rather than composed here.
+// THE WORDS AND THE ORDER ARE THE DESIGN'S, EXACTLY. The retained
+// docs/design/home-rethink/FIDELITY.md item 2 records the owner's instruction
+// for this line, and every clause below follows that record.
 //
 // ── THE LAWS ──
 //

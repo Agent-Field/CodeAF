@@ -453,9 +453,6 @@ func UsePatience(factor float64) {
 	patience.Store(int64(factor * patienceScale))
 }
 
-// Patience is the factor in force, for a caller that has to SHOW it.
-func Patience() float64 { return asked() }
-
 // asked is the factor as the arithmetic wants it, and it is 1 until somebody
 // publishes one.
 func asked() float64 {

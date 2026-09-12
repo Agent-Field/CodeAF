@@ -10,7 +10,8 @@ import (
 )
 
 // Carrying the conversation was never a mechanism, only a thing that travels
-// beside one — which is why it is an argument now (chat-simplify §2.3) rather
+// beside one — which is why it is an argument now (the August 2026
+// chat-simplification audit, no longer in the tree, §2.3) rather
 // than a second commissioning door with its own copy of every guard. The two
 // things to prove are unchanged: it carries the conversation, and it is still
 // one ordinary splice through the one funnel with the person's words leading.

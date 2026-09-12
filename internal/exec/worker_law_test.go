@@ -207,7 +207,6 @@ var removedNames = []string{
 var namesLawSkipped = map[string]string{
 	"docs/changes":                     "the changelog says what was removed, by name",
 	"BENCHMARKS.md":                    "dated measurements of what ran at the time",
-	"perf-report":                      "captured reports of runs that happened",
 	"audit-notes":                      "an audit of the tree as it was",
 	"bench/deepswe":                    "a benchmark track, named for the task set and not for a worker",
 	"bench/oneroad":                    "the SWE-bench track for aforge, pi and opencode",

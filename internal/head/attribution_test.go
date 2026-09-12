@@ -1,7 +1,6 @@
 package head
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -9,19 +8,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
-
-// answerWith runs one message through the head against a scripted decision and
-// returns the message it answered. It is the shape most of this file needs: the
-// model's judgment is the input, and what the head did with it is the assertion.
-func answerWith(t *testing.T, graph *store.Store, session, body, response string) store.Message {
-	t.Helper()
-	user := postUser(t, graph, session, body)
-	client := &fakeClient{responses: []string{response}}
-	if err := New(client, graph).answer(context.Background(), user); err != nil {
-		t.Fatalf("answer %q: %v", body, err)
-	}
-	return user
-}
 
 // agentRepliesAfter counts what the user actually saw. Every route ends in
 // exactly one visible reply; four work orders is still one sentence answered.

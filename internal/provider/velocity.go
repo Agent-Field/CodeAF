@@ -1257,6 +1257,13 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		// remaining attempts of this very call included (retry.go).
 		c.notePacedProvider(model, refusal.Lane, wait)
 		c.noteLaneRefused(model, refusal.Lane, "paced")
+		// AND THE ROUTER'S GATE HEARS THE SAME REFUSAL ONCE, WITH THE ATTEMPT'S
+		// SHAPE (routefirst.go's [Client.noteRouterRefusal]): only a bare
+		// attempt's refusal is evidence about the router's default; a narrowed
+		// demand's refusal is a verdict on the pick, and the gate hears nothing.
+		if c.noteRouterRefusal(model, refusal.Lane, refusal.AskedBare) {
+			parkTakeoverLine(model)
+		}
 		return true
 	}
 	// AN ACCOUNT'S EXCLUSION IS WRITTEN FOR EVERY MODEL, and it is written here
@@ -1276,6 +1283,14 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 	// count one refusal three times. The paced branch above is the one that
 	// was silent, and the one the 429 loop lived in.
 	c.refuseServing(model, refusal)
+	// AND THE GATE HEARS IT HERE, BESIDE THE STRIKE, WITH THE ATTEMPT'S SHAPE
+	// (routefirst.go's [Client.noteRouterRefusal]): only a bare attempt's
+	// refusal is evidence about the router's default, exactly as in the paced
+	// branch. An unasked machine (refusal.Unasked) still teaches nothing and
+	// never reaches this line.
+	if c.noteRouterRefusal(model, refusal.Lane, refusal.AskedBare) {
+		parkTakeoverLine(model)
+	}
 	return c.velocity.pace(model, refusal.Lane, 0)
 }
 

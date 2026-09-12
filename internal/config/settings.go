@@ -1963,11 +1963,13 @@ func (s *Settings) build() []Setting {
 			Label: "lane", EmptyLabel: LaneAuto,
 			Hint: "which machine behind your model answers requests from this home. One model id is served by " +
 				"a dozen endpoints that differ by seven times on the wait before the first " +
-				"word, so this is often a bigger change than switching model. auto lets aforge " +
-				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
-				"else is asked; `pinned: cloudflare, borrow when slow` keeps the pin but lets " +
+				"word, so this is often a bigger change than switching model. auto lets the router " +
+				"route — and aforge takes over choosing the machine when its answers start coming " +
+				"back refused or unusable, handing it back once it has been well for a while; " +
+				"a name — `cloudflare` — pins it and nothing else is asked; " +
+				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
 				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
-				"lets the router balance on price. enter on this row opens them with what " +
+				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
 			read:  func() string { return LaneRowWord(dir, LaneSlotTalk) },
@@ -4205,14 +4207,6 @@ func writeDuration(profileDir, key, raw string) error {
 		return err
 	}
 	return writeProfileValue(profileDir, key, formatDuration(value))
-}
-
-func writePercent(profileDir, key, raw string, low, high int) error {
-	value, err := parsePercent(raw, low, high)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, key, value)
 }
 
 func writeBool(profileDir, key, raw string) error {

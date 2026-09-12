@@ -269,8 +269,8 @@ func (a *Agent) senseRead(inner bare.Tool) bare.Tool {
 //
 //   - Images reuse image.go's maxImageBytes (10MB), so a photograph is accepted
 //     or refused identically whether it is read or attached.
-//   - Audio is 25MB, pinned to internal/voice's MaxAudioBytes and to the
-//     transcription endpoint's own published ceiling — about half an hour of
+//   - Audio is 25MB, pinned to internal/provider's maxTranscriptionBytes and to
+//     the transcription endpoint's own published ceiling — about half an hour of
 //     ordinary speech, which is longer than anything a conversation drops in.
 //   - Video is 64MB, which is ~85MB on the wire: generous enough for a few
 //     minutes of screen recording at sane settings, bounded enough that a

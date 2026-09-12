@@ -1,4 +1,4 @@
-  tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-                                │ + /task
+  tmp-claude-1001--home-example-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-                                │ + /task
   proj/770391df4a5f1343/transcript.jsonl                                                                                          │
   · esc interrupts · ctrl+c twice quits                                                                                           │ + /standing
   · there is no manual page named xyzzy                                                                                           │

@@ -13,7 +13,7 @@ https://openrouter.ai/api/v1/chat/completions?model=deepseek/deepseek-v4-flash-l
 ream=true&provider=openinference for the shape.                                                                                   │
                                                                                                                                   │
 The file lives at                                                                                                                 │
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de                                          │
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de                                          │
 mohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.                                                             │
                                                                                                                                   │
 ▏ func (a *app) burnSegment() string {                                                                                            │
@@ -38,8 +38,8 @@ Unicode: 日本語のテキストはここにあります、そして中文文�
 · bullet                                                                                                                          │
   · nested bullet with enough words to wrap at the narrow sizes we care about                                                     │
   · 3 standing orders here — /standing                                                                                            │
-  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-t…│
-  claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                               │ Σ $0.12 · 11k tok
+  · resumed /tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-t…│
+  claude-1001--home-example-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                               │ Σ $0.12 · 11k tok
   v2/ffff0000wrap0001/transcript.jsonl                                                                                            │ ctrl+. earlier
   · esc interrupts · ctrl+c twice quits                                                                                           │ ❯ ctrl+g hide
 

@@ -53,7 +53,7 @@
 //
 // RUN IT:
 //
-//	AFORGE_BENCH_HOST=blackmac go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
+//	AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
 //
 // The build tag keeps it out of `go test ./...` entirely, and with no
 // AFORGE_BENCH_HOST it skips with the sentence that says what to set.
@@ -137,7 +137,7 @@ const benchDoc = "../../docs/remote-files-bench.md"
 // reproduce is the command a reader types to get these numbers themselves. It
 // is written into the document, so it lives here once rather than in prose
 // that could drift away from the build tag it names.
-const reproduce = "AFORGE_BENCH_HOST=blackmac go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/"
+const reproduce = "AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/"
 
 // ── the link ────────────────────────────────────────────────────────────────
 

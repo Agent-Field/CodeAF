@@ -27,16 +27,6 @@ type surgeryIntent struct {
 	IncludeLeaves bool
 }
 
-func isSurgeryCommand(kind store.CommandKind) bool {
-	switch kind {
-	case store.CommandCancel, store.CommandPause, store.CommandResume, store.CommandAmend,
-		store.CommandReprioritize, store.CommandRestart:
-		return true
-	default:
-		return false
-	}
-}
-
 // surgeryAllowedStatuses is the one table saying which statuses each verb may
 // legally touch. Both the content path and the class path read it.
 func surgeryAllowedStatuses(kind store.CommandKind) []store.Status {

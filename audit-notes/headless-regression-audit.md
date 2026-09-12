@@ -511,8 +511,8 @@ arrival brief, standing watch, TUI commander (`chat.go:1284` early return) — p
 `compiler.WithOneShotErrands()`, which changes *surface* classification and
 explicitly not the judgement of the work (`internal/head/compiler.go:228-237`).
 
-This was the chat rebuild's stated premise, not an accident. Its own design doc,
-`audit-notes/chat-rebuild.md`:
+This was the August 2026 chat-rebuild audit's stated premise, not an accident.
+That audit, no longer in the tree, recorded:
 
 - line 6: *"The headless task path (`aforge do`) is **healthy and stays**; the chat
   surface and the head's split brain are what get rebuilt."*
@@ -601,8 +601,9 @@ So the only structural serializers are, in order of likelihood:
 3. **Plan-layer `bind`/`fanout` prompt disobedience** — `internal/plan/bind.go:74-77`
    (gatherer exception) and `internal/plan/fanout.go:72-78` (no merge/summary
    part). Both files byte-identical between branches; this is a **pre-existing**
-   weakness, not a window regression. `audit-notes/chat-rebuild.md:4528-4551`
-   records a measured instance: a 71 s + 22 s serial synthesis tail against a
+   weakness, not a window regression. The August 2026 chat-rebuild audit,
+   no longer in the tree, recorded at lines 4528–4551 a measured instance: a
+   71 s + 22 s serial synthesis tail against a
    ~70 s parallel section.
 
 ---

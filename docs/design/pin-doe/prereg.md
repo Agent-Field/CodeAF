@@ -42,13 +42,13 @@ Verifies that the 404 refusal is observable in `<home>/logs/calls.jsonl` and the
 A: #368 tip, `make build` in its own worktree. B, C: Opus lanes (Fable if Opus is still limited) on branches off A; diff confined to lanepin.go, laneChoiceFor, one RescueNews line; santosh-75's names kept. Each arm's bin/aforge is passed as CANARY_BIN. The winning arm lands later as a PR on top of #368's merge, pin policy only.
 
 ## Deliverable
-The table of arm means with replicate ranges, the Pareto front, the secondary table, the exclusion list, and the sealed map. The user or santosh-3c picks.
+The table of arm means with replicate ranges, the Pareto front, the secondary table, the exclusion list, and the sealed map. The user or operator picks.
 
 ## Amendment before the first cell (2026-09-02 15:52 EDT)
 The pool holds nine validated anchors in this order: reef-145, attrs-1416, packaging-1318, click-3740, tox-4031, build-860, virtualenv-3072, astroid-2305, sphinx-11437. The rule "first k in pool order" would take packaging-1318, whose fail-to-pass set is 53,420 tests and whose grade is slow enough that eight cells of it would dominate the run's wall for a reason that has nothing to do with the arms. It is skipped, and the briefs are the next four in pool order: reef-145, attrs-1416, click-3740, tox-4031. Declared here before any cell ran; the sealed map was written with these four. Cells run three at a time; the box's one-minute load is recorded at each cell's start and end and reported beside wall.
 
 ## Scoring note added during the run (16:20 EDT), before any cell was scored
-aforge-v2-14 reports that pytest's cleanup of the shared /tmp/pytest-of-santosh can die under other sessions' pytest runs and leave a grade reading "0 passed 0 failed" with an rm_rf traceback in f2p.log. The driver copy this run uses predates the per-cell TMPDIR fix and is not edited while cells are in flight. Rule: after the last cell, every cell whose judge shows zero tests collected and an rm_rf traceback in f2p.log is re-graded with CANARY_REGRADE=1 through the canary lib on dev (no door re-run, no spend), and the report lists which cells were re-graded. A grade is never changed by hand.
+aforge-v2-14 reports that pytest's cleanup of the shared <temporary pytest directory> can die under other sessions' pytest runs and leave a grade reading "0 passed 0 failed" with an rm_rf traceback in f2p.log. The driver copy this run uses predates the per-cell TMPDIR fix and is not edited while cells are in flight. Rule: after the last cell, every cell whose judge shows zero tests collected and an rm_rf traceback in f2p.log is re-graded with CANARY_REGRADE=1 through the canary lib on dev (no door re-run, no spend), and the report lists which cells were re-graded. A grade is never changed by hand.
 
 ## Amendments at scoring (18:25 EDT), declared before the front was read
 1. The exclusion for unclosed ledger rows is withdrawn: they proved endemic (a start row per cancelled hedge arm, the #334 accounting class), and wall is the door's own clock while first-token latency sits on end rows, so neither depends on them. The count is reported per cell instead.

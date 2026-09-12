@@ -326,7 +326,7 @@ records, but only 122 have prices after read-only reconciliation. Total cost
 therefore remains **unknown**. Recorded request traffic is 56,331,950 bytes. The
 retry is not a new paired comparison, and it cannot establish a cost ratio.
 Its evidence is retained on Spark under
-`/home/santosh/bench-artifacts/af653-complex-guard-retry-20260905`, including the
+`<evidence-root>/af653-complex-guard-retry-20260905`, including the
 manifest, native screen, complete saved state, both grades and reconciled
 receipts. The owned temporary guard credential was removed at job completion.
 

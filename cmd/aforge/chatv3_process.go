@@ -289,26 +289,23 @@ func (p *v3Process) refreshModelSources() {
 	if p == nil {
 		return
 	}
-	p.mu.Lock()
-	profileDir := p.ProfileDir
-	key := p.Settings.APIKey
-	base := p.Settings.BaseURL
-	p.mu.Unlock()
+	profileDir, key, base := p.sourceSeeds()
 	p.setModelSources(config.ResolveSources(profileDir, key, base))
+}
+
+// sourceSeeds is the snapshot [config.ResolveSources] is run from. It is its
+// own method so the lock is let go before the resolve, which re-reads the
+// profile from disk and re-takes the mutex through [v3Process.setModelSources].
+func (p *v3Process) sourceSeeds() (profileDir, key, base string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ProfileDir, p.Settings.APIKey, p.Settings.BaseURL
 }
 
 func (p *v3Process) currentAccount() (string, modelsource.Set) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.Settings.APIKey, p.Settings.Sources
-}
-
-// apiKey is the key the process holds now, which may be newer than the one any
-// launch was assembled with.
-func (p *v3Process) apiKey() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.Settings.APIKey
 }
 
 // takeForClose marks the process closed and hands over what is left to close,

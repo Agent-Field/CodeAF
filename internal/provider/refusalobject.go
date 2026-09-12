@@ -144,6 +144,15 @@ type laneRefusal struct {
 	// carried from the one classification so the dispatcher and surface never
 	// have to parse the refusal a second time.
 	Reset string
+	// AskedBare says the refused attempt went out with NO membership-narrowing
+	// preference — no pin, no rescue's demand, no strike list — so the refusal
+	// is evidence about the router's DEFAULT and may count toward a takeover
+	// (routefirst.go's [Client.noteRouterRefusal]). One false is "the shape was
+	// ours", the safest reading for a direct caller of [Client.laneRefusalFor]
+	// — a hedge arm, which is a demand of one machine by construction — and it
+	// is set true by the one classifier that holds the request's knobs
+	// ([Client.refusalObject]).
+	AskedBare bool
 }
 
 // struck reports whether there is a lane here for the ledger to WRITE OFF — a
@@ -283,7 +292,30 @@ func (c *Client) refusalObject(request *ai.Request, knobs callKnobs, err error) 
 		return laneRefusal{}
 	}
 	model := c.modelFor(request)
-	return c.laneRefusalFor(model, c.onlyLane(model, knobs), err)
+	refusal := c.laneRefusalFor(model, c.onlyLane(model, knobs), err)
+	// THE REFUSAL'S SHAPE IS THE KNOBS' OWN DEMAND, not the composed object's
+	// ladder-membership answer ([providerPrefs.membershipNarrowing], which is
+	// the ladder's first rung's question and counts require_parameters as
+	// membership). The gate's law is about MACHINES: a refusal counts toward
+	// the router's default only when nobody demanded machines — a bare ask —
+	// and a demand is exactly a rescue's arm ([callKnobs.hedgeLane]) or a
+	// choice with admitted names ([lanes.Choice.Only]). The lane-draw law
+	// reads both off the knobs, once, in one place ([Client.withLaneChoice]).
+	refusal.AskedBare = !demandedShape(knobs)
+	return refusal
+}
+
+// demandedShape reports whether the attempt went out carrying a machine demand
+// — a rescue's arm, or a choice (pin, takeover draw) with admitted names. It
+// answers the GATE'S question ([laneRefusal.AskedBare]), which is narrower
+// than the ladder's [providerPrefs.membershipNarrowing]: require_parameters is
+// membership of the wire body, not of machines, and the ledger's own Ignore
+// vetoes leave the pick to the router inside the set the vetoes leave.
+func demandedShape(knobs callKnobs) bool {
+	if knobs.hedgeLane != "" {
+		return true
+	}
+	return knobs.laneChoice != nil && len(knobs.laneChoice.Only) > 0
 }
 
 // laneRefusalFor is the same classification asked by a caller that already

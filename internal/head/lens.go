@@ -20,8 +20,8 @@ import (
 // renderer already written against it (renderPlan, renderResult's shape,
 // resultChildren, artifact.go's boundary, jobResult's continuation chase), and
 // moving them out before they exist would mean either exporting a dozen
-// renderers or writing them twice. The extraction wave named in
-// audit-notes/chat-simplify.md Part 3.7 moves this file to internal/lens
+// renderers or writing them twice. The August 2026 chat-simplification audit,
+// no longer in the tree, proposed in Part 3.7 that this file move to internal/lens
 // wholesale, with the renderers it leans on; nothing here is meant to stay
 // under a package whose name says "head".
 //
@@ -1431,7 +1431,8 @@ func (h *Head) lensStatus(sessionID string) string {
 
 	rendered.WriteString("WORK\n" + h.lensWorkCounts(sessionID, now) + "\n\n")
 	// Open threads sit directly under work because "what's going on" is one
-	// question with two halves (chat-simplify J5): the jobs that are running, and
+	// question with two halves (the August 2026 chat-simplification audit, no
+	// longer in the tree, J5): the jobs that are running, and
 	// the conversations that are still hanging. Answering only the first is what
 	// made a thread parked on an unanswered question invisible to the one read
 	// that claims to be the whole system on one page.

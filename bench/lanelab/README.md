@@ -1,6 +1,6 @@
 # lanelab — does the lane router earn its place on the send path?
 
-`ideation/provider-routing.md` proposes to retire the fixed-threshold strike
+`docs/design/routing/provider-routing.md` proposes to retire the fixed-threshold strike
 ledger in `internal/provider/velocity.go` and replace it with a belief, a
 Pareto prune, a per-request scalar and a hedge. This directory decides, before
 any money is spent, whether that machinery is worth putting on the path every
@@ -81,7 +81,7 @@ the plan carries (`lane.Spending(lane.PlanFor(...))`), over `internal/lane/lanes
 honours `provider.order`/`only`/`ignore`, names the serving lane on every chunk,
 sends a usage frame with the exact cost, and counts the streams a client
 abandoned. **The ship decision is taken on the Go run** (see
-`ideation/provider-routing.md`, Part III, C6); the Python table is what you read
+`docs/design/routing/provider-routing.md`, Part III, C6); the Python table is what you read
 when the two disagree.
 
 Three things about it are worth knowing before quoting a number:

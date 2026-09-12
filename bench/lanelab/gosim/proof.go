@@ -928,38 +928,6 @@ type proofArm struct {
 	Criteria []proofGate `json:"criteria"`
 }
 
-// bill is what one request cost on average across a whole arm, and waited is
-// how long one took at the median and the ninetieth. They are what the baseline
-// is read against and they are computed here so that the comparison is one
-// function rather than a line in a report nobody can re-derive.
-func (a proofArm) bill() float64 {
-	usd, n := 0.0, 0
-	for _, r := range a.Rows {
-		usd += r.USD
-		n += r.N
-	}
-	if n == 0 {
-		return 0
-	}
-	return usd / float64(n)
-}
-
-func (a proofArm) waited() (p50, p90 float64) {
-	var all []float64
-	for _, r := range a.Rows {
-		all = append(all, r.TookP50, r.TookP90)
-	}
-	if len(all) == 0 {
-		return 0, 0
-	}
-	fifty, ninety := make([]float64, 0, len(a.Rows)), make([]float64, 0, len(a.Rows))
-	for _, r := range a.Rows {
-		fifty = append(fifty, r.TookP50)
-		ninety = append(ninety, r.TookP90)
-	}
-	return pct(fifty, 0.50), pct(ninety, 0.90)
-}
-
 // runProof is the whole of §K: every case, every seed, pooled.
 func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix, policy string, thinks int) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)

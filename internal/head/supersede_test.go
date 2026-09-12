@@ -112,15 +112,3 @@ func TestASupersessionPointingAtNothingChangesNothing(t *testing.T) {
 		t.Fatalf("the retraction was overwritten: %+v found=%t err=%v", after, found, err)
 	}
 }
-
-func itoa(value int64) string {
-	digits := ""
-	if value == 0 {
-		return "0"
-	}
-	for value > 0 {
-		digits = string(rune('0'+value%10)) + digits
-		value /= 10
-	}
-	return digits
-}
