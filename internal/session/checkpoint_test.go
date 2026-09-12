@@ -1443,10 +1443,7 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	// this line now, on purpose (#333), and the fixture answers it with no name
 	// ([answerTheReadingsOffTheQueue]) — so what is left to read here is the
 	// told-after line as the road itself draws it, off the person's own sentence.
-	notice := routeNotice(collected)
-	if notice == "" {
-		t.Fatalf("no task was announced; notices were %q", noticeTexts(collected))
-	}
+	notice := routeSaid(t, agent, collected)
 	if strings.Contains(notice, dsmlSentinel) || strings.Contains(notice, "DSML") {
 		t.Errorf("the sentinel became the task's name: %q", notice)
 	}
@@ -1507,8 +1504,8 @@ func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
 		t.Errorf("the person was told their answer was being moved and then watched it finish where "+
 			"it was; notices were %q", noticeTexts(collected))
 	}
-	if routeNotice(collected) != "" {
-		t.Errorf("a task was announced: %q", routeNotice(collected))
+	if routeNotice(agent, collected) != "" {
+		t.Errorf("a task was announced: %q", routeNotice(agent, collected))
 	}
 	// AND THE TURN'S OWN ANSWER STANDS. The transcript ends on the model's words,
 	// not on a line the harness wrote over the top of them.

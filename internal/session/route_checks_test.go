@@ -32,6 +32,7 @@ func TestAutomaticTaskChecksReachTheRealChecker(t *testing.T) {
 				agent, _, _ = routeAgent(t, completer)
 			}
 			collect(t, mustSubmit(t, agent, asked))
+			routeSettled(t, agent)
 			node := agent.graph().node(1)
 			if node == nil {
 				t.Fatal("no task was admitted")
