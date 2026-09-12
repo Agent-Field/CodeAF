@@ -323,14 +323,20 @@ func quickReportOnClose(record taskRecord) string {
 // its own, or must survive you, is a task; what you will read and carry on with
 // is quick" — the same law in two places, paid for on every request of every
 // turn, and the page's copy is the one that renders wherever this verb does
-// ([Config.mayQuickTask] puts both verbs on a belt or neither). What is left
-// here is what only this string says: the two roads' shape in one sentence, the
-// step that is not a hand-off at all, and the grain.
+// ([Config.mayQuickTask] puts both verbs on a belt or neither).
+//
+// THE GRAIN CLAUSE GAINED ITS DIAL ON 2026-09-12, and the "one edit, one read,
+// one command is a step" sentence went the way of the pair for the same reason:
+// the page says it ("never worth a hand-off"). The clause as written priced the
+// twenty-file death into a CAP — "a few files and a few minutes" — which read
+// to the model as "wider reads belong elsewhere", and they landed in the chat's
+// own context instead. The death's real lesson was the missing dial: the same
+// `no_progress` raise propose_task has always offered for read-heavy work,
+// now on this schema too, so the clause names the dial instead of the cap.
 var quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
-	"where you are and its last message is its answer. One edit, one " +
-	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
-	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
-	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
+	"where you are and its last message is its answer. Related steps that share what they learn are one quick " +
+	"task's items, not several quick tasks. Keep one small; a wide read wants `no_progress` raised, because " +
+	"reading is not progress and " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,
 // which is the whole shape of the verb: there is no contract to groom, no
@@ -350,18 +356,20 @@ const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
 	`"title":{"type":"string","description":"Row title; the line is used without one"},` +
-	`"model":{"type":"string","description":"ONLY where the person named a model"}` +
+	`"model":{"type":"string","description":"ONLY where the person named a model"},` +
+	`"no_progress":{"type":"integer","description":"Optional, propose_task's threshold"}` +
 	`},"required":["line"],"additionalProperties":false}`
 
 // quickArguments is the wire form.
 type quickArguments struct {
-	Line      string   `json:"line"`
-	Items     []string `json:"items"`
-	Files     []string `json:"files"`
-	Inherit   bool     `json:"inherit"`
-	DependsOn []uint64 `json:"depends_on"`
-	Title     string   `json:"title"`
-	Model     string   `json:"model"`
+	Line       string   `json:"line"`
+	Items      []string `json:"items"`
+	Files      []string `json:"files"`
+	Inherit    bool     `json:"inherit"`
+	DependsOn  []uint64 `json:"depends_on"`
+	Title      string   `json:"title"`
+	Model      string   `json:"model"`
+	NoProgress int      `json:"no_progress"`
 }
 
 // quickAsk is one quick node AS A ROAD HANDS IT OVER, before anything about it
@@ -377,12 +385,13 @@ type quickArguments struct {
 // of the kind, and a road that could say any of it would be a road that could
 // say it differently. Those are decided in one place, [Agent.newQuickSpec].
 type quickAsk struct {
-	line      string
-	items     []string
-	files     []string
-	dependsOn []uint64
-	title     string
-	model     string
+	line       string
+	items      []string
+	files      []string
+	dependsOn  []uint64
+	title      string
+	model      string
+	noProgress int
 	// inherit asks for a PROMOTION rather than a cold worker: the node opens on
 	// the caller's own transcript instead of on a sentence about it (inherit.go).
 	// It is a property of the ask rather than a second door, so both roads that
@@ -397,7 +406,7 @@ type quickAsk struct {
 func (parsed quickArguments) askOf() quickAsk {
 	return quickAsk{line: parsed.Line, items: parsed.Items, files: parsed.Files,
 		dependsOn: parsed.DependsOn, title: parsed.Title, model: parsed.Model,
-		inherit: parsed.Inherit}
+		noProgress: parsed.NoProgress, inherit: parsed.Inherit}
 }
 
 // quickTools is the belt door for `quick_task`.
@@ -636,6 +645,12 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
 	}
+	// A NEGATIVE THRESHOLD IS REFUSED THE WAY propose_task'S IS (task.go): a call
+	// the model can make again, correctly. Zero names the default, exactly as it
+	// does there ([TaskNode.limits]).
+	if ask.noProgress < 0 {
+		return taskSpec{}, "Invalid arguments: no_progress cannot be negative"
+	}
 	return taskSpec{
 		title: title,
 		named: true,
@@ -676,6 +691,10 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 		// happening in ([TaskMode] spells the five modes out).
 		ground: a.config.Workspace,
 		mode:   TaskModeInPlace,
+		// THE GRAIN DIAL TRAVELS WITH THE NODE. Reading is not progress to the
+		// runner's counter (task_child_run.go), so a sweep that must read a great
+		// deal first dies at the default without the raise its caller named.
+		noProgress: ask.noProgress,
 		// "in place" is the person's own word for this (places.go), and it is
 		// written here rather than left blank because the index's `where` column
 		// is read by somebody looking back at what a row did, and "" there reads

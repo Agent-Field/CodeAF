@@ -388,15 +388,25 @@ var beltFacts = []beltFact{{
 // that the work is yours, so open it. Both verbs are on a belt together or on
 // neither ([Config.mayQuickTask]), which is what lets one fragment name them
 // both and be true wherever it renders.
+//
+// AND THE "READING SCALES" CLAUSE IS A PROPERTY, NOT THE RETURN OF THE SHAPE
+// LIST. It does not say "a survey is quick"; it completes the pair the judge
+// already held ("what you will read and carry on with is quick") against the
+// cap that followed it ("a small thing: a few files, a few minutes"), which a
+// real model read as "a wide read belongs elsewhere" — and the elsewhere it
+// chose was its own context, twenty files of it. The clause arms the two dials
+// a wide read needs (items, and `no_progress` raised) rather than pricing the
+// two roads against each other again, and the lean prefix's headroom is what
+// the shortened version is spent on.
 var handoffFacts = []beltFact{{
 	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
 		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
-		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
-		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
-		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
-		"Both are yours to steer and to stop, and both wake you when they land.\n" +
+		"it starts the instant you ask, works in this same folder, and its last message\n" +
+		"comes back to you as a note. A `propose_task` is a worker in a copy of the folder,\n" +
+		"checked and merged when it finishes, that outlives this window. Both wake you\n" +
+		"when they land.\n" +
 		"\n" +
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
 		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
@@ -405,21 +415,20 @@ var handoffFacts = []beltFact{{
 		"and independent pieces handed out in one breath cost the longest of them alone.\n" +
 		"THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: when what is ahead has\n" +
 		"parts that do not need each other, hand them all out at once, however many there\n" +
-		"are, before you open the first, the way one mind with a team of workers would,\n" +
-		"and keep one to begin yourself, rather than working through them in turn, the\n" +
-		"order you fall into unless you choose otherwise. Do it even where each part is\n" +
-		"plainly something you could do yourself. That you could is not the question. The\n" +
-		"clock is. When the parts\n" +
-		"feed each other, keep them together: your own steps, or one quick task's items.\n" +
-		"One read, one edit, one command is never worth a hand-off. What must be checked\n" +
-		"and landed on its own, or must survive you, is a task; what you will read and\n" +
-		"carry on with is quick, and a quick task is a small thing: a few files, a few\n" +
-		"minutes.\n" +
+		"are, before you open the first, and keep one to begin yourself rather than\n" +
+		"working through them in turn. That you could is not the question. The clock\n" +
+		"is. When the parts feed each other, keep them together: your own steps, or\n" +
+		"one quick task's items. One read, one edit, one command is never worth a\n" +
+		"hand-off. What must be checked and landed on its own, or must survive you,\n" +
+		"is a task; what you will read and carry on with is quick. AND READING\n" +
+		"SCALES: a sweep across many files is still quick work — give it items and a\n" +
+		"raised `no_progress`, because reads are not progress.\n" +
 		"\n" +
 		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
-		"can. Each landing comes to you as a note, and starts a turn if yours has ended,\n" +
-		"so fold them as they arrive. When nothing independent of what you handed out\n" +
-		"remains, end your turn. That is how you wait.",
+		"can. Each landing comes to you as a note, and starts a turn if yours has ended.\n" +
+		"A landing note IS the piece's answer — fold it, never re-open the work to check\n" +
+		"it. When nothing independent of what you handed out remains, end your turn.\n" +
+		"That is how you wait.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
