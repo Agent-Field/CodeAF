@@ -36,9 +36,9 @@ live non-test declarations — `internal/head/head.go:353` calls into `absorb.go
 every *function* is test-only is not a file whose every *declaration* is, and the
 previous wave already learned that the expensive way on `absorb.go`.
 
-One thing for the owner rather than for this change: `internal/manual/chat/commands.md`,
-`internal/provider/attribution.go`, `internal/tui3/detach.go`,
-`internal/tui3/slashchip.go`, `docs/design/conversation-runtime/**` and
-`docs/design/workspace-foundation/CONSTRAINTS.md` still carry a personal path, a
-personal name, or a reference to the removed voice package. Every one of them is
-owned by an open pull request, so they were left exactly as they were.
+One file is still out of reach and needs its owner rather than this change:
+`docs/design/workspace-foundation/CONSTRAINTS.md` names an individual, a personal
+repository and a conversation link, and an open pull request owns it. Test fixtures
+keep their machine paths on purpose — `internal/session/taskoutside_test.go` and
+`internal/tui3/{home,lanes,slashchip}_test.go` use a real home path or host name as
+assertion input, not as documentation.
