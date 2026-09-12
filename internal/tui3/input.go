@@ -1720,7 +1720,12 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 	caretColumn := caretColumnIn(e, segments[caretRow])
 	end := min(top+maxRows, len(segments))
 
-	out := make([]string, 0, end-top)
+	// The block is allocated at its CAP and not at the rows it happens to hold,
+	// so the floor [app.inputBlock] holds it to is padding into room that is
+	// already there. Allocated at `end-top` instead, every frame of a scroll
+	// paid a fresh slice for two empty strings — which the allocation law in
+	// inputsmooth_test.go priced at five allocations a screen.
+	out := make([]string, 0, maxRows)
 	// Every row after the first is indented to where the text starts, segment
 	// included: a continuation that began under the segment would be a wrapped
 	// sentence with a step in its left margin.

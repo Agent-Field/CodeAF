@@ -1646,6 +1646,19 @@ const placeFootRows = 3 + homeDraftFloor
 // for.
 const placeSmallestFrame = 24
 
+// placeFootRowsAt is [placeFootRows] on a frame of a given height: the same
+// blank, the same rule and the same last line, over a box held to whatever
+// floor that height can afford ([boxFloor]).
+//
+// IT EXISTS SO THAT NOTHING KEEPS A SECOND COPY OF THIS ARITHMETIC. The foot
+// was a constant while the box was one row on every frame; it stopped being one
+// the moment the floor started depending on the height, and four laws that had
+// quietly written `- 3` or `- 4` into their own slicing went on reading the
+// rule as though it were a row of the body.
+func placeFootRowsAt(height int) int {
+	return placeFootRows - homeDraftFloor + boxFloor(height)
+}
+
 // boxFloor is how many rows the composer occupies, and it is the same number
 // typed in or not ([homeDraftFloor]) — in the conversation and on every place —
 // on any frame with rows to spare for it.

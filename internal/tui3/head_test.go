@@ -170,11 +170,13 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headFrameSizes {
 		a.width, a.height = size.w, size.h
-		// The box row is the row the PROMPT is on, which is the block's first of
-		// [homeDraftFloor] ([footOf] reads it back that way), so it stands as far
-		// above the last row as the floor is deep.
-		want := footEdges{rule: size.h - placeFootRows + 1,
-			box: size.h - 1 - homeDraftFloor, status: size.h - 1}
+		// The box row is the row the PROMPT is on, which is the block's first
+		// ([footOf] reads it back that way), so it stands as far above the last
+		// row as the floor this height can afford is deep — asked of the frame's
+		// own door rather than written out again here.
+		floor := boxFloor(size.h)
+		want := footEdges{rule: size.h - placeFootRowsAt(size.h) + 1,
+			box: size.h - 1 - floor, status: size.h - 1}
 		for _, to := range []page{pageNone, pageHome, pageTasks, pageNone} {
 			if to == pageNone {
 				a.showPage(pageNone)
@@ -185,7 +187,7 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 			rows := strings.Split(plain(frame(a)), "\n")
 			if got := footOf(rows); got != want || strings.TrimSpace(rows[want.rule-1]) != "" {
 				t.Fatalf("at %dx%d %s puts its foot at %+v, and every frame puts it at %+v under a blank:\n%s",
-					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRows-1:], "\n"))
+					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRowsAt(size.h)-1:], "\n"))
 			}
 		}
 	}

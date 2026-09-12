@@ -317,8 +317,12 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	want := map[[2]int]edges{}
 	for _, size := range sizes {
 		height := size[1]
+		// The box is as many rows as this height can afford ([boxFloor]), and the
+		// rule sits directly over the first of them, so both edges are derived
+		// from the frame's own door rather than counted out again here.
+		floor := boxFloor(height)
 		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
-			footRule: height - placeFootRows + 1, box: height - 1 - homeDraftFloor, hint: height - 1}
+			footRule: height - placeFootRowsAt(height) + 1, box: height - 1 - floor, hint: height - 1}
 	}
 	for _, lab := range labs {
 		for _, size := range sizes {
@@ -341,10 +345,11 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 			// [homeDraftFloor] rows and its FIRST row is the one carrying the
 			// prompt, so the rule sits one above that and the rows between the
 			// prompt and the hint are the composer's own.
-			if at := len(rows) - 2 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], "─") {
+			floor := boxFloor(size[1])
+			if at := len(rows) - 2 - floor; at >= 0 && strings.HasPrefix(rows[at], "─") {
 				got.footRule = at
 			}
-			if at := len(rows) - 1 - homeDraftFloor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
+			if at := len(rows) - 1 - floor; at >= 0 && strings.HasPrefix(rows[at], " "+prompt) {
 				got.box = at
 			}
 			if got != want[size] {
