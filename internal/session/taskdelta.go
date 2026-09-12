@@ -526,11 +526,14 @@ func deltaLine(text string) string {
 // refreshElsewhere reads what the other windows on this project have landed and
 // have out, and puts it in front of the model.
 //
-// IT RUNS IN THE TURN GOROUTINE AND NOT UNDER a.mu, for [Agent.refreshMemory]'s
-// reason said about disk instead of a provider: this opens the project index and
-// one small JSON per live window, and a read of a shared directory must never be
-// the thing a person's keystroke waits behind. The lock is taken once at the
-// end, for the assignment.
+// IT IS A READING BESIDE THE WORK AND GOES THROUGH THE ONE DOOR FOR THAT SHAPE
+// ([readBeside], sidecar.go), for [Agent.refreshMemory]'s reason said about disk
+// instead of a provider: this opens the project index and one small JSON per
+// live window, and a read of a shared directory must never be the thing a
+// person's keystroke waits behind. It was a bare `go` of its own until it was
+// measured writing its stamp into a conversation's folder after that
+// conversation had closed — which is what an unowned goroutine is, and what
+// sidecar.go exists to stop there being a fifth of.
 //
 // THE FIRST TURN IS SESSION OPEN. A model does not exist between the
 // constructor and its first request, so there is no earlier moment at which it
@@ -562,13 +565,32 @@ func (a *Agent) refreshElsewhere() {
 		[]string{mine, a.config.Place.ID()}, since, deltaLandedRows)
 	live := a.Elsewhere().Tasks()
 
-	// The stamp advances HERE, before the block is assembled, because the block
-	// is going into the very next request either way: the assignment below
-	// cannot fail, and a stamp written after it would be a stamp a panic could
-	// skip. The short memory ([deltaRemember]) is what makes advancing it safe.
-	NoteTold(dir, now)
-
 	a.mu.Lock()
+	if a.closed {
+		// NOTHING THIS READING COULD SAY WOULD REACH ANYBODY once the session
+		// has closed, so it says nothing and writes nothing. It is the ask
+		// lane's own law about a clock that ran out after the door shut
+		// ([Agent.askClockRanOut]), said about a reading instead of a decision,
+		// and it is what makes "nothing armed outlives the session that armed
+		// it" (steer_grace.go) true of this goroutine: a reading still in flight
+		// when [Agent.Close] runs either takes this lock BEFORE the close — and
+		// then its write is over before the close's own rounds begin — or finds
+		// the door shut and leaves the folder alone. Measured on the Spark,
+		// 2026-09-12: thirteen runs in five thousand of one asklane fixture
+		// failed as `TempDir RemoveAll cleanup: directory not empty`, and the
+		// file left behind was this stamp.
+		a.mu.Unlock()
+		return
+	}
+	// AND THE STAMP IS WRITTEN WHERE WHAT IT CLAIMS BECOMES TRUE, in the same
+	// locked step as the assignment rather than ahead of it. It says THIS
+	// SESSION'S MODEL WAS TOLD; a stamp that advanced on a reading whose block
+	// never reached a model is a day of other windows' landings that this
+	// conversation will never mention again. What the old order bought was a
+	// stamp no panic between the two lines could skip, and what that costs is
+	// one bounded first delivery that [deltaRemember] already de-duplicates —
+	// the cheaper of the two failures by a long way.
+	NoteTold(dir, now)
 	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
 	// The assignment alone: the block reaches the model at the tail of the
 	// transcript, in the note the drain lands immediately before the first

@@ -217,6 +217,49 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	}
 }
 
+// A READING THAT LANDS AFTER THE DOOR HAS SHUT LEAVES THE FOLDER ALONE.
+//
+// The reading runs beside the turn, and [Agent.Close] does not wait for one: it
+// cancels the turn and goes. So the honest bound is the session's own door —
+// this reading writes its stamp in the same locked step as the assignment, and
+// a closed session has neither. Measured on the Spark, 2026-09-12: without it,
+// thirteen runs in five thousand of one `internal/session` fixture failed as
+// `TempDir RemoveAll cleanup: directory not empty`, and the file left behind in
+// every one of them was this stamp — a red that names whichever test happened to
+// own the directory (#959).
+func TestTheElsewhereReadingWritesNothingOnceTheSessionHasClosed(t *testing.T) {
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	writeWindow(t, bucket, "theirs", "docs pass", time.Second,
+		PresenceTask{ID: "4", Title: "Sweep the call sites", State: string(TaskRunning)})
+	appendTaskIndex(filepath.Join(bucket, taskIndexName),
+		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
+
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent.messages = []ai.Message{textMessage("system", "base")}
+	agent.system = "base"
+	agent.closed = true
+
+	agent.refreshElsewhere()
+
+	if agent.elsewhereText != "" {
+		t.Fatalf("a closed session was handed a block: %q", agent.elsewhereText)
+	}
+	if !LastTold(mine).IsZero() {
+		t.Fatal("the stamp advanced on a session whose model will never read the block")
+	}
+	left, err := os.ReadDir(mine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("the closed session wrote into its own folder: %v", left)
+	}
+}
+
 // A project with nobody else on it is a project with nothing to say, and the
 // block must not appear at all — not as a heading, not as "nothing new".
 func TestAProjectWithNoOtherWindowGetsNoBlock(t *testing.T) {
