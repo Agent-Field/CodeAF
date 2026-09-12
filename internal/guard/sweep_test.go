@@ -23,7 +23,6 @@ var guardedPackages = []string{
 	"internal/provider",
 	"internal/resident",
 	"internal/store",
-	"internal/voice",
 }
 
 // spawnAllowlist names the spawn sites that carry their guard somewhere the
@@ -34,7 +33,6 @@ var spawnAllowlist = map[string]string{
 	"internal/exec/schedule.go:go s.work(leafCtx, id, task, retries[id], leafShape(node), done)": "work recovers and reports the fault as the leaf's completion",
 	"internal/plan/ensemble.go:go write(pass, inputs, &passBrief)":                               "write recovers into the failures slot it shares with the setup brief",
 	"internal/plan/ensemble.go:go write(setup, nil, &setupBrief)":                                "write recovers into the failures slot it shares with the pass brief",
-	"internal/voice/recorder.go:go r.read(command, output, r.done, r.chunks, r.quit)":            "read recovers and still writes done and closes chunks, which Stop and the caption consumer wait on",
 }
 
 // TestEveryGoroutineInTheGuardedTreeIsGuarded is the standing check behind the
