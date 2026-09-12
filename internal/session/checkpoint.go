@@ -2479,13 +2479,18 @@ func checkpointNewestThatFit(lines []string, room int) ([]string, int) {
 	return lines[first:], first
 }
 
-// checkpointLedger walks the transcript once and answers the three questions the
-// digest asks of it: what was DONE, one line per tool call; what CAME BACK from
-// each of those calls; and what of it was WRITTEN.
+// checkpointLedger walks the transcript once and answers every question an
+// account of a turn asks of it: what was DONE, one line per tool call; what CAME
+// BACK from each of those calls; what of it was WRITTEN, with the opening line of
+// what went in; and where the turn has merely BEEN — every place it opened and
+// did not write, deduplicated.
 //
-// The three come out of one pass because they are one fact read three ways — a
-// file written is a `write` in the ledger and a confirmation in the results — and
+// They come out of one pass because they are one fact read several ways — a file
+// written is a `write` in the ledger and a confirmation in the results — and
 // because a second walk could disagree with the first the day a tool is renamed.
+// It is the walk BOTH accounts are built on: the reader's digest and the fold's
+// marker ([checkpointDigest], [foldAccount]), which is what stops a fold and a
+// handover disagreeing about what a turn did.
 //
 // A RESULT IS TIED TO ITS CALL BY ID AND NEVER BY POSITION. A batch's results are
 // recorded in the order the calls were issued rather than the order they finished
