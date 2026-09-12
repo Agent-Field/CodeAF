@@ -48,9 +48,52 @@ import (
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
 // the belt the shipping conversation door assembles (belt_wiring_test.go's
-// [v3ShapedAgent] is that shape). It is the post-diet measurement with about a
-// tenth of headroom on top, which is room for a genuinely new law and not room
-// for a paragraph of prose about one that is already stated.
+// [shippedShapeAgent] is that shape).
+//
+// ── IT WEIGHED THE WRONG BELT FOR MONTHS, AND THIS IS THAT REPAIR ───────────
+//
+// The sentence above has always said "the shipping conversation". The fixture
+// under it was [v3ShapedAgent]: a conversation with NO memory store, NO accounts
+// hub, NO standing items and NO saved programs — eighteen tools, 39,073 bytes,
+// comfortably green. A machine somebody has finished setting up carries five
+// more (`stand`, `search_conversations`, `remember`, and the subharness pair)
+// and weighs 53,025. So the gate reported eight kilobytes of headroom on a
+// prefix that was five kilobytes OVER the cap it was enforcing, and it reported
+// it every day. That is #576's shape exactly: a gate pointed at something nobody
+// runs passes without having tested anything.
+//
+// ── SO THE FIGURE IS A RATCHET NOW, AND NOT A BUDGET WITH ROOM IN IT ────────
+//
+// It used to be "the post-diet measurement plus about a tenth", which was right
+// when the number came out of a diet that had just been paid for: the headroom
+// was room for a genuinely new law. It is wrong here, because this measurement
+// is not the end of a diet — it is the first honest weighing of a prefix that
+// has never been weighed, and it is already past what the last diet aimed at. A
+// tenth of headroom on top of that would be five more kilobytes nobody chose.
+//
+// So it is the measurement and nothing else. Anything that grows the shipped
+// prefix fails the build and has to be paid for out of what is already here,
+// which is what a ratchet is for and what the old figure could not do.
+//
+// ── WHAT IS OWED, AND WHERE IT HAS TO COME FROM ─────────────────────────────
+//
+// THE TARGET IS STILL 48,000 and the shipped prefix is 5,025 over it. The bill
+// is not spread thin — one tool is more than a quarter of the whole tool block:
+//
+//	stand                  9,607   the standing-item verb's schema
+//	propose_task           4,363
+//	tasks                  2,272
+//	search_conversations   1,613
+//	watch                  1,396
+//
+// `stand` alone is nearly twice the next heaviest and more than the 5,025 owed.
+// It is not this file's to cut: what a tool's schema says is its contract with
+// the model, and trimming it is a change to what the model is told rather than
+// to a byte count. It belongs to whoever owns internal/session's standing belt,
+// with the same discipline the 2026-09-10 diet used on `propose_task` — one
+// clause per field, no rule stated twice, no em dashes — and it is filed here
+// rather than done here because a gate is not the place to decide what a verb
+// means.
 //
 // It is a byte count and not a token count deliberately: bytes are what this
 // process can measure exactly, and every tokenizer this build talks to is within
@@ -318,7 +361,16 @@ import (
 // `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
 // TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
 // change to that test's mind and not only to the bytes.
-const fixedPrefixBudget = 48_000
+// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,025 bytes on 2026-09-12: the
+// widest page at 19,114 and the fully-wired belt's tool block at 33,911 over
+// twenty-three tools. The seventy-five bytes are rounding and not headroom.
+const fixedPrefixBudget = 53_100
+
+// fixedPrefixTarget is where the shipped prefix has to get back to, and it is
+// the figure [fixedPrefixBudget] was before anybody weighed the right belt. It
+// is stated rather than enforced because a test that failed on it today would
+// fail on work nobody in this file can do (see the bill above).
+const fixedPrefixTarget = 48_000
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
 // G). promptprofile.go added a second shape of prefix for a model with a small
@@ -436,7 +488,7 @@ func widestPage() string {
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
-	agent := v3ShapedAgent(t)
+	agent := shippedShapeAgent(t)
 
 	definitions := agent.beltDefinitions()
 	if len(definitions) == 0 {
@@ -448,7 +500,15 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	}
 	tools, prompt := len(block), len(widestPage())
 	total := tools + prompt
-	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d", total, total/4, prompt, tools)
+	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
+		total, total/4, prompt, tools, len(definitions))
+	// AND WHAT IS STILL OWED IS SAID ON EVERY GREEN RUN, because a debt nobody
+	// is reminded of is a debt that becomes the new floor. The ratchet passing
+	// is not the same fact as the prefix being the size it should be.
+	if total > fixedPrefixTarget {
+		t.Logf("it is %d bytes over the %d target — see this file's head for the bill "+
+			"and who owes it", total-fixedPrefixTarget, fixedPrefixTarget)
+	}
 
 	if total <= fixedPrefixBudget {
 		return

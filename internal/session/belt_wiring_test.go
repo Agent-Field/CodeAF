@@ -48,6 +48,30 @@ func v3ShapedAgent(t *testing.T) *Agent {
 	return agent
 }
 
+// shippedShapeAgent is THE BELT A CONFIGURED MACHINE ACTUALLY CARRIES, and it is
+// built from [beltShapes]'s own first entry — "the shipping conversation, fully
+// wired" — so that there is one definition of that shape and the prefix gate and
+// the belt tests cannot come to disagree about it.
+//
+// IT IS NOT [v3ShapedAgent], AND THAT WAS A MEASURED HOLE. That one is a
+// conversation with no memory store, no accounts hub, no standing items and no
+// saved programs: eighteen tools where a machine somebody has finished setting
+// up carries twenty-three. The prefix gate weighed it and reported green at
+// 39,073 bytes while the shipped shape weighed 53,025 — over the cap the gate
+// was enforcing, invisibly, which is #576's shape exactly (a gate that passes
+// because it is pointed at something nobody runs).
+func shippedShapeAgent(t *testing.T) *Agent {
+	t.Helper()
+	shape := beltShapes[0]
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		// The rendered page is what the budget weighs, so this shape renders its
+		// own rather than taking newTestAgent's fixed one.
+		config.System = ""
+		shape.build(t, config)
+	})
+	return agent
+}
+
 func TestTheChatBeltCarriesTheBigHands(t *testing.T) {
 	agent := v3ShapedAgent(t)
 	for _, want := range []string{"build_harness", "list_harnesses", "propose_task"} {
