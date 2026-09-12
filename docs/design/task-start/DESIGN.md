@@ -305,15 +305,38 @@ re-read every second.
 
 **Boundaries, stated rather than hidden.** The reading is `/proc`'s, so on macOS
 and Windows the governor still says "cannot say" and never holds, exactly as
-before. And each conversation's graph keeps its own governor and so its own
-reservation, while the visible half is this whole process: two conversations in
-one process fanning out at the same moment each read the other's visible work as
-covering part of its own reservation, and one reading taken during the other's
-build can raise this graph's measured footprint for the rest of the session,
-because that figure only rises. The floor on the reading itself still holds for
-both. The fix is one account for the whole process, which needs every
-`TaskGraph.running` mutation behind one door; it is
-[#907](https://github.com/Agent-Field/aforge-v2/issues/907), not a clamp here.
+before.
+
+**One account for the whole process (#907).** Each conversation keeps its own
+graph and its own governor, but the count those governors divide the reading by
+is **the process's**, not the graph's. It has to be: the visible half is a
+reading of the whole process tree, and /proc cannot say which conversation
+started which compiler. Divided by one graph's own lanes, a second
+conversation's build read here as that build over *this* conversation's node
+count — and the measured footprint only rises, so one such reading narrowed
+every later fan in this conversation for the rest of the session. The same gap
+ran the other way on the reservation, each graph reading the other's visible
+memory as covering part of its own. Both close with `session.TaskLanes`: one mutex and one int,
+written by every graph through the one door every `TaskGraph.running` mutation
+now goes through (`takeLaneLocked`/`giveLaneLocked`), read back by
+`TaskGraph.lanesTaken` for `observe` and by `holdOnStartingLocked` for `admits`.
+No clamp to a fraction of `MemTotal`, no timer decay and no per-graph
+correction.
+
+**Which graphs share one is said, not assumed.** `cmd/aforge`'s `v3OpenSession`
+— the one door every conversation is built through, launch, relaunch, `/new`
+and `/resume` — builds one account for the life of the process and puts it on
+every `session.Config` it hands out; `Agent.graph` and `standingWideWork` read
+it off the config. A graph handed none is **alone in its process** and keeps an
+account of its own (`newTaskGraph`), which is the truth about an embedder with
+one conversation and about every scripted graph in the tests. A package-level
+variable would have been the same claim made silently, and it is a claim a
+library cannot make for its caller: a test binary is one process and a hundred
+unrelated machines, and a lane one scene left running would have narrowed the
+next scene's fan.
+`TestEveryLaneMovesThroughTheOneDoor` (`go/ast`, so it is on the pull-request
+gate) is what keeps there being one door, and the two graphs of
+`task_pressure_account_test.go` are the scene itself.
 
 **Deleted.** `admissionGovernor.holds`, the once-per-pass `busy` bool and the
 `busy` parameter of `holdOnStartingLocked`; `TaskGraph.machineBusy`, which asked

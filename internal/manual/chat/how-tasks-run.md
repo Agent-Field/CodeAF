@@ -2434,7 +2434,7 @@ minutes later — so each task that starts **sets aside a footprint** of memory 
 reading shows it, and the next one is judged against what is left. A footprint is the
 larger of two figures this machine gives: one core's share of its memory (`MemTotal` ÷
 cores, so 2 GiB on a 16 GiB eight-core laptop) and the most memory per task aforge has
-watched this session's tasks actually hold. A quiet machine therefore starts roughly **one
+watched a task actually hold. A quiet machine therefore starts roughly **one
 task per core's share of the memory above the floor**; the rest wait saying `machine busy`
 and start as the earlier ones finish or as a reading shows room. Nothing is counted twice —
 as a running task's memory appears in the reading, what is set aside for it falls by as
@@ -2442,6 +2442,12 @@ much.
 
 This gates **starts only**. Nothing already running is ever touched; pressure drains as
 running tasks finish.
+
+**Tasks in your other conversations count here.** aforge is one program, and the reading
+covers that whole program and everything it started — it cannot tell which conversation
+started which build. So every task aforge is running is set aside for, whichever
+conversation started it: tasks fanning out beside you leave less room here too, and a
+build running beside yours is never mistaken for what one of your own tasks weighs.
 
 **The honest caveat:** these two governors read `/proc`, so they only work on Linux. On
 macOS and Windows there is no `/proc`, the machine cannot say, and silence is never

@@ -97,19 +97,33 @@ import (
 // before the governor existed, which is the only honest thing to do with a
 // number nobody took.
 //
-// ── ONE CONVERSATION'S RESERVATION ──
+// ── ONE ACCOUNT FOR THE WHOLE PROCESS ──
 //
-// Each conversation's graph keeps its own governor, and so its own
-// reservation; the visible half is this whole process, because /proc cannot
-// say which conversation started which compiler. A second conversation in the
-// same process fanning out at the same moment as the first therefore reads
-// the first one's visible work as covering part of its own reservation. The
-// floor on the reading itself still holds for both, and the width that gap can
-// add is the first conversation's visible memory divided by one footprint. The
-// same attribution can raise a graph's measured footprint from a reading taken
-// during the other conversation's build, and that figure only rises. Both close
-// with one account for the whole process rather than one per graph, which is
-// issue #907.
+// The visible half is this whole process and every descendant it started,
+// because /proc cannot say which conversation started which compiler. A
+// governor handed its OWN graph's count of running nodes therefore divided the
+// whole tree's memory by one conversation's nodes: a second conversation's
+// build, under way while this graph had two parts out, read here as three
+// core-shares a node. And the measured footprint only rises, so that one
+// reading narrowed every later fan in this conversation for the rest of the
+// session. The same gap ran the other way on the reservation itself — each
+// graph read the other's visible memory as covering part of its own — and both
+// are issue #907.
+//
+// So THE COUNT THIS FILE IS HANDED COVERS EVERY LANE THE READING DOES, never
+// one graph's. Both
+// halves of `share = visible / running` and of `running × footprint − visible`
+// are then read over the same population: every lane the process is running,
+// and every byte the process holds above rest. Another conversation's build is
+// counted as exactly what it is — memory held by lanes — against a divisor
+// that already counts the lanes holding it, and no conversation can move
+// another's per-node weight. The count comes from [TaskLanes] — one account,
+// handed to every conversation the process opens ([Config.TaskLanes]) and
+// written by every `TaskGraph.running` mutation through one door
+// ([TaskGraph.takeLaneLocked], [TaskGraph.giveLaneLocked]). There is no clamp
+// to a fraction of MemTotal, no timer decay and no per-graph correction,
+// because the attribution gap is a fact about the machine the reading is of,
+// and the account is kept where that machine is known.
 
 const (
 	// taskPressureTTL bounds how often the host is asked. Load average is a
@@ -180,7 +194,7 @@ type admissionGovernor struct {
 	known  bool
 	at     time.Time
 
-	// restMB is workMB as the last reading that found this graph running
+	// restMB is workMB as the last reading that found the process running
 	// nothing saw it: the conversation, its tools' servers, whatever this
 	// process carries with no node at work. What is above it is the nodes'.
 	// rested says there has been such a reading; until there is one, the
@@ -188,12 +202,73 @@ type admissionGovernor struct {
 	// under way as visible and so errs toward holding.
 	restMB int
 	rested bool
-	// peakShareMB is the most visible memory per running node any reading of
-	// this session has seen, and it only rises. A share that fell whenever the
+	// peakShareMB is the most visible memory per running LANE OF THE PROCESS
+	// any reading of this session has seen, and it only rises. A share that fell whenever the
 	// nodes happened to be between builds would hand the room back just before
 	// the next build needs it — the same reason the kernel's own ru_maxrss is
 	// a high-water mark.
 	peakShareMB int
+}
+
+// TaskLanes is THE COUNT OF RUNNING LANES ON ONE MACHINE, and the one divisor
+// the governor's reading is shared over. Every task graph that belongs to the
+// same running aforge writes its own starts and hand-backs into one of these,
+// so the count beside a reading of the whole process tree is drawn from the
+// same population the reading is (#907).
+//
+// WHICH GRAPHS SHARE ONE IS SAID, NOT ASSUMED. The process's own door builds
+// one and hands it to every conversation it opens ([Config.TaskLanes]); a graph
+// given none is alone in its process and keeps one of its own ([newTaskGraph]).
+// A package-level variable would have been the same claim made silently, and it
+// is a claim no library can make for its caller — a test binary is one process
+// and a hundred unrelated machines.
+//
+// It is one mutex and one int, and that is the whole design. IT IS THE
+// INNERMOST LOCK here: every caller either holds a graph's lock already or
+// holds nothing, and nothing inside it calls back out, so it cannot be half of
+// a cycle. It is nil-safe throughout, because a graph assembled field by field
+// in a test has no account and a count of nothing is the truth about it.
+type TaskLanes struct {
+	mu sync.Mutex
+	n  int
+}
+
+// NewTaskLanes builds the account one machine's conversations share. The door
+// that opens conversations builds one for the life of the process and puts it
+// on every [Config] it hands out.
+func NewTaskLanes() *TaskLanes { return &TaskLanes{} }
+
+// take records one lane taken anywhere in the process.
+func (a *TaskLanes) take() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.n++
+	a.mu.Unlock()
+}
+
+// give records one lane handed back anywhere in the process.
+func (a *TaskLanes) give() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.n > 0 {
+		a.n--
+	}
+	a.mu.Unlock()
+}
+
+// running is how many lanes the whole process is running, which is the
+// divisor the visible half is shared over.
+func (a *TaskLanes) running() int {
+	if a == nil {
+		return 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.n
 }
 
 // newAdmissionGovernor builds the gate over the real host, and returns nil
@@ -213,8 +288,12 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 }
 
 // observe asks the host, at most once per taskPressureTTL, and learns from
-// the answer. running is how many of this graph's slot-taking nodes are
-// running as the reading is taken.
+// the answer.
+//
+// `running` IS THE WHOLE PROCESS'S COUNT OF RUNNING LANES and never one
+// graph's ([TaskGraph.lanesTaken]), because the memory in the reading is the
+// whole process tree's and /proc cannot attribute a compiler to the
+// conversation that started it.
 //
 // IT IS CALLED BEFORE THE GRAPH'S LOCK, once a pass, and it is the only
 // method here that touches /proc: the graph's lock is held by everything that
@@ -265,11 +344,17 @@ func (g *admissionGovernor) observe(running int) {
 	}
 }
 
-// admits reports whether one more node may start beside the `running` nodes
-// of this graph that already are. It is asked once per admission, with the
-// count that includes every node the same pass has already started, so a fan
-// is admitted one node at a time against the machine each start leaves
-// behind.
+// admits reports whether one more node may start beside the `running` lanes
+// the process already has out. It is asked once per admission, with a count
+// that includes every node the same pass has already started, so a fan is
+// admitted one node at a time against the machine each start leaves behind.
+//
+// The count is THE PROCESS'S, for the reason [admissionGovernor.observe] gives:
+// the reservation is taken off a reading of the whole process tree, so it has
+// to be the whole process's work that is reserved for. A conversation whose
+// neighbour is fanning out therefore meets a machine that is genuinely fuller,
+// rather than reading its neighbour's visible memory as cover for its own
+// nodes (#907).
 //
 // It reads the sample [admissionGovernor.observe] took and nothing else, so
 // it is safe under the graph's lock.
@@ -298,11 +383,11 @@ func (g *admissionGovernor) admits(running int) bool {
 	return true
 }
 
-// unseenLocked is the memory the running nodes are expected to need that the
-// reading does not show yet: every one of them at one footprint, less what
-// they are already visibly holding, and never below zero — a node carrying
-// more than a footprint is carrying it IN the reading, where it is already
-// counted.
+// unseenLocked is the memory the process's running lanes are expected to need
+// that the reading does not show yet: every one of them at one footprint, less
+// what they are already visibly holding, and never below zero — a node
+// carrying more than a footprint is carrying it IN the reading, where it is
+// already counted.
 func (g *admissionGovernor) unseenLocked(running int) int {
 	if running <= 0 {
 		return 0
@@ -310,8 +395,8 @@ func (g *admissionGovernor) unseenLocked(running int) int {
 	return max(0, running*g.footprintLocked()-g.visibleLocked())
 }
 
-// visibleLocked is the memory the running nodes visibly hold: this process's
-// tree above what it held at rest.
+// visibleLocked is the memory the running lanes visibly hold: this process's
+// tree above what it held with no lane out anywhere in it.
 func (g *admissionGovernor) visibleLocked() int {
 	return max(0, g.sample.workMB-g.restMB)
 }
@@ -322,7 +407,7 @@ func (g *admissionGovernor) visibleLocked() int {
 // written here.
 //
 // The measured one is [admissionGovernor.peakShareMB]: the most visible memory
-// per running node this session's own readings have seen. It is the footprint
+// per running lane this session's own readings have seen. It is the footprint
 // of THIS project's builds on THIS machine, and it is the one that grows when
 // the work turns out to be heavier than a machine's rule of thumb.
 //
