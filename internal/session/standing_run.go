@@ -884,6 +884,9 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 	// this firing leaves behind lands.
 	graph.limit = cfg.TaskParallel
 	graph.governor = newAdmissionGovernor(cfg.TaskMaxLoad, cfg.TaskMinFreeMB)
+	if cfg.TaskLanes != nil {
+		graph.lanes = cfg.TaskLanes
+	}
 	graph.store = newTaskStore(taskCheckpointPath(cfg.SessionFile))
 	graph.run = graph.runOwned
 	graph.report = graph.reportHome
@@ -930,7 +933,12 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 	// here. A firing on a machine capped at one task at a time has no second
 	// pair of hands to give parts to, and [TaskGraph.freeHands] answers that
 	// correctly only if the work already under way is counted as under way.
-	graph.running = 1
+	// It goes through the same door every other start does, so the process's
+	// account sees a standing firing's lane exactly as it sees a task's — the
+	// machine carries this one no differently (task_pressure.go, #907). No lock
+	// is taken: the graph is still this function's, with nothing else able to
+	// reach it.
+	graph.takeLaneLocked()
 
 	cfg.tasker = graph
 	cfg.taskID = id

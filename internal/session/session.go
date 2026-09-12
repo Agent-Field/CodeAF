@@ -1704,6 +1704,20 @@ type Config struct {
 	// gets, which is what lets pressure drain instead of having to be relieved.
 	TaskMinFreeMB int
 
+	// TaskLanes is THE ACCOUNT OF THIS MACHINE'S RUNNING TASK LANES, shared by
+	// every conversation this process opens ([NewTaskLanes]). The memory half
+	// of the reading above is `treeResidentMB(os.Getpid())` — this process and
+	// every descendant it started — and /proc cannot say which conversation
+	// started which compiler, so the count that reading is divided by has to
+	// cover the same work: every lane the process is running, not one graph's
+	// (task_pressure.go's ONE ACCOUNT FOR THE WHOLE PROCESS, #907).
+	//
+	// The process's own door sets it once and hands the same pointer to every
+	// conversation (cmd/aforge). Left nil, a graph is ALONE IN ITS PROCESS and
+	// keeps an account of its own — which is the truth for an embedder with one
+	// conversation, and for every scripted graph in the tests.
+	TaskLanes *TaskLanes
+
 	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
 	// than the conversation. It changes exactly two things, and both are
 	// consequences of the same fact — there is nobody to talk to:

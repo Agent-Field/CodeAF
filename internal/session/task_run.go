@@ -989,6 +989,15 @@ type TaskGraph struct {
 	order   []uint64
 	seq     uint64
 	running int
+	// lanes is the account of running lanes this graph shares with every other
+	// graph of the same running aforge ([Config.TaskLanes]), written through
+	// [TaskGraph.takeLaneLocked] and [TaskGraph.giveLaneLocked]. The governor's
+	// reading is of the whole process tree, so the count it divides that
+	// reading by has to cover the same work (task_pressure.go's ONE ACCOUNT FOR
+	// THE WHOLE PROCESS, #907). A graph that was handed none gets one of its
+	// own from [newTaskGraph] and is alone in its process, which is the truth
+	// about a lone embedder and about every scripted graph in the tests.
+	lanes *TaskLanes
 
 	// quickGate serialises the ADMISSION of quick nodes, and it is the one lock
 	// in this file that is not `mu` (task_quick.go).
@@ -1173,7 +1182,12 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 }
 
 func newTaskGraph() *TaskGraph {
-	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1)}
+	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
+	// that knows several conversations share one machine says so by putting its
+	// own account on their Config ([Config.TaskLanes], read in [Agent.graph]
+	// and [standingWideWork]); until then the only lanes this graph's reading
+	// can be divided by are its own.
+	return &TaskGraph{nodes: make(map[uint64]*TaskNode, 1), lanes: NewTaskLanes()}
 }
 
 // graph is the session's graph, built on first use. Most conversations never
@@ -1200,6 +1214,11 @@ func (a *Agent) graph() *TaskGraph {
 		// mid-run would be a run whose rules changed under it.
 		graph.limit = a.config.TaskParallel
 		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
+		// AND THE MACHINE'S OWN ACCOUNT, if this process opened more than one
+		// conversation onto the same machine (task_pressure.go, #907).
+		if a.config.TaskLanes != nil {
+			graph.lanes = a.config.TaskLanes
+		}
 		// The checkpoint is per-journal, so a session with no file gets a graph
 		// with no disk behind it rather than a session that refuses to run tasks
 		// (task_store.go).
@@ -1500,7 +1519,7 @@ func (g *TaskGraph) runFrontier() {
 		// node is about to send carries no reason to be waiting.
 		node.held = ""
 		if node.takesSlot() {
-			g.running++
+			g.takeLaneLocked()
 		}
 		// THE NODE'S CONTEXT IS MADE HERE, IN THE SAME HOLD OF THE LOCK THAT
 		// MARKED IT RUNNING, and not inside the goroutine below. That is what
@@ -1600,19 +1619,50 @@ func (g *TaskGraph) holdOnStartingLocked(node *TaskNode, ready bool) string {
 		return ""
 	case g.limit > 0 && g.running >= g.limit:
 		return waitingSlot
-	case !g.governor.admits(g.running):
+	case !g.governor.admits(g.lanes.running()):
 		return waitingMachineBusy
 	}
 	return ""
 }
 
-// lanesTaken is how many slot-taking nodes are running, read for the one
-// reader that must have it outside the lock: the governor's reading, which
-// learns what one node weighs from the memory the running ones hold.
+// lanesTaken is how many slot-taking nodes THE WHOLE PROCESS is running, read
+// for the one reader that must have it outside the lock: the governor's
+// reading, which learns what one lane weighs from the memory the running ones
+// hold. It is the process's and not this graph's because the memory in that
+// reading is the whole process tree's and no conversation can be told apart
+// from another inside it (task_pressure.go, #907).
 func (g *TaskGraph) lanesTaken() int {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.running
+	return g.lanes.running()
+}
+
+// takeLaneLocked records one lane taken by this graph, and it is THE ONLY
+// PLACE `g.running` RISES. Two counts move together here and nowhere else:
+// this graph's, which is what the person's task.parallel cap is measured
+// against, and the process's, which is what the machine reading is divided by.
+// A start written to one and not the other is the attribution gap #907 closed,
+// reopened by hand.
+//
+// The lock is the caller's, as the name says, and the account's own lock is
+// taken under it — always that way round, never the other (see [TaskLanes]).
+func (g *TaskGraph) takeLaneLocked() {
+	g.running++
+	g.lanes.take()
+}
+
+// giveLaneLocked hands one lane back, and it is THE ONLY PLACE `g.running`
+// FALLS. A graph holding none hands nothing back: the counts would otherwise
+// drift below what is really running, and the process's account is shared, so
+// this graph's arithmetic slip would be every other conversation's fan.
+//
+// The lock is the caller's. WHETHER a lane is owed back at all is the caller's
+// question too — a parked node, a node that takes no slot — because this door
+// is about keeping the two counts in step and not about who may hold one.
+func (g *TaskGraph) giveLaneLocked() {
+	if g.running <= 0 {
+		return
+	}
+	g.running--
+	g.lanes.give()
 }
 
 // armPoll sets the one clock this scheduler has.
@@ -1997,8 +2047,8 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 		node.parked = false
 		return
 	}
-	if g.running > 0 && node.takesSlot() {
-		g.running--
+	if node.takesSlot() {
+		g.giveLaneLocked()
 	}
 }
 
@@ -4902,9 +4952,7 @@ func (g *TaskGraph) park(node *TaskNode) {
 	// flag, so that no reader can ever see the flag of one park beside the
 	// number of another (see [TaskNode.parkGen]).
 	node.parkGen++
-	if g.running > 0 {
-		g.running--
-	}
+	g.giveLaneLocked()
 	g.mu.Unlock()
 	// AND THE ROW SAYS SO. A hold is not a state — nothing about this node moved —
 	// so it travels as [TaskNotice.Waiting] on an update of its own, exactly as a
@@ -4943,7 +4991,7 @@ func (g *TaskGraph) unpark(node *TaskNode) {
 		return
 	}
 	node.parked = false
-	g.running++
+	g.takeLaneLocked()
 	g.mu.Unlock()
 	// A hold ENDING is news the same way a hold starting is, and the row would
 	// otherwise wear "waiting · its parts" until whatever this node does next
