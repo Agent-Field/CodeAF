@@ -233,14 +233,24 @@ func TestNothingHoldingTheWorkspaceIsNotARefusal(t *testing.T) {
 }
 
 // Protocol compatibility cannot establish that a daemon includes today's fixes.
+// The host goes — and the person is TOLD it was an older build that went,
+// because a window that opens on the fresh build without a word leaves whoever
+// was reading the old one to debug a fix that simply had not reached it yet.
 func TestASameProtocolHostOfAnotherBuildIsRetired(t *testing.T) {
 	for _, stamp := range []string{"previous-build", ""} {
 		t.Run(stamp, func(t *testing.T) {
 			shortEngineHome(t)
 			workspace := "/home/somebody/api"
 			standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: stamp}, false)
-			if _, err := clearStaleEngineHost(workspace); err != nil {
+			note, err := clearStaleEngineHost(workspace)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if !strings.Contains(note, "older aforge") {
+				t.Fatalf("the notice did not say it was an older build: %q", note)
+			}
+			if !strings.Contains(note, "picked up this build") {
+				t.Fatalf("the notice did not say it is current now: %q", note)
 			}
 			if conn, err := enginehost.Dial(workspace); err == nil {
 				_ = conn.Close()
@@ -329,6 +339,38 @@ func TestASameProtocolBusyOlderBuildIsAttachedToAndSaysSo(t *testing.T) {
 		t.Fatalf("busy host was stopped: %v", err)
 	}
 	_ = conn.Close()
+}
+
+// A HOST ONE BUILD BEHIND, HOLDING ONLY AN IDLE CONVERSATION, IS STILL NAMED.
+// This is the ghost the notice exists for: the turn had finished and the person
+// had stepped away, so the host was not busy — and before, it was asked to go,
+// went, and the window opened on the fresh build WITHOUT A WORD. The person was
+// never told the engine answering them had been a build behind, so they debugged
+// a fix that had simply not reached the conversation yet. The notice says which
+// build was answering and that it is current now.
+func TestASameProtocolIdleOlderBuildIsRetiredAndSaysSo(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	// Busy is false: the conversation is being kept warm, nothing is running.
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "previous-build", Busy: false}, false)
+	note, err := clearStaleEngineHost(workspace)
+	if err != nil {
+		t.Fatalf("an idle host on this wire was refused: %v", err)
+	}
+	if !strings.Contains(note, "older aforge") {
+		t.Fatalf("the notice did not say it was an older build: %q", note)
+	}
+	if !strings.Contains(note, "picked up this build") {
+		t.Fatalf("the notice did not say it is current now: %q", note)
+	}
+	if strings.Contains(note, "--stop") {
+		t.Fatalf("the notice still sends somebody off to stop their own work: %q", note)
+	}
+	// AND IT WENT: the fresh host is what the next connection starts.
+	if conn, err := enginehost.Dial(workspace); err == nil {
+		_ = conn.Close()
+		t.Fatal("the idle older host was still answering")
+	}
 }
 
 // AND A DIFFERENT WIRE STILL IS REFUSED, busy or not: there is no attaching to a

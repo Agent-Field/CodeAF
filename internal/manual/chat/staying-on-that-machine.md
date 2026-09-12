@@ -393,6 +393,27 @@ for `aforge engine` itself. The reason to type it is that a connection told you 
 refusals about an older aforge still holding a machine name this command (*Running on
 another machine*).
 
+## Rebuilt aforge but your conversation was still on the old engine — how aforge tells you
+
+A plain `aforge` does not run your conversation inside the window — the session host does,
+in a process of its own, so it survives the terminal closing. That process also outlives the
+build that started it. Rebuild with `make build` while a host is holding a conversation and
+the host of the **older** build keeps answering until it is holding nothing — a turn still
+running, a card waiting for you — and then retires, so the next window opens on the build
+now on disk.
+
+You are told, once, on the way in, which state the machine was in:
+
+- **It was still holding work** — `the engine on <machine> is an older aforge and is still
+  holding work — it picks up this build the moment it goes quiet`.
+- **It was only keeping your conversation warm** (the turn had finished and you had stepped
+  away) — `the engine on <machine> was an older aforge holding this conversation — it has
+  picked up this build`.
+
+Both are the same fact at two moments: the build you installed was not the one answering
+until now, so a fix you expected may simply not have reached the conversation you were
+reading yet. Nothing is owed in either case — the older build steps aside on its own.
+
 ## What still does not work, even though the session stays open
 
 Two things.

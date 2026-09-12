@@ -234,6 +234,15 @@ func clearStaleEngineHost(workspace string) (string, error) {
 // back one line for the entry notice saying which state the machine is in. A
 // DIFFERENT wire version keeps the refusal it has always had, because there is
 // no attaching to a peer whose frames this build cannot read.
+//
+// AND THE NOTICE IS OWED WHENEVER THE OLDER BUILD IS THE ONE ANSWERING, not only
+// when it is holding work. It used to speak only for a busy host: a host whose
+// conversation had gone quiet — the turn finished, the person stepped away — was
+// asked to go, went, and the window opened on the fresh build WITHOUT A WORD, so
+// the person whose rebuild had not yet reached the conversation they were
+// reading was never told which build they had been talking to. That is the ghost
+// this line exists to name: whatever the older build was holding, the person is
+// told it was an older build, and told it is gone the moment it lets go.
 func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 	host, err := enginehost.Ask(workspace, remote.WhoIs{})
 	switch {
@@ -253,12 +262,21 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 	// Another build, and it is answering, so it can be asked to go.
 	if err := enginehost.Retire(workspace, false); err != nil {
 		if errors.Is(err, enginehost.ErrHostBusy) && host.Version == remote.Version {
-			return busyEngineHostSentence(), nil
+			return busyEngineHostSentence(host.Busy), nil
 		}
 		if errors.Is(err, enginehost.ErrHostBusy) {
 			return "", &staleHost{reason: staleEngineHostSentence(true)}
 		}
 		return "", &staleHost{reason: staleEngineHostSentence(false)}
+	}
+	// IT WENT, and it went without a fight: whatever it was holding, it was
+	// holding nothing that could not be let go. The window opens on the fresh
+	// host either way — but it was the OLDER build answering until this moment,
+	// and a person whose rebuild had not reached the conversation they were
+	// reading deserves to be told so. A DIFFERENT wire keeps its silence: there
+	// the refusal above already said the machine was behind.
+	if host.Version == remote.Version {
+		return olderEngineHostSentence(host.Busy), nil
 	}
 	return "", nil
 }
@@ -284,16 +302,41 @@ func staleEngineHostSentence(busy bool) string {
 }
 
 // busyEngineHostSentence is the one line a person reads when their conversation
-// comes back on a host that is one build behind. It is [staleEngineHostSentence]'s
-// voice and its opposite in every other way: nothing is wrong, nothing is owed,
-// and the sentence exists so a surface never quietly runs against a binary that
-// is not the one on disk.
-func busyEngineHostSentence() string {
+// comes back on a host that is one build behind and could not be let go of yet.
+// It is [staleEngineHostSentence]'s voice and its opposite in every other way:
+// nothing is wrong, nothing is owed, and the sentence exists so a surface never
+// quietly runs against a binary that is not the one on disk.
+//
+// IT NAMES WHAT IS ACTUALLY HELD. busy is the host's own answer, and it is the
+// difference between a turn still running and a conversation that is only being
+// kept warm — the two are not the same ghost, and the person being told deserves
+// to know which one is between them and the rebuild.
+func busyEngineHostSentence(busy bool) string {
 	name := remote.MachineName()
 	if strings.TrimSpace(name) == "" {
 		name = "this machine"
 	}
-	return fmt.Sprintf("the engine on %s is an older aforge and is still holding work — it picks up this build the moment it goes quiet", name)
+	if busy {
+		return fmt.Sprintf("the engine on %s is an older aforge and is still holding work — it picks up this build the moment it goes quiet", name)
+	}
+	return fmt.Sprintf("the engine on %s is an older aforge — it is holding this conversation and picks up this build the moment you leave it", name)
+}
+
+// olderEngineHostSentence is the same notice for the host that went quietly: an
+// older build was answering until the moment this window arrived, and it has
+// already stepped aside. Nothing is owed and nothing is still pinned — the
+// sentence exists so a person whose rebuild had not yet reached the conversation
+// they were reading is told which build they had been talking to, rather than
+// finding it out by the fix not being there.
+func olderEngineHostSentence(busy bool) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "this machine"
+	}
+	if busy {
+		return fmt.Sprintf("the engine on %s was an older aforge until just now — it has picked up this build", name)
+	}
+	return fmt.Sprintf("the engine on %s was an older aforge holding this conversation — it has picked up this build", name)
 }
 
 // runEngineStop is `aforge engine --stop`: whatever is holding this workspace

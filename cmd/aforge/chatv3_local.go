@@ -213,6 +213,14 @@ func openChatV3Local(launch localLaunch) error {
 	correctHostChoices(agent, hostLaunch{model: launch.model, level: launch.level}, welcome)
 
 	if launch.once != "" {
+		// A HEADLESS MESSAGE HAS NO TRANSCRIPT TO CARRY THE NOTICE. The stale-host
+		// line the dial left ([localLink.said]) is joined into the surface's entry
+		// notice below, and --once never opens a surface — so it goes to stderr,
+		// the channel a scripted caller reads, leaving stdout to the answer alone
+		// (the same split engine.go makes between the protocol and the person).
+		if said := link.said(); said != "" {
+			fmt.Fprintln(os.Stderr, said)
+		}
 		return runHostOnce(agent, launch.once)
 	}
 	// ANOTHER CONVERSATION IS ANOTHER CONNECTION TO THE SAME HOST, on the same
