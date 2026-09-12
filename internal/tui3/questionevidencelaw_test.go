@@ -56,6 +56,36 @@ func TestAnAnswersCaseIsSpelledInOnePlace(t *testing.T) {
 	}
 }
 
+// THE SAFE ANSWER IS MARKED BY ONE PREDICATE, AND SPELLED IN ONE PLACE.
+//
+// A question's refusal is drawn in two places — a panel's own answer rows
+// ([app.questionPanelOption]) and the `deny all` row of a permission frame
+// ([app.questionGroupRows]) — and for a while each decided FOR ITSELF whether to
+// mark it. The panel asked `option.Safe && questionHandsOnly(q) && q.Pick ==
+// nil`; the frame asked whether its pointer was on the row, and then asked
+// nothing at all. Both spellings drifted from the panel's within one pull
+// request of being written, and the second drifted in the direction that matters
+// most: `2 one by one` opens a frame's own members as tabs, so a frame marking a
+// row those tabs leave bare changed what the surface claimed about the same four
+// questions between one keystroke and the next.
+//
+// So [questionSafeWord] is READ in questionpanel.go and nowhere else, behind
+// [app.questionSafeAside], and whether to draw it is [questionMarksSafe] — over
+// one question, or folded by [questionSetMarksSafe] over a set. A third drawing
+// of a question has to come through them, and cannot quietly invent a third
+// rule about when a person is told where their way out is.
+func TestTheSafeAnswerIsMarkedByOnePredicate(t *testing.T) {
+	uses := questionIdentUses(t, []string{"questionSafeWord"})
+	for _, file := range uses["questionSafeWord"] {
+		if file != "questionpanel.go" {
+			t.Errorf("%s reads questionSafeWord: the mark is spelled through questionSafeAside "+
+				"in questionpanel.go and nowhere else, and whether it is drawn is questionMarksSafe "+
+				"(questionSetMarksSafe over a set), so every drawing of a question agrees about "+
+				"when a person is told which answer loses nothing", file)
+		}
+	}
+}
+
 // questionIdentUses maps each named identifier to the files (by base name) that
 // USE it — a declaration of the name is not a use.
 func questionIdentUses(t *testing.T, names []string) map[string][]string {

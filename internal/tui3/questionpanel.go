@@ -68,6 +68,32 @@ const (
 	questionPanelGap = " "
 )
 
+// questionMarksSafe reports whether this question's answer that loses nothing
+// should say so on its row.
+//
+// THE SAFE ANSWER SAYS SO WHERE THERE IS NO PICK. A question nobody but a person
+// may answer has no recommendation by law ([questionHandsOnly]), and the pointer
+// standing on one answer with nothing saying why reads as the surface having
+// chosen. Where the asker DID pick, the pick's own `◆ recommended` is what says
+// why, and a second aside on another row would be two answers each claiming the
+// pointer.
+//
+// IT IS THE ONE PREDICATE BEHIND EVERY DRAWING OF THE MARK, over a single
+// question and — folded by [questionSetMarksSafe] — over a permission frame.
+// The two were spelled apart for a while, and the frame marked `deny all` on
+// sets whose own tabs would not mark anything, so `2 one by one` changed what
+// the surface claimed about the same four questions.
+func questionMarksSafe(q session.Question) bool {
+	return questionHandsOnly(q) && q.Pick == nil
+}
+
+// questionSafeAside is the mark itself, and the ONLY reading of
+// [questionSafeWord] in this package — a law test holds that, so a new drawing
+// of a question cannot spell the mark on terms of its own.
+func (a *app) questionSafeAside() string {
+	return a.pal.dim(questionSafeWord)
+}
+
 // questionPanelRows draws one question as the panel, and records where its
 // answers landed for the pointer.
 //
@@ -598,12 +624,8 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 	switch {
 	case picked:
 		aside = a.pal.warnBold(a.icon(tokens.GRecommended)) + a.pal.dim(" "+questionRecommendedWord)
-	case option.Safe && questionHandsOnly(q.question) && q.question.Pick == nil:
-		// THE SAFE ANSWER SAYS SO WHERE THERE IS NO PICK. A question nobody but a
-		// person may answer has no recommendation by law ([questionHandsOnly]),
-		// and the pointer standing on one answer with nothing saying why reads as
-		// the surface having chosen.
-		aside = a.pal.dim(questionSafeWord)
+	case option.Safe && questionMarksSafe(q.question):
+		aside = a.questionSafeAside()
 	}
 	rows := a.questionPanelRow(q, key, tick, word, say, aside, pad, room, focused, a.questionHovering(hover, at))
 	if !focused || under == questionBeside || under == questionRowOnly {

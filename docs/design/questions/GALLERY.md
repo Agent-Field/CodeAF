@@ -244,10 +244,14 @@ leaves its own receipt.*
 
 ![four reads in one batch](screens/four-reads-in-one-batch-are-one-permission-frame-raised.png)
 *Four `read` calls the model asked for in one message are ONE frame: a row per thing
-wanted, then `allow all 4 · one by one · deny all`. The pointer opens on `deny all` and
-says `safe answer` — every permission opens on the answer that loses nothing until the
-calls are graded (#953). There is no lifetime row: a consent's answer scope never reaches
-the gate, so the frame offers only what it can honour.*
+wanted, then `allow all 4 · one by one · deny all`. There is no lifetime row: a consent's
+answer scope never reaches the gate, so the frame offers only what it can honour.*
+
+*This screen was captured BEFORE the gate graded its calls, and its pointer shows it. The
+frame opens where the members' own pointers would, so now that #953 grades them four reads
+are ordinary and it opens on `allow all 4`; a frame holding one call nobody graded still
+opens on `deny all`. `deny all` says `safe answer` wherever the pointer stands — the frame
+forms only where every member has an answer that loses nothing, and the row is it.*
 
 ![one by one](screens/four-reads-in-one-batch-are-one-permission-frame-one-by-one.png)
 *`2`. The same four open as tabs, each with its own keys, so a person who wants to read
