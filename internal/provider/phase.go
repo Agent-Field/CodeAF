@@ -281,6 +281,33 @@ func (n PhaseNews) Waiting() bool {
 	return false
 }
 
+// ControllerActed reports whether this phase is the controller having spoken:
+// the wait said out loud with nowhere better to go, the pace reported on a wire
+// that is writing too slowly to read, or a rescue started — to another lane or
+// to another model. Those four are the phases the controller produces rather
+// than the stream, so they are the ones a test can hold a first word against
+// with the certainty that acting differently trips them.
+//
+// IT IS A DIFFERENT QUESTION FROM [PhaseNews.Waiting], and a phase can carry
+// both. Waiting is what a person sits through; this is what this build DID
+// about it. PhaseFirstWord is a wait nobody has acted on yet, PhaseRetrying is
+// the relax ladder and not the router, and PhaseAsking is the controller
+// deciding NOT to act until a person answers — so none of the three belongs
+// here.
+//
+// THE LIST LIVES HERE AND NOWHERE ELSE. It used to be spelled out by hand in
+// the hedge fixture that waits on it, and a phase added or a rung renamed left
+// that copy silently short (#970): the failure showed up as a lane holding its
+// first word until the test's deadline, which names nothing. Beside the
+// constants, a new rung is written next to the question it answers.
+func (n PhaseNews) ControllerActed() bool {
+	switch n.Phase {
+	case PhaseAllSlow, PhaseBelowPace, PhaseSwitching, PhaseSwitchingModel:
+		return true
+	}
+	return false
+}
+
 var (
 	phaseMu     sync.RWMutex
 	phaseReader func(PhaseNews)
