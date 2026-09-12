@@ -7840,13 +7840,14 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 // stand the working copy in and a branch to cut.
 //
 // IT IS SEPARATE FROM [cutTaskWorktree] SO THAT THERE IS ONE WORKTREE ROAD AND
-// NOT TWO. A node's tree is named from its id under the session's trees/; the
-// conversation's own standing tree on a referred folder is named from that
-// folder (standingtree.go) and must NEVER land in the id space a node counts
-// through, or the reclaim below — which is safe precisely because the only
-// thing that can be sitting at a node's path is that node's own wreckage —
-// would be clearing out a live working copy. Everything else about a worktree
-// is identical for both, so everything else is here.
+// NOT TWO. A node's tree is named from its id under the session's trees/, and
+// the reclaim below is safe precisely because the only thing that can be sitting
+// at a node's path is that node's own wreckage — so any future caller that cuts
+// a worktree for something OTHER than a node must name it outside the id space a
+// node counts through, or the reclaim would clear out a live working copy. (The
+// conversation's own copy of a referred folder was exactly such a caller until
+// 2026-09-12; the chat edits the folder itself now and cuts nothing.) Everything
+// else about a worktree is identical for every caller, so it is here.
 func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (taskTree, error) {
 	return cutWorktreeFrom(place, root, dir, branch, mode, "HEAD")
 }

@@ -103,6 +103,19 @@ stays the only decider; `resolveTaskGround` stays the only place the decision is
 
 **Where you stand, you write. Where you refer, work is staged and landed.**
 
+> **SUPERSEDED 2026-09-12 — the standing tree was removed.** Everything below about
+> the conversation writing through a tree, the `changes for … · /land` line and the
+> landing card describes machinery that no longer exists. The chat edits the referred
+> folder ITSELF; only TASKS get trees. The copy was aimed by a `path` argument, so it
+> covered `read`/`write`/`edit` and not `bash`, `grep`, `find` or `ls` — on the measured
+> turn that ended it, 27 of 62 calls were `bash` in the person's real repository while
+> six edits went into the copy — and it was cut at one commit and never refreshed, so
+> the landing refused as soon as the model ran `git pull`. What stands in its place is
+> ONE approval card naming the folder, through the gate that already asks
+> (`internal/session/folderconsent.go`), and git as the undo. The mode paragraph below
+> still holds, but it is now a fact about how a TASK stands in that folder, not about
+> what the conversation writes. See `docs/changes/unreleased/990-chat-edits-the-real-folder.md`.
+
 - In the standing place, the conversation edits directly, exactly as today. A person who
   opened aforge inside their project loses nothing and notices nothing.
 - Aimed at a referred place, writes go through a tree cut ON that place — a worktree off

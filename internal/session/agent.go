@@ -336,12 +336,18 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// composition rule lives in one place. The agent is not reachable yet, so the
 	// lock it takes is uncontended.
 	agent.keepAttached()
-	// AND THE WORK THAT HAS NOT LANDED YET. A conversation closed with changes
-	// waiting in its own copy of a folder comes back holding them, and the
-	// composer's chip says so again (standingtree.go). A record whose copy is no
-	// longer on disk is dropped on the way in, so what is read back is what can
-	// actually be landed.
-	agent.trees = loadStandingTrees(config.Place.Dir)
+	// AND THE FIRST READING OF GIT'S OWN STATE IS STARTED NOW, so that the FIRST
+	// turn of a conversation already knows its branch rather than the second one
+	// (gitfacts.go). It starts a reading and folds nothing in — there is nothing
+	// to fold yet — and the agent is not reachable, so the lock is uncontended.
+	// [worthAHeadStart] is what keeps this off every task node and every test
+	// agent: a reading is a subprocess, and this constructor runs thousands of
+	// times for agents that will never render a `# Project` anybody reads.
+	if worthAHeadStart(config) {
+		agent.mu.Lock()
+		agent.refreshGitLocked(time.Now())
+		agent.mu.Unlock()
+	}
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named
 	// by the same string, and a memory-only session has the one this constructor
@@ -1623,6 +1629,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// hold now, and an order stood up while this conversation was open is not
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
+	// AND WHAT GIT SAYS ABOUT THIS PROJECT AND THE ONES ATTACHED TO IT, on the
+	// same trigger and for the same reason: a turn about to change a repository
+	// must not have to spend a shell command discovering which branch it is on.
+	// The reading was taken beside the last turn and is folded in here without a
+	// wait of any kind (gitfacts.go).
+	a.refreshGitLocked(time.Now())
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub

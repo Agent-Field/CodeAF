@@ -247,25 +247,35 @@ type Meta struct {
 	// the conversation touched is in the transcript, and this is the answer
 	// already worked out from it.
 	Places []PlaceRef `json:"places,omitempty"`
-	// Trees is the working copies this conversation holds of those folders, and
-	// what has been written into each that the folder itself does not have yet
-	// (standingtree.go).
+	// TreesLegacy is the working copies a conversation held of folders it only
+	// REFERRED to, written by every build before 2026-09-12 and by none since
+	// (folderconsent.go holds the account of why that machinery went).
 	//
-	// IT IS THE ONE THING IN THIS FILE THAT IS NOT A CITATION. Everything else
-	// here is recoverable by looking again — the workspace, the model, what the
-	// talking cost. Unlanded work is recoverable from nowhere, so this is
-	// written the moment it changes and read back at open, and a conversation
-	// closed with changes waiting comes back still holding them.
-	//
-	// An absent field is a conversation that has written nothing outside the
-	// folder it stands in, which is every conversation until one does.
-	Trees []StandingTree `json:"trees,omitempty"`
+	// NOTHING WRITES IT AND EXACTLY ONE THING READS IT: the sweep, so that the
+	// `git worktree` registrations and `chat/…` branches those copies left in
+	// PEOPLE'S OWN REPOSITORIES are still taken back when the conversation that
+	// made them is reaped. Deleting the field outright would have made every one
+	// of them permanent litter in somebody's project, which is the exact failure
+	// the wave that removed the copy was closing. It round-trips through a stamp
+	// so an old conversation keeps its record until it is reaped, and it can be
+	// deleted once no meta.json anywhere still carries a `trees` key.
+	TreesLegacy []LegacyTree `json:"trees,omitempty"`
 	// Archived marks a conversation somebody PUT AWAY from home's resting
 	// list: it leaves its project's block and gathers under home's one folded
 	// archive line, reachable there and still found by search. It is the
 	// person's own act (home's `e`) and its own undoing — nothing automatic
 	// ever sets or clears it, and nothing else about the session changes.
 	Archived bool `json:"archived,omitempty"`
+}
+
+// LegacyTree is one of those copies, in the only three facts taking it back
+// needs: where the copy is, which repository it was cut from, and the branch it
+// was cut onto. Every other field those records carried described work that had
+// not landed, and there is nothing left that could land it.
+type LegacyTree struct {
+	Dir    string `json:"dir"`
+	Root   string `json:"root"`
+	Branch string `json:"branch"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

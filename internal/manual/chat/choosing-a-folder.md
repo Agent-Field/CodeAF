@@ -447,129 +447,108 @@ own status line stay exactly as they were.
 
 ## Where edits go — the folder you are standing in, and the ones you chose
 
-Two rules, and they are the whole of it.
+One rule, and it is the whole of it: **the folder is edited.** A write is a write. The file
+on disk changes the moment the model writes it — in the folder you started aforge in, and
+in every folder you chose with `/folder` or `/attach`. There is no copy, nothing is held
+back, and there is nothing to put in afterwards.
 
-- **The folder you started aforge in is edited directly.** A write is a write; the file on
-  disk changes the moment the model writes it. Nothing about that has changed.
-- **A folder you chose is not.** Edits aimed there are kept for this conversation — you
-  see `changes for <name> · 3 files · /land` above the message box — and your own copy of
-  that folder does not move until you run `/land`. For a repository that is a branch taken
-  from its current commit; for a plain folder it is a copy of it.
+`bash` is not an exception any more, because there is nothing for it to be an exception to.
+A shell command runs in the folder you are standing in and touches whatever it names,
+exactly as it always did, and so do `read`, `write` and `edit`. All seven hands see the
+same disk you do.
 
-So choosing a folder is cheap and safe to get wrong: nothing reaches it until you have
-been shown what changed and said so. See `## /land` below.
+**A change in a folder you chose asks you, and the answer is about the folder.** Before
+anything is written under a folder you attached, you get the ordinary approval card, and
+its reason names that folder: `a change in /Users/you/code/notes — the folder itself, not
+a copy`.
 
-`bash` is the exception, and it is worth knowing: a shell command runs in the folder you
-are standing in and touches whatever it names, including files in a folder you chose. Only
-the model's `read`, `write` and `edit` go through the copy.
+Which key you press decides how long the answer lasts, exactly as it does on any other
+card. A plain yes runs this one call. The **always** key banks it against **the folder** —
+so `bash` in that folder is covered too, which an answer about `edit` could never do — and
+nothing in that folder asks again for the rest of the conversation. A new conversation
+asks again, and `/permissions` is where you take a standing yes back.
 
-**The copy is made the moment you choose the folder, not the first time something
-is written** — unless you said to work in the folder directly, or it is the
-folder you are standing in, and then there is never a copy at all. You may see
-one dim line while it happens — `preparing · a working copy of <folder>` — which
-is a branch being taken or, for a plain folder, a copy being made. It runs while
-you are reading your own screen, so by the time the model writes anything it is
-already there. It used to be made inside that first write instead, which is why
-an edit into a large repository used to sit for seconds with nothing on screen
-to say why.
+Two things that answer does **not** buy, both deliberate:
 
-Saying "work in it directly" always wins, even said afterwards. Because a folder
-has to be chosen before you can say anything about it, the copy has usually
-already been taken by then — so it is given back: the branch and the working copy
-go, and the folder is edited directly from that moment. The giving back happens
-beside you rather than while you wait, so it can take a second or two longer than
-the reply; nothing waits on it, because the next write already goes where you
-said.
+- A shell command that would destroy something — the critical ones — still asks, wherever
+  it is aimed. Agreeing that aforge may change your folder is not agreeing to `rm -rf` in
+  it.
+- Nothing is asked at all if you set `tools.approvalMode` to `allow`, or started with
+  `--yolo`. That setting means "stop asking me", and it means it here too.
 
-**A copy that holds anything at all is never given back.** Not only what the
-model's `write` and `edit` put there — a file a shell command made, something a
-script left, a change a task working in that copy committed, all of it counts.
-The copy is kept exactly where it is, its branch with it, and
-`changes for <name> · /land` still leads to it; only the folder you write into
-from then on changes. For a repository, git itself is asked and a copy it will
-not part with is kept; for a plain folder, the copy is compared with the folder
-it was made from.
+**Your own folder is the undo.** Because the change is in the folder, it is in your git
+working tree: `git diff` shows it, `git checkout --` throws it away, `git stash` puts it
+aside. That is the same undo you already use for your own edits, and it is why nothing
+here keeps a second copy for you.
 
-If the copy cannot be made at all, nothing is refused: the write goes to the real
-folder, exactly as it would have before you chose one.
-
-## /land — merge what you did into my folder, put the changes in, land the work, I committed or rebased before landing
-
-`/land` on its own shows what is waiting and moves nothing:
-
-```
-changes for agentfield · 2 files · shared.txt, notes.md · type /land now to put them in
-```
-
-`/land now` is what actually puts them in, and says so:
-
-```
-agentfield now has the changes · 2 files
-```
-
-For a repository the work is committed on a branch of its own, and merged into your
-checkout only where aforge is willing to write it — your uncommitted changes are left
-alone, and if the merge cannot settle you get `could not put it all into agentfield ·` and
-the sentence naming the files that clashed, with the branch kept so nothing is lost.
-
-**Where your checkout is on a protected branch, the branch is kept instead and your
-checkout is not touched.** `main`, `master`, `dev`, `develop`, `development`, `staging`,
-`stage`, `trunk`, `production`, `prod`, `release` and any remote's default branch are never
-merged into by automatic task landing. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
-kept: your checkout is on dev, which tasks do not merge into automatically`
-— and it is not a failure: the work is finished and on that branch, and `git merge` takes
-it whenever you want it. The same keep happens when you are on a different branch than when
-the work was cut, when you moved that branch to another commit yourself after the cut, or
-when you are on no branch at all. Commits written by aforge's own landings do not count as
-you moving it. For a plain folder the files are copied back over it by name, **whole or not
-at all**: if any one of them cannot be placed, your folder is
-left exactly as it was and you get `could not put it all into agentfield ·` with the reason.
-The changes stay waiting, so `/land` is still there to try again once the way is clear.
-
-With more than one folder waiting, `/land` asks which: `changes are waiting for agentfield
-and notes · say which one · /land agentfield`. Then `/land agentfield now`.
-
-**A folder lands whole.** There is no way to land some of the files and keep the rest
-today — you either put the folder's changes in or leave them waiting.
+**What aforge can miss.** The card fires on a call that names the folder — a path argument
+under it, or the folder's path written into a shell command. A command that reaches your
+folder by a name this program cannot resolve — through a symlink, or a shell variable the
+command expands for itself — is not recognised as being about that folder and is judged by
+your ordinary approval settings instead, which in the shipped setting still ask you about
+every `bash` call.
 
 ## Work in a folder directly, without keeping the changes aside
 
-Say so in your own words — "work in ~/code/notes directly", "edit it in place", "just
-change it there". That is remembered for that one folder, and from then on writes aimed at
-it change the folder itself immediately, exactly like the folder you are standing in.
-Nothing guesses this; it is only ever set because you said it.
+Every folder is worked in directly now, so there is nothing to turn on. Saying "work in
+`~/code/notes` directly", "edit it in place" or "just change it there" is still understood
+and still remembered for that folder — it says how a **task** given that folder stands in
+it, whether it gets a working copy of its own or edits the folder — but it no longer
+changes anything about what the conversation itself writes. The conversation writes in the
+folder either way.
 
 ## Where did my changes go — the folder still looks unchanged
 
-If the model edited files in a folder you chose with `/folder` and that folder still looks
-exactly as it did, nothing is broken: the changes are waiting for this conversation, and
-the row above the message box says so — `changes for agentfield · 3 files · /land`. Run
-`/land` to see what they are and `/land now` to put them in.
+They are in the folder. A write reaches the file the moment it happens, so if the folder
+looks unchanged, nothing was written there — look at what the reply said it did, and at
+`git status` in that folder.
 
-The folder you are standing in is the other case entirely: writes there landed the moment
-they happened, and there is nothing waiting.
+Nothing is held anywhere waiting to be put in, and there is no command that puts it in. If
+you are looking for one, see the section below.
+
+## /land, merge what you did into my folder, put the changes in, land the work — there is no copy and nothing to merge
+
+**`/land` is gone, and so is the thing it was for.** There is no command by that name any
+more; typing it gets `there is no command called /land · / lists them`.
+
+Until 2026-09-12 a folder you chose got a working copy of its own — a git branch off its
+current commit, or a copy of the directory — and the model's `read`, `write` and `edit`
+were quietly aimed into it. `/land` showed you what was in it and merged it into your
+folder, and a row above the message box said `changes for <name> · 3 files · /land` while
+something was waiting.
+
+It was removed because it was only ever half true. `bash` was never aimed into the copy,
+and neither were `grep`, `find` and `ls` — so a turn that ran `git pull`, made a branch and
+built the project did all of that in your real repository while its edits went somewhere
+else. The copy was taken at one commit and never moved, so the merge refused as soon as the
+model pulled; and what it left behind was stray branches in your project.
+
+So there is nothing to merge now: **the change is already in your folder**, and your own
+`git diff`, `git checkout --` and `git stash` are the tools for it. What replaced the copy
+is one question asked before the first change in each folder you attached — see *Where
+edits go* above.
 
 ## You changed my files? — what has actually reached my folder
 
-Only two things ever change a file on disk without you saying anything more:
+Yes — that is what it does now, and it asked you first.
 
-- a write in **the folder you started aforge in**, which is direct and always has been;
-- a `bash` command, which runs there and touches whatever it names.
-
-Everything the model writes for **a folder you chose with `/folder`** is kept aside until
-you run `/land`. So a folder you chose is untouched until the moment you say so, and you
-are shown the list of files first.
+Everything the model writes reaches the disk when it writes it: in the folder you started
+aforge in, and in every folder you attached. The first change in an attached folder raises
+an approval card naming that folder, and after you answer it the rest of that
+conversation's changes there go through without asking. `git status` and `git diff` in the
+folder are the complete account of what reached it.
 
 ## Undo what you did to my folder — throwing away changes that have not landed
 
-Changes waiting for a folder you chose have not reached it, so there is nothing to undo
-there: simply do not run `/land`. They stay waiting when you close the conversation and
-are offered again when you reopen it; they go for good when the conversation itself is
-deleted.
-
-Work that **already landed**, and changes in the folder you are standing in, are a
-different question with a different answer — see
+Nothing is held back, so the undo is your own repository's: `git diff` to see it,
+`git checkout -- <file>` or `git restore <file>` to throw one away, `git stash` to put the
+lot aside, `git reset` for something already committed. The same page that covers this for
+the folder you are standing in covers it for an attached one — see
 `## Undo what the agent did to my files — restoring the workspace` on the workspace page.
+
+In a folder that is **not** a repository there is no undo, which is the same as it has
+always been for the folder you are standing in. That is worth knowing before you attach one
+and ask for a rewrite.
 
 **Your working directory does not move.** The folder aforge is standing in — the one the
 status line shows, the one the model's `AGENTS.md` and project settings come from, the one a
@@ -595,7 +574,7 @@ Four asks, four answers, and the first one is new.
   soon as work is grounded there — and the next task about it needs no asking. You do not
   have to start a second conversation for a second project.
 - **"Which folder do you mean?"** — `/folder`. It picks one, says so, remembers it, and
-  the conversation can work there from then on — through a copy, landed with `/land`.
+  the conversation edits that folder from then on, asking you once before the first change.
 - **"This chat has no project; give it one."** — `/workspace <path>`, once. A conversation
   that already has a workspace answers `this conversation already has a workspace` and
   changes nothing.
@@ -639,7 +618,8 @@ folder that has since been deleted from your disk can still be removed — the r
 outlives the directory on purpose, so that a folder that went away is not stuck on the
 conversation forever. Asking to remove a folder this conversation was never about is
 refused in those words: `this conversation is not about <path>`. Removing a folder does
-**not** touch the folder itself, and it does not throw away changes waiting for `/land`.
+**not** touch the folder itself — every change already made in it is already in it, and
+removing the attachment is a change to this conversation and to nothing on your disk.
 
 A folder I worked out for myself — the project a task turned out to stand in, rather than
 one you chose — is not called attached and is never quoted to me as instructions you gave;
@@ -711,13 +691,6 @@ no such file: <name>
 this is a folder now, not a file · <name>
 these folders are already here
 24 is as many as one message can carry · send these first
-```
-
-And the two `/land` gives you, exactly as they are written:
-
-```
-nothing is waiting · what this conversation writes in the folder it is standing in is already there
-putting changes into a folder is not available over --host yet — the conversation is on the other machine.
 ```
 
 - The first is every road onto a folder on a session opened with `--host`: `/folder`, a

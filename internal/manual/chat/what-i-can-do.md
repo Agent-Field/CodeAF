@@ -18,9 +18,10 @@ branch is kept for you instead. Where there is no repository it works in the fol
 
 Yes. Three tools do this, and a path with nothing in front of it is read against the folder
 aforge is standing in — the one you started it in. A path that names somewhere else, written
-out in full or beginning with `~`, is read there. A write in the folder you are standing in
-changes the file straight away; a write aimed at a folder you chose with `/folder` is kept
-for this conversation until you run `/land`. Work handed to a task is bounded much more
+out in full or beginning with `~`, is read there. A write changes the file straight away —
+in the folder you are standing in and in any folder you chose with `/folder`, which is
+edited itself and not through a copy (*Where edits go* on the folder page); the first
+change in a chosen folder asks you once. Work handed to a task is bounded much more
 tightly: a task writes in the one folder it stands on and nowhere else (*Where a task may
 write*).
 
@@ -336,8 +337,8 @@ background-after clock keeps it automatically.
 
 No. **Every `bash` call starts again in the workspace root** — including when the
 conversation is also about another folder: `bash` runs where you are standing and touches
-whatever it names, which is the one hand `/land` does not stand in front of. Each one is
-its own
+whatever it names, including files in a folder you chose, which are its real files. Each
+one is its own
 `/bin/bash -c`, its own process, run with the workspace as its working directory — so a
 `cd` in one call is gone by the next, and nothing else a command changes about its own
 shell (an exported variable, a `source`, a shell function, an activated environment)

@@ -312,6 +312,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	if config.inOwnSpace() {
 		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
 	}
+	// AND WHAT GIT ALREADY KNOWS ABOUT IT, for [nowLine]'s exact reason one fact
+	// over: a turn that had to learn its own branch opened with `bash git status`
+	// — a row the person saw, a round trip and an approval question spent on
+	// something this process read beside them for nothing (gitfacts.go). It is
+	// empty for a directory that is not a repository, which says nothing rather
+	// than saying "not a repository".
+	out.WriteString(config.gitFactsBlock())
 	out.WriteString(nowLine(now))
 
 	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
