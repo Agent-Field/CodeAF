@@ -754,10 +754,15 @@ var tuiWords = map[string]tuiWord{
 	// written down here — a table of things a model happened to say would be a
 	// table of coincidences.
 	"questionChipTail": {
-		screen: "question · alt+a",
+		screen: " · alt+a",
 		source: "alt+a",
 		why: "the status line's chip, which is the one thing that is always there while anything is " +
-			"waiting — reachable from home, a room and every other page",
+			"waiting — reachable from home, a room and every other page. IT IS THE TAIL AND NOT THE " +
+			"WHOLE CHIP, as the name says: the chip leads with the QUESTION'S OWN HEAD now " +
+			"(`? delete the build directory? · alt+a`, question.go's questionSegment) and says " +
+			"`1 question` only where there is no head to show and `3 questions` where there are " +
+			"several. This row waited for the word `question` through all of that, which is the same " +
+			"rot as the bracketed keys beside it (#998)",
 	},
 	"questionLaterKeyWord": {
 		key:    "esc",

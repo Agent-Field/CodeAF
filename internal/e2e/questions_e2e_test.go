@@ -187,6 +187,35 @@ func press(t *testing.T, r *rig, names ...string) {
 	time.Sleep(600 * time.Millisecond)
 }
 
+// aim is the gesture that makes the block's LETTER verbs live, and every
+// scenario that presses one does it first.
+//
+// A LETTER IS THE QUESTION'S ONLY ONCE YOU HAVE AIMED AT IT. `o`, `c`, `x`, `?`
+// and the rest are each the first letter of a word people type into the box —
+// the `d` of "do the schema first" once handed the call back to the asker and
+// left "o the schema first" behind — so internal/tui3 does not take one from
+// somebody who has not yet looked at the question (questionkeys.go's
+// [questionAimKey], and the manual's own questions.md says it in a person's
+// words). Aiming is any key a sentence could not carry: the arrows, `tab`,
+// `enter`, `esc`, or a click on an answer. The answers' own digits are exempt
+// and answer the moment the row is on screen, which is why the scenarios that
+// only press a number never needed this.
+//
+// IT IS `↓` AND THEN `↑` BECAUSE AN AIM MAY NOT BE AN ANSWER. `enter` would take
+// the pick and `esc` would put the question away, which leaves the walk — and
+// the walk moves the pointer, so it is walked straight back. The pointer ends
+// where it started and the block has the hand, which is all a scenario about a
+// page needs before it can open one.
+//
+// WITHOUT IT THE `o` GOES IN THE BOX, and the scenario waits out its patience
+// for a page nobody opened while the screen shows `› o`. That is what six of
+// these scenarios were doing.
+func aim(t *testing.T, r *rig) {
+	t.Helper()
+	press(t, r, "Down")
+	press(t, r, "Up")
+}
+
 // type_ is the same for literal bytes.
 func type_(t *testing.T, r *rig, text string) {
 	t.Helper()
@@ -479,6 +508,7 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 			asks, turnedAway, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
 	}
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "HRV", "the page lists the answers")
@@ -549,6 +579,7 @@ func questionsRoom(t *testing.T) {
 	screenEchoes(t, card, "postgres", "the card lists the answers before the page is opened")
 	shot(t, r, "card")
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "which store should the ledger sit on?", "the page's head")
@@ -657,6 +688,7 @@ func questionsBlanks(t *testing.T) {
 	awaitQuestion(t, r, "name the three columns", say(t, "questionOpenKeyWord"))
 	shot(t, r, "card")
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	// THE HOLES WEAR THEIR OWN NAMES. A form of unlabelled boxes is a form
@@ -694,6 +726,7 @@ func questionsChecklist(t *testing.T) {
 		`pick {"key":"1"}.`)
 
 	awaitQuestion(t, r, "which checks should run before merge?", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"), "unit tests")
 	screenSays(t, room, say(t, "questionTickKeyWord"),
@@ -730,6 +763,7 @@ func questionsPairs(t *testing.T) {
 		`options [{"key":"1","label":"take these"},{"key":"2","label":"leave both"}].`)
 
 	awaitQuestion(t, r, "settle the two naming calls", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "the table", "the first pair's own name")
@@ -756,6 +790,7 @@ func questionsDial(t *testing.T) {
 		`options [{"key":"1","label":"use it"},{"key":"2","label":"leave it alone"}].`)
 
 	awaitQuestion(t, r, "how hard should the retry loop try?", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, say(t, "questionMoveItWord"), "the arrows move the dial rather than a cursor")
