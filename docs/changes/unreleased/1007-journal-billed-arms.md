@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: billed rescue arms and cut retries journal their own call lines, and a turn that hopped models seals one usage line per model
+title: billed arms journal their call lines, and a hopped turn seals one usage line per model
 pr: 1007
 surface: [chat, engine]
 invalidates:
