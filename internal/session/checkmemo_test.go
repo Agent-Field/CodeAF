@@ -85,7 +85,7 @@ func TestATreeThatMovedMakesTheCheckRunAgain(t *testing.T) {
 func TestASessionCheckWindowIsBoundedByWhatIsLeftOfTheWall(t *testing.T) {
 	agent, tree := checkMemoryAgent(t, Budget{Wall: 10 * time.Minute})
 	steward := agent.steward()
-	steward.now = func() time.Time { return steward.started.Add(7 * time.Minute) }
+	steward.setClock(func() time.Time { return steward.started.Add(7 * time.Minute) })
 
 	window, fits := agent.checkWindow(tree, "go test ./...")
 	if !fits || window != 3*time.Minute {
@@ -99,11 +99,11 @@ func TestTheAuditWindowIsBoundedByWhatIsLeftOfTheWall(t *testing.T) {
 	agent, _ := checkMemoryAgent(t, Budget{Wall: 10 * time.Minute})
 	steward := agent.steward()
 	door := auditDoor{checks: []string{"go test ./..."}}
-	steward.now = func() time.Time { return steward.started.Add(7 * time.Minute) }
+	steward.setClock(func() time.Time { return steward.started.Add(7 * time.Minute) })
 	if window := agent.auditWindowFor(door); window != 3*time.Minute {
 		t.Fatalf("the audit got %s, want the three minutes left", window)
 	}
-	steward.now = func() time.Time { return steward.started.Add(10 * time.Minute) }
+	steward.setClock(func() time.Time { return steward.started.Add(10 * time.Minute) })
 	if window := agent.auditWindowFor(door); window != auditReadingDeadline {
 		t.Fatalf("the spent wall gave the audit %s, want the reading floor %s", window, auditReadingDeadline)
 	}
@@ -123,9 +123,9 @@ func TestACheckThatCannotFitTheWallIsNotStarted(t *testing.T) {
 		agent, tree := checkMemoryAgent(t, Budget{Wall: 10 * time.Minute})
 		command, counter := countedCheck(t)
 		steward := agent.steward()
-		steward.now = func() time.Time {
+		steward.setClock(func() time.Time {
 			return steward.started.Add(10*time.Minute - verify.ShortestUsefulReading/2)
-		}
+		})
 
 		run, moved := agent.checkNow(context.Background(), tree, command)
 		if moved || run.Ran || run.Unread != notEnoughTimeToRun+command {
@@ -142,7 +142,7 @@ func TestACheckThatCannotFitTheWallIsNotStarted(t *testing.T) {
 		state := treeStateNow(tree)
 		agent.sessionCheckMemories().remember(tree, command, state, CheckRun{Command: command, Ran: true}, 2*time.Minute, true)
 		steward := agent.steward()
-		steward.now = func() time.Time { return steward.started.Add(8*time.Minute + 30*time.Second) }
+		steward.setClock(func() time.Time { return steward.started.Add(8*time.Minute + 30*time.Second) })
 
 		run, _ := agent.checkNow(context.Background(), tree, command)
 		if run.Ran || run.Unread == "" {

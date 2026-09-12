@@ -131,6 +131,37 @@ builds the shipped binary and enforces its size budget.
   first agreeing which architecture the budget is measured on. `make check` on
   your own machine still enforces it, and `PERF.md` still governs changing it.
 
+## The race detector, which no gate runs
+
+No gate in this repository runs `go test -race`. Not the light gate, not
+`touched packages` (so not `check`), not `full tests` on the nightly or on the
+way into `staging`, not the release surface tests. The greps say so plainly:
+`grep -rn race .github/workflows/ Makefile scripts/laws.sh` finds the word only
+inside "traces", in a comment about panic output — there is no `-race` flag in
+CI to find, and no gate to name.
+
+**So a green gate proves nothing about data races, and this page is where that
+is said rather than assumed.** The detector makes a test run two to twenty
+times slower and five to ten times fatter, by Go's own estimate, and `full
+tests` is already split three ways to stay inside the free-plan runner's seven
+gigabytes. It is also not the light gate's kind of question: a race is a window
+between two goroutines, so its answer is not the same on every machine — #957
+needed `-count=5` to be sure its quiet first run was quiet. What that trade
+cost is on the record there: the detector went red on clean `dev`, on a fixture
+that moved the goal owner's clock past its lock while the wall clock read it
+under the lock, through a merge whose every check was green. That race was
+test-only, and no gate output anywhere said so or said otherwise.
+
+So the detector is run by hand, over the package and the tests a report names:
+
+```sh
+go test -race -count=5 -run '^TestADoneEndingNamesTheCheckItCouldNotRun$' ./internal/session/
+```
+
+It answers for that package at that moment and nothing else. The known-red
+ledger below does not cover this either: it holds tests that fail, not checks
+that never run.
+
 ## The known-red ledger
 
 `.github/known-red.txt` lists tests that fail on a clean tree. `make test` skips
