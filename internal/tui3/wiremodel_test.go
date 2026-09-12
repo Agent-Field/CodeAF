@@ -100,11 +100,13 @@ func TestSwitchingModelMidTurnSaysWhatTheTurnKeeps(t *testing.T) {
 	a.switchModel("openai/gpt-5.4", 0)
 
 	want := "model · openai/gpt-5.4 — " + wireLatched + " is answering now, and " + roomModelNextWord
-	// THE NOTE IS READ WITH ITS WRAPPING FOLDED BACK ([unwrapped]). This surface
-	// wraps a note onto a continuation lead rather than cutting it, so asserting
-	// on the frame verbatim would be asserting on the width of the test's window
-	// rather than on what it says.
-	if got := unwrapped(strings.Split(plain(frame(a)), "\n")); !strings.Contains(got, want) {
+	// THE NOTE IS READ WITH ITS WRAPPING FOLDED BACK ([unwrapped]), AND WITH THE
+	// COLUMN THE LAYOUT DREW BESIDE IT TAKEN OUT. This surface wraps a note onto
+	// a continuation lead rather than cutting it, and the tray's rule sits
+	// between the two halves of a wrapped row — so a Contains against the frame
+	// verbatim is a test about the width of the window and where its furniture
+	// landed, rather than about what was said.
+	if got := unwrapped(strings.Split(strings.ReplaceAll(plain(frame(a)), "│", " "), "\n")); !strings.Contains(got, want) {
 		t.Fatalf("the switch said nothing about the turn in flight, want %q:\n%s", want, plain(frame(a)))
 	}
 }

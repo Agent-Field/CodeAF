@@ -188,7 +188,10 @@ func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
 // session has no file to have written a path, and "no path" is not a reason to
 // send base64 to a blind model.
 func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("blind"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
 	})
 	agent.mu.Lock()
@@ -198,7 +201,9 @@ func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
 	}})
 	agent.mu.Unlock()
 
+	// The move is what scrubs, so the turn after the pick is what this asserts on.
 	agent.SetModel("vendor/blind")
+	collect(t, mustSubmit(t, agent, "and now?"))
 	if count := countImageParts(agent); count != 0 {
 		t.Fatalf("%d image parts survived", count)
 	}
