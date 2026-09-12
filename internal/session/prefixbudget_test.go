@@ -36,6 +36,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -582,9 +583,16 @@ func widestPage() string {
 // that number is already the same everywhere — and it is an UNDER-count of the
 // shipped page by those few lines, which is recorded here rather than fixed
 // because moving it would move a ratchet for a reason that is not growth.
-func atAFixedPlace(config Config) Config {
+func pageAsWeighed(config Config, now time.Time) int {
 	config.Workspace = "/w"
-	return config
+	page := renderSystemAt(config, now)
+	// AND THE WORKSTATION LINE IS NORMALISED. `- Workstation: %s/%s` is
+	// runtime.GOOS/GOARCH, which is `darwin/arm64` on one machine and
+	// `linux/arm64` on another — ONE BYTE, and a ratchet with no headroom fails
+	// on one byte. It is a fact about the machine the model is told on purpose
+	// and cannot be made constant in the product, so it is made constant HERE,
+	// at the only place that needs it to be.
+	return len(strings.Replace(page, runtime.GOOS+"/"+runtime.GOARCH, "os/arch", 1))
 }
 
 // widestBelt is the shipped belt weighed as the WIDEST MACHINE pays for it.
@@ -809,7 +817,7 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 	reportPrefix(t, prefixArm{
 		what:        "the lean prefix",
 		definitions: widestBelt(t, agent),
-		page:        len(renderSystemAt(atAFixedPlace(agent.config), time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))),
+		page:        pageAsWeighed(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)),
 		budget:      leanPrefixBudget,
 		target:      leanPrefixTarget,
 		owed:        "see [leanPrefixBudget] for the bill and who owes it",
