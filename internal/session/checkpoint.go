@@ -1267,6 +1267,29 @@ func (s checkpointSketch) carryOnDecision() string {
 	return checkpointDecisionContinue
 }
 
+// endOfTurnDecision is what a drawing that landed WITH THE TURN ALREADY OVER is
+// written down as (loop.go's exit defer, the one taker with no boundary after it).
+//
+// A DRAWING WITH INDEPENDENT PARTS IN IT IS NOT A CARRY-ON, and this road said it
+// was. Every sketch that did not hand back was journaled through
+// [checkpointSketch.carryOnDecision] here, so a reading that said "this has parts"
+// and landed a moment too late was recorded as the reader deciding to carry on —
+// the opposite of what it decided, on the one road where nothing can be done about
+// it any more (#956). The line is still written, because a reading somebody paid
+// for must not be a line nobody can count; what changed is that it says what
+// happened.
+//
+// EVERY OTHER JOURNAL SITE STILL SPELLS A CARRY-ON, and deliberately: the ceiling
+// reads its own drawing in line and the row a moment later says what became of the
+// turn ([Agent.checkpointRound]), so a drawing with parts in it there is not a
+// drawing that was missed.
+func (s checkpointSketch) endOfTurnDecision() string {
+	if s.split() {
+		return checkpointDecisionLate
+	}
+	return s.carryOnDecision()
+}
+
 // ── the conversation's own verbs ────────────────────────────────────────────
 //
 // THE LAW: WHAT A CONVERSATION DOES TO WORK IT ALREADY HANDED OUT IS NOT WORK IT
@@ -1870,6 +1893,17 @@ const (
 	// one is one long job, one is a turn watching pieces it already handed out —
 	// and only the second says a conversion was REFUSED rather than never earned.
 	checkpointDecisionWaiting = "waiting"
+	// checkpointDecisionLate is a drawing that said the turn had independent parts
+	// in it and landed with NO BOUNDARY LEFT TO SPEND IT AT — the turn's last step
+	// had already answered, so the cut that brings a boundary forward had nothing
+	// to bring it forward to ([checkpointSketch.endOfTurnDecision]).
+	//
+	// It is spelled apart from `split` because nothing was handed anywhere, and
+	// apart from `continue` because the reader decided the OPPOSITE of carrying on.
+	// The file recorded it as `continue` until #956, which is how a turn with
+	// independent parts left in it could end in words with the row saying the
+	// reader had agreed to that.
+	checkpointDecisionLate = "late"
 
 	checkpointCeilingMoved   = "moved"
 	checkpointCeilingNothing = "dropped:nothing-left"
@@ -2770,6 +2804,11 @@ func (m *markAside) everAsked() bool { return m != nil && m.asked }
 // whatever was written stays in the transcript, and the loop comes back to a
 // boundary where the drawing can be spent ([Agent.checkpointSettle]). A carry-on
 // cuts nothing and says nothing.
+//
+// AND A DRAWING THAT LANDS BETWEEN TWO STEPS IS NOT A DRAWING THAT CUT NOTHING.
+// The cut is OWED to the next request this turn makes and spent the instant it
+// exists (steer.go's [owedCut]), because a drawing rides no transcript and the
+// boundary is the only place it can ever be spent.
 func (m *markAside) start(ctx context.Context, a *Agent, mark, rounds int) {
 	if m == nil || m.reading.pending() {
 		return
@@ -2830,6 +2869,10 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 	if !ok {
 		return false
 	}
+	// AND THE BOUNDARY HAS ARRIVED, so a cut owed to open one is owed no longer.
+	// The drawing is in hand; cutting the next request now would stop a step for a
+	// reading that has already been read (steer.go's [Agent.dropOwedCut]).
+	a.dropOwedCut(errMarkCut)
 	read, mark, rounds := landed.read, landed.mark, landed.rounds
 	if !read.sketch.split() {
 		a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
