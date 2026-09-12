@@ -3057,6 +3057,12 @@ type Agent struct {
 	titleCtx  context.Context
 	titleStop context.CancelFunc
 	titleJobs sync.WaitGroup
+
+	// after is the lifetime of every reading a turn bought that OUTLIVES it, and
+	// today that is the post-turn judge alone (sidecar.go's [afterTurn] states
+	// the bargain and names the two older spellings of it above). It is minted
+	// for every session, because the first turn may buy one.
+	after *afterTurn
 	// titleWatchers is the standing subscription to the name this session gives
 	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
 	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly

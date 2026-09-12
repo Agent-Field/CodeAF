@@ -56,6 +56,12 @@ const paceLawBudget = lanes.SpokenWithin / 20
 // budget above by a factor of sixty.
 const paceSlowReading = 3 * time.Second
 
+// paceJudgeReading is what the POST-TURN JUDGE costs in this fixture. It is an
+// order of magnitude over [paceSlowReading] so that a turn which waited for it
+// cannot be mistaken for a turn that waited for the reader beside it — the one
+// wait at the end of a turn that is honest.
+const paceJudgeReading = 30 * time.Second
+
 // ── the fixture ─────────────────────────────────────────────────────────────
 
 // paceCompleter answers the turn instantly and EVERY reading beside it slowly.
@@ -71,6 +77,13 @@ type paceCompleter struct {
 	taken int
 	// slow is what every reading costs.
 	slow time.Duration
+	// judgeSlow is what the POST-TURN JUDGE costs, when it differs. It is its own
+	// figure because the judge is the one reading at the end of a turn whose
+	// answer can be spent after the turn has sealed — the re-open reader beside
+	// it decides whether there IS a turn to seal, and has nothing to be applied
+	// to afterwards — so the only way to see the seal being held by the right one
+	// of the two is to make them cost different amounts.
+	judgeSlow time.Duration
 	// route is what the memory router answers, and sketch what a mark's reader
 	// draws.
 	route  string
@@ -92,6 +105,9 @@ func (p *paceCompleter) CompleteWithMessages(ctx context.Context, messages []ai.
 		}
 		p.readings[kind]++
 		slow := p.slow
+		if kind == "judge" && p.judgeSlow > 0 {
+			slow = p.judgeSlow
+		}
 		p.mu.Unlock()
 		select {
 		case <-time.After(slow):
@@ -257,10 +273,15 @@ func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 	// pins is that the reading which DOES happen is never in front of the person.
 	rounds := checkpointMarkAt(checkpointMarks) + 2
 	completer := &paceCompleter{
-		steps:  paceRounds(rounds, "all done"),
-		slow:   paceSlowReading,
-		route:  `{"inject":[],"cmd":null}`,
-		sketch: checkpointChainSketch,
+		steps: paceRounds(rounds, "all done"),
+		slow:  paceSlowReading,
+		// AND THE POST-TURN JUDGE IS THE SLOWEST THING IN THE FIXTURE, which is
+		// what makes the seal assertion below say something. In the product it
+		// usually is: the re-open reader beside it is one call, and the judge is a
+		// cheap screen and then, on a yes, a mastermind confirm, in series.
+		judgeSlow: paceJudgeReading,
+		route:     `{"inject":[],"cmd":null}`,
+		sketch:    checkpointChainSketch,
 	}
 	agent, brain, journal := paceAgent(t, completer)
 	remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
@@ -284,6 +305,29 @@ func TestTheOnlyWaitAPersonExperiencesIsTheModelGenerating(t *testing.T) {
 	// whole of it.
 	if floor := checkpointMarkAt(checkpointMarks); pace.Steps < floor {
 		t.Fatalf("the turn took %d steps, want at least %d — the script did not run", pace.Steps, floor)
+	}
+	// AND THE END OF THE TURN IS THE THIRD PLACE A READING CAN STAND IN FRONT OF
+	// A PERSON, which is where the post-turn judge stood: the answer is written,
+	// it is on their screen, and the turn is held open — the seal, the usage row,
+	// the next Submit and the follow-up drain all parked — while a cheap screen
+	// and a mastermind confirm decide whether it should have been work.
+	//
+	// It is the same budget as the two above because it is the same claim: what
+	// separates sealing a turn in memory from awaiting one model call is three
+	// orders of magnitude, so any figure inside that gap is the same test.
+	// The seal is held by the RE-OPEN READER and by nothing else. That one is
+	// [Agent.checkpointReopen], and it is the guardian's named exception read at
+	// the other end of the turn: it decides whether there is a turn to seal at
+	// all, so there is nothing left to apply its answer to afterwards and it has
+	// to precede. Every other reading at the end of a turn CAN be spent after the
+	// seal, and the post-turn judge is the one that had to be taught to be — so
+	// the fixture makes it far the slowest thing here and the seal must not have
+	// noticed.
+	if seal := time.Duration(pace.SealMS) * time.Millisecond; seal >= paceJudgeReading {
+		t.Fatalf("the turn stayed open %s after the model's last word, want well under the %s "+
+			"the post-turn judge takes — a reading whose answer could have been spent after the "+
+			"seal was awaited in front of it",
+			seal, paceJudgeReading)
 	}
 
 	// AND THE READINGS REALLY WERE ASKED. A law that passed because nothing ran

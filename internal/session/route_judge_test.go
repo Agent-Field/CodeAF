@@ -1922,10 +1922,15 @@ func TestAJudgesRulingIsSpentByTheTurnAndNotByTheReading(t *testing.T) {
 	agent, _, nodes := routeAgent(t, completer)
 	asked := userMessage{message: textMessage("user", routeAsk)}
 
-	// A READING THAT SAYS YES, taken in full.
+	// A READING THAT SAYS YES, taken in full. The turn does not WAIT for it — it
+	// says when the ruling may be spent and walks away — so the test collects it
+	// through the same door and then waits on the fact, which is the only thing
+	// it may wait on ([judgeRace.spendWhenItLands]).
 	judge := agent.judgeAhead(context.Background(), asked, false, "Here is what I would look at.")
-	ruling, ok := judge.takeAtTheEnd()
-	if !ok || !ruling.start {
+	rulings := make(chan judgeRuling, 1)
+	judge.spendWhenItLands(func(ruling judgeRuling) { rulings <- ruling })
+	ruling := <-rulings
+	if !ruling.start {
 		t.Fatalf("the judge answered %+v, want a ruling that asks for a start", ruling)
 	}
 	if completer.asked() == 0 || completer.confirms() == 0 {
@@ -1942,8 +1947,12 @@ func TestAJudgesRulingIsSpentByTheTurnAndNotByTheReading(t *testing.T) {
 	}
 
 	// A TURN THAT RE-OPENS LETS THE RULING GO, and lets go of the name it was
-	// holding with it.
-	judge.end()
+	// holding with it. This one was taken above, so letting it go is the ordinary
+	// no-op every already-spent reading gets; the road that matters is the one
+	// below it, where a reading is let go of having never been taken.
+	ruling.release()
+	dropped := agent.judgeAhead(context.Background(), asked, false, "Here is what I would look at.")
+	dropped.end()
 	if count := nodes.count(); count != 0 {
 		t.Fatalf("%d tasks survived a turn that let the ruling go", count)
 	}
@@ -1953,8 +1962,10 @@ func TestAJudgesRulingIsSpentByTheTurnAndNotByTheReading(t *testing.T) {
 	// not lose it — that is the other half of loop.go's law.
 	hub := newEventHub()
 	second := agent.judgeAhead(context.Background(), asked, false, "Here is what I would look at.")
-	landed, ok := second.takeAtTheEnd()
-	if !ok || !landed.start {
+	seconds := make(chan judgeRuling, 1)
+	second.spendWhenItLands(func(ruling judgeRuling) { seconds <- ruling })
+	landed := <-seconds
+	if !landed.start {
 		t.Fatalf("the second reading answered %+v, want a ruling that asks for a start", landed)
 	}
 	agent.applyRouteJudge(hub, landed)

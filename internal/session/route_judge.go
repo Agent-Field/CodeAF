@@ -482,6 +482,22 @@ func (a *Agent) applyRouteJudge(hub *eventHub, ruling judgeRuling) {
 		ruling.release()
 		return
 	}
+	// AND THE LINE GOES TO WHICHEVER STREAM IS LIVE, not to the one the turn was
+	// holding when it asked. This ruling is spent when it LANDS, which is usually
+	// inside the turn that bought it and sometimes after it has sealed and closed
+	// its hub ([judgeRace.spendWhenItLands]) — and a told-after line sent to a
+	// closed hub is a line nobody reads. It is [Agent.sayMemory]'s door, read
+	// under the same lock and for the same reason: the hub itself is the only
+	// thing that knows, and it knows under its own lock.
+	//
+	// The task itself needs none of this. It is on the rail the moment it is
+	// admitted, through the standing lane every node's news goes out on
+	// ([Agent.emitTaskUpdate]), which a turn ending has never closed.
+	if hub == nil {
+		a.mu.Lock()
+		hub = a.hub
+		a.mu.Unlock()
+	}
 	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE, which is why this line
 	// stands here rather than beside the confirm. The gap is a person's
 	// patience: it exists because work appearing over the top of a conversation
@@ -612,6 +628,11 @@ func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered str
 // really over, and lets it go where it has not ([judgeRace.end]).
 type judgeRace struct {
 	reading *sidecar[judgeRuling]
+	// done releases this reading's place on the session's lifetime. It is called
+	// once, by whichever of [judgeRace.spendWhenItLands] or [judgeRace.end]
+	// finishes with the reading — never by both, because the reading is taken by
+	// exactly one of them.
+	done func()
 }
 
 // judgeAhead starts the post-turn READING. Everything gated — a node, a session
@@ -620,24 +641,53 @@ type judgeRace struct {
 //
 // NOTHING UNDER HERE HAS AN EFFECT. What comes back is a [judgeRuling], and the
 // turn is what spends it ([Agent.applyRouteJudge]).
+//
+// ── AND IT DOES NOT RUN ON THE TURN'S CONTEXT ───────────────────────────────
+//
+// This is the ONE reading in the package that is deliberately not tied to the
+// work it was read for, and the reason is what its answer DOES. Every other
+// reading beside a turn is applied to that turn — to this step if it lands in
+// time, to the next one if it does not — so cancelling it with the turn loses
+// nothing that had anywhere to go. A yes here starts a TASK, which is an effect
+// that lands entirely outside the turn and is just as good a minute after it.
+//
+// Tied to the turn's context, the only way to have that answer at all was to
+// hold the turn open until it arrived — and that is exactly what the loop did,
+// past the last word of the answer, under a phase line reading "whether that
+// should be work". So the reading runs on the session's own lifetime
+// (sidecar.go's [afterTurn]) and the turn stops waiting for it. A session that
+// is closing starts none, which is the nil handle again.
 func (a *Agent) judgeAhead(ctx context.Context, user userMessage, usedTools bool, answer string) *judgeRace {
 	if usedTools || !a.config.AskConsent || a.config.InTask {
 		return nil
 	}
-	return &judgeRace{reading: readBeside(ctx, func(judgeCtx context.Context) judgeRuling {
+	lifetime, done, ok := a.after.begin()
+	if !ok {
+		return nil
+	}
+	return &judgeRace{done: done, reading: readBeside(lifetime, func(judgeCtx context.Context) judgeRuling {
 		return a.readRouteJudge(judgeCtx, user, usedTools, answer)
 	}, nil)}
 }
 
-// takeAtTheEnd waits for the ruling. It is bounded by the two windows the calls
-// under it carry and by the turn's own context, so it is not a wait that can
-// outlast either — and it is a WAIT, which is only honest because the turn that
-// calls it has already been told it is over (sidecar.go's own warning).
-func (r *judgeRace) takeAtTheEnd() (judgeRuling, bool) {
+// spendWhenItLands hands the ruling to `apply` the moment it arrives, and the
+// turn walks away.
+//
+// IT REPLACES A WAIT AND THE NAME IS THE WHOLE DIFFERENCE. What stood here was
+// `takeAtTheEnd`, which blocked the turn between the model's last word and the
+// seal — measured at up to half a minute on an ordinary tool-less answer. The
+// turn's job was never to know WHETHER the ruling had arrived; it was to say
+// when the ruling may be SPENT, which is after the reader that could re-open the
+// turn has said it will not. It still says exactly that, and it no longer waits
+// to be told the answer is ready (sidecar.go's [sidecar.spendWhenItLands]).
+func (r *judgeRace) spendWhenItLands(apply func(judgeRuling)) {
 	if r == nil {
-		return judgeRuling{}, false
+		return
 	}
-	return r.reading.takeAtTheEnd()
+	r.reading.spendWhenItLands(func(ruling judgeRuling) {
+		defer r.done()
+		apply(ruling)
+	})
 }
 
 // end lets the reading go without waiting for it, for [routeRace.end]'s reason.
@@ -655,6 +705,7 @@ func (r *judgeRace) end() {
 	if ruling, ok := r.reading.take(); ok {
 		ruling.release()
 	}
+	r.done()
 }
 
 // routeWidth is what TWO READINGS OF ONE REQUEST come to on breadth: armed if

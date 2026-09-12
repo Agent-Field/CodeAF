@@ -891,11 +891,17 @@ type journalCaption struct {
 // from a fast turn that asked several things concurrently — the difference
 // between the law being kept and the readings having been deleted.
 type journalPace struct {
-	SendMS      int64    `json:"sendMs"`
-	FirstWordMS int64    `json:"firstWordMs,omitempty"`
-	StepGapMS   int64    `json:"stepGapMs,omitempty"`
-	Steps       int      `json:"steps,omitempty"`
-	Aside       []string `json:"aside,omitempty"`
+	SendMS      int64 `json:"sendMs"`
+	FirstWordMS int64 `json:"firstWordMs,omitempty"`
+	StepGapMS   int64 `json:"stepGapMs,omitempty"`
+	// SealMS is the model's last word to the turn being sealed — the END of the
+	// turn said as a number, which is the third place a reading can stand in
+	// front of a person and the one this row could not see. The post-turn judge
+	// stood there and held it for as long as a cheap screen and a mastermind
+	// confirm took, with the answer already fully written on the screen.
+	SealMS int64    `json:"sealMs,omitempty"`
+	Steps  int      `json:"steps,omitempty"`
+	Aside  []string `json:"aside,omitempty"`
 }
 
 type journalTook struct {

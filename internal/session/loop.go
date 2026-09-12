@@ -861,6 +861,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// closes.
 		pace.sending(sentAt)
 		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
+		// AND THE OTHER END OF THE SAME LAW. The request is back, so this is the
+		// last instant the model was writing — moved on every step, because the
+		// step that ends the turn is the one whose stamp the seal is measured
+		// from. It is taken here rather than at the ending itself so that no road
+		// out of the loop can forget it.
+		pace.answered(time.Now())
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -1127,17 +1133,39 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// request alone could not have told it. A second small model reads
 			// what was asked and the shape of what came back, and a yes STARTS it as
 			// a task and says so on the transcript (route_judge.go). It is silent
-			// when it cannot work, it is rate-limited to one start every few turns,
-			// and it is asked before the turn is sealed so that the work it starts is
-			// on the rail by the time the person reads the answer.
-			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
-			ruling, _ := judge.takeAtTheEnd()
-			a.endPhase()
-			// AND THE TURN IS WHAT SPENDS IT, here, past the two roads above that
-			// would have made it wrong: this turn answered in words, nothing is
-			// re-opening it and nothing is moving it, so work started now is work
-			// started on a turn that is really over.
-			a.applyRouteJudge(hub, ruling)
+			// when it cannot work, and it is rate-limited to one start every few turns.
+			//
+			// ── AND THE TURN NO LONGER WAITS FOR IT ─────────────────────────────
+			//
+			// IT USED TO HOLD THE SEAL. `judge.takeAtTheEnd()` stood on this line
+			// and blocked, between the model's last word and [Agent.sealTurn] — a
+			// cheap screen and, on a yes, a mastermind confirm, measured at up to
+			// half a minute after the answer was already fully written and on the
+			// person's screen. What they saw for the whole of it was a phase line
+			// reading "whether that should be work", and what was actually parked
+			// behind it was everything: the seal, the usage row, the next Submit,
+			// the follow-up drain.
+			//
+			// THE TURN'S JOB WAS NEVER TO KNOW WHETHER THE RULING HAD ARRIVED. It
+			// was to say WHEN one may be spent — which is HERE, past the two roads
+			// above that would have made it wrong: this turn answered in words,
+			// nothing is re-opening it and nothing is moving it, so work started
+			// on this ruling is work started on a turn that is really over. It says
+			// exactly that and walks away; the reading runs on the session's own
+			// lifetime and the ruling is spent the moment it lands
+			// (sidecar.go's [sidecar.spendWhenItLands], route_judge.go's
+			// [judgeAhead] for why this one reading outlives its turn).
+			//
+			// NOTHING IS LOST BY NOT WAITING. A yes starts a task, which appears on
+			// the rail and says so in one line whenever it arrives; there was never
+			// anything about it that had to land before the answer was sealed.
+			//
+			// THE LINE IT MAY SAY IS NOT SENT TO THIS HUB, and the nil is how it
+			// says so: a ruling that lands after the seal lands after this hub has
+			// closed, so the told-after line is put on whichever stream is live
+			// when it arrives ([Agent.applyRouteJudge]).
+			judge.spendWhenItLands(func(ruling judgeRuling) { a.applyRouteJudge(nil, ruling) })
+			pace.sealing(time.Now())
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
@@ -1315,6 +1343,14 @@ type turnPace struct {
 	results   time.Time
 	worstGap  time.Duration
 	steps     int
+	// lastWord is when the model stopped writing and sealed is when the turn was
+	// closed. THE GAP BETWEEN THEM IS THE THIRD FIGURE THIS FILE'S LAW IS ABOUT
+	// and the one that had no name: the front of a turn and the middle of it were
+	// measured, and the END was not — which is where the post-turn judge stood
+	// blocking for up to half a minute, in front of a person who was already
+	// reading their answer.
+	lastWord time.Time
+	sealed   time.Time
 }
 
 // sending stamps a request leaving, and closes whichever gap it ends: the
@@ -1342,6 +1378,24 @@ func (p *turnPace) word(now time.Time) {
 	defer p.mu.Unlock()
 	if p.firstWord.IsZero() {
 		p.firstWord = now
+	}
+}
+
+// answered stamps the instant the model stopped writing. It is moved on every
+// step, because the last one to move it is the one that ended the turn.
+func (p *turnPace) answered(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.lastWord = now
+}
+
+// sealing stamps the turn being closed, which is the moment the person gets
+// their session back.
+func (p *turnPace) sealing(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.sealed.IsZero() {
+		p.sealed = now
 	}
 }
 
@@ -1373,6 +1427,13 @@ func (p *turnPace) row(aside []string) journalPace {
 		row.FirstWordMS = p.firstWord.Sub(p.firstSend).Milliseconds()
 	}
 	row.StepGapMS = p.worstGap.Milliseconds()
+	// THE END OF THE TURN, and it is written only when both ends of it are known:
+	// a turn that was stopped, handed over or broken never sealed, and a figure
+	// invented for one of those would be a measurement of something else (the
+	// emptiness law).
+	if !p.lastWord.IsZero() && !p.sealed.IsZero() {
+		row.SealMS = p.sealed.Sub(p.lastWord).Milliseconds()
+	}
 	return row
 }
 
