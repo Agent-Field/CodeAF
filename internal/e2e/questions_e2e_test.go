@@ -38,6 +38,14 @@
 // a table of product sentences is a source of truth, and a table of things a
 // model happened to say is a table of coincidences.
 //
+// AND AN ANSWER IS BOTH, SO IT IS COMPOSED RATHER THAN PASTED. `1 delete it` is
+// the scenario's own word with the PRODUCT's key grammar in front of it, so it
+// goes through [keyedWord] and never into a literal here. Nine of them were
+// pasted as `[1] delete it`, #933 took the brackets off every key, and this
+// suite spent a fortnight waiting three minutes at a time for screens that were
+// already right (issue #998). [TestNoNeedleSpellsAKeyTheSurfaceStoppedSpelling]
+// is the untagged law that now refuses one.
+//
 // ── WHAT IT COSTS ──────────────────────────────────────────────────────────
 //
 // About a dollar for the whole file on deepseek/deepseek-v4-flash, and about
@@ -322,8 +330,8 @@ func questionsLine(t *testing.T) {
 		`reason "the build directory is stale", stakes reversible, `+
 		`options [{"key":"1","label":"delete it"},{"key":"2","label":"leave it"}].`)
 
-	screen := awaitQuestion(t, r, "delete the build directory?", "[1] delete it")
-	screenSays(t, screen, "[2] leave it", "the line's second answer")
+	screen := awaitQuestion(t, r, "delete the build directory?", keyedWord("1", "delete it"))
+	screenSays(t, screen, keyedWord("2", "leave it"), "the line's second answer")
 	screenSays(t, screen, say(t, "questionLaterKeyWord"), "the line's way out")
 	screenSays(t, screen, "the build directory is stale", "the line's reason")
 	screenSays(t, screen, say(t, "questionChipTail"), "the chip counting one question")
@@ -332,7 +340,7 @@ func questionsLine(t *testing.T) {
 	// `esc` IS LATER AND CANCELS NOTHING: the rows fold, the chip keeps counting.
 	press(t, r, "Escape")
 	folded := r.capture()
-	screenSilent(t, folded, "[1] delete it", "esc folded the block away")
+	screenSilent(t, folded, keyedWord("1", "delete it"), "esc folded the block away")
 	screenSays(t, folded, say(t, "questionChipTail"), "esc kept the question counted")
 	shot(t, r, "folded")
 
@@ -349,7 +357,7 @@ func questionsLine(t *testing.T) {
 
 	// The chord brings it back from wherever a person is standing.
 	press(t, r, "M-a")
-	back := r.waitFor(20*time.Second, "[1] delete it")
+	back := r.waitFor(20*time.Second, keyedWord("1", "delete it"))
 	screenSays(t, back, "delete the build directory?", "the chord raised the question again")
 
 	type_(t, r, "1")
@@ -697,7 +705,7 @@ func questionsChecklist(t *testing.T) {
 	press(t, r, "Space")
 	ticked := r.capture()
 	screenSays(t, ticked, say(t, "questionAnsweringWord"), "the foot says what enter would send")
-	screenEchoes(t, ticked, "1 unit tests, 2 vet",
+	screenEchoes(t, ticked, keyedWord("1", "unit tests")+", "+keyedWord("2", "vet"),
 		"both ticks are in the answer, in their own keys and in the order they were given")
 	shot(t, r, "ticked")
 
@@ -935,7 +943,7 @@ func questionsReach(t *testing.T) {
 		`head "publish the draft?", kind permission, form line, `+
 		`reason "the draft has not been read by anybody else", stakes reversible, `+
 		`options [{"key":"1","label":"publish it"},{"key":"2","label":"hold it"}].`)
-	raised := awaitQuestion(t, first, "publish the draft?", "[1] publish it")
+	raised := awaitQuestion(t, first, "publish the draft?", keyedWord("1", "publish it"))
 	screenSays(t, raised, say(t, "questionChipTail"), "the first window is counting it")
 	shot(t, first, "raised")
 
@@ -947,7 +955,7 @@ func questionsReach(t *testing.T) {
 	// every open question under the conversation that raised it, with the same
 	// keys, because a person standing on home is still the person being asked.
 	elsewhere := second.waitFor(60*time.Second, "publish the draft?")
-	screenSays(t, elsewhere, "1 publish it",
+	screenSays(t, elsewhere, keyedWord("1", "publish it"),
 		"home offers the question's OWN answers, on its own keys — the whole of what makes a row "+
 			"answerable rather than a notice")
 	shot(t, second, "home")
@@ -973,7 +981,7 @@ func questionsWithdrawn(t *testing.T) {
 		`head "overwrite the checkpoint?", kind permission, form line, `+
 		`reason "the checkpoint is from the run before this one", stakes reversible, `+
 		`options [{"key":"1","label":"overwrite it"},{"key":"2","label":"keep it"}].`)
-	awaitQuestion(t, r, "overwrite the checkpoint?", "[1] overwrite it")
+	awaitQuestion(t, r, "overwrite the checkpoint?", keyedWord("1", "overwrite it"))
 	shot(t, r, "raised")
 
 	// `esc` twice: the first folds the question to the chip (it is LATER, not
@@ -1110,7 +1118,7 @@ func questionsDefaultDoor(t *testing.T) {
 		`head "delete the build directory?", kind permission, form line, `+
 		`reason "the build directory is stale", stakes reversible, `+
 		`options [{"key":"1","label":"delete it"},{"key":"2","label":"leave it"}].`)
-	screen := awaitQuestion(t, r, "delete the build directory?", "[1] delete it")
+	screen := awaitQuestion(t, r, "delete the build directory?", keyedWord("1", "delete it"))
 	screenSays(t, screen, say(t, "questionChipTail"),
 		"the ordinary road has to be able to put a question in front of somebody")
 	shot(t, r, "asked")
