@@ -671,10 +671,21 @@ func TestTheRateLimitHolds(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
 	agent, _, nodes := routeAgent(t, completer)
 
-	// The reading is what STARTED, turn by turn, and not the line that announces
-	// it: the told-after line rides whichever stream is live when the ruling lands
-	// ([routeNotice]), so counting lines here would count turn 1's announcement
-	// against turn 2 and read the gap as broken.
+	// The reading is what was ADMITTED, turn by turn, and it is neither the line
+	// that announces the work nor the run that carries it out. The told-after line
+	// rides whichever stream is live when the ruling lands ([routeNotice]), so
+	// counting lines would charge turn 1's announcement to turn 2 and read the gap
+	// as broken; the RUN starts on a goroutine of its own after admission, so
+	// counting runs reads the gap as broken whenever the runner is scheduled late.
+	// Admission is the judge's own act, inside the ruling this turn waited for
+	// ([routeSettled]), and it is the thing the gap is a rule about.
+	admitted := func() int {
+		count := 0
+		for agent.graph().node(uint64(count)+1) != nil {
+			count++
+		}
+		return count
+	}
 	started := 0
 	for turn := 1; turn <= 4; turn++ {
 		events, err := agent.Submit(context.Background(), routeAsk)
@@ -684,8 +695,8 @@ func TestTheRateLimitHolds(t *testing.T) {
 		collected := collect(t, events)
 		routeSettled(t, agent)
 		noCard(t, collected)
-		if nodes.count() > started {
-			started = nodes.count()
+		if admitted() > started {
+			started = admitted()
 			if turn != 1 && turn != routeJudgeGap+1 {
 				t.Fatalf("work started on turn %d, inside the gap", turn)
 			}
@@ -694,6 +705,7 @@ func TestTheRateLimitHolds(t *testing.T) {
 	if started != 2 {
 		t.Fatalf("%d tasks over four turns, want one on turn 1 and one on turn %d", started, routeJudgeGap+1)
 	}
+	waitFor(t, "both tasks the judge started", func() bool { return nodes.count() == 2 })
 }
 
 // THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. This was the one
