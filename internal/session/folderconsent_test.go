@@ -161,7 +161,7 @@ func TestABlanketAllowIsNeverTurnedIntoAFolderQuestion(t *testing.T) {
 // about it would be asking somebody to approve their own working directory.
 func TestTheWorkspaceItselfRaisesNoFolderQuestion(t *testing.T) {
 	agent, _ := folderAgent(t)
-	workspace := agent.workspaceStoodIn()
+	workspace, _ := agent.standingAndAttached()
 	decision, _ := agent.decide(call("edit", `{"path":`+quoteJSON(filepath.Join(workspace, "a.txt"))+`,"old":"x","new":"y"}`))
 	if strings.Contains(decision.Rule, "the folder itself, not a copy") {
 		t.Fatalf("the workspace raised a folder card: %+v", decision)

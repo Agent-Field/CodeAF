@@ -94,7 +94,7 @@ func (a *Agent) folderAimed(call ai.ToolCall) (string, bool) {
 	if args == "" || args == "null" {
 		return "", false
 	}
-	workspace := a.workspaceStoodIn()
+	workspace, places := a.standingAndAttached()
 	// FIRST THE PATH THE HAND WAS GIVEN, where it has one, read through the
 	// belt's own decoder so a model that spelled its arguments loosely is read
 	// the same way the tool will read them (toolargs.go). This is the arm that
@@ -104,7 +104,7 @@ func (a *Agent) folderAimed(call ai.ToolCall) (string, bool) {
 		Path string `json:"path"`
 	}
 	if err := decodeToolArguments(json.RawMessage(args), &named); err == nil && strings.TrimSpace(named.Path) != "" {
-		if folder, ok := a.referredFolderOf(canonicalPath(resolveAgainst(named.Path, workspace)), workspace); ok {
+		if folder, ok := attachedFolderOf(canonicalPath(resolveAgainst(named.Path, workspace)), workspace, places); ok {
 			return folder, true
 		}
 	}
@@ -114,7 +114,7 @@ func (a *Agent) folderAimed(call ai.ToolCall) (string, bool) {
 	// every hand, and it is the arm the copy never had. A JSON escape cannot hide
 	// a path: a directory name holds no character JSON escapes.
 	best := ""
-	for _, place := range a.referredPlaces() {
+	for _, place := range places {
 		folder := strings.TrimSpace(place.Path)
 		if place.Arrival != PlaceSaid || folder == "" || len(folder) <= len(best) {
 			continue
@@ -129,7 +129,7 @@ func (a *Agent) folderAimed(call ai.ToolCall) (string, bool) {
 	return best, best != ""
 }
 
-// referredFolderOf is the attached folder one PATH is inside, or nothing, and it
+// attachedFolderOf is the attached folder one PATH is inside, or nothing, and it
 // keeps the two laws this reading has always kept:
 //
 //   - THE STANDING WORKSPACE ALWAYS WINS. A path inside the folder the
@@ -141,12 +141,12 @@ func (a *Agent) folderAimed(call ai.ToolCall) (string, bool) {
 // A ground the ladder worked out for itself is not an attached folder (places.go
 // calls that a [PlaceKept] row), and a card about one would ask the person to
 // approve a path they never typed.
-func (a *Agent) referredFolderOf(path, workspace string) (string, bool) {
+func attachedFolderOf(path, workspace string, places []PlaceRef) (string, bool) {
 	if workspace != "" && under(path, workspace) {
 		return "", false
 	}
 	best := ""
-	for _, place := range a.referredPlaces() {
+	for _, place := range places {
 		if place.Arrival != PlaceSaid || !under(path, place.Path) {
 			continue
 		}
@@ -157,17 +157,25 @@ func (a *Agent) referredFolderOf(path, workspace string) (string, bool) {
 	return best, best != ""
 }
 
-// workspaceStoodIn is the directory this conversation is standing in, canonical,
-// read under the lock that moves it.
+// standingAndAttached is the two facts [Agent.folderAimed] reads, taken TOGETHER
+// UNDER ONE LOCK.
 //
-// IT TAKES THE LOCK BECAUSE THE ANSWER MOVES. `anchor_workspace` rewrites both
-// [Config.Workspace] and [Config.Place] under a.mu in one breath
-// (tools_anchor_workspace.go), and this runs on the tool path where that call
-// can land beside it.
-func (a *Agent) workspaceStoodIn() string {
+// BOTH HAVE TO MOVE AS ONE, and that is the reason the pair has a name rather
+// than two callers. `anchor_workspace` rewrites [Config.Workspace] under a.mu in
+// one breath with [Config.Place] (tools_anchor_workspace.go), and this runs on
+// the tool path where that call can land beside it — so two separate reads could
+// see the workspace from before a move and the folder set from after it, and
+// judge a path against a pair that never existed together.
+//
+// AND IT IS ONE ACQUISITION AND NOT TWO. This runs on EVERY tool call, which is
+// a place where a lock everything else in this agent also wants should be taken
+// once.
+func (a *Agent) standingAndAttached() (string, []PlaceRef) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return canonicalPath(strings.TrimSpace(a.config.Workspace))
+	places := make([]PlaceRef, len(a.places))
+	copy(places, a.places)
+	return canonicalPath(strings.TrimSpace(a.config.Workspace)), places
 }
 
 // under reports whether a path is the directory itself or something inside it.

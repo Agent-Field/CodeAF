@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -67,5 +69,32 @@ func TestTheGitLineReadsAsASentence(t *testing.T) {
 	}
 	if got := gitBranchWord("## HEAD (no branch)"); got != "on no branch" {
 		t.Errorf("a detached checkout reads as %q", got)
+	}
+}
+
+// A READING IS A SUBPROCESS, SO THE HEAD START IS NOT TAKEN FOR EVERY AGENT.
+// [newAgent] runs for every task node a conversation hands out and for every
+// agent a test builds — a thousand in one suite — and forking `git` for each of
+// those to move a convenience fact one turn earlier is not a trade worth
+// making. The turn's own refresh covers everything this declines.
+func TestTheGitHeadStartIsOnlyForAConversationInARepository(t *testing.T) {
+	plain := t.TempDir()
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("staging a repository: %v", err)
+	}
+	for _, row := range []struct {
+		what   string
+		config Config
+		want   bool
+	}{
+		{"a conversation in a repository", Config{Workspace: repo}, true},
+		{"a conversation in a plain folder", Config{Workspace: plain}, false},
+		{"a conversation with no workspace", Config{}, false},
+		{"a task node in a repository", Config{Workspace: repo, InTask: true}, false},
+	} {
+		if got := worthAHeadStart(row.config); got != row.want {
+			t.Errorf("%s takes a head start: %v, want %v", row.what, got, row.want)
+		}
 	}
 }
