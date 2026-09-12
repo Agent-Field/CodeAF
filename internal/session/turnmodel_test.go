@@ -45,7 +45,7 @@ func TestAPickWhileAnAnswerIsArrivingLeavesTheWorkWhereItIs(t *testing.T) {
 		},
 	}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
+		config.SeesImages = func(model string) (bool, bool) { return seesIf(model == "test/model") }
 		config.SessionFile = writeableJournal(t)
 	})
 	phases := watchPhases(t)
@@ -125,7 +125,7 @@ func TestAPickThatCutsTheRequestTakesThePicturesWithIt(t *testing.T) {
 		},
 	}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
+		config.SeesImages = func(model string) (bool, bool) { return seesIf(model == "test/model") }
 		config.SessionFile = writeableJournal(t)
 	})
 	path := writeImage(t, workspace, "chart.png", "PHOTOBYTES")
@@ -185,19 +185,23 @@ func TestAnIdleSessionsNewsNamesTheDial(t *testing.T) {
 	}
 }
 
-// A TURN THAT SWAPPED NOTHING TAKES NOTHING AWAY. The scrub is one-way and the
-// bytes do not come back, so it fires on a swap and on nothing else: an oracle
-// that answers `sees` off a warm cache and `blind` a minute later off a catalog
-// fetch that failed used to be enough to eat a person's screenshot with nobody
-// having touched the picker.
-func TestAFlappingOracleCannotScrubAConversationThatNeverSwapped(t *testing.T) {
-	sight := SightSees
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
-	}}
+// THE GUARD IS A FUNCTION OF THE REQUEST, SO NOTHING IT DOES IS PERMANENT.
+//
+// An oracle that answers `sees` off a warm cache and `blind` a minute later off
+// a catalog fetch that failed used to be enough to eat a person's screenshot
+// with nobody having touched the picker. Now the same flap hides the picture
+// from one request and shows it on the next, because the only thing that ever
+// happens to the bytes is that a copy of the messages leaves without them.
+func TestAFlappingOracleHidesAPictureAndThenShowsItAgain(t *testing.T) {
+	sees := true
+	sent := make(chan []ai.Message, 3)
+	answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		sent <- append([]ai.Message(nil), messages...)
+		return textResponse("read"), nil
+	}
+	completer := &scriptedCompleter{steps: []step{answer, answer, answer}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(string) ModelSight { return sight }
+		config.SeesImages = func(string) (bool, bool) { return sees, true }
 		config.SessionFile = writeableJournal(t)
 	})
 	path := writeImage(t, workspace, "chart.png", "PHOTOBYTES")
@@ -208,33 +212,51 @@ func TestAFlappingOracleCannotScrubAConversationThatNeverSwapped(t *testing.T) {
 	if got := countImageParts(agent); got != 1 {
 		t.Fatalf("the picture never reached the transcript")
 	}
+	if got := picturesIn(t, sent); got != 1 {
+		t.Fatalf("the model that can see was sent %d pictures", got)
+	}
 
-	// The catalog goes cold under the same model id. Nothing was swapped.
-	sight = SightBlind
+	// The catalog goes cold under the same model id, and nothing was swapped.
+	sees = false
 	collect(t, mustSubmit(t, agent, "and now?"))
+	if got := picturesIn(t, sent); got != 0 {
+		t.Fatalf("a model this build now believes is blind was sent %d pictures", got)
+	}
 	if got := countImageParts(agent); got != 1 {
-		t.Fatalf("a turn on the SAME model took the pictures away: %d left", got)
+		t.Fatalf("hiding the picture from one request took it out of the transcript: %d left", got)
+	}
+
+	// AND THE FLAP BACK COSTS NOTHING, which is the whole difference from the
+	// rewrite this replaced. A rescue hop onto a blind fallback — which nobody
+	// asked for — used to destroy the pictures of a conversation whose own model
+	// could see them perfectly well.
+	sees = true
+	collect(t, mustSubmit(t, agent, "and again?"))
+	if got := picturesIn(t, sent); got != 1 {
+		t.Fatalf("the model that can see again was sent %d pictures", got)
 	}
 }
 
-// AND AN UNKNOWN MODEL IS NOT A BLIND ONE. A swap onto a model this build has
-// never read a row for is ignorance, and ignorance may refuse to send but may
-// never destroy.
-func TestASwapOntoAnUnknownModelKeepsThePictures(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("third"), nil },
-	}}
+// AND A MODEL NOBODY HAS VOUCHED FOR IS SENT THE CONVERSATION AS IT STANDS,
+// while one this build KNOWS is blind is sent the placeholder. Ignorance may
+// refuse a new attachment — that costs a turn and a sentence — but it may not
+// decide what an existing picture is worth.
+func TestOnlyAKnownBlindModelIsSentThePlaceholder(t *testing.T) {
+	sent := make(chan []ai.Message, 3)
+	answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		sent <- append([]ai.Message(nil), messages...)
+		return textResponse("read"), nil
+	}
+	completer := &scriptedCompleter{steps: []step{answer, answer, answer}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight {
+		config.SeesImages = func(model string) (bool, bool) {
 			switch model {
 			case "test/model":
-				return SightSees
+				return true, true
 			case "vendor/blind":
-				return SightBlind
+				return false, true
 			}
-			return SightUnknown
+			return false, false
 		}
 		config.SessionFile = writeableJournal(t)
 	})
@@ -243,18 +265,39 @@ func TestASwapOntoAnUnknownModelKeepsThePictures(t *testing.T) {
 	ctx, cancel := deadline(20 * time.Second)
 	defer cancel()
 	collect(t, mustSubmitImage(t, agent, ctx, "what is wrong with this?", []Image{{Path: path}}))
+	if got := picturesIn(t, sent); got != 1 {
+		t.Fatalf("the seeing model was sent %d pictures", got)
+	}
 
 	agent.SetModel("vendor/never-heard-of")
 	collect(t, mustSubmit(t, agent, "still there?"))
-	if got := countImageParts(agent); got != 1 {
-		t.Fatalf("a swap onto a model nobody has vouched for destroyed %d pictures", 1-got)
+	if got := picturesIn(t, sent); got != 1 {
+		t.Fatalf("a model nobody has vouched for was sent %d pictures, want the one that is there", got)
 	}
 
-	// AND A SWAP ONTO A MODEL THIS BUILD KNOWS IS BLIND STILL SCRUBS, which is
-	// the capability this guard must not have taken away.
 	agent.SetModel("vendor/blind")
 	collect(t, mustSubmit(t, agent, "and now?"))
-	if got := countImageParts(agent); got != 0 {
-		t.Fatalf("a swap onto a known-blind model left %d pictures", got)
+	if got := picturesIn(t, sent); got != 0 {
+		t.Fatalf("a model this build knows is blind was sent %d pictures", got)
+	}
+	// AND THE TRANSCRIPT NEVER MOVED THROUGH ANY OF IT.
+	if got := countImageParts(agent); got != 1 {
+		t.Fatalf("the transcript holds %d pictures, want the one that was attached", got)
+	}
+}
+
+// picturesIn is how many pictures the request that just went out carried.
+func picturesIn(t *testing.T, sent chan []ai.Message) int {
+	t.Helper()
+	select {
+	case messages := <-sent:
+		pictures := 0
+		for _, message := range messages {
+			pictures += len(imagePartURLs(message))
+		}
+		return pictures
+	case <-time.After(5 * time.Second):
+		t.Fatal("no request reached the completer")
+		return -1
 	}
 }

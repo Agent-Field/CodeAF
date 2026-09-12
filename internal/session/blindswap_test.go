@@ -41,23 +41,22 @@ func countImageParts(agent *Agent) int {
 	return count
 }
 
-// Moving onto a model without eyes turns the pictures into their placeholders —
-// once, naming the file, with the person's own words left alone.
+// A model without eyes is SENT each picture's placeholder — once, naming the
+// file, with the person's own words left alone — and the transcript keeps the
+// picture.
 //
-// THE MOVE IS WHAT DOES IT, NOT THE PICK. A pick is a preference and may never
-// be acted on; what may not happen is a request going to a model that cannot see
-// with the base64 still in it. So the scrub rides the one door the model the
-// work is talking to changes through (steer.go's [Agent.ridesOnLocked]), and
-// this drives a turn after the pick rather than reading the transcript the
-// instant the picker closes.
-func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("seen"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("blind"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("still blind"), nil },
-	}}
+// THE REQUEST IS WHERE THIS HAPPENS, not the transcript (blindswap.go states
+// the whole design), so what the assertion reads is what the completer was
+// handed.
+func TestABlindModelIsSentThePlaceholderAndTheTranscriptKeepsThePicture(t *testing.T) {
+	sent := make(chan []ai.Message, 2)
+	answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		sent <- append([]ai.Message(nil), messages...)
+		return textResponse("read"), nil
+	}
+	completer := &scriptedCompleter{steps: []step{answer, answer, answer}}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
+		config.SeesImages = func(model string) (bool, bool) { return seesIf(model == "test/model") }
 		config.SessionFile = writeableJournal(t)
 	})
 	path := writeImage(t, workspace, "chart.png", "PHOTOBYTES")
@@ -65,21 +64,17 @@ func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 	ctx, cancel := deadline(10 * time.Second)
 	defer cancel()
 	collect(t, mustSubmitImage(t, agent, ctx, "what is wrong with this?", []Image{{Path: path}}))
+	<-sent
 	if countImageParts(agent) != 1 {
 		t.Fatalf("the picture never reached the transcript")
 	}
 
 	agent.SetModel("vendor/blind")
-	if count := countImageParts(agent); count != 1 {
-		t.Fatalf("the pick alone took %d pictures away before any request went to the blind model", 1-count)
-	}
 	collect(t, mustSubmit(t, agent, "and now?"))
-	if count := countImageParts(agent); count != 0 {
-		t.Fatalf("%d image parts survived the move onto a blind model", count)
-	}
-	text := transcriptText(agent)
+	messages := <-sent
+	text := messagesText(messages)
 	if !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
-		t.Fatalf("the placeholder does not name the file:\n%s", text)
+		t.Fatalf("the placeholder the blind model was sent does not name the file:\n%s", text)
 	}
 	if !strings.Contains(text, "what is wrong with this?") {
 		t.Fatalf("the person's own words were lost:\n%s", text)
@@ -87,13 +82,17 @@ func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 	if strings.Count(text, "— this model cannot see images]") != 1 {
 		t.Fatalf("the picture was replaced more than once:\n%s", text)
 	}
-
-	// Idempotent: a second swap between blind models rewrites nothing, because
-	// there is nothing left to rewrite.
-	agent.SetModel("vendor/blind-two")
-	collect(t, mustSubmit(t, agent, "and again?"))
-	if again := transcriptText(agent); !strings.Contains(again, text) {
-		t.Fatalf("a second move rewrote what the first one left:\n%s", again)
+	pictures := 0
+	for _, message := range messages {
+		pictures += len(imagePartURLs(message))
+	}
+	if pictures != 0 {
+		t.Fatalf("the blind model was sent %d pictures", pictures)
+	}
+	// AND THE BYTES ARE STILL THERE, which is what makes every one of these
+	// answers reversible.
+	if got := countImageParts(agent); got != 1 {
+		t.Fatalf("the transcript holds %d pictures, want the one that was attached", got)
 	}
 }
 
@@ -147,8 +146,12 @@ func TestTheScrubLeavesTheJournalWhole(t *testing.T) {
 }
 
 // And the resume half of the same seam: a session reopened on a model that
-// cannot see rebuilds the placeholder, never the bytes.
-func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
+// cannot see KEEPS the replayed pictures and sends their placeholders.
+//
+// The rewrite used to happen once, at the door, against whatever model the agent
+// happened to open with — so reopening on a blind model and then moving off it
+// left a conversation whose pictures were gone for no reason anybody could see.
+func TestResumingOnABlindModelKeepsThePicturesAndSendsPlaceholders(t *testing.T) {
 	journal := writeableJournal(t)
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
@@ -164,35 +167,57 @@ func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
+	sent := make(chan []ai.Message, 2)
+	answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		sent <- append([]ai.Message(nil), messages...)
+		return textResponse("read"), nil
+	}
 	resumed, err := newAgent(Config{
 		Workspace:   workspace,
 		Model:       "vendor/blind",
 		System:      "SYSTEM",
 		SessionFile: journal,
-		SeesImages:  func(model string) ModelSight { return SightOf(model == "test/model") },
-	}, &scriptedCompleter{})
+		SeesImages:  func(model string) (bool, bool) { return seesIf(model == "test/model") },
+	}, &scriptedCompleter{steps: []step{answer, answer}})
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
 	t.Cleanup(func() { _ = resumed.Close() })
 
-	if count := countImageParts(resumed); count != 0 {
-		t.Fatalf("%d image parts were replayed onto a blind model", count)
+	if count := countImageParts(resumed); count != 1 {
+		t.Fatalf("the replay left %d pictures in the transcript, want the one the journal holds", count)
 	}
-	if text := transcriptText(resumed); !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
-		t.Fatalf("the resumed transcript does not name the picture:\n%s", text)
+	collect(t, mustSubmit(t, resumed, "and now?"))
+	text := messagesText(<-sent)
+	if !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
+		t.Fatalf("the blind model was not sent the placeholder:\n%s", text)
+	}
+
+	// AND MOVING ONTO A MODEL THAT SEES SHOWS THEM AGAIN.
+	resumed.SetModel("test/model")
+	collect(t, mustSubmit(t, resumed, "look again"))
+	pictures := 0
+	for _, message := range <-sent {
+		pictures += len(imagePartURLs(message))
+	}
+	if pictures != 1 {
+		t.Fatalf("the model that can see was sent %d pictures after the resume", pictures)
 	}
 }
 
-// A picture the journal cannot name still loses its bytes — a memory-only
-// session has no file to have written a path, and "no path" is not a reason to
-// send base64 to a blind model.
-func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
+// A picture the journal cannot name is still kept out of a blind model's
+// request — a memory-only session has no file to have written a path, and "no
+// path" is not a reason to send base64 to a model that cannot read it.
+func TestAPictureWithNoJournaledPathIsStillHeldBack(t *testing.T) {
+	sent := make(chan []ai.Message, 1)
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("blind"), nil },
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			sent <- append([]ai.Message(nil), messages...)
+			return textResponse("blind"), nil
+		},
 	}}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.SeesImages = func(model string) ModelSight { return SightOf(model == "test/model") }
+		config.SeesImages = func(model string) (bool, bool) { return seesIf(model == "test/model") }
 	})
 	agent.mu.Lock()
 	agent.messages = append(agent.messages, ai.Message{Role: "user", Content: []ai.ContentPart{
@@ -201,13 +226,22 @@ func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
 	}})
 	agent.mu.Unlock()
 
-	// The move is what scrubs, so the turn after the pick is what this asserts on.
 	agent.SetModel("vendor/blind")
 	collect(t, mustSubmit(t, agent, "and now?"))
-	if count := countImageParts(agent); count != 0 {
-		t.Fatalf("%d image parts survived", count)
+	messages := <-sent
+	pictures := 0
+	for _, message := range messages {
+		pictures += len(imagePartURLs(message))
 	}
-	if text := transcriptText(agent); !strings.Contains(text, "[image — this model cannot see images]") {
+	if pictures != 0 {
+		t.Fatalf("%d pictures went to the blind model", pictures)
+	}
+	if text := messagesText(messages); !strings.Contains(text, "[image — this model cannot see images]") {
 		t.Fatalf("the placeholder is missing:\n%s", text)
 	}
 }
+
+// seesIf is a fixture's yes-or-no as the oracle's pair ([Config.SeesImages]): a
+// test that says a model sees or does not is a test that KNOWS, and the third
+// answer — nobody has said — is written out where it is the subject.
+func seesIf(sees bool) (bool, bool) { return sees, true }
