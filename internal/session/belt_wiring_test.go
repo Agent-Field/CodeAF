@@ -60,9 +60,34 @@ func v3ShapedAgent(t *testing.T) *Agent {
 // 39,073 bytes while the shipped shape weighed 53,025 — over the cap the gate
 // was enforcing, invisibly, which is #576's shape exactly (a gate that passes
 // because it is pointed at something nobody runs).
+// shippedBeltShape names the row of [beltShapes] that IS the shipping
+// conversation, fully wired.
+//
+// THE INDEX IS NOT THE IDENTITY. `beltShapes[0]` read the fullest shape only for
+// as long as nobody put a row in front of it — and what reads it is a budget
+// whose whole job is to be the number for the SHIPPED belt, which would have
+// gone on passing, quietly, against whatever shape had moved into slot zero.
+// That is the same failure this fixture exists to repair, one layer down.
+const shippedBeltShape = "a conversation that remembers"
+
+// beltShapeNamed is one row of [beltShapes] by its own name, and fails loudly
+// rather than returning a zero shape that would build an agent out of nothing.
+func beltShapeNamed(t *testing.T, name string) beltShape {
+	t.Helper()
+	names := make([]string, 0, len(beltShapes))
+	for _, shape := range beltShapes {
+		if shape.name == name {
+			return shape
+		}
+		names = append(names, shape.name)
+	}
+	t.Fatalf("there is no belt shape called %q; the shapes are %q", name, names)
+	return beltShape{}
+}
+
 func shippedShapeAgent(t *testing.T) *Agent {
 	t.Helper()
-	shape := beltShapes[0]
+	shape := beltShapeNamed(t, shippedBeltShape)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		// The rendered page is what the budget weighs, so this shape renders its
 		// own rather than taking newTestAgent's fixed one.

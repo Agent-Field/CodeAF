@@ -88,7 +88,17 @@ func grepToolDescription(caps Caps) string {
 // weighs what the WIDEST machine pays, and this is the one place that knows
 // which sentence that is.
 func WidestGrepDescription(caps Caps) string {
-	return grepFallbackDescription(caps.resolve())
+	caps = caps.resolve()
+	// THE LONGER OF THE TWO, MEASURED, and not the one that happens to be longer
+	// today. The fallback sentence is the longer one now; a later edit that grew
+	// the ripgrep sentence past it would have made a function called "widest"
+	// quietly return the narrower string, and the gate downstream would have gone
+	// back to depending on who ran it with nothing to say so.
+	with, without := grepDescription(caps), grepFallbackDescription(caps)
+	if len(with) > len(without) {
+		return with
+	}
+	return without
 }
 
 // grepMatch is one hit, whichever engine found it.
