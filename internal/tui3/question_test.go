@@ -493,43 +493,30 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	}
 }
 
-// TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall is where the pointer
-// stands when the asker named no pick, and it is the half of the pointer that
-// keeps it safe.
+// TestEnterOnAPermissionSplitsOnTheStakes is where the pointer stands when the
+// asker named no pick, and it is the half of the pointer that keeps it safe.
 //
-// `enter` takes the answer the pointer is on, so a permission whose pointer
-// opened on the first answer would make `enter` mean `allow once` — on a gate
-// over `rm -rf *` as readily as over a `git status` the rules had merely not
-// seen before. The lane already says which answer costs nothing
-// ([session.AnswerOption.Safe]) and that is the one EVERY permission opens on.
+// `enter` takes the answer the pointer is on, so the ruling (owner, 2026-09-11)
+// is one keystroke wide: an ORDINARY call opens on `allow once` and a GRAVE one
+// on `deny`, and the engine's grade — [session.Question.Stakes], written by the
+// gate out of internal/approval's own judgement — is the only thing that says
+// which is which. #933 could not ship the split because nothing upstream graded
+// a call; it shipped deny-first for all of them, and this test is what its
+// successor proves now that the grade arrives.
 //
-// IT IS ONE RULE AND IT IS NOT KEYED ON THE STAKES, which is what this test is
-// shaped to prove. The 2026-09-11 design ruling was that an ordinary call should
-// open on `allow once` and only a grave one on deny; the owner's follow-up the
-// same day was DENY-FIRST UNTIL GRADED, because nothing upstream grades a call —
-// the gate stamps `costly` on every consent alike and internal/approval never
-// produces irreversible at all ([TestTheGateGradesNoCallAsIrreversibleAndMarks\
-// DenyTheSafeAnswer] in internal/session holds that down). A by-stakes rule
-// would therefore have read "ordinary" for a recursive delete in production and
-// its grave branch would have been reachable only from a fixture — which is
-// exactly how the version of this test that FORCED `StakesIrreversible` by hand
-// passed while `enter` allowed everything a person actually met.
-//
-// So it walks every stakes a permission can carry rather than choosing one, and
-// states the rule's ONE exception with it: a permission a lane marked plainly
-// REVERSIBLE is not hands-only and opens on its first answer. Nothing produces
-// one today — the gate stamps `costly` — and the day something does, this is
-// where the claim is written down rather than discovered.
-func TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall(t *testing.T) {
+// ONE CASE EACH WAY, read off the question and never spelled as an answer
+// number: a test naming `3` would still pass the day the engine renumbered its
+// answers and moved the refusal somewhere else.
+func TestEnterOnAPermissionSplitsOnTheStakes(t *testing.T) {
 	for _, one := range []struct {
 		stakes session.Stakes
 		// refuses says the pointer opens on the answer that loses nothing, so
-		// `enter` on an untouched frame denies the call.
+		// `enter` on an untouched frame denies the call; otherwise it opens on
+		// the first answer, `allow once`.
 		refuses bool
 	}{
-		{session.StakesCostly, true},       // what the gate actually stamps
-		{session.StakesIrreversible, true}, // what it would stamp if it graded
-		{session.StakesReversible, false},  // the documented exception
+		{session.StakesCostly, false},      // an ordinary call: enter allows once
+		{session.StakesIrreversible, true}, // a grave one: enter denies
 	} {
 		t.Run(string(one.stakes), func(t *testing.T) {
 			lab := newQuestionLab(t)
@@ -540,9 +527,6 @@ func TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall(t *testing.T) {
 			lab.tick(questionSettle)
 			lab.rows()
 
-			// THE ANSWER IS READ OFF THE QUESTION AND NOT SPELLED HERE: a test
-			// naming `3` would still pass the day the engine renumbered its
-			// answers and moved the refusal somewhere else.
 			want := 0
 			if one.refuses {
 				want = questionSafeAt(ask)
@@ -550,6 +534,9 @@ func TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall(t *testing.T) {
 					t.Fatalf("the answer that loses nothing is not the refusal: %q",
 						ask.Options[want].Label)
 				}
+			} else if ask.Options[want].Label != "allow once" {
+				t.Fatalf("the first answer is not the one-off allow: %q",
+					ask.Options[want].Label)
 			}
 			head, _ := lab.a.questionHead()
 			if head.pick != want {
