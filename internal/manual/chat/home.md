@@ -706,11 +706,17 @@ a fold door, the action row — always with `alt+. map · tab next place` before
 
 ## Typing a long question on home — does the box wrap, and where does a paste go
 
-**The box wraps.** Home's foot box is drawn by the same editor as the chat's message box:
-a sentence longer than the frame wraps onto continuation rows — up to three — and past
-that the window scrolls with the caret, marked with `…` where the `›` was. Nothing you
-type is ever truncated out of view. There is no key to open a new line here (that is the
-chat box's `ctrl+j`).
+**The box wraps, and it is three rows tall the whole time.** Home's foot box is drawn by
+the same editor as the chat's message box: a sentence longer than the frame wraps onto
+continuation rows. The moment you type anything the box stands **three rows** high and
+stays there — it does not grow under your hand as a sentence wraps, and the list above it
+does not step down a row when it does. Past three rows the window scrolls with the caret,
+marked with `…` where the `›` was. Nothing you type is ever truncated out of view. There
+is no key to open a new line here (that is the chat box's `ctrl+j`).
+
+**An empty box is one row.** With nothing typed it draws the dim sentence about what this
+screen does and nothing else, because a box nobody is typing in has nothing to show. The
+three rows arrive with the first character.
 
 **`alt+enter` is a task and not `ask here`.** On home and on every other place the chord
 opens the **composer layer**, where the three facts a task needs are settled — where, on

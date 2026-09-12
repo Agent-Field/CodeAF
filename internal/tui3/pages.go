@@ -1185,6 +1185,15 @@ func placeFrameWithBar(a *app, width, height int,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
 	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
+		// THE BOX HAS A FLOOR ONCE IT HOLDS SOMETHING ([homeDraftFloor]), and the
+		// rows that make it up are added BELOW what was typed. Padding above would
+		// move the first line a person typed off the first row, and the caret's own
+		// row is derived by subtracting this block's height from the rows placed
+		// below — so a pad at the bottom moves both by the same amount and the
+		// caret stays on the letter it is on.
+		for len(draftRows) < homeDraftFloor {
+			draftRows = append(draftRows, "")
+		}
 	}
 	draftHeight := len(draftRows)
 	if draftHeight < 1 {

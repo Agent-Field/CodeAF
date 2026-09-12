@@ -254,6 +254,38 @@ const (
 // the caret exactly as the chat box's does (input.go's draftBlock).
 const homeDraftRows = 3
 
+// homeDraftFloor is how many rows home's foot box occupies ONCE SOMETHING IS
+// TYPED IN IT, however little that is.
+//
+// A ONE-ROW BOX READS AS A RULE, NOT AS A PLACE TO TYPE. The box grew to fit
+// its draft and no further, so the commonest state — a question a sentence
+// long — drew a single line between the list above it and the hint below it,
+// and a person looking at the screen could not tell the thing they were typing
+// into from the two dim rules around it. The complaint was that it is
+// invisible, and the cause is that one row of text bounded by two rows of
+// chrome has no mass of its own.
+//
+// SO THE BOX HAS A FLOOR, AND THE FLOOR IS ITS CEILING. Both are three, which
+// makes the typing area a block of ONE HEIGHT: it does not grow under the hand
+// as a sentence wraps, and the list above it does not step down a row when it
+// does. A box that changed height while somebody typed into it was the other
+// half of the same complaint, and the two are fixed by one number rather than
+// by two that have to be kept apart.
+//
+// The rows are padded BELOW the draft, never above it, so the first line a
+// person types stays on the first row and the caret arithmetic in pages.go is
+// untouched — it derives the caret's row by subtracting this block's height
+// from the rows placed, and a pad at the bottom moves both by the same amount.
+// Past three rows the window still scrolls under the caret ([draftBlock]), so a
+// paste cannot push the list off the screen.
+//
+// AT REST IT IS STILL ONE ROW. An empty box draws the place's own dim sentence
+// and nothing else, which is the list-first shape this screen is built on and
+// the emptiness law besides: a box nobody is typing in has nothing to show, and
+// three blank rows held open for it would be the cockpit this screen
+// deliberately is not.
+const homeDraftFloor = 3
+
 // The sentences this surface says. Each is quoted in the manual exactly as it
 // is spelled here.
 const (
