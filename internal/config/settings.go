@@ -3762,16 +3762,15 @@ func parseModelRoles(raw string) (pins map[string]string, dropped []string, err 
 	return pins, dropped, nil
 }
 
-// knownRole reports a name this build actually resolves a call under.
-func knownRole(name string) bool {
-	key := roles.RoleKey(name)
-	for _, role := range roles.Registered() {
-		if roles.RoleKey(string(role)) == key {
-			return true
-		}
-	}
-	return false
-}
+// knownRole reports a name this build has a role for.
+//
+// IT ASKS THE VOCABULARY AND NOT THE REGISTRY, which are two different
+// questions. The registry is the TIER TABLE: a role gets into it by registering,
+// and a role with no tier never does. `imagegen` is exactly that — a painter is
+// chosen by a pin or not at all, since a chat model in tiers.high is not a
+// statement about painting — so reading the registry here threw away a person's
+// `imagegen:` pin, which is a real setting doing real work.
+func knownRole(name string) bool { return roles.Known(name) }
 
 // RetiredPinNote is what a surface with a person in front of it says about pins
 // this build will not act on, and "" when there are none. It is a sentence and
@@ -4162,8 +4161,8 @@ func writeModelRoles(profileDir, raw string) error {
 // roleNames is the registered roles as a sorted list of plain words, for the
 // refusal above to name them all rather than make somebody go looking.
 func roleNames() []string {
-	names := make([]string, 0, len(roles.Registered()))
-	for _, role := range roles.Registered() {
+	names := make([]string, 0, len(roles.Vocabulary()))
+	for _, role := range roles.Vocabulary() {
 		names = append(names, string(role))
 	}
 	sort.Strings(names)

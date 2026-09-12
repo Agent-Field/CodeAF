@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/callrows"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 // ── THE INSTRUMENT'S OWN LAW ────────────────────────────────────────────────
@@ -479,6 +480,37 @@ func TestEveryRoleWordIsDeclaredWhereTheVocabularyIs(t *testing.T) {
 			return true
 		})
 	})
+}
+
+// TestTheVocabularyListsEveryRoleTheFileDeclares keeps [roles.Vocabulary] whole.
+//
+// THE REGISTRY IS NOT THE VOCABULARY, and that difference cost a real setting.
+// A role gets into the registry by registering, which is how it gets a TIER; a
+// role with no tier never registers, and `imagegen` is one — a painter is chosen
+// by a pin or not at all. Reading the registry as "what are the roles" threw a
+// person's `imagegen:` pin away on the way in.
+//
+// So internal/roles answers both questions, and the vocabulary is a hand-written
+// list, which is a thing that falls behind. This is why it cannot: the same
+// parse that reads the file for [roleWords] is checked against what the package
+// says it has.
+func TestTheVocabularyListsEveryRoleTheFileDeclares(t *testing.T) {
+	listed := map[string]bool{}
+	for _, role := range roles.Vocabulary() {
+		listed[string(role)] = true
+	}
+	for _, word := range roleWords() {
+		if !listed[word] {
+			t.Errorf("internal/roles declares the role %q and roles.Vocabulary does not list it. "+
+				"Every reader that asks what the roles ARE reads that list, and a word missing "+
+				"from it is a pin thrown away on the way in.", word)
+		}
+	}
+	if len(listed) != len(roleWords()) {
+		t.Errorf("roles.Vocabulary lists %d roles and the file declares %d; a word in the list "+
+			"that is not a constant is a word nothing can ever write",
+			len(listed), len(roleWords()))
+	}
 }
 
 // isRoleType reports the `roles.Role` type spelled on a declaration.

@@ -517,6 +517,48 @@ func Registered() []Role {
 	return roles
 }
 
+// Vocabulary is EVERY role this build has a word for, which is not the same set
+// as [Registered].
+//
+// A ROLE WITH NO TIER IS STILL A ROLE. [RoleImageGen] is the standing example:
+// a painter is chosen by a pin or not at all — "a chat model in tiers.high is
+// not a statement about painting" — so nothing ever calls [Register] for it and
+// the registry has never heard of it. Reading the registry as the answer to
+// "what are the roles" therefore throws a person's `imagegen:` pin away, which
+// is a real setting doing real work.
+//
+// So this is the vocabulary and the registry is the tier table. They are
+// different questions and this package now answers both.
+//
+// THE LIST IS COMPLETE BECAUSE A LAW SAYS SO, not because somebody remembers:
+// cmd/aforge-replay's TestEveryRoleWordIsDeclaredWhereTheVocabularyIs already
+// parses this file for every Role constant, and fails when one of them is
+// missing from here.
+func Vocabulary() []Role {
+	return append([]Role(nil), vocabulary...)
+}
+
+// Known reports a written name as one of this build's roles, registered or not.
+func Known(name string) bool {
+	key := RoleKey(name)
+	for _, role := range vocabulary {
+		if RoleKey(string(role)) == key {
+			return true
+		}
+	}
+	return false
+}
+
+var vocabulary = []Role{
+	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
+	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
+	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
+	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
+	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
+	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
+	RoleVision, RoleWorker,
+}
+
 // RoleKey is how a role name written by a person is compared: trimmed and
 // lower-cased.
 //
