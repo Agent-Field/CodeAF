@@ -402,14 +402,42 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	defer recall.end()
 
 	// AND WHAT THE OTHER WINDOWS ON THIS PROJECT HAVE BEEN DOING (taskdelta.go),
-	// on its own goroutine for the same law. It makes no model call — it opens the
+	// beside the work for the same law. It makes no model call — it opens the
 	// project index and one small JSON per live window — but a shared directory on
 	// a cold disk is still a wait, and the only wait a person experiences here is
 	// the model generating. It fails open the same way: no folder, no index and no
 	// other window each answer an empty block, and a turn with an empty block is a
 	// turn as it always was; a read that lands after the first request rides the
 	// next step, which is the same bargain the recall takes.
-	go a.refreshElsewhere()
+	//
+	// IT GOES THROUGH [readBeside] AND NOT THROUGH A `go` OF ITS OWN, which is
+	// sidecar.go's whole reason for existing: a reading with its own goroutine has
+	// its own idea of what a cancellation means, and this one had none at all —
+	// it was measured stamping a conversation's folder after that conversation
+	// had closed. Nothing takes its answer, because its answer IS the assignment
+	// it makes; what the door buys is the cancellation — the reading carries the
+	// context it is given and obeys it ([Agent.refreshElsewhere]) — and a reading
+	// the beside-watch can see, so a fixture waits on the fact instead of guessing.
+	//
+	// AND A TURN THAT MAY NOT BE TOLD STARTS NO READING AT ALL. A task node and a
+	// conversation with no folder are both answered by one predicate
+	// ([Agent.tellsElsewhere]); asking it here keeps a reading that would return
+	// on its first line out of the watch, where it would be one more thing a
+	// fixture waits for and nothing at all beside the work.
+	//
+	// THE `ask` IS WRITTEN OUT HERE AND NOT HOISTED INTO A VARIABLE, because the
+	// set of readings the sidecar law watches is READ OFF THE TREE — whatever an
+	// inline [readBeside] ask calls is a reading, by construction
+	// (sidecar_law_test.go). A reading handed in through a name is a reading that
+	// law cannot see, which is how the next one stops being watched.
+	var elsewhere *sidecar[struct{}]
+	if a.tellsElsewhere() {
+		elsewhere = readBeside(ctx, func(read context.Context) struct{} {
+			a.refreshElsewhere(read)
+			return struct{}{}
+		}, nil)
+	}
+	defer elsewhere.end()
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
