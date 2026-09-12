@@ -2634,10 +2634,10 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	// back when the model's turn ends without an answer (agent.go).
 	node.holdsDecision(TaskAskOwnerModel)
 	notice := node.notice()
-	// AND THE NOTE CARRIES THE NODE IT HANDS OVER, so the drain that puts it in
-	// front of the model is the thing that says the model has been asked
-	// ([Agent.markHandOverAsked]). Without that link the floor could not tell a
-	// press the model has read from one still waiting on the queue.
+	// AND THE NOTE CARRIES THE NODE IT HANDS OVER, so that the queue itself
+	// answers whether the model has been given this question: without the link,
+	// the floor could not tell a press a request has carried from one still
+	// waiting on the queue (task_run.go's [Agent.handBackUnsettled]).
 	a.enqueueHandOver(id, handOverLead+"\n"+
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	a.emitTaskUpdate(notice)

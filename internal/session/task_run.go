@@ -818,8 +818,8 @@ type TaskNode struct {
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
 	// asked aforge to decide this one card, and the note that asks it is either
-	// waiting on the steering queue or in front of the model. It is
-	// not the same fact as [TaskNode.decider] being the model — a landing under
+	// waiting on the steering queue or in front of the model. It is not the same
+	// fact as [TaskNode.decider] being the model — a landing under
 	// `task.settle = auto` writes that by policy and presses nothing — and it
 	// travels with the owner through [TaskNode.givesBackLocked] so a hand-back
 	// leaves no receipt behind (task_audit.go's [TaskNode.wasHandedOver] states

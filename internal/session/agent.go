@@ -2271,8 +2271,12 @@ func (a *Agent) Close() error {
 	// said properly rather than merely dropped, so a surface takes the clock down
 	// instead of holding a stage nobody will ever finish. [Agent.tellPhase]
 	// refuses a closed session, which is what keeps a turn still unwinding below
-	// from arming another one.
+	// from arming another one, and the wait is what makes the cancel a JOIN: a
+	// beat armed in the last instant before this may not have been scheduled yet,
+	// and a goroutine that wakes after the session has left is one this session
+	// still owns however quickly it returns.
 	a.endPhase()
+	a.waitForPhaseBeats()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes
@@ -3004,9 +3008,9 @@ func (a *Agent) enqueueSteering(text string) {
 }
 
 // enqueueHandOver is [Agent.enqueueSteering] for the one note that also changes
-// who is holding a question: the person's "let aforge decide this one". The id
-// rides with the line so that the drain in front of the next request is what
-// turns the press into a question the model has (task_audit.go's [handOver]).
+// who is holding a question: the person's "let aforge decide this one". The
+// landing rides with the line so that the queue can be asked which presses the
+// model has not been given yet ([Agent.handOversWaiting]).
 func (a *Agent) enqueueHandOver(id uint64, text string) {
 	note := wakeNote(text)
 	note.handsOver = []uint64{id}

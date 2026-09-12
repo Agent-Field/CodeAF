@@ -369,6 +369,17 @@ type phaseHeart struct {
 	// screen, which is the same defect as a stale phase and harder to see.
 	held PhaseNews
 	stop chan struct{}
+	// beating is one channel per beat goroutine this heart has armed that has not
+	// returned yet, closed by the beat itself on its way out.
+	//
+	// IT IS THERE SO THE QUIT CAN JOIN THEM AND NOT MERELY CANCEL THEM. Closing
+	// `stop` is what ENDS a beat; it is not what makes it gone. A beat armed in
+	// the last instant before [Agent.Close] may not have been scheduled at all
+	// yet — it then wakes after the session has left, reads this package's own
+	// beat interval and returns — which is a goroutine outliving the thing that
+	// armed it however quickly it exits. A session that has closed owns nothing
+	// still running, so the close waits ([Agent.waitForPhaseBeats]).
+	beating []chan struct{}
 }
 
 // tellPhase is how this package says what a turn is doing between requests, and
@@ -442,10 +453,11 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()
-	stop := make(chan struct{})
+	stop, done := make(chan struct{}), make(chan struct{})
 	a.phase.held, a.phase.stop = news, stop
+	a.phase.beating = append(a.phase.beating, done)
 	postPhaseNews(news)
-	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
+	guard.Go("phase beat", func() { a.beatHeldPhase(stop, done) })
 }
 
 // interruptPhase says a phase over the top of whatever the turn was already
@@ -515,7 +527,8 @@ func (a *Agent) dropHeldPhaseLocked() {
 // beatHeldPhase re-says one held phase until it ends. It is the whole lifetime
 // of the goroutine [Agent.tellPhase] spawns: it starts with a phase and it
 // returns when that phase is over, and there is no other exit.
-func (a *Agent) beatHeldPhase(stop chan struct{}) {
+func (a *Agent) beatHeldPhase(stop, done chan struct{}) {
+	defer a.beatEnded(done)
 	beat := time.NewTicker(phaseHeldBeat)
 	defer beat.Stop()
 	for {
@@ -527,6 +540,41 @@ func (a *Agent) beatHeldPhase(stop chan struct{}) {
 				return
 			}
 		}
+	}
+}
+
+// beatEnded is one beat's own last act: it takes itself off the heart and
+// releases whoever is waiting for it ([Agent.waitForPhaseBeats]). The close is
+// outside the lock the quit reads that list under, so a join and an ending beat
+// cannot cross.
+func (a *Agent) beatEnded(done chan struct{}) {
+	a.phase.mu.Lock()
+	kept := a.phase.beating[:0]
+	for _, other := range a.phase.beating {
+		if other != done {
+			kept = append(kept, other)
+		}
+	}
+	a.phase.beating = kept
+	a.phase.mu.Unlock()
+	close(done)
+}
+
+// waitForPhaseBeats waits for every beat this heart has armed to have RETURNED,
+// and is the quit's own door ([Agent.Close]) and nobody else's.
+//
+// IT IS NOT ON A TURN'S PATH, deliberately: ending a stage cancels its beat and
+// carries on, because the only wait a person is ever made to feel is the model
+// generating. This is the one caller that has to know the goroutine is gone
+// rather than going, and it has already told [Agent.tellPhase] that nothing may
+// arm another one.
+func (a *Agent) waitForPhaseBeats() {
+	a.phase.mu.Lock()
+	pending := make([]chan struct{}, len(a.phase.beating))
+	copy(pending, a.phase.beating)
+	a.phase.mu.Unlock()
+	for _, done := range pending {
+		<-done
 	}
 }
 
