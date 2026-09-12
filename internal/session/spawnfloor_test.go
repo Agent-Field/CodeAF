@@ -44,8 +44,16 @@ func TestAGenuineMultiPartAskCanStillBecomeATask(t *testing.T) {
 	if agent.graph().node(1) == nil {
 		t.Fatal("a genuine multi-part ask started nothing")
 	}
-	if notice := routeNotice(collected); !strings.Contains(notice, "task 1 started") {
-		t.Fatalf("the turn said %q, want the work it started", notice)
+	// AND THE TOLD-AFTER LINE IS SAID, on this turn's stream or on the next one's.
+	// The turn does not wait for the ruling any more, so the line is not promised
+	// to this turn's events — but it is promised to the person, which is the claim
+	// worth holding (memory.go's [Agent.sayLate]).
+	notice := routeNotice(collected)
+	if notice == "" {
+		notice = routeNotice(collect(t, mustSubmit(t, agent, "and what else is on today")))
+	}
+	if !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the person was told %q, want the work that started", notice)
 	}
 }
 

@@ -1210,17 +1210,52 @@ func TestASupersessionSaysWhatItReplaced(t *testing.T) {
 // own test beside another suite, where the drain logged `ctxErr=context
 // canceled hubClosed=true` on every run that lost the line. A line taken with no
 // turn live now goes back on the queue, and the next turn says it.
+//
+// AND THE QUEUE IS THE SESSION'S RATHER THAN THE BRAIN'S, which is where it moved
+// when the route judge became the second caller that decides after a turn has
+// sealed: a session with memory off had no queue at all, so the second caller's
+// line would have been dropped in silence (memory.go's [Agent.sayLate]).
 func TestAHeldLineOutlivesTheReadingThatTookIt(t *testing.T) {
 	const line = "superseded · deploys on Fridays → deploys on Tuesdays"
 	agent, _ := brainAgent(t, &reflexScript{route: `{"inject":[],"cmd":null}`}, nil)
 	watchReadings(t, agent)
-	agent.memory.queueNotice(line)
+	// Said with no turn live, which is what a reading that outlived its own turn
+	// does: it goes onto the queue rather than onto a stream nobody is reading.
+	agent.sayLate(line)
 
 	// The recall of a turn that has already ended, running now: no stream is live.
 	agent.refreshMemory(context.Background(), "we moved deploys to Tuesday mornings")
 
 	if said := supersessionSaid(collect(t, mustSubmit(t, agent, "what else is on today"))); said != line {
 		t.Fatalf("the next turn said %q, want the held line the late reading took", said)
+	}
+}
+
+// AND THE QUEUE IS NOT THE MEMORY BRAIN'S, which is the half that had no test
+// because it had no second caller. A session with memory OFF still owes a line
+// to whatever decided after its turn sealed — the route judge's told-after
+// sentence is the one that made this real — and before the queue moved onto the
+// session there was nowhere to put it.
+func TestASessionWithNoMemoryStillHoldsALineItCouldNotSay(t *testing.T) {
+	const line = "this looked like work, so task 4 started: audit the pricing code"
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("here is the answer"), nil
+		},
+	}}, nil)
+	if agent.remembers() {
+		t.Fatal("this fixture is supposed to have no brain, so the queue under test is the session's")
+	}
+	agent.sayLate(line)
+
+	var said string
+	for _, event := range collect(t, mustSubmit(t, agent, "what else is on today")) {
+		if event.Kind == EventNotice && event.Text == line {
+			said = event.Text
+		}
+	}
+	if said != line {
+		t.Fatalf("a session with no brain said %q, want the held line on the next turn", said)
 	}
 }
 

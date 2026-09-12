@@ -749,6 +749,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// of a conversation on the strength of a conversation that already ended.
 	meter := &checkpointMeter{}
 
+	// AND WHATEVER THE SESSION OWED THE PERSON AND HAD NO STREAM FOR. A reading
+	// that outlives its turn decides after the hub is closed — the post-turn
+	// memory pass, the route judge's ruling — and this is the first stream it
+	// gets (memory.go's [Agent.sayLate]). It is here rather than in the memory
+	// refresh, which is where it used to be: that refresh does not run at all on
+	// a session with memory off, so any other caller's line was held for ever.
+	a.sayHeldLines(hub)
+
 	// AND THE MARK'S READING RIDES BESIDE THE WORK (checkpoint.go's [markAside]).
 	// It belongs to the turn for the meter's reason — it is a fact about ONE
 	// answer — and it is let go of on every way out, including the ones that end

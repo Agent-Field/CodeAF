@@ -1633,10 +1633,14 @@ func TestTheRateLimitIsSharedByBothAsks(t *testing.T) {
 	// TURN ONE starts work the POST-turn way: the pre-turn screen says no (its
 	// default), the answer comes back in words, and the judge behind it starts a
 	// task.
-	first := collect(t, mustSubmit(t, agent, routeAsk))
-	if notice := routeNotice(first); !strings.Contains(notice, "task 1 started") {
-		t.Fatalf("the first turn said %q, want the work the post-turn read started", notice)
-	}
+	collect(t, mustSubmit(t, agent, routeAsk))
+	// THE TASK IS THE FACT AND THE LINE IS THE FACT'S ANNOUNCEMENT, and they no
+	// longer land in the same breath. The turn seals when the answer is done and
+	// the ruling is spent whenever it lands (loop.go), so the start is waited on
+	// here and the told-after line rides whichever stream is live when it
+	// arrives — this turn's if it is still open, the next one's otherwise
+	// (memory.go's [Agent.sayLate]). Asserting it onto THIS turn's events would
+	// be asserting an ordering the turn no longer promises.
 	waitFor(t, "the task the post-turn read started", func() bool { return nodes.count() == 1 })
 
 	// TURN TWO would be a yes at the FRONT of the turn — and it is never asked,
@@ -1648,7 +1652,12 @@ func TestTheRateLimitIsSharedByBothAsks(t *testing.T) {
 	if completer.preAsked() != before {
 		t.Fatalf("the pre-turn screen was asked again inside the gap (%d then %d)", before, completer.preAsked())
 	}
-	if notice := routeNotice(second); notice != "" {
+	// A LINE ON THIS TURN IS NOT A START ON THIS TURN. The first turn's
+	// told-after sentence rides whichever stream is live when its ruling lands,
+	// and that is sometimes this one (memory.go's [Agent.sayLate]) — so what
+	// says nothing started here is the NUMBER in the line, and the graph beside
+	// it.
+	if notice := routeNotice(second); strings.Contains(notice, "task 2") {
 		t.Fatalf("a second task started inside the gap: %q", notice)
 	}
 	if agent.graph().node(2) != nil {
@@ -1701,6 +1710,11 @@ func TestARacedYesTheConfirmRefusesLetsTheTurnRunToItsEnd(t *testing.T) {
 	if completer.answered() != 1 {
 		t.Fatalf("the conversation was asked %d times, want the ordinary turn", completer.answered())
 	}
+	// AND IT IS WAITED FOR RATHER THAN COUNTED ON THE SPOT. The turn does not
+	// hold its seal for the post-turn read any more (loop.go), so the read is
+	// still in flight when the turn's stream closes; what this test is about is
+	// that the read HAPPENS, which is a fact to wait on.
+	waitFor(t, "the post-turn judge's one look", func() bool { return completer.asked() == 1 })
 	if completer.asked() != 1 {
 		t.Fatalf("the post-turn judge was asked %d times, want its usual one look", completer.asked())
 	}

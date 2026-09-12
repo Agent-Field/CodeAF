@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -349,12 +350,32 @@ func TestASteerCutsEvenTheLastGenerationBeforeItCanSeal(t *testing.T) {
 	}
 }
 
+// steerGrindRounds is how many tool rounds this fixture's turn spends before it
+// answers in words: the ceiling's own first mark, plus two, which is what opens
+// the price gate in front of the one reading a turn still waits for.
+var steerGrindRounds = checkpointMarkAt(1) + 2
+
+// happyFallThroughCompleter answers an ordinary turn and PARKS AT ITS LAST
+// BOUNDARY, so that a steer can be sent while the turn is provably still
+// running and provably has no next step to be spliced into.
+//
+// IT PARKS ON THE REMAINS READER AND NOT ON THE ROUTE JUDGE, and the difference
+// is the whole of what moved. The judge used to hold the turn open until it
+// answered, which made it a convenient prop for "past the last boundary and
+// still running" — and it does not hold it any more: the turn seals when the
+// answer is done and the ruling is spent whenever it lands (loop.go).
+//
+// What is left is the ONE end-of-turn reading the turn still waits for: the
+// reader asking what is left of the ask, which decides whether there IS a turn
+// to seal. It is asked past the ceiling's price gate, so this turn grinds to it
+// — which makes the window an honest property of the turn's shape rather than a
+// reading that happened to be slow.
 type happyFallThroughCompleter struct {
 	mu           sync.Mutex
 	conversation [][]ai.Message
-	judgeEntered chan struct{}
-	releaseJudge chan struct{}
-	judgeOnce    sync.Once
+	atLastBound  chan struct{}
+	releaseBound chan struct{}
+	boundOnce    sync.Once
 }
 
 func (c *happyFallThroughCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -366,21 +387,21 @@ func (c *happyFallThroughCompleter) CompleteWithMessages(ctx context.Context, me
 		return textResponse(routeConfirmNo), nil
 	}
 	if system == routeJudgeBrief {
+		return textResponse(routeConfirmNo), nil
+	}
+	if len(messages) > 0 && strings.Contains(messageText(messages[len(messages)-1]), "[still asked]") {
 		wait := false
-		c.judgeOnce.Do(func() {
-			close(c.judgeEntered)
+		c.boundOnce.Do(func() {
+			close(c.atLastBound)
 			wait = true
 		})
 		if wait {
 			select {
-			case <-c.releaseJudge:
+			case <-c.releaseBound:
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
 		}
-		return textResponse(routeConfirmNo), nil
-	}
-	if len(messages) > 0 && strings.Contains(messageText(messages[len(messages)-1]), "[still asked]") {
 		return textResponse(checkpointNothingLeft), nil
 	}
 	if system != "SYSTEM" {
@@ -389,7 +410,19 @@ func (c *happyFallThroughCompleter) CompleteWithMessages(ctx context.Context, me
 	c.mu.Lock()
 	snapshot := append([]ai.Message(nil), messages...)
 	c.conversation = append(c.conversation, snapshot)
+	round := len(c.conversation)
 	c.mu.Unlock()
+	// THE TURN GRINDS TO THE PRICE GATE and then answers in words, so the reader
+	// this fixture parks on is really asked. A different path every round, for
+	// [grindingSteps]' reason: a turn repeating one call reads as a turn going in
+	// circles and is handed over long before the gate.
+	if round <= steerGrindRounds {
+		arguments, _ := json.Marshal(struct {
+			Path string `json:"path"`
+		}{Path: fmt.Sprintf("./%d", round)})
+		return toolResponseWithText(fmt.Sprintf("call-%d", round), "ls", string(arguments),
+			"Working through the next path."), nil
+	}
 	return textResponse("ordinary answer"), nil
 }
 
@@ -406,24 +439,29 @@ func (c *happyFallThroughCompleter) requests() [][]ai.Message {
 func TestASteerAfterTheLastBoundaryFallsThroughIntoOneFreshTurn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	completer := &happyFallThroughCompleter{
-		judgeEntered: make(chan struct{}),
-		releaseJudge: make(chan struct{}),
+		atLastBound:  make(chan struct{}),
+		releaseBound: make(chan struct{}),
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.SessionFile = path
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierLow): routeScreenModel,
+			// AND A MASTERMIND, because the reader this fixture parks on is one
+			// ([roles.RoleMarkReader]) and a session that cannot resolve it skips
+			// the reading entirely — which would leave this turn with no
+			// end-of-turn wait at all and no window to steer into.
+			roles.TierKey(roles.TierMastermind): routeScreenModel,
 		})
 	})
 	turn := mustSubmit(t, agent, "explain how parser state flows across every package")
 	select {
-	case <-completer.judgeEntered:
+	case <-completer.atLastBound:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the successful turn never passed its last model boundary")
 	}
 	steered := mustSteer(t, agent, "fix the parser instead")
-	close(completer.releaseJudge)
+	close(completer.releaseBound)
 	collect(t, turn)
 	fromSteer := collect(t, steered)
 
@@ -434,10 +472,11 @@ func TestASteerAfterTheLastBoundaryFallsThroughIntoOneFreshTurn(t *testing.T) {
 		t.Fatalf("steer events = %v, want %v", got, want)
 	}
 	requests := completer.requests()
-	if len(requests) != 2 {
-		t.Fatalf("ordinary requests = %d, want the original and one fresh turn", len(requests))
+	if want := steerGrindRounds + 2; len(requests) != want {
+		t.Fatalf("ordinary requests = %d, want %d — the original turn's rounds and one fresh turn",
+			len(requests), want)
 	}
-	got := userLines(requests[1])
+	got := userLines(requests[len(requests)-1])
 	var copies int
 	for _, line := range got {
 		if line == "fix the parser instead" {

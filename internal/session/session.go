@@ -3063,6 +3063,12 @@ type Agent struct {
 	// the bargain and names the two older spellings of it above). It is minted
 	// for every session, because the first turn may buy one.
 	after *afterTurn
+
+	// heldLines are the dim lines this session owes the person and has had no
+	// stream to say them on (memory.go's [Agent.sayLate]). A reading that
+	// outlives its turn — the post-turn memory pass, the route judge's ruling —
+	// decides after the hub is closed, and the next turn is where the line lands.
+	heldLines []string
 	// titleWatchers is the standing subscription to the name this session gives
 	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
 	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly
