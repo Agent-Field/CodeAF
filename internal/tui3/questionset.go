@@ -68,10 +68,15 @@ import (
 //	│ read  internal/session/agent.go                                      │
 //	│ read  go.mod                                                         │
 //	│                                                                      │
-//	│   1  allow all 4                                                     │
+//	│ ▸ 1  allow all 4                                                     │
 //	│   2  one by one                                                      │
-//	│ ▸ 3  deny all                                          safe answer   │
+//	│   3  deny all                                          safe answer   │
 //	╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────╯
+//
+// The pointer above stands on `allow all 4` because four reads are ordinary
+// calls: it opens where the members' own pointers would ([questionGroupStart]),
+// which the gate's grade decides (#953). A frame holding one call nobody graded
+// opens on `deny all` instead. `deny all` wears `safe answer` either way.
 //
 // ── THE LAWS, AND WHAT EACH ONE REFUSES ─────────────────────────────────────
 //
@@ -862,10 +867,21 @@ func (a *app) questionGroupRows(set []questionShown, width int) []string {
 	}
 	for row, word := range words {
 		aside := ""
-		if row == questionGroupDeny && pick == questionGroupDeny {
-			// THE SAFE ANSWER SAYS SO, for [app.questionPanelOption]'s reason:
-			// a pointer standing on one answer with nothing saying why reads as
-			// the surface having chosen.
+		if row == questionGroupDeny {
+			// THE SAFE ANSWER SAYS SO, WHEREVER THE POINTER STANDS, for
+			// [app.questionPanelOption]'s reason: an answer with nothing saying
+			// why reads as the surface having chosen. `deny all` is the answer
+			// that loses nothing by construction — the frame forms only where
+			// every member has one ([questionGrantAndSafe]) and the row sends
+			// each question its own — so the frame says which row it is on every
+			// frame it draws, exactly as the panel of one marks its refusal.
+			//
+			// IT WAS ONCE SAID ONLY UNDER THE POINTER, which was the same
+			// sentence while a permission opened on `deny` for every call
+			// (#933). Since the gate grades (#953) an ordinary frame opens on
+			// `allow all`, and the mark went missing from precisely the frames
+			// where the pointer stands on the act and the way out most needs
+			// naming.
 			aside = a.pal.dim(questionSafeWord)
 		}
 		for _, line := range a.questionPanelRow(set[0], itoa(row+1), "", word, "", aside, 0, room, row == pick, a.questionHovering(questionHoverPanel, row)) {

@@ -344,8 +344,18 @@ func permissionLab(t *testing.T, stakes session.Stakes) *questionLab {
 }
 
 // PERMISSIONS FROM ONE STEP ARE ONE FRAME: what each call wants, then `allow all
-// 4 · one by one · deny all`, and — on a costly call — the pointer on the answer
-// that loses nothing, exactly where each question's own pointer would be.
+// 4 · one by one · deny all`, with the pointer exactly where each question's own
+// pointer would be — on an ORDINARY call, which four reads are, that is `allow
+// all` ([questionGroupStart] over [questionPointerStart], the gate's grade
+// deciding: #953).
+//
+// AND `deny all` SAYS `safe answer` THOUGH THE POINTER IS NOT ON IT. The frame
+// forms only where every member has an answer that loses nothing, so the row
+// always is one, and naming it matters MOST here — the pointer is standing on
+// the act. The frame said it only under its own pointer until this test read
+// the two rulings together: that was the same sentence while every permission
+// opened on `deny` (#933), and silence on every ordinary frame once the gate
+// graded.
 func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 	lab := permissionLab(t, session.StakesCostly)
 	drawn := lab.plain()
@@ -355,8 +365,8 @@ func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 			t.Fatalf("the permission frame does not say %q:\n%s", want, drawn)
 		}
 	}
-	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupDeny {
-		t.Fatalf("the pointer opened on row %d of a costly group, want deny all", got)
+	if got := lab.a.questionGroupPick(lab.a.questionSet()); got != questionGroupAllow {
+		t.Fatalf("the pointer opened on row %d of an ordinary group, want allow all", got)
 	}
 	// "approve all of these" is one key, and it is each question's own grant.
 	lab.press("1")

@@ -109,15 +109,23 @@ answers.
 │ read  ~/notes/ideas.md                                            │
 │ read  ~/notes/log.md                                              │
 │                                                                   │
-│   1  allow all 4                                                  │
+│ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
-│ ▸ 3  deny all                                       safe answer   │
+│   3  deny all                                       safe answer   │
 ╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
-- **`3 deny all`** gives every one its own `deny`, and the pointer starts here,
-  marked `safe answer`, so `enter` on a frame you have not moved denies them all.
+- **`3 deny all`** gives every one its own `deny`. It is the answer that loses
+  nothing, and it says `safe answer` on its row wherever the pointer is standing.
+
+**Where does the pointer open, and what does `enter` do?** Exactly where the
+same calls asked one at a time would put it (*What happens if you just press
+`enter`?* above, read over the whole frame). Four reads are **ordinary calls**,
+so it opens on `1 allow all 4` and `enter` allows them all once. If any one call
+in the frame is one aforge cannot grade, the pointer opens on `3 deny all`
+instead. A **grave** call never reaches this frame at all — it is asked on its
+own, every time.
 - **`2 one by one`** answers nothing: it opens the same approvals as tabs, where
   `←` `→` move between them and the last tab sends them all (questions.md,
   *Several questions at once*).
