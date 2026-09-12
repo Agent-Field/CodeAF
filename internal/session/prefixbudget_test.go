@@ -92,7 +92,10 @@ import (
 // would have to name what this build COULD have rather than what it has, which
 // is a change to what the model is told and belongs to whoever owns the shelf.
 // It is bounded — one short clause per group — and it is why this number was
-// measured on the machine that carries every group.
+// measured on the machine that carries every group. It is filed as issue #1010,
+// which is also where the `grep` sentence and [widestBelt] itself are deleted:
+// removing the variance at its source is the only thing that makes this number
+// one number for everybody.
 //
 // ── WHAT IS OWED, AND WHERE IT HAS TO COME FROM ─────────────────────────────
 //
