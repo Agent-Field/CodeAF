@@ -52,7 +52,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -190,45 +189,38 @@ func resolveAgainst(raw, workspace string) string {
 
 // folderSays is the transform, applied to the gate's answer beside
 // [Agent.capabilitySays] and for the same reason: the policy is a pure function
-// of a call, and what the PERSON has said about this particular folder is not
-// in it.
+// of a call, and what this particular call is ABOUT is not in it.
 //
-// IT MOVES NOTHING BY ITSELF. A deny stays a deny, an allow stays an allow, and
-// a read-only look is never about a change. The one decision it touches is a
-// PROMPT that is already going to be asked, and all it does there is say what
-// the question is really about — after which the answer is banked against the
-// folder rather than against the tool ([Agent.askAnswer]).
+// IT MOVES NO DECISION AT ALL. It changes the WORDS of a question the policy
+// was already going to ask — which is why a session on `tools.approvalMode:
+// allow` or `--yolo` is asked nothing here, and why a rule that denies still
+// denies in its own words. Widening is not its job either: the answer to this
+// question is banked against the FOLDER ([Agent.askAnswer]) and read back by
+// [Agent.rememberedAnswer], which is the gate's own memo and already carries
+// the floor guard that memo has to have.
 //
-// A FOLDER ALREADY ANSWERED YES IS NOT ASKED AGAIN, and that lift is this
-// file's whole benefit to somebody working: one card per folder per
-// conversation instead of one per write. It does NOT lift the floor — a
-// critical command inside an attached folder still asks, because the person
-// agreed to aforge changing files in their folder and not to `rm -rf` in it.
+// A CALL THE FLOOR ALWAYS ASKS ABOUT KEEPS ITS OWN REASON. `rm -rf` inside an
+// attached folder is a critical command first and a change to that folder
+// second, and a card that said only "a change in <folder>" would have taken the
+// one sentence the person needed off the screen.
 func (a *Agent) folderSays(call ai.ToolCall, decision approval.Decision) approval.Decision {
 	if decision.Action != approval.ActionPrompt {
 		return decision
 	}
 	args := json.RawMessage(call.Function.Arguments)
-	if approval.ReadOnly(call.Function.Name, args) {
+	if approval.ReadOnly(call.Function.Name, args) || approval.AlwaysAsks(call.Function.Name, args) {
 		return decision
 	}
 	folder, aimed := a.folderAimed(call)
 	if !aimed {
 		return decision
 	}
-	if allow, known := a.rememberedFolder(folder); known && allow &&
-		!approval.AlwaysAsks(call.Function.Name, args) {
-		return approval.Decision{
-			Action: approval.ActionAllow,
-			Rule:   "you said aforge may change " + strconv.Quote(filepath.Base(folder)),
-		}
-	}
 	// THE CARD SAYS THE FOLDER AND NOT THE MACHINERY. What a person needs to
-	// know at this moment is that the next call writes in a folder they only
-	// pointed at — the real one, not a copy — and which folder that is.
+	// know at this moment is that the call is about to change files in a folder
+	// they only pointed at — the real ones, not a copy — and which folder it is.
 	return approval.Decision{
 		Action: approval.ActionPrompt,
-		Rule:   "the first change in " + folder + ", which is the folder itself",
+		Rule:   "a change in " + folder + " — the folder itself, not a copy",
 	}
 }
 

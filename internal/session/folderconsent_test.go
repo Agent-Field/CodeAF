@@ -45,7 +45,7 @@ func TestTheFirstChangeInAnAttachedFolderIsAskedAboutByName(t *testing.T) {
 	if !governed || decision.Action != approval.ActionPrompt {
 		t.Fatalf("the first change was %+v, want a question", decision)
 	}
-	if !strings.Contains(decision.Rule, attached) || !strings.Contains(decision.Rule, "the folder itself") {
+	if !strings.Contains(decision.Rule, attached) || !strings.Contains(decision.Rule, "the folder itself, not a copy") {
 		t.Fatalf("the card says %q, which does not name the folder it is about", decision.Rule)
 	}
 }
@@ -72,7 +72,7 @@ func TestLookingInsideAnAttachedFolderIsNotAsked(t *testing.T) {
 		call("grep", `{"path":`+quoteJSON(attached)+`,"pattern":"x"}`),
 		call("ls", `{"path":`+quoteJSON(attached)+`}`),
 	} {
-		if decision, _ := agent.decide(look); strings.Contains(decision.Rule, "the folder itself") {
+		if decision, _ := agent.decide(look); strings.Contains(decision.Rule, "the folder itself, not a copy") {
 			t.Fatalf("%s inside an attached folder raised the folder card: %+v", look.Function.Name, decision)
 		}
 	}
@@ -86,13 +86,18 @@ func TestAStandingYesAboutAFolderCoversTheNextShellCommandInIt(t *testing.T) {
 	agent, attached := folderAgent(t)
 	agent.rememberFolder(attached, true)
 
-	decision, _ := agent.decide(call("bash", `{"command":`+quoteJSON("rm "+filepath.Join(attached, "a.txt"))+`}`))
-	if decision.Action != approval.ActionAllow {
-		t.Fatalf("a remembered yes about %s left %+v", attached, decision)
+	shell := call("bash", `{"command":`+quoteJSON("go build "+filepath.Join(attached, "..."))+`}`)
+	if allow, known := agent.rememberedAnswer(shell); !known || !allow {
+		t.Fatalf("the remembered answer for a shell command in the folder is (%v, %v)", allow, known)
 	}
 	edit := call("edit", `{"path":`+quoteJSON(filepath.Join(attached, "a.txt"))+`,"old":"x","new":"y"}`)
 	if allow, known := agent.rememberedAnswer(edit); !known || !allow {
 		t.Fatalf("the remembered answer for an edit in the folder is (%v, %v)", allow, known)
+	}
+	// AND A TOOL MEMO IS NOT WHAT ANSWERED. Nothing was banked against `edit`,
+	// so an edit somewhere this conversation never attached is still a question.
+	if _, known := agent.rememberedConsent("edit"); known {
+		t.Fatal("a folder answer wrote a tool-wide memo as well, which is the card lying by one word")
 	}
 }
 
@@ -112,23 +117,25 @@ func TestAStandingYesAboutOneFolderSaysNothingAboutAnother(t *testing.T) {
 	}
 }
 
-// THE FLOOR IS NOT LIFTED. A person agreed that aforge may change files in
-// their folder. They did not agree to `rm -rf` in it, and internal/approval's
-// critical table answers PROMPT rather than deny — so without this check the
-// folder's own yes would have swallowed exactly the calls nobody was ever asked
-// about. It is [Agent.approve]'s reasoning about the tool memo, kept here.
-func TestAFolderYesDoesNotSwallowACriticalCommand(t *testing.T) {
+// A CRITICAL COMMAND KEEPS ITS OWN REASON ON THE CARD. `rm -rf` inside an
+// attached folder is a critical command first and a change to that folder
+// second; a card that said only "a change in <folder>" would have taken the one
+// sentence the person needed off the screen. And the gate goes on asking it
+// whatever is remembered, because [Agent.approve] consults no memo for a shape
+// internal/approval always asks about.
+func TestACriticalCommandInAnAttachedFolderKeepsItsOwnReason(t *testing.T) {
 	agent, attached := folderAgent(t)
 	agent.rememberFolder(attached, true)
-	decision, _ := agent.decide(call("bash", `{"command":`+quoteJSON("rm -rf "+attached)+`}`))
-	if decision.Action == approval.ActionAllow {
-		t.Fatalf("a folder yes allowed a critical command outright: %+v", decision)
+	shape := call("bash", `{"command":`+quoteJSON("rm -rf "+attached)+`}`)
+	decision, _ := agent.decide(shape)
+	if decision.Action != approval.ActionPrompt {
+		t.Fatalf("a critical command in an attached folder was judged %+v", decision)
 	}
-	if allow, known := agent.rememberedAnswer(call("bash", `{"command":"rm -rf /"}`)); known && allow {
-		// The gate consults the memo only when the call is not one the floor
-		// always asks about; this asserts the memo cannot be the thing that
-		// answers for a shape like this if that guard is ever moved.
-		t.Log("the memo answers yes here; [Agent.approve] must go on asking approval.AlwaysAsks first")
+	if strings.Contains(decision.Rule, "not a copy") {
+		t.Fatalf("the folder card overwrote the critical reason: %q", decision.Rule)
+	}
+	if !approval.AlwaysAsks(shape.Function.Name, []byte(shape.Function.Arguments)) {
+		t.Fatal("this command is no longer one the floor always asks about, so this test proves nothing")
 	}
 }
 
@@ -156,7 +163,7 @@ func TestTheWorkspaceItselfRaisesNoFolderQuestion(t *testing.T) {
 	agent, _ := folderAgent(t)
 	workspace := agent.workspaceStoodIn()
 	decision, _ := agent.decide(call("edit", `{"path":`+quoteJSON(filepath.Join(workspace, "a.txt"))+`,"old":"x","new":"y"}`))
-	if strings.Contains(decision.Rule, "the folder itself") {
+	if strings.Contains(decision.Rule, "the folder itself, not a copy") {
 		t.Fatalf("the workspace raised a folder card: %+v", decision)
 	}
 }
@@ -177,7 +184,7 @@ func TestTheAttachedBlockDoesNotPromiseACopyOrALanding(t *testing.T) {
 			t.Fatalf("the attached block still says %q:\n%s", banned, block)
 		}
 	}
-	for _, owed := range []string{"THE WORKING DIRECTORY HAS NOT MOVED", "that folder itself", "asks the person once"} {
+	for _, owed := range []string{"THE WORKING DIRECTORY HAS NOT MOVED", "GO INTO THAT FOLDER ITSELF", "asks the person once"} {
 		if !strings.Contains(block, owed) {
 			t.Fatalf("the attached block no longer says %q:\n%s", owed, block)
 		}
