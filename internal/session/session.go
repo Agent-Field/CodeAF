@@ -3044,6 +3044,14 @@ type Agent struct {
 	// ([Agent.oweToldStampLocked]).
 	toldAtOwed time.Time
 
+	// phaseBeats counts the beat goroutines the phase heart has armed
+	// (phasenews.go). It is the same shape [Agent.memoryJobs] is and for the same
+	// reason: the quit waits for them rather than merely cancelling them, and the
+	// Add is taken under `a.mu` inside [Agent.writeIfOpen] — the door that also
+	// refuses an arming once the session has closed — so nothing can join the
+	// count after [Agent.Close] has begun waiting on it.
+	phaseBeats sync.WaitGroup
+
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).
 	toolCompact toolCompactMemo

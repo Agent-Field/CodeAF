@@ -449,17 +449,25 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	// model's own first word.
 	block := a.routedMemory(ctx, cue, a.sayMemory, true)
 
-	a.mu.Lock()
-	moved := a.memoryText != block
-	a.memoryText = block
-	// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately before
-	// the first request would land it anyway (loop.go), and it is landed here as
-	// well so that this pass is complete on its own: what it routed is in front
-	// of the model the moment it has routed it, on any road that reaches here.
-	// The lander does nothing at all when the block has not moved, which on a
-	// conversation whose subject is holding still is every turn after the first.
-	a.landVolatileLocked()
-	a.mu.Unlock()
+	// AND THE LANDING GOES THROUGH THE ONE DOOR FOR A READING'S OWN WRITE
+	// ([Agent.writeIfOpen], agent.go). The cancel is what stops this pass waiting
+	// on a provider; this is the other half — a pass that had already routed its
+	// block when the session closed used to land it anyway, at the tail of a
+	// transcript no request will ever carry. A block nobody can read did not
+	// move, so a closed session answers false.
+	var moved bool
+	a.writeIfOpen(func() {
+		moved = a.memoryText != block
+		a.memoryText = block
+		// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately
+		// before the first request would land it anyway (loop.go), and it is
+		// landed here as well so that this pass is complete on its own: what it
+		// routed is in front of the model the moment it has routed it, on any
+		// road that reaches here. The lander does nothing at all when the block
+		// has not moved, which on a conversation whose subject is holding still
+		// is every turn after the first.
+		a.landVolatileLocked()
+	})
 	return moved
 }
 
