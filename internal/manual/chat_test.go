@@ -84,6 +84,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
+		// And lane R's three, in the asker's own words: the owner asked for
+		// exactly these sentences (2026-09-11) and each one is a person
+		// describing the drawing rather than naming a key.
+		{"show me the options side by side", "questions"},
+		{"open it bigger", "questions"},
+		{"what does each option look like", "questions"},
 		{"compare the options it gave me", "questions"},
 		{"how do I comment on one option", "questions"},
 		{"ask it something before I decide", "questions"},

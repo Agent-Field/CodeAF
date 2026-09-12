@@ -3606,9 +3606,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionRoomOpen() {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
-				a.questionRoomScroll(-3)
+				a.questionRoomScroll(msg.Mouse().X, -3)
 			case tea.MouseWheelDown:
-				a.questionRoomScroll(3)
+				a.questionRoomScroll(msg.Mouse().X, 3)
 			}
 			return a, nil
 		}
@@ -6366,7 +6366,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// untouched and then does nothing, which is what the empty parts of any page
 	// on this surface do.
 	if a.questionRoomOpen() {
-		if cmd, took := a.questionRoomPress(y); took {
+		if cmd, took := a.questionRoomPress(x, y); took {
 			return cmd
 		}
 	}

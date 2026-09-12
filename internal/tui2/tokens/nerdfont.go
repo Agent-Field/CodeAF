@@ -223,6 +223,14 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphFrameSide, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
 	},
 	{
+		ID: GFrameTeeDown, Name: "FrameTeeDown", Meaning: "the frame: where the rule above two panes meets the seam between them",
+		Plain: GlyphFrameTeeDown, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GFrameTeeUp, Name: "FrameTeeUp", Meaning: "the frame: where the rule below two panes closes the seam between them",
+		Plain: GlyphFrameTeeUp, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
 		ID: GTarget, Name: "Target", Meaning: "where the next thing goes — the destination of a draft",
 		// Tinted with the identity of the room the draft will land in, exactly as
 		// the steer prompt is: both of them are about somewhere that does not

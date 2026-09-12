@@ -642,7 +642,7 @@ func (a *app) frameLines(rows, chrome []string, height, caretX, caretRow, lift, 
 // [app.chromeAt] resolves a pointer to one of them — three questions that must
 // never be able to disagree about where the input line is.
 func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
-	roomy := a.breathingRows() > 0
+	roomy := a.footClearance() > 0
 
 	rows := make([]string, 0, 8)
 	marks := make([]chromeRow, 0, 8)
@@ -927,8 +927,13 @@ func (a *app) chromeHeight() int {
 // on the same clearance ([spacingRuleClearance], pages.go's [placeFrame]). It
 // used to keep a second blank under the box that no place has, so `esc` from
 // home into a chat moved the box and the rule up a row (PLACES-AUDIT.md, lane K).
+//
+// AND A QUESTION'S PAGE BRINGS ITS OWN RULE (questionroom.go's
+// [app.questionFootRows]): the rule that closes its two panes meets their seam
+// and carries what `enter` would send, so the legend and its blank would be a
+// second rule a row above the first, naming keys the page does not take.
 func (a *app) footClearance() int {
-	if a.breathingRows() == 0 {
+	if a.breathingRows() == 0 || a.questionRoomOpen() {
 		return 0
 	}
 	return spacingRuleClearance

@@ -318,12 +318,12 @@ func TestADiffBlockWearsTheDiffGlyphs(t *testing.T) {
 	}
 }
 
-// A TWO-PANE LAYOUT IS SIDE BY SIDE ABOVE A HUNDRED COLUMNS AND STACKED BELOW,
-// which is DESIGN.md's own number: a pane cut to thirty characters is a pane
-// that has stopped being pre-formatted.
-func TestALayoutStacksOnANarrowPage(t *testing.T) {
-	a, _ := standingInAQuestion(t, demoQuestionLayout())
-	a.width = 120
+// A TWO-PANE LAYOUT IS SIDE BY SIDE WHERE BOTH PANES FIT WHOLE AND STACKED WHERE
+// THEY DO NOT: a pane cut to fit is a pane that has stopped being pre-formatted.
+// It used to be a hundred columns of PAGE, and drawn in the evidence pane beside
+// a list the same block had seventy — and stacked for no reason anybody could see.
+func TestALayoutStacksWhereItsPanesWillNotBothFitWhole(t *testing.T) {
+	a, _ := standingInAQuestionAt(t, demoQuestionLayout(), 120, 40)
 	wide := pageText(a)
 	sideBySide := false
 	for _, line := range strings.Split(wide, "\n") {
@@ -332,14 +332,14 @@ func TestALayoutStacksOnANarrowPage(t *testing.T) {
 		}
 	}
 	if !sideBySide {
-		t.Errorf("above a hundred columns the panes stand side by side:\n%s", wide)
+		t.Errorf("in a pane wide enough for both, the panes stand side by side:\n%s", wide)
 	}
-	a.width = 80
+	a.width = 40
 	a.qroom.dirty = true
 	narrow := pageText(a)
 	for _, line := range strings.Split(narrow, "\n") {
 		if strings.Contains(line, "deepseek-v4-flash") && strings.Contains(line, "deepseek-v4-fl...") {
-			t.Errorf("under a hundred columns the panes stack:\n%s", narrow)
+			t.Errorf("where a pane would be cut, the panes stack:\n%s", narrow)
 		}
 	}
 }

@@ -42,6 +42,10 @@ const (
 	// viewPanel is the framed panel a question hangs in above the box
 	// (questionpanel.go). It is the ordinary answer.
 	viewPanel
+	// viewSplit is the same panel with its answers in a list on the left and
+	// the evidence of the one the pointer is on in a pane on the right, which
+	// follows the pointer (owner ruling 2026-09-11, preview pick A).
+	viewSplit
 	// viewRow is one row: a question whose whole decision fits beside its own
 	// answers, and the ratify line, which is not asking anything.
 	viewRow
@@ -93,8 +97,18 @@ var questionLadder = []questionRung{
 		},
 	},
 	{
+		view: viewSplit,
+		why: "an answer brought something to look at and the frame is wide enough to lay it beside " +
+			"the list, so the evidence follows the pointer in a pane of its own rather than being " +
+			"folded under one row",
+		when: func(a *app, q questionShown, width int) bool {
+			return questionAnswersCarryBlocks(q.question) && besideFits(width)
+		},
+	},
+	{
 		view: viewPanel,
-		why:  "an answer brought something to look at, and evidence sets the size of the drawing",
+		why: "an answer brought something to look at, and evidence sets the size of the drawing — " +
+			"narrower than two panes, the answer the pointer is on unfolds it under its own row",
 		when: func(a *app, q questionShown, width int) bool {
 			return questionCarriesBlocks(q.question)
 		},
@@ -135,9 +149,15 @@ func (a *app) questionViewOf(q questionShown, width int) questionView {
 // questionCarriesBlocks reports whether any answer brought something to look
 // at, or the question itself did.
 func questionCarriesBlocks(q session.Question) bool {
-	if len(q.Attach) > 0 {
-		return true
-	}
+	return len(q.Attach) > 0 || questionAnswersCarryBlocks(q)
+}
+
+// questionAnswersCarryBlocks reports whether any ANSWER brought something to
+// look at — the evidence that is different from one answer to the next, which is
+// the only evidence a pane following the pointer has anything to show about.
+// The question's own [session.Question.Attach] is about the whole decision and
+// is the page's to draw ("what it showed you").
+func questionAnswersCarryBlocks(q session.Question) bool {
 	for _, option := range q.Options {
 		if len(option.Blocks) > 0 {
 			return true

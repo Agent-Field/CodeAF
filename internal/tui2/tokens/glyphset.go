@@ -122,6 +122,8 @@ const (
 	GFrameBottomRight
 	GFrameEdge
 	GFrameSide
+	GFrameTeeDown
+	GFrameTeeUp
 	GTarget
 	GTruncated
 	GEllipsis
