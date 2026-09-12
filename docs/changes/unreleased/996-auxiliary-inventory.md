@@ -11,8 +11,9 @@ invalidates:
   - "`TierHigh` had a built-in tenant in `DefaultAssignment`. It has none — every careful call (`auditor`, `shaper`, `vision`, `careful`, the repair) registers itself from the package that makes it."
   - "`TierHigh`'s five-minute patience was justified by \"a compaction summary over a full window\". That call does not exist; the figure is derived from the auditor now."
   - "The settings roles list offered a `compaction` row and the crew's careful line read \"audits, compaction, vision\". Neither does; the line reads \"audits, briefs, vision\"."
-  - "`fixedPrefixBudget` was 48,000 and weighed `v3ShapedAgent` — 18 tools, no memory store, no accounts hub, no standing items, no saved programs. It weighs the fully-wired conversation (`shippedShapeAgent`, 23 tools) and is 53,100, which is that shape's measured 53,025 and no headroom."
-  - "The shipped prefix was believed to be inside 48,000. It is 53,025 — 5,025 over — and has been for as long as the shape existed. 48,000 is a target the test prints the shortfall against, not a cap anything passes today."
+  - "`fixedPrefixBudget` was 48,000 and weighed `v3ShapedAgent` — 18 tools, no memory store, no accounts hub, no standing items, no saved programs. It weighs the fully-wired conversation (`shippedShapeAgent`, 23 tools) and is 53,159, which is that shape's measurement on the widest machine and no headroom."
+  - "The shipped prefix was believed to be inside 48,000. It is 53,159 — 5,159 over — and has been for as long as the shape existed. 48,000 is a target the test prints the shortfall against, not a cap anything passes today."
+  - "The fixed prefix was believed to be the same size everywhere. It is not: `grep` says a longer sentence about itself where ripgrep is absent (134 bytes) and `load_capability` lists the tool groups this build has (27). The gate weighs the widest machine — `bare.WidestGrepDescription` is the one place that knows which spelling that is — so the number does not depend on who runs it."
 ---
 
 Three things this build reported about itself incorrectly. None of them changes
