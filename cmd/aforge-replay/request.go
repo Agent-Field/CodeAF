@@ -336,7 +336,13 @@ var callSiteRoles = map[string]lane.Role{
 	"designer":      lane.RoleDesign,
 	"division":      lane.RoleDesign,
 	"title":         lane.RoleAuxiliary,
-	"vision":        lane.RoleAuxiliary,
+	// internal/session/image.go is the only writer of this tag and it sets
+	// lane.RoleTalk, deliberately and with the reasoning beside it: a look at an
+	// image STREAMS INTO THE ROOM the person is reading, delta by delta, during
+	// their own turn. This row said RoleAuxiliary — a call nobody's seconds are
+	// being spent on — which is the opposite of what that file says, and it moved
+	// every number in this table that separates a person's wait from a machine's.
+	"vision": lane.RoleTalk,
 	// internal/session/spellout.go declares lane.RoleAuxiliary on its own
 	// context, so this row is that file's own reading and not a second one.
 	//

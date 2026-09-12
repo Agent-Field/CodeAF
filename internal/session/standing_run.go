@@ -98,15 +98,11 @@ const (
 	standingOutcomeClip = 400
 )
 
-// standingSentinelRole is the cheap yes/no judgment, registered here and
-// DECLARED IN internal/roles beside every other role's word ([roles.RoleSentinel],
-// which carries the reasoning), so it resolves the way every other auxiliary
-// call in this build resolves and so that everything which reads the role
-// vocabulary can see it.
-const standingSentinelRole = roles.RoleSentinel
-
+// The cheap yes/no judgment is [roles.RoleSentinel] — declared there with every
+// other role's word, which carries the reasoning — and registered here, where
+// the call is.
 func init() {
-	roles.Register(standingSentinelRole, roles.TierLow, "is this worth telling you about")
+	roles.Register(roles.RoleSentinel, roles.TierLow, "is this worth telling you about")
 }
 
 // ── the live-window registry ────────────────────────────────────────────────
@@ -1024,7 +1020,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 	)
 	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
 		once.Do(func() {
-			model, built = roles.Resolve(roles.Source(parent.RolesSource), standingSentinelRole, parent.Model)
+			model, built = roles.Resolve(roles.Source(parent.RolesSource), roles.RoleSentinel, parent.Model)
 			if built != nil {
 				return
 			}

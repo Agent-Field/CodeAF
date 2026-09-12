@@ -358,7 +358,7 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 		// the door would have said (clientdoor.go's [withPurpose]).
 		provider.WithRole(
 			provider.WithRoutingIntent(
-				provider.WithoutStream(withPurpose(ctx, purposeConsolidate)),
+				provider.WithoutStream(withPurpose(ctx, callPurpose(roles.RoleConsolidate))),
 				provider.IntentBackground),
 			lane.RoleMemory),
 		[]ai.Message{

@@ -188,6 +188,14 @@ func TestEveryAllowedCountIsStillThere(t *testing.T) {
 	}
 }
 
+// sessionFset is the position table every law in this package reads through, so
+// a law that wants to NAME A LINE — and a failure a lane has to go and look at
+// always does — can, without parsing the tree a second time of its own.
+var sessionFset = token.NewFileSet()
+
+// sessionLine is where a node is, for a failure message.
+func sessionLine(node ast.Node) int { return sessionFset.Position(node.Pos()).Line }
+
 // sessionSources parses every non-test file of this package, keyed by base name.
 func sessionSources(t *testing.T) map[string]*ast.File {
 	t.Helper()
@@ -195,7 +203,7 @@ func sessionSources(t *testing.T) map[string]*ast.File {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fset := token.NewFileSet()
+	fset := sessionFset
 	files := map[string]*ast.File{}
 	for _, entry := range entries {
 		name := entry.Name()

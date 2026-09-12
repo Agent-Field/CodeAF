@@ -50,15 +50,13 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// spellOutRole is the expansion, registered here and DECLARED IN internal/roles
-// beside every other role's word ([roles.RoleSpellOut]), so it resolves the way
-// every other auxiliary call in this build resolves — the person's pin, then the
-// tier, then the conversation's own model — and so that everything which reads
-// the role vocabulary can see it.
-const spellOutRole = roles.RoleSpellOut
-
+// The expansion is [roles.RoleSpellOut] — declared there with every other role's
+// word so that everything which reads the vocabulary can see it — and registered
+// here, where the call is, so it resolves the way every other auxiliary call in
+// this build resolves: the person's pin, then the tier, then the conversation's
+// own model.
 func init() {
-	roles.Register(spellOutRole, roles.TierLow, "what a half-written request obviously means")
+	roles.Register(roles.RoleSpellOut, roles.TierLow, "what a half-written request obviously means")
 }
 
 const (
@@ -145,7 +143,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 	}
 
 	a.mu.Lock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), spellOutRole, a.model)
+	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleSpellOut, a.model)
 	closed := a.closed
 	a.mu.Unlock()
 	if closed || err != nil || strings.TrimSpace(call.Model) == "" {
@@ -167,7 +165,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 		// A side errand of the box the person is typing in, named as one so it
 		// is priced as one and never owns the clock (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
-		callPurpose(spellOutRole),
+		callPurpose(roles.RoleSpellOut),
 		[]ai.Message{
 			textMessage("system", spellOutSystem),
 			// THE INSTRUCTION IS LAST, after the draft rather than above it, for

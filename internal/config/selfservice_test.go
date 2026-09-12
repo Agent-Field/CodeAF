@@ -133,8 +133,8 @@ func TestEveryRowSaysWhatItAccepts(t *testing.T) {
 	}
 }
 
-// A ROLE THIS BUILD RETIRED IS DROPPED FROM A PROFILE THAT STILL PINS IT, and
-// the rest of that person's row keeps working.
+// A PIN FOR A WORD THAT IS NOT A ROLE IS DROPPED FROM A PROFILE THAT STILL
+// HOLDS IT, and the rest of that person's row keeps working.
 //
 // THE MEASURED FAILURE THIS IS WRITTEN AGAINST. `compaction` was a role for
 // months: it had a tier, a description, and a row in the settings panel, and
@@ -145,6 +145,11 @@ func TestEveryRowSaysWhatItAccepts(t *testing.T) {
 // role pin on that machine was unchangeable until somebody opened config.json by
 // hand. A deletion with no reading for what it deleted is a deletion that breaks
 // the people who used the thing.
+//
+// THE READING DOES NOT CARE WHY THE WORD IS DEAD. A name this build retired and
+// a name somebody mistyped are the same thing on the way in — a pin nothing will
+// consult — so there is no ledger of retired names to keep up to date, and the
+// day nobody updates it is not a day this comes back.
 func TestAPinForARetiredRoleIsDroppedAndTheRestOfTheRowStillMoves(t *testing.T) {
 	profile := t.TempDir()
 	// The string a profile written before the role was deleted actually holds.
@@ -180,6 +185,23 @@ func TestAPinForARetiredRoleIsDroppedAndTheRestOfTheRowStillMoves(t *testing.T) 
 		if !strings.Contains(stored, want) {
 			t.Errorf("the row that was kept lost %q: %q", want, stored)
 		}
+	}
+	// AND THE PERSON IS TOLD, in a sentence and not a log line.
+	if note := RetiredPinNote(before); !strings.Contains(note, "compaction") {
+		t.Errorf("the surface is handed %q, want a line naming the pin being ignored", note)
+	}
+}
+
+// AND A WORD NOBODY EVER PINNED IS STILL REFUSED WHEN IT IS BEING ADDED, which
+// is the other half of the same bargain: the refusal earns its keep at the one
+// moment a person can act on it, and nowhere else.
+func TestANewPinForAWordThatIsNotARoleIsStillRefused(t *testing.T) {
+	profile := t.TempDir()
+	if err := writeModelRoles(profile, "title:openai/gpt-5-mini"); err != nil {
+		t.Fatalf("a real role name was refused: %v", err)
+	}
+	if err := writeModelRoles(profile, "title:openai/gpt-5-mini, harness_designer:some/model"); err == nil {
+		t.Fatal("a pin against a word that is not a role was accepted as it was added")
 	}
 }
 

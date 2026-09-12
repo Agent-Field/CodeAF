@@ -537,6 +537,32 @@ func widestPage() string {
 	return page
 }
 
+// atAFixedPlace is a config whose WORKING DIRECTORY is a constant.
+//
+// THE PAGE INTERPOLATES WHERE YOU ARE (prompt.go's `- Working directory: %s`),
+// and a fixture's workspace is a temp directory named after the test and the
+// platform's temp root: `/tmp/TestX123/001` on Linux and
+// `/var/folders/9k/…/T/TestX456/001` on macOS. So this arm's number moved by
+// forty-five bytes between two machines and failed on the second — the same
+// class of defect as `grep`'s two sentences and the capability shelf, found the
+// same way, in the gate whose entire purpose is to be one number for everyone.
+//
+// The page also carries `- Workstation: %s/%s` from runtime.GOOS/GOARCH, which
+// is a byte of difference between darwin and linux and is left alone: it is a
+// FACT ABOUT THE MACHINE the model is told on purpose, it cannot be made
+// constant without lying to the fixture, and a byte is inside nobody's decision.
+// The working directory is not that — it is a fixture artefact, and it is tens
+// of bytes.
+// The full arm does not need it: [widestPage] weighs `systemPrompt` with its
+// belt-fact tokens substituted and never renders the machine lines at all, so
+// that number is already the same everywhere — and it is an UNDER-count of the
+// shipped page by those few lines, which is recorded here rather than fixed
+// because moving it would move a ratchet for a reason that is not growth.
+func atAFixedPlace(config Config) Config {
+	config.Workspace = "/w"
+	return config
+}
+
 // widestBelt is the shipped belt weighed as the WIDEST MACHINE pays for it.
 //
 // A TOOL WHOSE DESCRIPTION DEPENDS ON WHAT IS INSTALLED still sends those bytes
@@ -559,7 +585,12 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 		// every member was gated off is not named at all — `edit_video` is built
 		// only where ffmpeg is on PATH, so a machine that can edit video pays for
 		// one more clause than one that cannot (tools_capabilities.go).
-		"load_capability": widestLoadCapability(),
+		//
+		// IT IS THIS SHAPE'S OWN SHELF AND NOT THE FULL ONE. A lean belt pre-arms
+		// `questions` instead of shelving it (promptprofile.go), so pasting the
+		// full shape's sentence into the lean arm would have made that number a
+		// hybrid of two belts — a figure neither of them pays.
+		"load_capability": widestLoadCapability(agent.config),
 	}
 	swapped := 0
 	for index := range definitions {
@@ -583,17 +614,31 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 	return definitions
 }
 
-// widestLoadCapability is the loader's sentence with EVERY group the table
-// declares and every member of each, which is what it says on a machine that has
-// all the programs its tools shell out to.
+// widestLoadCapability is the loader's sentence for ONE SHAPE at the widest
+// machine: every group that shape shelves rather than carries, each with every
+// member the table declares — which is what it says where all the programs its
+// tools shell out to are installed.
 //
 // It is built through the product's own [loadCapabilityDescription], so the
 // three sentences after the group list are stated once and cannot drift out of
 // this number.
-func widestLoadCapability() string {
+//
+// THE ONLY THING TAKEN OUT IS WHAT THIS SHAPE PRE-ARMS, because that is the one
+// difference between the two belts' shelves that is a property of the SHAPE
+// rather than of the machine. A group gated off by config would be
+// over-counted here; that is the safe direction for a budget and it is the same
+// answer everywhere, which is the whole point.
+func widestLoadCapability(config Config) string {
+	prearmed := map[string]bool{}
+	for _, group := range config.prearmedGroups() {
+		prearmed[group] = true
+	}
 	order := make([]string, 0, len(capabilityGroups))
 	members := make(map[string][]string, len(capabilityGroups))
 	for _, group := range capabilityGroups {
+		if prearmed[group.name] {
+			continue
+		}
 		order = append(order, group.name)
 		members[group.name] = group.members
 	}
@@ -712,7 +757,7 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 	if !agent.hasTool("ask") {
 		t.Fatal("`ask` is not carried on a lean belt: a one-call-per-message model cannot load-then-ask")
 	}
-	prompt := len(renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)))
+	prompt := len(renderSystemAt(atAFixedPlace(agent.config), time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)))
 	tools := len(block)
 	total := tools + prompt
 	t.Logf("the lean prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
