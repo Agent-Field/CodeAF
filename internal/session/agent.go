@@ -340,9 +340,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// turn of a conversation already knows its branch rather than the second one
 	// (gitfacts.go). It starts a reading and folds nothing in — there is nothing
 	// to fold yet — and the agent is not reachable, so the lock is uncontended.
-	agent.mu.Lock()
-	agent.refreshGitLocked(time.Now())
-	agent.mu.Unlock()
+	// [worthAHeadStart] is what keeps this off every task node and every test
+	// agent: a reading is a subprocess, and this constructor runs thousands of
+	// times for agents that will never render a `# Project` anybody reads.
+	if worthAHeadStart(config) {
+		agent.mu.Lock()
+		agent.refreshGitLocked(time.Now())
+		agent.mu.Unlock()
+	}
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named
 	// by the same string, and a memory-only session has the one this constructor

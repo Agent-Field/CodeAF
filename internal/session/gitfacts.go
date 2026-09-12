@@ -38,6 +38,8 @@ package session
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -220,6 +222,35 @@ func (a *Agent) refreshGitLocked(now time.Time) {
 		places := append([]PlaceRef{}, a.places...)
 		a.gitAhead = offpath.Take(func() string { return read(workspace, places) })
 	}
+}
+
+// worthAHeadStart answers whether this agent should start its first reading at
+// CONSTRUCTION rather than waiting for its first turn.
+//
+// IT EXISTS BECAUSE A READING IS A SUBPROCESS. `newAgent` runs for every task
+// node a conversation hands out and for every agent a test builds — a thousand
+// of them in one suite — and forking `git` for each to move a convenience fact
+// from the second turn to the first is not a trade worth making. So the head
+// start is taken for exactly the case that pays for it and for no other:
+//
+//   - A CONVERSATION A PERSON IS ABOUT TO TYPE INTO, never a task node. A node
+//     always takes turns, so its first turn starts the reading and its second
+//     carries the answer; a person's first message is often their only one.
+//   - AND ONLY WHERE THERE IS SOMETHING TO READ, decided by a stat and never by
+//     running git to find out. A workspace holding no `.git` is answered here
+//     for nothing; a workspace INSIDE a repository is missed here and picked up
+//     by the turn, which is the right way round for a gate whose whole purpose
+//     is to avoid work.
+func worthAHeadStart(config Config) bool {
+	if config.InTask {
+		return false
+	}
+	workspace := strings.TrimSpace(config.Workspace)
+	if workspace == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(workspace, ".git"))
+	return err == nil
 }
 
 // gitFactsBlock is what `# Project` renders, or nothing at all. It is a method on
