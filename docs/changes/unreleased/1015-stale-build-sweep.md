@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a launch sweep names live sessions on an older build
-surface: [chat, engine]
+surface: [session, tui3]
 pr: 1015
 ---
 
