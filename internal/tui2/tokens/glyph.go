@@ -163,6 +163,16 @@ const (
 	// exchange unreadable at exactly the moment it matters. U+21B3 is
 	// East_Asian_Width=Neutral and one cell under both shipping rulers.
 	GlyphReplyIn = "↳"
+	// GlyphDraftUnsent is a message a person typed and then CLEARED the whole
+	// box into — the mark the /drafts page draws in front of each line that
+	// is still waiting to come back (internal/tui3's draftpage.go).
+	//
+	// IT IS PENCIL-SHAPED LIKE [GlyphWrite] AND NOT THE SAME PENCIL. ✎ is the
+	// step gutter's "a call wrote something down"; ✐ (U+2710 LOWER RIGHT PENCIL)
+	// is a thing the hand still holds. It is also deliberately NOT the steer
+	// prompt's mapped-into arrow one slot up: a draft has gone nowhere yet, it
+	// sits on the wrong side of the line that one draws.
+	GlyphDraftUnsent = "✐"
 
 	// The execution voices (5.5). A work record is four speakers and no
 	// labels: the model thinking, the tools it reached for, the reader
@@ -445,6 +455,7 @@ func Glyphs() []GlyphInfo {
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
 		{"ReplyIn", GlyphReplyIn, '↳', false},
+		{"DraftUnsent", GlyphDraftUnsent, '✐', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
