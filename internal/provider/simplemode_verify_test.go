@@ -325,33 +325,44 @@ func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) 
 		t.Fatalf("the turn died on a refusal the widened retry was supposed to absorb: %v", err)
 	}
 
-	var demand, widened *calllog.Record
-	for _, record := range read() {
+	rows := read()
+	var demand *calllog.Record
+	var widened []calllog.Record
+	for _, record := range rows {
 		row := record
 		switch {
 		case row.Status == http.StatusNotFound && demand == nil:
 			demand = &row
-		case demand != nil && row.Relaxed != nil && widened == nil:
-			widened = &row
+		case demand != nil && row.Relaxed != nil:
+			widened = append(widened, row)
 		}
 	}
-	if demand == nil || widened == nil {
-		t.Fatalf("the log holds no refused ask and widened retry to compare: %+v", read())
+	// BOTH ROWS OF THE RETRY, and both of them on purpose: the start row and
+	// the row that ends it are written from different hands, and until this
+	// wave the second was built from the knobs the CALLER was still holding
+	// rather than from the body that travelled (calllog.go's bodyKnobs).
+	if demand == nil || len(widened) < 2 {
+		t.Fatalf("the log holds no refused ask and no pair of widened rows to compare: %+v", rows)
 	}
 	// THE REFUSED ASK IS UNCHANGED. It really did demand the machine, so it
 	// really does name it — this half is the control on the other.
 	if !strings.EqualFold(demand.Lane, "Ghost") {
 		t.Fatalf("the refused ask names lane %q, want the machine it demanded", demand.Lane)
 	}
-	if widened.Lane != "" || widened.Served != "" && strings.EqualFold(widened.Served, "Ghost") {
-		t.Fatalf("the bare retry is logged as lane %q served %q, want a row that names no machine it did not ask for",
-			widened.Lane, widened.Served)
-	}
-	if !slices.Contains(widened.Relaxed, "provider.only") {
-		t.Fatalf("the bare retry says it relaxed %v, want the demand it actually withdrew", widened.Relaxed)
-	}
-	if slices.Contains(widened.Relaxed, "provider.require_parameters") {
-		t.Fatalf("the bare retry says it dropped %v, and a simple request never sent require_parameters",
-			widened.Relaxed)
+	for _, row := range widened {
+		if row.Lane != "" {
+			t.Fatalf("a row about the bare retry names lane %q, want no machine: the body asked for none", row.Lane)
+		}
+		if strings.EqualFold(row.Served, "Ghost") {
+			t.Fatalf("a row about the bare retry says %q served it, and %q had refused the request before it",
+				row.Served, row.Served)
+		}
+		if !slices.Contains(row.Relaxed, "provider.only") {
+			t.Fatalf("the bare retry says it relaxed %v, want the demand it actually withdrew", row.Relaxed)
+		}
+		if slices.Contains(row.Relaxed, "provider.require_parameters") {
+			t.Fatalf("the bare retry says it dropped %v, and a simple request never sent require_parameters",
+				row.Relaxed)
+		}
 	}
 }

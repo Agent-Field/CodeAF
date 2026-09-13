@@ -200,7 +200,10 @@ func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries, a.workMode = entries, config.WorkFold
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, said) {
+	// THE SENTENCE WRAPS AT THIS WIDTH, so the assertion is on the half that
+	// carries the fact rather than on the whole line: what is under test is
+	// whether the chip HID it, and a wrapped line is on the screen.
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "deepseek cannot serve this model") {
 		t.Fatalf("the retirement sentence is not on the screen:\n%s", got)
 	}
 	// AND AN ORDINARY NOTE IS STILL WORK. Without this the test would pass on a
