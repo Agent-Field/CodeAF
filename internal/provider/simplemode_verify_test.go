@@ -206,15 +206,18 @@ func TestAClientHandedNoRowAnswersTheOneThisProcessInstalled(t *testing.T) {
 	if strategy := client.routingFor(IntentInteractive); strategy != RoutingPrice {
 		t.Fatalf("a client handed price routes on %q, want the answer it was handed", strategy)
 	}
-	// And with nothing installed and nothing handed down, the default still
-	// moves with who is waiting, which is what an unwritten row has always done.
+	// And with nothing installed and nothing handed down, every call takes the
+	// row this build ships, whoever is waiting on it. It used to move with who
+	// was waiting — price for an errand, latency for a person's own turn — and
+	// that guess is what the shipped row replaces (velocity.go's
+	// [DefaultRouting]).
 	InstallRouting("")
 	client.config.Routing = nil
-	if strategy := client.routingFor(IntentBackground); strategy != RoutingPrice {
-		t.Fatalf("an unwritten row routes a background call on %q, want price", strategy)
-	}
-	if strategy := client.routingFor(IntentInteractive); strategy != RoutingLatency {
-		t.Fatalf("an unwritten row routes a person's turn on %q, want latency", strategy)
+	for _, intent := range []RoutingIntent{IntentBackground, IntentInteractive} {
+		if strategy := client.routingFor(intent); strategy != DefaultRouting {
+			t.Fatalf("an unwritten row routes intent %v on %q, want the shipped %q",
+				intent, strategy, DefaultRouting)
+		}
 	}
 }
 
@@ -234,9 +237,10 @@ func TestSimpleRoutingLeavesAPinTheRankedRoadWouldHaveStoodDown(t *testing.T) {
 	pinned(t, LanePin{Lane: "Ghost"})
 	request := &ai.Request{Model: rig.model, Messages: userMessages("hello")}
 
-	// THE RANKED ROAD, WHICH IS THE CONTRAST. Nothing installed, nothing handed
-	// down: the saved exclusion stands the pin down before the wire is asked.
-	installedRow(t, "")
+	// THE RANKED ROAD, WHICH IS THE CONTRAST. It is NAMED rather than left to a
+	// default: `latency` is the road where the saved exclusion stands the pin
+	// down before the wire is asked, and the row nobody writes is `simple` now.
+	installedRow(t, RoutingLatency)
 	rig.client.config.Routing = nil
 	if choice, made := rig.client.drawLaneChoice(turnKnobs(), rig.model, request); made && len(choice.Only) > 0 {
 		t.Fatalf("the ranked road demanded %v for a machine the account excludes", choice.Only)
