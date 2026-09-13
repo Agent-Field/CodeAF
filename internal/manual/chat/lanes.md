@@ -805,6 +805,14 @@ costs one refused round trip, once. A strict pin on it is stood down on every
 model with the usual `cannot serve this model` line. Nothing about its speed is
 written; an answer from it, or pinning it again, takes it back at once.
 
+**Under `routing: simple` that memory never stands your pin down by itself.**
+The row promises that what you wrote is what goes on the wire, so the pin is
+sent — once — and OpenRouter is left to be the one that says no. You pay the
+refused round trip again on the first turn of a new window, and you get the
+`cannot serve this model` line in the conversation, in the same breath as the
+`@machine` coming off the model on the status line. That is the trade: a
+sentence you can act on instead of a request that quietly went somewhere else.
+
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
@@ -878,6 +886,28 @@ there is no lane to choose, no sheet of machines to open and no speed guard.
 `simple` leaves the pin standing: the one instruction you gave is the only one
 sent. Left alone the row is still `latency`, and everything the rest of this
 page describes is what it does.
+
+## Does simple routing cover everything, or only my own messages — harness runs, reading a document, looking at an image
+
+All of it. The `routing` row is about **this session**, not about one request
+road, so every part of a conversation that opens its own connection answers the
+same word: your turns, the work a task node sends, a **subharness** run, the
+model that reads a document for you, the one that looks at an image, and each
+member of a `/model` panel.
+
+That was not always true. Until 2026-09-13 those extra roads were built without
+the row and ran `latency` whatever you had written — which was quiet and wrong
+in one specific way. A road on `latency` is allowed to stand a pin down on
+aforge's own saved belief that your account cannot reach the machine, and that
+stand-down covers the whole window: your very next message, on `simple`, doing
+nothing wrong, went out with no machine demanded while the status line still
+read `@deepseek`. The row reaching every road is what closes it.
+
+If you want to check: pin a machine, set `routing` to `simple`, and send a
+message. Either the answer comes from the machine you named, or you get the
+`cannot serve this model` sentence and the `@machine` disappears from the model
+word. There is no third outcome — a bare request under a pin that is still
+being drawn is the bug above, and it is worth reporting.
 
 ## Turning lane routing off
 

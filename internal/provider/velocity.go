@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
@@ -185,6 +186,55 @@ func (s staticRouting) RoutingStrategy() RoutingStrategy { return RoutingStrateg
 // see [Client.routingFor].
 func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRouting(strategy) }
 
+// ── THE ROW EVERY CLIENT IN THIS PROCESS ANSWERS TO ─────────────────────────
+//
+// [RoutingSource] is how a caller HANDS an answer down, and every client that
+// is handed one keeps it. The problem is the clients nobody hands one to, and
+// there are several: the harness and the subharness build their own adapters
+// (cmd/aforge), `read_document` and `view_image` build theirs
+// (internal/config), and a panel builds one per member (internal/router). Each
+// of those was assembled through [config.Config.ClientConfig], which has never
+// carried a routing answer at all — so whatever a person wrote in the routing
+// row, those adapters ran on the default.
+//
+// THAT IS A BREACH OF THE ROW AND, UNDER `simple`, A SILENT ONE. A client on
+// the default takes the ranked road, and the ranked road may retire A PERSON'S
+// PIN before any wire is asked — a machine the saved account exclusions cover
+// is stood down where it is drawn (lanes.go). The retirement is process-wide,
+// so the conversation's own next turn — running `simple`, doing everything
+// right — found the pin already retired and went out bare, with the sentence
+// parked on a call nobody was reading and the chrome still naming the machine.
+//
+// So the row is installed ONCE, by the same door that installs the lane rows a
+// person wrote (internal/config's InstallLaneRows), and every client that was
+// handed nothing reads it. It is a process-wide knob for [lanePin]'s reason
+// said again: the row is about a SESSION and not about an adapter, and two
+// clients in one process holding two answers to "what did they ask for" is the
+// defect above. A HANDED-DOWN ANSWER STILL WINS — the engine host and a task
+// child carry their parent's row explicitly, and a process-wide fallback may
+// not overrule a caller that spoke.
+var installedRouting atomic.Value
+
+// InstallRouting states the routing row this process's clients answer to, for
+// every client that is handed no [RoutingSource] of its own. The empty strategy
+// is NOBODY HAVING WRITTEN ONE and puts the knob back to exactly that, which is
+// what an unwritten row resolves to — the default then moves with who is
+// waiting ([Client.routingFor]) exactly as it always has.
+func InstallRouting(strategy RoutingStrategy) {
+	installedRouting.Store(strategy)
+}
+
+// installedRoutingChoice is the installed row and whether one was installed at
+// all, in the shape [Client.routingChoice] answers in.
+func installedRoutingChoice() (RoutingStrategy, bool) {
+	held, ok := installedRouting.Load().(RoutingStrategy)
+	if !ok || strings.TrimSpace(string(held)) == "" {
+		return RoutingLatency, false
+	}
+	parsed, _ := ParseRoutingStrategy(string(held))
+	return parsed, true
+}
+
 // routingChoice is the strategy A PERSON CHOSE, and whether one was chosen at
 // all. An empty source, an empty word, or no source is "nobody said" — which is
 // a different fact from "somebody said latency", and the whole of what lets the
@@ -196,15 +246,19 @@ func (c *Client) routingChoice() (RoutingStrategy, bool) {
 		// object and hand router vocabulary to an endpoint that has no lanes.
 		return RoutingOff, true
 	}
-	if c.config.Routing == nil {
-		return RoutingLatency, false
+	// A CALLER THAT SPOKE IS ANSWERED FIRST, and a caller that did not falls to
+	// the row this process installed ([InstallRouting]). The two arms below are
+	// one question asked of two places: a nil source and a source holding the
+	// empty strategy are both "this caller said nothing", and neither is a
+	// refusal.
+	if c.config.Routing != nil {
+		strategy := c.config.Routing.RoutingStrategy()
+		if strings.TrimSpace(string(strategy)) != "" {
+			parsed, _ := ParseRoutingStrategy(string(strategy))
+			return parsed, true
+		}
 	}
-	strategy := c.config.Routing.RoutingStrategy()
-	if strings.TrimSpace(string(strategy)) == "" {
-		return RoutingLatency, false
-	}
-	parsed, _ := ParseRoutingStrategy(string(strategy))
-	return parsed, true
+	return installedRoutingChoice()
 }
 
 // routing resolves the strategy for this client with nothing said about who is

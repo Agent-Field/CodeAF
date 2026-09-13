@@ -820,13 +820,40 @@ func LanePinAt(profileDir, slot string) provider.LanePin {
 	return provider.LanePin{}
 }
 
-// InstallLaneRows hands this profile's lane rows to the process-wide knobs the
-// transport reads them from. It uses the RESOLVER'S entrance so loading a row
-// already in force never forgets a retirement the wire earned; only a person's
-// own act belongs at [provider.RepinLane].
+// InstallLaneRows hands this profile's routing posture to the process-wide
+// knobs the transport reads it from. It uses the RESOLVER'S entrance so loading
+// a row already in force never forgets a retirement the wire earned; only a
+// person's own act belongs at [provider.RepinLane].
+//
+// THE ROUTING ROW IS ONE OF THEM, and it is here rather than only on the
+// session's own config because of the clients nobody hands one to. The harness,
+// the subharness, `read_document`, `view_image` and a panel's members are all
+// assembled through [Config.ClientConfig], which carries no routing answer —
+// so before this line they ran on the default whatever a person had written,
+// and under `simple` one of them could retire a person's own pin, process-wide,
+// before any wire was asked (internal/provider's velocity.go says what that
+// cost). It is the CHOICE and not the resolved default, so an unwritten row
+// installs nothing and the per-request default still moves with who is waiting.
 func InstallLaneRows(profileDir string) {
+	provider.InstallRouting(installedRoutingFor(profileDir))
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+}
+
+// installedRoutingFor is the routing row as the transport's own vocabulary, and
+// the EMPTY strategy when a person has written nothing readable. The parse is
+// total, so a word this build does not know installs nothing rather than taking
+// a person's routing somewhere they did not ask for.
+func installedRoutingFor(profileDir string) provider.RoutingStrategy {
+	word := RoutingChoiceAt(profileDir)
+	if word == "" {
+		return ""
+	}
+	strategy, known := provider.ParseRoutingStrategy(word)
+	if !known {
+		return ""
+	}
+	return strategy
 }
 
 // SetLane writes one slot's lane. An empty word clears the row back to auto,

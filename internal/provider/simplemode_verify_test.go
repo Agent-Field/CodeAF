@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // THROWAWAY VERIFICATION for the simple routing mode: what the wire carries
@@ -149,5 +150,109 @@ func TestSimpleRoutingStillAsksForAPinTheSavedExclusionsCover(t *testing.T) {
 	}
 	if still := PinnedFor(rig.model); still != "" {
 		t.Fatalf("the chrome would still say @%s over a request that no longer asks for it", still)
+	}
+}
+
+// installedRow states the routing row this process's unhanded clients answer to
+// for the length of one test and puts it back afterwards — the knob is
+// process-wide (velocity.go), so a test that left one set would route every
+// test after it.
+func installedRow(t *testing.T, strategy RoutingStrategy) {
+	t.Helper()
+	before, held := installedRoutingChoice()
+	if !held {
+		before = ""
+	}
+	InstallRouting(strategy)
+	t.Cleanup(func() { InstallRouting(before) })
+}
+
+// ── THE ROW REACHES THE CLIENTS NOBODY HANDS ONE TO ─────────────────────────
+//
+// THE MEASURED FAILURE (2026-09-13). `internal/session` hands its own clients
+// the row; every other client in the binary is assembled through
+// [config.Config.ClientConfig], which carried no routing answer at all — the
+// harness, the subharness, `read_document`, `view_image`, a panel's members.
+// Each ran the ranked road whatever a person had written, and the ranked road
+// may stand a strict pin down on a SAVED belief before any wire is asked
+// (lanes.go's account-exclusion block). The retirement is process-wide, so a
+// conversation running `simple` and doing everything right found its own pin
+// already retired, went out bare, and left the chrome naming a machine the
+// request had never asked for.
+func TestAClientHandedNoRowAnswersTheOneThisProcessInstalled(t *testing.T) {
+	server := prefRig(t)
+	client := plainBase(t, server.URL(), server)
+	installedRow(t, RoutingSimple)
+
+	// A client handed nothing reads the installed row.
+	client.config.Routing = nil
+	if strategy := client.routingFor(IntentInteractive); strategy != RoutingSimple {
+		t.Fatalf("a client handed no row routes on %q, want the row this process installed", strategy)
+	}
+	// And so does one handed a source that says nothing, which is how a session
+	// with an unwritten row hands its answer down.
+	client.config.Routing = StaticRouting("")
+	if strategy := client.routingFor(IntentInteractive); strategy != RoutingSimple {
+		t.Fatalf("a client handed an empty source routes on %q, want the installed row", strategy)
+	}
+	// A CALLER THAT SPOKE STILL WINS. An engine host and a task child carry
+	// their parent's row explicitly, and a process-wide fallback may not
+	// overrule somebody who said a word.
+	client.config.Routing = StaticRouting(RoutingPrice)
+	if strategy := client.routingFor(IntentInteractive); strategy != RoutingPrice {
+		t.Fatalf("a client handed price routes on %q, want the answer it was handed", strategy)
+	}
+	// And with nothing installed and nothing handed down, the default still
+	// moves with who is waiting, which is what an unwritten row has always done.
+	InstallRouting("")
+	client.config.Routing = nil
+	if strategy := client.routingFor(IntentBackground); strategy != RoutingPrice {
+		t.Fatalf("an unwritten row routes a background call on %q, want price", strategy)
+	}
+	if strategy := client.routingFor(IntentInteractive); strategy != RoutingLatency {
+		t.Fatalf("an unwritten row routes a person's turn on %q, want latency", strategy)
+	}
+}
+
+// AND UNDER `simple` NOTHING STANDS A PIN DOWN ON A SAVED BELIEF.
+//
+// This is the defect above stated as the behaviour that closes it: with the row
+// installed, the client that used to run the ranked road runs `simple` like
+// every other, so the machine a person named is demanded and the wire is left
+// to be the authority on whether the account can reach it. The contrast is the
+// same draw with no row installed, which is the ranked road doing exactly what
+// it is supposed to do.
+func TestSimpleRoutingLeavesAPinTheRankedRoadWouldHaveStoodDown(t *testing.T) {
+	rig := newLaneRig(t, "simple/pin-not-stood-down", retiredLanes()...)
+	forgotten(t)
+	lanes.ExcludeForAccount("Ghost", "the account's own settings exclude it")
+	t.Cleanup(func() { lanes.ClearAccountExclusion("Ghost") })
+	pinned(t, LanePin{Lane: "Ghost"})
+	request := &ai.Request{Model: rig.model, Messages: userMessages("hello")}
+
+	// THE RANKED ROAD, WHICH IS THE CONTRAST. Nothing installed, nothing handed
+	// down: the saved exclusion stands the pin down before the wire is asked.
+	installedRow(t, "")
+	rig.client.config.Routing = nil
+	if choice, made := rig.client.drawLaneChoice(callKnobs{}, rig.model, request); made && len(choice.Only) > 0 {
+		t.Fatalf("the ranked road demanded %v for a machine the account excludes", choice.Only)
+	}
+	if !pinRetired("Ghost", rig.model) {
+		t.Fatal("the ranked road did not stand the pin down, so this test is not about the contrast it names")
+	}
+
+	// AND `simple`, INSTALLED THE WAY THE SURFACE INSTALLS IT. The same client,
+	// handed nothing, now demands the machine the person wrote.
+	forgetRetiredPins()
+	installedRow(t, RoutingSimple)
+	choice, made := rig.client.drawLaneChoice(callKnobs{}, rig.model, request)
+	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
+		t.Fatalf("under simple the draw came out %+v, want the one machine the person pinned", choice)
+	}
+	if pinRetired("Ghost", rig.model) {
+		t.Fatal("under simple a saved belief stood the person's pin down with no wire asked")
+	}
+	if PinnedFor(rig.model) == "" {
+		t.Fatal("the chrome would say nothing over a request that demands the machine")
 	}
 }
