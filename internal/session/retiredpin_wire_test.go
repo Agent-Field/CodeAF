@@ -60,10 +60,16 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	said := turnLines(t, agent, "say only the word ok")
+	said, other := turnLines(t, agent, "say only the word ok")
 	want := provider.RetiredPinLine("DeepSeek")
+	// AND IT ARRIVES AS NEWS ABOUT THE PERSON'S OWN ROW rather than as one more
+	// line about the request's shape, which is the difference a surface acts on:
+	// a notice is folded into the work chip once the answer lands and this is
+	// the only account they get of why the machine they named disappeared
+	// (session.go's [EventRowNews]).
 	if !saidLine(said, want) {
-		t.Fatalf("the pin was retired without telling anybody.\nwant a line reading %q\ngot %q", want, said)
+		t.Fatalf("the pin was retired without telling anybody.\nwant a line reading %q\ngot row news %q and notices %q",
+			want, said, other)
 	}
 	// AND THE DEMAND REALLY WENT OUT FIRST. Without this the test would pass on
 	// a build that never asked for the machine at all, which is the other way
@@ -117,9 +123,11 @@ func TestAnErrandBesideTheTurnDoesNotCarryTheTalkPin(t *testing.T) {
 	}
 }
 
-// turnLines runs one turn and hands back every line the person would have read
-// about it — the notices the surface draws as well as the answer.
-func turnLines(t *testing.T, agent *Agent, text string) []string {
+// turnLines runs one turn and hands back the two kinds of line a person reads
+// about it, apart: the news about their own rows, and the notices the adapter
+// writes about the request's shape. Two slices rather than one because which
+// channel a sentence arrived on is the thing under test.
+func turnLines(t *testing.T, agent *Agent, text string) (rowNews, notices []string) {
 	t.Helper()
 	ctx, cancel := deadline(20 * time.Second)
 	defer cancel()
@@ -127,16 +135,17 @@ func turnLines(t *testing.T, agent *Agent, text string) []string {
 	if err != nil {
 		t.Fatalf("Submit(%q): %v", text, err)
 	}
-	var said []string
 	for event := range events {
 		switch event.Kind {
 		case EventError:
 			t.Fatalf("turn errored: %v", event.Err)
+		case EventRowNews:
+			rowNews = append(rowNews, event.Text)
 		case EventNotice:
-			said = append(said, event.Text)
+			notices = append(notices, event.Text)
 		}
 	}
-	return said
+	return rowNews, notices
 }
 
 func saidLine(said []string, want string) bool {

@@ -605,6 +605,26 @@ const (
 	// opposite of that: it is the one thing about a question that stays true
 	// afterwards.
 	EventQuestionAnswered
+	// EventRowNews carries one line in Text about A ROW THE PERSON WROTE that
+	// this build has stopped acting on — a pinned machine the router refuses to
+	// serve a model from, a base that will not carry a lane choice at all
+	// (internal/provider's lanepin.go and prefcarry.go).
+	//
+	// IT IS NOT [EventNotice] AND THE DIFFERENCE IS WHO THE SENTENCE IS FOR. A
+	// notice is the adapter saying what it did to a request to get it accepted,
+	// and it is over once the answer lands — a surface may fold it away with
+	// the rest of the machinery. This is the only account a person will get of
+	// why the machine they named has stopped appearing, and there is nothing to
+	// fold it into: it asks them to do something (pin again, or leave it on
+	// auto). Measured on 2026-09-13, riding the wrong kind: the pin was
+	// retired, `@deepseek` came off the model word, another machine answered,
+	// and the chat's work chip had swallowed the sentence that said so.
+	//
+	// IT IS LAST IN THIS BLOCK AND EVERY NEW KIND BELONGS HERE, because a kind
+	// is an integer on the remote wire (internal/remote's EventWire): one added
+	// in the middle renumbers every kind under it, and a window and an engine
+	// on two builds would then disagree about what each other's events were.
+	EventRowNews
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its

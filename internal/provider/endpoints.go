@@ -531,7 +531,14 @@ func widenedOff(prefs *providerPrefs) []string {
 // before the ladder touched it, which is the two halves the rung strips —
 // what the ledger and the row composed, plus a rescue's own demand — and
 // deliberately not [Client.wirePreferences], whose job includes teaching the
-// ledger and which no log line may run.
+// ledger ([velocityLedger.keepTheSetServable]) and which no log line may run.
+//
+// WHAT IS LEFT IS IDEMPOTENT, which is the whole reason a row may ask it. The
+// one thing [Client.providerPreferences] changes is an affinity pin whose
+// endpoint the veto list now covers (affinity.go's [Client.heldEndpoint]), and
+// the encode of this same attempt asked the same question of the same veto list
+// before the body went out — so the pin is already released and asking again
+// answers rather than acts.
 func (c *Client) widenedNames(model string, knobs callKnobs) []string {
 	unwidened := knobs
 	unwidened.relaxed &^= relaxEndpointFilter

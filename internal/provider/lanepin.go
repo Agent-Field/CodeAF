@@ -414,7 +414,7 @@ func tellRetiredPins(ctx context.Context) {
 		return
 	}
 	for _, line := range takeRetiredPins() {
-		Emit(ctx, StreamNotice, line)
+		Emit(ctx, StreamRowNews, line)
 	}
 }
 

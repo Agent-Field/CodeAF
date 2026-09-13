@@ -270,6 +270,9 @@ What that means, exactly:
   demanded at all — routed the way `auto` routes;
 - **the request that collected the refusal is widened and sent again**, once, so
   your answer still arrives. If that is refused too the turn ends, and says so;
+- **the line stays in the conversation.** It is not one of the dim retry notes
+  the work chip collapses when an answer lands, so it is still on the screen
+  after the turn finishes;
 - **your settings row is not touched.** It still reads `pinned: coreweave`;
 - **every other model still goes to that machine.** The refusal was about one
   pairing;

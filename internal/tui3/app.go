@@ -260,6 +260,20 @@ type entry struct {
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
 
+	// told says this note is ADDRESSED TO THE PERSON rather than narration
+	// about the machinery, so the work chip may not swallow it (workfold.go's
+	// [deriveWorkfolds]).
+	//
+	// THE LAW THE CHIP ALREADY KEEPS, SAID PRECISELY. A chip hides what the
+	// turn DID between a question and its answer, and a line asking the person
+	// to do something is not that — the interrupt's own lines have always been
+	// held out of one for exactly this reason. Until this field the only way to
+	// ask was to look at the note's first word, so a sentence about a person's
+	// own pin being refused was folded away whole: measured on 2026-09-13,
+	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
+	// the explanation should have been (session's EventRowNews).
+	told bool
+
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
 	// for every ordinary turn, which is nearly all of them. It is set on the

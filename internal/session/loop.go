@@ -545,6 +545,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// it reaches the transcript, and the person sees which attempt they
 			// are on and what was taken off to get there.
 			hub.send(Event{Kind: EventNotice, Text: event.Delta})
+		case provider.StreamRowNews:
+			// A ROW THE PERSON WROTE IS NO LONGER BEING SENT, and this is the
+			// only place they are told (internal/provider's lanepin.go). It is
+			// its own kind rather than a notice because a notice is narration
+			// about one request's shape and this is news about a setting: a
+			// surface is free to fold the first away once the answer lands and
+			// must not fold this one, which is exactly what happened to it
+			// while the two shared a channel.
+			hub.send(Event{Kind: EventRowNews, Text: event.Delta})
 		case provider.StreamReplaced:
 			// A rescue on another machine is this step being asked again, so what
 			// the dead machine streamed is void exactly as a cut attempt's is. The
