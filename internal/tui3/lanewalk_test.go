@@ -343,4 +343,15 @@ func TestUnderSimpleRoutingTheModelRowPredictsNoMachine(t *testing.T) {
 	if note := rowAll(modelFields(Model{ID: "vendor/quiet", ContextLength: 128_000}, "", config.RoutingSimple)); strings.Contains(note, "via ") {
 		t.Fatalf("the simple model row still carries a prediction: %q", note)
 	}
+	// AND NOT THE PREDICTED MACHINE'S NUMBERS EITHER: with no name and no
+	// chooser the row speaks for no lane, so it draws no wait and no rate.
+	if shown, ok := laneShown(config.RoutingSimple, views, ""); ok {
+		t.Fatalf("under simple the model row speaks for %q, want no lane", shown.Name)
+	}
+	if shown, ok := laneShown(config.RoutingSimple, views, "modal"); !ok || shown.Name != "modal" {
+		t.Fatal("a machine the row names still speaks for itself under simple")
+	}
+	if shown, ok := laneShown(config.RoutingLatency, views, ""); !ok || shown.Name != "modal" {
+		t.Fatal("under latency the best-known lane still speaks for the row")
+	}
 }

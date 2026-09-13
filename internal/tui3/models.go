@@ -772,7 +772,7 @@ func modelFields(model Model, pin, routing string) []rowField {
 	// and they are three fields rather than one phrase now: the lane a person
 	// is served by outranks every number, and the throughput sits five rungs
 	// under the wait it used to be glued to.
-	best, known := laneShown(views, via)
+	best, known := laneShown(routing, views, via)
 	first, rate := rowField{}, rowField{}
 	if known {
 		if word := laneSecondsWord(best.TTFT); word != "" {

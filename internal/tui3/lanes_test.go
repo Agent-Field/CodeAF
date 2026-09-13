@@ -911,7 +911,7 @@ func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
 	}
 	head, tail := laneRowText(views[0], 80)
 	for what, text := range map[string]string{
-		"the model row": laneSpeedWord(views, ""),
+		"the model row": laneSpeedWord(config.RoutingLatency, views, ""),
 		"the lane row":  head + " " + tail,
 		"the why line":  laneWhy(views[0]),
 	} {

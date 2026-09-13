@@ -692,8 +692,8 @@ func laneRateWord(rate float64) string {
 // became a row saying one machine's speed under another machine's name the
 // moment the chooser landed. A row like that is worse than a blank one: it is a
 // measurement attributed to a machine that did not make it.
-func laneSpeedWord(views []laneView, now string) string {
-	best, ok := laneShown(views, now)
+func laneSpeedWord(routing string, views []laneView, now string) string {
+	best, ok := laneShown(routing, views, now)
 	if !ok {
 		return ""
 	}
@@ -725,9 +725,20 @@ func laneSpeedWord(views []laneView, now string) string {
 // file's own sort put first and then wrote the chooser's name after them, which
 // was invisible while the two agreed and became a measurement attributed to a
 // machine that did not make it the moment they stopped.
-func laneShown(views []laneView, now string) (laneView, bool) {
+//
+// AND WITH NO NAME AND NO CHOOSER THERE IS NO LANE TO SPEAK FOR. The best-known
+// fallthrough is the chooser's claim — "this is where auto would send you" —
+// and under a routing row that runs no chooser (`simple`, the row this build
+// ships) it is nobody's: the row drew `▲1.0s · 30t/s`, which were parasail's
+// numbers with parasail's name taken off (the 2026-09-13 acceptance drive), a
+// measurement the next request would not be routed by. A pinned or named
+// machine still speaks, because there the numbers are its own.
+func laneShown(routing string, views []laneView, now string) (laneView, bool) {
 	if best, ok := laneExactly(views, now); ok {
 		return best, true
+	}
+	if !laneAutoSaid(routing).chooses {
+		return laneView{}, false
 	}
 	return bestLane(views)
 }
