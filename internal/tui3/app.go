@@ -1975,6 +1975,10 @@ type app struct {
 	// Nil history is a surface with no ↑, which is what --no-history is.
 	history History
 	hist    recall
+	// drafts is the kill ring: the sentences the whole-box clears took, newest
+	// first (draftring.go). The same ↑ walk visits them in front of the sent
+	// history, drawn dim, and /drafts lists them.
+	drafts draftRing
 
 	// draftFile is where the unsent sentence is kept between sessions
 	// (draft.go); empty means it is not kept at all.
@@ -2319,6 +2323,10 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
+	// draftPage is the list /drafts opens over the ring of cleared-but-kept
+	// drafts (draftring.go): closed, it costs the frame nothing.
+	draftPage draftPanel
+
 	// orders is the standing place's state: the shelves of what stands here — this
 	// conversation's orders, this project's and the machine's (place_standing.go).
 	// It reads the engine's own seam, so a surface whose agent has no ambient
@@ -2563,6 +2571,18 @@ type app struct {
 	// lost them.
 	recentSessions func() []Session
 	resume         func(file string) (Agent, error)
+}
+
+// noteKilled is the door every whole-box clear goes through BEFORE the words
+// go: the sentence in the box, if there is one, goes on the kill ring
+// (draftring.go), so a clear that was a mistake is one ↑ away rather than
+// retyped. Clears that hand the words on — a send, the rewind's stash — are
+// not kills and do not call here. A conversation switch DOES (detach.go's
+// [app.clearConversation]): the sidecar that picks the sentence up answers
+// only while that conversation is still kept, and the ring is what still has
+// the words if it is let go first.
+func (a *app) noteKilled() {
+	a.drafts.push(a.input.value)
 }
 
 // landingKeysWord is the opening line of every session: the keys the status
@@ -6892,6 +6912,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// on a card, so the only way anybody could name one at a command line is
 		// by reading it off this list first (permissions.go).
 		a.openPermissions()
+		return nil
+
+	case "drafts":
+		// The ring of cleared-but-kept drafts, as a list (draftpage.go). No
+		// argument form: the rows are a person's own words, and naming them is
+		// reading this list first.
+		a.openDrafts()
 		return nil
 
 	case "standing":
