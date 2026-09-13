@@ -2263,13 +2263,22 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
-	// routingOff is whether this session was launched with the routing row at
-	// `off`, which sends no lane choice at all and measures nothing
-	// (internal/provider's lanes.go). It is read ONCE, here, because that is
+	// routing is the routing row this session was launched under, in the words
+	// the row itself is written in — `latency`, `price`, `simple` or `off`
+	// (internal/config's settings.go). It is read ONCE, here, because that is
 	// when the session reads it — the row lands on the next session — and the
-	// chrome that asks it does so on every frame. Under it there is no fold to
-	// open ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]).
-	routingOff bool
+	// chrome that asks it does so on every frame.
+	//
+	// THE WHOLE ROW IS KEPT AND NOT ONE READING OF IT. This was a `routingOff
+	// bool`, which answered the only question the surface had while the row had
+	// three answers and aforge chose under two of them. `simple` is a fourth,
+	// and under it aforge does not choose at all — so a row that says what auto
+	// does has to be told which routing it is describing ([laneAutoSaid]), and a
+	// second boolean beside the first would be two readings of one row, drifting
+	// the first time either was fixed. Under `off` there is no fold to open
+	// ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]), which
+	// is [app.routingOff] asking this field.
+	routing string
 	// crew is the profile's crew as this surface last read it, so the status
 	// line can name it without reading four settings rows off the disk on every
 	// frame (crew.go's [app.crewReading]).
@@ -2638,7 +2647,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
 		profileDir:          opts.ProfileDir,
-		routingOff:          config.RoutingAt(opts.ProfileDir) == config.RoutingOff,
+		routing:             config.RoutingAt(opts.ProfileDir),
 		oneModel:            opts.OneModel,
 		settings:            opts.Settings,
 		saveApproval:        opts.SaveApproval,

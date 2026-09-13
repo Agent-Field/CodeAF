@@ -609,7 +609,12 @@ func laneSlotForRow(key string) string {
 // nothing, so a fold would offer machines no request asks for and promise
 // measurements that never come.
 func (a *app) armLanes(p *picker, slot string) {
-	if slot == "" || a.routingOff {
+	// THE ROUTING ROW RIDES ALONG EVEN WHERE IT CLOSES THE FOLD, because it is
+	// the one fact here that is about what aforge PROMISES rather than about
+	// what it has measured, and the row that makes that promise reads it
+	// ([laneAutoSaid]).
+	p.routing = a.routing
+	if slot == "" || a.routingOff() {
 		return
 	}
 	p.laneSlot = slot
@@ -617,6 +622,15 @@ func (a *app) armLanes(p *picker, slot string) {
 	p.guard = config.LaneGuardAt(a.profileDir)
 	p.ascii = a.pal.ascii
 }
+
+// routingOff is whether this session's routing row is `off` — the one answer
+// that sends no lane choice at all and measures nothing (internal/provider's
+// lanes.go), which leaves nothing for a fold to draw and nothing to pin.
+//
+// It asks [app.routing] rather than keeping a boolean of its own: the row has
+// four answers now, and each place that cares cares about a different one of
+// them.
+func (a *app) routingOff() bool { return a.routing == config.RoutingOff }
 
 // applyLaneChoice is enter on a row INSIDE an open fold: the lane the cursor is
 // on, written for the model that fold belongs to.
@@ -1197,7 +1211,7 @@ const laneAtSign = "@"
 // lane at all, [app.routingOff]), and over a connection, where the pin in force
 // is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.routingOff || a.model == "" || a.modelIsDirect(a.model) {
+	if a.hosted() || a.routingOff() || a.model == "" || a.modelIsDirect(a.model) {
 		return ""
 	}
 	return strings.ToLower(provider.PinnedFor(a.model))

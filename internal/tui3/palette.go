@@ -98,6 +98,13 @@ type picker struct {
 	// because it is a fact about what `auto` PROMISES, and this list is where a
 	// person decides whether to leave the choosing to it.
 	guard bool
+	// routing is the routing row this session was launched under ([app.routing]),
+	// and it rides here for the same reason the guard does: under `simple` aforge
+	// makes no choice of its own at all, so what the `auto` row may honestly say
+	// it does is a question only this row answers ([laneAutoSaid]). A snapshot,
+	// like the rest of them — the row lands on the next session and cannot move
+	// while a modal list owns the keyboard.
+	routing string
 	// ascii is whether this terminal was refused box drawing, so the two marks
 	// on the fold's own rows have a plain spelling. It is a snapshot like the
 	// rest of them, and the list is closed long before a terminal could change
@@ -1445,17 +1452,25 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		// FOR is a thing you read once; which machine it would send you to now
 		// is the thing you came back to look at, so the short spelling keeps the
 		// name and drops the explanation around it.
-		sentence := laneAutoNote
+		//
+		// AND WHAT IT MAY CLAIM AT ALL IS THE ROUTING ROW'S TO SAY, asked once
+		// ([laneAutoSaid]) rather than read off the mode here: under `simple`
+		// nothing on this side chooses, so there is no machine to name and no
+		// rescue to promise.
+		said := laneAutoSaid(p.routing)
+		sentence := said.note
 		short := ""
-		if p.auto != "" {
+		if said.chooses && p.auto != "" {
 			sentence += " — " + strings.ToLower(p.auto) + " now"
 			short = strings.ToLower(p.auto) + " now"
 		}
 		fields := []rowField{rowSay(sentence, short), rowSay("recommended")}
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
 		// speed guard off, a lane that turns slow mid-answer is one you wait
-		// out; that is a fact about this row and it belongs on it.
-		if !p.guard {
+		// out; that is a fact about this row and it belongs on it. Where the
+		// routing runs no rescue in the first place the sentence above has
+		// already said so, and a chip repeating it is the same fact twice.
+		if said.chooses && !p.guard {
 			fields = append(fields, rowSay("no rescue"))
 		}
 		return rowHalves(rowPlan{primary: "  " + p.mark(true) + " auto", fields: fields}, width, 0)
@@ -1490,10 +1505,60 @@ func (p *picker) mark(filled bool) string {
 	return tokens.GlyphStepPending
 }
 
-// laneAutoNote is what the auto row says it does. It is a sentence and not a
-// word because it is the row a person will land on first and the one they will
-// leave alone: what it is FOR has to be on it.
-const laneAutoNote = "router routes; aforge takes over if answers turn bad"
+// laneAutoSay is what the `auto` row may honestly claim, as the routing row in
+// force decides it: the sentence saying what leaving the choosing alone DOES,
+// and whether aforge is the one doing any of the choosing.
+type laneAutoSay struct {
+	// note is the sentence on the row. It is a sentence and not a word because
+	// it is the row a person will land on first and the one they will leave
+	// alone: what it is FOR has to be on it.
+	note string
+	// about is the same promise as the settings sheet's `lane` row explains it
+	// ([settingUI], read through [sheet.metaFor]). It is a second wording and
+	// not a second decision: the sheet's row is a paragraph about what the four
+	// answers to "which machine" mean and the picker's row is a label inside
+	// the list, and the two would say different things about `simple` the first
+	// time either was written without the other.
+	about string
+	// chooses is whether aforge chooses anything under this routing row. It
+	// gates the two claims that are only true when it does: the name of the
+	// machine the next turn would go to — which is the CHOOSER'S answer
+	// (lanes.go's [laneAuto]), and a prediction nobody makes where no chooser
+	// runs — and the `no rescue` chip, which is a fact about a speed guard that
+	// has nothing to guard.
+	chooses bool
+}
+
+// laneAutoSaid reads the routing row and answers it once, so that what the row
+// promises is decided in ONE place rather than at each thing the row draws.
+//
+// THE SENTENCE IS A PROMISE AND A PROMISE HAS TO BE KEPT UNDER EVERY ROW. Under
+// `latency` and `price` aforge does take over when the router's answers turn
+// bad, and the row has said so since it was written. Under `simple` it does
+// not: the request goes out with no preference of aforge's own on it and
+// OpenRouter's own default routing answers, which is exactly the row a person
+// chose in order to be left alone — so the row that still said "aforge takes
+// over" would be the surface promising machinery the mode disconnected.
+//
+// An unknown word — a row read before this surface armed anything — is the
+// shipped routing, which is what [config.DefaultRouting] is.
+func laneAutoSaid(routing string) laneAutoSay {
+	if routing == config.RoutingSimple {
+		return laneAutoSay{
+			note: "openrouter's own routing; aforge stays out",
+			about: "which machine behind your model answers you. routing is simple, so auto " +
+				"sends no choice of ours at all and openrouter's own routing answers; a lane " +
+				"you pin is the whole request. enter opens them all with what has been " +
+				"measured of each.",
+		}
+	}
+	return laneAutoSay{
+		note: "router routes; aforge takes over if answers turn bad",
+		about: "which machine behind your model answers you. auto picks the fastest one " +
+			"each answer; enter opens them all with what has been measured of each.",
+		chooses: true,
+	}
+}
 
 // laneUnmeasured is the one line a fold draws in the machines' place when
 // nothing behind the model has been measured. It is a sentence a person would

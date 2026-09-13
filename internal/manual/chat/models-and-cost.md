@@ -2707,6 +2707,16 @@ measured it opens all the same, onto the only two honest answers: `auto` and `op
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
+**Under `routing: simple` the `auto` row says something else, because it does something
+else.** It reads `openrouter's own routing; aforge stays out`, and it names no machine
+beside it — under that row nothing on aforge's side chooses, so there is no machine it
+could honestly say the next turn will land on, and no `no rescue` note either, because
+there is no rescue running under any setting of the speed guard. The fold still opens and
+`enter` still pins: a pin is the one instruction that mode sends. The **lane** row in
+`/settings` is explained the same way, and the `auto (cloudflare now)` tail on the **your
+model** row is gone with it — it was a prediction, and under `simple` nobody here is
+predicting.
+
 **A model nobody has measured opens onto its two answers and no machines.** `→` shows
 `auto` and `openrouter`, and in the machines' place one line —
 `no machine has been measured for this model yet — machines show up after its first answer`
@@ -2947,7 +2957,12 @@ The **your model** row says which lane is answering it beside the model id — `
 actually land on. Under `simple` routing the borrow rung is moot: the pin goes out
 strictly — that one machine, `only`, fallbacks off, nothing else on the request — because
 simple runs no choosing of its own for a slow answer to borrow. The `switch to auto?`
-question a slow pinned lane raises still has somewhere to send you.
+question a slow pinned lane raises still has somewhere to send you — it asks whether to
+let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
+the table above is the other rung that reads differently there: under `simple` nothing
+takes over, so the row says `openrouter's own routing; aforge stays out` in the fold and
+the **your model** row drops its `auto (cloudflare now)` tail rather than name a machine
+nobody chose.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 

@@ -689,10 +689,13 @@ var settingUI = map[string]settingMeta{
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
+	// ITS EXPLANATION IS NOT WRITTEN HERE. What `auto` does is the routing row's
+	// answer and not this row's, so the words come from the one place that knows
+	// them ([laneAutoSaid], filled in by [sheet.metaFor]) — the same door the
+	// picker's own `auto` row reads. A sentence spelled here as well would be
+	// this panel promising a takeover on a routing that runs none.
 	config.LaneSettingKey(talkSlot): {
 		tab: tabProviders, label: "lane", widget: widgetLane,
-		about: "which machine behind your model answers you. auto picks the fastest one " +
-			"each answer; enter opens them all with what has been measured of each.",
 	},
 	config.KeyLaneGuard: {
 		tab: tabProviders, label: "speed guard", widget: widgetToggle,
@@ -900,6 +903,12 @@ type sheet struct {
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
+	// routing is the routing row this session was launched under ([app.routing]),
+	// taken once for the same reason [sheet.sessionModel] is: it is what the
+	// SESSION is routing by, the row itself lands on the next session, and a
+	// panel that re-read it off the disk would explain the `lane` row by a word
+	// nothing is acting on yet.
+	routing string
 	// sessionModel is the model this conversation is on — the FLOOR of every
 	// role's ladder ([roles.Resolve]), and therefore what a role row resolves to
 	// when nothing above it is set. It is taken once, when the panel opens: the
@@ -1194,6 +1203,7 @@ func (a *app) raiseSettings() {
 		sources:      a.sources,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
+		routing:      a.routing,
 		today:        a.todayReading(),
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
@@ -1378,6 +1388,14 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
+	}
+	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
+	// a different promise under `simple` than under the row aforge ships with —
+	// the same one door the picker's own `auto` row reads (palette.go's
+	// [laneAutoSaid]), so the panel and the list cannot say different things
+	// about one routing.
+	if ok && row.Key == config.LaneSettingKey(talkSlot) {
+		meta.about = laneAutoSaid(s.routing).about
 	}
 	return meta, ok
 }
@@ -2914,6 +2932,15 @@ func (s *sheet) laneWord(item sheetItem) string {
 			}
 			return word
 		}
+	}
+	// AND NAMING THE MACHINE `auto` WOULD USE IS A CLAIM ONLY A CHOOSER CAN
+	// MAKE. Under `simple` routing an unpinned request carries no preference of
+	// ours at all and OpenRouter's own routing answers it, so the best lane this
+	// process believes in is a machine nothing asked for — the same reading the
+	// picker's `auto` row makes (palette.go's [laneAutoSaid]), and the emptiness
+	// law closes the rest: no prediction, no word.
+	if !laneAutoSaid(s.routing).chooses {
+		return ""
 	}
 	if best, ok := bestLane(laneViews(s.sessionModel, timeNow())); ok {
 		return "auto (" + strings.ToLower(best.Name) + " now)"

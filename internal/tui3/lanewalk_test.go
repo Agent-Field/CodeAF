@@ -218,6 +218,62 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	}
 }
 
+// AND UNDER ROUTING `simple` THE FOLD OPENS AND THE `auto` ROW STOPS PROMISING
+// A TAKEOVER. That row sends no preference of aforge's own: with nothing pinned
+// the request goes out bare and OpenRouter's own routing answers, so nothing on
+// this side chooses a machine, predicts which one the next turn lands on, or
+// rescues an answer that turns slow — and the sentence a person reads on the row
+// where they decide whether to leave the choosing alone has to say so.
+func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
+	laneLab(t, threeLanes())
+	dir := t.TempDir()
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyRouting)
+	if !ok || row.Apply(config.RoutingSimple) != nil {
+		t.Fatal("could not write the routing row")
+	}
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
+	a.models = func() []Model { return laneCatalog }
+	a.width, a.height = 120, 24
+
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"))
+	if a.pick.unfold != flash {
+		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)
+	}
+	screen := plain(frame(a))
+	if !strings.Contains(screen, "openrouter's own routing; aforge stays out") {
+		t.Fatalf("the auto row does not say who is choosing under simple:\n%s", screen)
+	}
+	// THE TWO CLAIMS THAT ONLY A CHOOSER CAN MAKE ARE GONE WITH IT: the machine
+	// the next turn would go to, which under this row nobody on this side picks,
+	// and the takeover the sentence used to promise.
+	for _, gone := range []string{"aforge takes over", "cloudflare now"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("under routing simple the fold still says %q:\n%s", gone, screen)
+		}
+	}
+	// AND THE SETTINGS PANEL EXPLAINS THE SAME ROW THE SAME WAY, because both
+	// read the one door (palette.go's [laneAutoSaid]).
+	drive(t, a, key("esc"))
+	a.openSettings()
+	meta, found := a.sheet.metaFor(mustRow(t, a, config.LaneSettingKey(talkSlot)))
+	if !found || !strings.Contains(meta.about, "openrouter's own routing answers") {
+		t.Fatalf("the lane row is explained as %q", meta.about)
+	}
+}
+
+// mustRow is one registry row by key, for a test that is about what the panel
+// SAYS about it rather than about finding it.
+func mustRow(t *testing.T, a *app, key string) config.Setting {
+	t.Helper()
+	row, ok := a.sheet.registry.Row(key)
+	if !ok {
+		t.Fatalf("the registry has no row %q", key)
+	}
+	return row
+}
+
 // DEFECT 5. A BELIEF WHOSE CONFIDENCE HAS DECAYED HAS NO TAIL. A day without a
 // sighting doubles the spread a hundred and forty-four times, and the p99 of
 // that is +Inf — which a row once printed as `tail 9223372036854775807s`.
