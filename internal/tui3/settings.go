@@ -682,8 +682,10 @@ var settingUI = map[string]settingMeta{
 	config.KeyRouting: {
 		tab: tabProviders, label: "routing", widget: widgetCycle,
 		about: "one model is served by many endpoints. latency asks for the fastest and " +
-			"demotes one that keeps being slow; price asks for the cheapest; off asks for " +
-			"nothing, measures nothing, and leaves the two rows above it with no machine to name.",
+			"demotes one that keeps being slow; price asks for the cheapest; simple sends no " +
+			"preference of ours — no pinned lane means the router's own default answers, and " +
+			"a pinned lane is the whole request; off asks for nothing, measures nothing, " +
+			"and leaves the two rows above it with no machine to name.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.

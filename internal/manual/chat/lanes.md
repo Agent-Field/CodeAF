@@ -77,7 +77,12 @@ rather have the router's price balance than be rescued from its bad minute.
 
 The rest of this page — the closed set, the refusal walk, the probe — describes
 what happens while aforge is choosing: during a takeover, and whenever you have
-pinned a lane yourself.
+pinned a lane yourself. All of it is written about the routing the row ships
+with. With `routing` at `simple` none of it runs — no takeover, no ranking, no
+measuring — because that mode sends exactly what you asked for and nothing
+else; *How do I stop aforge choosing the provider itself* below has it. With
+the row at `off` the choosing stops too, and the last section says what that
+leaves standing.
 
 **A run started from a terminal is routed on the same terms.** `aforge do`, `aforge run`
 and `aforge plan run` open no conversation and draw no status line, and they used to
@@ -843,6 +848,37 @@ A directly connected service is simpler: it has one lane, so there is nothing to
 between and no lane sheet to open. That is not a fault. The service name carried by the
 model id is already the whole route.
 
+## How do I stop aforge choosing the provider itself — the simple routing mode, OpenRouter's default routing, and what my pinned lane still sends
+
+The `routing` row (`/settings` → **Providers**) has a fourth answer, **`simple`**,
+for exactly this. Under it aforge keeps no opinion of its own about the machines
+behind your model, and sends none:
+
+- **No lane pinned** — the request carries no routing preference at all: no sort
+  word, no price ceiling, no machines named or excluded. OpenRouter's own default
+  routing picks the endpoint, exactly as it would for a request aforge had never
+  touched. There is no measuring, no second request hedged alongside yours, not
+  even the one-token measurement sent while you type — and no takeover when
+  answers come back refused: the bad-minute rescue this page describes does not
+  run here, and neither does its cost.
+- **A lane pinned** (`/model @deepseek`, or enter on the **lane** row) — the
+  request demands exactly that one machine: `only`, fallbacks off, and nothing
+  else rides along. Your word is the whole request. A pin written `borrow when
+  slow` changes nothing here — there is no rescue running for it to borrow.
+
+What does not change: the machine that answered is still named on the status
+line, and the `switch to auto?` question a slow pinned lane asks still has
+somewhere to send you. A pin the router itself refuses — the machine saying it
+cannot serve that model at all — is still retired for that model, with the same
+one-sentence note, and pinning again puts it straight back on the very next
+request.
+
+`simple` is not `off`. `off` stops the measuring, and with nothing measured
+there is no lane to choose, no sheet of machines to open and no speed guard.
+`simple` leaves the pin standing: the one instruction you gave is the only one
+sent. Left alone the row is still `latency`, and everything the rest of this
+page describes is what it does.
+
 ## Turning lane routing off
 
 Set routing off (`/settings`, or the `routing` row) and aforge sends every
@@ -851,15 +887,17 @@ ceiling on how long a silence runs before *something* is said about it is not
 steering, it is the promise this surface makes — but it stops choosing endpoints
 for you, stops sending second requests, and stops spending anything on speed.
 
-**The row has three answers, not two, and the third is not off.** Left alone, aforge asks
+**The row has four answers, and the two quiet ones are not the same nothing.** Left alone, aforge asks
 for the fastest machine on the turns you are waiting through, and on the work you are not
 watching it still weighs speed, at a quarter of that weight — a task ends when its slowest
 call ends, and a machine that refuses four requests in five costs five sends for one answer,
 so its seconds are never free. That is the split the rest of this page describes. Writing a word in the row
 overrides that everywhere: `latency` asks for the fastest one on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
-is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
-`price` still measures machines and still chooses between them. `off` stops the choosing.
+is you saying that speed is not worth money anywhere; `simple` sends no preference of
+aforge's own at all — your pin, if you made one, is the whole request (the section above);
+and `off` is the paragraph above.
+`price` still measures machines and still chooses between them. `simple` and `off` stop the choosing.
 
 **`off` does not stop the remembering, and that is deliberate.** aforge still writes down
 which machine answered and which one refused, because that is what lets a request that

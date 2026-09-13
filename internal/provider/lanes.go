@@ -506,6 +506,27 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
 	}
+	// SIMPLE ROUTING ASKS THE ROW AND NOTHING ELSE. A pin — strict or
+	// borrowable, the difference is a rescue this mode does not run — is the
+	// one instruction that reaches the wire: the demand for the machine it
+	// names, with the frontier still drawn so a stall has somewhere to offer
+	// to go. Every other reading of the world (the routing gate, the belief's
+	// own ranking, the account's exclusions) stays computed by the packages
+	// below and is simply never asked, because under this row the person is
+	// the algorithm. No pin — or one the wire has retired for this model —
+	// means no choice at all: the request goes out with no provider object
+	// and the router's own default answers, and with no choice on the context
+	// nothing downstream hedges either ([Client.raceFor] reads the same
+	// absence).
+	if strategy == RoutingSimple {
+		named := pin.pinned()
+		if named == "" || retired {
+			return lanes.Choice{}, false
+		}
+		ask := c.laneRequest(model, knobs, request, c.laneValueOfTime(knobs))
+		choice := lanes.Default().Chooser().Choose(ask)
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier, Pinned: true}, true
+	}
 	// `auto` IS OPENROUTER'S ROAD UNTIL THE ROUTER LETS GO OF IT (routefirst.go).
 	// A gate per model counts the refusals and the answers that came back
 	// unusable; while it says the router is serving this model, there is no

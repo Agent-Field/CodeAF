@@ -57,6 +57,14 @@ const (
 	// it: an operator who has not asked to be routed has not asked to be
 	// measured either, and a demotion nobody can act on is only overhead.
 	RoutingOff RoutingStrategy = "off"
+	// RoutingSimple sends exactly what the person asked for and nothing else.
+	// No lane pinned: the request carries NO provider object at all and the
+	// router's own default routing answers — no belief, no sort word, no price
+	// ceiling, no hedge. A lane pinned: the request carries that one demand
+	// (`provider.only`, fallbacks off) and nothing with it. Every other layer
+	// of the routing stack stays compiled in but is disconnected from the
+	// request path, so the row a person wrote is the whole algorithm.
+	RoutingSimple RoutingStrategy = "simple"
 )
 
 // sortWord is the strategy as the router spells it, empty when no preference
@@ -65,7 +73,9 @@ func (s RoutingStrategy) sortWord() string {
 	switch s {
 	case RoutingPrice:
 		return "price"
-	case RoutingOff:
+	case RoutingOff, RoutingSimple:
+		// Simple never asks by sort word: its only preference is a person's
+		// own pin, which is a demand and not a ranking.
 		return ""
 	default:
 		return "latency"
@@ -146,6 +156,8 @@ func ParseRoutingStrategy(word string) (RoutingStrategy, bool) {
 		return RoutingPrice, true
 	case string(RoutingOff):
 		return RoutingOff, true
+	case string(RoutingSimple):
+		return RoutingSimple, true
 	default:
 		return RoutingLatency, false
 	}
@@ -355,6 +367,23 @@ func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPre
 		return nil
 	}
 	strategy := c.routingFor(knobs.intent)
+	// SIMPLE ROUTING SENDS THE PERSON'S OWN INSTRUCTION AND NOTHING ELSE.
+	// With no pin in force there is nothing to ask for: the request goes out
+	// with no provider object at all and the router's own default routing
+	// answers, which is the whole of what the row promises. With a pin the
+	// one demand the choice carries is the whole object — `only` plus
+	// fallbacks off, applied by [Client.applyLaneChoice] — and the sort word,
+	// the price ceiling, the ledger's order and the cache pin all stay off
+	// the wire, because each of them is a second guess beside the one
+	// machine somebody named.
+	if strategy == RoutingSimple {
+		if knobs.laneChoice == nil || len(knobs.laneChoice.Only) == 0 {
+			return nil
+		}
+		prefs := &providerPrefs{}
+		c.applyLaneChoice(prefs, model, knobs, "")
+		return prefs
+	}
 	word := strategy.sortWord()
 	if word == "" {
 		return nil

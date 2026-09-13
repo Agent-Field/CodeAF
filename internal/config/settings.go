@@ -711,7 +711,7 @@ var BackgroundModes = []string{BackgroundOn, BackgroundOff}
 // DefaultBackground is on.
 const DefaultBackground = BackgroundOn
 
-// The routing row's three answers. They are spelled here rather than imported
+// The routing row's four answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
 // vocabulary is a string on disk, and it must not change because a package
 // renamed a constant.
@@ -720,6 +720,10 @@ const (
 	RoutingLatency = "latency"
 	// RoutingPrice asks for the cheapest one that can serve the request.
 	RoutingPrice = "price"
+	// RoutingSimple sends no preference of ours at all: when no lane is
+	// pinned the router's own default answers, and a pinned lane is the
+	// whole request.
+	RoutingSimple = "simple"
 	// RoutingOff sends no preference at all, and stops measuring with it.
 	RoutingOff = "off"
 )
@@ -727,7 +731,7 @@ const (
 // RoutingModes lists them, latency first — which is also the default: a chat
 // session is a person waiting, and the endpoint that answers soonest is the one
 // they are asking for.
-var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingOff}
+var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingSimple, RoutingOff}
 
 // DefaultRouting is latency.
 const DefaultRouting = RoutingLatency
@@ -1930,9 +1934,11 @@ func (s *Settings) build() []Setting {
 				"cheapest for work you are not waiting on: task workers, judges, titles, the " +
 				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
 				"fastest one for everything and times every answer, demoting an endpoint that " +
-				"keeps being slow; price asks for the cheapest for everything; off asks for " +
-				"nothing and measures nothing — and with nothing measured there is no lane " +
-				"to choose, no sheet of them to open and no speed guard. A change lands on " +
+				"keeps being slow; price asks for the cheapest for everything; simple sends " +
+				"no preference of ours at all — with no lane pinned the router's own default " +
+				"answers, and a pinned lane is the whole request; off asks for nothing and " +
+				"measures nothing — and with nothing measured there is no lane to choose, " +
+				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },

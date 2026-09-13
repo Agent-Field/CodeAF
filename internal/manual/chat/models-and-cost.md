@@ -1188,10 +1188,10 @@ number of tries (see *How long aforge keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
-which endpoint served it, or you have set `routing` to `off` on the **Providers** tab, then
+which endpoint served it, or you have set `routing` to `off` or `simple` on the **Providers** tab, then
 nothing is being routed around and the next attempt lands in exactly the same place — so
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
-switches off **endpoint** steering; it does not switch off moving to another model.
+or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
@@ -1727,7 +1727,7 @@ or `off`, and the default is **on**. Off means you see whatever arrives, and kee
 you stop. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
+reading. Setting `routing` to `off` or `simple` on the same tab stops aforge steering between endpoints
 at all, and with it stops any of this being recorded.
 
 ## I stopped a reply and the text is gone — where the reply went after I hit esc, and why pressing escape on a broken reply deletes it
@@ -2609,7 +2609,7 @@ Where a model publishes no price, no cap is sent at all rather than one guessed 
 
 **One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
 
-Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
+Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, `simple` sends no preference of aforge's own at all — with no lane pinned the router's own default routing answers, and a pinned lane is demanded exactly (`only`, no fallbacks) with nothing else on the request — and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
 **You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above.
 
@@ -2877,7 +2877,7 @@ token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
 type — so a long message buys one, not one per keystroke. None at all when the **speed
-guard** is off, when `routing` is `off`, when the lane row says `openrouter`, when the
+guard** is off, when `routing` is `off` or `simple`, when the lane row says `openrouter`, when the
 pool is already backing off a rate limit, when aforge is still recovering a dropped
 connection, or when **nobody is waiting on that model** — a task working on its own and
 an errand buy none, because the measurement exists to shorten a wait somebody is sitting
@@ -2916,7 +2916,7 @@ probes. That file is the record of what was sent.
 
 **How to make it zero.** Settings → Providers → **speed guard**, off. The same row governs
 asking a second machine when an answer is slow to start, so turning it off stops both.
-`routing off` and a lane row set to `openrouter` also stop it.
+`routing off` or `routing simple`, and a lane row set to `openrouter`, also stop it.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 
@@ -2944,7 +2944,10 @@ The **your model** row says which lane is answering it beside the model id — `
 (cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
 `lane` and `routing` are different questions: routing is what every request **prefers**
 (fastest, cheapest, or nothing at all), and lane is which endpoint requests from your home
-actually land on.
+actually land on. Under `simple` routing the borrow rung is moot: the pin goes out
+strictly — that one machine, `only`, fallbacks off, nothing else on the request — because
+simple runs no choosing of its own for a slow answer to borrow. The `switch to auto?`
+question a slow pinned lane raises still has somewhere to send you.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 
@@ -2963,7 +2966,7 @@ The same stable identity also travels in OpenRouter's session header so a succes
 
 **Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, your standing orders, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a standing order agreed.
 
-Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
+Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` or `simple` turns this off with everything else.
 
 ## A model that cannot stop thinking — what turning thinking off does on it, and why some models think at "max" by default
 
