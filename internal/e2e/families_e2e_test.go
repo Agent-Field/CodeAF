@@ -121,7 +121,7 @@ func pinEveryTextModel(t *testing.T) {
 // textRoles is every role in internal/roles that answers with words. The media
 // four are absent for [pinEveryTextModel]'s reason.
 var textRoles = []roles.Role{
-	roles.RoleTitle, roles.RoleCompaction, roles.RoleConsolidate, roles.RoleGuardian,
+	roles.RoleTitle, roles.RoleConsolidate, roles.RoleGuardian,
 	roles.RolePlanner, roles.RoleDesigner, roles.RoleWorker, roles.RoleAuditor,
 	roles.RoleReflex, roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
 	roles.RoleHandoff, roles.RoleTaskName, roles.RoleShaper, roles.RoleIntake,

@@ -330,7 +330,7 @@ class, then the conversation model when that worker class is blank.
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
-the summary a compaction keeps, the safety gate, the check on finished task work, the second
+the brief a task opens on, the safety gate, the check on finished task work, the second
 look before a task starts itself, the reading of a task's parts before they are handed out,
 the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
 looking at an image. Each of those is a
@@ -341,7 +341,7 @@ looking at an image. Each of those is a
 - **small work** — cheap · the small calls — names, digests, the safety gate.
 - **worker** — does the work · every task you hand off, the parts it divides into, every
   node of an adaptive run. Most of what a task costs is spent here.
-- **careful work** — careful · checks what must not be wrong — audits, compaction, vision.
+- **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
 **All five arrive with a model already in them**, and the five together are the `balanced`
@@ -431,7 +431,6 @@ under the class answering it, saying which model comes out. As shipped:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
@@ -449,9 +448,9 @@ this build rather than a table someone kept up to date. Stop on a row and the li
 list is that role's own description followed by which class it follows.
 
 **What the mastermind's roles have in common is that one answer decides what all the other
-calls do.** `planner` and `designer` used to sit on careful work beside the compaction
-summary, which made one model id answer two unrelated bills: the careful calls are many and
-short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
+calls do.** `planner` and `designer` used to sit on careful work beside the check on
+finished work, which made one model id answer two unrelated bills: the careful calls are
+many and short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
 a designer that writes badly puts a wrong answer on the menu with a name on it;
 `routerconfirm` stands between a cheap model's "that should have been work" and a task
 starting itself, and it is asked on nothing else, so it costs a call only where something was
@@ -491,7 +490,7 @@ only thing that moves it is `/model`, the model row in `/settings`, or naming on
 
 The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
-the work inside every task, checks on finished work, compaction summaries, adaptive-run
+the work inside every task, checks on finished work, the brief a task is shaped into, adaptive-run
 planners and their nodes, harness pages, and looking at an image. Setting it writes all
 five class rows in one write, and **it is live from that moment**: the next call aforge
 makes on its own uses the new crew, with no relaunch and no new session. A task already
@@ -652,7 +651,7 @@ for calls you did not type:
 | 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
 | 3 | small work | digests, task names, the safety gate's yes-or-no — cheap |
 | 4 | worker | every task you hand off, its parts, every run node — most of the bill |
-| 5 | careful work | checks on finished work, compaction summaries, vision |
+| 5 | careful work | checks on finished work, the brief a task is shaped into, vision |
 | 6 | mastermind | plans adaptive runs and designs harnesses — thinks |
 
 `/crew` shows all six and sets seats two to six in one word — `frugal`, `balanced` or
@@ -2218,7 +2217,7 @@ When nothing can say — a model the catalog has never carried, a machine that h
 reached the catalog yet — the answer is still the 128,000-token default, which is the
 smallest window this surface routes to and the safe direction for a guess to be wrong in.
 
-## What happens before the conversation is summarized
+## What happens before the conversation is compacted
 
 aforge does not jump straight to summarizing. There are rungs before it.
 
@@ -2310,36 +2309,43 @@ call, nothing paraphrased. This rung is chosen only when you gave `/compact` no 
 is a workspace, there is page budget, and the model in use can read images. Pages are 120
 columns by 64 lines, greyscale, deterministic, footed `<title> | context page 1 of 4`, and
 saved under `<workspace>/.aforge-v3/frames/`. The ceiling is **8 pages**; anything past it is
-summarized and appended after the pages.
+folded to a marker after the pages.
 
-**Rung 3 — the summary.** One call on the session's own model, with no tools, that must
-produce six sections — `## Goal`, `## Constraints & Preferences`, `## Progress`,
-`## Key Decisions`, `## Next Steps`, `## Critical Context` — and must reproduce any
-unanswered question verbatim and preserve exact paths, symbols, commands and error text.
+**Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
+**assistant** work is replaced by one marker line. It is not a summary: nothing is described
+and nothing is decided.
+
+```
+[folded 43 messages · grep or read ~/.aforge/v3/projects/-you-work/<session>/journal.jsonl, lines 12..40]
+```
+
+**Your own words are never folded.** A person's messages are the one thing in a transcript
+nothing else can reconstruct, so the fold walks past them and takes only the assistant's.
 
 ## What a compaction pass keeps
 
-The transcript is cut at a message boundary, walking back from the tail until the keep-recent
-budget is spent. The system message is never cut.
+**A compaction asks no model, costs nothing, and takes no time you can feel.** There is no
+summarizer behind it — there was one, and it was deleted. It paid a model to write prose
+about the text it was about to throw away, at the worst possible moment, and the loss was
+unrecoverable because the transcript the prose came from went with it.
 
-What is rebuilt, in order: the system message, then the page images if there are any, then
-the summary note if there is one, then **the state block verbatim**, then the kept tail. The
-state block — what `track` and `commit` recorded — is injected directly and is **never routed
-through the summarizer**, so working state cannot be paraphrased away.
+What replaces it is two mechanical passes over messages this session already has: tool
+results become pointers to their own bytes, and then the oldest assistant work becomes one
+marker line naming where the whole of it can still be read.
 
-The note the model reads above a summary begins:
+What the model is handed instead of a summary is the **state card** — what `track` and
+`commit` recorded — which rides in the system prompt on every turn and is kept up to date
+after each one. So what the conversation is about is never paraphrased, because it was never
+written as prose in the first place.
 
-```
-[context compacted] Everything before this point was summarized to fit the context window. This note is the record of that conversation — it is not something either of us said, and any question inside it is still open.
-```
-
-A pass can decline: `session: nothing to compact` (everything already fits in the tail),
-`session: a compaction pass is already running`, or `session: summarizer returned nothing`.
+A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
+`session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 
 When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
-part of it is summarized away and the recent tail is kept, which is what compaction is.
+part of it is stubbed and folded down to a marker and the recent tail is kept, which is what
+compaction is.
 
 **Nothing is lost is meant literally, and you can go and look.** The session file keeps
 every original line, and scrolling up above the boundary is given those rather than the
@@ -2370,16 +2376,14 @@ While a pass runs you see `compacting ~84k tokens` (`~842` under a thousand). On
 
 ## /compact — compacting now
 
-`/compact` summarizes the conversation on demand. It notes `compacting…` immediately and runs
+`/compact` compacts the conversation on demand. It notes `compacting…` immediately and runs
 the pass off the loop, so the surface stays alive.
 
 **Success is silent.** There is no "done" message — a compaction that worked simply leaves the
 conversation shorter. A failure comes back as `compact failed: ` followed by the error.
 
-A `/compact` given a focus always goes to the summary rung rather than page images, because a
-renderer cannot be careful about anything. The focus is *appended* to the summarizer's
-instructions and never replaces them, so one careless phrase cannot cost the next session its
-file paths. It travels on that one request and no further.
+**It costs nothing and asks no model**, so there is no reason not to run it, and no `compaction`
+role in settings to point at a model for it.
 
 ## Turning automatic compaction off
 

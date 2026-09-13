@@ -514,11 +514,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.harnessPanelKey(msg)
 	}
 
-	// And the permissions panel, which is those two panels' twin in every
-	// respect that matters here: opened by a command, nothing being typed under
-	// it, and esc leaving the conversation exactly as it was (permissions.go).
-	// Being modal is also what frees a bare d to mean "drop this line" — no
-	// draft is under this one for a letter to fall through into.
+	// And the permissions panel, which is those panels' twin (permissions.go):
+	// opened by a command, nothing typed under it, esc leaves exactly as it was.
+	// Modal also frees a bare d to mean "drop this line" — no draft is under it
+	// for the letter to fall into.
+	//
+	// The draft ring's page rides the same modal posture (draftpage.go): the
+	// bare d below it says "let this one go".
+	if a.draftPage.open && msg.String() != "ctrl+c" {
+		return a.draftPageKey(msg)
+	}
 	if a.permPanel.open && msg.String() != "ctrl+c" {
 		return a.permPanelKey(msg)
 	}
@@ -1036,6 +1041,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// terminal that reports the super modifier at all (kitty's protocol,
 		// win32-input) — everywhere else it is simply never sent, which costs
 		// nothing and is why it is bound rather than detected.
+		//
+		// A FLUSH OF THE WHOLE BOX GOES ON THE KILL RING FIRST (draftring.go):
+		// caret at the end of a one-line draft is the one shape of this key
+		// after which nothing is left, and nothing-left is the mistake the
+		// ring exists for. A kill that takes only the head of one line leaves
+		// the rest of the draft standing — and a walk's box holds a RECALLED
+		// line, not a draft, so killing it kills nothing that is not already
+		// kept.
+		if !a.recalling() && a.input.lineStart() == 0 && a.input.cursor == len(a.input.value) {
+			a.noteKilled()
+		}
 		from, to := a.input.lineStart(), a.input.cursor
 		a.input.killToStart()
 		a.editTags(from, to, 0)
@@ -1653,10 +1669,14 @@ func (a *app) inputHeight() int {
 // because a lead the layout drew and the caret arithmetic did not know about
 // would put the terminal's cursor several cells left of the letter it is on.
 func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) ([]string, int, int) {
-	return draftBlockWithTags(e, pal, width, maxRows, hint, lead, nil)
+	return draftBlockWithTags(e, pal, width, maxRows, hint, lead, nil, pal.ink)
 }
 
-func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment) ([]string, int, int) {
+// ink is the paint the words get: pal.ink everywhere but the main draft while
+// the recall walk sits on a killed, never-sent entry (recall.go's
+// [app.draftInk]) — a dim box is how the walk says these words were never
+// sent.
+func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment, ink func(string) string) ([]string, int, int) {
 	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt)
 	room := width - head
 	if room < 4 {
@@ -1717,7 +1737,7 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		at := segments[i].from
 		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
 		row := string(e.value[at:segments[i].to])
-		painted := paintDraftCommands(row, pal, pal.ink, at, boundary, demoted)
+		painted := paintDraftCommands(row, pal, ink, at, boundary, demoted)
 		// AND A SELECTED RUN WEARS THE MARK, over whatever paint the row already
 		// carries — the same step the transcript's own sweep lights its cells
 		// with, so one gesture has one look wherever it is made (editselect.go).

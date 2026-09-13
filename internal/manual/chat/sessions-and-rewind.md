@@ -251,7 +251,7 @@ session: 12 is not a rewind point; the nearest is 10
   conversation is being compacted. This is a refusal rather than a wait on purpose:
   interrupt first, rewind after, which is one keystroke.
 - `session: nothing to rewind` — a session nobody has spoken to yet, or one whose whole
-  transcript is a compaction summary.
+  transcript has been folded away by a compaction.
 - `session: agent is closed`.
 - The "not a rewind point" sentence names the nearest legal point. The index is never
   rounded to it for you.

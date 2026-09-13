@@ -181,6 +181,10 @@ const (
 	// hears `?` for a search, and `?` is already the mark for work waiting on a
 	// person, which is a row the filter box is very often sitting above.
 	GFilter
+	// GDraftUnsent is the mark of a message typed and then cleared before it
+	// was sent: the ring of them behind /drafts and the ↑ walk's dim end
+	// (internal/tui3's draftring.go, draftpage.go).
+	GDraftUnsent
 	glyphIDCount
 )
 

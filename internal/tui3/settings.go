@@ -380,7 +380,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTierHighModel: {
 		tab: tabProviders, label: "careful work", widget: widgetSelect,
-		about: "careful · checks what must not be wrong — audits, compaction, vision",
+		about: "careful · checks what must not be wrong — audits, briefs, vision",
 	},
 	// The fourth class is the one whose value may name a LEVEL as well as a
 	// model, so it is a TEXT box and not a picker: the picker returns an id, and
@@ -1745,6 +1745,14 @@ func (a *app) applyRolePin(row config.Setting, role roles.Role, model string) {
 		// somebody's line on the way past.
 		a.sheet.msg = err.Error()
 		return
+	}
+	// AND A PIN THIS BUILD NO LONGER ACTS ON IS SAID OUT LOUD to the person who
+	// is about to lose it. The row already DRAWS only the live pins
+	// (config.LivePinsAt) and this write will not put the dead one back, so
+	// without the line the row would quietly get shorter under their hands. It
+	// reads the raw stored text, which is the only place the dead word still is.
+	if note := config.RetiredPinNote(config.ModelRolesAt(a.profileDir)); note != "" {
+		a.sheet.msg = note
 	}
 	if model = strings.TrimSpace(model); model == "" {
 		delete(pins, string(role))

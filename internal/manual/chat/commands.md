@@ -384,6 +384,15 @@ compact failed: <error>
 
 `/compact` has no argument form and no alias.
 
+**A compaction costs nothing and asks no model.** It is two mechanical passes over
+the messages this session already has: tool results the model has already used
+become pointers to their own bytes, and if that is not enough the oldest assistant
+work is replaced by one marker line naming how much went and where it can be read.
+Your own words are never folded. There is **no summariser** and there is **no
+`compaction` role in settings** — there was one, and it was a priced row wired to
+nothing. What the model is handed instead of a summary is the state card, which is
+maintained a little at a time by the reader that runs after each turn.
+
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
@@ -1698,11 +1707,23 @@ order:
 7. **reflex** — `near-free · reads every turn — memory, titles, safety`
 8. **small work** — `cheap · the small calls — names, digests, the safety gate`
 9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-10. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+10. **careful work** — `careful · checks what must not be wrong — audits, briefs, vision`
 11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
 12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
+
+**A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
+come and go with the calls that use them — `compaction` was one, and a compaction has not asked
+a model since long before it was deleted. A pin left behind for a word like that is dropped
+when the row is read, never written back, and the foot line says `compaction is no longer a
+role — that pin is ignored` the next time you change any pin. **Every other pin on the row
+keeps working**, which is the whole point: the row is one string holding all of them, and
+refusing the lot over one dead word would leave you unable to change any of them without
+editing `config.json` by hand.
+
+Typing a word that is not a role is still refused outright, with the real names listed — that
+refusal is for the pin you are adding now, which is the one you can do something about.
 
 The four machine rows lead because the endpoint serving your model is part of the same
 decision as the model, and they used to sit at the foot of the tab, forty rows below it.
@@ -1760,7 +1781,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call aforge makes outside a turn — `title`, `compaction`, `guardian`, `auditor`,
+one call aforge makes outside a turn — `title`, `guardian`, `auditor`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.

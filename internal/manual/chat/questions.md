@@ -652,8 +652,8 @@ way.
 
 **The numbered answers are not on that road.** `1`–`9`, and the letters printed
 on an answer itself (`a`, `n`, `s` on a landing), take that answer the moment the
-row is on screen. A key drawn in front of you as `[1] allow once` is pressable,
-always.
+row is on screen. A key drawn in front of you as `1 allow once` is pressable,
+always — the key, one space, the word, with no brackets round it.
 
 ## Pressing esc — later, and nothing is cancelled
 

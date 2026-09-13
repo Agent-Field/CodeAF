@@ -191,8 +191,8 @@ const (
 	// chosen for THINKING rather than for a price. Two roles ride it — the
 	// planner that amends an adaptive run's plan after every node, and the
 	// designer that writes a harness page everybody afterwards runs — and both
-	// were on the careful-work tier beside the compaction summary, which made one
-	// figure answer two unrelated bills: the careful calls are many and short,
+	// were on the careful-work tier beside the check on finished work, which made
+	// one figure answer two unrelated bills: the careful calls are many and short,
 	// these are few and decide what all the other calls do.
 	//
 	// It is the one row whose value may carry a LEVEL as well as a model
@@ -2181,8 +2181,8 @@ func (s *Settings) build() []Setting {
 		},
 		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
 		// actually configures for the calls aforge makes on its own — the name it
-		// gives a session, the summary a compaction writes, the plan an adaptive
-		// run steers by (internal/roles). Four rows, not one per feature: a new
+		// gives a session, the check on work a task says is finished, the plan an
+		// adaptive run steers by (internal/roles). Four rows, not one per feature: a new
 		// call joins a class and needs no row of its own.
 		//
 		// The crew row comes FIRST because it is the only one most people will
@@ -2233,7 +2233,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
 			Label: "careful work", EmptyLabel: "follows the conversation",
 			Hint: "the capable model for the things that must not be wrong — the check on " +
-				"finished task work, the summary a compaction keeps, reading an image.",
+				"finished task work, the brief a task is shaped into, reading an image.",
 			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
 			write: func(raw string) error { return writeTierModel(dir, ModelTierHigh, raw) },
 		},
@@ -2254,7 +2254,7 @@ func (s *Settings) build() []Setting {
 			Label: "pinned roles", EmptyLabel: "none",
 			Hint: "exceptions to the five rows above, one per role: `title:openai/gpt-5-mini`. " +
 				"A role not named here follows its class.",
-			read:  func() string { return ModelRolesAt(dir) },
+			read:  func() string { return LivePinsAt(dir) },
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
 		},
 		Setting{
@@ -3698,11 +3698,95 @@ func ModelRolesAt(profileDir string) string {
 	return ""
 }
 
+// LivePinsAt is the pinned-roles row AS IT IS ACTED ON: the person's own text
+// with the pins this build will never consult taken out.
+//
+// THE ROW DRAWS WHAT IS TRUE. [ModelRolesAt] is the raw stored string and stays
+// that, because the writer needs the text to rewrite; but a row that DISPLAYED
+// it would draw `compaction: some/model` as a live pin while the role list under
+// it had no such line, and the person would be reading a setting that does
+// nothing. What they are told instead is [RetiredPinNote], next to the row.
+func LivePinsAt(profileDir string) string {
+	pins, dropped, err := parseModelRoles(ModelRolesAt(profileDir))
+	if err != nil || len(dropped) == 0 {
+		return ModelRolesAt(profileDir)
+	}
+	names := make([]string, 0, len(pins))
+	for name := range pins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	kept := make([]string, 0, len(names))
+	for _, name := range names {
+		kept = append(kept, name+":"+pins[name])
+	}
+	return strings.Join(kept, ", ")
+}
+
 // ParseModelRoles reads `title:openai/gpt-5-mini` into role → model. The value
 // is split at the FIRST colon only, because a model slug can carry one of its
 // own (`…/model:free`).
+//
+// A PIN FOR A WORD THAT IS NOT A ROLE IS DROPPED, NOT REFUSED — see
+// [parseModelRoles], which is this and the names it dropped.
 func ParseModelRoles(raw string) (map[string]string, error) {
-	return parsePairs(raw, "role")
+	pins, _, err := parseModelRoles(raw)
+	return pins, err
+}
+
+// parseModelRoles is [ParseModelRoles] and also SAYS WHAT IT DROPPED.
+//
+// A PIN FOR A WORD THAT IS NOT A ROLE IS DROPPED, NOT REFUSED, and the read does
+// not care WHY it is not a role. A name this build retired and a name somebody
+// mistyped are the same thing here by design: both are a pin no call will ever
+// consult, and the row around them is a person's own text that outlives any
+// particular build. Refusing the whole row over one dead word is what made every
+// OTHER pin on that machine unchangeable when `compaction` was deleted, because
+// the panel re-serialises the whole string on any change.
+//
+// THE DROP IS RETURNED AND NOT LOGGED. This is a pure parser on the settings
+// panel's draw path, and a log line here would print on stderr in every headless
+// and `--json` door, over the top of a machine-readable answer. Who should hear
+// about a dead pin depends on who is asking: the panel says it to the person in
+// front of it ([RetiredPinNote]), and the writer just stops writing it back.
+func parseModelRoles(raw string) (pins map[string]string, dropped []string, err error) {
+	pins, err = parsePairs(raw, "role")
+	if err != nil {
+		return nil, nil, err
+	}
+	for name := range pins {
+		if !knownRole(name) {
+			dropped = append(dropped, name)
+			delete(pins, name)
+		}
+	}
+	sort.Strings(dropped)
+	return pins, dropped, nil
+}
+
+// knownRole reports a name this build has a role for.
+//
+// IT ASKS THE VOCABULARY AND NOT THE REGISTRY, which are two different
+// questions. The registry is the TIER TABLE: a role gets into it by registering,
+// and a role with no tier never does. `imagegen` is exactly that — a painter is
+// chosen by a pin or not at all, since a chat model in tiers.high is not a
+// statement about painting — so reading the registry here threw away a person's
+// `imagegen:` pin, which is a real setting doing real work.
+func knownRole(name string) bool { return roles.Known(name) }
+
+// RetiredPinNote is what a surface with a person in front of it says about pins
+// this build will not act on, and "" when there are none. It is a sentence and
+// not a log line, because the only reader who wants it is the one looking at the
+// row it is about.
+func RetiredPinNote(raw string) string {
+	_, dropped, err := parseModelRoles(raw)
+	if err != nil || len(dropped) == 0 {
+		return ""
+	}
+	if len(dropped) == 1 {
+		return fmt.Sprintf("%s is no longer a role — that pin is ignored", dropped[0])
+	}
+	return fmt.Sprintf("%s are no longer roles — those pins are ignored", strings.Join(dropped, " and "))
 }
 
 // ModelFallbacksAt resolves the fallback chain as the person wrote it.
@@ -3973,13 +4057,7 @@ func knownToolApprovalMode(mode string) bool {
 // obeyed.
 func parsePairs(raw, subject string) (map[string]string, error) {
 	pairs := map[string]string{}
-	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n'
-	}) {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
+	for _, item := range pairItems(raw) {
 		name, value, found := strings.Cut(item, ":")
 		name = strings.TrimSpace(name)
 		value = strings.TrimSpace(value)
@@ -3992,6 +4070,26 @@ func parsePairs(raw, subject string) (map[string]string, error) {
 		pairs[name] = value
 	}
 	return pairs, nil
+}
+
+// pairItems splits a pair row into its entries, blanks dropped and each one
+// trimmed. It is where the separators a person may use are decided — comma,
+// semicolon, newline — and it is one function because [parsePairs] and the
+// rewriter that takes a dead role back out of a stored row
+// ([withoutRetiredRoles]) have to cut the string the same way. A rewriter that
+// split it differently would drop an entry the parser kept, or keep one it had
+// already refused.
+func pairItems(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	})
+	items := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if item := strings.TrimSpace(field); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // writeToolApprovals validates the pairs, then keeps the person's own text.
@@ -4021,28 +4119,71 @@ func writeToolApprovals(profileDir, raw string) error {
 // writing the row is guessing the name — and it guessed `harness_designer` the
 // first time it was asked.
 func writeModelRoles(profileDir, raw string) error {
-	pins, err := ParseModelRoles(raw)
+	pins, dropped, err := parseModelRoles(raw)
 	if err != nil {
 		return err
 	}
-	known := map[string]bool{}
-	for _, role := range roles.Registered() {
-		known[string(role)] = true
-	}
-	for name := range pins {
-		if known[strings.ToLower(strings.TrimSpace(name))] {
-			continue
+	// ONLY THE PIN BEING ADDED IS REFUSED. A name already in the stored row has
+	// been there for a while and may have been a role when it was typed — the
+	// person is not adding it now and cannot act on being told about it now, and
+	// refusing it would take the whole row with it. What a person CAN act on is
+	// the word they just wrote, which is where the refusal has always earned its
+	// keep: the settings pair guessed `harness_designer` the first time it was
+	// asked.
+	//
+	// AND "ALREADY STORED" IS A QUESTION ABOUT THE PERSON'S TEXT, NOT ABOUT THE
+	// PARSE. Asking [parseModelRoles] was the wrong reader to ask: it drops every
+	// retired word by design, so the stored row it reports back can never contain
+	// the one word this check is looking for, and a name that had sat in the file
+	// for months read as a name being typed for the first time.
+	before := storedRoleWords(profileDir)
+	for _, name := range dropped {
+		if !before[roles.RoleKey(name)] {
+			return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
 		}
-		return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
 	}
-	return writeText(profileDir, KeyModelRoles, raw)
+	// AND A WORD THIS BUILD DOES NOT ANSWER TO IS NEVER WRITTEN BACK. The parse
+	// took it out of the map; this takes it out of the TEXT, which is what is
+	// actually stored. Without it a person who changes any pin keeps re-saving a
+	// word nothing will ever read, forever.
+	//
+	// THE ROW IS REBUILT ONLY WHEN IT HAS TO BE. It is stored verbatim so it reads
+	// back the way it was typed, and normalising a person's separators on every
+	// save would edit their sentence for no reason.
+	if len(dropped) == 0 {
+		return writeText(profileDir, KeyModelRoles, raw)
+	}
+	kept := make([]string, 0, len(pins))
+	for _, item := range pairItems(raw) {
+		if name, _, _ := strings.Cut(item, ":"); knownRole(name) {
+			kept = append(kept, item)
+		}
+	}
+	return writeText(profileDir, KeyModelRoles, strings.Join(kept, ", "))
+}
+
+// storedRoleWords is every role word the stored row NAMES, whether or not this
+// build still answers to it — which is the set [writeModelRoles] compares a new
+// row against to tell a word being added from a word that was already there.
+//
+// It reads the text rather than the pins on purpose. Every reader above this
+// line drops what it does not recognise, and the word this set exists to hold is
+// exactly the word they drop.
+func storedRoleWords(profileDir string) map[string]bool {
+	words := map[string]bool{}
+	for _, item := range pairItems(ModelRolesAt(profileDir)) {
+		if name, _, ok := strings.Cut(item, ":"); ok {
+			words[roles.RoleKey(name)] = true
+		}
+	}
+	return words
 }
 
 // roleNames is the registered roles as a sorted list of plain words, for the
 // refusal above to name them all rather than make somebody go looking.
 func roleNames() []string {
-	names := make([]string, 0, len(roles.Registered()))
-	for _, role := range roles.Registered() {
+	names := make([]string, 0, len(roles.Vocabulary()))
+	for _, role := range roles.Vocabulary() {
 		names = append(names, string(role))
 	}
 	sort.Strings(names)

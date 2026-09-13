@@ -179,7 +179,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (shapedBrief, bo
 	ctx = provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary)
 	messages := []ai.Message{textMessage("system", shapePrompt), textMessage("user", request)}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, callErr := a.completeWithModel(ctx, messages, call.Model)
+		response, callErr := a.completeWithModel(ctx, callPurpose(roles.RoleShaper), messages, call.Model)
 		if callErr != nil || response == nil {
 			return shapedBrief{}, false
 		}
