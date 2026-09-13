@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a fourth routing mode, `simple`, sends exactly what you asked for and nothing else
-pr: 1016
+pr: 1019
 surface: [engine, chat, docs]
 invalidates:
   - "The `routing` row had three answers — `latency`, `price`, `off` — and the settings hint, the lanes page and the Providers-tab list all said so. It has four: `simple` sits between `price` and `off` in the cycle, and with no lane pinned the request carries NO provider object at all, so OpenRouter's own default routing answers and aforge does no measuring, no hedging and no re-ranking of its own."

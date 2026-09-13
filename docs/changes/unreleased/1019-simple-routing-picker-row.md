@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the model picker's `auto` row stops promising a takeover the `simple` routing never does
-pr: 1016
+pr: 1019
 surface: [chat, docs]
 invalidates:
   - "The `auto` row in the model picker's lane fold read `router routes; aforge takes over if answers turn bad` under every routing row. Under `routing: simple` it reads `openrouter's own routing; aforge stays out`, because that mode disconnects the chooser, the gate, the hedge and the probes — nothing on aforge's side takes anything over."
