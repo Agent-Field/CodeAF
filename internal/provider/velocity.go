@@ -288,30 +288,21 @@ func (c *Client) routingChoice() (RoutingStrategy, bool) {
 
 // routing resolves the strategy for this client. It is what the machinery's own
 // gates read — whether to measure, to probe, to hedge, to hold a cache pin —
-// and it is the same answer [Client.routingFor] gives the request beside it, so
-// a gate cannot be open on a road no request is taking.
+// and it is the one answer the request beside them asks for too, so a gate
+// cannot be open on a road no request is taking.
+//
+// THE PERSON'S ROW WINS OUTRIGHT, and where nobody wrote one there is nothing
+// underneath it to infer: every call falls to [DefaultRouting]. Until
+// 2026-09-13 a second reading beside this one asked who was waiting and chose
+// speed or price accordingly, which was a routing decision this build made on
+// a person's behalf and then had to keep explaining — the one thing a person
+// could not see in the picker, the status line or the record. The intent is
+// still carried on every call for what a wait is worth (lanes.go) and for how
+// much of an answer is being read as it arrives (workload.go); it no longer
+// picks the road.
 func (c *Client) routing() RoutingStrategy {
 	strategy, _ := c.routingChoice()
 	return strategy
-}
-
-// routingFor resolves the strategy one request will actually ask for.
-//
-// THE PERSON'S ROW WINS OUTRIGHT, and where nobody wrote one there is nothing
-// underneath it to infer: every call falls to [DefaultRouting]. It used to read
-// who was waiting here and ask for speed or for price accordingly, which was a
-// routing decision this build made on a person's behalf and then had to keep
-// explaining — the one thing a person could not see in the picker, the status
-// line or the record.
-//
-// SO THE INTENT IS TAKEN AND NOT READ. It is still carried on every call and
-// still read a line later for what a wait is worth (lanes.go) and for how much
-// of an answer is being read as it arrives (workload.go); it is named here so
-// the two call sites that ask this question go on saying which call they are
-// asking about, and so that a row which one day wants to know again has the
-// fact in its hand rather than a parameter to thread back through.
-func (c *Client) routingFor(RoutingIntent) RoutingStrategy {
-	return c.routing()
 }
 
 // providerPrefs is the routing preference object.
@@ -450,7 +441,7 @@ func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPre
 	if !c.prefsProven() && c.pinnedLaneFor(model) == "" {
 		return nil
 	}
-	strategy := c.routingFor(knobs.intent)
+	strategy := c.routing()
 	// SIMPLE ROUTING SENDS THE PERSON'S OWN INSTRUCTION AND NOTHING ELSE.
 	// With no pin in force there is nothing to ask for: the request goes out
 	// with no provider object at all and the router's own default routing

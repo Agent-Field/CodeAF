@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"strings"
@@ -190,20 +191,20 @@ func TestAClientHandedNoRowAnswersTheOneThisProcessInstalled(t *testing.T) {
 
 	// A client handed nothing reads the installed row.
 	client.config.Routing = nil
-	if strategy := client.routingFor(IntentInteractive); strategy != RoutingSimple {
+	if strategy := client.routing(); strategy != RoutingSimple {
 		t.Fatalf("a client handed no row routes on %q, want the row this process installed", strategy)
 	}
 	// And so does one handed a source that says nothing, which is how a session
 	// with an unwritten row hands its answer down.
 	client.config.Routing = StaticRouting("")
-	if strategy := client.routingFor(IntentInteractive); strategy != RoutingSimple {
+	if strategy := client.routing(); strategy != RoutingSimple {
 		t.Fatalf("a client handed an empty source routes on %q, want the installed row", strategy)
 	}
 	// A CALLER THAT SPOKE STILL WINS. An engine host and a task child carry
 	// their parent's row explicitly, and a process-wide fallback may not
 	// overrule somebody who said a word.
 	client.config.Routing = StaticRouting(RoutingPrice)
-	if strategy := client.routingFor(IntentInteractive); strategy != RoutingPrice {
+	if strategy := client.routing(); strategy != RoutingPrice {
 		t.Fatalf("a client handed price routes on %q, want the answer it was handed", strategy)
 	}
 	// And with nothing installed and nothing handed down, every call takes the
@@ -213,11 +214,38 @@ func TestAClientHandedNoRowAnswersTheOneThisProcessInstalled(t *testing.T) {
 	// [DefaultRouting]).
 	InstallRouting("")
 	client.config.Routing = nil
-	for _, intent := range []RoutingIntent{IntentBackground, IntentInteractive} {
-		if strategy := client.routingFor(intent); strategy != DefaultRouting {
-			t.Fatalf("an unwritten row routes intent %v on %q, want the shipped %q",
-				intent, strategy, DefaultRouting)
-		}
+	if strategy := client.routing(); strategy != DefaultRouting {
+		t.Fatalf("an unwritten row routes on %q, want the shipped %q", strategy, DefaultRouting)
+	}
+}
+
+// ── NO PIN, NO SECOND REQUEST ───────────────────────────────────────────────
+//
+// The hedge reads the choice and the choice is empty, so no arm races the
+// first request. But a STALL is a different door: the controller rescues off
+// the plan's alternatives, and with the chooser holding nothing those came off
+// the lane sheet (waitplan.go's sheetAlts) — a second request demanding a
+// machine this process picked, under the one row that promises it picks none.
+// With a pin the alternatives stay, because the act there is the offer and a
+// question has to name where a `y` would go.
+func TestSimpleWithNoPinPlansNoSecondRequest(t *testing.T) {
+	client, _, model := stubbedRouter(t)
+	client.config.Routing = StaticRouting(RoutingSimple)
+	t.Cleanup(func() { lanes.Default().Reset() })
+	if err := lanes.Default().Sheet().Refresh(context.Background(), model); err != nil {
+		t.Fatalf("filling the sheet: %v", err)
+	}
+	if rows := lanes.Default().Sheet().Rows(model); len(rows) < 2 {
+		t.Fatalf("the stub gave %d sheet rows, want at least two for a rescue to have somewhere to go", len(rows))
+	}
+
+	bare := client.planFor(context.Background(), lanes.Choice{}, model, 0)
+	if len(bare.Alts) != 0 {
+		t.Fatalf("simple with no pin planned a rescue to %v, want nowhere", bare.Alts)
+	}
+	asked := client.planFor(context.Background(), pinnedChoice(model, "quicksilver", "brass"), model, 0)
+	if !asked.Pinned || len(asked.Alts) == 0 {
+		t.Fatalf("simple with a pin planned %+v, want the offer to have somewhere to go", asked)
 	}
 }
 

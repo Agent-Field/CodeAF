@@ -140,7 +140,7 @@ func callHorizonFrom(ctx context.Context) int {
 //
 // THE ROW A PERSON WROTE AND THE DEFAULT DERIVED FROM WHO IS WAITING ARE NOT
 // THE SAME FACT, and reading them through one value silently made λ a dead
-// letter for every background call. [Client.routingFor] answers `price` for an
+// letter for every background call. The default used to answer `price` for an
 // unattended call because nobody said otherwise; taking that as "a person said
 // speed is worthless" then discarded the call site's own λ, so a task node that
 // declared its wait was worth something was routed as though it had declared
@@ -502,7 +502,7 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
 	}
-	strategy := c.routingFor(knobs.intent)
+	strategy := c.routing()
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
 	}
