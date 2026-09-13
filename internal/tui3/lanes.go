@@ -537,7 +537,7 @@ func (a *app) laneNow(model string, views []laneView) (string, bool) {
 	if name, pinned := config.LanePinned(a.profileDir, laneSlotFor(model)); pinned {
 		return name, true
 	}
-	name := laneAuto(model, views, a.now())
+	name := laneAuto(a.routing, model, views, a.now())
 	return name, name != ""
 }
 
@@ -546,7 +546,19 @@ func (a *app) laneNow(model string, views []laneView) (string, bool) {
 // It is a free function because a picker row is drawn from places that hold no
 // session (the settings panel's slot rows, the composer's), and a row that said
 // nothing there would be the same list telling two stories.
-func laneAuto(model string, views []laneView, now time.Time) string {
+//
+// AND IT ANSWERS NOTHING WHERE NOTHING ON THIS SIDE CHOOSES. The name it gives
+// is a prediction — the machine the chooser would send the next turn to — and
+// under a routing row that runs no chooser (`simple`, the row this build
+// ships) there is no such machine: the request goes out with no preference
+// and the router answers from wherever it likes. A `via modal` on the model
+// row while the status line and the record said Sail Research was the surface
+// predicting a choice nobody was making (2026-09-13). The one door that says
+// what `auto` may claim under a row ([laneAutoSaid]) is asked first.
+func laneAuto(routing, model string, views []laneView, now time.Time) string {
+	if !laneAutoSaid(routing).chooses {
+		return ""
+	}
 	// THE QUESTION IS THE TURN'S OWN, and it is asked through the transport's
 	// spelling of it ([provider.LaneTalkAsk]) rather than one written here. A
 	// request built on this side with λ left at zero asks "which is CHEAPEST",
@@ -609,7 +621,12 @@ func laneSlotForRow(key string) string {
 // nothing, so a fold would offer machines no request asks for and promise
 // measurements that never come.
 func (a *app) armLanes(p *picker, slot string) {
-	if slot == "" || a.routingOff {
+	// THE ROUTING ROW RIDES ALONG EVEN WHERE IT CLOSES THE FOLD, because it is
+	// the one fact here that is about what aforge PROMISES rather than about
+	// what it has measured, and the row that makes that promise reads it
+	// ([laneAutoSaid]).
+	p.routing = a.routing
+	if slot == "" || a.routingOff() {
 		return
 	}
 	p.laneSlot = slot
@@ -617,6 +634,15 @@ func (a *app) armLanes(p *picker, slot string) {
 	p.guard = config.LaneGuardAt(a.profileDir)
 	p.ascii = a.pal.ascii
 }
+
+// routingOff is whether this session's routing row is `off` — the one answer
+// that sends no lane choice at all and measures nothing (internal/provider's
+// lanes.go), which leaves nothing for a fold to draw and nothing to pin.
+//
+// It asks [app.routing] rather than keeping a boolean of its own: the row has
+// four answers now, and each place that cares cares about a different one of
+// them.
+func (a *app) routingOff() bool { return a.routing == config.RoutingOff }
 
 // applyLaneChoice is enter on a row INSIDE an open fold: the lane the cursor is
 // on, written for the model that fold belongs to.
@@ -666,8 +692,8 @@ func laneRateWord(rate float64) string {
 // became a row saying one machine's speed under another machine's name the
 // moment the chooser landed. A row like that is worse than a blank one: it is a
 // measurement attributed to a machine that did not make it.
-func laneSpeedWord(views []laneView, now string) string {
-	best, ok := laneShown(views, now)
+func laneSpeedWord(routing string, views []laneView, now string) string {
+	best, ok := laneShown(routing, views, now)
 	if !ok {
 		return ""
 	}
@@ -699,9 +725,20 @@ func laneSpeedWord(views []laneView, now string) string {
 // file's own sort put first and then wrote the chooser's name after them, which
 // was invisible while the two agreed and became a measurement attributed to a
 // machine that did not make it the moment they stopped.
-func laneShown(views []laneView, now string) (laneView, bool) {
+//
+// AND WITH NO NAME AND NO CHOOSER THERE IS NO LANE TO SPEAK FOR. The best-known
+// fallthrough is the chooser's claim — "this is where auto would send you" —
+// and under a routing row that runs no chooser (`simple`, the row this build
+// ships) it is nobody's: the row drew `▲1.0s · 30t/s`, which were parasail's
+// numbers with parasail's name taken off (the 2026-09-13 acceptance drive), a
+// measurement the next request would not be routed by. A pinned or named
+// machine still speaks, because there the numbers are its own.
+func laneShown(routing string, views []laneView, now string) (laneView, bool) {
 	if best, ok := laneExactly(views, now); ok {
 		return best, true
+	}
+	if !laneAutoSaid(routing).chooses {
+		return laneView{}, false
 	}
 	return bestLane(views)
 }
@@ -1197,7 +1234,7 @@ const laneAtSign = "@"
 // lane at all, [app.routingOff]), and over a connection, where the pin in force
 // is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.routingOff || a.model == "" || a.modelIsDirect(a.model) {
+	if a.hosted() || a.routingOff() || a.model == "" || a.modelIsDirect(a.model) {
 		return ""
 	}
 	return strings.ToLower(provider.PinnedFor(a.model))

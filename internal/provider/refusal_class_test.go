@@ -65,6 +65,8 @@ func classClient(t *testing.T, handler http.Handler, config Config) *Client {
 	// recovery into a walk to the other lane before the ladder's first rung,
 	// which is a different call shape than the one these tests are counting.
 	forgetLanes(t)
+	// These are the ranked road's refusals ([rankedRoad]).
+	config = rankedRoad(config)
 	config.APIKey = "test-key"
 	if config.BaseURL == "" {
 		config.BaseURL = "https://openrouter.ai/api/v1"

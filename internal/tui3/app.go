@@ -260,6 +260,20 @@ type entry struct {
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
 
+	// told says this note is ADDRESSED TO THE PERSON rather than narration
+	// about the machinery, so the work chip may not swallow it (workfold.go's
+	// [deriveWorkfolds]).
+	//
+	// THE LAW THE CHIP ALREADY KEEPS, SAID PRECISELY. A chip hides what the
+	// turn DID between a question and its answer, and a line asking the person
+	// to do something is not that — the interrupt's own lines have always been
+	// held out of one for exactly this reason. Until this field the only way to
+	// ask was to look at the note's first word, so a sentence about a person's
+	// own pin being refused was folded away whole: measured on 2026-09-13,
+	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
+	// the explanation should have been (session's EventRowNews).
+	told bool
+
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
 	// for every ordinary turn, which is nearly all of them. It is set on the
@@ -2267,13 +2281,22 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
-	// routingOff is whether this session was launched with the routing row at
-	// `off`, which sends no lane choice at all and measures nothing
-	// (internal/provider's lanes.go). It is read ONCE, here, because that is
+	// routing is the routing row this session was launched under, in the words
+	// the row itself is written in — `latency`, `price`, `simple` or `off`
+	// (internal/config's settings.go). It is read ONCE, here, because that is
 	// when the session reads it — the row lands on the next session — and the
-	// chrome that asks it does so on every frame. Under it there is no fold to
-	// open ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]).
-	routingOff bool
+	// chrome that asks it does so on every frame.
+	//
+	// THE WHOLE ROW IS KEPT AND NOT ONE READING OF IT. This was a `routingOff
+	// bool`, which answered the only question the surface had while the row had
+	// three answers and aforge chose under two of them. `simple` is a fourth,
+	// and under it aforge does not choose at all — so a row that says what auto
+	// does has to be told which routing it is describing ([laneAutoSaid]), and a
+	// second boolean beside the first would be two readings of one row, drifting
+	// the first time either was fixed. Under `off` there is no fold to open
+	// ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]), which
+	// is [app.routingOff] asking this field.
+	routing string
 	// crew is the profile's crew as this surface last read it, so the status
 	// line can name it without reading four settings rows off the disk on every
 	// frame (crew.go's [app.crewReading]).
@@ -2658,7 +2681,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
 		profileDir:          opts.ProfileDir,
-		routingOff:          config.RoutingAt(opts.ProfileDir) == config.RoutingOff,
+		routing:             config.RoutingAt(opts.ProfileDir),
 		oneModel:            opts.OneModel,
 		settings:            opts.Settings,
 		saveApproval:        opts.SaveApproval,

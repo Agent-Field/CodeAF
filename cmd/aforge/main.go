@@ -626,7 +626,9 @@ func runPlanNew(name string, args []string) error {
 		return err
 	}
 	defer closePlanner()
-	ctx := settings.Context(context.Background(), goal)
+	// A PERSON TYPED THIS (exec.go's [typedDoorContext]), so the plan's own
+	// calls carry the talk pin the way `aforge exec`'s do.
+	ctx := typedDoorContext(settings.Context(context.Background(), goal))
 
 	// The ruler in force comes from measured work when there is any; the
 	// built-in prior is only the starting point.

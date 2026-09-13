@@ -18,7 +18,7 @@ import (
 // that one: 404, and the two fastest lanes for the model were reachable only
 // through a rescue arm.
 func TestTheBeliefsOrderRidesUnderACeilingItFitsUnder(t *testing.T) {
-	client, recorded := pricedClient(t, nil, 0.0000002, 0.0000006, true)
+	client, recorded := pricedClient(t, StaticRouting(RoutingLatency), 0.0000002, 0.0000006, true)
 	lanes.HeardPrefsCarried(client.config.BaseURL)
 	const model = "vendor/fast-model"
 	primed(t, model,

@@ -2361,10 +2361,10 @@ const servedWindow = 10 * time.Minute
 //	deepseek-v4-flash · via deepinfra · 92 tok/s
 //
 // A model id is an address, not a machine. One id is fanned over many endpoints
-// that answer at very different speeds for the same price, and the adapter both
-// asks for the fastest of them and times what it got (internal/provider's
-// velocity.go). The id alone therefore names a decision the session did not
-// make — this is the part of it that is a fact.
+// that answer at very different speeds for the same price, and which of them
+// answered is decided by the router unless somebody's routing row says otherwise
+// (internal/provider's velocity.go). The id alone therefore names a decision the
+// session did not make — this is the part of it that is a fact.
 //
 // It is drawn only when the server's name is not already the model's own: an
 // endpoint that IS the vendor adds nothing to "deepseek-v4-flash", and a line

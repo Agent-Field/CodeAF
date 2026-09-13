@@ -711,7 +711,7 @@ var BackgroundModes = []string{BackgroundOn, BackgroundOff}
 // DefaultBackground is on.
 const DefaultBackground = BackgroundOn
 
-// The routing row's three answers. They are spelled here rather than imported
+// The routing row's four answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
 // vocabulary is a string on disk, and it must not change because a package
 // renamed a constant.
@@ -720,17 +720,33 @@ const (
 	RoutingLatency = "latency"
 	// RoutingPrice asks for the cheapest one that can serve the request.
 	RoutingPrice = "price"
+	// RoutingSimple sends no preference of ours at all: when no lane is
+	// pinned the router's own default answers, and a pinned lane is the
+	// whole request.
+	RoutingSimple = "simple"
 	// RoutingOff sends no preference at all, and stops measuring with it.
 	RoutingOff = "off"
 )
 
-// RoutingModes lists them, latency first — which is also the default: a chat
-// session is a person waiting, and the endpoint that answers soonest is the one
-// they are asking for.
-var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingOff}
+// RoutingModes lists them, simple first — which is also the default, and the
+// order the row cycles in.
+var RoutingModes = []string{RoutingSimple, RoutingLatency, RoutingPrice, RoutingOff}
 
-// DefaultRouting is latency.
-const DefaultRouting = RoutingLatency
+// DefaultRouting is simple: what a person asked for is what goes on the wire,
+// and nothing else does.
+//
+// IT WAS `latency` UNTIL THIS BUILD, and the reason it moved is that the
+// choosing was not visible. Sorting by speed brings a whole apparatus with it —
+// a ranking this process keeps, a price ceiling, refusals learned from earlier
+// answers, a pin retired against a belief saved from an earlier run — and each
+// of those is a decision nobody watched being made. What the picker showed, what
+// was chosen, and what the record said were three answers to one question. Under
+// this row they are one answer: with no lane pinned the request carries no
+// preference at all and the router's own default routing answers it, and with a
+// lane pinned that pin is the whole request. `latency` and `price` are both
+// still here for somebody who wants the apparatus, one word away
+// (internal/provider's velocity.go).
+const DefaultRouting = RoutingSimple
 
 // ── WHICH MACHINE, NOT WHICH MODEL ──────────────────────────────────────────
 //
@@ -816,13 +832,41 @@ func LanePinAt(profileDir, slot string) provider.LanePin {
 	return provider.LanePin{}
 }
 
-// InstallLaneRows hands this profile's lane rows to the process-wide knobs the
-// transport reads them from. It uses the RESOLVER'S entrance so loading a row
-// already in force never forgets a retirement the wire earned; only a person's
-// own act belongs at [provider.RepinLane].
+// InstallLaneRows hands this profile's routing posture to the process-wide
+// knobs the transport reads it from. It uses the RESOLVER'S entrance so loading
+// a row already in force never forgets a retirement the wire earned; only a
+// person's own act belongs at [provider.RepinLane].
+//
+// THE ROUTING ROW IS ONE OF THEM, and it is here rather than only on the
+// session's own config because of the clients nobody hands one to. The harness,
+// the subharness, `read_document`, `view_image` and a panel's members are all
+// assembled through [Config.ClientConfig], which carries no routing answer —
+// so before this line they ran on the default whatever a person had written,
+// and one of them could retire a person's own pin, process-wide, before any
+// wire was asked (internal/provider's velocity.go says what that cost). It is
+// the CHOICE and not the resolved default, so an unwritten row installs nothing
+// and every client falls to the shipped row together
+// ([provider.DefaultRouting]).
 func InstallLaneRows(profileDir string) {
+	provider.InstallRouting(installedRoutingFor(profileDir))
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+}
+
+// installedRoutingFor is the routing row as the transport's own vocabulary, and
+// the EMPTY strategy when a person has written nothing readable. The parse is
+// total, so a word this build does not know installs nothing rather than taking
+// a person's routing somewhere they did not ask for.
+func installedRoutingFor(profileDir string) provider.RoutingStrategy {
+	word := RoutingChoiceAt(profileDir)
+	if word == "" {
+		return ""
+	}
+	strategy, known := provider.ParseRoutingStrategy(word)
+	if !known {
+		return ""
+	}
+	return strategy
 }
 
 // SetLane writes one slot's lane. An empty word clears the row back to auto,
@@ -1924,15 +1968,16 @@ func (s *Settings) build() []Setting {
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +
-				"different speeds AND very different prices. Left alone, aforge asks for the " +
-				"fastest endpoint for your own turns — capped at a quarter over the model's " +
-				"list price, because no endpoint is worth four times that — and asks for the " +
-				"cheapest for work you are not waiting on: task workers, judges, titles, the " +
-				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
-				"fastest one for everything and times every answer, demoting an endpoint that " +
-				"keeps being slow; price asks for the cheapest for everything; off asks for " +
-				"nothing and measures nothing — and with nothing measured there is no lane " +
-				"to choose, no sheet of them to open and no speed guard. A change lands on " +
+				"different speeds AND very different prices. Left alone — simple — aforge " +
+				"sends no preference of its own at all: with no lane pinned the router's own " +
+				"default routing answers, and a lane you pinned is the whole request, that " +
+				"machine and no fallbacks. Choosing another word here changes that " +
+				"everywhere: latency asks " +
+				"for the fastest endpoint for every call, capped at a quarter over the " +
+				"model's list price, and times every answer, demoting one that keeps being " +
+				"slow; price asks for the cheapest for every call; off asks for nothing and " +
+				"measures nothing — and with nothing measured there is no lane to choose, " +
+				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
@@ -3421,19 +3466,41 @@ func IconsAt(profileDir string) string {
 	return IconsAuto
 }
 
-// RoutingAt resolves the routing row to its word, default latency. An
-// unreadable or unknown word falls back to the default rather than to off: a
-// garbled row must not quietly stop a session chasing the fastest endpoint.
-func RoutingAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyRouting); ok {
-		value = strings.TrimSpace(strings.ToLower(value))
-		for _, mode := range RoutingModes {
-			if value == mode {
-				return value
-			}
+// routingWritten is the routing word in raw when this build knows it, and empty
+// for anything else — unwritten, blank, garbled, or a word a later build
+// spelled. It is the one place the row's vocabulary is checked, so that "what
+// did they write?" and "what is in force?" cannot come apart.
+func routingWritten(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	for _, mode := range RoutingModes {
+		if raw == mode {
+			return raw
 		}
 	}
+	return ""
+}
+
+// RoutingWord is what an already-read routing row is IN FORCE as: the word when
+// somebody wrote one this build knows, and [DefaultRouting] otherwise.
+//
+// A surface that holds the row in hand asks this rather than deciding for
+// itself what an unknown word means, so the shipped row is stated once
+// (internal/tui3's palette.go reads it for the sentence on the `auto` row).
+func RoutingWord(raw string) string {
+	if written := routingWritten(raw); written != "" {
+		return written
+	}
 	return DefaultRouting
+}
+
+// RoutingAt resolves the routing row to the word in force, [DefaultRouting]
+// when nobody wrote one. An unreadable or unknown word falls back to the
+// default rather than to off: a garbled row must not quietly stop a session
+// sending what it would otherwise send, and off is a real answer somebody
+// chooses rather than one they arrive at by accident.
+func RoutingAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyRouting)
+	return RoutingWord(value)
 }
 
 // RoutingChoiceAt is the routing row A PERSON ACTUALLY WROTE, empty when they
@@ -3441,21 +3508,14 @@ func RoutingAt(profileDir string) string {
 //
 // It is the same read as [RoutingAt] without the fallback, and the two are both
 // needed because they answer different questions. A settings sheet asks "what
-// is in force?" and must be told latency, which is what an unset row does. The
-// adapter asks "did somebody CHOOSE?", and it must be able to hear no — that is
-// the whole of what lets it route a person's own turn by speed and an errand
-// nobody is waiting on by price, while an explicit word still wins over both
+// is in force?" and must be told the shipped row, which is what an unset row
+// does. The adapter asks "did somebody CHOOSE?", and it must be able to hear no
+// — which is what lets a client that was handed nothing fall to the row this
+// process installed, while an explicit word still wins over both
 // (internal/provider's velocity.go).
 func RoutingChoiceAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyRouting); ok {
-		value = strings.TrimSpace(strings.ToLower(value))
-		for _, mode := range RoutingModes {
-			if value == mode {
-				return value
-			}
-		}
-	}
-	return ""
+	value, _ := persistedString(profileDir, KeyRouting)
+	return routingWritten(value)
 }
 
 // TaskAuditAt resolves the audit row to its word, default on.

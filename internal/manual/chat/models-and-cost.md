@@ -1188,10 +1188,10 @@ number of tries (see *How long aforge keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
-which endpoint served it, or you have set `routing` to `off` on the **Providers** tab, then
+which endpoint served it, or you have set `routing` to `off` or `simple` on the **Providers** tab, then
 nothing is being routed around and the next attempt lands in exactly the same place — so
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
-switches off **endpoint** steering; it does not switch off moving to another model.
+or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
@@ -1727,7 +1727,7 @@ or `off`, and the default is **on**. Off means you see whatever arrives, and kee
 you stop. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
+reading. Setting `routing` to `off` or `simple` on the same tab stops aforge steering between endpoints
 at all, and with it stops any of this being recorded.
 
 ## I stopped a reply and the text is gone — where the reply went after I hit esc, and why pressing escape on a broken reply deletes it
@@ -2603,15 +2603,24 @@ colour.
 
 One model id is served by many endpoints, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no endpoint is obliged to match it, and the fastest one often does not.
 
-So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
+**Left alone, aforge asks for nothing.** The **routing** row on the Providers tab ships as `simple`, and `simple` means the request carries no preference of aforge's own: with no lane pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the endpoint. Pin a lane and that pin is the whole request — that machine, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
 
-Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
+It has not always been this way: until this build the shipped row was `latency`, and aforge asked for the fastest endpoint on your own turns and the cheapest on work you were not waiting on. That choosing was invisible — the one decision in a turn you could not see being made — so it is now something you turn on rather than something you turn off.
 
-**One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+Setting **routing** yourself is how you turn it on, and it applies everywhere:
 
-Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
+- **`latency`** asks for the fastest endpoint on every call, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. It also times every answer and demotes an endpoint that keeps being slow.
+- **`price`** asks for the cheapest endpoint on every call, including your own turns.
+- **`simple`** is the shipped row described above.
+- **`off`** sends no preference and stops timing endpoints altogether.
 
-**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above.
+A change lands on the next session.
+
+Under `latency` or `price`, where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
+
+**Under `price`, one thing is not quite "speed is worth nothing".** Work you are not watching asks the router for the cheapest endpoint — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+
+**You can also name the endpoint yourself, under any row.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above. A pin is the one instruction `simple` sends.
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
@@ -2658,15 +2667,17 @@ that order** — **lane**, **speed guard**, **routing** — because the machine 
 your model is part of the same decision as the model:
 
 ```
- your model    deepseek/deepseek-v4-flash · auto (cloudflare now)
+ your model    deepseek/deepseek-v4-flash
  lane          auto
  speed guard   on
- routing       latency
+ routing       simple
 ```
 
-The tail on the model row is the machine: `auto (cloudflare now)` when the choosing is
-left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have asked for
-no endpoint at all. A session that has measured nothing shows the model id alone.
+The tail on the model row is the machine: `pinned: cloudflare` once you have pinned one,
+`openrouter` when you have asked for no endpoint at all, and `auto (cloudflare now)` — a
+prediction of where the next turn would land — only under `latency` or `price`, where
+aforge is the one choosing. Under the shipped `simple` row nobody here is predicting, so
+there is no tail, and a session that has measured nothing shows the model id alone too.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
 `tab` on a row and the model's lanes open underneath it, with the cursor already on the
@@ -2674,12 +2685,16 @@ lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        router routes; aforge takes over if answers turn bad — cloudflare now · recommended
+   ● auto        openrouter's own routing; aforge stays out
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
    ○ openrouter  let the router balance on price
 ```
+
+That is the `auto` row under the shipped `simple` row. Set **routing** to `latency` or
+`price` and it reads `router routes; aforge takes over if answers turn bad — cloudflare
+now · recommended` instead, because there it does.
 
 Each lane row reads, in order: its name, the wait before the first word, how fast it
 writes, what a million output tokens cost there, one short note about what is wrong with
@@ -2706,6 +2721,17 @@ the measured numbers and pressing enter, never guessing at a word. When nothing 
 measured it opens all the same, onto the only two honest answers: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
+
+**Under `routing: simple` — the row aforge ships with — the `auto` row says something
+else, because it does something else.** It reads `openrouter's own routing; aforge stays
+out`, and it names no machine beside it: under that row nothing on aforge's side chooses,
+so there is no machine it could honestly say the next turn will land on, and no `no
+rescue` note either, because there is no rescue running under any setting of the speed
+guard. The fold still opens and `enter` still pins: a pin is the one instruction that row
+sends. The **lane** row in `/settings` is explained the same way, and the `auto (cloudflare
+now)` tail on the **your model** row is gone with it — it was a prediction, and under
+`simple` nobody here is predicting. Choose `latency` or `price` and the takeover sentence,
+the named machine and the `no rescue` note all come back.
 
 **A model nobody has measured opens onto its two answers and no machines.** `→` shows
 `auto` and `openrouter`, and in the machines' place one line —
@@ -2857,6 +2883,11 @@ It hedges **at most one extra call** per answer and stays under **a tenth** of w
 session spends. It does nothing under `routing: price` — nobody is buying seconds there —
 and nothing while an answer is already flowing normally.
 
+**Under the shipped `routing` row it buys no measurement.** `simple` sends what you asked
+for and nothing else, so the one-token measurement in the next section is not bought at
+all — nothing on aforge's side is choosing a machine for it to inform. Set **routing** to
+`latency` or `price` and it is bought again.
+
 Turn it off if you are paying for every token and never mind waiting. With it off, the
 `auto` row in the model picker says `no rescue`, so you can see the promise it is making
 — and the measurement described in the next section stops being bought as well. The two
@@ -2876,7 +2907,9 @@ answer's first word is not also paying for a handshake.
 token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
-type — so a long message buys one, not one per keystroke. None at all when the **speed
+type — so a long message buys one, not one per keystroke. **None at all under the shipped
+`routing` row**: `simple` buys no measurements, because nothing on aforge's side is
+choosing a machine for them to inform. Also none when the **speed
 guard** is off, when `routing` is `off`, when the lane row says `openrouter`, when the
 pool is already backing off a rate limit, when aforge is still recovering a dropped
 connection, or when **nobody is waiting on that model** — a task working on its own and
@@ -2914,16 +2947,19 @@ run in the background, and a task working on its own buys none.
 `~/.aforge/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
 probes. That file is the record of what was sent.
 
-**How to make it zero.** Settings → Providers → **speed guard**, off. The same row governs
-asking a second machine when an answer is slow to start, so turning it off stops both.
-`routing off` and a lane row set to `openrouter` also stop it.
+**How to make it zero.** It is already zero on a home where nobody has touched
+**routing**: the shipped row is `simple` and it buys none of these. If you have set
+`latency` or `price` and want it back to zero: Settings → Providers → **speed guard**,
+off. The same row governs asking a second machine when an answer is slow to start, so
+turning it off stops both. `routing simple`, `routing off`, and a lane row set to
+`openrouter`, also stop it.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 
 Settings → Providers has two rows under **routing**:
 
 ```
- your model     deepseek-v4-flash · auto (cloudflare now)
+ your model     deepseek-v4-flash
  lane           auto
  speed guard    on
 ```
@@ -2940,17 +2976,28 @@ Settings → Providers has two rows under **routing**:
 The pinned rungs are missing until aforge has measured something — there is no honest
 lane to name yet, so the walk is `auto` ↔ `openrouter`.
 
-The **your model** row says which lane is answering it beside the model id — `auto
-(cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
+The **your model** row says which lane is answering it beside the model id — `pinned:
+cloudflare` once the choice is yours, and `auto (cloudflare now)` while it is aforge's,
+which under the shipped `simple` row it never is.
 `lane` and `routing` are different questions: routing is what every request **prefers**
 (fastest, cheapest, or nothing at all), and lane is which endpoint requests from your home
-actually land on.
+actually land on. Under `simple` routing — the shipped row — the borrow rung is moot: the pin goes out
+strictly — that one machine, `only`, fallbacks off, nothing else on the request — because
+simple runs no choosing of its own for a slow answer to borrow. The `switch to auto?`
+question a slow pinned lane raises still has somewhere to send you — it asks whether to
+let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
+the table above is the other rung that reads differently there: under `simple` nothing
+takes over, so the row says `openrouter's own routing; aforge stays out` in the fold and
+the **your model** row drops its `auto (cloudflare now)` tail rather than name a machine
+nobody chose.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 
 Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the endpoint that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one machine**. An endpoint that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold endpoint than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
 
-So aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
+**This is something aforge does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of aforge's own at all, and asking for last time's endpoint is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Providers → **routing**.
+
+Under those two rows, aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 
 It moves off that endpoint when the endpoint stops earning it:
 
@@ -2963,7 +3010,7 @@ The same stable identity also travels in OpenRouter's session header so a succes
 
 **Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, your standing orders, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a standing order agreed.
 
-Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
+Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request asks by whatever the row asks for, and after that it comes back to whichever one answered. `routing` at `simple` — the shipped row — or at `off` sends none of it.
 
 ## A model that cannot stop thinking — what turning thinking off does on it, and why some models think at "max" by default
 

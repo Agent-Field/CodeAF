@@ -260,7 +260,7 @@ func TestAZeroCacheReadOnAShortPromptKeepsThePin(t *testing.T) {
 // The pin never buys speed or cache at any price: the same ceiling the latency
 // ask has always carried rides on every pinned request too.
 func TestAPinnedRequestStillCarriesThePriceCeiling(t *testing.T) {
-	client, recorded := pinningClient(t, nil, 0.0000004, 0.0000016, true,
+	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0.0000004, 0.0000016, true,
 		answering(ok(answerFrom("quicksilver", 90000, 89000, 0))))
 	ctx := lineage("conversation-1")
 	for _, prompt := range []string{"hello", "again"} {
@@ -287,7 +287,7 @@ func TestAnEndpointThatChargedAboveTheCeilingLosesThePin(t *testing.T) {
 	// $0.40/M in, $1.60/M out, so 90000 prompt and 2 completion tokens are
 	// allowed 90000/1e6 * 0.4 * 1.25 = $0.045 at the ceiling. The answer charges
 	// well over it.
-	client, recorded := pinningClient(t, nil, 0.0000004, 0.0000016, true,
+	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0.0000004, 0.0000016, true,
 		answering(ok(answerFrom("quicksilver", 90000, 89000, 0.2))))
 	ctx := lineage("conversation-1")
 	for _, prompt := range []string{"hello", "again"} {
@@ -301,7 +301,7 @@ func TestAnEndpointThatChargedAboveTheCeilingLosesThePin(t *testing.T) {
 }
 
 func TestAnEndpointChargingUnderTheCeilingKeepsThePin(t *testing.T) {
-	client, recorded := pinningClient(t, nil, 0.0000004, 0.0000016, true,
+	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0.0000004, 0.0000016, true,
 		answering(ok(answerFrom("quicksilver", 90000, 89000, 0.01))))
 	ctx := lineage("conversation-1")
 	for _, prompt := range []string{"hello", "again"} {
@@ -316,11 +316,17 @@ func TestAnEndpointChargingUnderTheCeilingKeepsThePin(t *testing.T) {
 
 // ── WHO ELSE IT APPLIES TO ──────────────────────────────────────────────────
 
-// A worker nobody is waiting on asks for the cheapest endpoint on its first
-// request and then comes back to it, because a cold prefix costs more than any
-// two endpoints' tariffs differ by.
-func TestACallNobodyIsWaitingOnPinsOnceItIsWarm(t *testing.T) {
-	client, recorded := pinningClient(t, nil, 0.0000004, 0.0000016, true,
+// A SESSION ON THE PRICE ROW IS PINNED TOO. It asks for the cheapest endpoint on
+// its first request and then comes back to the one that answered, because a cold
+// prefix costs more than any two endpoints' tariffs differ by — and that is as
+// true of the cheapest road as of the fastest one.
+//
+// It was written as "a worker nobody is waiting on", because who was waiting is
+// what used to put a call on the price road. Nothing does that by itself now
+// (velocity.go's [DefaultRouting]), so the row says it, and the errand's intent
+// stays on the context because that is what a real errand carries.
+func TestAPriceSortedCallPinsOnceItIsWarm(t *testing.T) {
+	client, recorded := pinningClient(t, StaticRouting(RoutingPrice), 0.0000004, 0.0000016, true,
 		answering(ok(answerFrom("quicksilver", 90000, 89000, 0))))
 	ctx := WithRoutingIntent(lineage("worker-1"), IntentBackground)
 	for _, prompt := range []string{"hello", "again"} {

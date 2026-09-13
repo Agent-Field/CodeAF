@@ -235,10 +235,12 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// above about what bounds a rung.
 		//
 		// And IntentBackground for the other half of the same sentence. Nobody
-		// asked for it and nobody is waiting on it, so the fastest endpoint is
-		// worth nothing here and its price is worth everything — every errand in
-		// this package routes by price rather than by speed
-		// (internal/provider's velocity.go). This is the one place that says so,
+		// asked for it and nobody is waiting on it, so a second saved here buys
+		// nothing — which is what the lane chooser prices, and what an answer
+		// nobody reads is worth (internal/provider's workload.go). It does not
+		// choose a road: which road every call takes is the routing row's answer
+		// and this build no longer writes one for anybody (velocity.go's
+		// [provider.DefaultRouting]). This is the one place that says it,
 		// because this is the one place an errand is made.
 		//
 		// AND THE ROLE ITSELF, WHICH IS THE SENTENCE ABOVE SAID PROPERLY.
@@ -249,7 +251,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// errand that answered while a person was waiting on their own slow
 		// answer used to take the status line away from it, which was half of
 		// the reported defect the clock exists for. The intent stays beside it
-		// because `provider.sort` is still built from it, and it is now a
+		// because what a wait is worth is still read off it, and it is now a
 		// reading of the role rather than a second opinion about it.
 		callCtx := provider.WithRole(
 			provider.WithRoutingIntent(provider.WithoutStream(errandCtx), provider.IntentBackground),

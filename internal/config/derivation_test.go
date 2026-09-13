@@ -179,10 +179,10 @@ var settingReaders = map[string]string{
 	// which the adapter turns into the preference object on every request
 	// (internal/provider's velocity.go). It names the accessor the door touches,
 	// which is the CHOICE reader rather than the resolved one: the door has to be
-	// able to hand down "nobody wrote a word", because that is what lets the
-	// adapter route a person's own turn by speed and an errand by price while an
-	// actual word still wins. RoutingAt is the settings sheet's read of the same
-	// row and stays what it always was.
+	// able to hand down "nobody wrote a word", because that is what lets a client
+	// handed nothing fall to the row this process installed while an actual word
+	// still wins. RoutingAt is the settings sheet's read of the same row and
+	// stays what it always was.
 	KeyRouting: "RoutingChoiceAt",
 	// The fallback chain is read by the v3 door and becomes
 	// session.Config.ModelFallbacks, which the adapter walks when no endpoint

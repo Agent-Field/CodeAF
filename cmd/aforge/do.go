@@ -588,7 +588,10 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// nothing deletes the store either.
 	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	ctx, cancel := context.WithTimeout(signalled, request.timeout)
+	// A PERSON TYPED THIS, so its calls are made for somebody who is reading
+	// them (exec.go's [typedDoorContext]): the talk pin rides them and a
+	// refused pin is said to the one who is waiting.
+	ctx, cancel := context.WithTimeout(typedDoorContext(signalled), request.timeout)
 	defer cancel()
 	watcher := &settlementWatch{
 		graph: graph, session: session, commandSeq: command.Seq,
