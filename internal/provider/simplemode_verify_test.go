@@ -286,9 +286,16 @@ func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
 	pinned(t, LanePin{Lane: "Ghost"})
 	request := &ai.Request{Model: rig.model, Messages: userMessages("hello")}
 
-	choice, made := rig.client.drawLaneChoice(turnKnobs(), rig.model, request)
-	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
-		t.Fatalf("the person's own turn drew %+v, want the one machine they pinned", choice)
+	// EVERY ROLE A PERSON IS READING CARRIES THE DEMAND: the conversation's own
+	// turn, a task room somebody is sitting in front of, and the headless
+	// command they typed (cmd/aforge's execCallContext, which names the second
+	// of these).
+	for _, watched := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafAttached} {
+		knobs := callKnobs{role: watched}
+		choice, made := rig.client.drawLaneChoice(knobs, rig.model, request)
+		if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
+			t.Fatalf("a %q call drew %+v, want the one machine the person pinned", watched, choice)
+		}
 	}
 	// EVERY ERRAND THE TURN RUNS BESIDE ITSELF. The roles are internal/lane's
 	// own words for them, and the point of listing all four is that the scope is

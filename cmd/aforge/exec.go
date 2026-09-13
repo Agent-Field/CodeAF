@@ -16,6 +16,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
@@ -130,7 +132,7 @@ func runExec(args []string) error {
 		defer cancel()
 	}
 	ctx = settings.Context(ctx, prompt)
-	execCtx := settings.ExecContext(ctx)
+	execCtx := execCallContext(settings.ExecContext(ctx))
 
 	space, err := exec.NewWorkspace(*workspace)
 	if err != nil {
@@ -450,6 +452,32 @@ func execFailureWords(runErr error) string {
 // the call log, the artifact bucket and the flight recorder cannot disagree
 // about who did the work.
 const execNodeKey = "task-1"
+
+// execCallContext says who the calls of this command are made for.
+//
+// A PERSON TYPED `aforge exec` AND IS WAITING FOR ITS ANSWER. That is the whole
+// claim, and the role table is where it has consequences: what a second of the
+// wait is worth, how long the run waits on a silent machine before something is
+// done about it, and — since the `simple` routing row — whether the machine
+// they pinned is demanded at all (internal/provider's lanes.go). Until this
+// line the door named no role, so every call it made read as
+// [lane.RoleUnknown] — a hidden background errand — and a pinned `aforge exec`
+// under `simple` went out with no machine named while the row still said one.
+//
+// IT IS A LEAF AND NOT THE TALK, because this command is one leaf's work and
+// not a conversation: there is no turn loop, no room and no transcript here,
+// and [lane.RoleLeafAttached] is exactly "that leaf, with somebody in front of
+// it".
+//
+// AND THE DOOR IS THE MARK. Nothing in this binary launches `aforge exec` as a
+// child — every spawner builds its leaves in process (subharness.go's
+// buildLinear, chatv3_subharness.go's registry, the subharness's own asks in
+// subharness_env.go, which names [lane.RoleLeafUnattended] itself) and none of
+// them reaches this function. So there is no env var or flag to key on and
+// none is invented: arriving here IS the fact that a person typed the command.
+func execCallContext(ctx context.Context) context.Context {
+	return provider.WithRole(ctx, lanes.RoleLeafAttached)
+}
 
 func execTask(prompt, system, root string) exec.Task {
 	title, _, _ := strings.Cut(prompt, "\n")

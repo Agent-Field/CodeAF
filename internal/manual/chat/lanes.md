@@ -917,11 +917,12 @@ being drawn is the bug above, and it is worth reporting.
 ## Does my pinned machine apply to the title, the memory reflex and a subharness too, or only to what I type
 
 **Only to the calls you are reading.** Under `routing: simple` the pinned
-machine is demanded on your own turn, and on a task room you are sitting in
-front of. The errands that run beside a turn send no machine name at all: a
-conversation's two-word title, the memory reflex, the question that routes your
-message, a hand asking a model about a document, a subharness node. The row is
-spelled `lane.talk` and the slot is its whole scope.
+machine is demanded on your own turn, on a task room you are sitting in front
+of, and on a headless `aforge exec` you typed — all three are you, waiting. The
+errands that run beside a turn send no machine name at all: a conversation's
+two-word title, the memory reflex, the question that routes your message, a
+hand asking a model about a document, a subharness node. The row is spelled
+`lane.talk` and the slot is its whole scope.
 
 That is what one refusal costs. A pin the router refuses is retired **per
 machine and model** — one refused round trip, once — but an errand runs on a
