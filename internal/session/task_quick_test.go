@@ -67,8 +67,10 @@ func (c *quickLanes) CompleteWithMessages(ctx context.Context, messages []ai.Mes
 	// The errands beside the work are answered before the lanes are touched, for
 	// [routedCompleter]'s reason said about this fixture: a namer or a captioner
 	// carries the worker's own words and would otherwise take the step the test
-	// scripted for the worker.
-	if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) {
+	// scripted for the worker, and this fixture's review page answers its own
+	// admission errand silently the same way (agent_test.go).
+	if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) ||
+		(messages[0].Role == "system" && strings.Contains(messageText(messages[0]), "one quick task's joining")) {
 		return textResponse(""), nil
 	}
 	c.mu.Lock()

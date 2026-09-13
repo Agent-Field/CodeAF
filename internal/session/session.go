@@ -2807,6 +2807,11 @@ type Agent struct {
 	// (agent.go's [Agent.startTurnLocked]), because the answer it bounds is
 	// "has this turn already bought a second opinion" and nothing else.
 	consultCalls int
+	// quickAdmissionMarked says whether this turn has already spent its
+	// one-batch read of a quick fan-out joining an existing family
+	// (quickfan_admission.go): the review fires once per turn, on the family
+	// that is still there at admission. Reset beside consultCalls.
+	quickAdmissionMarked bool
 	// contextWindow is the window learned after construction — the catalog's
 	// figure for a model chosen with /model, which Config.ContextWindow cannot
 	// carry because the model was picked long after New. Zero means nobody has

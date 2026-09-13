@@ -318,9 +318,11 @@ var callSiteRoles = map[string]lane.Role{
 	"intake":        lane.RoleAuxiliary,
 	"careful":       lane.RoleAuxiliary,
 	"distill":       lane.RoleAuxiliary,
-	// internal/session's consult.go tags its errand with `string(role)`, and
-	// a question of judgement is named with the judges, exactly as `division`
-	// is named with the designers above.
+	// internal/session's quickfan_admission.go tags its errand with
+	// `string(role)`, and the parts-review settles exactly as `division` does.
+	"quickreview": lane.RoleDesign,
+	// and consult's own page — the question of judgement — belongs with the
+	// judges.
 	"consult": lane.RoleJudge,
 }
 
