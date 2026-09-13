@@ -144,8 +144,8 @@ func TestAnAllProvidersIgnoredRefusalClimbsTheLadder(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop",` +
 			`"message":{"role":"assistant","content":"ok"}}]}`))
 	})
-	config := Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
-		HTTPClient: handlerClient(handler), Model: "sim/model"}
+	config := rankedRoad(Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
+		HTTPClient: handlerClient(handler), Model: "sim/model"})
 	client, err := NewClient(config)
 	if err != nil {
 		t.Fatal(err)

@@ -958,12 +958,14 @@ func TestParseRoutingStrategyFallsBackToTheDefault(t *testing.T) {
 			t.Fatalf("ParseRoutingStrategy(%q) = %v, %v, want %v, true", word, got, ok, want)
 		}
 	}
-	// A word this build does not know must not take routing away.
-	if got, ok := ParseRoutingStrategy("fastest-please"); got != RoutingLatency || ok {
-		t.Fatalf("ParseRoutingStrategy(unknown) = %v, %v, want latency, false", got, ok)
+	// A word this build does not know is the shipped row and not a road nobody
+	// asked for — which is what a fallback of `latency` was once `latency` had
+	// stopped being the default.
+	if got, ok := ParseRoutingStrategy("fastest-please"); got != DefaultRouting || ok {
+		t.Fatalf("ParseRoutingStrategy(unknown) = %v, %v, want %v, false", got, ok, DefaultRouting)
 	}
-	if got, _ := ParseRoutingStrategy(""); got != RoutingLatency {
-		t.Fatalf("ParseRoutingStrategy(empty) = %v, want the default", got)
+	if got, _ := ParseRoutingStrategy(""); got != DefaultRouting {
+		t.Fatalf("ParseRoutingStrategy(empty) = %v, want the shipped %v", got, DefaultRouting)
 	}
 }
 

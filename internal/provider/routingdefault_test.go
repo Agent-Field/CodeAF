@@ -88,15 +88,3 @@ func TestTheShippedRowStillSendsThePinAndNothingElse(t *testing.T) {
 		t.Fatalf("the pinned ask carried %+v, want only Harbor and fallbacks off", demand)
 	}
 }
-
-// AN UNKNOWN WORD IS THE SHIPPED ROW AND NOT A ROAD NOBODY ASKED FOR. A row a
-// later build spells, or a typo, must not put a session on the ranked road —
-// which is what a fallback of `latency` did while `latency` was the default.
-func TestAnUnreadableRoutingWordFallsToTheShippedRow(t *testing.T) {
-	if got, known := ParseRoutingStrategy("quickest"); known || got != DefaultRouting {
-		t.Fatalf("an unknown word parsed to %q (known=%v), want the shipped %q", got, known, DefaultRouting)
-	}
-	if got, known := ParseRoutingStrategy(""); known || got != DefaultRouting {
-		t.Fatalf("an empty word parsed to %q (known=%v), want the shipped %q", got, known, DefaultRouting)
-	}
-}
