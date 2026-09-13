@@ -320,7 +320,7 @@ func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
 
 	// EVERY ROLE A PERSON IS READING CARRIES THE DEMAND: the conversation's own
 	// turn, a task room somebody is sitting in front of, and the headless
-	// command they typed (cmd/aforge's execCallContext, which names the second
+	// commands they type (cmd/aforge's typedDoorContext, which names the second
 	// of these).
 	for _, watched := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafAttached} {
 		knobs := callKnobs{role: watched}
