@@ -240,6 +240,26 @@ func (c *Client) dispatchPlan(ctx context.Context, request *ai.Request, knobs ca
 // empty document. AND ITS BYTES ARE REBUILT WITH IT — see THE BODY IS WRITTEN
 // PER ATTEMPT above.
 func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs, body []byte, stream bool) (*http.Response, error) {
+	// ANYTHING A PERSON IS STILL OWED IS SAID HERE, ON THE VERY NEXT BODY THAT
+	// GOES OUT ON A STREAM THEY ARE READING (lanepin.go's [tellRetiredPins],
+	// prefcarry.go's [tellUncarriedPins], routefirst.go's [tellTakeover]). Each
+	// is one nil check on a call nobody is reading and on every call after its
+	// sentence has been said.
+	//
+	// IT IS HERE AND NOT AT THE SHAPED DOOR ABOVE IT, and the move is the fix.
+	// [Client.sendShaped] is entered once per call, so a fact the call learned
+	// FROM ITS OWN REFUSAL had already gone past the only place that says it:
+	// the widened retry a retired pin earns goes out through
+	// [Client.attemptShaped], and every rung of the relaxation ladder likewise,
+	// and none of them come back through the shaped door. Measured on
+	// 2026-09-13: a turn demanded a machine the account excludes, collected the
+	// router's refusal, retired the person's pin, and answered from another
+	// machine — and the sentence saying so was queued behind a door the rest of
+	// that turn never opened again. This is the door every BODY passes through,
+	// which is the grain the promise was written at.
+	tellRetiredPins(ctx)
+	tellUncarriedPins(ctx)
+	tellTakeover(ctx)
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.

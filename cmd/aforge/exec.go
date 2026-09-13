@@ -16,6 +16,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
@@ -130,7 +132,7 @@ func runExec(args []string) error {
 		defer cancel()
 	}
 	ctx = settings.Context(ctx, prompt)
-	execCtx := settings.ExecContext(ctx)
+	execCtx := typedDoorContext(settings.ExecContext(ctx))
 
 	space, err := exec.NewWorkspace(*workspace)
 	if err != nil {
@@ -450,6 +452,39 @@ func execFailureWords(runErr error) string {
 // the call log, the artifact bucket and the flight recorder cannot disagree
 // about who did the work.
 const execNodeKey = "task-1"
+
+// typedDoorContext says who the calls of a command a person typed are made for.
+//
+// THE MEASURED FAILURE (2026-09-13). Under `simple` the talk pin rides only the
+// calls somebody is reading (internal/provider's drawLaneChoice asks the role's
+// Visible), and a headless door that stamped nothing ran its leaf as
+// [lane.RoleUnknown] — a hidden background errand — so a pinned `aforge exec`
+// went out with no machine named while the row still said one. `aforge do` and
+// `aforge plan new` are the same shape: one command, one person waiting on it,
+// and cmd/aforge's lanepin_doors_test names all three as the doors whose first
+// request must carry the pin.
+//
+// IT IS A LEAF AND NOT THE TALK, because each of these is one leaf's work and
+// not a conversation: there is no turn loop, no room and no transcript here,
+// and [lane.RoleLeafAttached] is exactly "that leaf, with somebody in front of
+// it".
+//
+// AND THE DOOR IS THE MARK. Nothing in this binary launches these commands as
+// a child — every spawner builds its leaves in process (subharness.go's
+// buildLinear, chatv3_subharness.go's registry, the subharness's own asks in
+// subharness_env.go, which names [lane.RoleLeafUnattended] itself) and none of
+// them reaches this function. So there is no env var or flag to key on and
+// none is invented: arriving here IS the fact that a person typed the command.
+//
+// IT SAYS THE FACT TWICE BECAUSE TWO THINGS READ IT: the leaf this door runs
+// itself takes the role off its context, and everything `aforge do` runs
+// through the session's own executor — its planning pass, its nodes — takes
+// the fact from the process-wide latch (internal/provider's readByAPerson and
+// internal/session's someoneIsWatching), which no context reaches.
+func typedDoorContext(ctx context.Context) context.Context {
+	provider.SetPersonAtTheDoor(true)
+	return provider.WithRole(ctx, lanes.RoleLeafAttached)
+}
 
 func execTask(prompt, system, root string) exec.Task {
 	title, _, _ := strings.Cut(prompt, "\n")

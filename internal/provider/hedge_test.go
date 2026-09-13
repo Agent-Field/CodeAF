@@ -132,9 +132,13 @@ func newLaneRigWithPrice(
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(Config{
+	// AND THE RIG IS ON THE RANKED ROAD ([rankedRoad]). Every hedge, walk,
+	// ceiling and veto proved through this rig is `latency` machinery; the row
+	// this build ships sends no preference at all, and a rig that said nothing
+	// would be proving all of it against a road none of it runs on.
+	client, err := NewClient(rankedRoad(Config{
 		APIKey: "test-key", BaseURL: server.URL(), Model: model, ModelPrice: modelPrice,
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
