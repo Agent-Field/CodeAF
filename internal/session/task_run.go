@@ -5264,8 +5264,8 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	}
 
 	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
-	// auxiliary usage — the pocket the title and the compaction summary come out
-	// of — rather than charged to whichever turn happened to propose it. It is
+	// auxiliary usage — the pocket the title and the memory reflex come out of —
+	// rather than charged to whichever turn happened to propose it. It is
 	// kept ON THE NODE as well, in the same call, because the node outlives its
 	// child: a surface asking a landed node what it cost has nobody else to ask
 	// (see [TaskNode.spend]). A node that was re-modelled has TWO children, and

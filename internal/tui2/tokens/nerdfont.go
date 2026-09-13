@@ -299,6 +299,16 @@ var vocabulary = []GlyphBinding{
 		ID: GReplyIn, Name: "ReplyIn", Meaning: "the answer to a question put back to the asker, drawn under it",
 		Plain: GlyphReplyIn, UsualTint: TextTertiary, Geometry: true,
 	},
+	// A composer's own mark that is NOT geometry: the unsent draft (a message
+	// cleared before sending). Both sides are "being written", the outline
+	// pencil on the floor and the compose icon where a patched font supplies
+	// one — the same shape at two weights, which is the whole test of a binding.
+	{
+		ID: GDraftUnsent, Name: "DraftUnsent", Meaning: "a message typed and cleared before it was sent",
+		Plain: GlyphDraftUnsent, NerdFont: "\uF044", NFName: "nf-fa-pencil_square_o",
+		ASCII:     "w",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- the execution voices (5.5) ------------------------------------------
 	{

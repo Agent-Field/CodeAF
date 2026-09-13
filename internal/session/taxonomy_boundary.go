@@ -618,7 +618,7 @@ func (a *Agent) readFinding(node *TaskNode, log io.Writer) taxonomy.Verdict {
 		// under it reads exactly like a finding with none.
 		evidence.TransportSeen = 1
 	}
-	verdict := a.classify(evidence, node.runModel(), string(roleRepair))
+	verdict := a.classify(evidence, node.runModel(), string(roles.RoleRepair))
 	switch verdict.Action {
 	case taxonomy.ActionEscalate:
 		// THE TALLY IS NOT TOLD YET. A lift is recorded at the moment it is
@@ -646,7 +646,7 @@ func (a *Agent) readPass(node *TaskNode, log io.Writer) taxonomy.Verdict {
 	tally := a.tallyFor(node)
 	evidence := tally.Evidence()
 	evidence.Passed = true
-	verdict := a.classify(evidence, node.runModel(), string(roleRepair))
+	verdict := a.classify(evidence, node.runModel(), string(roles.RoleRepair))
 	if verdict.Action == taxonomy.ActionDeescalate {
 		tally.Deescalate()
 		fmt.Fprintf(log, "the check passed: the work goes back to %s\n", node.runModel())

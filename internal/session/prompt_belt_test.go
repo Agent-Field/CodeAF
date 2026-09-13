@@ -62,6 +62,32 @@ type mintedShape struct {
 	page    string
 }
 
+// buildShippedConversation is the shipping conversation, fully wired, and it is
+// A NAMED FUNCTION so that more than one row of [beltShapes] can be it. The lean
+// row is this shape with the window changed and nothing else; it used to build a
+// bare config of its own, which meant two rows of one table disagreed about what
+// "the shipping door" means and only one of them was a conversation anybody has.
+func buildShippedConversation(t *testing.T, config *Config) {
+	config.Memory = openTestBrain(t)
+	config.connectHub = &fakeHub{connected: true, account: "you@example.test"}
+	config.HarnessStore = subharness.At(t.TempDir())
+	config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+		return "", subharness.Usage{}, nil
+	}
+	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
+	config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
+	// AND THE TWO SEAMS THAT ARE THE REST OF THE UNIVERSE. The big machines
+	// and `stand` are conditional on somebody being there to answer a card
+	// and on there being a store to arm one in (tools.go), and a universe
+	// built without them would be a universe that could not tell a tool
+	// nobody named from a tool nobody has.
+	config.AskConsent = true
+	config.Standing = &Standing{}
+	config.standingItems = &fakeStanding{}
+	config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
+	config.HarnessCards = true
+}
+
 // beltShapes is every shape, and each is built the way its own door builds it —
 // task_run.go for a node, standing_run.go for a check — so that a door that
 // changes what it hands down changes this test's answer too.
@@ -69,28 +95,8 @@ var beltShapes = []beltShape{{
 	// The shipping conversation, fully wired: a store behind memory, an
 	// accounts hub, the harness machines. This is the fullest belt there is and
 	// it is what the universe of tool names is built from.
-	name: "a conversation that remembers",
-	build: func(t *testing.T, config *Config) {
-		config.Memory = openTestBrain(t)
-		config.connectHub = &fakeHub{connected: true, account: "you@example.test"}
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		// AND THE TWO SEAMS THAT ARE THE REST OF THE UNIVERSE. The big machines
-		// and `stand` are conditional on somebody being there to answer a card
-		// and on there being a store to arm one in (tools.go), and a universe
-		// built without them would be a universe that could not tell a tool
-		// nobody named from a tool nobody has.
-		config.AskConsent = true
-		config.Standing = &Standing{}
-		config.standingItems = &fakeStanding{}
-		config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
-		config.HarnessCards = true
-	},
-}, {
+	name:  "a conversation that remembers",
+	build: buildShippedConversation}, {
 	// The same door with memory off, which is what --once and a session opened
 	// against no store get: no brain, so no `remember` and no
 	// `search_conversations`.
@@ -141,7 +147,15 @@ var beltShapes = []beltShape{{
 	// exactly what a second partition can break.
 	name: "a lean conversation on a small window",
 	build: func(t *testing.T, config *Config) {
-		config.ContextWindow = 16_000
+		// IT IS THE SHIPPED SHAPE WITH THE WINDOW CHANGED, and one row of this
+		// table is not allowed to disagree with another about what "the shipping
+		// door" means. This built a bare config until #996 — no store, no hub, no
+		// standing items, no saved programs — while the gate that bounds the lean
+		// prefix built the full one, so the two were measuring different
+		// conversations under the same name and only one of them was a
+		// conversation anybody has.
+		buildShippedConversation(t, config)
+		config.ContextWindow = leanWindow
 	},
 }, {
 	// A standing check's probe (standing_run.go): the parent's config with the

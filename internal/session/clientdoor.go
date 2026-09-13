@@ -300,7 +300,7 @@ func (c modelRoutingCompleter) CompleteWithMessages(ctx context.Context, message
 	if model == "" {
 		model = c.agent.Model()
 	}
-	return c.agent.completeWithModel(ctx, messages, model, options...)
+	return c.agent.completeWithModel(ctx, purposeInherited, messages, model, options...)
 }
 
 // routedCompleter returns a completer safe to hand to a package that chooses a
@@ -421,11 +421,110 @@ func (a *Agent) completerFor(model string) (Completer, string, string, error) {
 	return inner, wire, called, nil
 }
 
+// ── EVERY REQUEST SAYS WHAT IT IS FOR ───────────────────────────────────────
+//
+// callPurpose is what one request this package makes is FOR, in the word the
+// model-call log files it under (internal/provider's [provider.WithCallTag]).
+//
+// IT IS AN ARGUMENT AND NOT A CONTEXT VALUE, and that is the whole of the fix.
+// The tag was a context value that a caller could set or forget, and nine of the
+// eleven callers of this door forgot: the guardian, vision, the shaper, the
+// spell-out, the intake, the planner, the designer, the handoff draft and a
+// saved program's own step all reached the wire with no tag at all. That is
+// 2,309 of the 2,839 untagged finishes in the ten days to 2026-09-10, and with
+// them the answer to "what was this build spending that model on all night"
+// (docs/design/recovery/census-20260910.md §8, finding 9). A tag that can be
+// forgotten is a tag that will be, so it is spelled where it cannot be: a call
+// with no purpose does not compile.
+//
+// AND IT IS STAMPED HERE AND NOWHERE ELSE. The turn, the ask tool and the
+// errand ladder each used to stamp their own, which is three spellings of one
+// fact; they pass a purpose now and this door is the only thing in the package
+// that calls [provider.WithCallTag]. nohiddenwork_test.go is the law.
+type callPurpose string
+
+// The purposes that are not a role's own name. A role-resolved call passes its
+// role ([Agent.callRole]) and a tool ask passes the tool, so both are derived
+// rather than listed; these are the three requests that are not either.
+const (
+	// purposeTurn is the person's own question, answered in their conversation.
+	purposeTurn callPurpose = "turn"
+	// purposeTask is the same request made inside a piece of work.
+	purposeTask callPurpose = "task"
+	// purposeSubharness is one AI step of a saved program, which runs on the
+	// program's own model rather than on any role's (subharness_env.go).
+	purposeSubharness callPurpose = "subharness"
+	// purposeHandoffDraft is the ceiling's draft rung: the model that has just
+	// spent the turn, asked on the turn's own transcript for the document a
+	// worker will finish from (checkpoint.go). It is not [roles.RoleHandoff],
+	// which is the rung BELOW it — the writer that composes a brief out of the
+	// digest when this one cannot be had — and naming them alike would put the
+	// dearest call on the road and its cheap understudy on the same row.
+	purposeHandoffDraft callPurpose = "handoff-draft"
+
+	// ── the three roads that carry their own client ─────────────────────────
+	//
+	// These do not come through [Agent.completeWithNamedModel] at all: each
+	// builds a [provider.Client] of a shape the door does not make — a longer
+	// timeout, static routing pinned to the parent's choice, a document config
+	// with its own key rule — and completes on it directly. That is a real
+	// difference and not an oversight, so the answer is not to force them
+	// through the door; it is to make them say the same word the door says.
+	//
+	// THEY REACHED THE CALL LOG WITH NO TAG AT ALL UNTIL THIS PR, which meant the
+	// two slowest unattended errands this build makes — a memory tidy-up and a
+	// standing item's check, both of which run while nobody is there — were
+	// indistinguishable from a turn that had lost its name. They carry the most
+	// money per call of anything nobody is waiting for.
+
+	// EVERY WORD IN THIS BLOCK IS A WORD THAT IS NOT A ROLE. Where a purpose IS a
+	// role, the call site writes `callPurpose(roles.RoleX)` and no constant is
+	// declared here — restating a role's string would be the same word in two
+	// places, and the point of a small closed block is that what IS in it stands
+	// out. The memory tidy-up is [roles.RoleConsolidate] and says so at its own
+	// call; the two below are not roles at all.
+	//
+	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
+	// already gathered, run on every check of every item forever. It is the ONE
+	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
+	// tag is `standing-check`, because cmd/aforge already writes `sentinel` for
+	// the resident's quorum errand and two different calls under one tag is one
+	// reading of neither. THE RENAME IS A HOLDING ACTION: it moves the collision
+	// rather than fixing it, and it is fixed by carrying [lane.Role] on the
+	// calllog record beside the tag, where the two calls are told apart by what
+	// they ARE and both can spell `sentinel` again. That is issue #1010, whose
+	// spine is #928.
+	purposeSentinel callPurpose = "standing-check"
+	// purposeDocument is a rung of the document reader — the model's own eyes on
+	// a PDF the `read` tool cannot open as text. It is not a role because the
+	// reader resolves its model from the document settings and never from the
+	// role table (tools_doc.go).
+	purposeDocument callPurpose = "document"
+
+	// purposeInherited is the ONE PURPOSE THAT IS THE ABSENCE OF ONE, and it is
+	// named so that the absence is a statement rather than a gap.
+	//
+	// [modelRoutingCompleter] is the view of a live agent that LEAVES this
+	// package — internal/reflex and the media hands reach the wire through it —
+	// and each of those callers names its own call on the context before it gets
+	// here (reflex.go's "reflex"). A word stamped at this point would overwrite
+	// what they said with a word about the wrapper rather than about the request,
+	// so this one keeps whatever the caller already put there.
+	//
+	// It exists because the alternative was a law that had to KNOW about this
+	// call site: a walk that tracked which function it was inside, a name to
+	// compare against, and a reader for generic receivers — thirty lines of
+	// apparatus to excuse one bare `""`. A named constant says the same thing in
+	// the place a reader is already looking.
+	purposeInherited callPurpose = ""
+)
+
 // completeWithModel is [Agent.completerFor] joined to the one wire-model
-// option. Keeping the two operations inseparable makes it impossible to change
-// a slug while accidentally retaining another service's address and bearer.
-func (a *Agent) completeWithModel(ctx context.Context, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, error) {
-	response, _, err := a.completeWithNamedModel(ctx, messages, model, options...)
+// option and to the one statement of what the call is for. Keeping the three
+// inseparable makes it impossible to change a slug while accidentally retaining
+// another service's address and bearer, or to reach the wire anonymously.
+func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, error) {
+	response, _, err := a.completeWithNamedModel(ctx, purpose, messages, model, options...)
 	return response, err
 }
 
@@ -433,15 +532,40 @@ func (a *Agent) completeWithModel(ctx context.Context, messages []ai.Message, mo
 // resolution that chose its account. Errand receipts need that identity when a
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
-func (a *Agent) completeWithNamedModel(ctx context.Context, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
 	client, wire, called, err := a.completerFor(model)
 	if err != nil {
 		return nil, called, err
 	}
+	// THE PURPOSE BECOMES THE TAG, on the one line every request in this package
+	// passes over — through [withPurpose], which is the only function in
+	// internal/session that spells it, here and for the three roads that carry a
+	// client of their own.
+	ctx = withPurpose(ctx, purpose)
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 	return response, called, err
+}
+
+// withPurpose stamps a purpose on a context, and it is THE ONE PLACE IN
+// internal/session THAT SPELLS `provider.WithCallTag` — a law says exactly once
+// (nohiddenwork_test.go).
+//
+// [Agent.completeWithNamedModel] calls it, so every request through the one door
+// is stamped here; so do the three roads that complete on a client of their own,
+// because each needs a client shape the door does not make. What those roads
+// needed was never permission to write a tag: it was a door of their own that is
+// the same door.
+//
+// AN EMPTY PURPOSE IS LEFT ALONE rather than written as a blank. A tag nobody
+// stated is what the log already knows how to say nothing about, and a row
+// reading `""` would be worse than one reading nothing.
+func withPurpose(ctx context.Context, purpose callPurpose) context.Context {
+	if purpose == "" {
+		return ctx
+	}
+	return provider.WithCallTag(ctx, string(purpose))
 }
 
 type unavailableCompleter struct{ err error }

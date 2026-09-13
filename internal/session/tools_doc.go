@@ -338,7 +338,12 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		if rung == provider.DocumentParseNative {
 			asked = question
 		}
-		response, err := client.ParseDocument(ctx, provider.DocumentRequest{
+		// THE PURPOSE, because this road builds its own client and never passes
+		// the door (clientdoor.go's [withPurpose]). A rung of the document reader
+		// is the model's own eyes on a file, billed to the session and asked for
+		// by a tool call rather than by a turn, and it reached the call log with
+		// no tag at all until it said so.
+		response, err := client.ParseDocument(withPurpose(ctx, purposeDocument), provider.DocumentRequest{
 			Model:     model,
 			Filename:  filename,
 			MediaType: entry.mediaType,
@@ -349,8 +354,8 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		// Accounted BEFORE the answer is judged, and folded into the SESSION
 		// total rather than the turn's ([Agent.addAuxiliaryUsage]): a rung that
 		// billed for an unusable answer still billed, and no turn of the
-		// person's ran on that endpoint (the same treatment the title, the
-		// compaction summary and a generated picture get).
+		// person's ran on that endpoint (the same treatment the title and a
+		// generated picture get).
 		if response != nil {
 			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 		}

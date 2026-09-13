@@ -161,7 +161,7 @@ func (a *app) removePaste(s segment, held *pasteChip) {
 }
 
 func (a *app) pasteDraftBlock(width, rows int) ([]string, int, int) {
-	block, x, y := draftBlockWithTags(&a.input, a.pal, width, rows, "", a.roomLead(width), a.input.demotedTags)
+	block, x, y := draftBlockWithTags(&a.input, a.pal, width, rows, "", a.roomLead(width), a.input.demotedTags, a.draftInk())
 	for i, line := range block {
 		plainLine := ansi.Strip(line)
 		for _, held := range a.pastes {

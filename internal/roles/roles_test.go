@@ -34,6 +34,11 @@ func restore(t *testing.T) {
 }
 
 func TestResolvePrecedence(t *testing.T) {
+	// THE HIGH TIER HAS NO BUILT-IN TENANT. Every careful call — the auditor,
+	// the shaper, vision, the repair — is registered from the package that makes
+	// it, so a case about that tier registers one here through the same door.
+	restore(t)
+	Register(Role("audit"), TierHigh)
 	tests := []struct {
 		name     string
 		src      Source
@@ -65,19 +70,22 @@ func TestResolvePrecedence(t *testing.T) {
 		{
 			// The default assignment reaching for the other tier is the whole
 			// point of tiers: two roles, one setting each, different models.
-			name: "compaction takes the high tier",
+			// The high tier has no BUILT-IN tenant — every careful call is
+			// registered from the package that makes it — so the case registers
+			// one, which is the same door those packages use.
+			name: "a high-tier role takes the high tier",
 			src: settings(map[string]string{
 				"tiers.low":  "low-model",
 				"tiers.high": "high-model",
 			}),
-			role:     RoleCompaction,
+			role:     Role("audit"),
 			fallback: "session-model",
 			want:     "high-model",
 		},
 		{
 			name:     "session default when nothing is set",
 			src:      settings(map[string]string{}),
-			role:     RoleCompaction,
+			role:     RoleTitle,
 			fallback: "session-model",
 			want:     "session-model",
 		},
@@ -228,9 +236,9 @@ func TestResolvePrecedence(t *testing.T) {
 		{
 			name: "a pin resolves without any tier configured",
 			src: settings(map[string]string{
-				"roles.compaction": "pinned-model",
+				"roles.title": "pinned-model",
 			}),
-			role:     RoleCompaction,
+			role:     RoleTitle,
 			fallback: "",
 			want:     "pinned-model",
 		},
@@ -344,7 +352,7 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 	Register(Role("commit"), TierLow)
 
 	want := []Role{
-		Role("advisor"), RoleCaption, Role("commit"), RoleCompaction,
+		Role("advisor"), RoleCaption, Role("commit"),
 		RoleDesigner, RolePlanner, RoleReflex, RoleRouter, RoleTitle, RoleWorker,
 	}
 	for range 5 { // map order varies per iteration; the answer must not
@@ -364,11 +372,10 @@ func TestDefaultAssignment(t *testing.T) {
 	// Disposable prose cheap, the session's memory capable — and the run's
 	// balance: one careful call deciding what happens, many cheap ones doing it.
 	for role, want := range map[Role]Tier{
-		RoleTitle:      TierLow,
-		RoleCaption:    TierLow,
-		RoleCompaction: TierHigh,
-		// The two masterminds. They were on the high tier beside the compaction
-		// summary, which made one figure answer two different bills.
+		RoleTitle:   TierLow,
+		RoleCaption: TierLow,
+		// The two masterminds. They were on the high tier beside the auditor,
+		// which made one figure answer two different bills.
 		RolePlanner:  TierMastermind,
 		RoleDesigner: TierMastermind,
 		RoleWorker:   TierWorker,
@@ -394,8 +401,8 @@ func TestReadHelpers(t *testing.T) {
 	if model, ok := Pinned(src, RoleTitle); !ok || model != "pinned-model" {
 		t.Fatalf("Pinned(title) = %q, %v, want pinned-model, true", model, ok)
 	}
-	if _, ok := Pinned(src, RoleCompaction); ok {
-		t.Fatalf("Pinned(compaction) reported a pin that is not set")
+	if _, ok := Pinned(src, RoleWorker); ok {
+		t.Fatalf("Pinned(worker) reported a pin that is not set")
 	}
 	if model, ok := TierModel(src, TierHigh); !ok || model != "high-model" {
 		t.Fatalf("TierModel(high) = %q, %v, want high-model, true", model, ok)
@@ -406,8 +413,8 @@ func TestReadHelpers(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	if got := PinKey(RoleCompaction); got != "roles.compaction" {
-		t.Fatalf("PinKey(compaction) = %q, want roles.compaction", got)
+	if got := PinKey(RoleWorker); got != "roles.worker" {
+		t.Fatalf("PinKey(worker) = %q, want roles.worker", got)
 	}
 	if got := TierKey(TierLow); got != "tiers.low" {
 		t.Fatalf("TierKey(low) = %q, want tiers.low", got)
