@@ -1971,7 +1971,8 @@ func (s *Settings) build() []Setting {
 				"different speeds AND very different prices. Left alone — simple — aforge " +
 				"sends no preference of its own at all: with no lane pinned the router's own " +
 				"default routing answers, and a lane you pinned is the whole request, that " +
-				"machine and no fallbacks. The other three ask for something: latency asks " +
+				"machine and no fallbacks. Choosing another word here changes that " +
+				"everywhere: latency asks " +
 				"for the fastest endpoint for every call, capped at a quarter over the " +
 				"model's list price, and times every answer, demoting one that keeps being " +
 				"slow; price asks for the cheapest for every call; off asks for nothing and " +
