@@ -946,9 +946,10 @@ steering, it is the promise this surface makes — but it stops choosing endpoin
 for you, stops sending second requests, and stops spending anything on speed.
 
 **The row has four answers, and the two quiet ones are not the same nothing.** Left alone
-it reads `simple`, which sends no preference of aforge's own at all — your pin, if you made
-one, is the whole request (the section above). Writing another word in the row turns the
-choosing on everywhere: `latency` asks for the fastest machine on every call, background
+it reads `simple`, and aforge does not pick a machine for you at all — it asks for no
+fastest endpoint and no cheapest one, sends no preference of its own, and your pin, if you
+made one, is the whole request (the section above). Writing another word in the row turns
+the choosing on everywhere: `latency` picks the fastest endpoint on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
 Under `latency` and `price` the work you are not watching still weighs speed, at a quarter

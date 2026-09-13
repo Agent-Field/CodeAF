@@ -773,6 +773,9 @@ func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
 func TestTheModelRowInSettingsNamesTheLane(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, _ := sheetApp(t)
+	// The tail is a PREDICTION, so it is drawn only where aforge is the one
+	// choosing — the ranked road, for [laneApp]'s reason.
+	a.routing = config.RoutingLatency
 	a.model = flash
 	a.sheet.sessionModel = flash
 	a.openSettings()
