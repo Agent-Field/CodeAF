@@ -551,7 +551,7 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 			views = lifted
 		}
 	}
-	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(model.ID, views, now)
+	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(p.routing, model.ID, views, now)
 	return true
 }
 
@@ -1642,7 +1642,7 @@ func (p *picker) rowFields(model Model, pin string) []rowField {
 	if fields, ok := p.held[model.ID]; ok {
 		return fields
 	}
-	fields := modelFields(model, pin)
+	fields := modelFields(model, pin, p.routing)
 	p.held[model.ID] = fields
 	return fields
 }

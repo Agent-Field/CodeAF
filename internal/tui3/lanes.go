@@ -537,7 +537,7 @@ func (a *app) laneNow(model string, views []laneView) (string, bool) {
 	if name, pinned := config.LanePinned(a.profileDir, laneSlotFor(model)); pinned {
 		return name, true
 	}
-	name := laneAuto(model, views, a.now())
+	name := laneAuto(a.routing, model, views, a.now())
 	return name, name != ""
 }
 
@@ -546,7 +546,19 @@ func (a *app) laneNow(model string, views []laneView) (string, bool) {
 // It is a free function because a picker row is drawn from places that hold no
 // session (the settings panel's slot rows, the composer's), and a row that said
 // nothing there would be the same list telling two stories.
-func laneAuto(model string, views []laneView, now time.Time) string {
+//
+// AND IT ANSWERS NOTHING WHERE NOTHING ON THIS SIDE CHOOSES. The name it gives
+// is a prediction — the machine the chooser would send the next turn to — and
+// under a routing row that runs no chooser (`simple`, the row this build
+// ships) there is no such machine: the request goes out with no preference
+// and the router answers from wherever it likes. A `via modal` on the model
+// row while the status line and the record said Sail Research was the surface
+// predicting a choice nobody was making (2026-09-13). The one door that says
+// what `auto` may claim under a row ([laneAutoSaid]) is asked first.
+func laneAuto(routing, model string, views []laneView, now time.Time) string {
+	if !laneAutoSaid(routing).chooses {
+		return ""
+	}
 	// THE QUESTION IS THE TURN'S OWN, and it is asked through the transport's
 	// spelling of it ([provider.LaneTalkAsk]) rather than one written here. A
 	// request built on this side with λ left at zero asks "which is CHEAPEST",

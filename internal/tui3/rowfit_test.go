@@ -202,7 +202,7 @@ func TestAnUnknownFactDrawsNothingAndFreesItsSpace(t *testing.T) {
 	if got := rowTail(fields, 60); got != "coreweave · 1M · elo 1290" {
 		t.Fatalf("the unknown fields left a hole: %q", got)
 	}
-	if got := rowAll(modelFields(Model{ID: "vendor/quiet"}, "")); got != "" {
+	if got := rowAll(modelFields(Model{ID: "vendor/quiet"}, "", config.RoutingLatency)); got != "" {
 		t.Fatalf("a model nobody published anything about says %q", got)
 	}
 	if got := rowAll([]rowField{rowField{}, rowField{}}); got != "" {

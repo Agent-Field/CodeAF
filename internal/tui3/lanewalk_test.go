@@ -324,3 +324,23 @@ func TestClearingTheFilterReturnsToTheModelInUse(t *testing.T) {
 		t.Fatalf("ctrl+u left the cursor on %q, want the model in use", chosen.ID)
 	}
 }
+
+// THE MODEL ROW PREDICTS NO MACHINE WHERE NOTHING CHOOSES. The `via` on a
+// picker row is a claim about the next request, and under `simple` the next
+// request names nobody: a row that still said `via modal` while the status
+// line and the record said Sail Research was the surface predicting a choice
+// nobody was making (the 2026-09-13 acceptance drive). The ranked road keeps
+// its prediction, because there the chooser really is about to make one.
+func TestUnderSimpleRoutingTheModelRowPredictsNoMachine(t *testing.T) {
+	views := []laneView{{Name: "modal", Known: true, TTFT: 0.8, Rate: 90}}
+	now := time.Now()
+	if got := laneAuto(config.RoutingSimple, "vendor/quiet", views, now); got != "" {
+		t.Fatalf("under simple the model row would say via %q, want no machine", got)
+	}
+	if got := laneAuto(config.RoutingLatency, "vendor/quiet", views, now); got != "modal" {
+		t.Fatalf("under latency the model row names %q, want the machine the belief holds", got)
+	}
+	if note := rowAll(modelFields(Model{ID: "vendor/quiet", ContextLength: 128_000}, "", config.RoutingSimple)); strings.Contains(note, "via ") {
+		t.Fatalf("the simple model row still carries a prediction: %q", note)
+	}
+}

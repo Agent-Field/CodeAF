@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"encoding/json"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"math"
 	"os"
 	"path/filepath"
@@ -698,12 +699,15 @@ func contextWord(tokens int) string {
 //
 // It is [rowAll] over [modelFields], and every narrower frame is the same
 // fields through the same fitter with an edge on it (rowfit.go).
-func modelNote(model Model) string { return modelNoteVia(model, "") }
+func modelNote(model Model) string { return modelNoteVia(model, "", config.RoutingLatency) }
 
 // modelNoteVia is that tail with the caller's own knowledge of which machine
 // this model is pinned to — empty when it is not pinned or when the caller has
-// no profile to ask.
-func modelNoteVia(model Model, pin string) string { return rowAll(modelFields(model, pin)) }
+// no profile to ask — and of the routing row in force, which decides whether a
+// machine may be predicted at all ([laneAuto]).
+func modelNoteVia(model Model, pin, routing string) string {
+	return rowAll(modelFields(model, pin, routing))
+}
 
 // ── THE PICKER ROW'S DATA HIERARCHY ─────────────────────────────────────────
 //
@@ -744,7 +748,7 @@ func modelNoteVia(model Model, pin string) string { return rowAll(modelFields(mo
 // row, and this row already has one mark to explain ([laneUpMark]). A field
 // that is last to be drawn is a field that should be said in words or not at
 // all.
-func modelFields(model Model, pin string) []rowField {
+func modelFields(model Model, pin, routing string) []rowField {
 	if model.Direct {
 		return []rowField{
 			{}, {}, priceField(model.PromptPrice, model.CompletionPrice),
@@ -762,7 +766,7 @@ func modelFields(model Model, pin string) []rowField {
 	views := laneViews(model.ID, now)
 	via := pin
 	if via == "" {
-		via = laneAuto(model.ID, views, now)
+		via = laneAuto(routing, model.ID, views, now)
 	}
 	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why),
 	// and they are three fields rather than one phrase now: the lane a person
