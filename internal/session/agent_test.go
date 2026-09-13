@@ -119,6 +119,16 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		s.mu.Unlock()
 		return textResponse(""), nil
 	}
+	// AND SO ARE THE SECOND OPINIONS, FOR THE SAME REASON THE CAPTION AND TITLE
+	// GET SILENCE. consult and the batch review are errands (consult.go) that
+	// every second-opinion fires; a fixture that leaves them on the script
+	// would sell its turn's step to the review, the way it would sell a
+	// captioner — if it answered in the script at all.
+	if isCaptionCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		return textResponse(""), nil
+	}
 	// AND SO IS THE SESSION'S OWN NAMER, for the narrator's reason and one
 	// stronger: since #653 it is started when the person's FIRST MESSAGE is
 	// accepted rather than when the turn ends (title.go), so it is in flight
@@ -3368,3 +3378,4 @@ func TestTheBeatAsksAboutEachSlotModelOnce(t *testing.T) {
 		})
 	}
 }
+

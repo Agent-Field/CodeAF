@@ -3062,29 +3062,9 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		defer a.endPhase()
 	}
 
-	// A QUICK FAN-OUT IS READ TOGETHER BEFORE ANY OF IT STARTS. Quick fan-outs
-	// start under no gate at all — propose_task has its countdown card and
-	// divide_work its review — so two or more of them in one batch get one read
-	// of the mastermind tier (quickfan.go) here, where the asks are still
-	// arguments. Amendments rewrite the calls; refusals are seeded as ordinary
-	// refusals in their own slots and never begun. A fail-open or single quick
-	// call falls straight through.
-	var refusedQuick map[int]string
-	if len(calls) > 1 {
-		amended, refused, _ := a.reviewQuickFan(ctx, calls, rendered)
-		calls = amended
-		refusedQuick = refused
-	}
 	slots := newBatchSlots(calls)
 	var wg sync.WaitGroup
 	for index, call := range calls {
-		// A refused quick ask is settled here, in its own slot's place, and
-		// never spawns a goroutine — its result pairs by its CallID like every
-		// other refusal (consent.go's refusal-as-result shape).
-		if text, isRefused := refusedQuick[index]; isRefused {
-			slots.put(index, toolResult{text: text, isError: false})
-			continue
-		}
 		// A call the stream already started is not started again — the warm
 		// entry is claimed by id, so no call in this batch can run twice — and
 		// waiting for it is one more goroutine in the same batch, so a read that

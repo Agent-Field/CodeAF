@@ -318,6 +318,10 @@ var callSiteRoles = map[string]lane.Role{
 	"intake":        lane.RoleAuxiliary,
 	"careful":       lane.RoleAuxiliary,
 	"distill":       lane.RoleAuxiliary,
+	// internal/session's consult.go tags its errand with `string(role)`, and
+	// a question of judgement is named with the judges, exactly as `division`
+	// is named with the designers above.
+	"consult": lane.RoleJudge,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.
