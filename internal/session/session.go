@@ -1112,9 +1112,9 @@ type Config struct {
 
 	// Routing is how this session asks the router to choose among the endpoints
 	// serving its model, and whether it times them at all (internal/provider's
-	// velocity.go). EMPTY IS LATENCY, the default the settings row carries, so a
-	// caller that says nothing still gets the fastest endpoint the router can
-	// find and still measures what it actually got.
+	// velocity.go). EMPTY IS NOBODY HAVING CHOSEN: the session falls to the row
+	// this process installed and, with none installed, to the shipped row
+	// ([provider.DefaultRouting]), which sends no preference of ours at all.
 	Routing provider.RoutingStrategy
 
 	// CompactEnabled gates automatic compaction. Manual compaction via the
@@ -1367,8 +1367,8 @@ type Config struct {
 
 	// ModelPrice is a model's own published list price, per token in US dollars,
 	// and whether anybody published one (internal/catalog's PriceNow). The
-	// adapter bounds a latency-sorted request against it, so this session asks
-	// for the fastest endpoint that is not also charging several times what the
+	// adapter bounds a latency-sorted request against it, so a session whose
+	// routing row asks for speed is not also charging several times what the
 	// model itself costs.
 	//
 	// NIL IS "NO PRICE IS KNOWN", which sends no ceiling and routes exactly as an

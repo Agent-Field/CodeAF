@@ -99,10 +99,20 @@ var laneCatalog = []Model{
 	{ID: "moonshotai/kimi-k3"},
 }
 
+// laneApp is a picker over this lab's ledger, ON THE RANKED ROAD.
+//
+// The shipped routing row is `simple` ([config.DefaultRouting]) and under it
+// nothing on aforge's side chooses a machine — no takeover sentence, no
+// `recommended`, no name beside `auto` (palette.go's [laneAutoSaid]). The folds
+// these tests read are about the road where aforge does choose, so the row is
+// written here once rather than at each of them; the test that is about the
+// shipped row writes `simple` into a profile of its own
+// (TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover).
 func laneApp(t *testing.T) *app {
 	t.Helper()
 	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
 	a.profileDir = t.TempDir()
+	a.routing = config.RoutingLatency
 	return a
 }
 
@@ -482,6 +492,8 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 func laneSheet(t *testing.T) (*app, string) {
 	t.Helper()
 	a, dir := sheetApp(t)
+	// On the ranked road, for [laneApp]'s reason.
+	a.routing = config.RoutingLatency
 	a.width = 120
 	a.model = flash
 	a.sheet.sessionModel = flash

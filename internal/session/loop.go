@@ -643,16 +643,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// fact free to disagree, the λ saying a watched node's seconds belong to
 	// somebody and the intent saying they belong to nobody. They are one stamp
 	// now: the turn names its ROLE and internal/lane's table answers both, so an
-	// unwatched node still asks for the cheap endpoint and a node whose run
-	// somebody is sitting in front of asks for the soonest one.
+	// unwatched node's seconds are worth nothing and the seconds of a node whose
+	// run somebody is sitting in front of are worth what theirs are.
 	//
 	// AND ALL OF IT SAID ONCE, AS A ROLE. internal/lane's roles.go holds the
 	// table — what a second of this errand's wait is worth, what quality bar it
 	// needs, how many calls it will make, and whether a person is reading THIS
 	// stream — and the role is the only thing a call site names. The intent
-	// below is kept beside it because `provider.sort` is still built from it and
-	// a dozen other packages still set it, but it is now a READING of the role
-	// rather than a second opinion about the same fact (internal/provider's
+	// below is kept beside it because what a wait is worth is still read off it
+	// and a dozen other packages still set it, but it is now a READING of the
+	// role rather than a second opinion about the same fact (internal/provider's
 	// roles.go).
 	ctx = provider.WithRole(ctx, a.laneRole())
 	// AND WHOSE ERRAND IT IS, beside what kind of errand it is, for the reason

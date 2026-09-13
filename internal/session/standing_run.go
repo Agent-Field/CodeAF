@@ -1051,8 +1051,8 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// every time and the item's own choice would do nothing (provider's
 		// requestedEffort).
 		//
-		// IntentBackground says the same thing to the router — nobody is
-		// waiting, so route on price rather than on speed.
+		// IntentBackground says the same thing where the lane chooser reads it —
+		// nobody is waiting, so a second of this wait is worth nothing.
 		//
 		// And the role says both of those once, in the vocabulary the router and
 		// the phase clock share: a standing run has no one in front of it, so

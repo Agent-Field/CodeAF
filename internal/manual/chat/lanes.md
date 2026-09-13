@@ -77,10 +77,10 @@ rather have the router's price balance than be rescued from its bad minute.
 
 The rest of this page — the closed set, the refusal walk, the probe — describes
 what happens while aforge is choosing: during a takeover, and whenever you have
-pinned a lane yourself. All of it is written about the routing the row ships
-with. With `routing` at `simple` none of it runs — no takeover, no ranking, no
-measuring — because that mode sends exactly what you asked for and nothing
-else; *How do I stop aforge choosing the provider itself* below has it. With
+pinned a lane yourself. All of it is written about `routing` at `latency` or
+`price`. With the row at `simple` — which is what it ships as — none of it runs:
+no takeover, no ranking, no measuring, because that row sends exactly what you
+asked for and nothing else; *How do I stop aforge choosing the provider itself* below has it. With
 the row at `off` the choosing stops too, and the last section says what that
 leaves standing.
 
@@ -888,8 +888,10 @@ request.
 `simple` is not `off`. `off` stops the measuring, and with nothing measured
 there is no lane to choose, no sheet of machines to open and no speed guard.
 `simple` leaves the pin standing: the one instruction you gave is the only one
-sent. Left alone the row is still `latency`, and everything the rest of this
-page describes is what it does.
+sent. **`simple` is also what the row ships as**, so this is what a home nobody
+has changed does; everything else this page describes — the ranking, the
+takeover, the rescue, the measuring — is what `latency` and `price` do, one word
+away on the same row.
 
 ## Does simple routing cover everything, or only my own messages — harness runs, reading a document, looking at an image
 
@@ -943,16 +945,16 @@ ceiling on how long a silence runs before *something* is said about it is not
 steering, it is the promise this surface makes — but it stops choosing endpoints
 for you, stops sending second requests, and stops spending anything on speed.
 
-**The row has four answers, and the two quiet ones are not the same nothing.** Left alone, aforge asks
-for the fastest machine on the turns you are waiting through, and on the work you are not
-watching it still weighs speed, at a quarter of that weight — a task ends when its slowest
-call ends, and a machine that refuses four requests in five costs five sends for one answer,
-so its seconds are never free. That is the split the rest of this page describes. Writing a word in the row
-overrides that everywhere: `latency` asks for the fastest one on every call, background
+**The row has four answers, and the two quiet ones are not the same nothing.** Left alone
+it reads `simple`, which sends no preference of aforge's own at all — your pin, if you made
+one, is the whole request (the section above). Writing another word in the row turns the
+choosing on everywhere: `latency` asks for the fastest machine on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
-is you saying that speed is not worth money anywhere; `simple` sends no preference of
-aforge's own at all — your pin, if you made one, is the whole request (the section above);
-and `off` is the paragraph above.
+is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
+Under `latency` and `price` the work you are not watching still weighs speed, at a quarter
+of the weight your own turns give it — a task ends when its slowest call ends, and a
+machine that refuses four requests in five costs five sends for one answer, so its seconds
+are never free. That is the split the rest of this page describes.
 `price` still measures machines and still chooses between them. `simple` and `off` stop the choosing.
 
 **`off` does not stop the remembering, and that is deliberate.** aforge still writes down

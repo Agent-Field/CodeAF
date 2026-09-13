@@ -1540,10 +1540,14 @@ type laneAutoSay struct {
 // chose in order to be left alone — so the row that still said "aforge takes
 // over" would be the surface promising machinery the mode disconnected.
 //
-// An unknown word — a row read before this surface armed anything — is the
-// shipped routing, which is what [config.DefaultRouting] is.
+// An unknown word — an empty one, or a row read before this surface armed
+// anything — is the shipped routing, and the sentence follows it there rather
+// than keeping a favourite of its own: [config.RoutingWord] is the one place
+// that says what an unwritten row is in force as, and the shipped row is
+// `simple`, so a surface that fell through to the takeover sentence would be
+// promising the machinery the shipped row disconnects.
 func laneAutoSaid(routing string) laneAutoSay {
-	if routing == config.RoutingSimple {
+	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
 			note: "openrouter's own routing; aforge stays out",
 			about: "which machine behind your model answers you. routing is simple, so auto " +

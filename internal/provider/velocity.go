@@ -47,10 +47,9 @@ type RoutingStrategy string
 
 const (
 	// RoutingLatency asks for the currently-fastest endpoint UNDER A PRICE
-	// CEILING (see latencyPriceCeiling). It is what a call with nobody's row
-	// written and a person waiting on it gets, because a chat session is a
-	// person waiting — and the ceiling is there because being served fastest was
-	// never worth being charged anything.
+	// CEILING (see latencyPriceCeiling). It is opt in — somebody writes the row
+	// — and the ceiling is there because being served fastest was never worth
+	// being charged anything.
 	RoutingLatency RoutingStrategy = "latency"
 	// RoutingPrice asks for the cheapest endpoint that can serve the request.
 	RoutingPrice RoutingStrategy = "price"
@@ -58,7 +57,8 @@ const (
 	// it: an operator who has not asked to be routed has not asked to be
 	// measured either, and a demotion nobody can act on is only overhead.
 	RoutingOff RoutingStrategy = "off"
-	// RoutingSimple sends exactly what the person asked for and nothing else.
+	// RoutingSimple sends exactly what the person asked for and nothing else,
+	// and IT IS THE ROW THIS BUILD SHIPS ([DefaultRouting]).
 	// No lane pinned: the request carries NO provider object at all and the
 	// router's own default routing answers — no belief, no sort word, no price
 	// ceiling, no hedge. A lane pinned: the request carries that one demand
@@ -67,6 +67,21 @@ const (
 	// request path, so the row a person wrote is the whole algorithm.
 	RoutingSimple RoutingStrategy = "simple"
 )
+
+// DefaultRouting is what a client asks for when nobody has chosen: no caller
+// handed it a row and this process installed none ([InstallRouting]).
+//
+// IT IS THE SAME ANSWER FOR EVERY CALL, and that is the point. The old default
+// read who was waiting and asked the router to sort by speed for a person's own
+// turn and by price for an errand — a decision made per request, out of sight,
+// that the picker and the record could then disagree with. Under this one the
+// wire carries the person's own row and nothing this build inferred, so what is
+// shown, what is chosen and what is written down are the same fact.
+//
+// It is spelled again in internal/config ([config.DefaultRouting]) because that
+// package owns the word on disk and this one owns the word on the wire; a test
+// there holds the two together.
+const DefaultRouting = RoutingSimple
 
 // sortWord is the strategy as the router spells it, empty when no preference
 // object should be sent at all.
@@ -85,14 +100,16 @@ func (s RoutingStrategy) sortWord() string {
 
 // ── WHO IS WAITING ──────────────────────────────────────────────────────────
 //
-// Sorting by latency is a decision about a PERSON, not about a model: it is
-// worth something only when somebody is sitting there watching the answer
-// arrive. A task worker, a divided part, an auditor, a judge, a title, a memory
-// pass — nobody is waiting on any of those, and pinning the fastest endpoint
-// for them buys nothing and pays whatever that endpoint charges.
+// Speed is worth something only when somebody is sitting there watching the
+// answer arrive. A task worker, a divided part, an auditor, a judge, a title, a
+// memory pass — nobody is waiting on any of those, and a second saved on one of
+// them is a second nobody spends.
 //
-// So the request carries who is waiting, and this file is the one place that
-// reads it.
+// So the request carries who is waiting. IT NO LONGER PICKS A SORT WORD: the
+// routing row is a person's answer and this build does not write one for them
+// ([DefaultRouting]). What still reads it is what a WAIT IS WORTH — the value of
+// time the chooser is given when somebody did choose the ranked road (lanes.go),
+// and how much of an answer is being read as it arrives (workload.go).
 
 // RoutingIntent says whether a person is waiting on this call.
 type RoutingIntent int
@@ -147,8 +164,9 @@ func routingIntentFrom(ctx context.Context) RoutingIntent {
 }
 
 // ParseRoutingStrategy reads a settings word. An unrecognized word is NOT an
-// error and NOT off: it falls back to the default, because a typo in a config
-// row must not silently take routing away from a session that asked for it.
+// error and NOT off: it falls back to [DefaultRouting], because a typo in a
+// config row must not silently put a session on a road nobody asked for, and
+// off is a road somebody chooses rather than one they arrive at by accident.
 func ParseRoutingStrategy(word string) (RoutingStrategy, bool) {
 	switch strings.ToLower(strings.TrimSpace(word)) {
 	case string(RoutingLatency):
@@ -160,7 +178,7 @@ func ParseRoutingStrategy(word string) (RoutingStrategy, bool) {
 	case string(RoutingSimple):
 		return RoutingSimple, true
 	default:
-		return RoutingLatency, false
+		return DefaultRouting, false
 	}
 }
 
@@ -182,8 +200,8 @@ func (s staticRouting) RoutingStrategy() RoutingStrategy { return RoutingStrateg
 
 // StaticRouting is one already-resolved answer as a source. The empty strategy
 // is NOBODY HAVING CHOSEN rather than a refusal, so a caller that has nothing
-// to say leaves the adapter to decide per request from who is waiting on it —
-// see [Client.routingFor].
+// to say falls to the row this process installed and, with none installed, to
+// [DefaultRouting] — see [Client.routingChoice].
 func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRouting(strategy) }
 
 // ── THE ROW EVERY CLIENT IN THIS PROCESS ANSWERS TO ─────────────────────────
@@ -197,13 +215,16 @@ func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRoutin
 // carried a routing answer at all — so whatever a person wrote in the routing
 // row, those adapters ran on the default.
 //
-// THAT IS A BREACH OF THE ROW AND, UNDER `simple`, A SILENT ONE. A client on
-// the default takes the ranked road, and the ranked road may retire A PERSON'S
-// PIN before any wire is asked — a machine the saved account exclusions cover
-// is stood down where it is drawn (lanes.go). The retirement is process-wide,
-// so the conversation's own next turn — running `simple`, doing everything
-// right — found the pin already retired and went out bare, with the sentence
-// parked on a call nobody was reading and the chrome still naming the machine.
+// THAT IS A BREACH OF THE ROW, AND IT WAS A SILENT ONE. Those adapters ran the
+// ranked road while the default was `latency`, and the ranked road may retire A
+// PERSON'S PIN before any wire is asked — a machine the saved account exclusions
+// cover is stood down where it is drawn (lanes.go). The retirement is
+// process-wide, so the conversation's own next turn — running `simple`, doing
+// everything right — found the pin already retired and went out bare, with the
+// sentence parked on a call nobody was reading and the chrome still naming the
+// machine. The default has moved since ([DefaultRouting]) and the breach has
+// not: a person who writes `latency` or `price` is owed it in every adapter
+// this process builds, exactly as one who leaves the row alone is.
 //
 // So the row is installed ONCE, by the same door that installs the lane rows a
 // person wrote (internal/config's InstallLaneRows), and every client that was
@@ -218,18 +239,21 @@ var installedRouting atomic.Value
 // InstallRouting states the routing row this process's clients answer to, for
 // every client that is handed no [RoutingSource] of its own. The empty strategy
 // is NOBODY HAVING WRITTEN ONE and puts the knob back to exactly that, which is
-// what an unwritten row resolves to — the default then moves with who is
-// waiting ([Client.routingFor]) exactly as it always has.
+// what an unwritten row resolves to — [DefaultRouting], the same answer for
+// every call.
 func InstallRouting(strategy RoutingStrategy) {
 	installedRouting.Store(strategy)
 }
 
 // installedRoutingChoice is the installed row and whether one was installed at
-// all, in the shape [Client.routingChoice] answers in.
+// all, in the shape [Client.routingChoice] answers in. With none installed the
+// strategy is [DefaultRouting] and the answer to "did somebody choose?" is no,
+// which are two different facts and both wanted: a gate reads the first and the
+// request path reads the second.
 func installedRoutingChoice() (RoutingStrategy, bool) {
 	held, ok := installedRouting.Load().(RoutingStrategy)
 	if !ok || strings.TrimSpace(string(held)) == "" {
-		return RoutingLatency, false
+		return DefaultRouting, false
 	}
 	parsed, _ := ParseRoutingStrategy(string(held))
 	return parsed, true
@@ -237,13 +261,14 @@ func installedRoutingChoice() (RoutingStrategy, bool) {
 
 // routingChoice is the strategy A PERSON CHOSE, and whether one was chosen at
 // all. An empty source, an empty word, or no source is "nobody said" — which is
-// a different fact from "somebody said latency", and the whole of what lets the
-// default below depend on who is waiting while an explicit row still wins.
+// a different fact from "somebody said simple", even where the two resolve to
+// the same road, and it is what lets a client handed nothing fall to the row
+// this process installed while a caller that spoke keeps its own answer.
 func (c *Client) routingChoice() (RoutingStrategy, bool) {
 	if c.config.Direct {
 		// A connected direct service has one road. Treating the absence of a
-		// person's router setting as latency routing would synthesize a provider
-		// object and hand router vocabulary to an endpoint that has no lanes.
+		// person's router setting as any kind of routing would hand router
+		// vocabulary to an endpoint that has no lanes to rank.
 		return RoutingOff, true
 	}
 	// A CALLER THAT SPOKE IS ANSWERED FIRST, and a caller that did not falls to
@@ -261,9 +286,10 @@ func (c *Client) routingChoice() (RoutingStrategy, bool) {
 	return installedRoutingChoice()
 }
 
-// routing resolves the strategy for this client with nothing said about who is
-// waiting. It is what the ledger's own gates read — they only ever ask whether
-// routing is off — and it keeps the old answer: no row means latency.
+// routing resolves the strategy for this client. It is what the machinery's own
+// gates read — whether to measure, to probe, to hedge, to hold a cache pin —
+// and it is the same answer [Client.routingFor] gives the request beside it, so
+// a gate cannot be open on a road no request is taking.
 func (c *Client) routing() RoutingStrategy {
 	strategy, _ := c.routingChoice()
 	return strategy
@@ -271,17 +297,21 @@ func (c *Client) routing() RoutingStrategy {
 
 // routingFor resolves the strategy one request will actually ask for.
 //
-// THE PERSON'S ROW WINS OUTRIGHT. Everything below it is the DEFAULT moving
-// with who is waiting: the conversation's own turn chases speed, and a call
-// nobody is sitting in front of chases price.
-func (c *Client) routingFor(intent RoutingIntent) RoutingStrategy {
-	if chosen, ok := c.routingChoice(); ok {
-		return chosen
-	}
-	if intent == IntentBackground {
-		return RoutingPrice
-	}
-	return RoutingLatency
+// THE PERSON'S ROW WINS OUTRIGHT, and where nobody wrote one there is nothing
+// underneath it to infer: every call falls to [DefaultRouting]. It used to read
+// who was waiting here and ask for speed or for price accordingly, which was a
+// routing decision this build made on a person's behalf and then had to keep
+// explaining — the one thing a person could not see in the picker, the status
+// line or the record.
+//
+// SO THE INTENT IS TAKEN AND NOT READ. It is still carried on every call and
+// still read a line later for what a wait is worth (lanes.go) and for how much
+// of an answer is being read as it arrives (workload.go); it is named here so
+// the two call sites that ask this question go on saying which call they are
+// asking about, and so that a row which one day wants to know again has the
+// fact in its hand rather than a parameter to thread back through.
+func (c *Client) routingFor(RoutingIntent) RoutingStrategy {
+	return c.routing()
 }
 
 // providerPrefs is the routing preference object.
@@ -474,7 +504,8 @@ func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPre
 	// prefix, and a cold prefix cost 4.7× a warm one at identical token counts —
 	// more than any endpoint's tariff differs from another's, so the errand
 	// nobody is waiting on wants its cache back exactly as much as the person
-	// does. Its first request, having nothing pinned, still asks by price.
+	// does. Its first request, having nothing pinned, asks by the row's own
+	// sort word like any other.
 	//
 	// It is a preference and never a demand: `allow_fallbacks` stays true above,
 	// so an endpoint that is busy, gone, or over the ceiling simply does not
