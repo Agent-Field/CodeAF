@@ -18,7 +18,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
@@ -478,11 +477,12 @@ const execNodeKey = "task-1"
 // none is invented: arriving here IS the fact that a person typed the command.
 //
 // IT SAYS THE FACT TWICE BECAUSE TWO THINGS READ IT: the leaf this door runs
-// itself takes the role off its context, and the nodes `aforge do` runs through
-// the session's own executor take theirs from whether a person is in front of
-// the process (internal/session's someoneIsWatching), which no context reaches.
+// itself takes the role off its context, and everything `aforge do` runs
+// through the session's own executor — its planning pass, its nodes — takes
+// the fact from the process-wide latch (internal/provider's readByAPerson and
+// internal/session's someoneIsWatching), which no context reaches.
 func typedDoorContext(ctx context.Context) context.Context {
-	session.APersonIsHere()
+	provider.SetPersonAtTheDoor(true)
 	return provider.WithRole(ctx, lanes.RoleLeafAttached)
 }
 

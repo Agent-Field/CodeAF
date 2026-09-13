@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
@@ -146,6 +147,34 @@ func CurrentLanePin() LanePin {
 // after coreweave refused the model would be the chrome promising a machine the
 // next request does not ask for. It is memory only and cheap when nothing is
 // pinned, because the chrome asks it on every frame.
+// personAtTheDoor is whether this process was started by a command a person
+// typed and is waiting on — `aforge do`, `aforge exec`, `aforge plan new` — as
+// distinct from a conversation they opened. Its whole content is that EVERY
+// call of such a process is the person's own work: there is no errand beside a
+// typed command, because the command is the errand. cmd/aforge's
+// typedDoorContext is the one door that sets it.
+var personAtTheDoor atomic.Bool
+
+// SetPersonAtTheDoor states whether somebody typed the command this process is
+// running. It is what lets a headless command's calls — its planning pass and
+// the nodes the session's executor runs for it, whose roles are not ones a
+// person reads — carry the talk pin under `simple` and count as watched
+// (internal/session's someoneIsWatching), without the command opening a
+// conversation it does not have. Tests hand it false again.
+func SetPersonAtTheDoor(here bool) { personAtTheDoor.Store(here) }
+
+// PersonAtTheDoor reports whether a typed command owns this process.
+func PersonAtTheDoor() bool { return personAtTheDoor.Load() }
+
+// readByAPerson is whether a call in this role is one a person is waiting on:
+// a role they are reading, or any role at all inside a command they typed. IT
+// IS THE ONE PREDICATE that decides both whether the talk pin rides a call
+// under `simple` (lanes.go) and whether a refused pin is said to them now
+// rather than parked ([tellRetiredPins]), so the machine a person is asked for
+// and the sentence they get when it is refused can never belong to two
+// different sets of calls.
+func readByAPerson(role lanes.Role) bool { return role.Visible() || PersonAtTheDoor() }
+
 func PinnedFor(model string) string {
 	if CurrentLanePin().pinned() == "" || !BaseTakesLaneChoice() {
 		return ""
@@ -410,7 +439,7 @@ func retirePinnedLane(ctx context.Context, model string, refusal laneRefusal) bo
 // never said. So the sentence waits, and the very next request of the
 // conversation carries it (client.go's [Client.sendShaped]).
 func tellRetiredPins(ctx context.Context) {
-	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
+	if ctx == nil || streamObserverFrom(ctx) == nil || !readByAPerson(RoleFrom(ctx)) {
 		return
 	}
 	for _, line := range takeRetiredPins() {

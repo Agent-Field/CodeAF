@@ -536,12 +536,15 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 		// on machines nobody pinned.
 		//
 		// THE SCOPE IS READ FROM THE ROLE THE CALLER ALREADY STAMPED
-		// (internal/lane's roles.go), which is the same reading that decides
-		// whether a person is told when the wire refuses the pin (lanepin.go's
-		// tellRetiredPins). One predicate, so the machine a person is asked for
-		// and the sentence they get when it is refused can never belong to two
-		// different sets of calls.
-		if named == "" || retired || !knobs.role.Visible() {
+		// (internal/lane's roles.go) through lanepin.go's readByAPerson, the
+		// same reading that decides whether a person is told when the wire
+		// refuses the pin (tellRetiredPins). One predicate, so the machine a
+		// person is asked for and the sentence they get when it is refused can
+		// never belong to two different sets of calls. Inside a command a
+		// person typed every call is theirs — the planning pass of `aforge do`
+		// runs in a role nobody reads and is still the thing they are waiting
+		// on — and the same predicate says so.
+		if named == "" || retired || !readByAPerson(knobs.role) {
 			return lanes.Choice{}, false
 		}
 		ask := c.laneRequest(model, knobs, request, c.laneValueOfTime(knobs))

@@ -405,3 +405,25 @@ func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) 
 		}
 	}
 }
+
+// AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `aforge do`'s first
+// request is its planning pass, in a role nobody reads, and it is still the
+// thing the person at the terminal is waiting on — cmd/aforge's
+// lanepin_doors_test holds that door to the pin on its first request.
+func TestInsideATypedCommandEveryRoleCarriesTheTalkPin(t *testing.T) {
+	client, _, model := stubbedRouter(t)
+	client.config.Routing = StaticRouting(RoutingSimple)
+	pinned(t, LanePin{Lane: "brass"})
+	before := PersonAtTheDoor()
+	t.Cleanup(func() { SetPersonAtTheDoor(before) })
+
+	SetPersonAtTheDoor(false)
+	if choice, drawn := client.drawLaneChoice(callKnobs{role: lanes.RoleDesign}, model, &ai.Request{Model: model, Messages: userMessages("hello")}); drawn {
+		t.Fatalf("a design pass in a conversation drew %+v, want nothing", choice)
+	}
+	SetPersonAtTheDoor(true)
+	choice, drawn := client.drawLaneChoice(callKnobs{role: lanes.RoleDesign}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
+	if !drawn || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "brass") || !choice.Pinned {
+		t.Fatalf("a design pass inside a typed command drew %+v, want the pin", choice)
+	}
+}

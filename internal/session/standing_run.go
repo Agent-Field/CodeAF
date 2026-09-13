@@ -70,7 +70,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
@@ -159,21 +158,6 @@ func forgetLiveSession(agent *Agent) {
 	liveSessionsMu.Unlock()
 }
 
-// personAtTheDoor is whether this process was started by a command a person
-// typed and is waiting on — `aforge do`, `aforge exec`, `aforge plan new` — as
-// distinct from a conversation they opened. It is a latch and not a counter
-// because the fact it records cannot come and go: the process IS that command
-// for as long as it runs. cmd/aforge's typedDoorContext is the one door that
-// sets it.
-var personAtTheDoor atomic.Bool
-
-// APersonIsHere states that somebody typed the command this process is running
-// and is reading what it does. It is what lets the nodes a headless command
-// runs count as watched — the talk pin rides their calls under `simple`, and
-// their seconds are worth a person's — without the command having to open a
-// conversation it does not have.
-func APersonIsHere() { personAtTheDoor.Store(true) }
-
 // someoneIsWatching reports whether a person is in front of this process: a
 // conversation they opened, or a command they typed and are waiting on.
 //
@@ -182,9 +166,9 @@ func APersonIsHere() { personAtTheDoor.Store(true) }
 // task node's own agent and an errand's pane both decline to register
 // ([registerLiveSession]), so an entry here is a room with a person in it and
 // nothing else is. A headless run opens no conversation; it answers true only
-// when the door said a person typed it ([APersonIsHere]), which is the
-// difference between `aforge do` at somebody's terminal and a node a spawner
-// built with nobody there.
+// when the door said a person typed it (internal/provider's
+// [provider.SetPersonAtTheDoor]), which is the difference between `aforge do`
+// at somebody's terminal and a node a spawner built with nobody there.
 //
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
 // nobody is waiting on, and that is a true statement about a run whose owner
@@ -194,7 +178,7 @@ func APersonIsHere() { personAtTheDoor.Store(true) }
 // they are looking at this particular node, which is a distinction no plan
 // graph in this build can yet draw.
 func someoneIsWatching() bool {
-	if personAtTheDoor.Load() {
+	if provider.PersonAtTheDoor() {
 		return true
 	}
 	liveSessionsMu.Lock()

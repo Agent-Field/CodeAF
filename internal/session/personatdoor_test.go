@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // A node run by a command a person typed is a node somebody is watching. The
@@ -11,9 +12,9 @@ import (
 // conversation — and before the door's latch `aforge do` ran its nodes as
 // unattended, so under `simple` the person's own pin never rode their calls.
 func TestANodeRunByATypedCommandCountsAsWatched(t *testing.T) {
-	before := personAtTheDoor.Load()
-	t.Cleanup(func() { personAtTheDoor.Store(before) })
-	personAtTheDoor.Store(false)
+	before := provider.PersonAtTheDoor()
+	t.Cleanup(func() { provider.SetPersonAtTheDoor(before) })
+	provider.SetPersonAtTheDoor(false)
 
 	node := &Agent{config: Config{InTask: true}}
 	if someoneIsWatching() {
@@ -22,7 +23,7 @@ func TestANodeRunByATypedCommandCountsAsWatched(t *testing.T) {
 	if got := node.laneRole(); got != lane.RoleLeafUnattended {
 		t.Fatalf("a node with nobody at the door ran as %q, want %q", got, lane.RoleLeafUnattended)
 	}
-	APersonIsHere()
+	provider.SetPersonAtTheDoor(true)
 	if got := node.laneRole(); got != lane.RoleLeafAttached {
 		t.Fatalf("a node run by a typed command ran as %q, want %q", got, lane.RoleLeafAttached)
 	}
