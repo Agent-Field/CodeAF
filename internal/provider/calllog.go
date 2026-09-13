@@ -388,7 +388,7 @@ func (c *Client) record(facts recordFacts) {
 		Tools:          len(facts.request.Tools),
 		Stream:         facts.stream,
 		Attempt:        facts.attempt,
-		Relaxed:        relaxNames(facts.knobs.relaxed),
+		Relaxed:        c.relaxNames(model, facts.knobs),
 		Status:         facts.status,
 		Millis:         logNow().Sub(facts.began).Milliseconds(),
 		Learned:        facts.learned,
@@ -436,7 +436,7 @@ func (c *Client) record(facts recordFacts) {
 	// THIS attempt, so that the row of a rescue says what the rescue did and
 	// the row of the request it rescued says what happened to that one.
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
-		record.Lane = wait.lane
+		record.Lane = recordedLane(facts.knobs, wait.lane)
 		record.HazardCeilingMs = wait.deadline.Milliseconds()
 		// WHAT WAS PLANNED AND WHAT HAPPENED ARE TWO FIELDS, AND THE ROW MAY
 		// CARRY BOTH. The ceiling above is when the watch was going to start
@@ -604,16 +604,47 @@ func recordedServed(facts recordFacts) string {
 	return soleDemandedLane(facts.knobs)
 }
 
-// soleDemandedLane is the one machine this request was pinned to, and "" when
-// it was free to be routed anywhere. A rescue demands the single arm it walked
-// to (hedge.go's [hedgePreference]) and a person's pin is one machine
+// soleDemandedLane is the one machine THIS ATTEMPT'S BODY was pinned to, and ""
+// when it was free to be routed anywhere. A rescue demands the single arm it
+// walked to (hedge.go's [hedgePreference]) and a person's pin is one machine
 // (lanes.go), so either is a commitment the router cannot answer around.
+//
+// AND AN ATTEMPT THAT HAS WITHDRAWN THE DEMAND HAS NO COMMITMENT LEFT, which is
+// the half this used to get wrong. The knobs travel by value through the widen
+// and the ladder, so the choice that named the machine is still sitting on them
+// after the encoder has stopped sending it ([relaxedPreferences] takes `only`
+// off) — and the bare retry of a retired pin was logged `served: DeepSeek` over
+// a body with no `provider` key at all, which is the one machine that certainly
+// did not answer it. The demand is read the way the encoder reads it or not at
+// all.
 func soleDemandedLane(knobs callKnobs) string {
+	if !knobs.carriesTheDemand() {
+		return ""
+	}
 	if lane := strings.TrimSpace(knobs.hedgeLane); lane != "" {
 		return lane
 	}
 	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) == 1 {
 		return strings.TrimSpace(knobs.laneChoice.Only[0])
+	}
+	return ""
+}
+
+// recordedLane is the machine THIS ATTEMPT'S preference asked for: the head of
+// the order it sent, or the one machine it demanded.
+//
+// THE WATCH KNOWS WHAT THE CALL CHOSE AND NOT WHAT EACH ATTEMPT SENT
+// (waitreport.go's askedLane), and the two part company exactly once: on the
+// rung that widens. It takes `only` and `allow_fallbacks` off and leaves
+// `order` standing, so a lane the choice merely RANKED is still this body's ask
+// and a lane it DEMANDED is not — and a pinned request's bare retry was
+// reported under the name of the machine whose refusal it was recovering from.
+func recordedLane(knobs callKnobs, asked string) string {
+	if asked == "" || knobs.carriesTheDemand() {
+		return asked
+	}
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Order) > 0 && !knobs.noProvider {
+		return asked
 	}
 	return ""
 }
@@ -726,12 +757,25 @@ func (c *Client) emptyAtCeiling(request *ai.Request, response *ai.Response) bool
 // words (endpoints.go's relaxRungs). It is the same table the retry line a
 // person watches is built from, so the log and the surface can never call the
 // same rung two things.
-func relaxNames(set relaxSet) []string {
+//
+// AND A RUNG THAT TAKES OFF MORE THAN ONE FIELD NAMES THE ONES THIS BODY HAD
+// (endpoints.go's [relaxStep.took]). The row is read to find out what changed
+// about a request, so a rung's general word is only worth writing where it is
+// also the particular truth — and the widening rung's was not, on every pinned
+// request there has ever been.
+func (c *Client) relaxNames(model string, knobs callKnobs) []string {
 	var names []string
 	for _, rung := range relaxRungs {
-		if set.has(rung.bit) {
-			names = append(names, rung.name)
+		if !knobs.relaxed.has(rung.bit) {
+			continue
 		}
+		if rung.took != nil {
+			if took := c.widenedNames(model, knobs); len(took) > 0 {
+				names = append(names, took...)
+				continue
+			}
+		}
+		names = append(names, rung.name)
 	}
 	return names
 }

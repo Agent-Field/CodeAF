@@ -866,13 +866,14 @@ behind your model, and sends none:
   word, no price ceiling, no machines named or excluded. OpenRouter's own default
   routing picks the endpoint, exactly as it would for a request aforge had never
   touched. There is no measuring, no second request hedged alongside yours, not
-  even the one-token measurement sent while you type — and no takeover when
-  answers come back refused: the bad-minute rescue this page describes does not
-  run here, and neither does its cost.
-- **A lane pinned** (`/model @deepseek`, or enter on the **lane** row) — the
-  request demands exactly that one machine: `only`, fallbacks off, and nothing
-  else rides along. Your word is the whole request. A pin written `borrow when
-  slow` changes nothing here — there is no rescue running for it to borrow.
+  even the one-token measurement sent while you type, and no takeover when
+  answers come back refused.
+- **A lane pinned** (`/model @deepseek`, or enter on the **lane** row) — your
+  turn demands exactly that one machine: `only`, fallbacks off, and nothing else
+  rides along. Your word is the whole request. A pin written `borrow when slow`
+  changes nothing here — there is no rescue running for it to borrow. The row is
+  named `lane.talk` and that is its scope: the errands that run beside a turn go
+  out bare (the next section).
 
 What does not change: the machine that answered is still named on the status
 line, and the `switch to auto?` question a slow pinned lane asks still has
@@ -889,11 +890,12 @@ page describes is what it does.
 
 ## Does simple routing cover everything, or only my own messages — harness runs, reading a document, looking at an image
 
-All of it. The `routing` row is about **this session**, not about one request
-road, so every part of a conversation that opens its own connection answers the
-same word: your turns, the work a task node sends, a **subharness** run, the
-model that reads a document for you, the one that looks at an image, and each
-member of a `/model` panel.
+The **row** does. It is about **this session**, not one request road, so every
+part of a conversation that opens its own connection answers the same word: your
+turns, a task node's work, a **subharness** run, the model that reads a document
+for you, the one that looks at an image, each member of a `/model` panel. None
+of them measures, ranks or hedges under `simple`. The **pin** is narrower — the
+next section says how.
 
 That was not always true. Until 2026-09-13 those extra roads were built without
 the row and ran `latency` whatever you had written — which was quiet and wrong
@@ -908,6 +910,26 @@ message. Either the answer comes from the machine you named, or you get the
 `cannot serve this model` sentence and the `@machine` disappears from the model
 word. There is no third outcome — a bare request under a pin that is still
 being drawn is the bug above, and it is worth reporting.
+
+## Does my pinned machine apply to the title, the memory reflex and a subharness too, or only to what I type
+
+**Only to the calls you are reading.** Under `routing: simple` the pinned
+machine is demanded on your own turn, and on a task room you are sitting in
+front of. The errands that run beside a turn send no machine name at all: a
+conversation's two-word title, the memory reflex, the question that routes your
+message, a hand asking a model about a document, a subharness node. The row is
+spelled `lane.talk` and the slot is its whole scope.
+
+That is what one refusal costs. A pin the router refuses is retired **per
+machine and model** — one refused round trip, once — but an errand runs on a
+model of its own, and before 2026-09-13 a single turn bought three of them:
+yours, the title's and the reflex's, on three different models, each with its
+own 404 and none of them a machine you had asked for. One turn, one refusal,
+one sentence.
+
+Under `latency` and `price` nothing changes: there is no demand to scope,
+because a pin on those roads is drawn against everything the belief knows about
+the machines behind each model.
 
 ## Turning lane routing off
 

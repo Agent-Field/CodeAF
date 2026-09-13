@@ -1,8 +1,12 @@
 package provider
 
 import (
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -234,7 +238,7 @@ func TestSimpleRoutingLeavesAPinTheRankedRoadWouldHaveStoodDown(t *testing.T) {
 	// down: the saved exclusion stands the pin down before the wire is asked.
 	installedRow(t, "")
 	rig.client.config.Routing = nil
-	if choice, made := rig.client.drawLaneChoice(callKnobs{}, rig.model, request); made && len(choice.Only) > 0 {
+	if choice, made := rig.client.drawLaneChoice(turnKnobs(), rig.model, request); made && len(choice.Only) > 0 {
 		t.Fatalf("the ranked road demanded %v for a machine the account excludes", choice.Only)
 	}
 	if !pinRetired("Ghost", rig.model) {
@@ -245,7 +249,7 @@ func TestSimpleRoutingLeavesAPinTheRankedRoadWouldHaveStoodDown(t *testing.T) {
 	// handed nothing, now demands the machine the person wrote.
 	forgetRetiredPins()
 	installedRow(t, RoutingSimple)
-	choice, made := rig.client.drawLaneChoice(callKnobs{}, rig.model, request)
+	choice, made := rig.client.drawLaneChoice(turnKnobs(), rig.model, request)
 	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
 		t.Fatalf("under simple the draw came out %+v, want the one machine the person pinned", choice)
 	}
@@ -254,5 +258,100 @@ func TestSimpleRoutingLeavesAPinTheRankedRoadWouldHaveStoodDown(t *testing.T) {
 	}
 	if PinnedFor(rig.model) == "" {
 		t.Fatal("the chrome would say nothing over a request that demands the machine")
+	}
+}
+
+// turnKnobs is one call made for the person's own turn, which is the scope the
+// `lane.talk` row governs. It is spelled here rather than [callKnobs] with its
+// zero role because a zero role reads as a hidden background errand
+// (internal/lane's RoleUnknown) and a draw asked about one of those is a draw
+// asked the other question.
+func turnKnobs() callKnobs { return callKnobs{role: lanes.RoleTalk} }
+
+// ── THE ROW GOVERNS THE CALLS IT IS NAMED FOR ───────────────────────────────
+//
+// THE MEASURED FAILURE (2026-09-13, a real drive). One turn under `simple`,
+// pinned to a machine the account excludes, paid THREE 404s: the turn on the
+// chat model, the naming errand on the reflex tier's own model, and the memory
+// reflex on a third model the pinned machine does not serve at all. A pairing
+// is retired once, so each new model an errand reaches for is a fresh refused
+// round trip — bought for calls nobody is reading, on machines nobody pinned.
+//
+// The row is `lane.talk` and the slot is the whole scope: the person's turn
+// carries the demand and the errands beside it go bare.
+func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
+	rig := newLaneRig(t, "simple/errands-go-bare", retiredLanes()...)
+	forgotten(t)
+	rig.client.config.Routing = StaticRouting(RoutingSimple)
+	pinned(t, LanePin{Lane: "Ghost"})
+	request := &ai.Request{Model: rig.model, Messages: userMessages("hello")}
+
+	choice, made := rig.client.drawLaneChoice(turnKnobs(), rig.model, request)
+	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
+		t.Fatalf("the person's own turn drew %+v, want the one machine they pinned", choice)
+	}
+	// EVERY ERRAND THE TURN RUNS BESIDE ITSELF. The roles are internal/lane's
+	// own words for them, and the point of listing all four is that the scope is
+	// read from the table rather than from a list kept here: whatever else is
+	// added to that table arrives already answered.
+	for _, errand := range []lanes.Role{
+		lanes.RoleAuxiliary, lanes.RoleMemory, lanes.RoleRecall,
+		lanes.RoleTool, lanes.RoleJudge, lanes.RoleLeafUnattended, lanes.RoleUnknown,
+	} {
+		knobs := callKnobs{role: errand}
+		if choice, made := rig.client.drawLaneChoice(knobs, rig.model, request); made {
+			t.Fatalf("a %q errand drew %+v, want no preference at all", errand, choice)
+		}
+	}
+}
+
+// ── THE ROW SAYS WHAT THE RETRY REALLY CARRIED ──────────────────────────────
+//
+// THE MEASURED ROW (2026-09-13). A pin was refused, retired, and the widened
+// retry went out with no `provider` key at all — and its start row read
+// `"lane":"DeepSeek","served":"DeepSeek","relaxed":["provider.require_parameters"]`.
+// Every word of that is about the request before it. The lane and the served
+// machine name the one machine that had just refused to answer; the relaxed
+// list names a field a `simple` request never sends, while the field that
+// actually came off was the demand.
+func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) {
+	read := loggingTo(t)
+	rig := newLaneRig(t, "simple/retry-row", retiredLanes()...)
+	forgotten(t)
+	rig.client.config.Routing = StaticRouting(RoutingSimple)
+	pinned(t, LanePin{Lane: "Ghost"})
+
+	if _, err := rig.client.CompleteWithMessages(talking(), userMessages("hello")); err != nil {
+		t.Fatalf("the turn died on a refusal the widened retry was supposed to absorb: %v", err)
+	}
+
+	var demand, widened *calllog.Record
+	for _, record := range read() {
+		row := record
+		switch {
+		case row.Status == http.StatusNotFound && demand == nil:
+			demand = &row
+		case demand != nil && row.Relaxed != nil && widened == nil:
+			widened = &row
+		}
+	}
+	if demand == nil || widened == nil {
+		t.Fatalf("the log holds no refused ask and widened retry to compare: %+v", read())
+	}
+	// THE REFUSED ASK IS UNCHANGED. It really did demand the machine, so it
+	// really does name it — this half is the control on the other.
+	if !strings.EqualFold(demand.Lane, "Ghost") {
+		t.Fatalf("the refused ask names lane %q, want the machine it demanded", demand.Lane)
+	}
+	if widened.Lane != "" || widened.Served != "" && strings.EqualFold(widened.Served, "Ghost") {
+		t.Fatalf("the bare retry is logged as lane %q served %q, want a row that names no machine it did not ask for",
+			widened.Lane, widened.Served)
+	}
+	if !slices.Contains(widened.Relaxed, "provider.only") {
+		t.Fatalf("the bare retry says it relaxed %v, want the demand it actually withdrew", widened.Relaxed)
+	}
+	if slices.Contains(widened.Relaxed, "provider.require_parameters") {
+		t.Fatalf("the bare retry says it dropped %v, and a simple request never sent require_parameters",
+			widened.Relaxed)
 	}
 }

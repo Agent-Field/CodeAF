@@ -520,7 +520,28 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	// absence).
 	if strategy == RoutingSimple {
 		named := pin.pinned()
-		if named == "" || retired {
+		// AND THE ROW GOVERNS THE CALLS IT IS NAMED FOR. The row is `lane.talk`
+		// (internal/config's LaneSlotTalk) and the slot is the whole scope: the
+		// person's own turn is the talk, and the errands that run beside one —
+		// the title, the memory reflex, the route question, a hand asking about
+		// a document, a subharness node — are not.
+		//
+		// THE MEASURED COST OF NOT SAYING SO (2026-09-13). One turn under
+		// `simple`, pinned to a machine the account excludes, demanded that
+		// machine on all three of its calls and paid three separate 404s: the
+		// turn on the chat model, the title on the reflex tier's own model, and
+		// the memory reflex on a third model the pinned machine does not serve
+		// at all. The retirement is written per PAIRING, so each new model is a
+		// fresh round trip — and two of the three were errands nobody asked for
+		// on machines nobody pinned.
+		//
+		// THE SCOPE IS READ FROM THE ROLE THE CALLER ALREADY STAMPED
+		// (internal/lane's roles.go), which is the same reading that decides
+		// whether a person is told when the wire refuses the pin (lanepin.go's
+		// tellRetiredPins). One predicate, so the machine a person is asked for
+		// and the sentence they get when it is refused can never belong to two
+		// different sets of calls.
+		if named == "" || retired || !knobs.role.Visible() {
 			return lanes.Choice{}, false
 		}
 		ask := c.laneRequest(model, knobs, request, c.laneValueOfTime(knobs))
