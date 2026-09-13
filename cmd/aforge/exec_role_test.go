@@ -22,7 +22,7 @@ import (
 // `simple` and an unattended one does not
 // (TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin).
 func TestTheExecDoorRunsAsALeafSomebodyIsWatching(t *testing.T) {
-	role := provider.RoleFrom(execCallContext(context.Background()))
+	role := provider.RoleFrom(typedDoorContext(context.Background()))
 	if role != lanes.RoleLeafAttached {
 		t.Fatalf("`aforge exec` runs as %q, want the leaf somebody is watching", role)
 	}
