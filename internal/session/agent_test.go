@@ -120,11 +120,11 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		return textResponse(""), nil
 	}
 	// AND SO ARE THE SECOND OPINIONS, FOR THE SAME REASON THE CAPTION AND TITLE
-	// GET SILENCE. consult and the batch review are errands (consult.go) that
-	// every second-opinion fires; a fixture that leaves them on the script
-	// would sell its turn's step to the review, the way it would sell a
-	// captioner — if it answered in the script at all.
-	if isCaptionCall(snapshot) {
+	// GET SILENCE. consult and the batch review are errands (consult.go,
+	// quickfan_admission.go) that every second-opinion fires; a fixture that
+	// leaves them on the script would sell its turn's step to the review, the
+	// way it would sell a captioner — if it answered in the script at all.
+	if snapshot[0].Role == "system" && strings.Contains(messageText(snapshot[0]), "one quick task's joining") {
 		s.asides = append(s.asides, snapshot)
 		s.mu.Unlock()
 		return textResponse(""), nil
@@ -3378,4 +3378,3 @@ func TestTheBeatAsksAboutEachSlotModelOnce(t *testing.T) {
 		})
 	}
 }
-

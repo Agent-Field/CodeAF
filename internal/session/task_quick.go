@@ -493,6 +493,16 @@ func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
 		return 0, taskSpec{}, quickRefusal{said: refusal}
 	}
 
+	// THE SECOND-EVER QUICK CHILD OF THIS TURN IS READ TOGETHER WITH ITS FAMILY
+	// BEFORE IT JOINS — once per turn, inside the one gate every quick
+	// admission already takes. The gate's own claim-serialisation is what
+	// makes "the family this admission joins" a fact rather than a guess, and
+	// the review's no is an ordinary refusal the model reads and answers
+	// again (quickfan admission review, #1016 B1).
+	if refused := a.considerQuickAdmission(context.Background(), spec); refused != "" {
+		return 0, taskSpec{}, quickRefusal{said: refused}
+	}
+
 	if refused := graph.claimChild(spec.parent); refused != "" {
 		return 0, taskSpec{}, quickRefusal{said: refused, fanFull: true}
 	}
