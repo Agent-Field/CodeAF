@@ -676,10 +676,15 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		TaskRoom:   agent.TaskRoom,
 		// TaskIndex is filled below, from the same shared walk, once this
 		// conversation's transcript is the only thing left to key it by.
-		Ledger:  ledger.read,
-		Memory:  memory,
-		Search:  client,
-		Archive: client.Archive,
+		Ledger: ledger.read,
+		Memory: memory,
+		Search: client,
+		// AND THE ONE WRITE HOME MAKES AGAINST THAT WORLD GOES THROUGH THE SAME
+		// CACHE IT READS. A bare client.Archive landed on the engine's disk and
+		// left what is held saying the opposite, so the row `ctrl+e` put away sat
+		// on the screen until a later beat fetched it back ([hostWorld.archive]
+		// carries the whole of why).
+		Archive: world.archive,
 		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
 		// the machine that runs them, so both halves go over the wire and
 		// neither reads a store on this laptop — the far end answers about the
@@ -1305,10 +1310,12 @@ const hostWorldEvery = 2 * time.Second
 // and the surface draws nothing at all until the far machine has spoken once
 // (internal/tui3's [app.worldKnown]).
 type hostWorld struct {
-	// ask is the wire door, held as a closure for [hostStanding.ask]'s reason:
-	// what this type does is a policy about staleness and blocking, and a test of
-	// that policy should be able to hand it a slow answer without opening a pipe.
+	// ask and put are the two wire doors, held as closures for
+	// [hostStanding.ask]'s reason: what this type does is a policy about
+	// staleness and blocking, and a test of that policy should be able to hand it
+	// a slow answer without opening a pipe.
 	ask func() (session.World, error)
+	put func(dir string, archived bool) error
 
 	// duty is the latch, the clock and the door (chatv3_host_duty.go).
 	duty hostDuty
@@ -1321,7 +1328,7 @@ type hostWorld struct {
 }
 
 func newHostWorld(far hostFar) *hostWorld {
-	h := &hostWorld{ask: far.client.World}
+	h := &hostWorld{ask: far.client.World, put: far.client.Archive}
 	far.arm(&h.duty, "keeping the places current")
 	return h
 }
@@ -1361,6 +1368,49 @@ func (h *hostWorld) fetch() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.held, h.known = world, true
+}
+
+// archive is [tui3.Options.Archive]: the write goes over the wire, and what is
+// held is corrected the instant the engine accepts it.
+//
+// THE ROW MUST LEAVE UNDER THE HAND. `ctrl+e` on home writes and then re-reads
+// the world on the spot, expecting the put-away row to be gone from the rebuild
+// (internal/tui3's home.go says so where the key is read). But the re-read
+// answers from what is HELD — that is the first of this type's two laws — so
+// without this the rebuild redrew the row exactly as it was, and the row only
+// went when a later beat's fetch happened to return and a later beat still
+// happened to rebuild: [hostWorldEvery] of staleness plus up to two of the
+// surface's own three-second beats, which is the several seconds a person sees
+// between pressing the key and watching the row go. This is [hostStanding.save]'s
+// correction applied to the one write home makes against the world, for the same
+// reason and in the same two halves — the held copy is patched, and the entry is
+// aged out so the next reading still asks the engine what it really thinks.
+//
+// A REFUSED WRITE CHANGES NOTHING HERE. Home prints the engine's own refusal
+// ("could not put it away") and a cache that had already moved the row would be
+// this screen disagreeing with the disk the conversation is actually on.
+//
+// THE MATCH IS ON THE SPELLING THE ROW CAME WITH and is not cleaned first: the
+// directory travelled out of this same held world, and over --host it is a path
+// on the ENGINE's machine, which this laptop's separator has no business
+// rewriting.
+func (h *hostWorld) archive(dir string, archived bool) error {
+	if err := h.put(dir, archived); err != nil {
+		return err
+	}
+	dir = strings.TrimSpace(dir)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.held.Projects {
+		rows := h.held.Projects[i].Sessions
+		for j := range rows {
+			if strings.TrimSpace(rows[j].Dir) == dir {
+				rows[j].Archived = archived
+			}
+		}
+	}
+	h.duty.age("")
+	return nil
 }
 
 // prime asks once, in the background, at the moment the door is built.

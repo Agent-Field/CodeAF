@@ -582,3 +582,99 @@ func TestAConversationOpenedBesideKeepsTheRecallStore(t *testing.T) {
 		t.Fatal("a conversation opened beside carries a different recall store from the first")
 	}
 }
+
+// THE ROW LEAVES UNDER THE HAND. `ctrl+e` on home writes and then re-reads the
+// world on the spot, and that re-read answers from what [hostWorld] holds — so
+// a write that did not correct the held copy redrew the put-away row exactly as
+// it was, and the row went several seconds later, when a beat's fetch happened
+// to return and a beat happened to rebuild. This holds the far end still, which
+// is the state the surface is in for the whole of that window, and asks the
+// seam what home would draw.
+func TestPuttingAConversationAwayCorrectsWhatHomeDrawsAtOnce(t *testing.T) {
+	held := make(chan struct{})
+	defer close(held)
+	row := session.SessionRow{ID: "3558", Dir: "/srv/state/projects/-srv-app/3558", Title: "the old one"}
+	var written []string
+	world := &hostWorld{
+		ask: func() (session.World, error) {
+			<-held
+			return session.World{}, nil
+		},
+		put: func(dir string, archived bool) error {
+			written = append(written, dir)
+			if !archived {
+				t.Errorf("ctrl+e on a live row asked for archived=false")
+			}
+			return nil
+		},
+		held: session.World{Projects: []session.Project{{
+			Bucket: "-srv-app", Sessions: []session.SessionRow{row},
+		}}},
+		known: true,
+	}
+
+	if err := world.archive(row.Dir, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if len(written) != 1 || written[0] != row.Dir {
+		t.Fatalf("the put-away did not travel: %+v", written)
+	}
+	// THE VERY NEXT READING IS THE ONE HOME REBUILDS FROM, and no fetch has
+	// returned — the far end is still held above.
+	drawn, known := world.world()
+	if !known {
+		t.Fatal("the seam stopped answering after a write it accepted")
+	}
+	if len(drawn.Projects) != 1 || len(drawn.Projects[0].Sessions) != 1 {
+		t.Fatalf("the write reshaped the world: %+v", drawn.Projects)
+	}
+	if !drawn.Projects[0].Sessions[0].Archived {
+		t.Fatal("home would have redrawn the row it just put away")
+	}
+	// AND THE ENGINE IS STILL ASKED WHAT IT REALLY THINKS. Ageing the entry is
+	// the second half of the correction: the held copy is this surface's belief
+	// about a write it made, never a substitute for the disk's own answer.
+	if !world.duty.due("", hostWorldEvery) {
+		t.Fatal("the next reading would have gone on trusting the patched copy")
+	}
+}
+
+// A REFUSED PUT-AWAY LEAVES THE ROW WHERE IT IS. Home says `could not put it
+// away` on its own line, and a cache that had already moved the row would be
+// this screen disagreeing with the disk the conversation is on.
+func TestARefusedPutAwayLeavesTheConversationOnHome(t *testing.T) {
+	row := session.SessionRow{ID: "3558", Dir: "/srv/state/projects/-srv-app/3558"}
+	world := &hostWorld{
+		ask: func() (session.World, error) { return session.World{}, nil },
+		put: func(string, bool) error { return errors.New("no conversation at that folder") },
+		held: session.World{Projects: []session.Project{{
+			Bucket: "-srv-app", Sessions: []session.SessionRow{row},
+		}}},
+		known: true,
+	}
+	err := world.archive(row.Dir, true)
+	if err == nil || err.Error() != "no conversation at that folder" {
+		t.Fatalf("archive = %v, want the engine's own refusal", err)
+	}
+	if world.held.Projects[0].Sessions[0].Archived {
+		t.Fatal("a refused write put the row away anyway")
+	}
+}
+
+// AND BRINGING ONE BACK IS THE SAME CORRECTION IN THE OTHER DIRECTION. `ctrl+e`
+// from inside the archive is its own undoing, and a row that stayed drawn as
+// put-away would make the key look like it had done nothing.
+func TestBringingAConversationBackCorrectsTheHeldWorldToo(t *testing.T) {
+	row := session.SessionRow{ID: "3558", Dir: "/srv/state/projects/-srv-app/3558", Archived: true}
+	world := &hostWorld{
+		ask:  func() (session.World, error) { return session.World{}, nil },
+		put:  func(string, bool) error { return nil },
+		held: session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}},
+	}
+	if err := world.archive(row.Dir, false); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if world.held.Projects[0].Sessions[0].Archived {
+		t.Fatal("the row came back on the engine's disk and stayed away on the screen")
+	}
+}
