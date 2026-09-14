@@ -1798,8 +1798,11 @@ a `…` rather than repeated anywhere else.
 open. It is there only while there is something behind the fold.
 
 **With the fold open, one dim `closed` marks where the tabs stop.** Everything above that
-word has a tab on the row; everything below it does not. It is not a row — the cursor skips
-it and a click on it does nothing — and it is not drawn at all while the list is only tabs.
+word has a tab on the row; everything below it does not. It is spaced the way the head's
+`open` is — a blank line above it and a blank below, so it reads as a heading over the rows
+under it — and on a card too short for air it keeps the word and gives up the blanks. It is
+not a row: the cursor skips it and a click on it does nothing. It is not drawn at all while
+the list is only tabs.
 
 **The `✕` on a row does not mean the tab is closed.** It means that row will not open, and
 it is always beside the reason: `open in another window`, or `that folder is gone`. A

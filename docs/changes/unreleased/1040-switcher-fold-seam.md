@@ -20,7 +20,11 @@ row refuses — and on one of its two cases said nothing at all about why.
 
 The seam is a word rather than a rule, because the house rule is that nothing is
 outlined and this surface separates things with ink. It is the fold's half of the
-`open` the head already says.
+`open` the head already says, and it is spaced the way that head is spaced — a
+blank above and a blank below, the same three lines as `open`, its blank and its
+first row. Drawn tight against the rows it sat between two lists and read as
+belonging to neither. The air yields on a short card and the word does not, which
+is the rule the card's own top and bottom air already follows.
 
 Not changed: the `✕` itself. That a person presses `✕` to close a tab and reads
 `✕` as a refusal one line below is a real collision in the vocabulary, but the

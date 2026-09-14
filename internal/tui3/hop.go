@@ -1344,19 +1344,35 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// column now takes ([hopLine]). Asked for by the owner.
 	// AND THE WORD THAT SAYS WHERE THE OPEN ONES STOP, which is the fold's own
 	// half of the head's `open` ([hopClosedLabel]).
-	label := -1
+	//
+	// IT IS SPACED THE WAY THE HEAD IS SPACED, which is the whole of why it reads
+	// as a heading and not as a row: one blank above it and one below, exactly as
+	// `open` has the card's own air above it and a blank under it before the first
+	// row. Drawn tight against the rows it sat between two lists and belonged to
+	// neither. The air goes on a short card, on the same rule as the card's own
+	// (`verticalPad` above): air yields first, and the heading itself does not.
+	label, seamAir := -1, verticalPad
 	if a.hop.all && a.hop.tabs > 0 && a.hop.tabs < len(a.hop.rows) {
 		label = a.hop.tabs
 	}
 	available := max(1, height-len(lines)-topEdge-foot)
 	if label >= 0 {
-		available = max(1, available-1)
+		available = max(1, available-1-2*seamAir)
 	}
 	start := max(0, a.hop.at-available+1)
 	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
 		if at == label {
+			// THE BLANK ABOVE IS NOT DRAWN AT THE TOP OF THE LIST, where the head's
+			// own blank is already the air above this word and a second one would be
+			// a gap nobody put there.
+			if seamAir > 0 && at > start {
+				lines = append(lines, inside("", false, false))
+			}
 			lines = append(lines, inside(pal.dim(hopClosedLabel), false, false))
+			if seamAir > 0 {
+				lines = append(lines, inside("", false, false))
+			}
 		}
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
 		hovered := a.hot.kind == hoverHop && a.hot.index == at

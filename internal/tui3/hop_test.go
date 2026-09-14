@@ -1235,8 +1235,35 @@ func TestTheFoldSaysWhereTheTabsStop(t *testing.T) {
 	if label < 0 {
 		t.Fatalf("the open fold drew no seam:\n%s", plain(strings.Join(body, "\n")))
 	}
-	if first != label+1 {
+	// AND IT IS SPACED THE WAY THE HEAD IS: one blank line above it and one
+	// below, so it reads as a heading over the rows under it rather than as a row
+	// wedged between two lists. The head is the measure — `open`, a blank, then
+	// its first row — and this is the same three lines.
+	blank := func(at int) bool {
+		return at >= 0 && at < len(body) && strings.TrimSpace(strings.Trim(plain(body[at]), "│")) == ""
+	}
+	if !blank(label - 1) {
+		t.Fatalf("no air above the seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	if !blank(label + 1) {
+		t.Fatalf("no air below the seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	if first != label+2 {
 		t.Fatalf("the seam is at %d and the first closed row at %d:\n%s", label, first, plain(strings.Join(body, "\n")))
+	}
+	// THE HEAD IS SPACED THE SAME WAY, which is what "equally spaced" means here:
+	// the word, a blank, the first row of its own list.
+	head := -1
+	for at, line := range body {
+		if strings.Contains(plain(line), hopOpenWord) && strings.Contains(plain(line), "enter open") {
+			head = at
+		}
+	}
+	if head < 0 || !blank(head+1) {
+		t.Fatalf("the head is at %d and is not followed by its blank:\n%s", head, plain(strings.Join(body, "\n")))
+	}
+	if first := head + 2; !strings.Contains(plain(body[first]), "openrouter price scrape") {
+		t.Fatalf("the head's own first row is not two lines under it:\n%s", plain(strings.Join(body, "\n")))
 	}
 	// AND THE SEAM IS NOT A ROW: the cursor cannot land on it and a press on it
 	// opens nothing.
