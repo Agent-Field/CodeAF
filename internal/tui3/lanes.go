@@ -1325,14 +1325,6 @@ func (a *app) pinnedNow() string {
 	return strings.ToLower(a.laneForceNow().name)
 }
 
-// laneStoodDown is the machine the `lane` row still names while no request asks
-// for it, lowercased like every other lane name here and empty while the row and
-// the wire agree. It is the half of [laneInForce] a surface needs in order to
-// say `auto` and still say whose name came off.
-func (a *app) laneStoodDown() string {
-	return strings.ToLower(a.laneForceNow().standDown)
-}
-
 // laneForceNow is [laneInForce] for the model this conversation is on, with the
 // four states where this surface may name no machine at all answered first: a
 // session over a connection (the pin is the far machine's and this process

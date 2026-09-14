@@ -898,6 +898,16 @@ type sheet struct {
 	conns     Connections
 	modelRows func() []connect.Status
 	sources   modelsource.Set
+	// force is what the wire will do with the `lane` row, asked of the surface
+	// that owns the four states where no machine may be named at all — a hosted
+	// window, routing `off`, no model, a model served direct (lanes.go's
+	// [app.laneForceNow]).
+	//
+	// IT IS A DOOR AND NOT A SNAPSHOT, which is the one field here that is. The
+	// answer moves inside this panel — a pin written on the row two lines up
+	// changes it in the same keystroke — so a value copied when the panel opened
+	// would be the tail describing the pin before the one a person just set.
+	force func() laneForce
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1204,6 +1214,7 @@ func (a *app) raiseSettings() {
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
 		sources:      a.sources,
+		force:        a.laneForceNow,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
 		routing:      a.routing,
@@ -2922,7 +2933,7 @@ func (s *sheet) laneWord(item sheetItem) string {
 	// second time: the two rows are two readings of one fact, and a panel where
 	// they could disagree would be a panel that is wrong about one of them.
 	if row, ok := s.registry.Row(config.LaneSettingKey(talkSlot)); ok {
-		if tail := laneRowTail(row.Value(), laneInForce(s.sessionModel)); tail != "" {
+		if tail := laneRowTail(row.Value(), s.laneForce()); tail != "" {
 			return tail
 		}
 	}
@@ -2939,6 +2950,16 @@ func (s *sheet) laneWord(item sheetItem) string {
 		return "auto (" + strings.ToLower(best.Name) + " now)"
 	}
 	return ""
+}
+
+// laneForce is what the wire will do with the lane row, and the empty answer for
+// a panel nobody handed the door to — a test's bare sheet, which has no surface
+// behind it to ask.
+func (s *sheet) laneForce() laneForce {
+	if s.force == nil {
+		return laneForce{}
+	}
+	return s.force()
 }
 
 // laneRowTail is the model row's machine tail composed from the two facts that
