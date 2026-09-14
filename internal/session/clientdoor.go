@@ -189,8 +189,27 @@ func accountForService(service modelsource.Connected) modelAccount {
 // newProviderClient is construction shared by New and a live cross-service
 // switch. The same routing and fallback seams must survive replacement; a
 // second, smaller constructor would silently change how the next turn runs.
+// routingInForce is the row THIS SESSION'S calls answer to: its own where a
+// caller handed one down, and the row installed in this process otherwise.
+//
+// It is the same rule the adapter applies one layer down
+// ([provider.Client.routingChoice]) and it is stated here because the gates on
+// this side have to agree with it — a lane beat that stayed running because a
+// launch snapshot said `latency` would be measuring endpoints for a person who
+// has since turned routing off.
+func (c Config) routingInForce() provider.RoutingStrategy {
+	if strings.TrimSpace(string(c.Routing)) != "" {
+		return c.Routing
+	}
+	return provider.RoutingNow()
+}
+
 func newProviderClient(config Config, model string) (*provider.Client, error) {
 	settings := config.clientConfig(model, providerTimeout)
+	// AN EMPTY ROW HERE IS NOBODY HAVING CHOSEN, and that is what a launch from
+	// a profile leaves behind: the client then reads the row this process
+	// installed, live, on every call ([Config.Routing] says why). A caller that
+	// really carries a row of its own still hands it down and still wins.
 	settings.Routing = provider.StaticRouting(config.Routing)
 	settings.Fallbacks = config.ModelFallbacks
 	settings.NearestModels = config.NearestModels

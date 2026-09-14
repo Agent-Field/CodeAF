@@ -517,13 +517,50 @@ func laneFor(views []laneView, name string) (laneView, bool) {
 
 // ── WHICH LANE IS ANSWERING ─────────────────────────────────────────────────
 
+// laneForce is WHAT THE WIRE WILL DO WITH THE PIN, read once: the machine the
+// next request for this model will demand, and the machine the person's row
+// still names after the wire has stopped asking for it.
+type laneForce struct {
+	// name is the machine the next request demands, and empty when it demands
+	// none — `auto`, `openrouter`, a pairing the wire has retired, or a base
+	// that carries no lane choice at all.
+	name string
+	// standDown is the machine the `lane` row names while nothing asks for it,
+	// and empty while the row and the wire agree. It is what lets a row say
+	// `auto` and still say whose name came off it.
+	standDown string
+}
+
+// laneInForce is THE ONE READING every place on this surface that names the
+// machine behind the conversation's model makes — the chip on the model word,
+// the settings panel's `lane` tail, the mark inside the picker's fold, and the
+// `via` on a row.
+//
+// IT IS THE TRANSPORT'S ANSWER AND NEVER THE PROFILE ROW'S ([provider.PinNow]).
+// The chip was drawn from the row while the wire asked the transport, and on
+// 2026-09-13 a pairing the wire had retired mid-session left `@morph` on the
+// model word over three turns another machine answered (issue #1022). A surface
+// may name a machine only while a request would demand it. The row a person
+// wrote is still theirs and still unchanged on disk — it is on the `lane` row,
+// which is where they go to look at it, and pinning again puts it straight back.
+//
+// AND THE MODEL IS FOLDED BY THE TRANSPORT AND NOT HERE, which is the other
+// half of that defect: the retirement is written under the ledger's spelling of
+// the model and this surface holds its own, so the question goes through the
+// door that folds rather than against a key built on this side.
+func laneInForce(model string) laneForce {
+	demanded, standDown := provider.PinNow(model)
+	return laneForce{name: demanded, standDown: standDown}
+}
+
 // laneNow is the lane a request for this model would go to, and false when
 // nothing here can say. THE RULE IS THREE RUNGS AND IT IS STATED ON PURPOSE,
 // because a `via` on a picker row that disagreed with the `via` on the status
 // line would be two answers to one question:
 //
-//  1. A PIN WINS. If the slot's row names a machine, that is the machine, and
-//     the surface never second-guesses a person who has chosen.
+//  1. A PIN WINS — the pin THE WIRE WILL ACT ON ([laneInForce]) and not the row
+//     on disk, which are the same fact until the wire retires a pairing and the
+//     row goes on naming a machine nothing asks for.
 //  2. THEN THE CHOOSER. It is pure and cheap, so the picker asks it exactly
 //     what a request would ask it, and draws the top of the order it gets
 //     back. An empty chooser has no opinion, which is a real answer.
@@ -534,7 +571,7 @@ func laneFor(views []laneView, name string) (laneView, bool) {
 // It is deliberately not "whoever served last": the last lane is a fact about
 // the previous answer, and this row is a claim about the next one.
 func (a *app) laneNow(model string, views []laneView) (string, bool) {
-	if name, pinned := config.LanePinned(a.profileDir, laneSlotFor(model)); pinned {
+	if name := laneInForce(model).name; name != "" {
 		return name, true
 	}
 	name := laneAuto(a.routing, model, views, a.now())
@@ -631,6 +668,10 @@ func (a *app) armLanes(p *picker, slot string) {
 	}
 	p.laneSlot = slot
 	p.pin = config.LaneAt(a.profileDir, slot)
+	// AND THE MACHINE THE WIRE WOULD ACTUALLY ASK FOR, beside the row and not
+	// instead of it. The row tells the fold's three rungs apart and this is what
+	// any row that draws a machine's NAME may draw ([picker.force]).
+	p.force = a.pinnedNow()
 	p.guard = config.LaneGuardAt(a.profileDir)
 	p.ascii = a.pal.ascii
 }
@@ -651,6 +692,19 @@ func (a *app) routingOff() bool { return a.routing == config.RoutingOff }
 // (palette.go's [app.pickerKey]) and the settings panel's model and lane rows
 // (settings.go's [app.sheetSelectKey]) — and a pin written two ways is a pin
 // that drifts the first time one of the two is fixed.
+// ENTER ON THE MACHINE ALREADY IN FORCE TAKES THE PIN OFF. It is a toggle on
+// the same key that put the pin on, which is the only way back to `auto` a
+// person can find without being told: the `auto` row sits above every machine in
+// the fold, so clearing a pin was sixteen presses of `↑` past all of them — and
+// one press too many lands on another model's row, where enter switches the
+// model instead (issue #1022). The `auto` row is still there and still the
+// explicit way to say it.
+//
+// IT IS KEYED ON WHAT THE WIRE WOULD DEMAND ([laneInForce]) AND NOT ON THE ROW,
+// which is what keeps the other promise the manual makes: once the wire has
+// retired a pairing the row still names that machine and nothing is asking for
+// it, so enter there is a person saying "try again" and puts the pin straight
+// back rather than quietly clearing the row they were re-stating.
 func (a *app) applyLaneChoice(model string, row pickRow, lanes []laneView) {
 	switch {
 	case row.lane == laneAutoAt:
@@ -658,7 +712,11 @@ func (a *app) applyLaneChoice(model string, row pickRow, lanes []laneView) {
 	case row.lane == laneRoutAt:
 		a.setLaneRouterOnly(model)
 	case row.lane >= 0 && row.lane < len(lanes):
-		a.pinLane(model, lanes[row.lane].Name)
+		if name := lanes[row.lane].Name; strings.EqualFold(laneInForce(model).name, name) {
+			a.clearLanePin(model)
+		} else {
+			a.pinLane(model, name)
+		}
 	}
 }
 
@@ -1220,6 +1278,36 @@ func (a *app) laneRowChanged() {
 	provider.RepinLane(config.LanePinAt(a.profileDir, slot))
 }
 
+// routingRowChanged is [app.laneRowChanged] for the row ABOVE the lane: the
+// routing word this surface just wrote, handed to the transport and read back
+// into everything on this side that explains it.
+//
+// A ROUTING CHANGE LANDS ON THE NEXT MESSAGE AND NOT THE NEXT SESSION. The row
+// went to disk and nowhere else, and the session's own clients had been handed
+// the word that was there at launch — so a person cycled `routing` to `simple`,
+// watched the row say so, and went on being routed by the old word until they
+// relaunched, with the `lane` row beside it still explaining `auto` in the old
+// word's terms on the same screen (issue #1022). The transport's own knob is
+// process-wide for exactly this ([config.InstallRoutingRow]), the conversation's
+// clients read it live, and the two fields below are what this surface says
+// about it.
+//
+// THE FIELDS ARE RE-READ AND NOT ASSUMED. [app.routing] is the row RESOLVED —
+// an unwritten or unknown word is the shipped row — so the surface asks the one
+// door that resolves it rather than keeping the raw word it just applied.
+func (a *app) routingRowChanged() {
+	if a.hosted() {
+		return
+	}
+	config.InstallRoutingRow(a.profileDir)
+	a.routing = config.RoutingAt(a.profileDir)
+	// The panel holds its own copy for the reason it holds the session's model
+	// (settings.go's [sheet.routing]), and the copy is what the `lane` row's
+	// explanation is drawn from — so a row that changed on this frame must not
+	// leave the sentence under it describing the row before it.
+	a.sheet.routing = a.routing
+}
+
 // ── THE PIN, WRITTEN ON THE MODEL ───────────────────────────────────────────
 
 // laneAtSign is what joins a model to the machine it is pinned to. It is the
@@ -1228,16 +1316,33 @@ func (a *app) laneRowChanged() {
 const laneAtSign = "@"
 
 // pinnedNow is the machine this conversation's requests are held to, as the
-// transport will act on it ([provider.PinnedFor]), lowercased the way every
-// lane name this surface draws is — and empty on `auto`, on `openrouter`, on a
-// pin the wire has retired for this model, under routing `off` (which sends no
-// lane at all, [app.routingOff]), and over a connection, where the pin in force
-// is the far machine's and this process cannot see it.
+// transport will act on it ([laneInForce]), lowercased the way every lane name
+// this surface draws is — and empty on `auto`, on `openrouter`, on a pin the
+// wire has retired for this model, under routing `off` (which sends no lane at
+// all, [app.routingOff]), and over a connection, where the pin in force is the
+// far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
+	return strings.ToLower(a.laneForceNow().name)
+}
+
+// laneStoodDown is the machine the `lane` row still names while no request asks
+// for it, lowercased like every other lane name here and empty while the row and
+// the wire agree. It is the half of [laneInForce] a surface needs in order to
+// say `auto` and still say whose name came off.
+func (a *app) laneStoodDown() string {
+	return strings.ToLower(a.laneForceNow().standDown)
+}
+
+// laneForceNow is [laneInForce] for the model this conversation is on, with the
+// four states where this surface may name no machine at all answered first: a
+// session over a connection (the pin is the far machine's and this process
+// cannot see it), routing `off` (no lane is sent), no model, and a model served
+// by a connected service direct rather than through the router.
+func (a *app) laneForceNow() laneForce {
 	if a.hosted() || a.routingOff() || a.model == "" || a.modelIsDirect(a.model) {
-		return ""
+		return laneForce{}
 	}
-	return strings.ToLower(provider.PinnedFor(a.model))
+	return laneInForce(a.model)
 }
 
 // modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),

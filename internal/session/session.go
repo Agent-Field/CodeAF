@@ -1115,6 +1115,14 @@ type Config struct {
 	// velocity.go). EMPTY IS NOBODY HAVING CHOSEN: the session falls to the row
 	// this process installed and, with none installed, to the shipped row
 	// ([provider.DefaultRouting]), which sends no preference of ours at all.
+	//
+	// AND EMPTY IS WHAT A LAUNCH FROM A PROFILE LEAVES IT AT, on purpose: the
+	// profile's row is installed process-wide instead (internal/config's
+	// InstallLaneRows), so a person who cycles `routing` in the settings panel
+	// is answered by the very next request rather than by the next launch
+	// (issue #1022). What still fills this field is a caller carrying a row that
+	// is not this process's to read — an engine host, a task child — and such a
+	// caller still wins over the installed row.
 	Routing provider.RoutingStrategy
 
 	// CompactEnabled gates automatic compaction. Manual compaction via the

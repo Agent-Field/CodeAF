@@ -38,7 +38,10 @@ func rowfitPicker(t *testing.T) *app {
 	// (palette.go's [laneAutoSaid]).
 	a.routing = config.RoutingLatency
 	typeLine(t, a, "/model")
-	a.pick.pin = "CoreWeave"
+	// THE ROW AND WHAT THE WIRE WOULD DEMAND ARE BOTH SET, because they are two
+	// different fields on the list and the row a machine's NAME is drawn from is
+	// the second ([picker.force]).
+	a.pick.pin, a.pick.force = "CoreWeave", "CoreWeave"
 	return a
 }
 

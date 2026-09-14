@@ -206,7 +206,11 @@ lives in this process:
   launch takes the host road.
 - **`--once`**, which never starts a host — a resident process left behind by a headless
   command is a surprise — though it joins one that is already there.
-- **`--debug`**, because the model-call record is written by the process making the calls.
+- **a run that is recording** — `--debug`, or `AFORGE_DEBUG=1` in the shell that started
+  it — because the model-call record is written by the process making the calls, and over
+  a socket that process is the host, which was never told to record. Either way of asking
+  keeps the conversation here, so the folder holds the request bodies and not just a
+  header.
 - **`--no-host`**, the escape hatch, for the day the host is the thing that is wrong.
 
 **The per-launch postures travel with the launch.** `--yolo`, `--no-compact`, `--one-model`,

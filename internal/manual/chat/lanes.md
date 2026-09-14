@@ -230,6 +230,27 @@ The hint slot says which: `→ lanes · enter switch · esc` on a model,
 `enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
 
+## Going back to auto — unpinning with the same key that pinned, and filtering inside an open fold
+
+**`enter` on the machine you are already pinned to takes the pin off.** It is a toggle on
+the one key that put it there, and the hint slot says so while the cursor is on that row:
+`enter unpin · ← back · esc`. The row goes back to `auto`, the `@machine` comes off the
+model's name, and the next request carries no machine at all. The `auto` row at the top of
+the fold still does the same thing and is still the explicit way to say it — the toggle
+exists because reaching that row meant walking `↑` past every machine in the list, and one
+press too far lands on another model's row, where `enter` switches the model instead.
+
+One case is deliberately not a toggle: after the machine you pinned has refused the model
+(below), nothing is asking for it any more, so `enter` there **pins it again** rather than
+unpinning — which is the "pinning again puts it straight back" the refusal promises.
+
+**Typing in the box while a fold is open filters the machines, not the models.** With
+`morph`'s fold open, typing `mor` narrows it to the machines whose names carry those
+letters and leaves the fold standing. The matching is the same as for a model id — every
+word you type has to match, prefix first — and a query that matches none of that model's
+machines falls through to filtering the model list as it always has, closing the fold with
+it.
+
 **A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
 line where the machines would be:
 `no machine has been measured for this model yet — machines show up after its first answer`.
@@ -273,7 +294,11 @@ What that means, exactly:
 - **the line stays in the conversation.** It is not one of the dim retry notes
   the work chip collapses when an answer lands, so it is still on the screen
   after the turn finishes;
-- **your settings row is not touched.** It still reads `pinned: coreweave`;
+- **your settings row is not touched.** The `lane` row on the Providers tab still reads
+  `pinned: coreweave`, exactly as you wrote it. What changes is everything that names the
+  machine **requests are going to**: the `@coreweave` comes off the model's name, the tail
+  on the `your model` row reads `auto (coreweave cannot serve this model)`, and the fold's
+  mark moves to `auto`;
 - **every other model still goes to that machine.** The refusal was about one
   pairing;
 - **pinning again puts it straight back**, on the very next request — and that
