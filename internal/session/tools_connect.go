@@ -38,7 +38,7 @@ const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"descriptio
 // model to stop at exactly the moment the current turn can carry on.
 const sameTurnToolArrival = "The account's tools are in your tool list from your very next request, which is still this turn — carry on and use them now"
 
-const useServiceDescription = "Pick up one account's tools. " + sameTurnToolArrival + ". If it is not connected, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs. Use services first if you do not know the id."
+const useServiceDescription = "Pick up one account's tools. " + sameTurnToolArrival + ". If it is not connected, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs."
 
 const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"string","description":"The id of the account, as services lists it — for example google"},"tools":{"type":"string","description":"Only these of the tools the account serves, by name, separated by commas. Leave it out to take everything it brings; an account with too many to carry says so and lists them"}},"required":["service"],"additionalProperties":false}`
 

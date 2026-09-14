@@ -284,7 +284,11 @@ var beltFacts = []beltFact{{
 	holds:  Config.mayWatch,
 	absent: "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
 }, {
-	tools: []string{"use_service"},
+	// BOTH NAMES, because the sentence spells both and each is on some belts
+	// and off others: `services` is the look, `use_service` the pick-up, and the
+	// law that reads this field is what keeps the page from naming either one
+	// where it is not there (prompt_belt_test.go).
+	tools: []string{"services", "use_service"},
 	holds: Config.hasConnect,
 	// ONE EXISTENCE LINE, AND THE ETIQUETTE RIDES WITH THE VERBS IT GOVERNS.
 	// This was three bullets and 1,142 bytes, and each of the two that went is
@@ -298,7 +302,12 @@ var beltFacts = []beltFact{{
 	// the same account and that nothing connects without the person agreeing.
 	// What is left is the one thing the page must say BEFORE any of them is on
 	// the belt: that the accounts are there and which verb reaches them.
-	present: "- The person has accounts you can act in; NEVER answer \"I don't have access to your X\" before calling `services`: when the work needs one that is not connected yet, ask for it through `use_service`, the person connects it, and its tools arrive on your next request of this same turn.",
+	//
+	// AND WHO DOES THE CONNECTING IS NOT SAID TWICE. That the person is the one
+	// who agrees is [useServiceDescription]'s own sentence, in front of the model
+	// at the moment it calls; every byte here is sent again on every request of
+	// every turn, so this line carries only what has to be true before the call.
+	present: "- The person has accounts you can act in; NEVER answer \"I don't have access to your X\" before calling `services`: ask through `use_service` for one that is not connected yet, and its tools arrive on your next request of this same turn.",
 	// NOTHING IS SAID WHERE THERE IS NO HUB. An agent with no accounts seam has
 	// no account to act in, no consent to relay and nothing to do instead.
 	absent: "",
