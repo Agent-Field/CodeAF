@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // fakeV3Catalog is the seam [v3Catalog] exists for: catalog rows with no cache

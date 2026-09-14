@@ -86,9 +86,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // presenceName is the file, inside one session's folder. It is spelled here

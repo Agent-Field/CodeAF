@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // writeFlatSession lays out one session the way the flat layout wrote it: the

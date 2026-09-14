@@ -52,10 +52,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (

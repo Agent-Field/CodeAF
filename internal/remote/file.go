@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // attachmentStampFormat is the sortable head of an attachment's name, exactly as

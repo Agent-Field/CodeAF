@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // lessonClient stands in for the worker model and

@@ -27,7 +27,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // downloadTimeout bounds the whole transfer. The artifacts are six or seven

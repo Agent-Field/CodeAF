@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE CONTROLS SCREEN'S OWN TESTS (onboarding.go).

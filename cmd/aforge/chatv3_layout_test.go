@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // writeV3Session puts one conversation on disk the way the door writes it: a

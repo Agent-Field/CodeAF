@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // reopen closes one handle on the graph and opens another over the same file,

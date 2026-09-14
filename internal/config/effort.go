@@ -1,6 +1,6 @@
 package config
 
-import "github.com/Agent-Field/aforge-v2/internal/effort"
+import "github.com/Agent-Field/codeaf/internal/effort"
 
 // The install's own rung on the effort ladder, written down.
 //

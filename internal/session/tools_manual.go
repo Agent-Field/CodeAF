@@ -25,8 +25,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // manualSections is how much of the manual one read returns. It is the same

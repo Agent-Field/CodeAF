@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE ROLES SECTION, from the three sides a person meets it: what it says about

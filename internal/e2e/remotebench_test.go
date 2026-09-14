@@ -73,7 +73,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 // ── what the far machine is expected to hold ────────────────────────────────

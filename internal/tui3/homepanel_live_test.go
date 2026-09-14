@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE LIVE PANELS (docs/design/home-mission-control/DESIGN.md §3 P1–P3) ───

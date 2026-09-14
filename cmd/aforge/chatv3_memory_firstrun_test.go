@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The first launch on a machine that has never run aforge must come up holding

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE OTHER HALF OF THE ADAPTIVE RUN — and it is a shorter half than the

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // machineKey is what a launch on THIS machine would authenticate with, read once

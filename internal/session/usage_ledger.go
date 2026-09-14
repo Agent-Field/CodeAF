@@ -96,9 +96,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // UsageLedgerName is the file, under the v3 home directory

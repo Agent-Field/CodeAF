@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // ── WHERE A BELIEF SLEEPS ───────────────────────────────────────────────────

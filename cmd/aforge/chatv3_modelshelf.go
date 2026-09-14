@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // v3ModelShelf is the catalog the surface's model lists read, behind ONE

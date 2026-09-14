@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // THE INK RUN OF 2026-08-29, AT THE MOMENT ITS MONEY DISAPPEARED.

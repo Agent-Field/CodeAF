@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // fakeRunner is the session lane, stood in for: it remembers what it was asked

@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Failed is a terminal failure in the parts a person is owed. Every field is

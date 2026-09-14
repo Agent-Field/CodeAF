@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/head"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/head"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func wordsCatalog(t *testing.T) *catalog.Catalog {

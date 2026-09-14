@@ -82,8 +82,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // taskDescription is what the model reads before it calls. THE FAN CAP IS

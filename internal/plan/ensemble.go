@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // Ensemble execution is the second way to spend parallelism, and it is not

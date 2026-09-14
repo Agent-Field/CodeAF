@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 func registry(t *testing.T, dir string) *Settings {

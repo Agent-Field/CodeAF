@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 func TestStandingE2E(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 // hostFar is the far machine as the background duties are given it: the

@@ -28,15 +28,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
-	"github.com/Agent-Field/aforge-v2/internal/router"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // HeldPoints is THE checklist this delivery is judged against: the behaviours

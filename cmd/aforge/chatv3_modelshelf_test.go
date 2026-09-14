@@ -11,12 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // shelfRouter is a router with no network behind it: it lists rows, or fails

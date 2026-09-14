@@ -23,9 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // Create validates, assigns an id when there is none, stamps Created, Updated

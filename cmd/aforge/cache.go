@@ -28,7 +28,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/cachedir"
+	"github.com/Agent-Field/codeaf/internal/cachedir"
 )
 
 // cacheCleanWord is what a person types to go through with the deletion, and it

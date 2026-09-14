@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // ── what a repair round actually changed, and what that lets it close ────────

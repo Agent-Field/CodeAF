@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/workspace"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 const collectionsSummary = `  aforge collections [list] [--json]    organize chat, work and file references`

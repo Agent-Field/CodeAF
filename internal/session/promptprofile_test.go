@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // leanConfig is a bare config on a named window, which is all the derivation

@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // A TASK HANDED OFF IN A CONVERSATION RUNS ON THE CREW'S OWN WORKER (#312).

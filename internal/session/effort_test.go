@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // ── the rung survives the process ───────────────────────────────────────────

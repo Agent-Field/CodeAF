@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The ask a script submits is the specification, and `aforge do` promises to

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // THE BIG HANDS, and whether the conversation actually has them.

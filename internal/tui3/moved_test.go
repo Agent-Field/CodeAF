@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ENTER ON AN ENGINE-HELD ROW IS THE ORDINARY OPEN. No arm, no confirmation, no

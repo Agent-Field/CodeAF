@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // demoOrder is one standing order, in two halves: the item as it is created,

@@ -64,9 +64,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // engineConn is one connection to an engine and the one way to give it back.

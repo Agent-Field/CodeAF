@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/revision"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // unreachedNote is what a gate that could not be reached leaves on the

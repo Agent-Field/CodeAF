@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/relay"
 	"golang.org/x/crypto/curve25519"
 )
 

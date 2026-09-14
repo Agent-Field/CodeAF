@@ -31,7 +31,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // folderLander is the session's landing seam, asserted rather than required of

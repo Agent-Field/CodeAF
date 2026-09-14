@@ -3,7 +3,7 @@ package resident
 import (
 	"strings"
 
-	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+	executor "github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // The two sentences a node gets when the leaf holding it ran out. They are in

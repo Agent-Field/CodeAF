@@ -9,8 +9,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/prose"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/prose"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // A workspace with one real file in it, so that the honesty rule has something
@@ -88,7 +88,7 @@ func TestOnlyAPathThatExistsBecomesALink(t *testing.T) {
 		{"v2.0", false},
 		{"1/2", false},
 		{"4:3", false},
-		{"github.com/Agent-Field/aforge-v2", false},
+		{"github.com/Agent-Field/codeaf", false},
 		{"https://example.com/README.md", false},
 		{"../../../etc/passwd", false}, // climbs out of the workspace
 		{"", false},

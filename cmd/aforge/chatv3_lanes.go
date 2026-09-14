@@ -17,8 +17,8 @@ package main
 // gets fixed on one road and stays dark on the other.
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // v3Lanes is what a conversation may do, in the three answers that depend on

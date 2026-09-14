@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // chatWindow is everything one process owns over a durable graph: the store it

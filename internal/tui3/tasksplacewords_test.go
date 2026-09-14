@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // A ROW SAYS ITS STATE ONCE, WHOEVER WROTE THE RECORD IT IS READ FROM.

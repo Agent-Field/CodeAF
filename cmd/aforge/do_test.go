@@ -14,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/router"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	homepkg "github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The whole point of `do` in one test: a headless run is not the static

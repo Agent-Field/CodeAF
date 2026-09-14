@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 func TestAPickerCacheForOneServiceIsNeverServedToAnother(t *testing.T) {

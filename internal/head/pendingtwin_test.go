@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The bug, replayed from the user's own journal (2026-08-11): "get me a list

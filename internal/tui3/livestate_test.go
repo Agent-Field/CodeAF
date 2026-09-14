@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // revealLump is a paragraph a stalled wire dumps in one event: past

@@ -108,7 +108,7 @@ func TestRenderKeepsTheHeadlineVisibleAndTheClaimsOneFoldAway(t *testing.T) {
 	if !strings.Contains(out, "## v0.2.0 — 2026-09-05") || !strings.Contains(out, "### Changed") {
 		t.Fatalf("headings missing:\n%s", out)
 	}
-	if !strings.Contains(out, "- **the loud one** — [#82](https://github.com/Agent-Field/aforge-v2/pull/82) · `build`") {
+	if !strings.Contains(out, "- **the loud one** — [#82](https://github.com/Agent-Field/codeaf/pull/82) · `build`") {
 		t.Fatalf("headline is not one plain line:\n%s", out)
 	}
 	if !strings.Contains(out, "<details><summary>1 thing that is no longer true</summary>") {

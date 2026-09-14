@@ -132,7 +132,7 @@ func TestAWrapperAloneIsNoSignature(t *testing.T) {
 // The diagnostic line is chosen past Go's package header, which is the same
 // string for every different error in one package.
 func TestTheDiagnosticLineSkipsThePackageHeaderAndTheWrapper(t *testing.T) {
-	line, found := fixDiagnosticLine("# github.com/Agent-Field/aforge-v2/internal/session\ninternal/session/x.go:4:2: undefined: foo\n\nCommand exited with code 1")
+	line, found := fixDiagnosticLine("# github.com/Agent-Field/codeaf/internal/session\ninternal/session/x.go:4:2: undefined: foo\n\nCommand exited with code 1")
 	if !found {
 		t.Fatal("a build failure should have a diagnostic line")
 	}

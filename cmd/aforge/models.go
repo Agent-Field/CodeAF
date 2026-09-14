@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/router"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // runModels prints what the harness has learned about its panel.

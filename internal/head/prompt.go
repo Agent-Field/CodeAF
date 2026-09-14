@@ -1,6 +1,6 @@
 package head
 
-import "github.com/Agent-Field/aforge-v2/internal/manual"
+import "github.com/Agent-Field/codeaf/internal/manual"
 
 // One prompt, five sections: who you are, what you have, judgment, gates, voice.
 //

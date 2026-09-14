@@ -22,7 +22,7 @@ import (
 
 	amp "github.com/amp-labs/connectors/providers"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	"github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 func main() {

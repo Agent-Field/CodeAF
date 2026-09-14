@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
+import "github.com/Agent-Field/codeaf/internal/session"
 
 // taskReviewPendingWord is the ROSTER'S remaining word for a landing aforge is
 // deciding, and it is on its way out: `awaiting review` is deleted as

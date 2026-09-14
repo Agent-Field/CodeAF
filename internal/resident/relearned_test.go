@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The five wordings of one lesson, taken from the user's own notebook. Each was

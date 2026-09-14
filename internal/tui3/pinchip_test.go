@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── THE PIN A SURFACE NAMES IS THE PIN THE WIRE WOULD DEMAND ────────────────

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // mustEncode is one document as its bytes, for the tests that hand a file

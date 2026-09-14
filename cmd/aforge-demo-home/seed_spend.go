@@ -18,9 +18,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // demoModels are the three the demo machine has spent money on. They are real

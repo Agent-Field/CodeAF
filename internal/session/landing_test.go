@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // These are the tests for Decision 26's second half: NOTHING OF OURS LIVES IN

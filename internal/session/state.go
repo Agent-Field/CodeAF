@@ -51,7 +51,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const (
@@ -536,7 +536,7 @@ func idPrefix(kind stateKind) string {
 //
 //	[state] 2 beliefs · 1 open · 1 done — working state, kept outside the transcript
 //	beliefs:
-//	- b2 the module path is github.com/Agent-Field/aforge-v2  ← read: go.mod
+//	- b2 the module path is github.com/Agent-Field/codeaf  ← read: go.mod
 //	open:
 //	- p2 wire StateBlock into the compaction rebuild  ← grep: compact loop.go
 //	done:

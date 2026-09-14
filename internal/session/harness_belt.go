@@ -43,7 +43,7 @@ package session
 // which is the whole point of this file.
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // HarnessBeltSeams is everything the media half of the belt needs from the door

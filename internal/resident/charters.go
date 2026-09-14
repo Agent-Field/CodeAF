@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // applyCharterCommand maps conversational charter management onto the

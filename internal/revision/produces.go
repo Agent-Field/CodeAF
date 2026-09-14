@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // MissingProduces is the mechanical half of the delivery gate: the one fact a

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/substore"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/substore"
 )
 
 // `aforge run <program> --input <file.json|->` is one program, run once, with

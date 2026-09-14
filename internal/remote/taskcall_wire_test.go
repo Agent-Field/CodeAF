@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE REQUEST A NODE'S PHASE IS WAITING ON CROSSES THE LINK WITH THE PHASE.

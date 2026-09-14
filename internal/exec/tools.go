@@ -18,12 +18,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
-	"github.com/Agent-Field/aforge-v2/internal/rtk"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/rtk"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The base tool set is five tools, and the count is the design. Pull-only

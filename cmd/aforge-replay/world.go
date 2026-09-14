@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/callrows"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/callrows"
+	"github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── WHAT A MACHINE WAS DOING AT A MOMENT ────────────────────────────────────

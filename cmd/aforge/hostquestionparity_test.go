@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // A REMOTE SURFACE MUST NOT BE A LESSER SURFACE, and the questions seam is where

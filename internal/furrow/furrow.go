@@ -47,7 +47,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // Binary is the program this package shells out to. It is normally the copy

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/calllog"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // THROWAWAY VERIFICATION for the simple routing mode: what the wire carries

@@ -34,9 +34,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/enginehost"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // taskOwnerNotHere is what this door says when the workspace has no host, or the

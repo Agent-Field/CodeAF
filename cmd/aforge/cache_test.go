@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/cachedir"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/cachedir"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 func seedCache(t *testing.T) string {

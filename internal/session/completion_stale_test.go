@@ -34,9 +34,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // finishedScript is the trace's own turn with the drawing the case wants: the

@@ -28,7 +28,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	_ "golang.org/x/image/webp"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // halfBlock is the whole alphabet of a preview: foreground is the top pixel,

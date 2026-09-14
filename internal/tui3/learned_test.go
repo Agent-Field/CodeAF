@@ -9,7 +9,7 @@ package tui3
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The memo's own law, stated on a reader that counts: a name is read once, a

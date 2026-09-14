@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── SEVERAL CONVERSATIONS, RUNNING AT ONCE, AND CLOSING A TAB THAT IS ────────

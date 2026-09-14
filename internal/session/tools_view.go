@@ -38,8 +38,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // viewImageDefaultQuestion is what is asked of a picture when the caller asked

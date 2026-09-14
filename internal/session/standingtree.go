@@ -75,8 +75,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/offpath"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/offpath"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // StandingTree is one conversation's own working copy of one referred folder:

@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 // THE CONNECTIONS TAB: the sixth page of the settings sheet, and the only one

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A CARD LEAVES THE WAITING ROOM WHEN ITS QUESTION IS NO LONGER OPEN, whatever

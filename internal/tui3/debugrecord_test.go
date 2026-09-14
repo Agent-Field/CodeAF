@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // ── /debug BELONGS TO THE CONVERSATION IT WAS TYPED IN ──────────────────────

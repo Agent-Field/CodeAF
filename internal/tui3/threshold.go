@@ -3,7 +3,7 @@ package tui3
 import (
 	"fmt"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // standingCountAgent is the one door the threshold needs: how many orders

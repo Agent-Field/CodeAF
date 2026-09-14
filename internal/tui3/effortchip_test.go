@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // The thinking chip's acceptance tests: what the SEAM says beside the model,

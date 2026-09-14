@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 // The three lines a pairing shows, kept here so that the code that prints them

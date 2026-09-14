@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE SEAM THAT WAS NEVER FILLED. Config.OrchestrateRunner is how a turn or a

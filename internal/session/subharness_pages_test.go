@@ -17,8 +17,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // pageRuns records what the runner behind the store was asked to do rather than

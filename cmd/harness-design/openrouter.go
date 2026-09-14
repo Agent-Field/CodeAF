@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const openrouterURL = "https://openrouter.ai/api/v1/chat/completions"

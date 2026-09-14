@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 func memoryPlaceFixture(now time.Time) store.MemoryShelves {

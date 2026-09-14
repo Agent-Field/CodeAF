@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // recordingRun turns the debug record on for ONE run. The state root is a

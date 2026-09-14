@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // /crew, FROM THE FOUR SIDES A PERSON MEETS IT: the chooser, applying one, a word

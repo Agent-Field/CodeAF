@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	providerImport    = "github.com/Agent-Field/aforge-v2/internal/provider"
-	modelsourceImport = "github.com/Agent-Field/aforge-v2/internal/modelsource"
+	providerImport    = "github.com/Agent-Field/codeaf/internal/provider"
+	modelsourceImport = "github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // TestOnlyConfigTurnsAnAccountIntoProviderSettings states the construction

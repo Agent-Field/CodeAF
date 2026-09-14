@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // driverOf is the "driver" frame a link is waiting for. A hand-over is fanned

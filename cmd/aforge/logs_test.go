@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/calllog"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the

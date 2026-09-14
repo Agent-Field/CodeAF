@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/revision"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // §13.3, pinned at the seam that decides what a gap costs.

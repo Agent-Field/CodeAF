@@ -13,11 +13,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
-	"github.com/Agent-Field/aforge-v2/internal/watchdog"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
+	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
 const (

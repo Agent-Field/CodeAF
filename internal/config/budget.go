@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/Agent-Field/aforge-v2/internal/filememo"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/filememo"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // DailyBudgetUSDAt resolves env → persisted config → built-in default. The env

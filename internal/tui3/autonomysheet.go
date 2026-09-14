@@ -43,7 +43,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The sheet's words, spelled once and quoted in the manual exactly.

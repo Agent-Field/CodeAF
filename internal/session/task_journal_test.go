@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // journalAgent is one conversation over a session folder, with the scripted

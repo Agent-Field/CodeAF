@@ -30,8 +30,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // FindingConstraint names this measurement in the one stable word every other

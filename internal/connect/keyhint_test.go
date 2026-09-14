@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	amp "github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	amp "github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 // WHERE A PERSON GOES TO FIND THEIR KEY (keyhint.go, catalog.go's

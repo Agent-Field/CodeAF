@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // THE INCIDENT, END TO END. A craft leaf died on an OpenRouter routing 404 and

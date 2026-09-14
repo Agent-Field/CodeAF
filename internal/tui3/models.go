@@ -2,15 +2,15 @@ package tui3
 
 import (
 	"encoding/json"
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // The model list the picker shows, and the one law about where it comes from:

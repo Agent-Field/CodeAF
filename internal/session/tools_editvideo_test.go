@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/video"
+	"github.com/Agent-Field/codeaf/internal/video"
 )
 
 // ── the belt's answer, which is a fact about the machine ─────────────────────

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // openDebugRecord is what every door calls the moment it has read the switch:

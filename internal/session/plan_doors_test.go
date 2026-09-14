@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	account "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	account "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func planDoorSource(plan, metered *sourcestub.Server) modelsource.Source {

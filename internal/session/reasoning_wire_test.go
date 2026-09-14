@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	cfgstore "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	cfgstore "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // ── the reasoning level, end to end ─────────────────────────────────────────

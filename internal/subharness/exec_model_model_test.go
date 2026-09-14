@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // THE RUN'S MODEL, from the two sides it can be wrong from: a run that asked

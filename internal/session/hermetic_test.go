@@ -41,7 +41,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 func TestMain(m *testing.M) { os.Exit(runTests(m)) }

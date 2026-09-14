@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Journey #19 without a phrase list. "what can you do?" arrives in a hundred

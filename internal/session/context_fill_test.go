@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // ── A PINNED FILL IS HONOURED, AND AN UNTOUCHED ONE IS NOT ──────────────────

@@ -31,8 +31,8 @@ package manual
 // packed_source.go; ordinary Go commands select raw_source.go so a clean
 // checkout still compiles without committing a shared binary merge hotspot.
 
-//go:generate go run github.com/Agent-Field/aforge-v2/internal/packed/cmd/pack -o pages.pack.gz pages
-//go:generate go run github.com/Agent-Field/aforge-v2/internal/packed/cmd/pack -o chat.pack.gz chat
+//go:generate go run github.com/Agent-Field/codeaf/internal/packed/cmd/pack -o pages.pack.gz pages
+//go:generate go run github.com/Agent-Field/codeaf/internal/packed/cmd/pack -o chat.pack.gz chat
 
 const (
 	// DefaultResults is how many sections one question is answered from. Four

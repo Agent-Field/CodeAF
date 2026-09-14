@@ -135,11 +135,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/splitgate"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/splitgate"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // The division's two roles are registered here, beside the calls that make them

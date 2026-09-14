@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/enginehost"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 // standInHost answers the version exchange with whatever it was told to say,

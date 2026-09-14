@@ -3,7 +3,7 @@ package exec
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // Settle writes one leaf's measured ending onto its plan node and hands the

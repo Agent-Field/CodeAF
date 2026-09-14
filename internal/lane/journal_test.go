@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // ── THE FILE TWO PROCESSES SHARE ────────────────────────────────────────────

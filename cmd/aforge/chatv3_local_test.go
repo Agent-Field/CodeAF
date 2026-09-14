@@ -21,14 +21,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/enginehost"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // consentSource is an OpenAI-shaped fake whose turn always asks for the same

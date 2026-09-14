@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/search"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The settings rows reaching internal/session: the tool gate, the auxiliary

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // Every test here runs against a FAKE furrow: a shell script on PATH that

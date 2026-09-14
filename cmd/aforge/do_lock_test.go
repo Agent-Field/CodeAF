@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lease"
+	"github.com/Agent-Field/codeaf/internal/lease"
 )
 
 // An errand that cannot be the brain says who has the role and stops.

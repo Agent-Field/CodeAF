@@ -10,7 +10,7 @@ import (
 // a known place rather than a guess about which heading came first.
 const insertMarker = "<!-- aforge-changes inserts new versions directly below this line -->"
 
-const repoURL = "https://github.com/Agent-Field/aforge-v2"
+const repoURL = "https://github.com/Agent-Field/codeaf"
 
 // Render turns a set of entries into one version's section.
 //

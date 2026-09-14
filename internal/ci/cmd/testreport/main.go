@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/ci/testreport"
+	"github.com/Agent-Field/codeaf/internal/ci/testreport"
 )
 
 func main() {

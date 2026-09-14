@@ -41,7 +41,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // stopBoundPatience is how long a scenario waits for the detach. The bound is

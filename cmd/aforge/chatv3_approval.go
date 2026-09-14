@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // v3Gate is the one method of a running session these seams reach for: the door

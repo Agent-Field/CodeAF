@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // runVersion answers the one question an installer, a doctor, or a packaging

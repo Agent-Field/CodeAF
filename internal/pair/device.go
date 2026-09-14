@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/relay"
 	"github.com/flynn/noise"
 )
 

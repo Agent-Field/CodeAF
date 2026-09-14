@@ -6,12 +6,12 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/splitgate"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/splitgate"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The cooperative split, wired.

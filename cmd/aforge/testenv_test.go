@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // isolateTestEnvironment puts this test binary on a machine of its own: no

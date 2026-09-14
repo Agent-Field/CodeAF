@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // The concurrency doctrine: aforge sets no artificial ceiling on how much work

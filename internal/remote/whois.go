@@ -43,7 +43,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // WhoIs is the question, and it is asked on a connection's FIRST frame in place

@@ -40,7 +40,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 const (

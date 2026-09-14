@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE PHONE TIER'S TOOL COLUMN (toolview.go, expand.go).
@@ -482,7 +482,7 @@ func TestThePhoneSheetFollowsALiveCall(t *testing.T) {
 	}
 
 	a.entries[0].status = toolOK
-	a.entries[0].detail.Output = "ok  \tgithub.com/Agent-Field/aforge-v2\t0.4s"
+	a.entries[0].detail.Output = "ok  \tgithub.com/Agent-Field/codeaf\t0.4s"
 	a.touch()
 	if body := plain(frame(a)); !strings.Contains(body, "ok  ") {
 		t.Fatalf("the result did not reach the open sheet:\n%s", body)

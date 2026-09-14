@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // The document ladder is exercised through the real provider client over an

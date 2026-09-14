@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // THE ONE SEAM DEFERS THE ONE ACCOUNTING, and it is read off the source because

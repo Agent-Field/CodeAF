@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // THE POINT OF THIS COMMAND IS THAT IT COSTS NOTHING TO ASK, so every test here

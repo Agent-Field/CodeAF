@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // The artifact law's door (12.5.1).

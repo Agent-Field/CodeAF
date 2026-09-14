@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // TEST TRAFFIC NEVER LANDS IN A PERSON'S LEDGER.

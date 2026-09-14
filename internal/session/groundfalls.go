@@ -40,9 +40,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // universeFallsName is the file the falls are kept in, under the state root's

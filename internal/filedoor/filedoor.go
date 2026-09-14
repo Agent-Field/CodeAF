@@ -85,7 +85,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // maxCrossBytes is the most one file may weigh in either direction, and it is

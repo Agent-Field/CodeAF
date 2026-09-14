@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/revision"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // A GOVERNOR MAY REFUSE A ROUND. IT MAY NEVER REFUSE A FINDING.

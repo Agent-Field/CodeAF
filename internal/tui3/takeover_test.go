@@ -19,10 +19,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // cardSays reports that a phrase is on the card, ACROSS ITS WRAPS. The right

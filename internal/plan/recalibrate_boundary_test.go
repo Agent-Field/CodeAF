@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/profile"
 )
 
 // The recalibration call's system message is the constant and nothing else, and

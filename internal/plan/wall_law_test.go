@@ -48,9 +48,9 @@ func TestPlanningReachesAModelOnlyThroughTheClientItIsHanded(t *testing.T) {
 	// Each of these hands out a model client: the configuration's own
 	// constructors, the pooled slots, and the router over them.
 	builders := map[string]bool{
-		"github.com/Agent-Field/aforge-v2/internal/config":        true,
-		"github.com/Agent-Field/aforge-v2/internal/provider/pool": true,
-		"github.com/Agent-Field/aforge-v2/internal/router":        true,
+		"github.com/Agent-Field/codeaf/internal/config":        true,
+		"github.com/Agent-Field/codeaf/internal/provider/pool": true,
+		"github.com/Agent-Field/codeaf/internal/router":        true,
 	}
 	fileset := token.NewFileSet()
 	for _, name := range files {

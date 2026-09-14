@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // THE MODEL'S HANDS ON THE BIG MACHINERY, from the three sides that matter: the

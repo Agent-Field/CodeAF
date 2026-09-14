@@ -32,8 +32,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // v3Dir is ~/.aforge/v3: the directory this surface keeps its own files in —

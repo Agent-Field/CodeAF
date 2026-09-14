@@ -34,7 +34,7 @@ package session
 import (
 	"context"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // sessionAcceptanceBrief asks for the done-condition of a whole ask.

@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Agent-Field/aforge-v2/internal/wirelog"
+	"github.com/Agent-Field/codeaf/internal/wirelog"
 )
 
 // v3Wire is the door's half of the byte meter: the writer the v3 surface should

@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // defaultLogTail is how many calls `aforge logs` shows when nobody says. Forty

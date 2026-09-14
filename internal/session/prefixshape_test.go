@@ -26,8 +26,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // prefixShape is one door's config, named as a person would name it.

@@ -24,10 +24,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // TestMain gives the whole package a state root of its own.
@@ -487,7 +487,7 @@ const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
 
 // harnessTickSymbol is the closure behind the test clock. The driver executes
 // it synchronously; a symbol check below catches compiler or refactor drift.
-const harnessTickSymbol = "github.com/Agent-Field/aforge-v2/internal/tui3.harnessTick.func1"
+const harnessTickSymbol = "github.com/Agent-Field/codeaf/internal/tui3.harnessTick.func1"
 
 // blockingCommands is THE ONE TABLE. It names every command in this package that
 // parks on a channel a test's fakes usually never write to and never close.

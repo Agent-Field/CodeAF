@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // modulePath is what `go test` prints beside a package it ran, and what this
 // file has to recognise to know that a package was actually built rather than
 // quietly skipped.
-const modulePath = "github.com/Agent-Field/aforge-v2"
+const modulePath = "github.com/Agent-Field/codeaf"
 
 // theCanaryIsRunning stops the canary from starting a canary. Nothing in the
 // list below is this package, but a list is a thing people add to, and a test

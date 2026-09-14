@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The live failure, seeded. A settled finance job whose findings are in its

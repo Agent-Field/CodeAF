@@ -50,7 +50,7 @@ func buildAforgeStamped(t *testing.T, stamp string) string {
 	arguments := []string{"build", "-buildvcs=false"}
 	if strings.TrimSpace(stamp) != "" {
 		arguments = append(arguments,
-			"-ldflags=-X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev="+stamp)
+			"-ldflags=-X github.com/Agent-Field/codeaf/internal/buildinfo.rev="+stamp)
 	}
 	arguments = append(arguments, "-o", binary, ".")
 	build := osexec.Command(goTool, arguments...)

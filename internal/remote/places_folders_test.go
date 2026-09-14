@@ -20,7 +20,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE REAL AGENT SATISFIES THE DOOR THE SERVER ASSERTS FOR. The assertion is by

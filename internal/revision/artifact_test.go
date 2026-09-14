@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // The name a person writes is the address they mean. A name carrying a

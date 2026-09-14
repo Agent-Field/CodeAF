@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── a planning model that thinks past its wall, through the real door ───────

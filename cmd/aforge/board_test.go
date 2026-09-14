@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // A board note must survive the round trip and nothing else may read as one:

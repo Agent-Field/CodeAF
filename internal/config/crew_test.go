@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE CREW, from the three sides a person meets it: what a preset writes, what

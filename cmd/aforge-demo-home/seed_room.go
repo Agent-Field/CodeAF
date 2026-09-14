@@ -60,7 +60,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // roomTalkTitle is the conversation the graph and the jobs hang off. It is
@@ -436,7 +436,7 @@ var roomTabBarJournal = []journalLine{
 	answer("t2", "wrote internal/tui3/homebands.go (3 hunks)"),
 	{Type: "message", Role: "assistant", Content: "And a test that moves the world between the two draws, so a second reading would show up as a failure rather than as a flicker.",
 		ToolCalls: []ai.ToolCall{call("t3", "bash", map[string]any{"command": "go test ./internal/tui3/ -run TestTheBarAndTheListCount"})}},
-	answer("t3", "ok  \tgithub.com/Agent-Field/aforge-v2/internal/tui3\t2.104s\n"),
+	answer("t3", "ok  \tgithub.com/Agent-Field/codeaf/internal/tui3\t2.104s\n"),
 	{Type: "message", Role: "assistant", Content: "One reading, shared by the bar and the list. The test moves the world between the two draws and both counts follow it."},
 }
 
@@ -467,7 +467,7 @@ var roomFitterJournal = []journalLine{
 	answer("f6", "wrote internal/tui3/taskrecord.go (1 hunk)"),
 	{Type: "message", Role: "assistant", Content: "Running the surface's own suite over the four.",
 		ToolCalls: []ai.ToolCall{call("f7", "bash", map[string]any{"command": "go test -timeout 15m ./internal/tui3/"})}},
-	answer("f7", "ok  \tgithub.com/Agent-Field/aforge-v2/internal/tui3\t151.402s\n"),
+	answer("f7", "ok  \tgithub.com/Agent-Field/codeaf/internal/tui3\t151.402s\n"),
 	{Type: "message", Role: "assistant", Content: "The four lists are on the fitter and the frames read right at 160 and 120. Nothing here could prove the sixty-cell case — the only terminal that narrow is yours — so it wants your eye before it lands."},
 }
 
@@ -515,14 +515,14 @@ func roomTestLog() string {
 	} {
 		fmt.Fprintf(&out, "=== RUN   %s\n--- PASS: %s (%d.%02ds)\n", name, name, len(name)%9, len(name)%97)
 	}
-	out.WriteString("PASS\nok  \tgithub.com/Agent-Field/aforge-v2/internal/tui3\t492.118s\n")
+	out.WriteString("PASS\nok  \tgithub.com/Agent-Field/codeaf/internal/tui3\t492.118s\n")
 	return out.String()
 }
 
 func roomCheckLog() string {
 	return strings.Join([]string{
 		"go vet ./...",
-		"# github.com/Agent-Field/aforge-v2/internal/tui3",
+		"# github.com/Agent-Field/codeaf/internal/tui3",
 		"internal/tui3/tasksplace.go:722:14: fmt.Sprintf format %d has arg label of wrong type string",
 		"make: *** [Makefile:41: vet] Error 1",
 		"exit status 1",

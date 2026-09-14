@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // askMarkdown is the canned answer every test below asks about: the four shapes

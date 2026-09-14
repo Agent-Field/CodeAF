@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/jsrun"
-	"github.com/Agent-Field/aforge-v2/internal/substore"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/jsrun"
+	"github.com/Agent-Field/codeaf/internal/substore"
 )
 
 // THE ONE PLACE A BUNDLE ON DISK BECOMES SOMETHING THAT RUNS.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // Both entry points build their own executor, and a setting honoured at one of

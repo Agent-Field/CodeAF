@@ -16,7 +16,7 @@ BUDGET := SIZE-BUDGET
 BUILD_REV := $(shell git rev-parse --short HEAD)
 BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=normal)"; then printf true; else printf false; fi)
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-BUILDINFO := github.com/Agent-Field/aforge-v2/internal/buildinfo
+BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
 MANUAL_TAG := aforge_packed_manual
 

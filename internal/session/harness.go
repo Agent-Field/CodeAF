@@ -38,9 +38,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // ResolveHarness answers one EventHarnessOffer: true runs the harness, false is

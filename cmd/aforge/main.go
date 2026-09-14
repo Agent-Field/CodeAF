@@ -23,14 +23,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/router"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 func main() {

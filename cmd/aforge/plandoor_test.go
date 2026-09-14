@@ -1,7 +1,7 @@
 package main
 
 import "testing"
-import "github.com/Agent-Field/aforge-v2/internal/plan"
+import "github.com/Agent-Field/codeaf/internal/plan"
 
 // A GRAPH CARRYING AN UNRESOLVED SIZING REFUSAL IS NOT A SETTLED PLAN. The door
 // prints and writes it either way; what this pins is the fact the exit code is

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // A SURFACE THAT OWNS THE TERMINAL OWNS THE LOGGER, AND IT OWNS IT FROM ONE

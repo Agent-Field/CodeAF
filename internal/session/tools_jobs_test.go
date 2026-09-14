@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
 )
 
 // timeoutOf reads back the timeout the law left on one call's arguments, and

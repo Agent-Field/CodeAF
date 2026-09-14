@@ -9,9 +9,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/history"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/history"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The wave-2 surface: what a resumed session shows, what ctrl+c means, how a

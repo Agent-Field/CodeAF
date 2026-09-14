@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── ONE CONNECTION, ONE CONVERSATION ────────────────────────────────────────

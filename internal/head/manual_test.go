@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The trigger table. Every true here is a question a person would ask while

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual/asked"
+	"github.com/Agent-Field/codeaf/internal/manual/asked"
 )
 
 // THE FLOORS ON QUESTIONS A STRANGER ASKS.

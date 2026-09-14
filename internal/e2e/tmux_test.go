@@ -34,7 +34,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // pollEvery is how often waitFor reads the screen. It is a quarter second

@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/profile"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // This is the surface's half of the leaf contract: how the worker is

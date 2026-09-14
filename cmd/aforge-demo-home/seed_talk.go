@@ -14,9 +14,9 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
 )
 
 // demoTurn is one exchange: what the person said and what came back.

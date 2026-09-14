@@ -34,8 +34,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // migrateOnce is the "boot" in "one boot pass". Two doors can open a v3 launch

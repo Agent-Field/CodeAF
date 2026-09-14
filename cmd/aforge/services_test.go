@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func captureStdout(t *testing.T, run func() error) (string, error) {

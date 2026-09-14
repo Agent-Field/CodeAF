@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // ── the ladder, rung by rung, on a real request body ────────────────────────

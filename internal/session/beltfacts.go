@@ -3,7 +3,7 @@ package session
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // THE PROMPT NAMES EXACTLY THE TOOLS THE CALL CARRIES.

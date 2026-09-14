@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A WINDOW THAT ACTED SECONDS AGO IS WATCHING, whatever its pipe is doing.

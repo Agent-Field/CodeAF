@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // dialSession is [dial] against a conversation that ALREADY EXISTS, which is

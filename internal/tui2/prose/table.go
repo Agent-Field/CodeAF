@@ -4,7 +4,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // Tables — the other half of 13.3's finding.

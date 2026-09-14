@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── the wall, told (effortladder.go) ────────────────────────────────────────

@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // lawClass is the delivery class from the diet's taxonomy

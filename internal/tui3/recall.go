@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/history"
+import "github.com/Agent-Field/codeaf/internal/history"
 
 // THE UP ARROW: what you typed before, newest first.
 //

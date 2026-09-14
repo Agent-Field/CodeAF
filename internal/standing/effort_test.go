@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // The rung one item's firings think at is written down with the item and read

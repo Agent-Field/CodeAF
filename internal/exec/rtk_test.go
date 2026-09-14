@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/rtk"
+	"github.com/Agent-Field/codeaf/internal/rtk"
 )
 
 // compressorBench sets up a workspace, the stand-in rtk, and the log the stub

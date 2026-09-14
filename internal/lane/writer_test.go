@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // ── THE THIRTY MINUTES NOBODY SENT ANYTHING (issue #264) ────────────────────

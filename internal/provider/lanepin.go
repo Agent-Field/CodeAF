@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── WHAT A PERSON SAID ABOUT THE MACHINE ────────────────────────────────────

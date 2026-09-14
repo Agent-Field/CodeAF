@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK, and until this the

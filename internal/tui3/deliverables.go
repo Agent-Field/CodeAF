@@ -13,7 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // /files: THE THINGS THAT WERE MADE FOR YOU, AND WHERE THEY WENT.

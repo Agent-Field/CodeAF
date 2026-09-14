@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // EVERY PATH A PERSON READS ON THIS SURFACE IS A DOOR, AND THE DOOR HAS TO BE

@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // restoredJob is one job as the engine replays it out of a checkpoint: settled,

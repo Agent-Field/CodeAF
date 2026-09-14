@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // The hands that reach a person's own accounts: see what they have, pick one

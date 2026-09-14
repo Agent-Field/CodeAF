@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // ── THE ONE WAY THE v3 SURFACE IS RUN ───────────────────────────────────────

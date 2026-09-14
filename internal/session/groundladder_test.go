@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // dirtyRepo is the shape every test below starts from: a repository with one

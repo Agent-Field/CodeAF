@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 // ── ASKING THE ROUTER FOR TODAY'S LIST, FROM INSIDE /model ─────────────────

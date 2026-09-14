@@ -25,7 +25,7 @@ package session
 // that really was in force. This is the same bargain the belt makes under armMu
 // (session.go) — swap the header, never edit what a reader is walking.
 
-import "github.com/Agent-Field/aforge-v2/internal/approval"
+import "github.com/Agent-Field/codeaf/internal/approval"
 
 // SetApprovalPolicy replaces the standing gate for the rest of this session.
 //

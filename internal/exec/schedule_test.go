@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // blockingExecutor completes the nodes in fast immediately and holds every

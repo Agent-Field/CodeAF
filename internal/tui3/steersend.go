@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // SENDING A CORRECTION IS A CROSSING, AND A CROSSING IS NOT A KEYSTROKE.

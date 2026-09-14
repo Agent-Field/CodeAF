@@ -23,7 +23,7 @@ package tui3
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // manualChatSections is how many sections a question typed here is answered

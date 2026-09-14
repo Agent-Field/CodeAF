@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/cachedir"
+	"github.com/Agent-Field/codeaf/internal/cachedir"
 )
 
 // seedCacheDir fills the cache under the state root the fixture has already

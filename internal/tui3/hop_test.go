@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE SWITCHER IS A CARD OVER A DIMMED SURFACE, AND THESE ARE THE FOUR CLAIMS

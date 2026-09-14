@@ -65,7 +65,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // sidecar is one reading running beside the work. T is whatever the reading

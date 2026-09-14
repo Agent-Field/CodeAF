@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE BLOCK'S SHAPE IS OURS AND NOT THE MODEL'S. Whatever came back, what the

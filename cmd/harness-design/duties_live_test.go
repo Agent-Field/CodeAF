@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // collapsedC2 is the C2 defect, as a page: one worker told to price three

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // A conversation opened in a temp directory and abandoned for a week is litter:

@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE WORK HOME DRAWS IS A TREE ───────────────────────────────────────────

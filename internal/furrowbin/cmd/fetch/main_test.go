@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // fakeFurrow is the artifact these tests fetch. Nothing here depends on it

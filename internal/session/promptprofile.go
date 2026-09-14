@@ -98,7 +98,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // promptProfile is which of the two prefixes this agent sends. It is a word

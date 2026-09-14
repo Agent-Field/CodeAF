@@ -25,8 +25,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // v3Errand is [tui3.Options.Errand]: one agent, writing into a folder the

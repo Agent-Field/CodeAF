@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Prefs persists model choices across launches. It lives beside the graph

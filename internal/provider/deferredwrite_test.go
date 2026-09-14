@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // ── THE WIRE, WITH SOMEBODY ELSE HOLDING THE BELIEF FILE (issue #264) ───────

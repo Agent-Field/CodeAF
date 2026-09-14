@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // recordingRun turns the debug record on for ONE run and points the state

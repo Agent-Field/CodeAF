@@ -1,6 +1,6 @@
 package registry
 
-import "github.com/Agent-Field/aforge-v2/internal/store"
+import "github.com/Agent-Field/codeaf/internal/store"
 
 // seedRows is the whole catalog, seeded faithfully from what the surface can
 // already do today rather than from what 5.22 says it should eventually do.

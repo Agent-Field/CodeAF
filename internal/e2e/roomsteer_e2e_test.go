@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // STEERING A TASK, END TO END, AGAINST A SCRIPTED MODEL.

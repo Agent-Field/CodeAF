@@ -8,7 +8,7 @@ package remote
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"io"
 	"net"
 	"strings"

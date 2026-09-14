@@ -14,9 +14,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/cas"
-	"github.com/Agent-Field/aforge-v2/internal/filedoor"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/filedoor"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // OPENING A FILE THAT IS ON ANOTHER MACHINE, WITH THIS MACHINE'S OWN VIEWER.

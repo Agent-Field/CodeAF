@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // A KEY THE SCRUB'S SHAPES HAVE NEVER SEEN IS STILL NOT IN THE RECORD. The

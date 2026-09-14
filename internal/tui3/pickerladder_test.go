@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // ── ONE LADDER, WHEREVER A PERSON CAN MOVE IT ───────────────────────────────

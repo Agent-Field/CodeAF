@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/lease"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/lease"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The whole architecture rests on one claim: every table in this database is a

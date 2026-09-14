@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const askDescription = "Ask only after the decision ladder is exhausted. Give a reason, stakes, structured answers before free text, your pick and what would change it."

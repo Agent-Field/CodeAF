@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────

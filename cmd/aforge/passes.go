@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // passesFlag is how many independent passes `aforge plan new` plans with before

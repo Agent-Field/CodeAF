@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/revision"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // A REPAIR IS SAID EVEN WHEN THERE IS NOTHING TO SAY IT ABOUT YET.

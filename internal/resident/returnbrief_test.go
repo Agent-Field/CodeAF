@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Journey #12 driven the way the binary drives it, end to end: a session that

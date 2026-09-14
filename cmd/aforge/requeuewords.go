@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/resident"
 )
 
 // requeueWords is the ↻ line for a claim that went back on the queue with a

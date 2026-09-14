@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // WHAT A NODE NAMES IS MEASURED AGAINST WHAT ONE WORKER CAN HOLD, AND WHAT IS

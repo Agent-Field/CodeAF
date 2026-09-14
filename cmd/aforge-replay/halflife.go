@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── THE TWO NUMBERS THIS PROGRAM IS NOT ALLOWED TO CHOOSE ───────────────────

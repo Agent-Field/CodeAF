@@ -28,8 +28,8 @@ package session
 import (
 	"context"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // workspaceTools is the family, or nothing.

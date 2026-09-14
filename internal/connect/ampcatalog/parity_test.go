@@ -8,7 +8,7 @@ import (
 
 	amp "github.com/amp-labs/connectors/providers"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	"github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 // This is the test that makes the snapshot safe to trust.

@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/packed"
+	"github.com/Agent-Field/codeaf/internal/packed"
 )
 
 // WHAT THE WAY TO THE FIRST FRAME IS ALLOWED TO DO, COUNTED.

@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // The names inside a session folder. They are constants and not configuration:

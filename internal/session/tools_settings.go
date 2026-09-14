@@ -49,8 +49,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const settingsToolName = "settings"

@@ -62,7 +62,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The two refusals this file makes, and both are about the CALLER rather than

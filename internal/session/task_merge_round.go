@@ -40,7 +40,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // mergeRoundLimit is how many resolver rounds one node buys itself. ONE — the

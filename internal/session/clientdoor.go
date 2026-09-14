@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	account "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	account "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 type modelAccount struct {

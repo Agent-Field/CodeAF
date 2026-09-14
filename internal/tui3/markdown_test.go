@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/prose"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/prose"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // These tests are about the ADAPTER, not about prose: internal/tui2/prose has

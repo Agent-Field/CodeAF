@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // --one-model is the measurement posture: a run whose spend and quality are

@@ -35,8 +35,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word

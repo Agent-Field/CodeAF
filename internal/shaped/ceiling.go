@@ -1,8 +1,8 @@
 package shaped
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── HOW MUCH ROOM A SHAPED ANSWER GETS ────────────────────────────────────────

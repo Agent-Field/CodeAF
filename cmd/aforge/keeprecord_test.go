@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
+	homepkg "github.com/Agent-Field/codeaf/internal/home"
 )
 
 // A FAILURE KEEPS ITS OWN EVIDENCE WITHOUT BEING ASKED.
