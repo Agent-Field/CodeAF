@@ -654,16 +654,16 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	}
 }
 
-// ENTER ON THE `lane` ROW OPENS THE MACHINES rather than walking four words
-// blind: the same fold, on the model in use, with the cursor on the lane in
-// force — which with nothing pinned is `auto`.
+// ENTER ON THE `provider` ROW OPENS THE PROVIDERS rather than walking four
+// words blind: the same fold, on the model in use, with the cursor on the
+// provider in force — which with nothing pinned is `auto`.
 func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.LaneSettingKey(talkSlot))
-	if !sheetHas(a, "lane") {
-		t.Fatal("the providers tab has no lane row")
+	if !sheetHas(a, "provider") {
+		t.Fatal("the providers tab has no provider row")
 	}
 	drive(t, a, key("enter"))
 	if a.sheet.sel == nil {

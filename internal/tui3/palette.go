@@ -1822,9 +1822,18 @@ func (a *app) cycleReasoning() {
 // leaves, everywhere on this surface and in every other program.
 //
 // So on a sixty-cell frame, with about fifty-eight cells in the box, the line
-// is WHOLE where the door offers no refresh and gives up exactly `enter · esc`
-// where it does — the refresh key earned its fourteen cells from the two verbs
-// nobody has to be taught, the way the fold earned its seven.
+// is WHOLE where the door offers no refresh, and where it does the ladder now
+// stops one key earlier: `filter · ↑↓ · → providers · ctrl+t effort`, with the
+// refresh key named from about sixty-four columns up.
+//
+// THAT IS WHAT THE WORD COST, and it is written down rather than worked around.
+// The fold's key used to read `→ lanes`; the owner's ruling on the vocabulary
+// (issue #1023) made it `→ providers`, four cells wider, and four cells is
+// exactly what `ctrl+r refresh` had bought from `enter · esc`. Spelling the
+// refresh key `ctrl+r` alone would fit it back in and break the older law in
+// this same comment — the keys go WHOLE, and a box that says `ctrl+r` with no
+// word is a box teaching nobody what the key does. A narrow frame gives up the
+// key it can no longer say properly, which is the ladder working.
 const pickerHint = "filter · ↑↓ · → providers · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
