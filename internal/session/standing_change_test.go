@@ -392,7 +392,7 @@ func TestAnEditCardSaysTheOldAndTheNewAndKeepsTheRest(t *testing.T) {
 	if card == nil {
 		t.Fatal("no card was drawn")
 	}
-	if card.WhenWords != "when inbox/* changes → whenever a note lands anywhere in inbox" {
+	if card.WhenWords != "when inbox/* changes → when inbox/**/*.md changes" {
 		t.Fatalf("the when band reads %q", card.WhenWords)
 	}
 	if !strings.HasPrefix(card.CostWords, "at most 2 runs a day") {

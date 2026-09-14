@@ -337,7 +337,9 @@ func standingEdited(current standing.Item, parsed standArguments, now time.Time)
 			draft.When = when
 		}
 	}
-	if words := strings.TrimSpace(parsed.WhenWords); words != "" && draft.When.Kind != standing.WhenHold {
+	// A file watch's words are its pattern's ([standing.When.CardWords]), so
+	// words sent for one change nothing a card could show.
+	if words := strings.TrimSpace(parsed.WhenWords); words != "" && draft.When.Kind != standing.WhenHold && draft.When.Kind != standing.WhenFile {
 		draft.When.Words = words
 	}
 	if problem := standingEditedDoes(&draft, parsed); problem != "" {

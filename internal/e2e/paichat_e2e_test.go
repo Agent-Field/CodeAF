@@ -1668,9 +1668,15 @@ func scenJourney(c *cv) {
 		now := c.item(before.ID)
 		c.expect([]string{step}, "same-item-one-version-on", now.Status == standing.StatusActive && now.SpecRevision > before.SpecRevision, c.describe(now))
 		if now.Status != standing.StatusActive {
-			if next := c.successor(before); next.ID != before.ID {
-				c.note("%s made a new item %s; later steps follow it", step, next.ID)
-				return next
+			// A stop and a new card may change the report too, so the work
+			// that runs now is the newest active chat work, whatever it keeps.
+			for _, it := range c.work() {
+				if it.Status == standing.StatusActive && it.ID != before.ID {
+					now = it
+				}
+			}
+			if now.ID != before.ID {
+				c.note("%s made a new item %s; later steps follow it", step, now.ID)
 			}
 		}
 		return now
@@ -1770,8 +1776,15 @@ func scenJourney(c *cv) {
 	c.expect([]string{"J-two-folders"}, "inbox-not-dropped-unseen", reachesInbox || len(t.Cards) > 0, c.describe(keeper))
 	c.expect([]string{"J-two-folders"}, "no-silent-broadening", !broadened || len(t.Cards) > 0, c.describe(keeper))
 	if !reachesNotes {
-		c.expect([]string{"J-two-folders"}, "declined-leaves-the-watch-as-it-was", keeper.ID == before.ID && keeper.When.Glob == before.When.Glob, c.describe(keeper))
-		c.note("the second folder was not watched — judge the reply: %q", pclip(t.Reply, 500))
+		// What wakes it is its pattern, so a watch that does not reach notes/
+		// is truthful only as the SAME pattern: its instructions may be told to
+		// read notes/ on each run, drawn on the card, and the reply is judged
+		// by a person.
+		for _, card := range t.Cards {
+			c.note("second folder card when · %s", card.When)
+		}
+		c.expect([]string{"J-two-folders"}, "unwidened-watch-left-as-it-was", keeper.ID == before.ID && keeper.When.Glob == before.When.Glob, c.describe(keeper))
+		c.note("the second folder was not watched — judge the reply: %q", pclip(t.Reply, 800))
 	}
 	item = keeper
 	c.write("notes/n.md", "Note: the press kit is due Friday.\n")
