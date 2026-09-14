@@ -86,6 +86,37 @@ func steeringQueue(agent *Agent) []string {
 	return queued
 }
 
+// timesSaidToModel counts how many times ONE line has been put in front of the
+// model on the steering lane: what is still queued, plus what a drain has
+// already moved into the transcript.
+//
+// IT IS THE ONLY HONEST WAY TO COUNT A NOTE THAT WAKES A TURN. A wake note
+// starts a turn the instant it lands ([Agent.wakeLocked]), and that turn's first
+// act is to drain the whole queue into the transcript ([Agent.drainSteering]),
+// so a test that read the queue length before and after a second press is
+// subtracting two numbers a goroutine is moving underneath it — which is how
+// #1020 came to report that a press enqueued MINUS TWO lines. askDelivered
+// (asklane_test.go) says the same thing about a conversation's answers.
+//
+// IT COUNTS OCCURRENCES, NOT MESSAGES, because the drain coalesces session news
+// into one authored user message ([coalesceSessionNotes]): the count of lines
+// survives that fold and the count of messages does not.
+func timesSaidToModel(agent *Agent, line string) int {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	said := 0
+	for _, message := range agent.messages {
+		if message.Role != "user" {
+			continue
+		}
+		said += strings.Count(partsText(message), line)
+	}
+	for _, message := range agent.steering {
+		said += strings.Count(message.text(), line)
+	}
+	return said
+}
+
 // ambientQueue copies the boundary-held notes under the same lock the turn
 // takes them with. It stays separate from steeringQueue so a test cannot pass
 // while a watch update has regressed onto the mid-turn lane.
