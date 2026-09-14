@@ -8,7 +8,7 @@
 
 <img alt="Go 1.26.5" src="https://img.shields.io/badge/Go-1.26.5-0c0b09?style=flat&labelColor=8b7355"> <img alt="darwin, linux, windows" src="https://img.shields.io/badge/targets-darwin%20%7C%20linux%20%7C%20windows-0c0b09?style=flat&labelColor=8b7355">
 
-<p><a href="#install">Install</a> • <a href="#talk-to-aforge">Chat</a> • <a href="#hand-work-to-tasks">Tasks</a> • <a href="#models-keys-and-spending">Models</a> • <a href="#the-manual-ships-with-the-binary">Manual</a> • <a href="#headless-work">Headless</a> • <a href="#work-on-another-machine">Remote</a> • <a href="#contributing">Contributing</a> • <a href="#documentation">Docs</a></p>
+<p><a href="#install">Install</a> • <a href="#talk-to-aforge">Chat</a> • <a href="#tools-in-the-conversation">Tools</a> • <a href="#hand-work-to-tasks">Tasks</a> • <a href="#models-keys-and-spending">Models</a> • <a href="#the-manual-ships-with-the-binary">Manual</a> • <a href="#headless-work">Headless</a> • <a href="#work-on-another-machine">Remote</a> • <a href="#contributing">Contributing</a> • <a href="#documentation">Docs</a></p>
 
 </div>
 
@@ -43,6 +43,27 @@ This is the chat flow in a real terminal:
 That is a real session on the default model, `~deepseek/deepseek-v4-flash-latest`:
 one question, one `read`, one answer, and what it cost on the last line.
 
+### Which folder it works in
+
+"Inside a project" is decided at launch, in this order
+(`cmd/aforge/chatv3_layout.go:84`): `--workspace <path>` if you gave one, else the root
+of the git repository you are standing in, else the directory itself. The exception is
+a directory nobody chose — your home directory, or anything under a temporary directory
+— where aforge keeps a folder of its own and says so on the welcome screen:
+
+```text
+in a folder aforge keeps for this conversation · /workspace picks another
+```
+
+Your files are not in that folder, so asking it to read one gets you an empty
+directory. `/workspace <path>` anchors a conversation to a project at any point; the
+shorter road is to start aforge inside the project.
+
+Once this machine has conversations on it, bare `aforge` opens **home** rather than a
+conversation — projects, running work, questions waiting on you, what you have spent.
+Type into the box to start one, or press enter on a row to reopen one. `space space`
+goes to home from a conversation and `esc` comes back untouched.
+
 ## Install
 
 ### Build from the repository
@@ -51,31 +72,23 @@ The road that works today is a source checkout. The module needs Go 1.26.5, and
 `make build` is the one supported build command; it writes `bin/aforge`.
 
 ```bash
-git clone https://github.com/Agent-Field/aforge-v2.git  # requires repository access while it is private
+git clone https://github.com/Agent-Field/aforge-v2.git  # needs repository access while it is private
 cd aforge-v2
-make build                                              # fetches the pinned Furrow artifact; needs network access
+make build   # fetches the pinned Furrow artifact, so it needs the network;
+             # FURROW_ARTIFACT=/path/to/furrow supplies it offline
 bin/aforge
-
-# Offline build: supply the pinned artifact yourself.
-make build FURROW_ARTIFACT=/path/to/furrow
 ```
 
-### Installer publication status
-
-The preferred proxy form is written but `https://agentfield.ai/get/aforge` is not yet
-serving:
+### The installer, and what it is waiting on
 
 ```bash
-curl -fsSL https://agentfield.ai/get/aforge | bash
+curl -fsSL https://agentfield.ai/get/aforge | bash                                                    # the preferred form
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash     # the script under it
 ```
 
-The underlying script is below. It answers 404 to anyone not signed in while the
-repository is private; it starts working when the repository is public and
-`scripts/install.sh` has reached `main`.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash
-```
+The first is the road that will be supported, and it is not serving yet — the route is
+written and unmerged. The second answers 404 to anyone not signed in, and starts working
+when the repository is public and `scripts/install.sh` has reached `main`.
 
 <details>
 <summary>Installer channels, flags, and checks</summary>
@@ -149,14 +162,19 @@ mid-turn; twice within 1.5 seconds while idle quits.
 | `space space` | Open home from an empty message box. |
 | `alt+1` … `alt+7` | Select one of the seven places. |
 | `ctrl+,` | Open settings. |
+| `ctrl+g` | Send a running command to the background; otherwise close the task column, or bring it back. |
 
 </details>
 
+Once the conversation has begun, a column stands down the right-hand side of a wide
+terminal — the tasks and standing orders over this conversation, or, while there are
+none, `+ /task` and `+ /standing` with `❯ ctrl+g hide` under them.
+
 Slash commands cover models, conversations, work, memory, permissions, and spending.
-Start with `/help`. Common doors are `/model`, `/new`, `/resume`, `/task`, `/history`,
-`/standing`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`, `/spend`,
-`/budget`, `/compact`, `/rewind`, `/manual`, `/help`, and `/quit`. `/drafts` keeps the
-last ten cleared drafts; `enter` restores one and `d` lets one go.
+Start with `/help`. Common doors are `/model`, `/new`, `/resume`, `/workspace`, `/task`,
+`/history`, `/standing`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
+`/spend`, `/budget`, `/compact`, `/rewind`, `/manual`, `/help`, and `/quit`. `/drafts`
+keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 
 <details>
 <summary>Slash-command reference</summary>
@@ -166,6 +184,7 @@ last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/model` | `pick a model · or press its name above the message box`; with a slug, `switch the model for the conversation or open task`. |
 | `/new` | `start another conversation in this project` |
 | `/resume` | `open an earlier conversation` |
+| `/workspace <path>` | `anchor this conversation to a project` |
 | `/task <brief>` | `start work you can walk away from` |
 | `/history` | `every task this project has run · ctrl+.` |
 | `/standing <words>` | `keep this true · a card, never work done once` |
@@ -174,7 +193,7 @@ last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/permissions` | `what runs without asking · drop one with d` |
 | `/status` | `everything the status line knows, one fact per line` |
 | `/cost` | `what this conversation has spent · /spend is the whole machine` |
-| `/spend` | `what this machine has cost, by the day` |
+| `/spend` | `what this machine has cost, by the day · alt+3` |
 | `/budget` | `what aforge may spend · every limit on one tab` |
 | `/compact` | `summarize the conversation now` |
 | `/rewind` | `go back to an earlier point · esc esc takes back the last` |
@@ -185,20 +204,33 @@ last ten cleared drafts; `enter` restores one and `d` lets one go.
 
 </details>
 
-Calls that need permission pause on a card such as:
+A call that needs permission pauses on a block. Its header counts ten seconds down and
+then stops and keeps waiting, rather than answering for you:
 
 ```text
-? needs your ok to run bash [1] allow once · [2] always, this command · [3] deny · [esc] later · 7s
+╭─  needs your ok to run bash ─────────────────────────────────────────────────────── bash · 10s ─╮
+│ echo hi · default                                                                                │
+│                                                                                                  │
+│ ▸ 1  allow once                                                                                  │
+│   2  always                                                                                      │
+│   3  deny                                                                           safe answer  │
+│                                                                                                  │
+╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────────────────────────────────╯
+  c change · ? ask back · 1–3 jump
 ```
 
-Irreversible calls omit the widening choice. `--yolo` changes the approval default to
-allow.
+`↑↓` and `enter` take an answer, the digits jump straight to one, and `esc` leaves it
+for later. `c` is `change: say what you want different, then enter`; `?` is
+`ask back: type your question, then enter`. The answer leaves a row you can reopen —
+`needs your ok to run bash → allow once · you · 20:21 · c change`. A call whose outcome
+cannot be taken back drops choice 2, the widening one. `--yolo` makes allow the default,
+and the status line then says `YOLO`.
 
 ## Tools in the conversation
 
 The model works through named tools rather than by suggestion. `read`, `write`,
-`edit` and `bash` change the folder you are in; `grep`, `find` and `ls` look around
-it; `web_search` and `web_fetch` go out; `remember` keeps something for later;
+`edit` and `bash` act on the folder this conversation is anchored to; `grep`, `find`
+and `ls` look around it; `web_search` and `web_fetch` go out; `remember` keeps something for later;
 `propose_task` hands work off. The belt is assembled for each session, and a
 capability that cannot work is left off it rather than offered and failing.
 
@@ -231,24 +263,35 @@ Keep talking while the task runs. Its report starts a turn in the conversation w
 lands.
 
 A task page shows the instruction, folded work and calls, steering, the report, and a
-pinned line with activity, duration, cost, and call count. `/task <brief>` is the direct
+pinned line with activity, duration, cost and call count. `/task <brief>` is the direct
 door; `/history` opens the project's task history.
 
 Standing orders use `/standing <words>` or `ctrl+enter`. They become cards and stay true
 after the conversation. Memory keeps person-, project-, or machine-scoped records in
-`graph.db`; use `/memory`, `/memories`, `/remember`, and `/forget` to change them. Press
-`space space` or type `/home` to see every project and conversation on the machine.
+`graph.db`; `/memory`, `/memories`, `/remember` and `/forget` change them.
 
 ## Models, keys, and spending
 
 Key resolution is `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, then `api_key` in the
-profile's `config.json`. With no key, an interactive local launch offers browser-based
-OpenRouter connection or a pasted key. A non-interactive chat stops with
-`aforge chat needs a model to talk with.`
+profile's `config.json`. With no key, an interactive local launch opens a two-page setup
+that offers to connect OpenRouter in a browser or take a pasted key. A non-interactive
+chat with no key stops instead, with `aforge chat needs a model to talk with.`
+
+<details>
+<summary>The two first-run screens, word for word</summary>
+
+Where a browser is reachable the first page is headed `connect openrouter`:
 
 ```text
-aforge talks to models on its default service through openrouter, on your key and your card. nothing is sent until you do.
+sign in once in your browser. openrouter makes the default service's key for this profile; aforge stores it on this machine. no prompt is sent and no model is called.
 ```
+
+Where it is not, the same page is headed `your openrouter key` and reads `aforge talks
+to models on its default service through openrouter, on your key and your card. nothing
+is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
+The second page is `Daily limit`, `Chat model` and `Work crew`.
+
+</details>
 
 The chat model resolves from `--model`, then saved `model.talk`, then `AFORGE_MODEL`,
 then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
@@ -268,17 +311,12 @@ in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/
 
 ## The manual ships with the binary
 
-The Markdown under `internal/manual/chat/` is compiled into aforge. The conversation uses
-the `manual` tool to answer questions about its own behaviour.
-
-```bash
-aforge manual                    # list every page
-aforge manual "what does this key do?"  # return the sections that answer
-```
-
-Inside the chat, use `/manual`. Build gates require every slash command and alias, every
-tool name, and more than a hundred questions in ordinary language to reach an answering
-page.
+The Markdown under `internal/manual/chat/` is compiled into aforge, and the conversation
+reads it with the `manual` tool to answer questions about its own behaviour. From a
+terminal `aforge manual` lists every page and `aforge manual "<question>"` returns the
+sections that answer it; inside the chat it is `/manual`. Build gates require every
+slash command and alias, every tool name, and more than a hundred questions in ordinary
+language to reach an answering page.
 
 ## Headless work
 
@@ -301,9 +339,13 @@ in its `stop` field.
 | `4` | Needed an answer and nobody was there. |
 
 These need no model key and spend nothing: `aforge why self`, `aforge why <task-id>`,
-`aforge logs [--tail 40] [--follow] [--json]`, `aforge models [--refresh]`,
-`aforge doctor`, `aforge manual [page | "question"]`, and `aforge version`.
-`aforge help env` prints the environment table.
+`aforge logs [--tail 40] [--follow] [--json]`, `aforge doctor`,
+`aforge manual [page | "question"]`, and `aforge version`. `aforge help env` prints the
+environment table.
+
+`aforge models [--refresh]` is the exception in that group: it spends nothing of yours,
+but it reaches the network for the catalog and stops with
+`aforge needs a model to work with.` if no key is resolvable.
 
 </details>
 
@@ -311,26 +353,22 @@ See [the headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md
 
 ## Work on another machine
 
-Remote access attaches the local surface to a conversation on the machine that owns the
-workspace. The conversation and its work stay there; the surface travels over a byte
-stream.
+The conversation and its work stay on the machine that owns the workspace; the local
+surface attaches to it over a byte stream.
 
 ```bash
-aforge chat --host devbox
-aforge chat --host me@devbox
-aforge chat --host devbox:code/app
+aforge chat --host devbox            # also me@devbox, or devbox:code/app
 ```
 
-`--host` runs the far machine's `aforge engine` over `ssh -T`; it needs `ssh` here and
-aforge installed there. `--one-model` and `--host` cannot be combined.
+`--host` runs the far machine's `aforge engine` over `ssh -T`: it needs `ssh` here and
+aforge installed there, and it cannot be combined with `--one-model`. For a machine
+without ssh, `aforge serve [--workspace path] [--relay url]` holds an outbound relay
+connection and prints a pairing name such as `otter-lamp-42` — without a configured
+relay it stops — and `aforge chat --at <name>` connects to it. `aforge devices` lists
+paired devices; `aforge devices revoke <name> [--all]` revokes access.
 
-For a machine without ssh, `aforge serve [--workspace path] [--relay url]` holds an
-outbound relay connection and prints a pairing name such as `otter-lamp-42`; without a
-configured relay it stops. Connect with `aforge chat --at <name>`. `aforge devices` lists
-paired devices, and `aforge devices revoke <name> [--all]` revokes access.
-
-Current boundary: spend, search, and memory pages still read local files. Inside a remote
-task room, steering, stopping, and model changes are absent.
+Current boundary: spend, search and memory pages still read local files, and inside a
+remote task room steering, stopping and model changes are absent.
 
 Read [remote access](docs/REMOTE.md) and its [testing guide](docs/remote-access-testing.md).
 
@@ -340,16 +378,14 @@ Branch from `dev` and open the pull request against `dev`; `main` is the release
 Every pull request carries a change entry under `docs/changes/unreleased/`.
 
 ```bash
+make build        # bin/aforge
+make pr-ready     # the bar a pull request into dev has to clear
+make demo-home    # a throwaway home with something on every page
 make changelog-new PR=<n> KIND=<kind> SLUG=<slug>
-make build
-make test-quick
-make test-touched
-make pr-ready
-make demo-home
 ```
 
-Read the [branching rules](docs/rules/branching.md), the [change-entry rules](docs/rules/changelog.md),
-and [AGENTS.md](AGENTS.md) or [CLAUDE.md](CLAUDE.md) before contributing.
+Read the [branching rules](docs/rules/branching.md), the [change-entry rules](docs/rules/changelog.md)
+and [AGENTS.md](AGENTS.md) before contributing.
 
 ## Documentation
 
