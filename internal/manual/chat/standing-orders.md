@@ -119,8 +119,8 @@ so what it tells you and what you answered cannot differ. Everything that wakes 
 `when ·` line: when the model sent no words for it, the card says the timing the item
 holds — `every 30 minutes`, `when inbox/* changes`, `when this machine has been quiet
 for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`. A file
-watch's `when ·` line always shows its glob, never the model's words for it, so the card
-names exactly the folders it reaches.
+watch's `when ·` line is never the model's words for it: with no condition it shows the
+glob (`when inbox/* changes`), with one the folder and the condition.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.

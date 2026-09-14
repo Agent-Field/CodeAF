@@ -712,8 +712,9 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	}
 	// THE PERSON'S CADENCE, SAID BACK, WINS OVER ANYTHING THE ENGINE WORKED
 	// OUT. when_words is the model's plain-words reading of what they asked
-	// for; the only time it is not the answer is when there is none, and then
-	// whatever [standingWhen] echoed stands (a resolved `in`, or nothing).
+	// for; it is not the answer when there is none, and then whatever
+	// [standingWhen] echoed stands (a resolved `in`, or nothing), and it is
+	// never the answer for a file watch (below).
 	//
 	// A HOLD HAS NO CADENCE TO SAY BACK. A rule is not due at any time, so a
 	// `when ·` band under one would be the card reading a rhythm into the word
@@ -794,7 +795,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		when.At = moment
 		// THE ECHO IS A FALLBACK AND NEVER AN OVERRIDE. [Agent.standingItem]
 		// puts the model's own when_words over the top of this when it sent
-		// any; what is left here is the case it sent none, where a card reading
+		// any (on every kind but a file watch); what is left here is the case it sent none, where a card reading
 		// "in 2 minutes — 06:54" is the difference between a person checking a
 		// stamp and a person reading a sentence.
 		when.Words = echo
@@ -839,7 +840,8 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		return when, "Invalid arguments: no when called " + strconv.Quote(string(when.Kind)) + " — " + standingKindWords
 	}
 	// The terminal door's own words for the same waking, as a fallback the
-	// model's when_words replace: a card and a record that said nothing about
+	// model's when_words replace on every kind but a file watch, whose words
+	// are always these ([standing.When.CardWords]): a card and a record that said nothing about
 	// when something wakes are a promise nobody can check (ruling R12). A rule
 	// wakes at no time and gets none.
 	if when.Words == "" {
