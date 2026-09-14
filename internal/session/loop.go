@@ -545,6 +545,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// it reaches the transcript, and the person sees which attempt they
 			// are on and what was taken off to get there.
 			hub.send(Event{Kind: EventNotice, Text: event.Delta})
+		case provider.StreamRowNews:
+			// A ROW THE PERSON WROTE IS NO LONGER BEING SENT, and this is the
+			// only place they are told (internal/provider's lanepin.go). It is
+			// its own kind rather than a notice because a notice is narration
+			// about one request's shape and this is news about a setting: a
+			// surface is free to fold the first away once the answer lands and
+			// must not fold this one, which is exactly what happened to it
+			// while the two shared a channel.
+			hub.send(Event{Kind: EventRowNews, Text: event.Delta})
 		case provider.StreamReplaced:
 			// A rescue on another machine is this step being asked again, so what
 			// the dead machine streamed is void exactly as a cut attempt's is. The
@@ -634,16 +643,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// fact free to disagree, the λ saying a watched node's seconds belong to
 	// somebody and the intent saying they belong to nobody. They are one stamp
 	// now: the turn names its ROLE and internal/lane's table answers both, so an
-	// unwatched node still asks for the cheap endpoint and a node whose run
-	// somebody is sitting in front of asks for the soonest one.
+	// unwatched node's seconds are worth nothing and the seconds of a node whose
+	// run somebody is sitting in front of are worth what theirs are.
 	//
 	// AND ALL OF IT SAID ONCE, AS A ROLE. internal/lane's roles.go holds the
 	// table — what a second of this errand's wait is worth, what quality bar it
 	// needs, how many calls it will make, and whether a person is reading THIS
 	// stream — and the role is the only thing a call site names. The intent
-	// below is kept beside it because `provider.sort` is still built from it and
-	// a dozen other packages still set it, but it is now a READING of the role
-	// rather than a second opinion about the same fact (internal/provider's
+	// below is kept beside it because what a wait is worth is still read off it
+	// and a dozen other packages still set it, but it is now a READING of the
+	// role rather than a second opinion about the same fact (internal/provider's
 	// roles.go).
 	ctx = provider.WithRole(ctx, a.laneRole())
 	// AND WHOSE ERRAND IT IS, beside what kind of errand it is, for the reason
@@ -1660,9 +1669,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 //
 // The reasoning level is stamped HERE, on the request path and nowhere else, so
 // it reaches every step and every retry of the turn and reaches nothing else:
-// the compaction summary and the title call are the session's own errands, not
-// the person's question, and a level they asked for their conversation to be
-// thought about would be an odd thing to spend on naming it.
+// the title call and the memory reflex are the session's own errands, not the
+// person's question, and a level they asked for their conversation to be thought
+// about would be an odd thing to spend on naming it.
 //
 // The stamp is [provider.WithConfiguredReasoningEffort] — the OPERATOR-explicit
 // setter — because this level is exactly that: a person turned a knob. The other
@@ -1844,11 +1853,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
 		// follows that, and the node it is gets named beside it.
+		//
+		// THE WORD GOES TO THE DOOR AND THE NODE STAYS HERE. A purpose is what a
+		// request is FOR and the door is the one place it is spelled onto a call
+		// (clientdoor.go); which node made it is a fact only this line knows.
+		purpose := purposeTurn
 		if a.config.taskID != 0 {
-			attemptCtx = provider.WithCallNode(provider.WithCallTag(attemptCtx, "task"),
-				strconv.FormatUint(a.config.taskID, 10))
-		} else {
-			attemptCtx = provider.WithCallTag(attemptCtx, "turn")
+			purpose = purposeTask
+			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
 		messages, carried := a.snapshotWithReasoning()
 		// OLD FROZEN TOOL RESULTS ARE ALREADY CONSUMED EVIDENCE. The live
@@ -1864,7 +1876,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
-		response, err := a.completeWithModel(attemptCtx, messages, model,
+		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
 			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
@@ -3255,6 +3267,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// citizen's rewrite is what runs — and the TOOL is the one dispatch already
 		// found, because the name is what got us here.
 		args := json.RawMessage(running.Function.Arguments)
+		// A read for bytes this conversation already has is answered from above,
+		// not from the disk (heldreads.go) — the gate above already judged it.
+		if pointer, held := a.heldClaim(call.Function.Name, args); held {
+			return a.finishToolResult(ep, call, toolResult{text: pointer})
+		}
 		started := time.Now()
 		// THE CALL'S OWN ID TRAVELS WITH IT. It is what lets a tool still
 		// running be addressed from outside the turn — the surface's key that
@@ -3302,7 +3319,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		return a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
+		// The held-range ledger records on the FINISHED text — exactly the bytes
+		// the transcript will carry — and only on a result that ran (heldreads.go).
+		a.heldNote(call.Function.Name, args, result.text, isError)
+		return result
 	}
 	// ── TAKEN, OR NEVER HELD ──
 	//
@@ -3885,6 +3906,13 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, reconciled: true,
 	})
+	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
+	// way: EVERY request this session makes writes one, and a request whose
+	// usage block never arrived wrote none — so the journal's call lines summed
+	// to barely half the measured session's bill, and exactly the expensive
+	// half was missing. The row is evidence and never spend; the money moved
+	// through the door above and nowhere else.
+	a.file.appendCall(armCall(receipt))
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
@@ -3955,6 +3983,12 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 		answered = strings.TrimSpace(model)
 	}
 	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context})
+
+	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
+	// name the row above banks, so a turn that hopped seals one usage line per
+	// model instead of one sum under the last name standing
+	// ([sessionFile.appendUsage] is the reader, and the only one).
+	turn.addShare(answered, call)
 
 	a.file.appendCall(journalCall{
 		Model:      strings.TrimSpace(response.Model),

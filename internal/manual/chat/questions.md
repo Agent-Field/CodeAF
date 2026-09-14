@@ -652,8 +652,8 @@ way.
 
 **The numbered answers are not on that road.** `1`–`9`, and the letters printed
 on an answer itself (`a`, `n`, `s` on a landing), take that answer the moment the
-row is on screen. A key drawn in front of you as `[1] allow once` is pressable,
-always.
+row is on screen. A key drawn in front of you as `1 allow once` is pressable,
+always — the key, one space, the word, with no brackets round it.
 
 ## Pressing esc — later, and nothing is cancelled
 
@@ -795,6 +795,28 @@ question is what is cut and they stay.
 
 Widen the window, or open the conversation: the transcript and the record always
 have the whole line.
+
+## You answered it, then switched tab and came back — is it asked again?
+
+**No.** An answer is the conversation's, not the screen's. Leave a tab while a
+reply is still running, come back to it, and what you get is the conversation as
+it stands: the work that has happened, and only the questions still waiting on
+you. A decision you already made is not put to you a second time, and neither is
+one somebody answered in another window or one the clock took.
+
+What you will see of the answered one is nothing at all, once the receipt's half
+minute has passed — that line is news, and coming back later is later. The
+decision itself is in the transcript and in `decisions.jsonl` for good.
+
+**A question you have NOT answered is still there when you come back**, wherever
+you went — another tab, home, the tasks place. That is the point of leaving it:
+nothing about the work moves while it waits, and the chip in the status line
+counts it from every page.
+
+This was wrong once and it was worth its own line here: a task-start question
+approved mid-reply came back on every return to the tab, and because a question
+takes the keyboard where it is drawn, the conversation underneath it could not be
+scrolled while it stood. Both were the same defect, and both are gone.
 
 ## A question that stops needing you
 

@@ -77,6 +77,30 @@ func grepToolDescription(caps Caps) string {
 	return grepFallbackDescription(caps)
 }
 
+// WidestGrepDescription is the longer of the two sentences `grep` can carry —
+// the one a machine with NO ripgrep is handed.
+//
+// A DESCRIPTION THAT DEPENDS ON THE MACHINE IS STILL A BYTE ON EVERY REQUEST,
+// and the gate that bounds the fixed prefix (internal/session's
+// prefixbudget_test.go) runs on machines of both kinds: the same commit weighed
+// 53,025 bytes on a laptop with ripgrep and 53,132 on a runner without it, so
+// the gate passed where it was written and failed where it was proved. The gate
+// weighs what the WIDEST machine pays, and this is the one place that knows
+// which sentence that is.
+func WidestGrepDescription(caps Caps) string {
+	caps = caps.resolve()
+	// THE LONGER OF THE TWO, MEASURED, and not the one that happens to be longer
+	// today. The fallback sentence is the longer one now; a later edit that grew
+	// the ripgrep sentence past it would have made a function called "widest"
+	// quietly return the narrower string, and the gate downstream would have gone
+	// back to depending on who ran it with nothing to say so.
+	with, without := grepDescription(caps), grepFallbackDescription(caps)
+	if len(with) > len(without) {
+		return with
+	}
+	return without
+}
+
 // grepMatch is one hit, whichever engine found it.
 type grepMatch struct {
 	filePath   string

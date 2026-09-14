@@ -535,8 +535,16 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 	if strings.Join(afterDefinitions, ",") != strings.Join(after, ",") {
 		t.Fatalf("the definitions and the belt disagree:\n%v\n%v", afterDefinitions, after)
 	}
-	if !strings.Contains(text, "next turn") {
+	// C3: The result and the description use one sentence to say the next
+	// request is still this turn, and neither tells the model to wait for a turn.
+	if !strings.Contains(text, sameTurnToolArrival) {
 		t.Fatalf("the result does not say when the tools arrive: %q", text)
+	}
+	if !strings.Contains(useServiceDescription, sameTurnToolArrival) {
+		t.Fatalf("use_service does not carry the shared same-turn sentence: %q", useServiceDescription)
+	}
+	if strings.Contains(text, "next turn") || strings.Contains(useServiceDescription, "next turn") {
+		t.Fatalf("the model is still told to wait for its next turn:\nresult: %s\ndescription: %s", text, useServiceDescription)
 	}
 
 	// Asking again is the cheap no-op that lets the two tools stay on the belt
@@ -634,6 +642,73 @@ func TestConnectingAnAccountAsksThenArmsTheFamily(t *testing.T) {
 	}
 }
 
+// C2/R6: Under the shipped prompt posture, a connection completed inside a
+// turn puts the account's tools on the very next model request; the model calls
+// one there and reaches its final answer without a human message or another
+// question in between. Removing use_service's own-question lift makes the
+// EventConsentRequest assertion fail before the connect card can be answered.
+func TestAConnectedAccountCarriesOnInTheSameTurn(t *testing.T) {
+	hub := &fakeHub{transport: &stubTransport{answer: `{"messages":[]}`}}
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("connect-call", "use_service", `{"service":"google"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("mail-call", "gmail_search", `{"query":"release"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("No release mail arrived."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, recorder, func(config *Config) {
+		config.connectHub = hub
+		config.AskConsent = true
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionPrompt}
+	})
+
+	events, err := agent.Submit(context.Background(), "check my mail for the release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+
+	if got := countKind(collected, EventConnectAsk); got != 1 {
+		t.Fatalf("the turn asked %d connect questions, want one", got)
+	}
+	if got := countKind(collected, EventConsentRequest); got != 0 {
+		t.Fatalf("the same turn raised %d tool-approval questions", got)
+	}
+	if _, carried := recorder.blockAt(t, 0)["gmail_search"]; carried {
+		t.Fatal("gmail_search was carried before the account was connected")
+	}
+	if _, carried := recorder.blockAt(t, 1)["gmail_search"]; !carried {
+		t.Fatal("the request immediately after connecting carries no gmail_search")
+	}
+	if hub.transport.calls() == 0 {
+		t.Fatal("the newly armed tool did not run")
+	}
+	if result := recorder.resultAt(t, 2, "mail-call"); strings.Contains(result, "Unknown tool") {
+		t.Fatalf("the newly armed call was refused: %q", result)
+	}
+	recorder.mu.Lock()
+	secondMessages := append([]ai.Message(nil), recorder.sent[1]...)
+	recorder.mu.Unlock()
+	var human []string
+	for _, message := range secondMessages {
+		if message.Role == "user" {
+			human = append(human, messageText(message))
+		}
+	}
+	if len(human) != 1 || human[0] != "check my mail for the release" {
+		t.Fatalf("a human message intervened before the new tool ran: %q", human)
+	}
+	if got := messageText(lastMessage(agent)); got != "No release mail arrived." {
+		t.Fatalf("the same turn did not finish with its final answer: %q", got)
+	}
+}
+
 // A browser account with one missing address piece takes the same typed-answer
 // road as a key, then carries that answer into the ordinary browser trip.
 func TestAnAddressBlankAsksAndReachesBeginAuth(t *testing.T) {
@@ -660,10 +735,10 @@ func TestAnAddressBlankAsksAndReachesBeginAuth(t *testing.T) {
 	}
 }
 
-// SILENCE IS A NO. The clock runs out, nothing is connected, nothing is armed,
-// and the model is told the person did not agree rather than told the machine
-// broke.
-func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
+// C4b: Silence is its own event. The clock runs out, nothing is connected or
+// armed, and the model is told the person did not answer rather than that they
+// refused.
+func TestAConnectQuestionNobodyAnswersSaysTheyDidNotAnswer(t *testing.T) {
 	restore := connectAskTimeout
 	connectAskTimeout = 20 * time.Millisecond
 	t.Cleanup(func() { connectAskTimeout = restore })
@@ -690,7 +765,7 @@ func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
 	if hasTool(agent, "gmail_search") {
 		t.Fatalf("an unanswered question still armed the family: %v", beltNames(agent))
 	}
-	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") {
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not answer") || strings.Contains(output, "did not agree") {
 		t.Fatalf("the model was not told plainly: %q", output)
 	}
 	if pending := agent.PendingConnect(); len(pending) != 0 {
@@ -698,8 +773,45 @@ func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
 	}
 }
 
-// A person who says no is a person who said no: the account stays unconnected
-// and the model is told to do the work without it.
+// R1: The resolver and the clock share the map claim as their atomic winner.
+// This white-box test drives both orders without sleeping: expireConnect is the
+// timer branch itself, and the existing C4b test above separately proves the
+// shortened real timer reaches that branch. Deleting its lost-claim receive
+// turns the resolver-first sentence into the silence sentence and fails here.
+func TestAConnectAnswerClaimedBeforeTheClockBeatsSilence(t *testing.T) {
+	const id = "connect-1"
+	t.Run("resolver first", func(t *testing.T) {
+		ask := connectAsk{answers: make(chan connectAnswer, 1)}
+		agent := &Agent{connectAsks: map[string]connectAsk{id: ask}}
+
+		agent.ResolveConnect(id, false)
+		answer := agent.expireConnect(id, ask)
+		result := connectAnswerFailure("Google", answer)
+
+		if !strings.Contains(result, "did not agree") || strings.Contains(result, "did not answer") {
+			t.Fatalf("the clock swallowed the claimed refusal: %q", result)
+		}
+	})
+
+	t.Run("clock first", func(t *testing.T) {
+		ask := connectAsk{answers: make(chan connectAnswer, 1)}
+		agent := &Agent{connectAsks: map[string]connectAsk{id: ask}}
+
+		answer := agent.expireConnect(id, ask)
+		agent.ResolveConnect(id, false)
+		result := connectAnswerFailure("Google", answer)
+
+		if !strings.Contains(result, "did not answer") || strings.Contains(result, "did not agree") {
+			t.Fatalf("the winning clock was not reported as silence: %q", result)
+		}
+		if len(ask.answers) != 0 {
+			t.Fatal("a resolver delivered after the clock had removed the ask")
+		}
+	})
+}
+
+// C4a: A person who picks `2 not now` is a person who said no: the account
+// stays unconnected and the model is told not to ask again this turn.
 func TestADeclinedConnectionIsSaidPlainly(t *testing.T) {
 	hub := &fakeHub{}
 	completer := &scriptedCompleter{steps: useServiceTurn("google")}
@@ -719,8 +831,41 @@ func TestADeclinedConnectionIsSaidPlainly(t *testing.T) {
 	if hasTool(agent, "gmail_search") {
 		t.Fatalf("a refusal still armed the family: %v", beltNames(agent))
 	}
-	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") {
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") || !strings.Contains(output, "do not ask again this turn") {
 		t.Fatalf("the model was not told plainly: %q", output)
+	}
+}
+
+// C4c: Words typed at a browser connect question are the person's next
+// instruction. They reach the model verbatim, nothing is connected or stored,
+// and the result says to do that work now.
+func TestWordsAtABrowserConnectQuestionCarryThePersonOn(t *testing.T) {
+	const words = "actually forget the calendar; just tell me what 2+2 is"
+	hub := &fakeHub{}
+	completer := &scriptedCompleter{steps: useServiceTurn("google")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "check my calendar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		if err := agent.ResolveQuestion(Answer{Kind: QuestionConnect, Ref: event.ConnectID, Change: words}); err != nil {
+			t.Fatalf("answer connect question: %v", err)
+		}
+	})
+
+	if hub.attempts() != 0 || hub.Connected("google") {
+		t.Fatal("moving on still connected or wrote the account")
+	}
+	output := lastToolOutput(t, collected)
+	for _, want := range []string{words, "left undone", "Do what the person asked now"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("the moved-on result lost %q: %q", want, output)
+		}
+	}
+	if strings.Contains(output, "did not agree") {
+		t.Fatalf("moving on was reported as a refusal: %q", output)
 	}
 }
 
@@ -749,6 +894,63 @@ func TestAConnectionThatFailsSaysSoAndArmsNothing(t *testing.T) {
 	}
 	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not finish connecting") {
 		t.Fatalf("the model was not told what happened: %q", output)
+	}
+}
+
+// C7: A failed browser return never sends its state nonce or exchange
+// vocabulary to either the event stream or the transcript the model reads.
+func TestABadSignInReturnDisclosesNoState(t *testing.T) {
+	const nonce = "STATE-NONCE-DO-NOT-DISCLOSE"
+	hub := &fakeHub{waitErr: errors.New("connect Slack: authorization error: state does not match (wants " + nonce + " but got bogus)")}
+	completer := &scriptedCompleter{steps: useServiceTurn("google")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "check my mail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+
+	if done, found := firstOfKind(collected, EventConnectDone); !found || !done.Failed {
+		t.Fatalf("the failed sign-in did not settle: %+v", done)
+	}
+	for name, text := range map[string]string{
+		"tool result": lastToolOutput(t, collected),
+		"transcript":  transcriptText(agent),
+	} {
+		lower := strings.ToLower(text)
+		if strings.Contains(text, nonce) || strings.Contains(lower, "authorization error") || strings.Contains(lower, "state does not match") {
+			t.Errorf("%s disclosed the failed exchange: %q", name, text)
+		}
+		if !strings.Contains(text, "the sign-in came back wrong and nothing was connected") {
+			t.Errorf("%s did not carry the honest replacement: %q", name, text)
+		}
+	}
+}
+
+// C7/R3: Browser failure text is deny-by-default. Unknown sentences and a
+// nonce without familiar keywords collapse to the fixed line; only the known
+// oauth2cli vendor shape keeps a short, plain reason.
+func TestBrowserFailureWordsAreDenyByDefault(t *testing.T) {
+	const hidden = "the sign-in came back wrong and nothing was connected"
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "nonce without keywords", err: errors.New("callback mismatch: wants SECRET-NONCE but got bogus"), want: hidden},
+		{name: "unrecognised error", err: errors.New("the page was closed"), want: hidden},
+		{name: "vendor denial", err: errors.New("connect Slack: authorization error from server: access_denied the workspace owner said no"), want: "access denied the workspace owner said no"},
+		{name: "vendor-shaped secret", err: errors.New("authorization error from server: access_denied SECRET-NONCE-THAT-MUST-NOT-LEAVE"), want: hidden},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := connect.SignInFailureReason(test.err); got != test.want {
+				t.Fatalf("failure reason = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

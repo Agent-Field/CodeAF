@@ -285,3 +285,71 @@ func TestASessionsCallCountHoldsTheAuxiliaryCallsItsTurnCountDoesNot(t *testing.
 		t.Fatalf("the auxiliary call's 0.02 is missing from the session's %.4f", used.CostUSD)
 	}
 }
+
+// A TURN TWO MODELS ANSWERED SEALS ONE USAGE LINE PER MODEL — the rollup half
+// of the measured defect. The turn below hopped mid-way, and the seal used to
+// write ONE line carrying the whole turn's sum under the name standing last,
+// so the journal's own record said the second model had spent money the first
+// one had (the measured session: 31 requests, 2.4M input tokens, all under the
+// post-hop name). The lines are the per-model shares the turn kept beside the
+// sum (Usage.byModel), in name order so the one carrying the turn's wall time
+// is a fact and not a coin toss — the replay adds these lines, and the turn
+// ran once.
+func TestATurnThatHoppedModelsSealsOneUsageLinePerModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = path
+		config.usageLedger = ledger
+	})
+
+	// Two answers from the model the turn started on, then one from the model
+	// the hop landed on — the latch the seal is handed is the LAST one, which
+	// is exactly the attribution the split exists to refuse.
+	var turn Usage
+	before := pricedResponse("a step", 0.25)
+	before.Model = "z-ai/glm-5.3"
+	agent.addUsage(&turn, before, "z-ai/glm-5.3", "", laneFacts{})
+	before2 := pricedResponse("another step", 0.5)
+	before2.Model = "z-ai/glm-5.3"
+	before2.Usage.PromptTokens = 20
+	agent.addUsage(&turn, before2, "z-ai/glm-5.3", "", laneFacts{})
+	after := pricedResponse("the hop's step", 0.75)
+	after.Model = "deepseek/deepseek-v4.1-flash"
+	after.Usage.PromptTokens = 30
+	agent.addUsage(&turn, after, "deepseek/deepseek-v4.1-flash", "", laneFacts{})
+
+	started := time.Now().Add(-time.Minute)
+	agent.sealTurn(turn, started, "deepseek/deepseek-v4.1-flash")
+
+	turns := turnUsageLines(t, path)
+	if len(turns) != 2 {
+		t.Fatalf("the journal holds %d turn usage lines, want one per answering model: %+v", len(turns), turns)
+	}
+	// Name order: deepseek before z-ai. The first line carries the turn's one
+	// wall time; the second carries none, so a replay never reads the minute
+	// twice.
+	first, second := turns[0], turns[1]
+	if first.Model != "deepseek/deepseek-v4.1-flash" || first.Input != 30 || first.Output != 5 ||
+		first.Calls != 1 || first.CostUSD != 0.75 {
+		t.Fatalf("the hop's line = %+v, want the last model's own figures only", first)
+	}
+	if second.Model != "z-ai/glm-5.3" || second.Input != 30 || second.Output != 10 ||
+		second.Calls != 2 || second.CostUSD != 0.75 {
+		t.Fatalf("the first model's line = %+v, want its own two calls summed", second)
+	}
+	if first.DurationMS < 60000 || second.DurationMS != 0 {
+		t.Fatalf("the wall time is split %d + %d, want the turn's minute once and never twice",
+			first.DurationMS, second.DurationMS)
+	}
+
+	// AND THE REPLAY ADDS THE TWO BACK INTO THE TURN'S OWN TOTALS, because the
+	// split is a spelling of the same money, not new money.
+	replayed, err := replaySessionFile(path)
+	if err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	if got := replayed.usage; got.CostUSD != 1.5 || got.Input != 60 || got.Output != 15 || got.Calls != 3 {
+		t.Fatalf("the split lines replay to %+v, want the turn's own sum (1.50, 60 in, 15 out, 3 calls)", got)
+	}
+}

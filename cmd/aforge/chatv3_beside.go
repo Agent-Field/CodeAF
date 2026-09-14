@@ -268,7 +268,16 @@ func (f *engineFleet) hold(conn *engineConn) {
 // forget takes one connection off the list and retires it. It is what
 // [besideAgent] calls once its conversation is over on the far side.
 func (f *engineFleet) forget(conn *engineConn) {
+	f.drop(conn)
+	_ = conn.close()
+}
+
+// drop takes one connection off the list. The retire runs in the caller after
+// the lock is let go: closing a connection can take as long as an ssh child's
+// reaping, and none of that belongs under the fleet's mutex.
+func (f *engineFleet) drop(conn *engineConn) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	kept := f.conns[:0]
 	for _, held := range f.conns {
 		if held != conn {
@@ -276,8 +285,6 @@ func (f *engineFleet) forget(conn *engineConn) {
 		}
 	}
 	f.conns = kept
-	f.mu.Unlock()
-	_ = conn.close()
 }
 
 // closeAll retires every connection this window opened, the boot one last. It is
@@ -289,16 +296,24 @@ func (f *engineFleet) forget(conn *engineConn) {
 // whether the work outlives the window. This is the transport underneath that,
 // and nothing here decides anything about anybody's work.
 func (f *engineFleet) closeAll() {
-	f.mu.Lock()
-	conns := append([]*engineConn(nil), f.conns...)
-	f.conns = nil
-	f.mu.Unlock()
+	conns := f.takeAll()
 	for _, conn := range conns {
 		if conn != f.boot {
 			_ = conn.close()
 		}
 	}
 	_ = f.boot.close()
+}
+
+// takeAll hands over every connection this window opened and empties the list,
+// so the retires — each as slow as the transport it reaps — run after the lock
+// is let go rather than under it.
+func (f *engineFleet) takeAll() []*engineConn {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	conns := append([]*engineConn(nil), f.conns...)
+	f.conns = nil
+	return conns
 }
 
 // bundle is one conversation as the surface takes it: the agent that owns its

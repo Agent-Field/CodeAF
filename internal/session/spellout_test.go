@@ -74,7 +74,7 @@ func TestALongClauseIsHeldToItsCap(t *testing.T) {
 // call in this build resolves. A role that stopped being registered would fall
 // back to the conversation's own model, which is the expensive one.
 func TestTheExpansionIsRegisteredOnTheLowTier(t *testing.T) {
-	tier, ok := roles.TierOf(spellOutRole)
+	tier, ok := roles.TierOf(roles.RoleSpellOut)
 	if !ok {
 		t.Fatal("the expansion is not a registered role")
 	}

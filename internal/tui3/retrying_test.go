@@ -110,7 +110,7 @@ func TestAHedgeReplacementLeavesOnlyTheRescuedAnswerOnThePage(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.state, a.turn, a.linear = stateWorking, 1, true
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT PARTIALTEXT"})
-	a.event(session.Event{Kind: session.EventRetrying, Text: "that lane went quiet — this answer is coming from another one"})
+	a.event(session.Event{Kind: session.EventRetrying, Text: "that provider went quiet — this answer is coming from another one"})
 	a.event(session.Event{Kind: session.EventTextDelta, Text: "STUBANSWER the link is back."})
 	a.event(session.Event{Kind: session.EventAssistantDone})
 
@@ -121,7 +121,7 @@ func TestAHedgeReplacementLeavesOnlyTheRescuedAnswerOnThePage(t *testing.T) {
 	if strings.Contains(page, "PARTIALTEXT") {
 		t.Fatalf("the dead lane's answer stayed on the page:\n%s", page)
 	}
-	if got := strings.Count(page, "that lane went quiet"); got != 1 {
+	if got := strings.Count(page, "that provider went quiet"); got != 1 {
 		t.Fatalf("the replacement line appears %d times, want once:\n%s", got, page)
 	}
 	if !strings.Contains(page, "this answer is coming from") || !strings.Contains(page, "another one") {

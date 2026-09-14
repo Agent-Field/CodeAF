@@ -445,7 +445,7 @@ func TestTheCrewNeverReachesAServiceThatDoesNotServeIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = child.Close() })
-			if _, err := child.completeWithModel(t.Context(), []ai.Message{textMessage("user", "work")}, "crew/worker"); err != nil {
+			if _, err := child.completeWithModel(t.Context(), purposeTask, []ai.Message{textMessage("user", "work")}, "crew/worker"); err != nil {
 				t.Fatal(err)
 			}
 			drainTurn(t, agent, "chat")

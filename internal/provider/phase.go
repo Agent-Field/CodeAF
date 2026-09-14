@@ -93,7 +93,7 @@ const (
 	// channel for it would be a second thing to keep alive, and the first time
 	// one of them stalled the other would still be drawing.
 	PhaseAsking Phase = "asking"
-	// PhaseAllSlow is the visible half of [control.Report]: every reachable lane
+	// PhaseAllSlow is the visible half of [control.Report]: every reachable provider
 	// is believed slow, so acting would buy nothing and the only honest act left
 	// is to SAY the wait is real.
 	//
@@ -107,14 +107,14 @@ const (
 	// endpoint is doing — so [phaseClock.allSlow] leaves [PhaseNews.Since]
 	// exactly where it was and the surface goes on counting up from the moment
 	// the wait began.
-	PhaseAllSlow Phase = "all lanes slow"
+	PhaseAllSlow Phase = "all providers slow"
 	// PhaseBelowPace is the other half of [control.Report], and it is the half
 	// this build used to say nothing about: the endpoint IS writing, and it is
 	// writing too slowly to be worth reading, and no second machine can be
 	// started to fix it.
 	//
 	// IT IS NOT [PhaseAllSlow] AND IT IS NOT [PhaseWriting]. A person told "all
-	// lanes slow · still waiting" while words are appearing is being told about a
+	// providers slow · still waiting" while words are appearing is being told about a
 	// silence they can see is not happening; a person told "writing" while 604
 	// tokens take 86 seconds is being told about a stream that is technically
 	// alive and practically stopped. On 2026-09-11 that exact call showed a
@@ -343,9 +343,7 @@ func phaseListening() bool {
 // the wrong place. The one live reader hands the news to a desk and asks for a
 // frame.
 func postPhase(news PhaseNews) {
-	phaseMu.RLock()
-	reader := phaseReader
-	phaseMu.RUnlock()
+	reader := phaseReaderNow()
 	if reader == nil {
 		return
 	}
@@ -356,6 +354,15 @@ func postPhase(news PhaseNews) {
 		news.Since = news.At
 	}
 	reader(news)
+}
+
+// phaseReaderNow is the registered reader, read in its own locked half: the
+// post that follows runs outside the lock, because a reader that works pays
+// for it in the wrong place (see [postPhase]).
+func phaseReaderNow() func(PhaseNews) {
+	phaseMu.RLock()
+	defer phaseMu.RUnlock()
+	return phaseReader
 }
 
 // ── THE ONE CLOCK A REQUEST KEEPS ───────────────────────────────────────────
@@ -417,10 +424,7 @@ const phaseBeat = time.Second
 // clock read taken before the nil check moved every figure they assert by one
 // step. A seam that is free only when it is switched off is not free.
 func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
-	phaseMu.RLock()
-	listening := phaseReader != nil
-	phaseMu.RUnlock()
-	if !listening {
+	if !phaseListening() {
 		return nil
 	}
 	return &phaseClock{

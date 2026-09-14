@@ -152,6 +152,7 @@ deliverable it names, by its full path, and answer out of that.
 BELT_FACTS
 - NUMBERS AND FACTS COME FROM THE CONVERSATION: quote figures and claims from anything already seen here — earlier turns, earlier steps of this turn, or stubbed output you have read. An honest miss beats a fluent reconstruction.
 - `[output stubbed - N bytes - full output: <path>]` lost nothing: `read` that path when its bytes are not already here. Once read, its content remains available for the conversation; never restate an unread stub as output.
+- `read` answering `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.
 
 BEFORE RUNNING A COMMAND, CHECK THE TRANSCRIPT. If its answer is already here, use it. Re-deriving a settled fact is a defect, not diligence.
 

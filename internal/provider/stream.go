@@ -107,6 +107,28 @@ const (
 	// had actually been shown. Everything the consumer drew or buffered for this
 	// response is void, and the response the call returns is the replacement's.
 	StreamReplaced
+	// StreamRowNews carries one line about A PERSON'S OWN ROW in Delta — a pin
+	// the wire has refused and this build has stopped sending (lanepin.go), a
+	// base that has said it will not carry one at all (prefcarry.go).
+	//
+	// IT IS [StreamNotice]'s SIBLING AND DELIBERATELY NOT StreamNotice ITSELF,
+	// for the reason [StreamReplaced] is not: a notice is the adapter saying
+	// what it did to the person's REQUEST to get it accepted, and a surface is
+	// free to fold that away with the rest of the machinery once the answer has
+	// landed. This is the adapter saying that a SETTING they wrote is no longer
+	// being sent, and there is nothing to fold it into — it is the only account
+	// they will get of why the machine they named stopped appearing.
+	//
+	// THE MEASURED FAILURE (2026-09-13). The retirement sentence went out on
+	// StreamNotice, arrived as a note, and was swallowed whole by the chat's
+	// work chip: one drive, `@deepseek` gone from the model word, another
+	// machine answering, and `▸ worked 1.6s · thought 0.2s · ctrl+e` where the
+	// explanation should have been.
+	//
+	// It is raised BEFORE the stream opens, exactly as StreamNotice is, so a
+	// surface may receive one on a turn that goes on to produce no
+	// StreamStarted at all.
+	StreamRowNews
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only

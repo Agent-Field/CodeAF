@@ -330,6 +330,26 @@ func TestTheConnectOfferLeavesTheDraftAlone(t *testing.T) {
 	}
 }
 
+// C6: Words at a browser connect question move the turn on; they never open a
+// key-check report for an account that did not ask for a key.
+func TestWordsAtABrowserConnectQuestionOpenNoKeyCard(t *testing.T) {
+	agent, a, _ := connectApp(t)
+	a.width = 100
+	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
+	connectSettled(t, a)
+	typeLine(t, a, "actually just tell me what 2+2 is")
+
+	if len(agent.resolved) != 1 || !agent.resolved[0].keyed {
+		t.Fatalf("the words did not reach the connect lane: %+v", agent.resolved)
+	}
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "checking your Google key") {
+		t.Fatalf("a browser question opened a key card:\n%s", got)
+	}
+	if cards := connectEntries(a); len(cards) != 0 {
+		t.Fatalf("moving past the browser question opened %d connect reports", len(cards))
+	}
+}
+
 // THEY QUEUE, oldest first, and what is behind the one on screen is on screen.
 func TestConnectOffersQueue(t *testing.T) {
 	agent, a, _ := connectApp(t)
@@ -530,6 +550,35 @@ func TestAnUnfinishedSignInSaysSoQuietly(t *testing.T) {
 	}
 	if strings.Contains(screen, glyphBad) {
 		t.Fatalf("a connection that did not finish is drawn as a broken call:\n%s", screen)
+	}
+}
+
+// C5: Any browser wait still open when its turn ends settles to the existing
+// incomplete wording, stops animating, and no longer bypasses the render cache.
+func TestATurnEndingSettlesItsBrowserWait(t *testing.T) {
+	_, a, _ := connectApp(t)
+	a.width = 100
+	a.turn = 7
+	drive(t, a, streamOf(a, session.Event{
+		Kind: session.EventConnectAuth, Service: "google", ServiceName: "Google", AuthURL: testAuthLink,
+	}))
+	if !a.connectAnimating() {
+		t.Fatal("the browser wait was not live before the turn ended")
+	}
+
+	drive(t, a, streamOf(a, session.Event{Kind: session.EventTurnDone}))
+	screen := strings.Join(plainRows(a), "\n")
+	if strings.Contains(screen, "waiting in your browser") {
+		t.Fatalf("the dead browser wait still claims it is live:\n%s", screen)
+	}
+	if !strings.Contains(screen, "Google connection didn't complete") {
+		t.Fatalf("the dead browser wait did not settle honestly:\n%s", screen)
+	}
+	if a.connectAnimating() {
+		t.Fatal("the settled browser wait still asks for frames")
+	}
+	if cards := connectEntries(a); len(cards) != 1 || cards[0].state != connectFailed {
+		t.Fatalf("the browser report did not rejoin the cached settled state: %+v", cards)
 	}
 }
 

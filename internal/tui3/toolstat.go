@@ -2,11 +2,13 @@ package tui3
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 )
 
 // PER-TOOL DERIVATION (docs/CHAT-V3.md D11).
@@ -145,6 +147,81 @@ func toolTarget(tool, args, hint string) string {
 	}
 	_, gloss := toolWords(tool, hint)
 	return gloss
+}
+
+// toolTargetOf is [toolTarget] for a caller holding the whole entry — the
+// call's RESULT as well as its arguments.
+//
+// It exists for the two picture hands and for nothing else, because they are
+// the two whose target is not entirely in the arguments: `generate_image`
+// CHOOSES the file's name when the caller did not, so the only record of where
+// the picture went is the result, and the model that drew it is only ever
+// there. Every other tool falls straight through to [toolTarget] and is drawn
+// from its arguments exactly as it always was.
+//
+// One door, so the conversation's rows and a task room's rows — which are the
+// same composer over two lists (toolview.go's [app.clusterRows]) — cannot come
+// to two different answers about what a picture call is about.
+func (a *app) toolTargetOf(e *entry) string {
+	if e == nil {
+		return ""
+	}
+	if picturesAFile(e.tool) {
+		if target := a.pictureTarget(e); target != "" {
+			return target
+		}
+	}
+	return toolTarget(e.tool, e.detail.Args, e.text)
+}
+
+// pictureTarget is the sentence a picture row says: the file the call is about,
+// and — for a generation that has finished — the image model that drew it.
+//
+// THE MODEL IS A QUALIFIER AND NOT THE SUBSTANCE (toolview.go's parameter
+// hierarchy). A person reads the row for the picture they asked for; which
+// machine drew it is the fact BEHIND that, and it recedes accordingly. It is
+// joined with the middle dot this surface joins every trailing fact with, which
+// is what lets [toolFit] cut the path and keep the model, and what lets
+// [app.paintTarget] dim it without either of them knowing this tool's name.
+//
+// An unknown model adds nothing at all — not a placeholder, not a dash. The
+// running call, the engine that predates the marker and the terminal replaying
+// an old transcript all land here, and all three draw the file alone.
+func (a *app) pictureTarget(e *entry) string {
+	file := a.pictureFileWord(e)
+	if file == "" {
+		return ""
+	}
+	word := modelui.ModelWord(generatedPictureModel(e.detail.Output))
+	if word == "" {
+		return file
+	}
+	return file + " · " + word
+}
+
+// pictureFileWord is the picture's path AS A ROW SHOULD SAY IT: the caller's own
+// spelling when the arguments carry one, and otherwise the path out of the
+// result, made relative to this conversation's folder when it lies inside it.
+//
+// The result's path is whole and absolute on purpose (internal/session's
+// [picturePathInResult]), because it is the only record a terminal that cannot
+// draw the picture has. A ROW IS NOT THAT RECORD — the expansion under it still
+// prints the path whole ([app.pictureWords]) — so the row spends its cells on
+// the part that identifies the file and lets the leading directories go.
+func (a *app) pictureFileWord(e *entry) string {
+	if named := strings.TrimSpace(argString(argsOf(e.detail.Args), "path")); named != "" {
+		return filepath.ToSlash(named)
+	}
+	made := strings.TrimSpace(generatedPicturePath(e.detail.Output))
+	if made == "" {
+		return ""
+	}
+	if a.workspace != "" && filepath.IsAbs(made) {
+		if inside, err := filepath.Rel(a.workspace, made); err == nil && !strings.HasPrefix(inside, "..") {
+			return filepath.ToSlash(inside)
+		}
+	}
+	return filepath.ToSlash(made)
 }
 
 // toolStat is the dim figure trailing a tool line: the one number that says

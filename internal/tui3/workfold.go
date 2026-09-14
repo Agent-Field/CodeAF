@@ -242,6 +242,12 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			hi++
 		}
 		answer := -1
+		// A NOTE ADDRESSED TO THE PERSON IS NEVER FOLDED AWAY, and the loop
+		// below asks that two ways because the flag is the law and the first
+		// word is the older reading of it ([entry.told]). The line that earned
+		// the flag is a row of theirs that stopped being sent — a pinned
+		// machine the router refuses — and a chip that hid it left them with a
+		// pin that disappeared and no sentence anywhere saying why.
 		blocked, stopped := false, false
 		for i := lo; i < hi; i++ {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
@@ -251,7 +257,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				stopped = true
 			}
 			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding ||
-				(es[i].kind == entryNote && strings.HasPrefix(es[i].text, "cancel")) {
+				(es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel"))) {
 				blocked = true
 			}
 			// A SEAM IS NEVER FOLDED AWAY. A chip hides the machinery between a

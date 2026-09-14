@@ -1410,3 +1410,62 @@ func sortPresence(rows []SessionPresence) {
 		return rows[a].SessionID < rows[b].SessionID
 	})
 }
+
+// ── STALE-BUILD SWEEP: what a launch gate may warn about ────────────────────
+
+// StaleBuildRow names one live session whose presence claims a build rev
+// other than the process reading it now. It carries the session id, the
+// workspace it was opened with, the build stamp, and the pid the owner
+// wrote in — reported for a person's `kill`, NEVER for liveness (the
+// header's own law: age is the only liveness rule this file has).
+type StaleBuildRow struct {
+	SessionID string
+	Workspace string
+	Build     string
+	PID       int
+}
+
+// SweepStaleBuilds is the launch gate's one question: which FRESH presence
+// rows hold a build whose leading rev token is not `currentRev`. Files that
+// are unreadable, unparsable, empty of Build, or older than [presenceWindow]
+// are invisible to the sweep, by the same three rules the reader above has.
+//
+// The rev comparison's one rule: the first space-separated token of
+// presence.Build is the rev (buildinfo stamps it "<rev> built <time>",
+// optionally "(dirty)" beside the rev). A row whose build has no token at
+// all still reads as different — it was written by something, and the
+// process reading it is certainly another thing.
+func SweepStaleBuilds(projectsDir, currentRev string, now time.Time) (rows []StaleBuildRow) {
+	if currentRev = strings.TrimSpace(currentRev); currentRev == "" {
+		return nil
+	}
+	pattern := filepath.Join(projectsDir, "*", "*", "presence.json")
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var row SessionPresence
+		if err := json.Unmarshal(data, &row); err != nil {
+			continue
+		}
+		if !row.Fresh(now) {
+			continue
+		}
+		rev := strings.Fields(row.Build)
+		if len(rev) == 0 || rev[0] == currentRev {
+			continue
+		}
+		rows = append(rows, StaleBuildRow{
+			SessionID: row.SessionID,
+			Workspace: row.Workspace,
+			Build:     row.Build,
+			PID:       row.PID,
+		})
+	}
+	return rows
+}

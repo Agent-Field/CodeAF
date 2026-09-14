@@ -290,6 +290,14 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// reason: it is already being handled, the person only needs to see it.
 		f.note(ev.Text)
 
+	case session.EventRowNews:
+		// A ROW THE PERSON WROTE IS NO LONGER BEING SENT — their pinned machine
+		// refused this model, the base will not carry a lane choice at all. The
+		// same dim one-liner, and for the opposite reason: nothing is being
+		// handled, and this sentence is the whole of what they are told. So it
+		// is held out of the work chip, which had been swallowing it.
+		f.toldNote(ev.Text)
+
 	case session.EventRetrying:
 		f.retry(ev)
 
@@ -1271,6 +1279,16 @@ func (f *feed) reserveResponseContinuation() {
 // the one four lines up, and a transcript that swallowed it would be answering a
 // deliberate command with silence.
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
+
+// toldNote is a note ADDRESSED TO THE PERSON: same dim line, same door, and the
+// work chip may not swallow it ([entry.told]). Its one caller today is the news
+// that a row they wrote has stopped being sent (session's EventRowNews).
+func (f *feed) toldNote(text string) {
+	f.noteWritten(text, false, nil)
+	if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
+		f.entries[n-1].told = true
+	}
+}
 
 // noteWritten is the one body behind [feed.note] and the chat's two richer doors
 // ([app.noteFacts], [app.noteBlock]), so the repeat rule, the fact list and the

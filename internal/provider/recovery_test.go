@@ -235,7 +235,7 @@ func TestAnAccountExclusionIsLearnedOnceForEveryModel(t *testing.T) {
 	// home is the same, so the file this process wrote is what the next one
 	// reads when it wires its sheet.
 	lanes.ForgetAccountExclusionsInMemory()
-	again, err := NewClient(Config{APIKey: "test-key", BaseURL: rig.server.URL(), Model: modelB})
+	again, err := NewClient(rankedRoad(Config{APIKey: "test-key", BaseURL: rig.server.URL(), Model: modelB}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -219,14 +219,29 @@ func TestEveryResponseWritesItsOwnLineWithItsOwnShape(t *testing.T) {
 		t.Fatalf("second call model = %q, want the model that actually answered", second.Model)
 	}
 
-	// And the seal is untouched: the lines are evidence beside the bill, never
-	// a second copy of it.
+	// And the seal SPLITS THE HOP, which the call lines' own models make
+	// legible above: the first response named no model and latched onto
+	// test/model, the second answered as vendor/served-model. Two usage lines,
+	// one per answering model ([sessionFile.appendUsage]; usagejournal_test.go
+	// pins the hop case) — the call lines stay evidence beside the bill, and
+	// the bill is spelled once per model rather than once under the name
+	// standing last.
 	turns := turnUsageLines(t, path)
-	if len(turns) != 1 {
-		t.Fatalf("journal holds %d turn seals, want exactly 1", len(turns))
+	if len(turns) != 2 {
+		t.Fatalf("journal holds %d turn seals, want one per answering model", len(turns))
 	}
-	if turns[0].Calls != 2 {
-		t.Fatalf("the seal counted %d calls, want the 2 it always did", turns[0].Calls)
+	// Name order: test/model before vendor/served-model; the turn's one wall
+	// time rides the first and only the first (split or not, a replay reads
+	// the turn once).
+	latched, answered := turns[0], turns[1]
+	if latched.Model != "test/model" || latched.Calls != 1 || latched.Input != 20 || latched.Output != 7 {
+		t.Fatalf("first seal = %+v, want the latched model's own response", latched)
+	}
+	if answered.Model != "vendor/served-model" || answered.Calls != 1 || answered.Input != 900 || answered.Output != 40 || answered.CostUSD != cost {
+		t.Fatalf("second seal = %+v, want the answering model's own figures", answered)
+	}
+	if answered.DurationMS != 0 {
+		t.Fatalf("the turn's wall time landed twice: first %d, second %d", latched.DurationMS, answered.DurationMS)
 	}
 }
 

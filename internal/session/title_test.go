@@ -340,9 +340,9 @@ func TestTitleModelFollowsTheRolesLadder(t *testing.T) {
 		{"nothing set", nil, "test/model"},
 		{"the tier", map[string]string{roles.TierKey(roles.TierLow): "cheap/model"}, "cheap/model"},
 		{"the pin beats the tier", map[string]string{
-			roles.TierKey(roles.TierLow):       "cheap/model",
-			roles.PinKey(roles.RoleTitle):      "pinned/model",
-			roles.PinKey(roles.RoleCompaction): "other/model",
+			roles.TierKey(roles.TierLow):    "cheap/model",
+			roles.PinKey(roles.RoleTitle):   "pinned/model",
+			roles.PinKey(roles.RoleAuditor): "other/model",
 		}, "pinned/model"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

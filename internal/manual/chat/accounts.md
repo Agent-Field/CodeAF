@@ -67,11 +67,23 @@ connected, when, and that it was you — it does not carry the key, and neither
 does anything the model is sent, anything another window is told, or anything
 written to a log.
 
-**In a browser.** aforge starts a loopback listener and gives you an address to
-visit; it never opens a browser for you and never logs a key. The loopback addresses
-tried, in order, are `127.0.0.1:8765`, `127.0.0.1:18765`, then any free port. When
-the sign-in lands, the tab shows a page reading **"Connected."** and **"You can close
-this tab."**
+Browser accounts open the service's sign-in page; key accounts collect a key in the
+message box without starting a browser trip. Neither route writes a credential into
+the conversation.
+
+## Signing in through a browser — it opens and the address stays on screen
+
+aforge starts a loopback listener, opens the sign-in address with this machine's
+browser, and writes the address down under `waiting in your browser…` as well. The two
+are not alternatives: if this machine has no browser, the written address is still a
+way through. The waiting card has a copy affordance; after it is copied the card reads
+`copied — paste it wherever you can sign in`.
+
+The loopback addresses tried, in order, are `127.0.0.1:8765`,
+`127.0.0.1:18765`, then any free port. When the sign-in lands, the tab shows a page
+reading **"Connected."** and **"You can close this tab."**
+
+## Google browser permissions
 
 Google asks for exactly two permissions:
 `https://www.googleapis.com/auth/gmail.modify` and
@@ -80,6 +92,8 @@ permanent deletion, and read and write calendar events, not the calendars themse
 Google's consent screen is forced every time, because Google only issues a refresh
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
+
+## Slack browser permissions and its five-minute wait
 
 Slack asks for twelve user permissions: `search:read`; `channels:read`, `groups:read`,
 `im:read`, `mpim:read`; `channels:history`, `groups:history`, `im:history`,
@@ -98,6 +112,8 @@ comes back. Slack limits channel-history reads for applications
 outside its Marketplace to one thread read a minute, with at most 15 messages in that
 read; searching, listing channels and posting are not under that limit.
 
+## Tool-server and Datadog browser questions
+
 **The 28 tool servers listed below need nothing registered first.** aforge introduces
 itself to the service at connect time and is issued an identity on the spot, then
 makes the same browser trip.
@@ -108,12 +124,13 @@ else before making a connection. That question arrives with a box like a key's, 
 the answer stays visible while you type it — a site name is not a secret. That answer is kept beside the keys so later calls
 and renewals return to the same site.
 
-**With a key.** Nothing opens and nothing renews; the key is as good as the day it
-was made. Most services want one key and nothing else. A few whose address contains
-your own workspace want the workspace, one space, then the key — the service's own
-line says so. Where the catalog names a cheap health check, the key is proved before
-anything is stored, and a refusal fails with the far end's own words and writes
-nothing.
+## Signing in with a pasted key
+
+Nothing opens and nothing renews; the key is as good as the day it was made. Most
+services want one key and nothing else. A few whose address contains your own
+workspace want the workspace, one space, then the key — the service's own line says
+so. Where the catalog names a cheap health check, the key is proved before anything
+is stored, and a refusal fails with the far end's own words and writes nothing.
 
 Trying a browser sign-in on a key service errors with
 `<Name> is connected with a key, not in a browser`.
@@ -245,7 +262,7 @@ safeguard in the gate catches that, checked first. The model then reads:
 the work without it and say so plainly; calling again, or calling it another way, will
 not change their answer.`
 
-## The services and use_service tools
+## The services and use_service tools — does it ask permission to run services
 
 Two tools are always on the belt when an accounts layer exists.
 
@@ -255,10 +272,18 @@ Two tools are always on the belt when an accounts layer exists.
 - **`use_service`** — picks up one account's tools. An optional `tools` argument names a
   subset.
 
-**The tools `use_service` picks up arrive in the tool list on the next request, not
-the one it was called on — and that next request is still part of the same turn.** So a
-request that needs an account takes a beat: aforge picks up the account, then uses it,
-without waiting for you to say anything else.
+On the shipped default, neither `services` nor `use_service` raises a tool-approval
+question. `services` only lists accounts. `use_service` owns the connect card below,
+which is the one question about connecting; every tool it brings is still judged when
+it is called. An explicit `services:prompt` or `use_service:prompt` rule still asks,
+and the `deny` default still refuses.
+
+**The account's tools are in your tool list from your very next request, which is still
+this turn — carry on and use them now.** A request that needs an account takes a beat:
+aforge picks up the account, then uses it, without waiting for you to say anything
+else.
+
+## The connect question use_service asks
 
 If `use_service` names an account you have not connected, aforge raises a question on
 the question block above the message box, like every other question it asks:
@@ -283,6 +308,14 @@ every key on the screen while it was up. It does not: the block is not modal, so
 everything it has not drawn falls through to the message box, and you can keep typing
 under a question you have not answered.
 
+Pressing `enter` on words under a browser connect question moves on rather than
+connecting. The model is given those words unchanged, told the account was left
+unconnected, and told to do what you asked now. Five minutes with no answer is
+different: the model is told you did not answer, never that you refused. Neither route
+writes an account credential.
+
+## Answering a use_service connect question with a key
+
 **A key service asks for the key in that same message box.** There is no yes step —
 a bare yes to one of these is read as a decline anyway — so the question arrives with
 what to type written under it and the box below it collecting the answer:
@@ -305,10 +338,11 @@ Where a service names its own instruction — Chargebee's `Give the site name an
 the key, one space between them.` — that sentence is what the card says over the box,
 in place of the generic paste hint.
 
-The question waits **5 minutes**, and silence is a no. When nobody is watching the
-conversation, the tool answers instead: `Connecting <Name> needs the person to say
-yes, and nobody is watching this conversation. Do what you can without their <Name>
-account and say plainly that you could not reach it.`
+The question waits **5 minutes**. If nobody answers, nothing is connected and the
+model is told that you did not answer — not that you refused. When nobody is watching
+the conversation, the tool answers instead: `Connecting <Name> needs the person to
+say yes, and nobody is watching this conversation. Do what you can without their
+<Name> account and say plainly that you could not reach it.`
 
 ## How do I say not now to an account it wants a key for
 
@@ -329,8 +363,9 @@ chip on the status line, whatever you had typed stays in the box, and nothing ha
 decided. An empty box and `enter` answers nothing either — `enter` sends what is in the
 box, and there is nothing in it.
 
-**And silence is a no after 5 minutes**, which is the one road out that is not a
-keystroke. See *The services and use_service tools* above for what the tool is told.
+**And silence leaves the account unconnected after 5 minutes.** The model is told that
+you did not answer, never that you refused. See *The services and use_service tools*
+above for the exact distinction.
 
 ## Connecting while the conversation is idle
 
@@ -504,7 +539,12 @@ purpose.
 
 Every write to `credentials.json` goes through a temp file that is set to 0600 before
 a byte is written, then renamed over the old one — so keys are never briefly readable
-by anybody else, and a killed process leaves the previous file intact.
+by anybody else, and a killed process leaves the previous file intact. Before that
+write, aforge takes the exclusive cross-process `credentials.json.lock` and reloads
+the current store while holding it, so two processes cannot overwrite each other's
+last change.
+
+## What never leaves the account credential store
 
 aforge never logs a key. No access key, refresh key, client secret or pasted key is
 printed, returned in an error, or written anywhere but the store file. And a key that
@@ -512,13 +552,12 @@ reaches aforge from somewhere else entirely — a shell command that printed one
 file that was read — is replaced with `[redacted token · …]` before the result is kept,
 shown or sent to the model; the conversations page has the shapes it recognises.
 
+## If credentials.json is damaged
+
 A `credentials.json` that has become unreadable reads as nothing connected — the safe
 answer, which asks you to sign in again rather than promising access that cannot be
 delivered. A damaged `toolservers.json` reads as no registrations, so aforge registers
 again.
-
-Two processes writing at once are safe because of the rename, but can lose each
-other's last change.
 
 ## Connecting an account over --host
 

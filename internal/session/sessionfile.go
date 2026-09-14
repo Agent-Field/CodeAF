@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -487,15 +488,62 @@ type journalCreated struct {
 // session itself" — [journalUsage] already writes its own Role the same way —
 // and a name invented for the default case is a name that has to be kept in step
 // with a registry it is not in.
+//
+// Arm marks the one kind of row that did not come off a live stream: a request
+// whose usage block never arrived, written from the provider's own RECEIPT
+// after the fact (loop.go's [Agent.reconciled]). It is "hedge" for a rescue arm
+// and "reconciled" for any other late receipt, and absent on every ordinary
+// row. It exists because these are exactly the expensive requests — a hedge
+// fires when the first answer is slow, a receipt is fetched when a stream was
+// cut — and a journal that records every cheap call and none of the dear ones
+// answers a cost autopsy wrongly: the measured session's call lines summed to
+// barely half its bill until the arms wrote theirs. The money is already banked
+// by the reconciliation itself, so the row is evidence here and never spend,
+// the same as every other line of this shape.
 type journalCall struct {
 	Model      string  `json:"model,omitempty"`
 	Endpoint   string  `json:"endpoint,omitempty"`
 	Role       string  `json:"role,omitempty"`
+	Arm        string  `json:"arm,omitempty"`
 	Input      int     `json:"input,omitempty"`
 	CacheRead  int     `json:"cacheRead,omitempty"`
 	CacheWrite int     `json:"cacheWrite,omitempty"`
 	Output     int     `json:"output,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
+}
+
+// The two words [journalCall.Arm] is ever spelled in. They are constants rather
+// than literals at the call site for the reason every vocabulary in this file
+// is: the row is a record somebody else's autopsy reads back, and a word
+// spelled in two places is a word that drifts.
+const (
+	// journalArmHedge is a rescue arm's receipt: the request ran beside the
+	// stream it was rescuing, and its cost is waste the session chose to buy
+	// speed with.
+	journalArmHedge = "hedge"
+	// journalArmReconciled is any other late receipt: a stream that ended
+	// before its usage block — a cut, a torn ending — priced after the fact.
+	journalArmReconciled = "reconciled"
+)
+
+// armCall is the line one reconciled request leaves: what the receipt carries
+// and nothing more. A receipt names no endpoint — it is the provider's account
+// of the call, not the router's — so the field stays empty rather than
+// repeating who the stream THOUGHT was serving (the emptiness law: absent is
+// "nobody said", and a guessed endpoint would read as a measured one).
+func armCall(receipt provider.Reconciled) journalCall {
+	arm := journalArmReconciled
+	if receipt.Hedged {
+		arm = journalArmHedge
+	}
+	return journalCall{
+		Model:     strings.TrimSpace(receipt.Model),
+		Arm:       arm,
+		Input:     receipt.PromptTokens,
+		CacheRead: receipt.CachedTokens,
+		Output:    receipt.CompletionTokens,
+		CostUSD:   receipt.Cost,
+	}
 }
 
 // journalError is ONE CALL THAT FAILED, written down where the calls that
@@ -792,7 +840,11 @@ type journalDivision struct {
 	Checkpoint string `json:"checkpoint,omitempty"`
 }
 
-// journalUsage is one turn's accounting as the journal holds it.
+// journalUsage is one turn's accounting as the journal holds it — or, when a
+// turn was answered by more than one model, ONE MODEL'S SHARE of it: the seal
+// then writes one line per model that answered ([sessionFile.appendUsage]),
+// because a sum spelled under a single name attributes the whole turn to
+// whichever model answered last.
 //
 // Duration is milliseconds and not a time.Duration because a time.Duration
 // marshals as bare nanoseconds, and this is a file a person reads.
@@ -2832,6 +2884,49 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 		return
 	}
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
+		return
+	}
+	// A TURN MORE THAN ONE MODEL ANSWERED SEALS ONE LINE PER MODEL. The sum a
+	// single line carries can only name one of them, and it used to name the
+	// last: a turn that hopped mid-way had every request it made — on both
+	// sides of the hop — attributed to whichever model was standing at the
+	// seal, so the journal's own rollup said one model had spent money another
+	// had (the measured session: all 31 requests under the second model's
+	// name, thirteen of them served by the first). The shares were kept beside
+	// the sum all along (Usage.byModel, accumulated in [Agent.addUsage] from
+	// the response's own name); here they become the lines.
+	//
+	// THE DURATION LANDS ON ONE LINE, the first by name, because it is the
+	// TURN's wall time and not a figure any model earned a share of — and the
+	// replay adds these lines back up, so a copy on each would read the turn
+	// as twice as long as it ran. Money, tokens and calls divide; time does
+	// not, and the order is sorted so the line that carries it is a fact of
+	// the turn rather than of a map's mood.
+	if used.byModel != nil && len(*used.byModel) > 1 {
+		names := make([]string, 0, len(*used.byModel))
+		for name := range *used.byModel {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for i, name := range names {
+			share := (*used.byModel)[name]
+			line := journalUsage{
+				Model:      name,
+				Input:      share.Input,
+				Output:     share.Output,
+				CacheRead:  share.CacheRead,
+				CacheWrite: share.CacheWrite,
+				CostUSD:    share.CostUSD,
+				Calls:      share.Calls,
+				Aux:        aux,
+				Empty:      used.EmptyReflex > 0,
+				Role:       strings.TrimSpace(role),
+			}
+			if i == 0 {
+				line.DurationMS = used.Duration.Milliseconds()
+			}
+			s.writeLine(sessionEntry{Type: "usage", Usage: &line, Timestamp: stamp()})
+		}
 		return
 	}
 	s.writeLine(sessionEntry{

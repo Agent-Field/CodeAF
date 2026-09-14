@@ -406,6 +406,13 @@ func (a *app) clearConversation() {
 	// The box goes with the conversation it was typed at: the sidecar is holding
 	// it, and the arriving conversation has its own.
 	//
+	// AND ON THE KILL RING FIRST (draftring.go). The sidecar's answer to where
+	// the sentence is lasts only as long as the conversation is kept — a tab
+	// closed, a conversation evicted — and the ring is the net that still has
+	// the words after that. The push dedupes, so an ordinary switch away and
+	// back does not fill the walk with copies of one sentence.
+	a.noteKilled()
+	//
 	// ALL OF THE BOXES, which is what [app.forgetComposers] adds (recipient.go):
 	// the compact pastes the tokens in the sentence stood for, and every task
 	// page's own unsent line. A stash carried across would be words addressed to
@@ -447,6 +454,7 @@ func (a *app) closeForSwitch() {
 	// about to start work in a conversation they are no longer in
 	// (subharness.go).
 	a.subPage.close()
+	a.draftPage.close()
 	a.roster.close()
 	a.shelf.close()
 	a.closeLists()

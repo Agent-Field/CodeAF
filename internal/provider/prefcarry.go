@@ -215,11 +215,11 @@ var (
 
 // uncarriedPinLine is the whole sentence, spelled ONCE, here.
 //
-// It names the two things a person needs to go and look at — the machine they
+// It names the two things a person needs to go and look at — the provider they
 // pinned and the address this session is talking to — and it says what happened
 // to their request rather than what happened to the field: the work went out.
 func uncarriedPinLine(lane, base string) string {
-	return baseHost(base) + " does not take a lane choice; " + lane +
+	return baseHost(base) + " does not take a provider choice; " + lane +
 		" is not being asked for, and your requests still go out"
 }
 
@@ -264,17 +264,29 @@ func parkUncarriedPin(base string) {
 // does nothing at all on one they are not. The two conditions are
 // [tellRetiredPins]'s, for its reasons: there has to be a stream to say it on,
 // and the errand this call belongs to has to be one a person is watching.
+//
+// AND IT TRAVELS AS [StreamRowNews] FOR THAT FUNCTION'S REASON TOO: this is a
+// sentence about a row the person WROTE and not about the shape of a request,
+// and a surface that folded it in with the machinery would leave them with a
+// pin that silently stopped being sent.
 func tellUncarriedPins(ctx context.Context) {
 	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
 		return
 	}
+	for _, line := range takeUncarriedPins() {
+		Emit(ctx, StreamRowNews, line)
+	}
+}
+
+// takeUncarriedPins hands over whatever is parked in one locked step, for
+// [takeRetiredPins]'s reason: the queue is emptied by the same critical
+// section that reads it, so a line is never said twice.
+func takeUncarriedPins() []string {
 	uncarriedMu.Lock()
+	defer uncarriedMu.Unlock()
 	owed := uncarriedLines
 	uncarriedLines = nil
-	uncarriedMu.Unlock()
-	for _, line := range owed {
-		Emit(ctx, StreamNotice, line)
-	}
+	return owed
 }
 
 // forgetUncarriedPins empties both halves. It is for tests, which must not
