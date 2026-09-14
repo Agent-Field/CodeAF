@@ -550,6 +550,13 @@ straight to that row, and it carries the answer you were standing on with it —
 the row then says `it goes with 2 Adaptive`, which is "I will take that one, but
 not as it stands".
 
+The box edits like the message box under it. `alt+left`/`alt+b`/`ctrl+left` and
+`alt+right`/`alt+f`/`ctrl+right` jump a word; `super+left`/`meta+left` and
+`super+right`/`meta+right` (⌘← and ⌘→) go to the ends of the line; `ctrl+u` or
+`super+backspace` (⌘⌫) kills to the line's start; `alt+backspace` or
+`ctrl+backspace` (⌥⌫) deletes the word behind the caret. `ctrl+w` stays the tab
+close it is everywhere else.
+
 **A question with nothing to weigh is one row**, because a frame around one
 sentence is a box drawn around nothing:
 
