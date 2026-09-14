@@ -1442,9 +1442,9 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// HERE, and that absence is the point. This door used to read the routing row
 	// and write it onto the config, which the session then handed to every client
 	// it built as an answer of its own ([provider.StaticRouting]) — and an answer
-	// handed down WINS over the row this process installs, for the good reason
-	// that an engine host and a task child carry their parent's row explicitly.
-	// So the conversation's clients were pinned to the word that was on disk at
+	// handed down WINS over the row this process installs, which is what a caller
+	// holding a row this process did not install needs it to do. So the
+	// conversation's clients were pinned to the word that was on disk at
 	// launch: a person who cycled `routing` in the settings panel watched the row
 	// change, watched the `lane` row go on explaining itself in the old word, and
 	// got the old routing on every request until they relaunched (issue #1022).

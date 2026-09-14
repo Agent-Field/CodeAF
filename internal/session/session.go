@@ -1120,9 +1120,9 @@ type Config struct {
 	// profile's row is installed process-wide instead (internal/config's
 	// InstallLaneRows), so a person who cycles `routing` in the settings panel
 	// is answered by the very next request rather than by the next launch
-	// (issue #1022). What still fills this field is a caller carrying a row that
-	// is not this process's to read — an engine host, a task child — and such a
-	// caller still wins over the installed row.
+	// (issue #1022). The field is still the way a caller HANDS a row down — a
+	// child built from a parent's own config rather than from a profile — and
+	// such a caller still wins over the installed row.
 	Routing provider.RoutingStrategy
 
 	// CompactEnabled gates automatic compaction. Manual compaction via the
