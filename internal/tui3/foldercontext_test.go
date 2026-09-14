@@ -745,7 +745,13 @@ func TestANarrowSheetKeepsTheNamesAndStillPreviews(t *testing.T) {
 // first `/folder` of a launch drew an empty preview pane until the next
 // keystroke, and a folder chosen in that second was silently discarded.
 func TestThePicksLandingMidBrowseKeepTheChoicesAndThePreview(t *testing.T) {
+	t.Setenv("AFORGE_HOME", t.TempDir())
 	a, _, root := mixedLab(t)
+	// This test delivers the roots itself below. Keep the initial store fresh
+	// so opening the browser never scans the developer's real home directory.
+	if err := writeFolderStore(folderStore{Scanned: a.now()}); err != nil {
+		t.Fatal(err)
+	}
 	a.folderStoreRead = false
 	settleFolder(t, a, a.openFolderPick(filepath.Join(root, "here")+"/"))
 	onFolderRow(t, a, "inner")

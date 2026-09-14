@@ -14,3 +14,8 @@ can occupy the same cell. Terminal-specific font-name queries also do not provid
 a portable guarantee of glyph coverage. The automatic choice therefore stays
 conservative without adding terminal I/O or a startup wait. The existing rich,
 plain and accessible renderings remain available through the same vocabulary.
+
+PR validation also exposed a pre-existing folder-browser test timeout on unchanged
+`dev`: its initial store read scanned the developer's real home before the test
+delivered its own roots. That test now supplies a fresh store in an isolated state
+root, preserving the same mid-browse assertions without a real-home scan.
