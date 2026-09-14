@@ -173,6 +173,11 @@ If the call asked for a model in its own words, the line keeps both halves —
 what actually ran. A running call that asked for one says `asked for seedream`
 until it finishes.
 
+A call that **failed** has no file and no model beside it on the row — there was
+no picture to attribute. The model it tried is named inside the failure the
+expansion shows, e.g. `Image generation failed (bytedance-seed/seedream-5-0-pro):
+…`.
+
 To change which model draws, just say so: "draw this one with gemini", "use the
 best image model". That is the `model` argument on the tool, described in the
 section above, and it changes nothing permanently. For a new default, use
