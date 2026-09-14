@@ -148,6 +148,23 @@ and avoiding hanging open draft PRs. Consolidate design/checklist records into
 another implementation draft merely for the isolated candidate. Keep #662 draft
 and unmerged into dev, and retain test deferrals visibly.
 
+## Implementation choices in W5-B (2026-09-14) — not owner approvals
+
+Made inside the already authorized slice ("truthful multiple-folder/single-report
+handling"; reuse existing machinery; no new concepts). Each can be reversed by the owner.
+
+- **I-W5B-1. A file watch is said by its pattern.** `When.CardWords` returns
+  `when <glob> changes` for an unconditioned watch, and `when_words` are not recorded for
+  one. This supersedes the chat door round-1 lane choice "the model's own words still
+  win" for file watches only, because a card could promise a folder the pattern never
+  reaches. Other kinds keep the model's words.
+- **I-W5B-2. The report-on-edit gap is closed at the schema text**, not by a stop card: the
+  live cause was the model's stated belief that a report path cannot be edited. Confirming
+  a chat stop on a card is left as an open owner decision (it changes every stop).
+- **I-W5B-3. Two sibling folders into one report stay unsupported** and are said to be: no
+  brace expansion, no broadened pattern chosen for the person; the manual names the honest
+  outcomes.
+
 ## Governing scope and causal records — C23–C25
 
 2026-09-10, C23: the user accepted the recommended scope rules and authorized

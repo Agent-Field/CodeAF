@@ -485,17 +485,32 @@ func (e firingEnd) body() string {
 // can tell. (Every closing tag a real model wrote in the live runs, seventeen
 // of them, was on a line of its own; one glued to other words is not a closing
 // line, and its report reads as unclosed.)
+//
+// AN OPENING TAG THAT STARTS A LINE OPENS, even with the report's first line
+// glued after it. The W5-B acceptance run wrote `<report># Digest` and a
+// closing line of its own, and a whole report was withheld as closed but never
+// opened. At the very start of a line the tag has no sentence around it to be a
+// mention in, so the rest of that line is the report's first line. It opens
+// only when nothing has opened yet: after a report, a line such as `<report>
+// above is this week's digest` is a mention and must not reopen and withhold
+// it. A tag later in a line is still a mention, and the closing line stays strict.
 func delimitedReport(text string) (string, reportLines) {
 	lines := strings.Split(strings.TrimPrefix(text, "\uFEFF"), "\n")
 	open, closing, strayClose := -1, -1, false
+	first := ""
 	var fence markdownFence
 	for i, line := range lines {
 		if fence.step(line) {
 			continue
 		}
-		switch strings.TrimSpace(line) {
+		trimmed := strings.TrimSpace(line)
+		if rest, glued := strings.CutPrefix(trimmed, standingReportOpen); open < 0 && glued && rest != "" && !strings.Contains(rest, standingReportClose) {
+			open, closing, first = i, -1, strings.TrimSpace(rest)
+			continue
+		}
+		switch trimmed {
 		case standingReportOpen:
-			open, closing = i, -1
+			open, closing, first = i, -1, ""
 		case standingReportClose:
 			switch {
 			case open < 0:
@@ -513,7 +528,11 @@ func delimitedReport(text string) (string, reportLines) {
 	case closing < 0:
 		return "", unclosedReport
 	}
-	return strings.TrimSpace(strings.Join(lines[open+1:closing], "\n")), closedReport
+	body := lines[open+1 : closing]
+	if first != "" {
+		body = append([]string{first}, body...)
+	}
+	return strings.TrimSpace(strings.Join(body, "\n")), closedReport
 }
 
 // markdownFence follows the fenced code blocks of a Markdown text one line at

@@ -1,0 +1,7 @@
+# old-logic proof: a3252e8f3 + internal/session/standing_journey_test.go from 8ca78e406
+=== RUN   TestAnOpeningTagGluedToTheFirstLineOpensTheReport
+    standing_journey_test.go:182: the live answer reads 3 with body ""
+--- FAIL: TestAnOpeningTagGluedToTheFirstLineOpensTheReport (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.132s
+FAIL

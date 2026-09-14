@@ -1,6 +1,21 @@
 # Working checklist
 
-**2026-09-14 discussion handoff:** see
+## Active coordination — 2026-09-14
+
+The product handoff at `19bb937d3` is acknowledged and preserved alongside the
+reviewed W5-B lane `aa8c52e4a`. Its bounded validation is closed with the combined
+journey still **not accepted**: live 5 was 21/37, exit 1. See BUILD-WAVE-05B for
+causes and limits; no failed receipt is relabeled as a pass.
+
+The user's subsequent instruction authorizes the incremental real-TUI path:
+browse/inspect/open/return first, then ongoing work and guidance in the same
+fixture. Opus is identifying the smallest existing engine-to-TUI connection;
+implementation follows in an isolated copy. Each usable demo will pin its source
+and profile independently of further development. Product recommendations not
+explicitly settled remain recommendations. No dev import or quarantined changes
+are part of this integration.
+
+**Original 2026-09-14 discussion handoff (preserved):** see
 [PRODUCT-EXPERIENCE-PATH.md](PRODUCT-EXPERIENCE-PATH.md) for the user's request to
 try the logical-folder TUI, the preserved model/critique, the source inspection
 and a proposed first real-store browsing fixture. The active backend task
@@ -9,6 +24,41 @@ validation. Please return the final integrated revision/receipt and the smallest
 missing engine-to-TUI read/action boundary before starting the proposed fixture.
 This handoff does not mark a new implementation slice approved or any unrun
 acceptance passed. Its acknowledgement remains pending.
+
+## Current — integrated baseline and the W5-B slice (2026-09-14)
+
+**Everything below this section is history.** Read its statuses as what was true
+when each was written; the current source and this section are authoritative.
+
+- **Integrated baseline:** `codex/personal-ai-backend` at `3788e569e`, the W5-A merge
+  (chat edits of ongoing work, one live owner per report path, the brace refusal),
+  on top of W5-B watch conditions, the folder view, the prefix budget and round 4b.
+  Draft #662 against `dev` stays the one record; nothing merged, released or deployed.
+- **This slice, W5-B journey:** lane `codex/personal-next-0914`, final runtime
+  `0ad0ccea7` (round 2; round 1 ended at `a3252e8f3`). Record: [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md). Quarantine:
+  `/home/santosh/af-pai-integrate` is not part of any integration.
+  - [ ] **Combined journey as acceptance — NOT done yet.** The coordinator rejected live 2's
+    31/33. Round 2 made the driver fail on any check, answer questions as the person, and
+    assert no relocation, broadening, replacement or unapproved workaround in the
+    second-folder turn. Live 3 34/35 at `76f92b88d` (a product failure, G3, fixed) and live 4
+    36/37 at `8ca78e406` (a driver false failure over an honest reply, corrected) both exit 1
+    and stay failed. Live 5 at `0ad0ccea7`, the last allowed retry, came to **21/37, EXIT 1**. Three
+    blockers remain (BUILD-WAVE-05B.md, *Live 5*): runs looping to their step limit; a rename
+    edited the instructions and not `does.report`, so G2 is not reliably closed; and a driver
+    cascade after the probe add. Wave spend $0.1972.
+  - [x] A report opening tag glued to its first line opens the report (G3; regression fails at
+    `a3252e8f3`).
+  - [x] A file watch's `when ·` line is said by its pattern on every surface (G1; regression
+    fails at `3788e569e`).
+  - [ ] Reliable report-path edits through chat (G2). Schema clarification and a passing
+    live sample exist; live 5 still edited instructions without changing `does.report`.
+  - [x] Backend refusals for brace patterns and duplicate live report owners, plus
+    pattern-derived card wording. Full second-folder conversational behavior is not proven.
+  - [ ] Whether the chat's stop should be confirmed on a card — open decision for the owner.
+  - [x] The journey's driver answers the model's asks as the person (WatchQuestions,
+    Interactive), never the default dial; other scenarios are unchanged.
+  - [ ] Model-written `when_words` for moments, rhythms, idle waits and probes are still shown as sent.
+  - [ ] Full tui3/session/cmd suites and the tagged E2E package were not run in this slice.
 
 Updated 2026-09-10. This is the single execution checklist for the current review
 and implementation preparation. [DECISIONS.md](DECISIONS.md) remains the authority

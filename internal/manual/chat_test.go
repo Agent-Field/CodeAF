@@ -2016,6 +2016,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the card says this file already exists and aforge will replace it", "standing-orders"},
 		{"why won't the chat write my report file", "standing-orders"},
 		{"after I said yes does it tell me back what I agreed to", "standing-orders"},
+		// W5-B: the report moved by an edit, two folders into one report, and a
+		// watch's when line said by its pattern.
+		{"rename the report file my inbox watch keeps", "standing-orders"},
+		{"can one standing order watch two folders into the same report", "standing-orders"},
+		{"why does the card's when line show the glob and not my words", "standing-orders"},
 		{"my sentence said 3 runs a day and it was refused for cost_words", "keeping-an-eye"},
 		// Round 3b: the one window a replacement still has, the fence that
 		// cannot read the stop, and an answer that survives a crash.

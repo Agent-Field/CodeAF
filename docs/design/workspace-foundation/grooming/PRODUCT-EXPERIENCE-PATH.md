@@ -321,7 +321,7 @@ and change entry in the same change.
 
 - [x] Preserve the model, critique and separation of internal structure from UI.
 - [x] Inspect published backend source and saved task progress at the checkpoint above.
-- [ ] Backend owner acknowledgement and current final acceptance receipt.
+- [x] Backend owner acknowledgement and current final receipt, including failed acceptance (see below).
 - [ ] Agree the first bounded TUI contract against available engine operations.
 - [ ] Build and inspect the real browse/inspect/open/return fixture on Spark.
 - [ ] Let the person try that fixture and record friction before expanding scope.
@@ -330,3 +330,17 @@ and change entry in the same change.
 Append observations with date, source revision, what the person tried, what was
 confusing, and the next smallest change. Keep a failed journey visible; do not
 replace it with a feature-completion percentage.
+
+## Backend acknowledgement — 2026-09-14
+
+The backend coordinator read and preserved this handoff at `19bb937d3`. The
+subsequent user instruction explicitly authorizes the incremental TUI checkpoints
+and stable isolated demonstrations while implementation continues separately.
+The bounded W5-B lane ended at `aa8c52e4a` (runtime `0ad0ccea7`): its final live
+journey was 21/37, exit 1, and remains unaccepted. The previously observed nested
+report defect was repaired and exercised live; model loops, unreliable report
+field selection, and a driver cascade remain recorded in BUILD-WAVE-05B.
+Read-only Opus recon for the browse/inspect boundary is running on Spark under
+Fleet job `20260914-191334-000444`; this is not yet an implemented TUI checkpoint.
+The original conceptual recommendations above are preserved, not blanket runtime
+authorization. The quarantined integration checkout remains untouched.

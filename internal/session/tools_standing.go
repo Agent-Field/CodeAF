@@ -292,7 +292,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs its instructions in a session of its own, unattended, with a cost row."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
 	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: its final answer is published. {{evidence}} is replaced by what the probe found."},` +
-	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it, and neither do you. Never inside what when.glob watches."},` +
+	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it, and neither do you. Never inside what when.glob watches. On an edit, the path it moves to: the same work keeps the new file, and the old one is left as it is."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
@@ -302,7 +302,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
-	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
+	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron. A file watch is said from its glob, never these."},` +
 	`"cost_words":{"type":"string","description":"When the person named a limit — money, or how many runs — quote it in their words: \"at most a dollar a run\", \"no more than 3 a day\". A rail sent without it is dropped. Omit when they named none; aforge quotes the shared allowance."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
@@ -712,14 +712,19 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	}
 	// THE PERSON'S CADENCE, SAID BACK, WINS OVER ANYTHING THE ENGINE WORKED
 	// OUT. when_words is the model's plain-words reading of what they asked
-	// for; the only time it is not the answer is when there is none, and then
-	// whatever [standingWhen] echoed stands (a resolved `in`, or nothing).
+	// for; it is not the answer when there is none, and then whatever
+	// [standingWhen] echoed stands (a resolved `in`, or nothing), and it is
+	// never the answer for a file watch (below).
 	//
 	// A HOLD HAS NO CADENCE TO SAY BACK. A rule is not due at any time, so a
 	// `when ·` band under one would be the card reading a rhythm into the word
 	// "always" — and every surface afterwards would quote it as the moment this
 	// thing wakes up.
-	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
+	//
+	// A FILE WATCH IS SAID BY ITS PATTERN, NOT BY THE MODEL ([standing.When.CardWords]):
+	// words that name a folder the pattern does not reach are a card promising
+	// a watch that never wakes for it, so the record keeps the terminal's words.
+	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold && when.Kind != standing.WhenFile {
 		when.Words = words
 	}
 	altitude := a.standingAltitude(parsed.Altitude)
@@ -790,7 +795,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		when.At = moment
 		// THE ECHO IS A FALLBACK AND NEVER AN OVERRIDE. [Agent.standingItem]
 		// puts the model's own when_words over the top of this when it sent
-		// any; what is left here is the case it sent none, where a card reading
+		// any (on every kind but a file watch); what is left here is the case it sent none, where a card reading
 		// "in 2 minutes — 06:54" is the difference between a person checking a
 		// stamp and a person reading a sentence.
 		when.Words = echo
@@ -835,7 +840,8 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		return when, "Invalid arguments: no when called " + strconv.Quote(string(when.Kind)) + " — " + standingKindWords
 	}
 	// The terminal door's own words for the same waking, as a fallback the
-	// model's when_words replace: a card and a record that said nothing about
+	// model's when_words replace on every kind but a file watch, whose words
+	// are always these ([standing.When.CardWords]): a card and a record that said nothing about
 	// when something wakes are a promise nobody can check (ruling R12). A rule
 	// wakes at no time and gets none.
 	if when.Words == "" {
