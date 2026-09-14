@@ -279,17 +279,50 @@ func TestTheSpendRoleColumnIsHeldWhetherOrNotARowUsesIt(t *testing.T) {
 	}
 }
 
-// AND A NAME TOO WIDE FOR ITS CAP KEEPS EVERY CELL OF ITSELF. The name is the
+// A NAME COLUMN IS THE WIDTH OF WHAT IT HOLDS AND IS NEVER SQUEEZED TO KEEP A
+// FIELD BEHIND IT. A narrow frame drops fields instead, in order of what they
+// are worth.
+//
+// Squeezing was the first answer and it was wrong in a way only large figures
+// showed: the longest name on a table is very often the row that also wears the
+// role word, so a squeezed column put that one row's bar AND counts out of line
+// and then clipped its token figure — one ragged row among straight ones, which
+// reads as a defect in the straight ones.
+func TestASpendNameColumnIsNeverSqueezedToKeepAField(t *testing.T) {
+	r := spendTestReading().unfolding(true)
+	widest := 0
+	for _, subject := range r.subjects {
+		widest = max(widest, ansi.StringWidth(tokens.GlyphProseBullet+" "+r.name(subject)))
+	}
+	for _, width := range []int{200, 120, 80, 60, 40} {
+		cols := r.subjectCols(r.subjects, width)
+		if cols.tag != widest+1 {
+			t.Fatalf("at %d cells the name column is %d and the widest name %d — it was squeezed",
+				width, cols.tag, widest)
+		}
+	}
+	// AND THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH: the kind word first,
+	// because the name already says which thing this is, then the project.
+	if wide := r.subjectCols(r.subjects, 200); !wide.showTag || !wide.showKind {
+		t.Fatalf("a frame with room to spare dropped a field: %+v", wide)
+	}
+	narrow := r.subjectCols(r.subjects, 60)
+	if narrow.showKind {
+		t.Fatalf("a 60-cell frame kept the kind word it has no room for: %+v", narrow)
+	}
+	if tight := r.subjectCols(r.subjects, 40); tight.showTag || tight.showKind {
+		t.Fatalf("a 40-cell frame kept a field it has no room for: %+v", tight)
+	}
+}
+
+// AND A NAME TOO WIDE FOR THE COLUMN KEEPS EVERY CELL OF ITSELF. The name is the
 // row's payload, so an overrun pushes the field behind it one space late rather
 // than being cut down to line a neighbour's up.
 func TestASpendNameWiderThanItsColumnIsNotCutDownToFitIt(t *testing.T) {
 	long := tokens.GlyphProseBullet + " deepseek-v4-flash-latest-0731-experimental"
-	if ansi.StringWidth(long) <= spendModelNameCap {
-		t.Fatalf("the overrun this test is about no longer overruns the %d-cell cap: %q", spendModelNameCap, long)
-	}
-	padded := spendColumnAt(long, spendModelNameCap)
+	padded := spendColumnAt(long, 12)
 	if !strings.Contains(padded, long) {
-		t.Fatalf("a name wider than its cap was cut down: %q", padded)
+		t.Fatalf("a name wider than the column was cut down: %q", padded)
 	}
 	if got := ansi.StringWidth(padded) - ansi.StringWidth(long); got != 1 {
 		t.Fatalf("an overrunning row hangs the next field %d cells out, want the one space every row has: %q", got, padded)
@@ -373,6 +406,88 @@ func TestASpendSubjectWithNoProjectDrawsNoTag(t *testing.T) {
 	}
 	if !strings.Contains(text, "a conversation") {
 		t.Fatalf("the subject row lost its kind word with its tag:\n%s", text)
+	}
+}
+
+// THE TABLE HOLDS WITH ITS BARS SATURATED AND EVERY FIGURE AT FULL WIDTH.
+//
+// A fixture of small change exercises none of this. Bars are scaled to the
+// dearest model ([spendBar]), so a ledger whose top model is three times its
+// second draws one full bar and a staircase of stubs, and the case that fills
+// the column — several models within a few per cent, all pinned at the cap —
+// never appears. The demo home carries a heavy stretch for the same reason
+// (cmd/aforge-demo-home's demoHeavy); this pins what the page does with one.
+func TestTheSpendTableHoldsWithSaturatedBarsAndLargeFigures(t *testing.T) {
+	heavy := func(model string, calls, in, out int, usd float64) session.UsageLine {
+		return session.UsageLine{At: spendTestNow, Model: model, Calls: calls,
+			Input: in, Output: out, USD: usd, Session: "talk-1", Workspace: "/work/the-corpus-sweep"}
+	}
+	r := readSpend([]session.UsageLine{
+		heavy("anthropic/claude-opus-4.1", 128_400, 2_800_000_000, 410_000_000, 4210.55),
+		heavy("deepseek/deepseek-v4-pro-0813", 96_120, 1_900_000_000, 260_000_000, 4080.10),
+		heavy("z-ai/glm-5.3-flash", 74_300, 1_400_000_000, 190_000_000, 3990.00),
+		heavy("openai/gpt-5-mini", 8_400, 90_000_000, 12_000_000, 210.40),
+		heavy("mistralai/mistral-nemo", 110, 80_000, 10_000, 0.004),
+	}, session.LastDays(spendTestNow, 14), spendTestNow).crewed(spendCrew{
+		role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"},
+	})
+
+	// THE BARS ARE SATURATED AND NONE OF THEM IS OVER THE CAP. Three models
+	// within five per cent of each other all draw a full-length bar, which is
+	// the arrangement the cap exists for.
+	full := 0
+	for _, model := range r.models {
+		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
+		if got := ansi.StringWidth(bar); got > spendModelBarCap {
+			t.Fatalf("%s drew a %d-cell bar past the %d-cell cap", model.Model, got, spendModelBarCap)
+		} else if got == spendModelBarCap {
+			full++
+		}
+	}
+	if full < 2 {
+		t.Fatalf("only %d bars saturated, so this fixture does not test saturation", full)
+	}
+
+	for _, width := range []int{200, 120, 100, 80, 60} {
+		rows := r.rows(width, newPalette(tokens.ANSI256, false))
+		// THE ROW WIDTH LAW HOLDS AT FULL FIGURES. Five-figure call counts and
+		// four-figure money are where a layout that measured one field and drew
+		// another would finally run off the edge.
+		for _, row := range rows {
+			if got := ansi.StringWidth(row); got > width {
+				t.Fatalf("a spend row is %d cells at width %d: %q", got, width, plain(row))
+			}
+		}
+		// AND THE COLUMNS STILL HOLD. The counts are the last field before the
+		// money, so a column that slipped anywhere behind it shows up here.
+		plainRows := plainSpendRows(rows)
+		head := 0
+		for i, row := range plainRows {
+			if strings.Contains(row, spendModelsWord) {
+				head = i + 1
+				break
+			}
+		}
+		bars, counts := map[int]bool{}, map[int]bool{}
+		for _, row := range plainRows[head:] {
+			if strings.Contains(row, spendSubjectsWord) {
+				break
+			}
+			at := strings.Index(row, spendBar(1, 1))
+			if at < 0 {
+				continue
+			}
+			bars[ansi.StringWidth(row[:at])] = true
+			count := strings.IndexAny(row[at:], "0123456789")
+			if count < 0 {
+				t.Fatalf("at %d cells a model row drew a bar and no counts:\n%s", width, row)
+			}
+			counts[ansi.StringWidth(row[:at+count])] = true
+		}
+		if len(bars) > 1 || len(counts) > 1 {
+			t.Fatalf("at %d cells saturated bars start in columns %v and their counts in %v:\n%s",
+				width, bars, counts, strings.Join(plainRows, "\n"))
+		}
 	}
 }
 

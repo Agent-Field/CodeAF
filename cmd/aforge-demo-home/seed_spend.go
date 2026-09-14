@@ -38,6 +38,41 @@ var demoModels = []struct {
 	{"openai/gpt-5-mini", 0.001},
 }
 
+// demoHeavy is A FORTNIGHT'S HEAVY STRETCH — the week somebody pointed a swarm
+// of agents at a corpus and left it running — and it is in this fixture to put
+// the spend page AT THE TOP OF ITS OWN RANGE.
+//
+// A fixture of small change exercises none of the page's edges. Every bar is
+// scaled to the dearest model on the table ([spendBar]), so a ledger whose top
+// model is three times its second draws one full bar and a staircase of stubs,
+// and the saturated case — three models within a few per cent of each other,
+// all of them pinned at the twelve-cell cap — never appears at all. Neither do
+// the columns beside it at full width: five-figure call counts, token volumes
+// that need more than one unit, money in the thousands. Those are the readings
+// a heavy user meets on their FIRST look at this page, and `make demo-home`
+// exists so that somebody can see a page full before they ship it.
+//
+// THE THREE ARE CLOSE ON PURPOSE. The swarm split its work across them, so
+// their totals land within a few per cent, which is the arrangement that fills
+// the bar column rather than the one that empties it.
+var demoHeavy = []struct {
+	slug   string
+	calls  int
+	input  int
+	output int
+	usd    float64
+}{
+	{"anthropic/claude-opus-4.1", 9_400, 142_000_000, 21_000_000, 41.20},
+	{"deepseek/deepseek-v4-pro-0813", 8_100, 129_000_000, 18_400_000, 39.85},
+	{"anthropic/claude-sonnet-4", 7_600, 118_000_000, 16_900_000, 38.10},
+}
+
+// demoHeavyDays are the days of the fortnight the stretch ran over. It is more
+// than one because a single enormous day would flatten the chart above the
+// table into one bar and thirteen empty cells, which is a different edge and
+// not the one this is for.
+var demoHeavyDays = []int{9, 8, 7, 6}
+
 // demoDayAnchor is the hour of the day a fixture's lines cluster around. Nine
 // in the morning is late enough that an offset an hour or two either side of it
 // is still that morning, which is the whole point of anchoring at all.
@@ -201,6 +236,53 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 				}
 				written++
 			}
+		}
+	}
+
+	// AND THE HEAVY STRETCH, over the days [demoHeavyDays] names. It is written
+	// after the ordinary rhythm rather than inside it because it is not a rhythm:
+	// it is one piece of work that ran for four days and stopped, which is how a
+	// person's expensive week actually looks on this page.
+	for _, day := range demoHeavyDays {
+		alive := aliveOn(demoConversations, day)
+		if len(alive) == 0 {
+			continue
+		}
+		for at, model := range demoHeavy {
+			// EACH MODEL'S STRETCH IS BOOKED AGAINST A DIFFERENT CONVERSATION, and
+			// one of them against a piece of work, so `what it was for` meets these
+			// figures too. A stretch billed entirely to one id would put the whole
+			// week on one row and leave that column with nothing large to lay out.
+			talk := alive[(at+day)%len(alive)]
+			id, project := ids[talk.title], projects[talk.project]
+			if id == "" || project == nil {
+				continue
+			}
+			line := session.UsageLine{
+				At:    demoMoment(now, day, time.Duration(at)*47*time.Minute),
+				Model: model.slug,
+				// The four days split each model's stretch between them, so the day
+				// axis shows the shape of the week and the model rows still add up
+				// to what the stretch cost.
+				Calls:     model.calls / len(demoHeavyDays),
+				Input:     model.input / len(demoHeavyDays),
+				Output:    model.output / len(demoHeavyDays),
+				USD:       round(model.usd / float64(len(demoHeavyDays))),
+				Session:   id,
+				Workspace: project.dir,
+			}
+			if at == len(demoHeavy)-1 {
+				if task := demoTasks[day%len(demoTasks)]; ids[task.talk] != "" {
+					line.Session, line.Task = ids[task.talk], task.entry.ID
+					if p := projects[task.project]; p != nil {
+						line.Workspace = p.dir
+					}
+				}
+			}
+			if err := record(path, line); err != nil {
+				return written, err
+			}
+			written++
 		}
 	}
 

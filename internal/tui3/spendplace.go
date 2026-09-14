@@ -25,15 +25,11 @@ import (
 const (
 	spendModelBarCap = 12
 	spendSubjectCap  = 3
-	// The caps below are CEILINGS ON MEASUREMENTS and never the columns
-	// themselves ([spendReading.modelCols], [spendReading.subjectCols]). Each
-	// table measures its own widest field so that no row is pushed out of line;
-	// these only stop one unusually long name from driving everything behind it
-	// off the frame. A field over its cap keeps every cell of itself and starts
-	// the next field one space late ([spendColumnAt]).
-	spendModelNameCap   = 28
-	spendSubjectNameCap = 34
-	spendSubjectTagCap  = 26
+	// spendSubjectTagCap bounds the PROJECT column, which is a secondary fact and
+	// must not spend the frame a name and its figures need. Every other column on
+	// this page is the width of what it holds ([spendReading.modelCols],
+	// [spendReading.subjectCols]).
+	spendSubjectTagCap = 26
 )
 
 // spendReading is the complete, immutable answer drawn by one spend page.
@@ -413,7 +409,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
-		cols := r.subjectCols(r.subjects[:shown])
+		cols := r.subjectCols(r.subjects[:shown], inner)
 		for _, subject := range r.subjects[:shown] {
 			doors[len(out)] = subject
 			out = append(out, placeLead+spendSubjectRowLit(subject, r.name(subject), cols, inner, on(len(out)), pal))
@@ -884,8 +880,17 @@ func (r spendReading) modelCols(width int) spendModelCols {
 		stats = max(stats, ansi.StringWidth(spendModelStats(model)))
 		money = max(money, ansi.StringWidth(spendMoneyWord(model.USD)))
 	}
-	cols := spendModelCols{role: min(name, spendModelNameCap) + 1}
-	cols.bar = cols.role + r.roleCol() + 1
+	role := r.roleCol()
+	// THE NAME COLUMN IS THE WIDTH OF THE WIDEST NAME AND IS NEVER SQUEEZED TO
+	// MAKE THE REST FIT. A column narrower than what it holds is not a narrower
+	// column, it is a column the longest rows fall out of — and on this table
+	// the longest name is very often the row that also wears the role word, so a
+	// squeeze put the bar AND the counts of exactly one row out of line and then
+	// clipped its token figure. A frame that cannot carry the whole table drops
+	// the bar and the counts instead, which is what `wide` decides below and
+	// what this page has always done on a narrow frame.
+	cols := spendModelCols{role: name + 1}
+	cols.bar = cols.role + role + 1
 	cols.stats = cols.bar + spendModelBarCap + 1
 	cols.wide = width >= cols.stats+stats+1+money
 	return cols
@@ -1045,7 +1050,10 @@ func spendSubjectKind(subject session.SubjectSpend, tag string) string {
 
 // spendSubjectCols is where each field of a subject row begins, in cells from
 // the start of the row.
-type spendSubjectCols struct{ tag, kind int }
+type spendSubjectCols struct {
+	tag, kind         int
+	showTag, showKind bool
+}
 
 // subjectCols measures the subjects ABOUT TO BE DRAWN so that `what it was for`
 // is a table rather than three sentences of different lengths.
@@ -1060,14 +1068,32 @@ type spendSubjectCols struct{ tag, kind int }
 // IT IS HANDED THE ROWS AND NOT THE READING because the fold decides how many
 // there are: a column measured over subjects the draw then left folded away
 // would be a column sized for rows nobody can see.
-func (r spendReading) subjectCols(subjects []session.SubjectSpend) spendSubjectCols {
-	name, tag := 0, 0
+func (r spendReading) subjectCols(subjects []session.SubjectSpend, width int) spendSubjectCols {
+	name, tag, kind, money := 0, 0, 0, 0
 	for _, subject := range subjects {
 		name = max(name, ansi.StringWidth(tokens.GlyphProseBullet+" "+r.name(subject)))
-		tag = max(tag, ansi.StringWidth(spendSubjectTag(subject)))
+		field := spendSubjectTag(subject)
+		tag = max(tag, ansi.StringWidth(field))
+		kind = max(kind, ansi.StringWidth(spendSubjectKind(subject, field)))
+		money = max(money, ansi.StringWidth(spendMoneyWord(subject.USD)))
 	}
-	cols := spendSubjectCols{tag: min(name, spendSubjectNameCap) + 1}
-	cols.kind = cols.tag + min(tag, spendSubjectTagCap) + 1
+	tag = min(tag, spendSubjectTagCap)
+	// THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH, and the name column is
+	// never squeezed to keep one — for [spendReading.modelCols]'s reason: a
+	// column narrower than what it holds is a column the longest rows fall out
+	// of. The models table drops its bar and counts on a frame that cannot carry
+	// them; this one drops the kind word first, because the name already says
+	// which thing this is and the project says where the money went, and then
+	// the project, leaving the name and the figure it earned.
+	lead := ansi.StringWidth(tokens.GlyphProseBullet) + 1
+	cols := spendSubjectCols{tag: name + 1, showTag: true, showKind: true}
+	cols.kind = cols.tag + lead + tag + 1
+	if cols.kind+lead+kind+1+money > width {
+		cols.showKind = false
+	}
+	if cols.tag+lead+tag+1+money > width {
+		cols.showTag = false
+	}
 	return cols
 }
 
@@ -1088,10 +1114,10 @@ func spendSubjectRowLit(subject session.SubjectSpend, name string, cols spendSub
 	kind := spendSubjectKind(subject, tag)
 	facts := placeFactInk(lit, pal)
 	left := pal.dim(tokens.GlyphProseBullet+" ") + placeSubject(name, lit, pal)
-	if tag != "" {
+	if tag != "" && cols.showTag {
 		left = spendColumnAt(left, cols.tag) + facts(tokens.GlyphProseBullet+" "+tag)
 	}
-	if kind != "" {
+	if kind != "" && cols.showKind {
 		left = spendColumnAt(left, cols.kind) + facts(tokens.GlyphProseBullet+" "+kind)
 	}
 	return spendSides(width, left, spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))

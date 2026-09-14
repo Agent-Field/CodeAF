@@ -34,7 +34,18 @@ invalidates:
     it ([spendSubjectTag])."
   - "The models table gave up its bar and counts below a flat 80 cells. The gate
     is measured against what the table actually holds now, so a frame drops them
-    when it genuinely cannot carry them rather than at a round number."
+    when it genuinely cannot carry them rather than at a round number. Rows of
+    `what it was for` degrade the same way — the kind word goes first, then the
+    project — because a name column squeezed to keep a field is a column the
+    longest rows fall out of, and the longest name is very often the row that
+    also wears the role word."
+  - "The demo home's ledger was a fortnight of small change, so `make demo-home`
+    could not show the spend page at the top of its range: bars are scaled to the
+    dearest model, so one model three times its second draws a full bar and a
+    staircase of stubs. It now carries a four-day heavy stretch (`demoHeavy` in
+    cmd/aforge-demo-home/seed_spend.go) across three models within a few per cent
+    of each other, which saturates the bar column and puts five-figure call counts
+    and hundred-million token volumes beside it."
 ---
 
 Each bar is that model's share of the dearest one, and a share is read off the
