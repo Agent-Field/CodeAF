@@ -33,38 +33,38 @@ _2026-09-03 09:30Z_
 
 - `C1`    high CLOSED `--help` on nine subcommands prints one line
 - `C2`    high CLOSED `--help` on the seven doors that do print usage still ends with `error: flag: help requested` and exits 1
-- `C3`    high CLOSED `codeaf do` prints a four-deep Go wrapped-error chain as the deliverable, on stdout
+- `C3`    high CLOSED `aforge do` prints a four-deep Go wrapped-error chain as the deliverable, on stdout
 - `C4`    high CLOSED `exec --json` carries no reason for a failure
-- `C5`    high CLOSED The `codeaf do` footer breaks the emptiness law twice on the last line of every headless run
-- `C6`    high CLOSED `codeaf exec` has a six-value exit ladder that is documented nowhere a user can reach
-- `C7`    med  CLOSED `codeaf --help` hard-wraps mid-word on an 80-column terminal
+- `C5`    high CLOSED The `aforge do` footer breaks the emptiness law twice on the last line of every headless run
+- `C6`    high CLOSED `aforge exec` has a six-value exit ladder that is documented nowhere a user can reach
+- `C7`    med  CLOSED `aforge --help` hard-wraps mid-word on an 80-column terminal
 - `C8`    med  CLOSED A misspelled subcommand suggests nothing and dumps the whole 127-line usage
 - `C9`    med  CLOSED A missing positional argument dumps the same 127 lines
 - `C10`   med  CLOSED Three commands parse no flags at all and read a flag as a positional
 - `C11`   med  CLOSED A bad flag prints its own message twice
 - `C12`   med  CLOSED Filesystem failures reach the person as Go wrapped chains over raw syscall text
 - `C13`   med  CLOSED The missing-key sentence is right in one command and bare in four
-- `C14`   med  CLOSED `codeaf doctor` says nothing about a missing key
+- `C14`   med  CLOSED `aforge doctor` says nothing about a missing key
 - `C15`   med  CLOSED `doctor` and `notebook` print money and counts that are zero
 - `C16`   med  CLOSED `record kept at <path>` is printed for runs that never started
 - `C17`   med  CLOSED A bad subharness name is reported as an empty input
-- `C18`   med  CLOSED `--debug` is absent from `codeaf --help`
-- `C19`   med  CLOSED `codeaf rebuild` uses machinery vocabulary and runs its prompt into its error
+- `C18`   med  CLOSED `--debug` is absent from `aforge --help`
+- `C19`   med  CLOSED `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
 - `C20`   med  CLOSED `logs --tail notanumber` answers `parse error`
 - `C21`   low  CLOSED Two commands print a column header over no rows
-- `C22`   low  CLOSED `codeaf services` prints absolutely nothing, and its rows are raw tab-separated fields
+- `C22`   low  CLOSED `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
 - `C23`   low  CLOSED The two help surfaces spell the same flags differently
 - `C24`   low  CLOSED The `--json` object is described only in a repository design document
 - `C25`   low  CLOSED Two query commands report a miss as a success
 - `C26`   med  CLOSED `exec --turns` takes a bad count without saying which flag, what was given, or what it takes
-- `C27`   med  CLOSED `codeaf why <bad-id>` reports a miss as a success
-- `C28`   med  CLOSED `codeaf rebuild` asks its question on stdout, and the structural test cannot see it
+- `C27`   med  CLOSED `aforge why <bad-id>` reports a miss as a success
+- `C28`   med  CLOSED `aforge rebuild` asks its question on stdout, and the structural test cannot see it
 
 ## commands — [audit-commands.md](audit-commands.md)
 
 - `M1`    high CLOSED `--help` opens by calling the product "build and revise task graphs"
-- `M2`    high CLOSED `codeaf run --help` says "leaf" or "leaves" six times
-- `M3`    high CLOSED `codeaf why <node-id>` help says "show what one leaf actually did"
+- `M2`    high CLOSED `aforge run --help` says "leaf" or "leaves" six times
+- `M3`    high CLOSED `aforge why <node-id>` help says "show what one leaf actually did"
 - `M4`    high CLOSED `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
 - `M5`    high CLOSED Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
 - `M6`    high CLOSED Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
@@ -87,10 +87,10 @@ _2026-09-03 09:30Z_
 - `M23`   med  CLOSED `--help` has no examples
 - `M24`   med  CLOSED `--help` is 127 lines and more than half is the environment table (cli-7 covers its wrapping, not its size)
 - `M25`   med  CLOSED The commands in `--help` are one flat list in no stated order, and `run`'s two forms are separated by `exec`
-- `M26`   low  CLOSED `codeaf manual --help` prints the page list instead of the command's usage
+- `M26`   low  CLOSED `aforge manual --help` prints the page list instead of the command's usage
 - `M27`   low  CLOSED `logs` prints its path header on stdout
 - `M28`   low  CLOSED `cache clean` writes its confirmation prompt to stdout
-- `M29`   low  CLOSED `codeaf version` prints only `codeaf dev`
+- `M29`   low  CLOSED `aforge version` prints only `aforge dev`
 
 ## dev — [audit-dev.md](audit-dev.md)
 
@@ -98,14 +98,14 @@ _2026-09-03 09:30Z_
 - `D2`    high CLOSED Global help calls `OPENROUTER_API_KEY` **required** and it is not
 - `D3`    high CLOSED `--debug` promises a record `in a folder of its own under the state root` and the developer could not find it
 - `D4`    med  CLOSED `do` has no `--yolo`, and a developer coming from the chat types it and gets `error: flag provided but not defined: -yolo` and exit 1. `do` IS unattended by construction, so the flag would be meaningless
-- `D5`    med  CLOSED `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.codeaf/logs/calls.jsonl` to reconstruct them
+- `D5`    med  CLOSED `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.aforge/logs/calls.jsonl` to reconstruct them
 - `D6`    low  CLOSED A refused flag is echoed back in a spelling the person did not type: `--nosuchflag` comes back as `error: flag provided but not defined: -nosuchflag`. Go's flag package writes it, and every other door on this surface now spells flags with two dashes. Somebody scanning for their own typo is looking for a string that is not there.
 - `D7`    ?    CLOSED NOT A DEFECT ON THIS BRANCH, and recorded so nobody reopens it: the report says a bad flag and a failed run both exit 1, so a typo and a failure are indistinguishable to a script. That was TRUE ON DEV and is FALSE HERE. `7d6e372c6` moved `exec.StopError` off exit 1
 - `D8`    ?    CLOSED NOT A DEFECT ON THIS BRANCH: the report says the usage banner prints `--db` and `--timeout 900` while `do --help` prints single-dash, and that the banner still shows the bare-seconds form. Both were fixed here
 
 ## eyes — [audit-eyes.md](audit-eyes.md)
 
-- `E1`    high CLOSED `codeaf run <name>` runs a FILE of that name instead of the saved program
+- `E1`    high CLOSED `aforge run <name>` runs a FILE of that name instead of the saved program
 - `E2`    high CLOSED A limited run publishes an answer AND an error, against the envelope's own contract
 - `E3`    high CLOSED The rename test cannot fail for the reason it is named
 - `E4`    low  CLOSED Tab geometry counts bytes where the terminal needs display cells
@@ -139,7 +139,7 @@ _2026-09-03 09:30Z_
 
 ## home — [audit-home.md](audit-home.md)
 
-- `H1`    high CLOSED The first screen of a fresh install brands the product `codeaf`, while every screen after it says `codeaf`
+- `H1`    high CLOSED The first screen of a fresh install brands the product `openaf`, while every screen after it says `aforge`
 - `H2`    high CLOSED **H1.** The list stops at eight rows whatever the terminal's height, so a 40-row window draws 14 rows of content and 22 of nothing while the list is still folded
 - `H3`    high CLOSED **H2.** The right-hand card needs 160 columns and is absent at every ordinary window
 - `H4`    high CLOSED A long note on a list row clips the conversation's **name** to eight cells before a single fact is dropped
@@ -202,7 +202,7 @@ _2026-09-03 09:30Z_
 - `T3`    high CLOSED A filter that matches nothing makes the page state a falsehood about the machine
 - `T4`    high CLOSED Every fact on a task row is joined to the next by a bare space, so the tail reads as one run-on phrase
 - `T5`    high CLOSED 24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom
-- `T6`    med  CLOSED The header says `work codeaf ran on its own. 10, $2.21 of it.`
+- `T6`    med  CLOSED The header says `work aforge ran on its own. 10, $2.21 of it.`
 - `T7`    med  CLOSED A task the record still calls running, with nobody behind it, is dated `now` forever
 - `T8`    med  CLOSED One task wears two different state words on two surfaces one keypress apart
 - `T9`    med  CLOSED Work that failed is reported as having `landed`
