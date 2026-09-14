@@ -27,7 +27,7 @@ import (
 // and the owner signed it.
 //
 // THE SEVEN ARE A LIST AND NOT A SWITCH. The tab bar's order, the numbers
-// `alt+1`…`alt+7` jump to, and the order `tab` walks are ONE fact, held in
+// `alt+1`…`alt+8` jump to, and the order `tab` walks are ONE fact, held in
 // [placeOrder], so a place added later is a row in that slice and a file.
 //
 // The rewind timeline is NOT one of them. It is still a page reached by
@@ -326,7 +326,7 @@ func (placeBase) box(a *app) *editor { return &a.compose }
 var placeRegistry = map[page]place{}
 
 // placeOrder is the whole set, in the one order that matters: left to right
-// along the tab bar, `alt+1` through `alt+7`, and the circle `tab` walks.
+// along the tab bar, `alt+1` through `alt+8`, and the circle `tab` walks.
 //
 // THE ORDER IS THE READING ORDER OF A DAY. What wants you (home), what ran
 // (tasks), what runs without being asked (standing), what was learned (memory),
@@ -363,7 +363,7 @@ func registerPlace(p place) {
 // pages is the tab bar's order, read from the registry's order table.
 func pages() []page { return placeOrder }
 
-// placeWordList is the seven words in the bar's own order, for the one sentence
+// placeWordList is the eight words in the bar's own order, for the one sentence
 // on the key sheet that has to say which digit is which (commands.go).
 //
 // IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
@@ -478,7 +478,12 @@ func (a *app) placeCount(id page) int {
 
 // ── the tab bar ─────────────────────────────────────────────────────────────
 
-// placeTabBar is the second row of every place: the seven words, the one you are
+// tabBareGap asks [app.tabBarAt] for the bare rung: it is not a width, which is
+// why it is negative — the rung spaces its own words, one cell between two
+// unpadded words and none beside the banded one.
+const tabBareGap = -1
+
+// placeTabBar is the second row of every place: the eight words, the one you are
 // standing in wearing the band, and a number beside any place that has something
 // new in it.
 //
@@ -488,7 +493,7 @@ func (a *app) placeCount(id page) int {
 // the task strip is, drawn the same way, so that 'which page am I on' is one
 // visual question across the app rather than two". The settings panel keeps its
 // own inner bar under this one, and the two are told apart by what they are
-// made of rather than by a decoration: this one is the seven places, that one is
+// made of rather than by a decoration: this one is the places, that one is
 // settings' own sections.
 //
 // ── THE WIDTH LADDER ────────────────────────────────────────────────────────
@@ -515,7 +520,7 @@ func (a *app) placeCount(id page) int {
 //     count of the places that did not fit ([barMoreWord]).
 //
 // THE BAR IS THE SIGN AND THE FOOT IS THE ROUTE. A row this narrow cannot say
-// `tab next place` as well as the words — at rung 3 there are not seven cells
+// `tab next place` as well as the words — at rung 4 there are not seven cells
 // spare for it — so what the bar owes a person is that the other rooms EXIST,
 // and the key that reaches them is on the foot of every place
 // ([placeHintTail]), which [hintFit] protects to the last cell there is. A bar
@@ -526,11 +531,6 @@ func (a *app) placeCount(id page) int {
 // `numbered` is the map ([app.mapShowing]): every chip grows the digit that
 // jumps to it, in the cells the words were already in, and nothing moves that a
 // person has to re-find when the map goes away.
-// tabBareGap asks [app.tabBarAt] for the bare rung: it is not a width, which is
-// why it is negative — the rung spaces its own words, one cell between two
-// unpadded words and none beside the banded one.
-const tabBareGap = -1
-
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	every := func(page) bool { return true }
 	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
@@ -598,7 +598,7 @@ func (a *app) barChipWord(at int, id page, numbered bool) string {
 	return word
 }
 
-// barWordsAt chooses the words a bar too narrow for all seven carries, and says
+// barWordsAt chooses the words a bar too narrow for all eight carries, and says
 // how many it had to leave off.
 //
 // THE MANDATORY HALF FIRST: the place you are standing in and the word under the
@@ -609,7 +609,7 @@ func (a *app) barChipWord(at int, id page, numbered bool) string {
 // THEN THE ROW IS FILLED IN THE BAR'S OWN ORDER AND STOPS AT THE FIRST WORD
 // THAT WILL NOT FIT — [rowfit.go]'s law 3 said about words instead of facts. A
 // fill that skipped `standing` because `spend` was shorter would draw a
-// different four places at every width, and `alt+1` … `alt+7` name positions
+// different four places at every width, and `alt+1` … `alt+8` name positions
 // that never move; a prefix plus your own word is a reading a person can learn.
 //
 // The count's own cells are reserved out of the fill, measured against the
@@ -647,8 +647,8 @@ func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
 }
 
 // placeMachineLead is the word in front of the machine's name at the right end
-// of the bar. It is there so that a bare `spark` in the row the seven places are
-// drawn in cannot be read as an eighth place.
+// of the bar. It is there so that a bare `spark` in the row the places are
+// drawn in cannot be read as one more place.
 const placeMachineLead = "on "
 
 // placeBarMachine puts the MACHINE THESE PLACES ARE ABOUT at the right end of
@@ -731,11 +731,15 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		if !keep(id) {
 			continue
 		}
-		// ON THE BARE RUNG ONLY THE BANDED CHIP KEEPS ITS PADDING, and the words
-		// either side of it lean on that padding instead of a space of their own.
-		padded := !bare || id == a.page || (a.bar.on && id == a.bar.at)
+		// ON THE BARE RUNG ONLY THE PLACE YOU ARE STANDING IN KEEPS ITS PADDING,
+		// and the words either side of it lean on that padding instead of a space
+		// of their own. IT IS THE PLACE AND NEVER THE BAR'S CURSOR: a cursor walking
+		// the words would otherwise move which chips are padded, and the words
+		// would shift under it — or the row would flip rungs mid-walk.
+		padded := !bare || id == a.page
+		air := 0
 		if !first {
-			air := gap
+			air = gap
 			if bare {
 				air = 1
 				if padded || banded {
@@ -785,7 +789,13 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			line += pal.dim(chip)
 		}
 		plain += chip
-		spans = append(spans, placeTabSpan{id: id, from: at, to: at + ansi.StringWidth(chip)})
+		// AN UNPADDED WORD OWNS THE SPACE IN FRONT OF IT, so the cell between two
+		// bare words is a door rather than a dead click ([placeTabSpan]).
+		from := at
+		if bare && !padded {
+			from -= air
+		}
+		spans = append(spans, placeTabSpan{id: id, from: from, to: at + ansi.StringWidth(chip)})
 		at += ansi.StringWidth(chip)
 	}
 	// AND THE COUNT OF WHAT IS NOT HERE RIDES THE END OF THE ROW, with no span
@@ -812,12 +822,12 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 // again, which is what a cursor is for.
 //
 // IT IS FRAME STATE AND NO PLACE HAS A WORD TO SAY ABOUT IT. The bar belongs to
-// the router — it is drawn on all seven places, in the same cells, by one
+// the router — it is drawn on every place, in the same cells, by one
 // function — so a place that kept a flag about the cursor having left it would
 // be seven answers to one question, and the seventh would be the one that
 // forgot. The law is pinned by [TestNoPlaceFileMentionsTheBar].
 //
-// AND IT IS NOT A MODE. `tab`, `shift+tab` and `alt+1`…`alt+7` mean exactly what
+// AND IT IS NOT A MODE. `tab`, `shift+tab` and `alt+1`…`alt+8` mean exactly what
 // they mean everywhere else while it is up, a printable character goes to the
 // composer exactly as it does everywhere else — taking the cursor back down into
 // the body with it — and `esc` puts the cursor back where it came from. Nothing
@@ -2028,11 +2038,6 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 // arithmetic — a terminal row becoming a line of a body, a window that follows a
 // cursor — is placemouse.go's, because it is the same on every place.
 
-// placeBodyPress is a press on one place's own rows: it moves that place's
-// cursor and never acts, which is the law the standing place already stated for
-// all of them — every verb on these lists is a key, and `enter` leaves the
-// conversation a person is sitting in, so a click that did either would be a
-// gesture nobody can aim.
 // takePlaceLater hands over the reading a place asked for from a gesture that
 // cannot answer a command — a press, a wheel tick, the beat's own `tick` — and
 // clears it.
@@ -2047,6 +2052,11 @@ func (a *app) takePlaceLater() tea.Cmd {
 	return cmd
 }
 
+// placeBodyPress is a press on one place's own rows: it moves that place's
+// cursor and never acts, which is the law the standing place already stated for
+// all of them — every verb on these lists is a key, and `enter` leaves the
+// conversation a person is sitting in, so a click that did either would be a
+// gesture nobody can aim.
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are

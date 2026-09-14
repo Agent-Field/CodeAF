@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,7 +34,7 @@ import (
 // ── THREE READS, AND WHAT KEEPS EACH HONEST ─────────────────────────────────
 //
 //   - THE PAGE is read on the way in, on a walk into or out of a folder, and on
-//     the place clock's beat. An answer carries the generation it was asked
+//     the place clock's beat unless the last reading is still out. An answer carries the generation it was asked
 //     under and the folder it was asked for, so an answer for a folder the person
 //     has already walked out of is dropped rather than drawn over the one they
 //     are in.
@@ -84,6 +85,10 @@ type foldersPlace struct {
 	landed  bool
 	pageErr string
 	gen     int
+	// reading is the gen of the page reading still out, or 0. THE BEAT DOES NOT
+	// ASK AGAIN WHILE ONE IS OUT: on an engine slower than a beat every answer
+	// would otherwise arrive one generation late and be dropped, forever.
+	reading int
 
 	cursor, top, shown, hover int
 	// owner is which row each body line belongs to, -1 for none.
@@ -95,6 +100,10 @@ type foldersPlace struct {
 	itemGen int
 	file    *workspaceview.ArtifactPreview
 	fileErr string
+	// preview is the file's drawn rows, kept for the path, change time and width
+	// they were drawn at, so a frame does not re-highlight 64 KiB of text.
+	preview    []string
+	previewFor string
 
 	// world is the machine's conversations as the surface already reads them,
 	// for the doors onto a chat or a piece of work.
@@ -143,6 +152,8 @@ const (
 	foldersPreviewFail = "could not read the file: "
 	// foldersMoreWord closes a folder holding more rows than one page carries.
 	foldersMoreWord = "more are in this folder than one page shows"
+	// foldersReadingWord stands in the list until the first answer lands.
+	foldersReadingWord = "reading this folder…"
 )
 
 // The verbs on a row's strip and the words of its foot.
@@ -207,7 +218,7 @@ func (a *app) foldersReadPage() tea.Cmd {
 	if p.pageFor != id {
 		p.page, p.pageFor, p.landed, p.pageErr = workspaceview.FolderPage{}, id, false, ""
 		p.item, p.itemRef, p.itemErr, p.file, p.fileErr = nil, workspace.Ref{}, "", nil, ""
-		p.top = 0
+		p.top, p.hover = 0, -1
 	}
 	read := a.collections.Page
 	if read == nil {
@@ -215,6 +226,7 @@ func (a *app) foldersReadPage() tea.Cmd {
 		return nil
 	}
 	gen := p.gen
+	p.reading = gen
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), foldersReadTimeout)
 		defer cancel()
@@ -230,7 +242,7 @@ func (a *app) foldersPageLanded(msg foldersPageMsg) tea.Cmd {
 	if !a.at(pageFolders) || msg.gen != p.gen || msg.id != p.current() {
 		return nil
 	}
-	p.landed = true
+	p.landed, p.reading = true, 0
 	a.touch()
 	if msg.err != nil {
 		if len(p.path) > 0 && strings.Contains(msg.err.Error(), workspace.ErrNotFound.Error()) {
@@ -244,9 +256,18 @@ func (a *app) foldersPageLanded(msg foldersPageMsg) tea.Cmd {
 		p.pageErr = msg.err.Error()
 		return nil
 	}
+	before, _ := p.selected()
+	hadItem := p.item != nil || p.itemErr != ""
 	p.page, p.pageErr = msg.page, ""
 	p.cursor = p.landOn(p.chosen[msg.id])
 	p.remember()
+	// A REFRESH OF THE SAME ROW RE-READS ONLY WHAT MOVES. The row's owner facts
+	// (state, last check) are read again; the file's opening is not, since a
+	// beat that re-sent 64 KiB every few seconds would be the place's whole load.
+	if now, _ := p.selected(); hadItem && now.Ref == before.Ref {
+		p.itemGen++
+		return a.foldersReadRow(p.itemGen, now.Ref, false)
+	}
 	return a.foldersAskItem(true)
 }
 
@@ -305,6 +326,11 @@ func (a *app) foldersItemTick(msg foldersItemTickMsg) tea.Cmd {
 // foldersReadItem is the close reading of one row, and a file's opening beside
 // it for an Artifact.
 func (a *app) foldersReadItem(gen int, ref workspace.Ref) tea.Cmd {
+	return a.foldersReadRow(gen, ref, true)
+}
+
+// foldersReadRow is [app.foldersReadItem] with the file's opening asked for or not.
+func (a *app) foldersReadRow(gen int, ref workspace.Ref, withFile bool) tea.Cmd {
 	var cmds []tea.Cmd
 	if read := a.collections.Item; read != nil {
 		cmds = append(cmds, func() tea.Msg {
@@ -314,7 +340,7 @@ func (a *app) foldersReadItem(gen int, ref workspace.Ref) tea.Cmd {
 			return foldersItemMsg{gen: gen, ref: ref, item: item, err: err}
 		})
 	}
-	if read := a.collections.File; read != nil && ref.Kind == workspace.ArtifactKind {
+	if read := a.collections.File; read != nil && withFile && ref.Kind == workspace.ArtifactKind {
 		path := ref.ID
 		cmds = append(cmds, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), foldersReadTimeout)
@@ -344,7 +370,10 @@ func (a *app) foldersItemLanded(msg foldersItemMsg) {
 func (a *app) foldersFileLanded(msg foldersFileMsg) {
 	p := &a.browse
 	row, ok := p.selected()
-	if !a.at(pageFolders) || msg.gen != p.itemGen || !ok || row.Ref.ID != msg.path {
+	// A FILE ANSWER FOR THE ROW STILL SELECTED IS KEPT even when a refresh of the
+	// row's owner facts moved the generation on after it was asked for: the
+	// refresh does not ask for the file again, so nothing newer is coming.
+	if !a.at(pageFolders) || msg.gen > p.itemGen || !ok || row.Ref.Kind != workspace.ArtifactKind || row.Ref.ID != msg.path || p.itemRef != row.Ref {
 		return
 	}
 	if msg.err != nil {
@@ -555,7 +584,10 @@ func (placeFolders) close(a *app)        { a.browse.close(a) }
 // tick is the beat: the page is read again, so a chat filed in the next terminal
 // is on this page within a beat, and the cursor stays on its row.
 func (placeFolders) tick(a *app, now time.Time) bool {
-	a.browse.world = a.readWorld()
+	p := &a.browse
+	if p.reading != 0 && p.reading == p.gen && p.pageFor == p.current() {
+		return false
+	}
 	a.placeLater = tea.Batch(a.placeLater, a.foldersReadPage())
 	return true
 }
@@ -605,6 +637,9 @@ func (p *foldersPlace) body(a *app, width, room int) []placeRow {
 	case p.pageErr != "" && len(p.page.Rows) == 0:
 		list = append(list, " "+a.pal.warn(fit(foldersFailedWord+" · "+drawableLine(p.pageErr), listWidth-1)))
 		owners = append(owners, -1)
+	case !p.landed && len(p.page.Rows) == 0:
+		// NOTHING HAS COME BACK YET, which is neither an empty folder nor a failure.
+		list, owners = append(list, " "+a.pal.dim(foldersReadingWord)), append(owners, -1)
 	case p.landed && len(p.page.Rows) == 0:
 		teach := foldersEmptyWord
 		if len(p.path) == 0 {
@@ -692,11 +727,15 @@ func (p *foldersPlace) inspect(a *app, width int) collectionInspect {
 				in.previewNote = foldersBinaryWord
 				break
 			}
-			lines := strings.Split(p.file.Text, "\n")
-			for i := range lines {
-				lines[i] = drawableLine(lines[i])
+			key := row.Ref.ID + "\x00" + p.file.Modified.String() + "\x00" + strconv.Itoa(width)
+			if p.previewFor != key {
+				lines := strings.Split(p.file.Text, "\n")
+				for i := range lines {
+					lines[i] = drawableLine(lines[i])
+				}
+				p.preview, p.previewFor = a.codeRows(strings.Join(lines, "\n"), row.Ref.ID, width), key
 			}
-			in.preview = a.codeRows(strings.Join(lines, "\n"), row.Ref.ID, width)
+			in.preview = p.preview
 		}
 	}
 	return in
@@ -809,15 +848,16 @@ func (placeFolders) hint(a *app) string {
 		}
 		return "esc"
 	}
-	open := "enter " + foldersOpenWord
+	verb := foldersOpenWord
 	switch row.Ref.Kind {
 	case workspace.CollectionKind:
-		open = "enter " + foldersInWord
+		verb = foldersInWord
 	case workspace.ArtifactKind:
-		open = "enter " + foldersPreviewWord
+		verb = foldersPreviewWord
 	}
+	open := "enter " + verb
 	// THE ORDER IS WHAT A NARROW FOOT KEEPS: [hintFit] drops the clause nearest
 	// the way out first, so `↑↓ pick` goes before the verbs do — and on a window
 	// with no inspector the verbs are the only road to a row's details.
-	return open + " · " + homeStripWord(foldersOpenWord, foldersDetailWord) + back + " · ↑↓ pick · esc"
+	return open + " · " + homeStripWord(verb, foldersDetailWord) + back + " · ↑↓ pick · esc"
 }

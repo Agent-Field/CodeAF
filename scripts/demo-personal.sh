@@ -13,7 +13,8 @@
 #
 # NO MODEL IS CALLED, nothing is sent anywhere, no timer is installed, and HOME
 # is never changed: the profile is AFORGE_HOME and nothing else. The one
-# `aforge standing check` below takes the watch's baseline, which runs nothing.
+# `aforge standing check` below checks the watch against the listing it took
+# when it was made, finds nothing changed, and runs nothing.
 #
 # Usage:
 #   make build
@@ -56,7 +57,7 @@ printf '{"memory.enabled":"off","standing.background":"off"}\n' > "$AFORGE_HOME/
 
 say() { printf '\n== %s\n' "$*"; }
 run() { printf '$ aforge %s\n' "$*" >&2; "$bin" "$@"; }
-idof() { sed -E 's/.*"id":"([^"]+)".*/\1/'; }
+idof() { python3 -c 'import json,sys; print(json.loads(sys.stdin.readline())["id"])'; }
 
 say "Folders"
 startup="$("$bin" collections create Startup --json | idof)"
@@ -87,7 +88,7 @@ digest="$("$bin" standing add --json --workspace "$project" --place "$product" \
   | head -1 | idof)"
 [[ -n "$digest" ]] || { echo "the ongoing work was not made" >&2; exit 1; }
 
-say "The watch's baseline (runs nothing, calls no model)"
+say "One check: nothing has changed, nothing runs, no model is called"
 run standing check
 
 say "Receipts"

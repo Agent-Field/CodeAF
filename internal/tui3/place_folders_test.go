@@ -419,3 +419,28 @@ func screenColumn(screen, needle string) int {
 	}
 	return -1
 }
+
+// A BEAT WHILE A READING IS STILL OUT DOES NOT ASK AGAIN, so an engine slower
+// than a beat still lands its answer instead of having every one dropped as a
+// generation late; and until the first answer lands the list says it is reading,
+// which is neither an empty folder nor a failure.
+func TestABeatDoesNotOutrunAFolderReadingThatIsStillOut(t *testing.T) {
+	f := newCollectionLab(t, 120)
+	f.walk(t, "Startup", "Product")
+	f.a.browse.path = append(f.a.browse.path, workspace.Collection{ID: "marketing", Name: "Marketing"})
+	_ = f.a.foldersReadPage()
+	asked := f.a.browse.gen
+	if screen := f.frame(); !strings.Contains(screen, foldersReadingWord) {
+		t.Fatalf("a folder not yet read drew no reading line:\n%s", screen)
+	}
+	if (placeFolders{}).tick(f.a, time.Now()) || f.a.browse.gen != asked {
+		t.Fatalf("the beat asked again while a reading was out (gen %d → %d)", asked, f.a.browse.gen)
+	}
+	f.a.foldersPageLanded(foldersPageMsg{gen: asked, id: "marketing", page: f.pages["marketing"]})
+	if screen := f.frame(); !strings.Contains(screen, "review the launch copy") {
+		t.Fatalf("the slow answer was not drawn:\n%s", screen)
+	}
+	if !(placeFolders{}).tick(f.a, time.Now()) {
+		t.Fatal("once the answer landed the beat did not read the folder again")
+	}
+}

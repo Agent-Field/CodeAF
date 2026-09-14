@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -87,7 +88,10 @@ func (r Resolver) Folder(ctx context.Context, s *workspace.Store, id string, lim
 	if err != nil {
 		return FolderPage{}, err
 	}
-	placed, placedMore, err := placedIn(ctx, s, id, limit+1)
+	// ENOUGH PLACEMENTS TO KNOW WHETHER THERE IS MORE AFTER DUPLICATES GO: at
+	// most every member is also placed, so limit+1 unfiled placements are
+	// always inside this window when they exist.
+	placed, _, err := placedIn(ctx, s, id, limit+1+len(members))
 	if err != nil {
 		return FolderPage{}, err
 	}
@@ -109,8 +113,8 @@ func (r Resolver) Folder(ctx context.Context, s *workspace.Store, id string, lim
 			page.Rows = append(page.Rows, FolderRow{ResolvedRef: workspace.ResolvedRef{Ref: ref}, Placed: true})
 		}
 	}
-	if len(page.Rows) > limit || placedMore {
-		page.Rows, page.More = page.Rows[:min(len(page.Rows), limit)], true
+	if len(page.Rows) > limit {
+		page.Rows, page.More = page.Rows[:limit], true
 	}
 	refs := make([]workspace.Ref, len(page.Rows))
 	for i, row := range page.Rows {
@@ -374,7 +378,18 @@ func (r Resolver) Artifact(ctx context.Context, s *workspace.Store, path string)
 			return ArtifactPreview{}, ErrNotFiled
 		}
 	}
-	file, err := os.Open(path)
+	// ONLY A REGULAR FILE IS OPENED, AND IT IS ASKED BEFORE THE OPEN AS WELL AS
+	// AFTER. A folder can name any clean absolute path, and opening a named pipe
+	// waits for a writer forever, while /dev/stdin or /proc/self/fd/0 on an
+	// engine is the wire itself — so a path that is not a plain file is refused
+	// by its mode, the open cannot block (O_NONBLOCK), and the handle is checked
+	// again in case the path was swapped between the two looks.
+	if info, err := os.Stat(path); err != nil {
+		return ArtifactPreview{}, err
+	} else if err := previewable(path, info); err != nil {
+		return ArtifactPreview{}, err
+	}
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return ArtifactPreview{}, err
 	}
@@ -383,8 +398,8 @@ func (r Resolver) Artifact(ctx context.Context, s *workspace.Store, path string)
 	if err != nil {
 		return ArtifactPreview{}, err
 	}
-	if info.IsDir() {
-		return ArtifactPreview{}, fmt.Errorf("%s is a folder on disk, not a file", filepath.Base(path))
+	if err := previewable(path, info); err != nil {
+		return ArtifactPreview{}, err
 	}
 	preview := ArtifactPreview{Path: path, Size: info.Size(), Modified: info.ModTime()}
 	head := make([]byte, ArtifactPreviewBytes)
@@ -406,4 +421,16 @@ func (r Resolver) Artifact(ctx context.Context, s *workspace.Store, path string)
 	}
 	preview.Text = strings.ToValidUTF8(string(head), "")
 	return preview, nil
+}
+
+// previewable refuses what a preview may not read: a folder, and anything that
+// is not a plain file (a pipe, a socket, a device).
+func previewable(path string, info os.FileInfo) error {
+	switch {
+	case info.IsDir():
+		return fmt.Errorf("%s is a folder on disk, not a file", filepath.Base(path))
+	case !info.Mode().IsRegular():
+		return fmt.Errorf("%s is not a plain file, so it is not read", filepath.Base(path))
+	}
+	return nil
 }
