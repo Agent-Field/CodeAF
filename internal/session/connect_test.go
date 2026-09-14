@@ -928,12 +928,27 @@ func TestABadSignInReturnDisclosesNoState(t *testing.T) {
 	}
 }
 
-// C7: A vendor-side denial keeps the vendor's reason, but in plain words and
-// without the exchange prefix.
-func TestAVendorDenialKeepsItsPlainReason(t *testing.T) {
-	reason := connectFailureReason(errors.New("connect Slack: authorization error from server: access_denied the workspace owner said no"))
-	if reason != "access denied the workspace owner said no" {
-		t.Fatalf("vendor denial = %q", reason)
+// C7/R3: Browser failure text is deny-by-default. Unknown sentences and a
+// nonce without familiar keywords collapse to the fixed line; only the known
+// oauth2cli vendor shape keeps a short, plain reason.
+func TestBrowserFailureWordsAreDenyByDefault(t *testing.T) {
+	const hidden = "the sign-in came back wrong and nothing was connected"
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "nonce without keywords", err: errors.New("callback mismatch: wants SECRET-NONCE but got bogus"), want: hidden},
+		{name: "unrecognised error", err: errors.New("the page was closed"), want: hidden},
+		{name: "vendor denial", err: errors.New("connect Slack: authorization error from server: access_denied the workspace owner said no"), want: "access denied the workspace owner said no"},
+		{name: "vendor-shaped secret", err: errors.New("authorization error from server: access_denied SECRET-NONCE-THAT-MUST-NOT-LEAVE"), want: hidden},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := connect.SignInFailureReason(test.err); got != test.want {
+				t.Fatalf("failure reason = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

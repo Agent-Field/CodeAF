@@ -1372,10 +1372,10 @@ func (s *sheet) hasConnService(service string) bool {
 // its tick, its address and its capabilities, OPEN — a person who just signed in
 // is a person about to look at what they signed up for. One that did not
 // complete says so once, quietly, and the row goes back to a dim dot.
-// why is what the engine said about a failure, and it is preferred to any
-// sentence written here: a key the far end refused comes back with the far end's
-// own words in it, and this tab is the only screen a person can read them on
-// while a fullscreen sheet is up.
+// why is already safe to show and is preferred to any sentence written here:
+// browser failures crossed [connect.SignInFailureReason], while a key the far
+// end refused comes back with the far end's own words in it. This tab is the
+// only screen a person can read either while a fullscreen sheet is up.
 func (a *app) connTabSettled(service, name string, connected bool, why string) {
 	s := &a.sheet
 	mine := s.conn.pending == service

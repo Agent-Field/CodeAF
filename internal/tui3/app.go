@@ -767,6 +767,7 @@ type (
 		service string
 		name    string
 		status  connect.Status
+		keyed   bool
 		err     error
 	}
 	modelConnectResultMsg struct {

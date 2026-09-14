@@ -334,7 +334,7 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 	url, wait, err := a.connect.BeginAuth(ctx, service.ID, answer.key)
 	if err != nil {
 		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
-		return "", "Connecting " + service.Name + " did not work: " + connectFailureReason(err)
+		return "", "Connecting " + service.Name + " did not work: " + connect.SignInFailureReason(err)
 	}
 	a.sendConnect(Event{Kind: EventConnectAuth, Service: service.ID, AuthURL: url})
 
@@ -350,36 +350,10 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 		if ctx.Err() != nil {
 			return "", "The turn ended before " + service.Name + " finished connecting."
 		}
-		return "", service.Name + " did not finish connecting: " + connectFailureReason(err)
+		return "", service.Name + " did not finish connecting: " + connect.SignInFailureReason(err)
 	}
 	a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Account: status.Account})
 	return status.Account, ""
-}
-
-// connectFailureReason is the one boundary where browser sign-in errors become
-// words a person and a model may read. Vendor-side refusals keep the vendor's
-// reason in plain words; the nonce check and other exchange internals become
-// one honest sentence that cannot disclose the state value.
-func connectFailureReason(err error) string {
-	if err == nil {
-		return "the sign-in came back wrong and nothing was connected"
-	}
-	text := strings.TrimSpace(err.Error())
-	lower := strings.ToLower(text)
-	const vendorRefusal = "authorization error from server:"
-	if at := strings.Index(lower, vendorRefusal); at >= 0 {
-		reason := strings.TrimSpace(text[at+len(vendorRefusal):])
-		reason = strings.ReplaceAll(reason, "_", " ")
-		reasonLower := strings.ToLower(reason)
-		if reason != "" && !strings.Contains(reasonLower, "authorization error") &&
-			!strings.Contains(reasonLower, "state") && !strings.Contains(reasonLower, "oauth") {
-			return reason
-		}
-	}
-	if strings.Contains(lower, "authorization error") || strings.Contains(lower, "state") || strings.Contains(lower, "oauth") {
-		return "the sign-in came back wrong and nothing was connected"
-	}
-	return text
 }
 
 // connectAnswerFailure gives each way the account was left unconnected its own
