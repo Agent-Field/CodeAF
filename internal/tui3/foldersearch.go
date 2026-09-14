@@ -232,8 +232,8 @@ func folderScore(q folderQuery, f folderFolded) (folderHit, bool) {
 	if at := strings.Index(base, needle); at >= 0 {
 		return folderHit{tier: folderTierNameIn, detail: at<<8 + len(base) - len(needle)}, true
 	}
-	// THE INITIALS ARE ASKED OF THE LEAF FIRST. `av2` is somebody naming
-	// `codeaf`, and the same letters read across a whole path are a weaker
+	// THE INITIALS ARE ASKED OF THE LEAF FIRST. `cit` is somebody naming
+	// `codeaf/internal/tui3`, and the same letters read across a whole path are a weaker
 	// claim about the same thing — so the second reading is pushed a fixed
 	// distance behind the first rather than given a rung of its own.
 	if span, ok := folderShort(base, needle); ok {
@@ -300,9 +300,9 @@ func folderSegmentHit(f folderFolded, needle string) (folderHit, bool) {
 //
 // Every character has to land either on the start of a word or immediately
 // after the character before it. That one rule is what separates this from the
-// loose rung below it: `av2` reaches `codeaf` because `a` and `v` start
-// words and `2` carries straight on from `v`, while `ag2` reaches it on the
-// loose rung only, where it belongs.
+// loose rung below it: `coit` reaches `codeaf/internal/tui3` because `c`, `i`
+// and `t` start words and `o` carries straight on from `c`, while `oit` reaches
+// it on the loose rung only, where it belongs.
 //
 // A word starts at the beginning, after a separator, or where a digit follows a
 // letter. The text is already lowercased by the time it arrives, so camel case
@@ -406,10 +406,10 @@ func folderSlipHit(f folderFolded, needle string, bound int) (folderHit, bool) {
 			}
 			continue
 		}
-		// AND A LONGER NAME IS MISTYPED AT ITS START. `afroge` is somebody
-		// reaching for `codeaf`, which no whole-name comparison can see: the
-		// name is three characters longer than the query and the query was not
-		// finished. So the START of the name is compared too, at every length
+		// AND A LONGER NAME IS MISTYPED AT ITS START. `codefa` is somebody
+		// reaching for a `codeaf-…` folder whose name runs on past the query,
+		// which no whole-name comparison can see: the name is longer than the
+		// query and the query was not finished. So the START of the name is compared too, at every length
 		// the bound allows the query to have been — which is the name-lead rung
 		// again, with the slips let in.
 		if len(runes) > want+bound {
@@ -434,7 +434,7 @@ func folderSlipHit(f folderFolded, needle string, bound int) (folderHit, bool) {
 // that, so a caller never learns a distance it would not have used.
 //
 // The transposition is the whole reason this is not the plain edit distance.
-// `afroge` for `codeaf` is two substitutions to Levenshtein and one slip to a
+// `codefa` for `codeaf` is two substitutions to Levenshtein and one slip to a
 // person, and treating it as two would put it level with `abcdef` typed at a
 // six letter name — which is not a typo, it is a different word.
 //
