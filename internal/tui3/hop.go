@@ -1258,7 +1258,16 @@ func (a *app) hopHead(width int, pal palette) string {
 const hopOpenWord = "open"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
-var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " put away"}
+//
+// THE CLOSE CLAUSE SAYS `close tab` AND NOT `put away`, because `put away` is
+// already home's word for a different act: `ctrl+e` on a home row ARCHIVES a
+// conversation, hides it from the list until its name is typed, and says so
+// (`put away · type its name to find it again`, place_home.go). This key takes
+// a row off this window's tab row and leaves the conversation running on the
+// list — which is exactly what the receipt two lines below already says
+// ([hopAwayWord]). A legend that spelled the lighter act with the heavier act's
+// verb had the card contradicting its own answer.
+var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " close tab"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses
 // from the same list, so a person reading the bottom of the screen and a person

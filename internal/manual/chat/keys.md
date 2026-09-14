@@ -804,7 +804,7 @@ at and filtered, not edited by pointer.
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
 | `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
 | `ctrl+backspace` | Same as `alt+backspace` |
-| `ctrl+w` | **Not a deletion here.** It closes the tab in front and keeps its draft — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
+| `ctrl+w` | **Not a deletion here.** It closes the tab in front and keeps its draft — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it closes the tab under the cursor |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
 The kills above work the same way in **every** box aforge has, not only the
@@ -839,7 +839,7 @@ and the first message you had half typed is parked for the next time you open it
 
 Ending a conversation for good is a different act, and this key is not it:
 `Stop` on a task's page ends that work, and `/quit` closes the conversation in
-front. See *Put a conversation away from the switcher* below, which is the same
+front. See *Close a tab from the switcher* below, which is the same
 gesture aimed at a row on the `ctrl+k` card instead of at the tab in front.
 
 The trade is that `ctrl+w` no longer deletes a word in the message box.
@@ -1844,11 +1844,17 @@ cannot send it, because **`shift+tab` walks the card back on every one of them**
 card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
 unlooked-at — and waits for your choice.
 
-## Put a conversation away from the switcher — ctrl+w, closing a chat, too many open
+## Close a tab from the switcher — ctrl+w, closing a chat, too many open
 
-**`ctrl+w` dismisses the tab under the cursor.** An inactive row leaves the card
-open with `tab closed · <title>`, so several tabs can be put away in succession.
+**`ctrl+w` closes the tab under the cursor**, which is what the card's own legend
+says: `enter open · esc cancel · ↑↓ choose · ctrl+w close tab`. An inactive row leaves
+the card open with `tab closed · <title>`, so several tabs can be closed in succession.
 Its saved conversation and draft remain available; Enter reopens it.
+
+**It does not put the conversation away.** Putting one away is a different act and is
+not on this card: `ctrl+e` on a home row archives it, and home says
+`put away · type its name to find it again`. A conversation whose tab you closed here
+is still running, still on this list, and still on home.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -1857,14 +1863,14 @@ conversation is working. The work keeps running over every door; selecting anoth
 ends nothing. Closing the final tab opens Home, leaving that conversation behind it.
 
 **`ctrl+w` on a row below the fold does nothing** and says
-`that one is not open here — enter opens it`. There is nothing here to put away: this
+`that one is not open here — enter opens it`. There is no tab here to close: this
 terminal is not holding it.
 
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving aforge when it was the last one this terminal held.
 
 `ctrl+w` is never about making room — it is about what you want on the row. A quiet
-conversation left alone can be let go of on its own; this key is you putting one away.
+conversation left alone can be let go of on its own; this key only takes its tab down.
 
 ## `tab` still goes straight to the last one
 
@@ -2769,10 +2775,10 @@ Two more chords surprise people:
   terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
-- **`ctrl+w` means two things**, and never on the same screen: in a conversation it closes
-  the tab in front; while the **switcher** is up it puts the conversation under the cursor
-  away. The card has taken the whole keyboard by then. In the message box the word kill it
-  used to be is `alt+backspace`.
+- **`ctrl+w` closes a tab wherever you press it**: in a conversation the tab in front,
+  and while the **switcher** is up the tab of the conversation under the cursor — the card
+  has taken the whole keyboard by then. Neither one puts the conversation away; that is
+  `ctrl+e` on home. In the message box the word kill it used to be is `alt+backspace`.
 - **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
   inside a harness design's room, while its approval row is up, it saves the design. That
   row is modal and takes the key first.
