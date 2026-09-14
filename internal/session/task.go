@@ -1115,6 +1115,7 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 	for {
 		select {
 		case answer := <-w.question.answer:
+			w.decided(answer)
 			w.settled <- taskSettled{answer: answer}
 			return
 		case <-hold:
@@ -1131,7 +1132,9 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			}
 			// Silence is a yes, and it is a yes with no redirect: the person said
 			// nothing, so nothing is appended to the brief.
-			w.settled <- taskSettled{answer: TaskAnswer{Approved: true}}
+			silent := TaskAnswer{Approved: true}
+			w.decided(silent)
+			w.settled <- taskSettled{answer: silent}
 			return
 		case <-ctx.Done():
 			w.agent.forgetTask(w.id)
@@ -1141,6 +1144,35 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			return
 		}
 	}
+}
+
+// decided restates the card with the answer stamped on it, and it is the SAME
+// rebroadcast [taskWait.withdraw] makes for the other ending — the one place a
+// proposal stops being a question is the one place that says so out loud.
+//
+// IT IS HERE AND NOT AT EITHER DOOR because both doors arrive here: a person's
+// answer comes off the wait's own channel and the countdown's silence is
+// manufactured a few lines above, and a restatement written at [Agent.ResolveTask]
+// would be a card that says nothing when the clock decides.
+//
+// WHAT IT IS FOR IS THE REPLAY ([TaskNotice.Decided]). A window watching this
+// turn has already drawn its own verdict from the key it pressed; what this
+// rebroadcast changes is what the turn's backlog hands the NEXT surface to
+// attach, which is the assignment with an answer under it rather than the
+// question a second time. The deadline goes with it for [taskWait.withdraw]'s
+// reason: nothing is counting any more.
+func (w *taskWait) decided(answer TaskAnswer) {
+	a := w.agent
+	a.mu.Lock()
+	hub := a.hub
+	notice := w.question.notice
+	a.mu.Unlock()
+	if hub == nil {
+		return
+	}
+	notice.Deadline = time.Time{}
+	notice.Decided = &answer
+	hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
 }
 
 // answer is what the wait came to, waiting for it if it has not come to

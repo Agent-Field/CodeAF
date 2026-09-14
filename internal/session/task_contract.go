@@ -488,6 +488,23 @@ type TaskNotice struct {
 	// the card with it — whatever its own clock has drawn by then — because
 	// nothing was started and nothing is waiting on the card any more.
 	Withdrawn string
+	// Decided is what somebody said about this proposal, on the one rebroadcast
+	// that goes out the moment anybody does — the person, another window, or the
+	// countdown — and nil while it is still a question.
+	//
+	// IT EXISTS SO A CARD CAN BE REPLAYED WITHOUT BEING ASKED AGAIN. A turn's
+	// backlog is handed whole to whoever attaches next ([eventHub.attach]), and
+	// the card that raised a question is the one event in it that is not a report
+	// of something that happened. The open card is left out of that replay once
+	// its question is settled; this one goes in its place, so a person who
+	// approved a task, looked at another tab and came back reads the assignment
+	// with their own answer under it rather than the question a second time.
+	//
+	// A surface draws the verdict from Approved and Redirect together, which is
+	// the same reading the window that answered already made of its own key. The
+	// CLOCK's own wording is that window's and is not restated here: what is true
+	// afterwards is that the work was approved.
+	Decided *TaskAnswer
 
 	// ModelOptions is the shortlist a `model` argument raised that fits more
 	// than one model this install has (taskmodel.go). It is empty for every
