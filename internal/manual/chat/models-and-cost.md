@@ -2031,6 +2031,19 @@ same three-second beat every place runs on, and it draws three things:
   forks, the check that reads what a piece of work left — is on the row of the conversation
   it belongs to, because that is the only name it has.
 
+**The money on every row of both tables is a column of cents.** A row that cost less than
+a cent reads `$0.01` — the smallest figure the column can say and still be read — rather
+than `$0.0068` or the words `under a cent`, both of which this page used to draw and
+neither of which a person can line up against the row above. It rounds up, so a window
+full of slivers can show rows that add to more than the heading above them; the heading,
+the `today` pointer line and the Spending tab all keep the exact arithmetic. A call that
+cost nothing has no row at all, which is the emptiness law and not a rounding.
+
+The bars stand in one column and the call counts in another, both measured off the widest
+model name and role word actually on the page. A bar is that model's share of the dearest
+one, and a share is read by comparing where the bars END — which only says something when
+their starts are level.
+
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a
 name on the row. A thing neither of them knows keeps its id.

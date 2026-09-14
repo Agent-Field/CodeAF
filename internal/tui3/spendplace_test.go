@@ -163,16 +163,19 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	}
 }
 
-// EVERY BAR IN THE MODELS TABLE STANDS IN ONE COLUMN, a constant distance from
-// the start of the model name ([spendModelBarCol]).
+// THE MODELS TABLE IS A TABLE: THE BARS STAND IN ONE COLUMN AND THE COUNTS
+// BEHIND THEM IN ANOTHER ([spendReading.modelCols]).
 //
 // A bar is that model's share of the dearest one, and a share is read off the
 // bars' ENDS — which says nothing unless their starts are already level. Hung
 // one space behind names and role words of six different lengths, they were a
 // ragged set of unrelated marks: the second-dearest model's bar could BEGIN
-// further right than the fourth's ended, so the column a person came to this
-// table to compare was the one thing on it they could not.
-func TestTheSpendModelBarsStandInOneColumn(t *testing.T) {
+// further right than the fourth's ended, so the column a person opens this
+// table to compare was the one thing on it they could not. The counts have the
+// same law for the same reason, and they clear the bar's whole reservation
+// rather than each bar's own length — bars differ by design, and counts laid
+// one space behind them would be as ragged as the bars used to be.
+func TestTheSpendModelBarsAndCountsStandInColumns(t *testing.T) {
 	crew := spendCrew{role: map[string]string{
 		"opus 4.1": "conversation", "haiku 4.5": "naming", "sonnet 4.5": "execution",
 	}}
@@ -186,14 +189,15 @@ func TestTheSpendModelBarsStandInOneColumn(t *testing.T) {
 		// THE MODEL ROWS ARE THE ONES UNDER THEIR OWN HEADING and not every row
 		// carrying a bar cell: the chart above them is drawn out of the same
 		// vocabulary, and a test that swept the whole page would measure it too.
-		at, seen := 0, 0
+		head := 0
 		for i, row := range rows {
 			if strings.Contains(row, spendModelsWord) {
-				at = i + 1
+				head = i + 1
 				break
 			}
 		}
-		for _, row := range rows[at:] {
+		bars, counts, seen := map[int]bool{}, map[int]bool{}, 0
+		for _, row := range rows[head:] {
 			if strings.Contains(row, spendSubjectsWord) {
 				break
 			}
@@ -202,36 +206,102 @@ func TestTheSpendModelBarsStandInOneColumn(t *testing.T) {
 				continue
 			}
 			seen++
-			col := ansi.StringWidth(row[:bar])
-			switch {
-			case seen == 1:
-				at = col
-			case col != at:
-				t.Fatalf("at %d cells a bar starts in column %d and its neighbours in %d:\n%s",
-					width, col, at, strings.Join(rows, "\n"))
+			bars[ansi.StringWidth(row[:bar])] = true
+			// The counts begin at the first digit after the bar's last cell.
+			tail := row[bar:]
+			count := strings.IndexAny(tail, "0123456789")
+			if count < 0 {
+				t.Fatalf("at %d cells a model row drew no counts to line up:\n%s", width, row)
 			}
+			counts[ansi.StringWidth(row[:bar+count])] = true
 		}
 		if seen != len(r.models) {
 			t.Fatalf("at %d cells %d of the %d models drew a bar:\n%s",
 				width, seen, len(r.models), strings.Join(rows, "\n"))
 		}
+		if len(bars) != 1 || len(counts) != 1 {
+			t.Fatalf("at %d cells the bars start in columns %v and the counts in %v, want one of each:\n%s",
+				width, bars, counts, strings.Join(rows, "\n"))
+		}
 	}
 }
 
-// AND A NAME TOO LONG FOR THE COLUMN KEEPS EVERY CELL OF ITSELF. The model is
+// AND THE COLUMN IS WIDE ENOUGH FOR THE ROLE WORD, whatever the table turns out
+// to hold, because it is MEASURED off the rows being drawn rather than declared.
+//
+// A constant is a guess, and a guess one cell short of some real pair of words
+// puts precisely the row wearing them out of line — which was the first shape of
+// this fix: a thirty-cell column was exactly one cell short of
+// `· claude-opus-4.1 · conversation`, so the only row carrying a role word was
+// the only row whose bar did not line up.
+func TestTheSpendModelColumnIsMeasuredAndNotGuessed(t *testing.T) {
+	line := func(model string, usd float64) session.UsageLine {
+		return session.UsageLine{At: spendTestNow, Model: model, Calls: 9, Input: 100, Output: 10, USD: usd, Session: "talk-1"}
+	}
+	r := readSpend([]session.UsageLine{
+		line("anthropic/claude-opus-4.1", 1.41),
+		line("openai/gpt-5-mini", 0.46),
+	}, session.LastDays(spendTestNow, 14), spendTestNow).crewed(spendCrew{
+		role: map[string]string{"anthropic/claude-opus-4.1": "conversation"},
+	})
+	cols := r.modelCols()
+	for _, model := range r.models {
+		if head := ansi.StringWidth(r.modelHead(model)); head >= cols.bar {
+			t.Fatalf("%q is %d cells and the bar column is %d — its bar is pushed out of line",
+				r.modelHead(model), head, cols.bar)
+		}
+	}
+}
+
+// AND AN IDENTITY TOO WIDE FOR THE CAP KEEPS EVERY CELL OF ITSELF. The model is
 // the row's payload, so an overrun pushes that row's own bar one space late
-// rather than cutting the name down to line a neighbour's bar up.
+// rather than being cut down to line a neighbour's bar up.
 func TestASpendModelNameWiderThanTheColumnIsNotCutDownToFitIt(t *testing.T) {
-	long := "deepseek-v4-flash · verification · execution"
-	if ansi.StringWidth(long) <= spendModelBarCol {
-		t.Fatalf("the overrun this test is about no longer overruns a %d-cell column: %q", spendModelBarCol, long)
+	long := tokens.GlyphProseBullet + " deepseek-v4-flash-latest · verification · execution"
+	if ansi.StringWidth(long) <= spendModelHeadCap {
+		t.Fatalf("the overrun this test is about no longer overruns the %d-cell cap: %q", spendModelHeadCap, long)
 	}
-	padded := spendModelBarAt(tokens.GlyphProseBullet + " " + long)
+	padded := spendColumnAt(long, spendModelHeadCap)
 	if !strings.Contains(padded, long) {
-		t.Fatalf("a name wider than the column was cut down: %q", padded)
+		t.Fatalf("an identity wider than the cap was cut down: %q", padded)
 	}
-	if got := ansi.StringWidth(padded) - ansi.StringWidth(tokens.GlyphProseBullet+" "+long); got != 1 {
+	if got := ansi.StringWidth(padded) - ansi.StringWidth(long); got != 1 {
 		t.Fatalf("an overrunning row hangs its bar %d cells out, want the one space every row has: %q", got, padded)
+	}
+}
+
+// THE MONEY COLUMN IS A COLUMN OF CENTS WITH A FLOOR UNDER IT.
+//
+// It used to mix three grammars — `$21.40`, `$0.0068` and the words `under a
+// cent` — so three rows of one table were three different kinds of thing, none
+// comparable at a glance with the row above. Everything under a cent is now
+// drawn as a cent: the smallest figure this column can say and still be read,
+// and never `$0.00`, which would report real money as nothing at all.
+func TestTheSpendMoneyColumnIsCentsWithAFloor(t *testing.T) {
+	for _, row := range []struct {
+		usd  float64
+		want string
+	}{
+		{21.40, "$21.40"},
+		{0.46, "$0.46"},
+		{0.01, "$0.01"},
+		{0.0068, "$0.01"},
+		{0.0007, "$0.01"},
+		{0.000001, "$0.01"},
+	} {
+		if got := spendMoneyWord(row.usd); got != row.want {
+			t.Errorf("%v in the money column is %q, want %q", row.usd, got, row.want)
+		}
+	}
+	// AND THE SENTENCE KEEPS ITS OWN WORDS. The detached turn's note reads `it
+	// spent under a cent`, which the manual quotes in those words
+	// (internal/manual/chat/keys.md) — a phrase has room in prose and none in a
+	// column, which is why the two readings parted rather than one being bent.
+	if got := spendSliverWord(0.0017); got != "under a cent" {
+		t.Errorf("a sub-cent amount in a sentence is %q, want %q", got, "under a cent")
+	}
+	if got := stopDetachedNote(session.Usage{CostUSD: 0.0017}); !strings.HasSuffix(got, "it spent under a cent") {
+		t.Errorf("the detached note is %q", got)
 	}
 }
 

@@ -25,16 +25,21 @@ import (
 const (
 	spendModelBarCap = 12
 	spendSubjectCap  = 3
-	// spendModelBarCol is HOW FAR FROM THE START OF THE MODEL NAME EVERY BAR IN
-	// THE MODELS TABLE BEGINS, in cells, so that the bars stand in one column
-	// ([spendModelBarAt]).
+	// spendModelHeadCap is the WIDEST the name-and-role field may push the
+	// columns behind it ([spendReading.modelCols]), so that one unusually long
+	// model id cannot drive the bars, the counts and the money off the frame.
 	//
-	// IT IS WIDE ENOUGH FOR THE NAME AND THE ROLE WORD BESIDE IT — a model drawn
-	// the way a person says it out loud ([spendReading.modelName]) and the
-	// longest slot word the crew has, `verification`, with the separator between
-	// them. A column narrower than that would be a column most rows overran,
-	// which is the unaligned table this constant exists to end.
-	spendModelBarCol = 30
+	// IT IS A CEILING ON A MEASUREMENT AND NOT THE COLUMN ITSELF. A fixed column
+	// is a guess, and a guess one cell short of some real pair of words puts
+	// exactly the row wearing them out of line — which is the misalignment the
+	// column exists to end, returned in a form that only shows up on somebody
+	// else's models. So the table measures itself and this only bounds it.
+	//
+	// The bound is what the narrowest frame that draws a bar can afford: 36
+	// cells of identity, a space, the bar's own 12 ([spendModelBarCap]), a
+	// space, a call count and a token figure, a space and the money — inside the
+	// 80 cells that gate the bar at all.
+	spendModelHeadCap = 36
 )
 
 // spendReading is the complete, immutable answer drawn by one spend page.
@@ -392,8 +397,12 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 
 	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
 		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
+		// THE COLUMNS ARE MEASURED ONCE FOR THE WHOLE TABLE and handed to every
+		// row, because a row that measured the table itself would be free to
+		// disagree with the row above it about where the table's own columns are.
+		cols := r.modelCols()
 		for _, model := range r.models {
-			out = append(out, placeLead+r.modelRow(model, inner, pal))
+			out = append(out, placeLead+r.modelRow(model, cols, inner, pal))
 		}
 		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
 		// no binding has no line in the ledger to be found on and would simply be
@@ -822,29 +831,92 @@ func spendUnboundRow(slot config.ModelSlot, width int, pal palette) string {
 // what runs in the meantime.
 const spendUnboundWord = "unbound"
 
-func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette) string {
+// modelHead is a model row's IDENTITY: the bullet, the model as a person says
+// it, and the role this machine has it bound to.
+//
+// IT IS ONE FUNCTION because the pass that measures this table's columns and
+// the pass that draws its rows must not be able to build the same field two
+// ways — the law every hit map and every measured layout on this surface is
+// held to. A column measured off a string the draw did not produce is a column
+// the rows stand beside rather than in.
+func (r spendReading) modelHead(model session.ModelSpend) string {
 	name := r.modelName(model.Model)
 	role := strings.TrimSpace(r.modelRole(model.Model))
-	money := spendMoneyWord(model.USD)
-	left := tokens.GlyphProseBullet
+	head := tokens.GlyphProseBullet
 	if name != "" {
-		left += " " + name
+		head += " " + name
 	}
 	if role != "" {
 		if name != "" {
-			left += " ·"
+			head += " ·"
 		}
-		left += " " + role
+		head += " " + role
 	}
-	stats := spendModelStats(model)
+	return head
+}
+
+// spendModelCols is where the bar and the counts begin on EVERY row of the
+// models table, in cells from the start of the row.
+type spendModelCols struct{ bar, stats int }
+
+// modelCols measures the whole table before a cell of it is drawn, so that the
+// bars stand in one column and the counts behind them in another.
+//
+// UNALIGNED BARS ARE NOT A CHART. Each bar is that model's share of the dearest
+// one, and a share is read off the bars' ENDS — which says nothing unless their
+// starts are already level. Hung one space behind names and role words of six
+// different lengths, the second-dearest model's bar could BEGIN further right
+// than the fourth's ended, so the one column a person opens this table to
+// compare was the one thing on it they could not.
+//
+// THE COLUMN IS MEASURED AND NOT DECLARED. A model drawn the way a person says
+// it out loud is fifteen cells or seventeen, and the role beside it is anything
+// from `naming` to `verification` to two slots joined — so any constant wide
+// enough for the worst pair wastes a dozen cells on every table that does not
+// contain it, and any constant narrower puts precisely the row that overruns it
+// out of line. The widest identity actually on the page is neither guess.
+//
+// THE COUNTS CLEAR THE BAR'S WHOLE RESERVATION and not just the bar that was
+// drawn. Bars differ in length by design — that IS the reading — so counts laid
+// one space behind each bar would be as ragged as the bars used to be, and a
+// second ragged column beside a straight one reads as a mistake in the straight
+// one.
+func (r spendReading) modelCols() spendModelCols {
+	head := 0
+	for _, model := range r.models {
+		head = max(head, ansi.StringWidth(r.modelHead(model)))
+	}
+	bar := min(head+1, spendModelHeadCap)
+	return spendModelCols{bar: bar, stats: bar + spendModelBarCap + 1}
+}
+
+// spendColumnAt carries a row's left field out to one of the table's columns.
+//
+// A FIELD ALREADY AT OR PAST ITS COLUMN GETS ONE SPACE AND KEEPS EVERY CELL OF
+// ITSELF. The model is this row's payload — [spendReading.modelRow]'s own ink
+// says so — so an identity wider than [spendModelHeadCap] starts its own bar
+// one space late rather than being cut down to line a neighbour's up. One row
+// out of column is the shape this table had everywhere before; a name cut in
+// half to buy it back is a fact lost.
+func spendColumnAt(left string, col int) string {
+	gap := col - ansi.StringWidth(left)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap)
+}
+
+func (r spendReading) modelRow(model session.ModelSpend, cols spendModelCols, width int, pal palette) string {
+	name := r.modelName(model.Model)
+	money := spendMoneyWord(model.USD)
+	left := r.modelHead(model)
 	if width >= 80 {
-		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
-		if bar != "" {
-			left = spendModelBarAt(left) + bar
+		if bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap); bar != "" {
+			left = spendColumnAt(left, cols.bar) + bar
 		}
-	}
-	if width >= 80 && stats != "" {
-		left += " " + stats
+		if stats := spendModelStats(model); stats != "" {
+			left = spendColumnAt(left, cols.stats) + stats
+		}
 	}
 	return spendSides(width, left, money, func(s string) string {
 		// The model is the payload; the role and counts remain quiet even though
@@ -885,21 +957,6 @@ func spendModelStats(model session.ModelSpend) string {
 // bar one space late, rather than being cut down to make a neighbour's bar line
 // up. One row out of column is the shape this table had everywhere before; a
 // name cut in half to buy it back is a fact lost.
-// spendModelNameAt is where a model row's name begins inside its own left
-// field: after the bullet and the one space behind it. The bar column is
-// measured from HERE rather than from the edge of the row, because the distance
-// a person reads is the one between the name they are looking at and the bar
-// beside it.
-func spendModelNameAt() int { return ansi.StringWidth(tokens.GlyphProseBullet) + 1 }
-
-func spendModelBarAt(left string) string {
-	gap := spendModelNameAt() + spendModelBarCol - ansi.StringWidth(left)
-	if gap < 1 {
-		gap = 1
-	}
-	return left + strings.Repeat(" ", gap)
-}
-
 func spendBar(fraction float64, cap int) string {
 	if !(fraction > 0) || cap < 1 {
 		return ""
@@ -946,15 +1003,53 @@ func spendSubjectRowLit(subject session.SubjectSpend, name string, width int, li
 	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))
 }
 
-// spendMoneyWord keeps tui3's one dollar formatter while applying the page's
-// extra rule for a measured sliver: a table of many rows reads better with a
-// word than with a column of four-decimal fractions
-// (docs/design/home-rethink/FIDELITY.md retains the rule).
+// spendCentFloor is the smallest figure this page's money column writes. It is
+// a number rather than the string `$0.01` because [spendMoneyWord] both compares
+// against it and prints it, and the two must not be able to disagree.
+const spendCentFloor = 0.01
+
+// spendMoneyWord is how THIS PAGE'S MONEY COLUMN writes one amount, and it is a
+// column of cents with a floor under it.
 //
-// IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL ANOTHER SURFACE ALSO QUOTES. The
-// pointer line quotes the same day figure the Spending tab does, so it uses
-// [dollars] like every other surface that quotes it ([spendReading.railsRow]).
+// EVERY FIGURE IN A COLUMN IS THE SAME SHAPE OR IT IS NOT A COLUMN. Left to
+// [dollars] alone the column mixed three grammars — `$21.40`, `$0.0068`, and
+// the words `under a cent` — so three rows of the same table were three
+// different kinds of thing, none of them comparable at a glance with the one
+// above it. `$0.0068` is also a figure nobody acts on: four decimals are a
+// receipt's precision spent in a place that is answering "where did it go".
+//
+// SO EVERYTHING UNDER A CENT IS DRAWN AS A CENT, which is the smallest amount
+// this column can say and still be read. It is the emptiness law's other half —
+// a figure that rounded to `$0.00` would report a real, positive, spent amount
+// as nothing at all, which is the reading [subCent] was written to prevent and
+// this floor prevents the same way with two decimals instead of four.
+//
+// IT ROUNDS UP AND THE ROWS CAN THEREFORE OUT-TOTAL THE HEADING. Twenty rows of
+// a tenth of a cent each are twenty `$0.01`s over a window whose own total says
+// `$0.02`. That is the trade a floor makes anywhere it is used: the alternative
+// is a column that says either nothing or `$0.0007`, and neither of those is a
+// figure a person can put beside the row above. The heading, the pointer line
+// and the Spending tab all keep the exact arithmetic ([dollars]).
+//
+// IT IS FOR THIS PAGE AND NOT FOR A SENTENCE. A sub-cent amount inside a
+// sentence has nothing to line up with and room for the phrase, so the detached
+// turn's note keeps its own words ([spendSliverWord]).
 func spendMoneyWord(usd float64) string {
+	if usd > 0 && usd < spendCentFloor {
+		return dollars(spendCentFloor)
+	}
+	return dollars(usd)
+}
+
+// spendSliverWord is a sub-cent amount IN A SENTENCE: `it spent under a cent`,
+// which is what the detached-turn note says and what the manual quotes in those
+// words (internal/manual/chat/keys.md).
+//
+// IT IS THE RULE THIS PAGE'S COLUMN USED TO KEEP and no longer does. A phrase
+// where a figure belongs is fine in prose and wrong in a table, so the two
+// readings parted company rather than one of them being bent to the other
+// ([spendMoneyWord] says which is which).
+func spendSliverWord(usd float64) string {
 	if usd > 0 && usd < 0.005 {
 		return "under a cent"
 	}

@@ -7936,7 +7936,7 @@ func stopDetachedNote(spend session.Usage) string {
 	if spend.CostUSD <= 0 {
 		return stopDetachedWord
 	}
-	return stopDetachedWord + " — it spent " + spendMoneyWord(spend.CostUSD)
+	return stopDetachedWord + " — it spent " + spendSliverWord(spend.CostUSD)
 }
 
 // stopDetachedWord is what a detached turn is called, once, wherever it is
