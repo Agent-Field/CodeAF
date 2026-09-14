@@ -25,9 +25,34 @@ name on home's top line, the first line of `/help`, the card that asks to connec
 an account, the desktop notification's title, and the speaker heading in an
 exported conversation.
 
-It used to say `codeaf` in some of those places and `codeaf` in the others, which
-meant a fresh install met one name in the wordmark and a different one in the
-prose three rows under it. There is one name now, and `codeaf` is on no screen.
+There is one name now. The history and the compatibility spellings that remain
+are in *The old name* below.
+
+## The old name — what happened to aforge, is this the same thing as aforge or the CodeAF from the benchmarks, and why the folder is .codeaf
+
+codeaf was called `aforge` until 2026-09-14, and the repository it is built in
+was `aforge-v2`. It is the same program, by one name now. `openaf` was a planned
+name that appeared in one early wordmark and never shipped a release.
+
+Three things you already have keep working, so nothing on your machine has to be
+moved by hand:
+
+- **Your state folder.** The first time the renamed build starts it renames
+  `~/.aforge` to `~/.codeaf` and leaves a link behind at the old path, so a
+  `PATH` line pointing at `~/.aforge/bin`, a login item, a running daemon or a
+  script of your own still resolves. It happens once, it never overwrites a
+  `~/.codeaf` that is already there, and if it cannot be done it says so and
+  carries on reading the old folder.
+- **Your environment variables.** A variable spelled `AFORGE_…` is still read
+  wherever the `CODEAF_…` one is unset — `AFORGE_HOME` still moves the state
+  folder, for example. Set the new spelling when you next edit that file;
+  `codeaf help env` lists the names.
+- **A repository you have already used.** `.aforge-v3/config.json` inside a
+  project is still read when there is no `.codeaf/config.json` beside it. codeaf
+  writes the new one and never rewrites your repository on its own.
+
+If you have seen “CodeAF” as the name of a coding harness in a benchmark table,
+that is a different program and nothing here talks to it.
 
 ## Starting it
 
@@ -706,4 +731,3 @@ will tell you so instead of inventing an answer.
 ## /drafts and the ↑ walk — cleared drafts come back too
 
 `ctrl+u`, a conversation switch, any clear that empties the whole box — codeaf pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
-
