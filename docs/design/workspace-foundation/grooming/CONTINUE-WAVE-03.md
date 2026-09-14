@@ -5,8 +5,10 @@
 **Start from [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md) and the top of
 [NEXT-STEPS.md](NEXT-STEPS.md), not from the rounds below, which are history.**
 The integrated baseline is `codex/personal-ai-backend` at `3788e569e` (W5-A). The W5-B
-journey slice is on lane `codex/personal-next-0914`, final runtime `a3252e8f3`, not yet
-integrated by the coordinator. The old `codex/personal-e2e-opus` lane is already in the
+journey slice is on lane `codex/personal-next-0914`; round 2 (Fleet job
+`20260914-185234-000443`, resuming `20260914-182416-000442`) made the journey an
+acceptance driver and fixed G3, final runtime `0ad0ccea7`. It is not yet integrated,
+and the combined journey is not marked done until an exit-0 live receipt exists. The old `codex/personal-e2e-opus` lane is already in the
 baseline — do not merge it again.
 
 **QUARANTINE.** `/home/santosh/af-pai-integrate` holds a staged, unrelated ~1100-file

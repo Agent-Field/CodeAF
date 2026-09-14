@@ -1,5 +1,87 @@
 # W5-B — the chat-driven local-file journey, validated end to end
 
+## Round 2 — the journey as an acceptance driver (current; supersedes "done" below)
+
+**Status: NOT marked done in this record.** The coordinator rejected completion at
+live 2's 31/33. Round 2 was run in Fleet job `20260914-185234-000443`, which
+resumed the session of parent job `20260914-182416-000442`. All times are UTC,
+taken from `date -u` and the logs.
+
+**Acceptance statement (unchanged in intent, stricter in checks).** One real-model conversation creates, edits (instructions, watch, report path), asks for a second folder, and pauses, resumes and stops. It is checked off `bin/aforge`'s records:
+- **Failures are machine-visible.** Any failed check fails the Go test, and the runner exits non-zero (`cv.acceptance`). Only this scenario does this; the exploratory scenarios still only report.
+- **The second-folder sentence says what the person wants:** "leave both folders where they are; if this cannot be watched as requested, explain and keep the existing setup". The run must end in one of two ways:
+  - a watch that really reaches `inbox/` with its subfolders and `notes/`, and nothing unrelated, on a card the person approved;
+  - or the setup exactly as it was, with the project tree byte-identical (no relocation), no broader watch, no replacement item, no workaround the person did not approve, and a reply about the unsupported request.
+- **The person answers as that sentence reads.** The conversation is `Interactive` (the TUI's setting) and holds `WatchQuestions`, so a model's `ask` reaches the driver and is never decided by its own default. The person:
+  - never takes the model's pick, and skips options that move, copy, link or broaden;
+  - approves a card only when it truly watches both folders;
+  - declines every consent in that turn.
+
+**Driver corrections, each with its reason:**
+
+| Correction | Reason | Assertion strength |
+| --- | --- | --- |
+| The instructions edit is judged on the fixture's fact: the digest's venue line (or the line after it) names Priya. The instructions or acceptance that stand must also name owners as a whole word (`instructions-ask-for-owners`). | Live 2's digest said "**Priya** to book the venue" and failed only on a literal `owner` label nobody asked for. The acceptance review then showed the fixture fact alone cannot prove the edit, hence the spec-side check, and whole-word matching so `markdown` or `known` do not count. | Stronger: a spec check was added. |
+| An already-recursive watch is a truthful no-op (`already-recursive-watch-left-unchanged`: same id, version and glob), and the nested file must still wake a run whose changes name `inbox/clients/acme.md` and reach the report. | Live 2's watch was `inbox/**/*` from creation, and the model rightly changed nothing. | Stronger: the nested run's changes are now asserted. |
+| The second-folder checks now require an unchanged tree, spec version, glob and brief; a card-approved widening that keeps subfolders; and a reply check. | Live 2 moved `notes/` under `inbox/` after the default dial answered the model's own ask. Live 1 changed the instructions as a workaround. Both would now fail. | Stronger. |
+| The reply check accepts "two folders"/"both folders" in place of "notes", and more negation words. | Live 4's reply ("Can't watch two folders into one digest with a single file watch — brace expansion isn't supported …") was honest, with the tree and setup untouched, and failed only for lacking the word "notes". The review had predicted this false failure. The reply's content is a person's judgement; the tree, version and watch checks catch any workaround. | Relaxed on purpose, with this reason. Live 4 stays failed. |
+
+**G3, a product failure found by live 3 and fixed.** The run for the nested file
+answered `…processed it.\n\n<report># Digest …\n</report>`. The opening tag was glued to
+the report's first line, so a whole report was withheld as `unopened-report`
+(the previous report was kept, as the law says). The fix is in `delimitedReport`:
+a `<report>` at the very start of a line, before any report has opened, opens
+the report, and the rest of that line is its first line. A tag later in a line,
+or after a report has opened, is still a mention, and a closing tag glued to words still
+closes nothing. `TestAnOpeningTagGluedToTheFirstLineOpensTheReport` **fails at
+`a3252e8f3`** ([receipt](validation/w05b-old-logic-a3252e8f3.log)). The manual's
+report section and the change entry say so.
+
+**Revisions, round 2:**
+
+| Commit | What |
+| --- | --- |
+| `76f92b88d` | Acceptance driver: fail on any check, the second-folder sentence and checks, the person's answers (driver only) |
+| `8ca78e406` | G3 parser fix; the question watcher (review blocker); tree snapshot; stricter approval, picker and reply checks; the owners spec check |
+| `0ad0ccea7` | Second review's fixes: a glued tag opens only when nothing has opened; whole-word owners; the honest-reply wording. **Final runtime and driver.** |
+
+**Live runs, round 2:**
+
+| Run | Head | Time (UTC) | Result | Spend | Log |
+| --- | --- | --- | --- | --- | --- |
+| live 3 | `76f92b88d` | 18:56:23–19:00:38 | **34/35, EXIT 1**. Failed: `nested-file-woke-a-run-and-reached-the-report`. The run did wake on `inbox/clients/acme.md`, and was withheld `unopened-report` (G3). | $0.0383 | [log](validation/w05b-live-journey-run03.log) |
+| live 4 | `8ca78e406` | 19:06:34–19:18:09 | **36/37, EXIT 1**. Failed: `the-reply-explains`, a driver false failure over an honest reply. All tree, relocation, replacement, broadening and setup checks passed, and G3's report published. | $0.0414 | [log](validation/w05b-live-journey-run04.log) |
+| live 5 | `0ad0ccea7` | started 19:18:31 | See *Live 5* below. It is the last retry this round allows. | — | `/tmp/af-pai-next-0914/live/logs/journey-run05.log` |
+
+Spend through live 4 was $0.1666 against the $0.50 wave limit.
+
+**Acceptance reviews (independent, read-only Opus, no compiles).**
+- **Of `76f92b88d`: not fit.** The one blocker was that a model's `ask` goes to question watchers, never the turn stream, so an `Interactive` turn would wait out its 5-minute limit. There were also five should-fix items: the Priya fact alone proves nothing; relocation is evadable by copy or link; the reply check was trivial; approval ignored subfolders; the picker could choose a move. All were fixed in `8ca78e406`.
+- **Of `8ca78e406`: no blockers, fit to certify.** Its should-fix items were `own` matching `markdown`, the reply check failing honest replies, and a glued tag after a report reopening it. All were fixed in `0ad0ccea7`. Recorded, not changed:
+  - a teardown log race in the watcher goroutine (tiny window);
+  - the picker skipping a safe option whose words mention a move (it falls back to a reframe, which is safe);
+  - the widened branch not reading the reply.
+
+**Focused checks at `8ca78e406`** ([receipt](validation/w05b-focused-checks.log)), all PASS:
+- `make build`, vet, `make test-laws` (no failures), `make test-packed-manual`;
+- untagged `internal/e2e`, `TestLocalWorkJourney`, `TestChatDoorJourney`;
+- `internal/standing`;
+- the session families `Stand|Standing|Report|Publish|Journey|TestTheFixedPrefix|Card|Owner|Watch|Edit`;
+- `internal/manual` and `make changelog-check`.
+
+**At `0ad0ccea7`:** `go vet -tags e2e ./internal/e2e/`, and session `TestAnOpeningTagGlued|Report|Publish|Unopened|Unclosed|Parked`, PASS.
+
+**Timestamps corrected.** The progress headings written earlier (18:40, 18:58, 19:50, 20:00) ran ahead of the clock. The logged times of round 1 are:
+- base checks 18:27;
+- live 1 18:30:33–18:33:43;
+- live 2 18:41:41–18:45:10;
+- final focused checks 18:49;
+- lane pushed about 18:51.
+
+---
+
+## Round 1 (history)
+
 2026-09-14. Lane `codex/personal-next-0914` (Claude Code Opus on Spark), base
 `3788e569e` on `codex/personal-ai-backend` (the W5-A merge). Spark only,
 `GOMAXPROCS=4 GOFLAGS=-p=2`. There was no full tui3, session or cmd suite, no full tagged E2E run, and no

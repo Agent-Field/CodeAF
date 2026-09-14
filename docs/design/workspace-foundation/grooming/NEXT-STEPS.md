@@ -10,13 +10,17 @@ when each was written; the current source and this section are authoritative.
   on top of W5-B watch conditions, the folder view, the prefix budget and round 4b.
   Draft #662 against `dev` stays the one record; nothing merged, released or deployed.
 - **This slice, W5-B journey:** lane `codex/personal-next-0914`, final runtime
-  `a3252e8f3`. Record: [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md). Quarantine:
+  `0ad0ccea7` (round 2; round 1 ended at `a3252e8f3`). Record: [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md). Quarantine:
   `/home/santosh/af-pai-integrate` is not part of any integration.
-  - [x] Chat-driven local-file journey with a real model, one conversation: create, edit
-    instructions, edit watch, edit report path, pause, resume, stop, placement governs and a
-    reference does not. Live 1 29/33 at `454617ad5`, live 2 31/33 at `e3201af9c`
-    ($0.0869); the remaining live-2 failures are one run-variance miss and one driver
-    false failure, both recorded.
+  - [ ] **Combined journey as acceptance — NOT done yet.** The coordinator rejected live 2's
+    31/33. Round 2 made the driver fail on any check, answer questions as the person, and
+    assert no relocation, broadening, replacement or unapproved workaround in the
+    second-folder turn. Live 3 34/35 at `76f92b88d` (a product failure, G3, fixed) and live 4
+    36/37 at `8ca78e406` (a driver false failure over an honest reply, corrected) both exit 1
+    and stay failed. Live 5 at `0ad0ccea7` is the last allowed retry: tick this only on its
+    exit-0 receipt (BUILD-WAVE-05B.md, *Round 2*). Spend $0.1666 through live 4.
+  - [x] A report opening tag glued to its first line opens the report (G3; regression fails at
+    `a3252e8f3`).
   - [x] A file watch's `when ·` line is said by its pattern on every surface (G1; regression
     fails at `3788e569e`).
   - [x] A report path changed by an edit, not a stop and a new card (G2; schema regression
@@ -24,7 +28,8 @@ when each was written; the current source and this section are authoritative.
   - [x] Two folders into one report: brace refused, one live owner, no card claiming an
     unwatched folder, no silent broadening (live 1 and 2; manual section).
   - [ ] Whether the chat's stop should be confirmed on a card — open decision for the owner.
-  - [ ] The driver answers questions as a person (today the session's default dial does).
+  - [x] The journey's driver answers the model's asks as the person (WatchQuestions,
+    Interactive), never the default dial; other scenarios are unchanged.
   - [ ] Model-written `when_words` for moments, rhythms, idle waits and probes are still shown as sent.
   - [ ] Full tui3/session/cmd suites and the tagged E2E package were not run in this slice.
 

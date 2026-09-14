@@ -17,3 +17,10 @@ a3252e8f3: ok  	github.com/Agent-Field/aforge-v2/internal/standing	7.409s
 a3252e8f3: ok  	github.com/Agent-Field/aforge-v2/internal/tui3	7.900s
 a3252e8f3: ok  	github.com/Agent-Field/aforge-v2/cmd/aforge	1.526s
 a3252e8f3: ok  	github.com/Agent-Field/aforge-v2/internal/session	44.281s
+8ca78e406: aforge 8ca78e406 built 2026-09-14 15:05 · go1.26.5 linux/arm64
+8ca78e406: vet PASS
+8ca78e406: laws: no FAIL lines above
+8ca78e406: ok  	github.com/Agent-Field/aforge-v2/internal/manual	1.362s
+8ca78e406: ok  	github.com/Agent-Field/aforge-v2/internal/e2e	0.253s
+8ca78e406: ok  	github.com/Agent-Field/aforge-v2/internal/e2e	4.679s
+8ca78e406: ok  	github.com/Agent-Field/aforge-v2/internal/standing	7.500s
