@@ -423,7 +423,7 @@ func workFacts(fact func(label, value string), failed func(label, section string
 		}
 	}
 	if !item.LastChecked.IsZero() {
-		fact("checked", strings.TrimSpace(sinceWord(item.LastChecked)+" · "+drawableLine(item.LastCheckLine)))
+		fact("checked", dotted(sinceWord(item.LastChecked), drawableLine(item.LastCheckLine)))
 	}
 	limits := []string{}
 	if item.Rails.PerRunUSD > 0 {
@@ -466,15 +466,15 @@ func runningWords(mark standing.RunningMark) string {
 // a report it published, or a person's own file it was allowed to replace and
 // has not yet.
 func receiptWords(receipt standing.Receipt) string {
-	who := "put there by aforge"
 	if receipt.Class == standing.ReceiptAdopted {
-		who = "your file · aforge may replace it"
+		return dotted(sizeWord(int64(receipt.Bytes)), strings.TrimSpace("your file, adopted "+sinceWord(receipt.At)), "aforge may replace it", shortDigest(receipt.SHA256))
 	}
-	return dotted(sizeWord(int64(receipt.Bytes)), strings.TrimSpace(who+" "+sinceWord(receipt.At)), shortDigest(receipt.SHA256))
+	return dotted(sizeWord(int64(receipt.Bytes)), strings.TrimSpace("put there by aforge "+sinceWord(receipt.At)), shortDigest(receipt.SHA256))
 }
 
-// ruleIDsWords names the rules a check read, by the short id `aforge standing
-// show` prints.
+// ruleIDsWords names the rules a check read by the first eight characters of
+// their ids — enough to find the rule in `aforge standing show`, which prints
+// them whole.
 func ruleIDsWords(ids []string) string {
 	if len(ids) == 0 {
 		return ""

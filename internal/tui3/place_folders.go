@@ -894,14 +894,15 @@ func (a *app) foldersEditInChat(item standing.Item) tea.Cmd {
 	// A DRAFT ALREADY IN THAT CHAT'S BOX IS KEPT, after the lead: the person was
 	// half-way through saying something there, and a verb pressed somewhere else
 	// may not throw it away.
+	// A lead this verb left there before — for this item or another, under an
+	// older title — is replaced rather than stacked.
 	lead, draft := foldersEditLead(item), a.input.String()
-	switch {
-	case strings.HasPrefix(draft, lead):
-		lead = draft
-	case strings.TrimSpace(draft) != "":
-		lead += draft
+	if strings.HasPrefix(draft, foldersEditOpen) {
+		if end := strings.Index(draft, foldersEditClose); end >= 0 {
+			draft = strings.TrimLeft(draft[end+len(foldersEditClose):], " ")
+		}
 	}
-	a.input.setText(lead)
+	a.input.setText(lead + draft)
 	return tea.Batch(cmd, a.edited())
 }
 
@@ -913,8 +914,15 @@ func foldersEditLead(item standing.Item) string {
 	if !item.Spends() {
 		kind = "rule"
 	}
-	return "Change the " + kind + " “" + strings.TrimSpace(item.Title()) + "”: "
+	return foldersEditOpen + kind + " “" + strings.TrimSpace(item.Title()) + foldersEditClose + " "
 }
+
+// The two ends of the edit lead, spelled once so a lead left in a box is
+// recognised by the same words that wrote it.
+const (
+	foldersEditOpen  = "Change the "
+	foldersEditClose = "”:"
+)
 
 func (placeFolders) press(a *app, y int) bool {
 	p := &a.browse

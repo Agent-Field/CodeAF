@@ -650,17 +650,27 @@ func StandingNamedFiles(item standing.Item) []string {
 }
 
 // standingNamesAnInput answers whether a name in an item's words is one of the
-// files its own watch reads, either as written or as the instructions usually
-// write it — by its name inside the watched folder ("spec.md" for
-// product/spec.md under `product/**`). Those are what a run reads, and a surface
-// that listed them as rival reports would be warning about the work doing
-// exactly what it was set up to do. It reads no disk: the watch decides.
+// files its own watch reads, either as written or, for a BARE file name, as the
+// instructions usually write one — by its name inside the watched folder
+// ("spec.md" for product/spec.md under `product/**`). Those are what a run reads,
+// and a surface that listed them as rival reports would be warning about the work
+// doing exactly what it was set up to do. It reads no disk: the watch decides.
+//
+// A NAME WITH A FOLDER IN IT IS READ ONLY AS WRITTEN. Put under the watched
+// folder, `reports/old-digest.md` would become `product/reports/old-digest.md`,
+// which `product/**` matches — and the one warning this exists to keep would be
+// silenced. A bare name is the ambiguous case, and a bare name the watched folder
+// could hold is taken as an input; an absolute watch has no folder to put it in.
 func standingNamesAnInput(item standing.Item, path string) bool {
 	if item.Watches(path) {
 		return true
 	}
+	glob := filepath.ToSlash(item.When.Glob)
+	if strings.ContainsAny(path, `/\`) || filepath.IsAbs(item.When.Glob) {
+		return false
+	}
 	var root []string
-	for _, part := range strings.Split(filepath.ToSlash(item.When.Glob), "/") {
+	for _, part := range strings.Split(glob, "/") {
 		if strings.ContainsAny(part, "*?[{") {
 			break
 		}

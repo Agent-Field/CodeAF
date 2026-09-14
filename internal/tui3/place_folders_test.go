@@ -568,6 +568,15 @@ func TestOngoingWorkIsPausedStoppedAndEditedOnlyThroughItsOwners(t *testing.T) {
 	if got := f.a.input.String(); got != "Change the ongoing work “keep the product digest current”: also list open questions" {
 		t.Fatalf("e again over a draft in that chat's box reads %q", got)
 	}
+	// A lead left under an older title is replaced, never stacked.
+	f.a.input.setText("Change the ongoing work “an older title”: also list open questions")
+	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
+	f.pick(t, "keep the product digest current")
+	f.frame()
+	drive(t, f.a, key("right"), key("e"))
+	if got := f.a.input.String(); got != "Change the ongoing work “keep the product digest current”: also list open questions" {
+		t.Fatalf("e over an older lead reads %q", got)
+	}
 
 	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
 	f.pick(t, "keep the product digest current")

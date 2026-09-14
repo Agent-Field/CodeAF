@@ -44,15 +44,14 @@ if [[ -e "$profile" && -n "$(ls -A "$profile" 2>/dev/null)" ]]; then
   echo "$profile is not empty; the fixture only writes a new profile." >&2
   exit 2
 fi
-# The seeder is the demo home's own developer binary, built exactly as
-# `make demo-home` builds it, so bin/aforge does not change by a byte.
-go build -o "$seeder" "$root/cmd/aforge-demo-home"
-
 stage="${STAGE:-1}"
 if [[ "$stage" != 1 && "$stage" != 2 ]]; then
   echo "STAGE is 1 or 2, not $stage" >&2
   exit 2
 fi
+# The seeder is the demo home's own developer binary, built exactly as
+# `make demo-home` builds it, so bin/aforge does not change by a byte.
+go build -o "$seeder" "$root/cmd/aforge-demo-home"
 manifest="$("$seeder" --personal --stage "$stage" --into "$profile")"
 field() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "$manifest" "$1"; }
 profile="$(field state)"
@@ -80,8 +79,9 @@ unset AFORGE_PROFILE_DIR || true
 # speech, music, video) and listening or watching resolve from the catalog and
 # its curated names, several of them closed, and the chat may name a model for
 # one. Nothing in this fixture asks for them; the call log is the receipt. The
-# model variables are unset here and in the launch line below because
-# AFORGE_VISION_MODEL and the AFORGE_*_MODEL making slots beat the rows.
+# model variables are unset here because AFORGE_VISION_MODEL and the
+# AFORGE_*_MODEL making slots beat the rows; the launch line below unsets the two
+# that name a row this profile writes (the talk row already beats AFORGE_MODEL).
 unset AFORGE_MODEL AFORGE_PLAN_MODEL AFORGE_MODELS AFORGE_VISION_MODEL AFORGE_IMAGE_MODEL \
   AFORGE_SPEECH_MODEL AFORGE_MUSIC_MODEL AFORGE_VIDEO_MODEL AFORGE_VOICE_MODEL || true
 talk="${DEMO_MODEL:-z-ai/glm-5.3-flash}"
