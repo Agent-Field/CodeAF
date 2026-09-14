@@ -9,6 +9,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,5 +150,38 @@ func TestAStubbedReadStopsCountingAsHeld(t *testing.T) {
 	}
 	if !strings.Contains(after.text, "three") {
 		t.Fatalf("the fresh read did not re-fetch the bytes: %.80q", after.text)
+	}
+}
+
+// The pointer is self-limiting: after heldPointerLimit answers the claim falls
+// through to the ordinary fetch, because a model still asking does not hold the
+// bytes. AND the fresh read that lands resets the counter — the limit stops
+// loops, not reuse (the 2026-09-13 v4-flash loop, three rounds and no work).
+func TestThePointerLimitFallsThroughAndResets(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	path := filepath.Join(workspace, "page.md")
+	writeFile(t, path, "one\ntwo\nthree\nfour\nfive\n")
+
+	readHeld(t, agent, "c1", heldArgs(path, 0, 0))
+	for i := 0; i < heldPointerLimit; i++ {
+		got := readHeld(t, agent, fmt.Sprintf("c%d", i+2), heldArgs(path, 0, 0))
+		if !strings.HasPrefix(got.text, "[already read] ") {
+			t.Fatalf("bounce %d was fetched rather than pointed at: %.80q", i+1, got.text)
+		}
+	}
+	// Past the limit the same covered range is READ FROM DISK again — the
+	// bytes are the answer, and the loop that asked a third time ends there.
+	third := readHeld(t, agent, "c9", heldArgs(path, 0, 0))
+	if strings.Contains(third.text, "[already read] ") {
+		t.Fatalf("the claim past its limit was still pointed at: %.80q", third.text)
+	}
+	if !strings.Contains(third.text, "three") {
+		t.Fatalf("the fall-through did not carry the bytes: %.80q", third.text)
+	}
+	// And the counter starts over on those bytes: the next identical read is
+	// a pointer again, not a permanent fall-through.
+	again := readHeld(t, agent, "c10", heldArgs(path, 0, 0))
+	if !strings.HasPrefix(again.text, "[already read] ") {
+		t.Fatalf("after the fresh record the claim did not reset: %.80q", again.text)
 	}
 }

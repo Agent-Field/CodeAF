@@ -52,11 +52,22 @@ type heldLedger struct {
 	files map[string]*heldFile
 }
 
-// heldFile is one path's entry: the file's stamp at the last recorded read and
-// the line spans that read — together or alone — returned.
+// heldFile is one path's entry: the file's stamp at the last recorded read,
+// the line spans that read — together or alone — returned, and how many times
+// the claim has already answered with a pointer for this file.
+//
+// THE POINTER IS SELF-LIMITING. Measured on 2026-09-13 with
+// deepseek/deepseek-v4-flash: a model that re-read the same file answered the
+// pointer, then answered it again, and again, telling the conversation the
+// bytes were not in front of it until the loop guard stopped the turn — three
+// rounds, no work done. The pointer saves the re-bill exactly while the model
+// uses what it holds; past [heldPointerLimit] answers for one file the claim
+// falls through to the ordinary fetch, because a model still asking does not
+// hold the bytes whatever the transcript says.
 type heldFile struct {
-	stamp heldStamp
-	spans []heldSpan
+	stamp          heldStamp
+	spans          []heldSpan
+	pointerServed  int
 }
 
 // heldStamp is the two numbers os.Stat answers; comparable, so a mismatch is a
@@ -65,6 +76,11 @@ type heldStamp struct {
 	modified time.Time
 	size     int64
 }
+
+// heldPointerLimit is how many pointer answers one file gets before the claim
+// falls through to a fresh fetch. TWO: the first bounce is the dedup working,
+// the second is the loop the limit exists to stop (see heldFile).
+const heldPointerLimit = 2
 
 // heldSpan is one recorded read's range: one-based first line, last line (zero
 // when the read reached the end of the file), whether it reached the end, and
@@ -121,11 +137,26 @@ func (a *Agent) heldClaim(name string, args json.RawMessage) (string, bool) {
 	if !heldCovers(spans, spec) {
 		return "", false
 	}
-	// ONE SENTENCE, NO MACHINERY IN IT: the model has the bytes and says where.
-	if spec.end > 0 {
-		return fmt.Sprintf("[already read] %s lines %d–%d are in this conversation above — use those bytes.", spec.path, spec.start, spec.end), true
+	// AND NEVER MORE THAN [heldPointerLimit] TIMES, for heldFile's reason: a
+	// model that bounced the pointer already is not holding the bytes, and the
+	// fresh fetch is the only answer that cannot starve it.
+	a.held.mu.Lock()
+	file = a.held.files[spec.abs]
+	a.held.mu.Unlock()
+	if file.pointerServed >= heldPointerLimit {
+		return "", false
 	}
-	return fmt.Sprintf("[already read] %s from line %d to the end is in this conversation above — use those bytes.", spec.path, spec.start), true
+	a.held.mu.Lock()
+	file.pointerServed++
+	a.held.mu.Unlock()
+	// ONE SENTENCE, NO MACHINERY IN IT: the model has the bytes and says where,
+	// and the second clause is the loop the limit above exists to end, said in
+	// the same breath — a model that cannot find them must know re-reading is
+	// legal, or it will read in circles instead (see heldFile).
+	if spec.end > 0 {
+		return fmt.Sprintf("[already read] %s lines %d–%d are already in this conversation — answer from them rather than reading again.", spec.path, spec.start, spec.end), true
+	}
+	return fmt.Sprintf("[already read] %s from line %d to the end is already in this conversation — answer from it rather than reading again.", spec.path, spec.start), true
 }
 
 // heldNote is the record half, called with the finished result: errors and the
@@ -168,8 +199,13 @@ func (a *Agent) heldNote(name string, args json.RawMessage, text string, isError
 	}
 	// The two reads that together cover a range are MERGED AT THE CLAIM, not
 	// here: the spans append, and the union arithmetic that decides coverage
-	// runs over whatever the entry holds when the model asks.
+	// runs over whatever the entry holds when the model asks. AND THE FRESH
+	// READ THAT LANDED THIS SPAN RESETS THE POINTER COUNTER IT BROKE (see
+	// heldFile): bytes just put in front of the model are bytes it holds, so
+	// the limit starts over — the loop it stops is the one that made the
+	// claim fall through.
 	file.spans = append(file.spans, span)
+	file.pointerServed = 0
 }
 
 // heldSpecOf normalizes one call's path, offset and limit into the range it
