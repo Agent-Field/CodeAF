@@ -867,11 +867,14 @@ show` says `set up by: person, through the chat`.
 ## Ongoing work in the folders place — last run, why it ran, where the report went, pause, stop
 
 Select ongoing work in `folders` (`alt+8`) and its details are its owner's own records:
-`state` (`active`, `paused`, `stopped`, or `checking now · since 4s`), `wakes`, `report ·
-reports/x.md · published by aforge`, `last run` (when · how it came out · instructions
-version · cost), `why` (the files that changed), `published` (path · size · when), `held to`
-(the rules check), `checks`, `limits`, `version · instructions v2`, `does`, `on disk` (what
-aforge last put at the report path, with its sha) and `before` (earlier runs).
+`state` (`active`, `paused`, `stopped`, or `checking now` / `firing now`, with `· for 3m`
+once a pass has held it a minute), `wakes`, `report · reports/x.md · published by aforge`,
+`last run` (when · how it came out · instructions version · cost), `why` (the files that
+changed), `published` (path · size · when), `held to` (the rules check, `1 kept · rule
+2952d673` — the ids of the rules that reached the run, never a quote of the report),
+`checks`, `limits`, `version · instructions v2`, `does`, `on disk` (`put there by aforge`
+with its sha, or `your file · aforge may replace it`) and `before` (earlier runs). A rule
+shows no `checks`: it never wakes.
 
 **How it gets checked is said, never assumed:** `this window's engine checks every 5
 minutes while it is open`, `no background timer for this home` or `a background timer

@@ -169,6 +169,34 @@ type RuleCheck struct {
 	Held string `json:"held,omitempty"`
 }
 
+// Summary is a check's answer over all its rules as a person reads it: counted
+// from the per-rule record where there is one, so a check that could not see a
+// rule never reads as "kept", and the recorded summary word for a record written
+// before per-rule verdicts existed. Codes are spelled with spaces ("not
+// checkable"), never as the record's hyphenated code.
+//
+// IT IS ONE READING FOR EVERY SURFACE: `aforge standing show` and the folders
+// place print the same words for the same run.
+func (c *RuleCheck) Summary() string {
+	if c == nil {
+		return ""
+	}
+	if len(c.Verdicts) == 0 {
+		return strings.ReplaceAll(strings.TrimSpace(c.Verdict), "-", " ")
+	}
+	counts := map[string]int{}
+	for _, verdict := range c.Verdicts {
+		counts[verdict.Verdict]++
+	}
+	var parts []string
+	for _, code := range []string{RuleKept, RuleBroken, RuleNotCheckable} {
+		if counts[code] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[code], strings.ReplaceAll(code, "-", " ")))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 // RuleVerdict is what one check found for one rule.
 //
 // A RULE IS CHECKED BY THE QUESTION ITS KIND ASKS. An obligation — "reports

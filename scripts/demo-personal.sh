@@ -49,6 +49,10 @@ fi
 go build -o "$seeder" "$root/cmd/aforge-demo-home"
 
 stage="${STAGE:-1}"
+if [[ "$stage" != 1 && "$stage" != 2 ]]; then
+  echo "STAGE is 1 or 2, not $stage" >&2
+  exit 2
+fi
 manifest="$("$seeder" --personal --stage "$stage" --into "$profile")"
 field() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "$manifest" "$1"; }
 profile="$(field state)"
@@ -62,18 +66,31 @@ unset AFORGE_PROFILE_DIR || true
 # Memory off and background checks off: this profile is for looking, and the
 # machine's timer belongs to the person's real install.
 #
-# EVERY MODEL THIS PROFILE CAN REACH IS OPEN-WEIGHT, AND IT IS WRITTEN DOWN
-# RATHER THAN INHERITED (the owner's ruling, 2026-09-14). The talk row is what a
-# conversation opens on and what an ongoing-work run fires under
-# (cmd/aforge's v3TalkModel), so the work set up from the chat runs on it too.
-# The fallback row is written because an empty one lets the catalog pick the
+# THE MODELS THE CHAT, ITS ROLES AND ONGOING WORK RUN ON ARE OPEN-WEIGHT, AND
+# THEY ARE WRITTEN DOWN RATHER THAN INHERITED (the owner's ruling, 2026-09-14).
+# The talk row is what a conversation opens on and what an ongoing-work run
+# fires under (cmd/aforge's v3TalkModel), so work set up from the chat runs on it
+# too. The fallback row is written because an empty one lets the catalog pick the
 # "nearest" model on a refusal, which nobody chose and nothing keeps open; the
 # five tiers and the looking row are written so no default can move under the
 # fixture. Weights and licences were checked on the day: GLM-5.3-Flash and both
 # DeepSeek Flash models MIT, Qwen3.8-27B and Mistral-Nemo Apache-2.0.
+#
+# WHAT THIS DOES NOT PIN, said rather than implied: the making verbs (image,
+# speech, music, video) and listening or watching resolve from the catalog and
+# its curated names, several of them closed, and the chat may name a model for
+# one. Nothing in this fixture asks for them; the call log is the receipt. The
+# model variables are unset here and in the launch line below because
+# AFORGE_VISION_MODEL and the AFORGE_*_MODEL making slots beat the rows.
+unset AFORGE_MODEL AFORGE_PLAN_MODEL AFORGE_MODELS AFORGE_VISION_MODEL AFORGE_IMAGE_MODEL \
+  AFORGE_SPEECH_MODEL AFORGE_MUSIC_MODEL AFORGE_VIDEO_MODEL AFORGE_VOICE_MODEL || true
 talk="${DEMO_MODEL:-z-ai/glm-5.3-flash}"
-printf '{"memory.enabled":"off","standing.background":"off","model.talk":"%s","models.fallbacks":"deepseek/deepseek-v4.1-flash","models.tiers.reflex":"mistralai/mistral-nemo","models.tiers.low":"deepseek/deepseek-v4-flash-0731","models.tiers.worker":"%s","models.tiers.high":"qwen/qwen3.8-27b","models.tiers.mastermind":"%s","vision_model":"qwen/qwen3.8-27b"}\n' \
-  "$talk" "$talk" "$talk" > "$AFORGE_HOME/config.json"
+# The failing model is never its own fallback, so a talk row on the fallback's
+# model falls back to the default talk model instead of to the catalog's guess.
+fallback="deepseek/deepseek-v4.1-flash"
+[[ "$talk" != "$fallback" ]] || fallback="z-ai/glm-5.3-flash"
+printf '{"memory.enabled":"off","standing.background":"off","model.talk":"%s","models.fallbacks":"%s","models.tiers.reflex":"mistralai/mistral-nemo","models.tiers.low":"deepseek/deepseek-v4-flash-0731","models.tiers.worker":"%s","models.tiers.high":"qwen/qwen3.8-27b","models.tiers.mastermind":"%s","vision_model":"qwen/qwen3.8-27b"}\n' \
+  "$talk" "$fallback" "$talk" "$talk" > "$AFORGE_HOME/config.json"
 
 say() { printf '\n== %s\n' "$*"; }
 run() { printf '$ aforge %s\n' "$*" >&2; "$bin" "$@"; }
@@ -131,4 +148,4 @@ cat > "$profile/fixture/manifest.json" <<EOF
 EOF
 say "Ready"
 echo "manifest: $profile/fixture/manifest.json"
-echo "open it:  cd $project && AFORGE_HOME=$profile $bin    # alt+8 is folders"
+echo "open it:  cd $project && env -u AFORGE_MODEL -u AFORGE_VISION_MODEL AFORGE_HOME=$profile $bin    # alt+8 is folders"

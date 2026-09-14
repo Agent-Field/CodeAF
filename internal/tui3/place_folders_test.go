@@ -502,7 +502,7 @@ func TestOngoingWorkShowsItsRunsReportLimitsAndHowItIsChecked(t *testing.T) {
 	screen := strings.Join(strings.Fields(f.frame()), " ")
 	for _, want := range []string{
 		"when product/* changes", "reports/product-digest.md · published by aforge", "$0.05 a run · 10 runs a day",
-		"instructions v2", "modified product/spec.md", "held to kept · 1 rule", "412 bytes",
+		"instructions v2", "modified product/spec.md", "held to kept · rule rule1", "412 bytes", "put there by aforge",
 		"the last report went to reports/digest.md; the next goes to reports/product-digest.md",
 		"the instructions also name reports/old-digest.md; aforge publishes only reports/product-digest.md",
 		"no background timer for this home", "or run aforge standing check",
@@ -558,6 +558,24 @@ func TestOngoingWorkIsPausedStoppedAndEditedOnlyThroughItsOwners(t *testing.T) {
 	if len(f.saves) != 2 {
 		t.Fatalf("e wrote to the owner: %v", f.saves)
 	}
+	// A half-typed sentence left in that chat's box survives the verb pressed
+	// again from the folders place, after the lead and never in place of it.
+	f.a.input.setText("also list open questions")
+	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
+	f.pick(t, "keep the product digest current")
+	f.frame()
+	drive(t, f.a, key("right"), key("e"))
+	if got := f.a.input.String(); got != "Change the ongoing work “keep the product digest current”: also list open questions" {
+		t.Fatalf("e again over a draft in that chat's box reads %q", got)
+	}
+
+	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
+	f.pick(t, "keep the product digest current")
+	f.frame()
+	drive(t, f.a, key("right"), key("s"))
+	if f.saves[len(f.saves)-1] != standing.StatusRetired || !strings.Contains(f.a.pageMsg, homeItemStopped) {
+		t.Fatalf("s wrote %v and said %q", f.saves, f.a.pageMsg)
+	}
 
 	f.work.Status = standing.StatusRetired
 	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
@@ -569,5 +587,46 @@ func TestOngoingWorkIsPausedStoppedAndEditedOnlyThroughItsOwners(t *testing.T) {
 	f.pages["product"].Rows[4].State = string(standing.StatusRetired)
 	if screen := f.frame(); !strings.Contains(screen, "ongoing work · stopped") {
 		t.Fatalf("a stopped item's row does not say stopped:\n%s", screen)
+	}
+}
+
+// THE WORDS FOR WHAT THE OWNER RECORDS ARE ITS OWN, AND NOTHING IS CLAIMED THAT
+// IT DID NOT RECORD: a pass holding the item says its own word and, from a minute,
+// for how long; a person's own file at the report path is not called aforge's; a
+// rule is not checked on a clock and is edited as a rule; and a part nobody
+// recorded leaves no empty slot between two dots.
+func TestOngoingWorkWordsSayOnlyWhatTheOwnerRecorded(t *testing.T) {
+	now := time.Now()
+	if got := runningWords(standing.RunningMark{What: standing.RunningFiring, Since: now}); got != "firing now" {
+		t.Fatalf("a pass that just began reads %q", got)
+	}
+	if got := runningWords(standing.RunningMark{What: standing.RunningChecking, Since: now.Add(-3 * time.Minute)}); got != "checking now · for 3m" {
+		t.Fatalf("a pass three minutes in reads %q", got)
+	}
+	adopted := receiptWords(standing.Receipt{Class: standing.ReceiptAdopted, Bytes: 10})
+	if strings.Contains(adopted, "put there by aforge") || !strings.Contains(adopted, "your file") {
+		t.Fatalf("an adopted file reads %q", adopted)
+	}
+	if got := receiptWords(standing.Receipt{Class: standing.ReceiptPublished}); got != "put there by aforge" {
+		t.Fatalf("a receipt with no size, time or sha reads %q", got)
+	}
+	if got := runWords(standing.Occurrence{Outcome: "landed", Spec: 1}); strings.HasPrefix(got, " ·") || strings.HasPrefix(got, "·") {
+		t.Fatalf("a run with no time reads %q", got)
+	}
+
+	var lines []string
+	fact := func(label, value string) {
+		if value != "" {
+			lines = append(lines, label+" "+value)
+		}
+	}
+	failed := func(string, string) bool { return false }
+	rule := standing.Item{Words: "never quote contact details", When: standing.When{Kind: standing.WhenHold}}
+	workFacts(fact, failed, palette{}, rule, &workspaceview.WorkFacts{Checks: &workspaceview.CheckWays{Window: true}})
+	if joined := strings.Join(lines, "\n"); strings.Contains(joined, "checks every") || strings.Contains(joined, "standing check") {
+		t.Fatalf("a rule is said to be checked on a clock:\n%s", joined)
+	}
+	if lead := foldersEditLead(rule); !strings.HasPrefix(lead, "Change the rule ") {
+		t.Fatalf("a rule's edit lead reads %q", lead)
 	}
 }

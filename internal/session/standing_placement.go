@@ -634,7 +634,10 @@ func StandingNamedFiles(item standing.Item) []string {
 	for _, text := range []string{item.Words, item.Does.Brief} {
 		for _, field := range strings.Fields(text) {
 			path := strings.TrimRight(strings.Trim(field, "\"'`“”‘’,;:!?()[]{}<>"), ".")
-			if path == "" || filepath.Clean(path) == filepath.Clean(item.Does.Report) {
+			// An address or a link is not a file anybody could publish to, however
+			// much its tail looks like an extension.
+			if path == "" || strings.Contains(path, "@") || strings.Contains(path, "://") ||
+				filepath.Clean(path) == filepath.Clean(item.Does.Report) {
 				continue
 			}
 			if standingLooksLikeFile(path) && standingCouldReport(item, path) && !slices.Contains(named, path) {

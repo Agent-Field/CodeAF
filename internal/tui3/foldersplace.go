@@ -371,7 +371,7 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 func workFacts(fact func(label, value string), failed func(label, section string) bool, pal palette, item standing.Item, work *workspaceview.WorkFacts) {
 	state := standingStateWords(item)
 	if work != nil && work.Running != nil {
-		state = strings.TrimSpace(work.Running.What) + " now · since " + since(work.Running.Since)
+		state = runningWords(*work.Running)
 	}
 	fact("state", state)
 	fact("wakes", drawableLine(item.When.CardWords()))
@@ -402,17 +402,18 @@ func workFacts(fact func(label, value string), failed func(label, section string
 			fact("why", cause)
 		}
 		if run.Published != nil {
-			fact("published", strings.Trim(drawableLine(run.Published.Path)+" · "+sizeWord(int64(run.Published.Bytes))+" · "+sinceWord(run.Published.At), " ·"))
+			fact("published", dotted(drawableLine(run.Published.Path), sizeWord(int64(run.Published.Bytes)), sinceWord(run.Published.At)))
 		}
+		// THE RULES CHECK NAMES ITS RULES AND NEVER QUOTES THE REPORT: the quote of
+		// a broken prohibition is the very words the rule keeps out of reports, and
+		// the ids are what ties a run to the folder rule that reached it.
 		if check := run.RuleCheck; check != nil {
-			words := fmt.Sprintf("%s · %d rule%s", drawableLine(check.Verdict), len(check.Rules), collectionPlural(len(check.Rules)))
-			if quote := strings.TrimSpace(check.Quote); quote != "" {
-				words += " · “" + drawableLine(quote) + "”"
-			}
-			fact("held to", words)
+			fact("held to", dotted(drawableLine(check.Summary()), ruleIDsWords(check.Rules)))
 		}
 	}
-	if work != nil && work.Checks != nil {
+	// A RULE IS NEVER CHECKED ON A CLOCK: it does not wake, so how checks happen
+	// on this machine is not a fact about it.
+	if work != nil && work.Checks != nil && item.Spends() {
 		for i, part := range checkWaysWords(*work.Checks) {
 			label := ""
 			if i == 0 {
@@ -439,8 +440,8 @@ func workFacts(fact func(label, value string), failed func(label, section string
 	if work == nil {
 		return
 	}
-	if work.Receipt != nil {
-		fact("on disk", strings.Trim(sizeWord(int64(work.Receipt.Bytes))+" · put there by aforge "+sinceWord(work.Receipt.At)+" · "+shortDigest(work.Receipt.SHA256), " ·"))
+	if !failed("on disk", "receipt") && work.Receipt != nil {
+		fact("on disk", receiptWords(*work.Receipt))
 	}
 	if len(work.Runs) > 1 {
 		earlier := make([]string, 0, len(work.Runs)-1)
@@ -449,6 +450,43 @@ func workFacts(fact func(label, value string), failed func(label, section string
 		}
 		fact("before", strings.Join(earlier, " · "))
 	}
+}
+
+// runningWords is the pass holding the item this instant, in the mark's own
+// word ("checking", "firing"), and for how long once that is a minute or more.
+func runningWords(mark standing.RunningMark) string {
+	state := strings.TrimSpace(drawableLine(mark.What)) + " now"
+	if age := since(mark.Since); age != "" && age != "now" {
+		state += " · for " + age
+	}
+	return state
+}
+
+// receiptWords is what aforge's record says about the file at the report path:
+// a report it published, or a person's own file it was allowed to replace and
+// has not yet.
+func receiptWords(receipt standing.Receipt) string {
+	who := "put there by aforge"
+	if receipt.Class == standing.ReceiptAdopted {
+		who = "your file · aforge may replace it"
+	}
+	return dotted(sizeWord(int64(receipt.Bytes)), strings.TrimSpace(who+" "+sinceWord(receipt.At)), shortDigest(receipt.SHA256))
+}
+
+// ruleIDsWords names the rules a check read, by the short id `aforge standing
+// show` prints.
+func ruleIDsWords(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	short := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if len(id) > 8 {
+			id = id[:8]
+		}
+		short = append(short, drawableLine(id))
+	}
+	return fmt.Sprintf("rule%s %s", collectionPlural(len(ids)), strings.Join(short, ", "))
 }
 
 // runAt is when a run finished, or when it was admitted while it is still out.
@@ -481,7 +519,7 @@ func runWords(run standing.Occurrence) string {
 	if text := strings.TrimSpace(run.OutcomeText); text != "" && run.Outcome != "landed" {
 		parts = append(parts, drawableLine(text))
 	}
-	return strings.Join(parts, " · ")
+	return dotted(parts...)
 }
 
 // runCause is what woke a run: the files its watch saw change, or the look's

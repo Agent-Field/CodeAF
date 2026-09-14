@@ -1142,14 +1142,11 @@ func (h *hostStanding) fetch(workspace string) {
 // because home prints it: a row redrawn as paused over a store that refused the
 // write would be this screen lying about the other machine's disk.
 //
-// NOTHING CAN PRESS THOSE KEYS OVER --host TODAY, and that is worth saying out
-// loud rather than leaving for somebody to discover: the only callers are home's
-// `p` and `s`, and home does not open over a connection. It is wired anyway
-// because the alternative is a seam that is half absent for a reason that is not
-// its own — the door and the wire are correct and proved, and the day home opens
-// on a remote session the keys work rather than saying the change cannot be made
-// here. A nil would have been a second thing to undo on that day, and a claim
-// about this store that is not true.
+// THE FOLDERS PLACE PRESSES THOSE KEYS OVER --host. Home's `p` and `s` still do
+// not, because home does not open over a connection; the folders place does,
+// through its collections seam, and its `p` and `s` on ongoing work write through
+// this save. The door and the wire were wired before any caller needed them,
+// which is why that place could use them without a second seam.
 //
 // A WRITE THAT LANDED IS PUT STRAIGHT INTO WHAT IS HELD, and that is what keeps
 // the row from redrawing stale in the beat before the next fetch returns: the

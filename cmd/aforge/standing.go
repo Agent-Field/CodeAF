@@ -868,26 +868,9 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 	return nil
 }
 
-// ruleCheckSummary is a check's answer over all its rules: counted from the
-// per-rule record where there is one, so a check that could not see a rule never
-// reads as "kept", and the recorded summary word for a record written before
-// per-rule verdicts existed.
-func ruleCheckSummary(check *standing.RuleCheck) string {
-	if len(check.Verdicts) == 0 {
-		return check.Verdict
-	}
-	counts := map[string]int{}
-	for _, verdict := range check.Verdicts {
-		counts[verdict.Verdict]++
-	}
-	var parts []string
-	for _, code := range []string{standing.RuleKept, standing.RuleBroken, standing.RuleNotCheckable} {
-		if counts[code] > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[code], strings.ReplaceAll(code, "-", " ")))
-		}
-	}
-	return strings.Join(parts, ", ")
-}
+// ruleCheckSummary is [standing.RuleCheck.Summary], the one reading of a check's
+// answer that the folders place prints too.
+func ruleCheckSummary(check *standing.RuleCheck) string { return check.Summary() }
 
 // ruleVerdictLine is one rule's truth as `show` prints it: the rule by id and
 // its words where they are known, what kind of rule the check read it as, and
