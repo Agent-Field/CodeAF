@@ -1,0 +1,1 @@
+ssh -tt spark 'cd /home/santosh/aforge-pai-demo-36922486c/fixture/startup && AFORGE_HOME=/home/santosh/aforge-pai-demo-36922486c OPENROUTER_API_KEY="$(jq -r .api_key ~/.aforge/config.json)" /home/santosh/src/af-pai-demo-36922486c/bin/aforge'

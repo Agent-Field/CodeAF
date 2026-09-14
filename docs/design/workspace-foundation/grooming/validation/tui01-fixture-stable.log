@@ -1,0 +1,31 @@
+
+== Folders
+$ aforge collections add 392fa17320c437e51c650d6f4bf686c7 collection 7c3a0eb3f0393f6db7cf16d9737c0d75
+$ aforge collections add 392fa17320c437e51c650d6f4bf686c7 collection 785f7f23a5d7cb808d593442f9c2003a
+
+== Filed: one chat in both folders, work, files, and a record that is gone
+$ aforge collections add 7c3a0eb3f0393f6db7cf16d9737c0d75 conversation e6bde4af8bd1c066
+$ aforge collections add 785f7f23a5d7cb808d593442f9c2003a conversation e6bde4af8bd1c066
+$ aforge collections add 7c3a0eb3f0393f6db7cf16d9737c0d75 conversation 37e4c45c3cef24ff
+$ aforge collections add --session 37e4c45c3cef24ff 7c3a0eb3f0393f6db7cf16d9737c0d75 task 1
+$ aforge collections add 7c3a0eb3f0393f6db7cf16d9737c0d75 artifact /home/santosh/aforge-pai-demo-36922486c/fixture/startup/product/spec.md
+$ aforge collections add 7c3a0eb3f0393f6db7cf16d9737c0d75 artifact /home/santosh/aforge-pai-demo-36922486c/fixture/startup/reports/product-digest.md
+$ aforge collections add 785f7f23a5d7cb808d593442f9c2003a artifact /home/santosh/aforge-pai-demo-36922486c/fixture/startup/marketing/launch-copy.md
+$ aforge collections add 7c3a0eb3f0393f6db7cf16d9737c0d75 conversation ffffffffffff0009
+
+== A rule for Product, and ongoing work placed in Product
+$ aforge standing add --hold --scope 7c3a0eb3f0393f6db7cf16d9737c0d75 --workspace /home/santosh/aforge-pai-demo-36922486c/fixture/startup --words (fixture) Product reports never quote customer contact details.
+
+== One check: nothing has changed, nothing runs, no model is called
+$ aforge standing check
+1 checked
+
+== Receipts
+$ aforge collections find conversation e6bde4af8bd1c066 --json
+{"references":[{"id":"7c3a0eb3f0393f6db7cf16d9737c0d75","name":"Product"},{"id":"785f7f23a5d7cb808d593442f9c2003a","name":"Marketing"}],"placed":[]}
+$ aforge collections find standing fd94e487886deea6 --json
+{"references":[],"placed":[{"id":"7c3a0eb3f0393f6db7cf16d9737c0d75","name":"Product","depth":0}]}
+
+== Ready
+manifest: /home/santosh/aforge-pai-demo-36922486c/fixture/manifest.json
+open it:  cd /home/santosh/aforge-pai-demo-36922486c/fixture/startup && AFORGE_HOME=/home/santosh/aforge-pai-demo-36922486c /home/santosh/src/af-pai-demo-36922486c/bin/aforge    # alt+8 is folders

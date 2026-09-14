@@ -322,8 +322,9 @@ and change entry in the same change.
 - [x] Preserve the model, critique and separation of internal structure from UI.
 - [x] Inspect published backend source and saved task progress at the checkpoint above.
 - [x] Backend owner acknowledgement and current final receipt, including failed acceptance (see below).
-- [ ] Agree the first bounded TUI contract against available engine operations.
-- [ ] Build and inspect the real browse/inspect/open/return fixture on Spark.
+- [x] First bounded TUI contract recorded against engine operations (checkpoint 1 below).
+- [x] Build and inspect the real browse/inspect/open/return fixture on Spark
+  ([BUILD-TUI-01.md](BUILD-TUI-01.md), `36922486c`, 48/48 terminal checks).
 - [ ] Let the person try that fixture and record friction before expanding scope.
 - [ ] Extend the same fixture with visible activation, guidance and collaboration.
 
@@ -356,3 +357,41 @@ Coordinator decision for checkpoint 1: use the existing additive place model
 for a Folders entry and preserve Home/direct chat. This is a reversible surface
 choice under the user's instruction, not a new folder/runtime semantic. The
 inspector initially reads only; no unsupported controls will be implied.
+
+## Checkpoint 1 — contract, results and next (2026-09-14)
+
+**Smallest seam found.** No engine method served collections to a surface: chat
+tools read `collections.db` inside the session, and every place's reads go through
+`remote.Client` on the local-engine and `--host` roads. The seam is three read-only
+engine methods, `Collections.Page|Item|File`, backed by `workspaceview` (a folder page
+that joins memberships and governing placements without duplicates, a selected-item
+reading, and a preview limited to files a folder names), plus one additive place in the
+existing place registry. No protocol version bump: against an older engine the place says `could not read this
+folder · engine: no such method "Collections.Page"` instead of drawing an empty folder.
+
+**Contract as built.** Additive `folders` place after settings (`alt+8`); Home and direct
+unfiled chat unchanged. One row per record with `placed` marked; the distinction is spelled
+in the inspector (`filed here · filing does not apply this folder's rules` / `placed here ·
+this folder's rules reach it`). Reserved right inspector from 88 columns; explicit details
+page below. Read-only. Open by identity through existing owners — `openConversationRow`
+(bring forward, never clone), the task record, the standing item — without changing a
+conversation's workspace. Path and row kept on return. Reads are async, bounded (15 s,
+500 rows, 64 KiB preview) and generation-checked. This surface choice is the coordinator's
+reversible decision; it settles no new folder or runtime semantics, and the recon's
+recommendations remain recommendations.
+
+**Results.** [BUILD-TUI-01.md](BUILD-TUI-01.md): implementation `9d7588a1e`, independent
+Opus review (one blocker — a preview could block on a named pipe — and three should-fix
+items, all fixed), real `bin/aforge` at `36922486c`, tmux
+through `ssh -tt spark`, wide and 60-column, keyboard and mouse, 48 PASS / 0 FAIL; the same
+shared chat opened from Product and Marketing with no new session and an unchanged
+transcript; work opened on tasks and standing; a real file previewed through the engine;
+the unfiled chat still reached from home. Stable demonstration: worktree
+`/home/santosh/src/af-pai-demo-36922486c`, profile `/home/santosh/aforge-pai-demo-36922486c`.
+The person has not tried it yet; friction is still to be recorded.
+
+**Next.** Checkpoint 2 in the same fixture: complete the work inspector from the owner's
+records, expose pause/resume/stop through the standing owner's existing verbs only, and
+observe a file change reach state, report and cause after an explicit check. Report-path
+edits stay on the chat card and are not promised (W5-B G2 remains unreliable).
+

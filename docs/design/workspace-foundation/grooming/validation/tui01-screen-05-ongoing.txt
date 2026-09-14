@@ -1,0 +1,40 @@
+ aforge                                                                                                                          mon 4:28pm
+  home   tasks   standing   memory   spend   search   settings   folders
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ › Pricing and positioning                                                 chat     Work · ongoing
+ › Roadmap notes                                                           chat     (fixture) Keep the product digest current from the spec.
+  Draft the onboarding FAQ                                         work · done
+  spec.md                                                             artifact     here      placed here · this folder's rules reach it
+  product-digest.md                                                   artifact     state     active
+ — ffffffffffff0009                                              chat · missing     wakes     when product/* changes
+  (fixture) Keep the product digest current f…  ongoing work · active · placed     report    reports/product-digest.md
+                                                                                    checked   now · nothing has changed
+                                                                                    project   /tmp/af-pai-accept-36922486c/fixture/startup
+                                                                                    placed in Product
+                                                                                    rules     “(fixture) Product reports never quote
+                                                                                              customer contact details.”
+                                                                                    set up    in the terminal
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                               here /t/a/f/startup
+ enter open · → verbs: open, details · ← back out · ↑↓ pick · tab next place · esc

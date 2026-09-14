@@ -1,0 +1,40 @@
+ aforge                                                                                                                          mon 4:28pm
+  home   tasks   standing   memory   spend   search   settings   folders
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ › Pricing and positioning                                                 chat     Artifact
+ › Roadmap notes                                                           chat     spec.md
+  Draft the onboarding FAQ                                         work · done
+  spec.md                                                             artifact     here      filed here · filing does not apply this
+  product-digest.md                                                   artifact               folder's rules
+ — ffffffffffff0009                                              chat · missing     where     /tmp/af-pai-accept-
+  (fixture) Keep the product digest current f…  ongoing work · active · placed               36922486c/fixture/startup/product
+                                                                                    size      140 bytes · changed now
+                                                                                    filed in  Product
+
+                                                                                    # Product spec (fixture)
+
+                                                                                    - Offline support: supported on desktop.
+                                                                                    - Export: CSV and PDF.
+                                                                                    - Sharing: read-only links, no editing by guests.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                               here /t/a/f/startup
+ enter preview · → verbs: preview, details · ← back out · ↑↓ pick · tab next place · esc

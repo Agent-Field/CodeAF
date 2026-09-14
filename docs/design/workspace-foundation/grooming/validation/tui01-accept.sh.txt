@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# checkpoint-1 acceptance driver: real bin/aforge in tmux, launched through ssh -tt spark.
+set -u
+SHA=36922486c; W=/home/santosh/src/af-pai-demo-$SHA; A=${PROFILE:-/tmp/af-pai-accept-$SHA}
+S=afpai-accept2; D=/tmp/af-pai-exp-logs/accept3; mkdir -p $D; : > $D/checks.txt
+M=$A/fixture/manifest.json
+cap(){ sleep ${2:-1.5}; tmux capture-pane -p -t "=$S:" > $D/$1.txt; tmux capture-pane -p -e -t "=$S:" > $D/$1.ans; }
+check(){ if grep -qF -- "$3" "$D/$2.txt"; then echo "PASS $1" >> $D/checks.txt; else echo "FAIL $1 (wanted: $3 in $2)" >> $D/checks.txt; fi; }
+nocheck(){ if grep -qF -- "$3" "$D/$2.txt"; then echo "FAIL $1 (unwanted: $3 in $2)" >> $D/checks.txt; else echo "PASS $1" >> $D/checks.txt; fi; }
+selected(){ if grep -a $'\e\\[48;5;237m' "$D/$2.ans" | grep -qF -- "$3"; then echo "PASS $1" >> $D/checks.txt; else echo "FAIL $1 (selected row not: $3 in $2)" >> $D/checks.txt; fi; }
+click(){ tmux send-keys -t "=$S:" -l $'\e[<0;'"$1"';'"$2"$'M\e[<0;'"$1"';'"$2"$'m'; }
+keys(){ tmux send-keys -t "=$S:" "$@"; }
+LAUNCH="cd $A/fixture/startup && AFORGE_HOME=$A OPENROUTER_API_KEY=\"\$(jq -r .api_key ~/.aforge/config.json)\" $W/bin/aforge"
+echo "launch: ssh -tt spark '$LAUNCH'" > $D/launch.txt
+tmux kill-session -t "=$S" 2>/dev/null
+tmux new-session -d -s $S -x 140 -y 40 "ssh -tt spark '$LAUNCH'; sleep 900"
+cap 01-launch 5; check launch-home 01-launch "home   tasks"; nocheck launch-no-setup 01-launch "setting up"
+find $A/v3/projects -mindepth 2 -maxdepth 2 -type d | sort > $D/sessions-before.txt
+keys M-8; cap 02-top; check top-crumb 02-top " folders"; check top-startup 02-top "Startup"; check bar-eight 02-top "folders"
+keys Enter; cap 03-startup; check crumb-startup 03-startup "folders / Startup"; check startup-product 03-startup "Product"; check startup-marketing 03-startup "Marketing"
+keys Enter; cap 04-product; check crumb-product 04-product "folders / Startup / Product"; check product-missing 04-product "chat · missing"; check product-placed 04-product "ongoing work · active · placed"; check product-task 04-product "work · done"
+col(){ awk -v w="$2" 'index($0,w) && /artifact/ {print index($0,w); exit}' "$D/$1.txt"; }
+for i in 1 2 3 4 5 6; do keys Down; done; cap 05-ongoing; check insp-placed 05-ongoing "placed here · this folder's rules reach it"; check insp-rule 05-ongoing "(fixture) Product reports never quote"; check insp-wakes 05-ongoing "when product/* changes"
+click 10 9; cap 06-click-task; selected click-selects-task 06-click-task "Draft the onboarding FAQ"; check click-no-open 06-click-task "folders / Startup / Product"; check insp-task 06-click-task "in chat"
+click 10 10; cap 07-click-spec; selected click-selects-spec 07-click-spec "spec.md"; check preview-text 07-click-spec "- Export: CSV and PDF."
+c5=$(col 05-ongoing "spec.md"); c6=$(col 06-click-task "spec.md"); c7=$(col 07-click-spec "spec.md"); [[ "$c5" == "$c6" && "$c6" == "$c7" ]] && echo "PASS list-column-stable ($c5)" >> $D/checks.txt || echo "FAIL list-column-stable ($c5 $c6 $c7)" >> $D/checks.txt
+click 10 7; sleep 0.8; keys Enter; cap 08-shared-from-product 2.5; check shared-opened-P 08-shared-from-product "(fixture) how should we position the annual plan"
+keys M-8; cap 09-return-product; check return-crumb-P 09-return-product "folders / Startup / Product"; selected return-selection-P 09-return-product "Pricing and positioning"
+keys Left; cap 10-back-startup; check back-crumb 10-back-startup "folders / Startup"; selected back-selection 10-back-startup "Product"
+keys Down; sleep 0.5; keys Enter; cap 11-marketing; check crumb-marketing 11-marketing "folders / Startup / Marketing"
+keys Enter; cap 12-shared-from-marketing 2.5; check shared-opened-M 12-shared-from-marketing "(fixture) how should we position the annual plan"
+tabs=$(head -3 $D/12-shared-from-marketing.txt | grep -o "Pricing and" | wc -l); [[ $tabs == 1 ]] && echo "PASS one-tab-for-shared-chat" >> $D/checks.txt || echo "FAIL one-tab-for-shared-chat ($tabs)" >> $D/checks.txt
+find $A/v3/projects -mindepth 2 -maxdepth 2 -type d | sort > $D/sessions-after.txt
+diff -q $D/sessions-before.txt $D/sessions-after.txt >/dev/null && echo "PASS no-new-session-dir" >> $D/checks.txt || echo "FAIL no-new-session-dir" >> $D/checks.txt
+shared=$(jq -r .sharedChat $M); wc -l $A/v3/projects/*/$shared/transcript.jsonl > $D/shared-transcript-lines.txt
+jq -r '.workspace // .Workspace // empty' $A/v3/projects/*/$shared/meta.json > $D/shared-workspace.txt 2>/dev/null
+keys M-8; cap 13-return-marketing; check return-crumb-M 13-return-marketing "folders / Startup / Marketing"; selected return-selection-M 13-return-marketing "Pricing and positioning"
+keys Left; sleep 0.6; keys Up; sleep 0.4; keys Enter; sleep 1; keys Down Down; cap 14-product-task; selected task-selected 14-product-task "Draft the onboarding FAQ"
+keys Enter; cap 15-task-record 2; check task-record 15-task-record "Fixture record: a first draft"
+keys M-8; sleep 1; keys Down Down Down Down; sleep 0.6; keys Enter; cap 16-standing 2; check standing-owner 16-standing "standing orders"; check standing-item 16-standing "(fixture) Keep the product digest current"
+keys M-8; sleep 1; tmux resize-window -t "=$S:" -x 60 -y 30; cap 17-narrow; check narrow-bar 17-narrow "home tasks standing memory spend search settings folders"; check narrow-placed 17-narrow "ongoing work · placed"; check narrow-verbs-hint 17-narrow "→ verbs"; nocheck narrow-no-inspector 17-narrow "placed in"
+keys Right; cap 18-narrow-verbs 1; check narrow-strip 18-narrow-verbs "d details"
+keys d; cap 19-narrow-detail; check narrow-detail 19-narrow-detail "placed in Product"; check narrow-detail-foot 19-narrow-detail "esc back to the list"
+keys Escape; cap 20-narrow-list; check narrow-back 20-narrow-list "folders / Startup / Product"; nocheck narrow-back-no-detail 20-narrow-list "esc back to the list"
+tmux resize-window -t "=$S:" -x 140 -y 40; sleep 1; keys M-1; cap 21-home; check home-unfiled 21-home "Quick Question About Tar Flags"
+X=$(awk 'NR==2{print index($0,"folders")+2}' $D/21-home.txt); click $X 2; cap 22-tab-click; check tab-click-folders 22-tab-click "folders / Startup / Product"
+keys M-1; sleep 1.2; line=$(grep -n "Quick Question About Tar Flags" $D/21-home.txt | head -1 | cut -d: -f1); click 10 $line; sleep 0.8; keys Enter; cap 23-unfiled 2.5; check unfiled-open 23-unfiled "(fixture) what does tar -xzf do?"
+AFORGE_HOME=$A $W/bin/aforge collections find conversation $(jq -r .unfiledChat $M) --json > $D/receipt-unfiled.json
+AFORGE_HOME=$A $W/bin/aforge collections find conversation $shared --json > $D/receipt-shared.json
+AFORGE_HOME=$A $W/bin/aforge collections find standing $(jq -r .ongoingWork $M) --json > $D/receipt-ongoing.json
+AFORGE_HOME=$A $W/bin/aforge collections find task 1 --session $(jq -r .roadmapChat $M) --json > $D/receipt-task.json
+tmux kill-session -t "=$S"
+grep -c ^PASS $D/checks.txt; grep ^FAIL $D/checks.txt

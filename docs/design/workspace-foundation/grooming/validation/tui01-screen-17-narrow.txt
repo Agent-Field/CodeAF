@@ -1,0 +1,30 @@
+ aforge                                          mon 4:28pm
+ home tasks standing memory spend search settings folders
+────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ › Pricing and positioning                      chat · idle
+ › Roadmap notes                                       chat
+  Draft the onboarding FAQ                     work · done
+  spec.md                                         artifact
+  product-digest.md                               artifact
+ — ffffffffffff0009                          chat · missing
+  (fixture) Keep the product diges…  ongoing work · placed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ › say what you want done               here /t/a/f/startup
+ enter open · → verbs: open, details · tab next place · esc

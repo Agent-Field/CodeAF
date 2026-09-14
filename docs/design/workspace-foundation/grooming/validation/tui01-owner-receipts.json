@@ -1,0 +1,4 @@
+shared: {"references":[{"id":"ad56ce8789ce4b2aaacd8b6e9eb2985f","name":"Product"},{"id":"4564e75c5044a16c1e8fe036f099dc89","name":"Marketing"}],"placed":[]}
+ongoing: {"references":[],"placed":[{"id":"ad56ce8789ce4b2aaacd8b6e9eb2985f","name":"Product","depth":0}]}
+task: {"references":[{"id":"ad56ce8789ce4b2aaacd8b6e9eb2985f","name":"Product"}],"placed":[]}
+unfiled: {"references":[],"placed":[]}

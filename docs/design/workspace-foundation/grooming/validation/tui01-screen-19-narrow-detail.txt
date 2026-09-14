@@ -1,0 +1,30 @@
+ aforge                                          mon 4:28pm
+ home tasks standing memory spend search settings folders
+────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ Work · ongoing
+ (fixture) Keep the product digest current from the spec.
+
+ here      placed here · this folder's rules reach it
+ state     active
+ wakes     when product/* changes
+ report    reports/product-digest.md
+ checked   now · nothing has changed
+ project   /tmp/af-pai-accept-36922486c/fixture/startup
+ placed in Product
+ rules     “(fixture) Product reports never quote customer
+           contact details.”
+ set up    in the terminal
+
+────────────────────────────────────────────────────────────
+ › say what you want done               here /t/a/f/startup
+ ↑↓ scroll · tab next place · esc back to the list
+
+
+
+
+
+
+

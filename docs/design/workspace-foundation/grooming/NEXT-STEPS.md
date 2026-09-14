@@ -9,8 +9,18 @@ causes and limits; no failed receipt is relabeled as a pass.
 
 The user's subsequent instruction authorizes the incremental real-TUI path:
 browse/inspect/open/return first, then ongoing work and guidance in the same
-fixture. Opus is identifying the smallest existing engine-to-TUI connection;
-implementation follows in an isolated copy. Each usable demo will pin its source
+fixture.
+
+- [x] **TUI checkpoint 1 — browse/inspect/open/return.** `36922486c` on
+  `codex/personal-experience-0914`; record [BUILD-TUI-01.md](BUILD-TUI-01.md). Read-only
+  `Collections.Page|Item|File` engine methods and the additive `folders` place; real
+  `bin/aforge` in tmux on Spark, wide and narrow, keyboard and mouse, 48/48 checks.
+  Stable demo: `/home/santosh/src/af-pai-demo-36922486c` + `/home/santosh/aforge-pai-demo-36922486c`.
+- [ ] The person tries checkpoint 1; record friction in PRODUCT-EXPERIENCE-PATH.
+- [ ] TUI checkpoint 2 — continuing work: owner-backed work inspector, pause/resume/stop
+  through the standing owner's existing verbs, a file change observed after an explicit
+  check. Report-path edits not promised while W5-B G2 is open.
+- [ ] Full tui3 and cmd/aforge suites and the tagged E2E package were not run for checkpoint 1. Each usable demo will pin its source
 and profile independently of further development. Product recommendations not
 explicitly settled remain recommendations. No dev import or quarantined changes
 are part of this integration.
