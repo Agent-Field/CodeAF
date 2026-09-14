@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
 )
@@ -156,7 +157,7 @@ const (
 	// foldersReadingWord stands in the list until the first answer lands.
 	foldersReadingWord = "reading this folder…"
 	// foldersInspectMoreWord ends an inspector column that could not hold every fact.
-	foldersInspectMoreWord = "▸ more · → d details"
+	foldersInspectMoreWord = "more · → d details"
 )
 
 // The verbs on a row's strip and the words of its foot.
@@ -688,7 +689,7 @@ func (p *foldersPlace) body(a *app, width, room int) []placeRow {
 		// page that carries them all, rather than ending mid-record as if that were
 		// everything the owner said.
 		if len(inspect) > listRoom && listRoom > 0 {
-			inspect = append(inspect[:listRoom-1], a.pal.dim(fit(foldersInspectMoreWord, inspectWidth)))
+			inspect = append(inspect[:listRoom-1], a.pal.dim(fit(a.icon(tokens.GCollapsed)+" "+foldersInspectMoreWord, inspectWidth)))
 		}
 	}
 	for i := 0; i < listRoom; i++ {
@@ -890,14 +891,29 @@ func (a *app) foldersEditInChat(item standing.Item) tea.Cmd {
 		// The door refused, and it said why on this page.
 		return cmd
 	}
-	a.input.setText(foldersEditLead(item))
-	return cmd
+	// A DRAFT ALREADY IN THAT CHAT'S BOX IS KEPT, after the lead: the person was
+	// half-way through saying something there, and a verb pressed somewhere else
+	// may not throw it away.
+	lead, draft := foldersEditLead(item), a.input.String()
+	switch {
+	case strings.HasPrefix(draft, lead):
+		lead = draft
+	case strings.TrimSpace(draft) != "":
+		lead += draft
+	}
+	a.input.setText(lead)
+	return tea.Batch(cmd, a.edited())
 }
 
 // foldersEditLead is the start of the sentence the edit verb leaves in the box:
-// the work named by the person's own words, so the chat edits that item.
+// the work named by the person's own words, so the chat edits that item. A rule
+// is called a rule, because it is not work that runs.
 func foldersEditLead(item standing.Item) string {
-	return "Change the ongoing work “" + strings.TrimSpace(item.Title()) + "”: "
+	kind := "ongoing work"
+	if !item.Spends() {
+		kind = "rule"
+	}
+	return "Change the " + kind + " “" + strings.TrimSpace(item.Title()) + "”: "
 }
 
 func (placeFolders) press(a *app, y int) bool {

@@ -868,3 +868,27 @@ func TestACardSaysWhenItsRulesAreMoreWordsThanARunCanCarry(t *testing.T) {
 		t.Fatalf("the card's terms end %q (%d terms)", got, len(card.Terms))
 	}
 }
+
+// THE FILES A SURFACE WARNS ABOUT ARE FILES. An item's words and instructions
+// naming another report-shaped path are listed beside its stored report, the
+// stored report itself is not, and an address or a link — whose tail looks like
+// an extension — is never taken for a file anybody could publish to.
+func TestStandingNamedFilesListsOnlyOtherReportShapedPaths(t *testing.T) {
+	store, err := standing.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.Create(standing.Item{
+		Words:     "keep reports/digest.md current and mail dana.lee@example.com, see https://example.com/a.md",
+		Workspace: t.TempDir(),
+		When:      standing.When{Kind: standing.WhenFile, Glob: "product/*"},
+		Does:      standing.Action{Kind: standing.ActionTask, Brief: "rewrite reports/old-digest.md from the spec", Report: "reports/digest.md"},
+		Rails:     standing.Rails{MaxPerDay: 2, PerRunUSD: 0.05},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := StandingNamedFiles(item); len(got) != 1 || got[0] != "reports/old-digest.md" {
+		t.Fatalf("the named files read %v", got)
+	}
+}
