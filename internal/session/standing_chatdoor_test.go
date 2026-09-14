@@ -892,4 +892,10 @@ func TestStandingNamedFilesListsOnlyOtherReportShapedPaths(t *testing.T) {
 	if got := StandingNamedFiles(item); len(got) != 1 || got[0] != "reports/old-digest.md" {
 		t.Fatalf("the named files read %v", got)
 	}
+	// A recursive watch reads bare names inside its folder as inputs and still
+	// warns about a report-shaped path with a folder of its own.
+	item.When.Glob = "product/**"
+	if got := StandingNamedFiles(item); len(got) != 1 || got[0] != "reports/old-digest.md" {
+		t.Fatalf("under product/** the named files read %v", got)
+	}
 }

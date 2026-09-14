@@ -873,7 +873,7 @@ once a pass has held it a minute), `wakes`, `report · reports/x.md · published
 changed), `published` (path · size · when), `held to` (the rules check, `1 kept · rule
 2952d673` — the ids of the rules that reached the run, never a quote of the report),
 `checks`, `limits`, `version · instructions v2`, `does`, `on disk` (`put there by aforge`
-with its sha, or `your file · aforge may replace it`) and `before` (earlier runs). A rule
+with its sha, or `your file, adopted … · aforge may replace it`) and `before` (earlier runs). A rule
 shows no `checks`: it never wakes.
 
 **How it gets checked is said, never assumed:** `this window's engine checks every 5
@@ -886,7 +886,8 @@ nothing is changed.
 
 **Controls:** `→`, then `p pause` or `p start again`, and `s stop` — the same writes as home
 and the standing place; a stopped item offers none (set it up afresh). `e edit in its chat`
-opens the conversation it was set up in with `Change the ongoing work “…”: ` in the box;
+opens the conversation it was set up in with `Change the ongoing work “…”: ` (`Change the
+rule “…”: ` for a rule) at the front of the box, keeping anything already typed there;
 nothing changes until that chat's edit card gets your yes. Renaming or moving the report
 through the chat is not reliable yet: read `report` afterwards.
 
