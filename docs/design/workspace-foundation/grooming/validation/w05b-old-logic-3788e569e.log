@@ -1,0 +1,15 @@
+# old-logic proof: base 3788e569e + internal/session/standing_journey_test.go from e3201af9c
+$ go test -count=1 -run 'TestAFileWatchIsSaidFromItsPattern|TestTheReportFieldSaysAnEditMovesIt|TestAReportPathChangedInTheChat|TestAWatchChangedInTheChat' -v ./internal/session/
+=== RUN   TestAReportPathChangedInTheChatPublishesThereAndFreesTheOldPath
+--- PASS: TestAReportPathChangedInTheChatPublishesThereAndFreesTheOldPath (0.16s)
+=== RUN   TestAWatchChangedInTheChatReachesItsSubfoldersFromTheYes
+--- PASS: TestAWatchChangedInTheChatReachesItsSubfoldersFromTheYes (0.11s)
+=== RUN   TestAFileWatchIsSaidFromItsPatternNotTheModelsWords
+    standing_journey_test.go:125: the card says "whenever something lands in inbox/ or notes/" over a watch that reaches only inbox/
+--- FAIL: TestAFileWatchIsSaidFromItsPatternNotTheModelsWords (0.07s)
+=== RUN   TestTheReportFieldSaysAnEditMovesIt
+    standing_journey_test.go:166: does.report never says an edit moves it: "Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it, and neither do you. Never inside what when.glob watches."
+--- FAIL: TestTheReportFieldSaysAnEditMovesIt (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.613s
+FAIL

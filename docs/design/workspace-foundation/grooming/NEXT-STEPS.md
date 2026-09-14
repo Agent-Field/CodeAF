@@ -1,5 +1,33 @@
 # Working checklist
 
+## Current — integrated baseline and the W5-B slice (2026-09-14)
+
+**Everything below this section is history.** Read its statuses as what was true
+when each was written; the current source and this section are authoritative.
+
+- **Integrated baseline:** `codex/personal-ai-backend` at `3788e569e`, the W5-A merge
+  (chat edits of ongoing work, one live owner per report path, the brace refusal),
+  on top of W5-B watch conditions, the folder view, the prefix budget and round 4b.
+  Draft #662 against `dev` stays the one record; nothing merged, released or deployed.
+- **This slice, W5-B journey:** lane `codex/personal-next-0914`, final runtime
+  `a3252e8f3`. Record: [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md). Quarantine:
+  `/home/santosh/af-pai-integrate` is not part of any integration.
+  - [x] Chat-driven local-file journey with a real model, one conversation: create, edit
+    instructions, edit watch, edit report path, pause, resume, stop, placement governs and a
+    reference does not. Live 1 29/33 at `454617ad5`, live 2 31/33 at `e3201af9c`
+    ($0.0869); the remaining live-2 failures are one run-variance miss and one driver
+    false failure, both recorded.
+  - [x] A file watch's `when ·` line is said by its pattern on every surface (G1; regression
+    fails at `3788e569e`).
+  - [x] A report path changed by an edit, not a stop and a new card (G2; schema regression
+    fails at `3788e569e`; one live sample).
+  - [x] Two folders into one report: brace refused, one live owner, no card claiming an
+    unwatched folder, no silent broadening (live 1 and 2; manual section).
+  - [ ] Whether the chat's stop should be confirmed on a card — open decision for the owner.
+  - [ ] The driver answers questions as a person (today the session's default dial does).
+  - [ ] Model-written `when_words` for moments, rhythms, idle waits and probes are still shown as sent.
+  - [ ] Full tui3/session/cmd suites and the tagged E2E package were not run in this slice.
+
 Updated 2026-09-10. This is the single execution checklist for the current review
 and implementation preparation. [DECISIONS.md](DECISIONS.md) remains the authority
 for accepted behavior; [CRITICAL-REVIEW.md](CRITICAL-REVIEW.md) contains the evidence.

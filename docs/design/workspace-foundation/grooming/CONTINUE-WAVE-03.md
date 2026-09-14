@@ -1,5 +1,20 @@
 # Continue the local-file E2E wave
 
+## Current — 2026-09-14: the latest record is BUILD-WAVE-05B
+
+**Start from [BUILD-WAVE-05B.md](BUILD-WAVE-05B.md) and the top of
+[NEXT-STEPS.md](NEXT-STEPS.md), not from the rounds below, which are history.**
+The integrated baseline is `codex/personal-ai-backend` at `3788e569e` (W5-A). The W5-B
+journey slice is on lane `codex/personal-next-0914`, final runtime `a3252e8f3`, not yet
+integrated by the coordinator. The old `codex/personal-e2e-opus` lane is already in the
+baseline — do not merge it again.
+
+**QUARANTINE.** `/home/santosh/af-pai-integrate` holds a staged, unrelated ~1100-file
+import. Never read, import or merge its diff, and never reset, clean, delete or modify it.
+Other checkouts (`/home/santosh/af-pai-validate`, `/home/santosh/af-pai-w5b`) belong to
+other sessions; W5-B inspected them read-only and ported nothing (their driver edits
+target a different driver shape or a different slice).
+
 ## Third round — NOT A CLEAN SIGN-OFF, and what this round changed (2026-09-11, about 00:45 UTC)
 
 **The second-review pass below was not the end.** The round-2 review of `c7ec2566f` found its four fixes credible and correctly wired, but not a clean sign-off. Three blockers remained in the publish seam, and the owner added the scale audit's laws L1–L3 as the bar. The same session (`847eb4c6`) answered it. The lane is at **`4701f270d`** (source `84b423d87`), merged here with `git diff 4701f270d HEAD -- ':!docs' ':!*.md'` empty.
