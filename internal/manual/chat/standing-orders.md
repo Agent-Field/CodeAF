@@ -788,7 +788,9 @@ missing the run is told the changes are unknown, never that nothing changed.
 report, and aforge — not the run — writes it there, replacing the previous version
 unless you changed it; the run is told where it is so it can carry things forward. The run is
 asked to put the report between a line `<report>` and a line `</report>` — whole lines,
-outside any fenced code block — and only what is between them is published. An answer
+outside any fenced code block — and only what is between them is published. A `<report>`
+that starts a line with the report's first line glued after it (`<report># Digest`) opens
+it too; one later in a sentence does not, and `</report>` must be a line of its own. An answer
 with neither line is published whole; one with a `</report>` line but no `<report>`
 line is not published, since nobody can tell where its report began. **Only a run that
 came back clean publishes** — the next section lists every reason a report is not.

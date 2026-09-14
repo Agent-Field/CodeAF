@@ -169,3 +169,25 @@ func TestTheReportFieldSaysAnEditMovesIt(t *testing.T) {
 		t.Fatalf("does.report never says an edit moves it: %q", got)
 	}
 }
+
+// AN OPENING TAG THAT STARTS A LINE OPENS THE REPORT, ITS FIRST LINE GLUED ON.
+// The W5-B acceptance run (live 3, run 000003) answered "…Let me track that I've
+// processed it.\n\n<report># Digest\n…\nLAUNCH-CHECKED\n</report>", and a whole
+// report was withheld `unopened-report`. A tag later in a line is still a
+// mention, and a closing tag glued to words still closes nothing.
+func TestAnOpeningTagGluedToTheFirstLineOpensTheReport(t *testing.T) {
+	live := "New files since the previous occurrence: `inbox/clients/acme.md`. Let me track that I've processed it.\n\n<report># Digest\n\n- Clients — Acme: waiting on revised quote; Omar owns it.\n\nLAUNCH-CHECKED\n</report>"
+	body, lines := delimitedReport(live)
+	if lines != closedReport || body != "# Digest\n\n- Clients — Acme: waiting on revised quote; Omar owns it.\n\nLAUNCH-CHECKED" {
+		t.Fatalf("the live answer reads %v with body %q", lines, body)
+	}
+	if _, lines := delimitedReport("I will put the digest in <report># Digest tags\n</report>"); lines != unopenedReport {
+		t.Fatalf("a tag inside a sentence opened a report: %v", lines)
+	}
+	if _, lines := delimitedReport("<report># Digest\n- one\nLAUNCH-CHECKED</report>"); lines != unclosedReport {
+		t.Fatalf("a closing tag glued to words closed a report: %v", lines)
+	}
+	if body, lines := delimitedReport("<report>\n# Digest\n</report>"); lines != closedReport || body != "# Digest" {
+		t.Fatalf("a whole opening line no longer opens: %v %q", lines, body)
+	}
+}
