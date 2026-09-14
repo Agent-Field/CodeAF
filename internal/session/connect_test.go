@@ -642,9 +642,11 @@ func TestConnectingAnAccountAsksThenArmsTheFamily(t *testing.T) {
 	}
 }
 
-// C2: A connection completed inside a turn puts the account's tools on the
-// very next model request; the model calls one there and reaches its final
-// answer without a human message or another question in between.
+// C2/R6: Under the shipped prompt posture, a connection completed inside a
+// turn puts the account's tools on the very next model request; the model calls
+// one there and reaches its final answer without a human message or another
+// question in between. Removing use_service's own-question lift makes the
+// EventConsentRequest assertion fail before the connect card can be answered.
 func TestAConnectedAccountCarriesOnInTheSameTurn(t *testing.T) {
 	hub := &fakeHub{transport: &stubTransport{answer: `{"messages":[]}`}}
 	recorder := &blockRecorder{steps: []step{
@@ -661,7 +663,7 @@ func TestAConnectedAccountCarriesOnInTheSameTurn(t *testing.T) {
 	agent, _ := newTestAgent(t, recorder, func(config *Config) {
 		config.connectHub = hub
 		config.AskConsent = true
-		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionPrompt}
 	})
 
 	events, err := agent.Submit(context.Background(), "check my mail for the release")
