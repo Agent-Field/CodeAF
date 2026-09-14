@@ -118,7 +118,9 @@ carries the card's own `when ·`, `rule ·`, `costs ·`, `report ·` and `folder
 so what it tells you and what you answered cannot differ. Everything that wakes has a
 `when ·` line: when the model sent no words for it, the card says the timing the item
 holds — `every 30 minutes`, `when inbox/* changes`, `when this machine has been quiet
-for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`.
+for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`. A file
+watch's `when ·` line always shows its glob, never the model's words for it, so the card
+names exactly the folders it reaches.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
@@ -929,6 +931,18 @@ Two orders that already shared a file are not left to take turns replacing each 
 report: the one that last published keeps it, and the other's runs are held with the
 code `report-owned` and its draft kept, until one of them is stopped or edited to
 another file.
+
+**Renaming or moving the report is an edit, not a stop.** "Put the digest at
+reports/weekly.md from now on" draws `report · reports/digest.md … → reports/weekly.md …`;
+after the yes the same order publishes to the new path on its next run, and the old one
+is left untouched and free for another order.
+
+**Two folders into one report.** One order watches one pattern, and there are no braces,
+so "also keep an eye on notes/ in the same digest" works only as a pattern that really
+reaches both — a folder they are both under, when the report is not inside it (a pattern
+reaching the report's own folder is refused). Otherwise the chat asks you. An order may
+be told to read notes/ on each run, but a change there alone wakes nothing: the `when ·`
+line is the whole of what wakes it.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 

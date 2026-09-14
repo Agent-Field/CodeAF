@@ -343,10 +343,20 @@ func WatchWords(glob string) string { return "when " + glob + " changes" }
 // changes" on a watch that runs only when a condition says yes is the card the
 // nested case drew (chat scoreboard, 2026-09-11): a promise the item does not
 // keep. The condition is what decides, so the card names it.
+//
+// A WATCH WITH NO CONDITION IS SAID FROM ITS PATTERN TOO, as the terminal
+// writes it ([WatchWords]). One order watches one pattern, and a model asked to
+// keep an eye on two folders sent `inbox/*` with the words "whenever something
+// lands in inbox/ or notes/": the card drew those words, and the person said yes
+// to a watch on notes/ that never wakes for it (W5-B). A watch recorded with a
+// model's words before this reads from its pattern as well.
 func (w When) CardWords() string {
-	condition := conditionWords(w.Hint)
-	if w.Kind != WhenFile || condition == "" {
+	if w.Kind != WhenFile {
 		return strings.TrimSpace(w.Words)
+	}
+	condition := conditionWords(w.Hint)
+	if condition == "" {
+		return WatchWords(w.Glob)
 	}
 	return "whenever " + watchSubject(w.Glob) + ", only when: " + condition
 }
