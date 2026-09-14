@@ -133,6 +133,56 @@ This is the same freedom you have yourself in `/settings` → Providers, handed
 to aforge per call: ask it to "draw this one with gemini" or "try the best
 image model" and it can, just in time.
 
+## Which image model was used, and how do I see the prompt you sent?
+
+**The step row names it, and opening the step shows the input.**
+
+While a picture is being drawn the row is the tool and its clock. When it
+finishes the row reads:
+
+```
+generate_image circle.png · seedream-5    1.2 MB · 2.4s
+```
+
+The file is what you are reading for, so it leads; the image model behind the
+middle dot is dim, because it qualifies the file rather than being the point of
+it. It is the **short** spelling — the vendor prefix comes off, so
+`bytedance/seedream-5` reads `seedream-5`. If the model is not known — the call
+is still running, or the conversation was recorded by an older build — the row
+says **nothing at all** there rather than a placeholder.
+
+Click the row, or select it with ↑/↓ and press **enter**, to open the step. It
+shows what went in, as prose rather than as JSON:
+
+```
+"a small red circle, flat vector, centred on white"
+1024x1024
+from art/sketch.png
+drawn with seedream-5
+```
+
+The prompt first, in quotes, exactly as it was sent — a very long one folds at
+twelve lines and `… N more lines` lifts the rest. Then one line for each other
+input you gave: the size or the aspect ratio, and the pictures it worked from.
+An input you left out has no line, because leaving `size` out means the image
+model's own default and aforge will not guess at what that is. The picture
+itself, and the path under it, follow below.
+
+If the call asked for a model in its own words, the line keeps both halves —
+`asked for best · drawn with seedream-5` — so you can see what was requested and
+what actually ran. A running call that asked for one says `asked for seedream`
+until it finishes.
+
+A call that **failed** has no file and no model beside it on the row — there was
+no picture to attribute. The model it tried is named inside the failure the
+expansion shows, e.g. `Image generation failed (bytedance-seed/seedream-5-0-pro):
+…`.
+
+To change which model draws, just say so: "draw this one with gemini", "use the
+best image model". That is the `model` argument on the tool, described in the
+section above, and it changes nothing permanently. For a new default, use
+`/settings` → Providers.
+
 ## Why does a picture or video look generic, blurry, or like AI slop?
 
 Four causes, all fixable — none of them is "the model is bad at this".
