@@ -105,6 +105,38 @@ const hedgeNotice = "that lane went quiet — this answer is coming from another
 // is the switch a person would otherwise have to discover.
 const firstPromptNotice = "still no answer — trying another lane · /model switches"
 
+// hedgeSlowTTFT is the model's own observed first-token wait past which a
+// slowness hedge stops being a rescue: the second arm pays the model's queue
+// all over again, so the bet cannot shorten the answer — it can only double
+// the bill.
+//
+// THE MEASUREMENT. On deepseek-v4.1-flash, whose first token arrives after
+// 4–15s, 68 of 71 usage rows in one chat were hedged and the bill came to
+// roughly 180% of what an unhedged turn costs (the aforge issue #1007 live
+// cell, third measurement). Every one of those second arms was the SAME
+// model's own queue paid a second time: a hedge is a bet that another machine
+// starts the first token sooner, and when the model is the slow thing every
+// machine of it is behind the same wait.
+//
+// THE GATE READS THE MODEL, NOT THE LANE. A lane that is slow on its own
+// account earns its own strikes in the velocity ledger and the belief that
+// prices the choice; what nobody priced was a model slow EVERYWHERE, where
+// the second arm can only ever re-pay its own first-token wait. Two seconds
+// is the cut: under it a rescue's own first token can still beat an ordinary
+// stall, over it the rescue itself is the tax.
+//
+// AND IT FAILS OPEN. A model this process has never timed — no sighting, or
+// only non-streamed answers, which observe no first token at all — hedges
+// exactly as it did before; refusing a hedge on a number nobody measured
+// would be this process declining rescues on a guess.
+const hedgeSlowTTFT = 2 * time.Second
+
+// modelStartsSlow is what a row says when no second arm was opened about a
+// wait because the model itself — measured on its recent answers — takes
+// longer than [hedgeSlowTTFT] to say its first word: the rescue would be the
+// same wait paid a second time, and the primary is left the money.
+const modelStartsSlow = "the model starts slowly"
+
 // A wait without another request must not claim a rescue or draw switching.
 const firstPromptWaitNotice = "still waiting for an answer · /model switches"
 
@@ -833,6 +865,16 @@ func (r *hedgeRace) altPrice(alt string) float64 {
 // hedge is another arm: paid for out of the call's own budget, to a machine
 // nobody has asked yet, and never past [maxArms].
 func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
+	// THE MODEL'S OWN WAIT IS ASKED FIRST. A hedge is a bet that another
+	// machine starts the first token sooner; when the model itself has been
+	// measured past [hedgeSlowTTFT], the second arm can only repay that same
+	// queue, so the refusal is recorded and the primary keeps its money. It
+	// fails open: an unmeasured model claims exactly as it always did.
+	if r.modelTooSlowToHedge() {
+		r.rememberRefusal(modelStartsSlow)
+		r.recordHedge(alt, modelStartsSlow, false)
+		return
+	}
 	var why string
 	wanted := alt
 	alt, why = r.claim(alt, false)
@@ -868,6 +910,27 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	r.tellFirstPrompt(alt, quiet, true)
 	r.recordHedge(alt, act.Reason, true)
 	r.start(index, alt)
+}
+
+// modelTooSlowToHedge reports whether this model's own observed first-token
+// wait — the velocity ledger's latest sighting for the model, measured on its
+// recent answers — is past [hedgeSlowTTFT], in which case a slowness hedge
+// buys nothing. It deliberately reads the MODEL rather than the machine the
+// hedge would go to: a lane slow on its own account is the belief's and the
+// strikes' problem, and this gate is for the model that is slow everywhere.
+//
+// IT FAILS OPEN. A client or a ledger in pieces — the two a directly built
+// race or a test stub may hold — and a model with no timed sighting both
+// answer as hedgeable, which is the behaviour this policy is narrowed from.
+func (r *hedgeRace) modelTooSlowToHedge() bool {
+	if r.client == nil || r.client.velocity == nil {
+		return false
+	}
+	sighting, ok := r.client.velocity.lastServed(r.model)
+	if !ok || sighting.TTFT <= 0 {
+		return false
+	}
+	return sighting.TTFT > hedgeSlowTTFT
 }
 
 // refuseCannotPay records the purse's refusal and hands the claimed machine
@@ -938,6 +1001,14 @@ func (r *hedgeRace) recordHedge(alt, reason string, fired bool) {
 // go unanswered because a slowness hedge was refused a moment earlier.
 func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	if r == nil || r.base == nil || r.base.Err() != nil {
+		return false
+	}
+	// THE MODEL'S OWN WAIT GATES HERE TOO, exactly as [hedgeRace.hedge] asks it
+	// first. A stall rescue is spending like any other hedge, and on a model
+	// measured past [hedgeSlowTTFT] the arm below would be the same queue paid
+	// a second time; the report is then allowed to stand and say so.
+	if r.modelTooSlowToHedge() {
+		r.rememberRefusal(modelStartsSlow)
 		return false
 	}
 	alt, why := r.claim(act.Lane, true)
