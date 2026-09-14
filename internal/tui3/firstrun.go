@@ -925,8 +925,8 @@ func setupTitle(s *setupFlow) string {
 // AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
 // LITERAL. The wordmark three rows above this prose is drawn from that same
 // constant, and when the two were spelled separately the first screen anybody
-// ever sees said `codeaf` in the letterforms and `codeaf` in the sentence under
-// them.
+// ever sees said one name in the letterforms and a different one in the
+// sentence three rows under them.
 const (
 	setupKeyWord = product + " talks to models on its default service through openrouter, on your key and your card. " +
 		"nothing is sent until you do."

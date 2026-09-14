@@ -153,8 +153,8 @@ func (a *app) pulseLine(width int, pal palette, mode pulseMode) string {
 	// to spend.
 	// AND IT IS THE ONE NAME, READ OFF THE ONE CONSTANT (styles.go's [product]).
 	// This line used to hold a second spelling of its own (`pulseName`), which is
-	// how the surface came to greet a fresh install with `codeaf` in the wordmark
-	// and `codeaf` in the prose under it.
+	// how the surface came to greet a fresh install with one name in the wordmark
+	// and another in the prose under it.
 	name := " " + pal.bold(pal.muted(product))
 	for _, tail := range a.pulseRungs(a.now(), pal, mode) {
 		if tail == "" {

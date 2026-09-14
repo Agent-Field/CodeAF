@@ -121,6 +121,6 @@ func TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes(t *testing.T) {
 	// `┤` and `e` must not, or the two letters of this name that differ in one
 	// cell stop differing at all.
 	if wordmarkGlyphs['e'] == wordmarkGlyphs['a'] {
-		t.Fatalf("`e` and `a` are now the same letterform %v — the name would read `aforga`", wordmarkGlyphs['e'])
+		t.Fatalf("`e` and `a` are now the same letterform %v — the name would read %q", wordmarkGlyphs['e'], strings.ReplaceAll(product, "e", "a"))
 	}
 }
