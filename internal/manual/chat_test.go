@@ -2012,6 +2012,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"look through the chats I filed in a folder", "places"},
 		{"the same chat is in two folders, is it two chats", "places"},
 		{"what does filed here mean in the folder details", "collections"},
+		{"why did my ongoing work run and where did its report go", "standing-orders"},
+		{"pause or stop ongoing work from the folders place", "standing-orders"},
 		{"I edited the report file and aforge did not publish over it", "standing-orders"},
 		// Wave 5 (R1, R3, R11): changing work that stands from the chat, a
 		// report path that already held a file, and the chat's write refused.

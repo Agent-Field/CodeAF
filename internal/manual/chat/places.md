@@ -564,8 +564,9 @@ everywhere.
 The eighth place, after settings: your collections, the logical folders `aforge collections`
 and the chat's `collections` tool make. `alt+8` (`⌥8` on a Mac), `tab` and the tab bar open
 it; there is no slash command. It is **not** `/folder`, never attaches a directory, and
-changes nothing — to file, place, move, pause or start, use `aforge collections …`, ask in a
-chat, or ongoing work's own keys on the standing place.
+files, places or moves nothing — use `aforge collections …` or ask in a chat. Ongoing work
+selected here can be paused, started again, stopped or edited through its chat (see
+standing-orders, *Ongoing work in the folders place*).
 
 The top level lists the folders no other folder files. `enter` goes into one; `←` or
 `backspace` on an empty box walks back out. The first line is the path you walked —

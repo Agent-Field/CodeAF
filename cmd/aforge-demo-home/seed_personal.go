@@ -47,6 +47,8 @@ type personalManifest struct {
 	TaskChat string `json:"taskSession"`
 	Spec     string `json:"spec"`
 	Report   string `json:"report"`
+	// Reports is stage 2's conversation for setting up Product's reports.
+	Reports string `json:"reports,omitempty"`
 }
 
 var personalFiles = map[string]string{
@@ -83,11 +85,48 @@ var personalConversations = []demoTalk{
 	},
 }
 
+// personalReportsTalk is stage 2's fourth conversation: the one a person uses to
+// set Product's recurring reports up. Its only history is one fixture exchange
+// saying what it is for, and it carries no model of its own, so a real turn in
+// it runs on the profile's model.
+var personalReportsTalk = demoTalk{
+	project: personalProjectName, title: "Product reports", ago: 20 * time.Minute,
+	turns: []demoTurn{
+		{"(fixture) this is the conversation for Product's recurring reports", "(fixture) Noted. Ask here when you want a report kept current."},
+	},
+}
+
+// personalStageTwoSpec is the spec as checkpoint 2's fixture writes it: the
+// same lines plus one contact detail, so the Product folder's rule (reports
+// never quote customer contact details) has something real to hold a report to.
+const personalStageTwoSpec = "# Product spec (fixture)\n\n- Offline support: supported on desktop.\n- Export: CSV and PDF.\n" +
+	"- Sharing: read-only links, no editing by guests.\n- Escalations (fixture customer): dana.lee@example.com, +1 555 0100.\n"
+
+// personalFilesFor is the fixture's files at a stage. STAGE 2 WRITES NO REPORT
+// FILE: its report is set up through a chat and first published by aforge, and a
+// file already at that path would be one aforge never put there.
+func personalFilesFor(stage int) map[string]string {
+	files := make(map[string]string, len(personalFiles))
+	for name, body := range personalFiles {
+		files[name] = body
+	}
+	if stage >= 2 {
+		delete(files, "reports/product-digest.md")
+		files["product/spec.md"] = personalStageTwoSpec
+	}
+	return files
+}
+
 // seedPersonal writes the personal fixture into the state root and answers the
 // ids it minted. state must be empty or missing; it is AFORGE_HOME.
 func seedPersonal(state string, now time.Time) (personalManifest, error) {
+	return seedPersonalStage(state, now, 1)
+}
+
+// seedPersonalStage is [seedPersonal] at a checkpoint's stage of the fixture.
+func seedPersonalStage(state string, now time.Time, stage int) (personalManifest, error) {
 	manifest := personalManifest{State: state}
-	project := &demoProject{name: personalProjectName, files: personalFiles}
+	project := &demoProject{name: personalProjectName, files: personalFilesFor(stage)}
 	project.dir = filepath.Join(state, "fixture", personalProjectName)
 	project.bucket = filepath.Join(state, "v3", "projects", encodeWorkspace(project.dir))
 	if err := os.MkdirAll(project.bucket, 0o700); err != nil {
@@ -114,6 +153,11 @@ func seedPersonal(state string, now time.Time) (personalManifest, error) {
 		ids = append(ids, id)
 	}
 	manifest.Shared, manifest.Roadmap, manifest.Unfiled = ids[0], ids[1], ids[2]
+	if stage >= 2 {
+		if manifest.Reports, err = writeConversation(project, personalReportsTalk, now, brain); err != nil {
+			return manifest, err
+		}
+	}
 
 	// THE ONE FINITE PIECE OF WORK, in the roadmap conversation's project index,
 	// in the shape [writeTaskIndex] writes.
@@ -137,7 +181,10 @@ func seedPersonal(state string, now time.Time) (personalManifest, error) {
 
 // runPersonal is the --personal door: seed, then print the manifest as one JSON
 // line on stdout and nothing else there.
-func runPersonal(state string, now time.Time) error {
+func runPersonal(state string, now time.Time) error { return runPersonalStage(state, now, 1) }
+
+// runPersonalStage is the --personal door at a stage (--stage).
+func runPersonalStage(state string, now time.Time, stage int) error {
 	if state == "" {
 		return fmt.Errorf("--personal needs --into, the directory aforge will be given as AFORGE_HOME")
 	}
@@ -148,7 +195,7 @@ func runPersonal(state string, now time.Time) error {
 	if !fresh {
 		return fmt.Errorf("%s already holds something; the personal fixture only writes into an empty directory", dir)
 	}
-	manifest, err := seedPersonal(dir, now)
+	manifest, err := seedPersonalStage(dir, now, stage)
 	if err != nil {
 		return err
 	}

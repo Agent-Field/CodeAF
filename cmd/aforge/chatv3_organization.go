@@ -60,7 +60,7 @@ func (r collectionReader) open() (*workspace.Store, workspaceview.Resolver, erro
 	if err != nil {
 		return nil, workspaceview.Resolver{}, err
 	}
-	resolver := workspaceview.Resolver{World: session.ReadHome, Standing: r.standing}
+	resolver := workspaceview.Resolver{World: session.ReadHome, Standing: r.standing, Checks: v3CheckWays}
 	if resolver.Standing == nil {
 		if info, statErr := os.Stat(v3StandingRoot()); statErr == nil && info.IsDir() {
 			resolver.Standing, _ = standing.Open(v3StandingRoot())
@@ -122,4 +122,28 @@ func (r collectionReader) surface() tui3.CollectionSeam {
 // engine's answer, and nothing on this machine's disk is consulted.
 func hostCollections(client *remote.Client) tui3.CollectionSeam {
 	return tui3.CollectionSeam{Page: client.CollectionPage, Item: client.CollectionItem, File: client.CollectionFile}
+}
+
+// v3CheckWays is how ongoing work is checked on this machine, said by the
+// process that would be doing it: whether THIS process runs the pass while it
+// is open ([standingTicking] — on the engine road that is the engine), and
+// whether an operating-system timer is installed for this home. It installs
+// nothing and turns nothing on.
+func v3CheckWays() workspaceview.CheckWays {
+	ways := workspaceview.CheckWays{Window: standingTicking()}
+	// Opening the store makes its folder, and a reading must not; a home with no
+	// standing folder has no work to be checked.
+	if info, err := os.Stat(v3StandingRoot()); err != nil || !info.IsDir() {
+		return ways
+	}
+	store, err := standing.Open(v3StandingRoot())
+	if err != nil {
+		return ways
+	}
+	if watch := standingWatch(store); watch != nil {
+		if status, err := watch.Status(); err == nil {
+			ways.Timer, ways.TimerKnown = status.Installed, true
+		}
+	}
+	return ways
 }

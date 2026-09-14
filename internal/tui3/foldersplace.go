@@ -137,12 +137,22 @@ func collectionRowTail(row workspaceview.FolderRow) string {
 	case !row.Available:
 		words = append(words, "missing")
 	case strings.TrimSpace(row.State) != "":
-		words = append(words, drawableLine(row.State))
+		words = append(words, collectionStateWord(row))
 	}
 	if row.Placed {
 		words = append(words, "placed")
 	}
 	return strings.Join(words, " · ")
+}
+
+// collectionStateWord is a row's own state as a person reads it. Ongoing work
+// the store records as retired was stopped, and says so in the word every other
+// surface uses for it.
+func collectionStateWord(row workspaceview.FolderRow) string {
+	if row.Ref.Kind == workspace.StandingKind && row.State == string(standing.StatusRetired) {
+		return homeItemStopped
+	}
+	return drawableLine(row.State)
 }
 
 // collectionRowLine is one row of the list at a width: the mark, the title, and the
@@ -292,17 +302,8 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 		fact("where", drawableLine(path(row.Location)))
 	case workspace.StandingKind:
 		if in.item != nil && in.item.Standing != nil {
-			item := in.item.Standing
-			fact("state", standingStateWords(*item))
-			fact("wakes", drawableLine(item.When.CardWords()))
-			fact("report", drawableLine(item.Does.Report))
-			if !item.LastChecked.IsZero() {
-				fact("checked", strings.TrimSpace(sinceWord(item.LastChecked)+" · "+drawableLine(item.LastCheckLine)))
-			}
-			if item.Runs > 0 {
-				fact("runs", strings.TrimSpace(fmt.Sprintf("%d · last %s", item.Runs, drawableLine(item.LastOutcome))))
-			}
-			fact("project", path(item.Workspace))
+			workFacts(fact, failed, pal, *in.item.Standing, in.item.Work)
+			fact("project", drawableLine(path(in.item.Standing.Workspace)))
 		} else {
 			failed("state", "standing")
 			fact("state", drawableLine(row.State))
@@ -355,6 +356,175 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 		}
 	}
 	return out
+}
+
+// workFacts is ongoing work in the inspector, every line out of its owner's
+// own records: what it is doing now, what wakes it, where its report goes and
+// whether anything disagrees with that, what it may spend, which version of the
+// instructions stands, what the last run did and why, and how checks happen on
+// the machine that keeps it.
+//
+// A DISAGREEMENT IS SAID, NEVER SETTLED. The stored destination is the one aforge
+// publishes to; when the last publication went elsewhere, or the words name a
+// file that is not that destination, the line says so in the owner's terms and
+// nothing here changes either one.
+func workFacts(fact func(label, value string), failed func(label, section string) bool, pal palette, item standing.Item, work *workspaceview.WorkFacts) {
+	state := standingStateWords(item)
+	if work != nil && work.Running != nil {
+		state = strings.TrimSpace(work.Running.What) + " now · since " + since(work.Running.Since)
+	}
+	fact("state", state)
+	fact("wakes", drawableLine(item.When.CardWords()))
+	if report := strings.TrimSpace(item.Does.Report); report != "" {
+		fact("report", drawableLine(report)+" · published by aforge")
+	} else if item.Does.Kind == standing.ActionTask {
+		fact("report", "none · no file is kept current")
+	}
+	if work != nil {
+		for _, named := range work.Named {
+			if strings.TrimSpace(item.Does.Report) == "" {
+				fact("", pal.warn("the instructions name "+drawableLine(named)+", but this work keeps no report"))
+				continue
+			}
+			fact("", pal.warn("the instructions also name "+drawableLine(named)+"; aforge publishes only "+drawableLine(item.Does.Report)))
+		}
+		if len(work.Runs) > 0 && work.Runs[0].Published != nil && item.Does.Report != "" &&
+			filepath.Clean(work.Runs[0].Published.Path) != filepath.Clean(item.Does.Report) {
+			fact("", pal.warn("the last report went to "+drawableLine(work.Runs[0].Published.Path)+"; the next goes to "+drawableLine(item.Does.Report)))
+		}
+	}
+	// THE LAST RUN COMES BEFORE THE SETUP'S FIGURES: what happened, why, and what
+	// it published is the question a person opens a piece of work to answer.
+	if work != nil && !failed("last run", "runs") && len(work.Runs) > 0 {
+		run := work.Runs[0]
+		fact("last run", runWords(run))
+		if cause := runCause(run); cause != "" {
+			fact("why", cause)
+		}
+		if run.Published != nil {
+			fact("published", strings.Trim(drawableLine(run.Published.Path)+" · "+sizeWord(int64(run.Published.Bytes))+" · "+sinceWord(run.Published.At), " ·"))
+		}
+		if check := run.RuleCheck; check != nil {
+			words := fmt.Sprintf("%s · %d rule%s", drawableLine(check.Verdict), len(check.Rules), collectionPlural(len(check.Rules)))
+			if quote := strings.TrimSpace(check.Quote); quote != "" {
+				words += " · “" + drawableLine(quote) + "”"
+			}
+			fact("held to", words)
+		}
+	}
+	if work != nil && work.Checks != nil {
+		for i, part := range checkWaysWords(*work.Checks) {
+			label := ""
+			if i == 0 {
+				label = "checks"
+			}
+			fact(label, part)
+		}
+	}
+	if !item.LastChecked.IsZero() {
+		fact("checked", strings.TrimSpace(sinceWord(item.LastChecked)+" · "+drawableLine(item.LastCheckLine)))
+	}
+	limits := []string{}
+	if item.Rails.PerRunUSD > 0 {
+		limits = append(limits, fmt.Sprintf("$%.2f a run", item.Rails.PerRunUSD))
+	}
+	if item.Rails.MaxPerDay > 0 {
+		limits = append(limits, fmt.Sprintf("%d run%s a day", item.Rails.MaxPerDay, collectionPlural(item.Rails.MaxPerDay)))
+	}
+	fact("limits", strings.Join(limits, " · "))
+	fact("version", fmt.Sprintf("instructions v%d", max(1, item.SpecRevision)))
+	if brief := strings.TrimSpace(item.Does.Brief); brief != "" {
+		fact("does", drawableLine(brief))
+	}
+	if work == nil {
+		return
+	}
+	if work.Receipt != nil {
+		fact("on disk", strings.Trim(sizeWord(int64(work.Receipt.Bytes))+" · put there by aforge "+sinceWord(work.Receipt.At)+" · "+shortDigest(work.Receipt.SHA256), " ·"))
+	}
+	if len(work.Runs) > 1 {
+		earlier := make([]string, 0, len(work.Runs)-1)
+		for _, older := range work.Runs[1:] {
+			earlier = append(earlier, strings.TrimSpace(sinceWord(runAt(older))+" "+runOutcome(older)))
+		}
+		fact("before", strings.Join(earlier, " · "))
+	}
+}
+
+// runAt is when a run finished, or when it was admitted while it is still out.
+func runAt(run standing.Occurrence) time.Time {
+	if !run.Finished.IsZero() {
+		return run.Finished
+	}
+	return run.Admitted
+}
+
+// runOutcome is how a run came out, in the record's own words.
+func runOutcome(run standing.Occurrence) string {
+	if run.Finished.IsZero() && run.Outcome == "" {
+		return "running"
+	}
+	outcome := drawableLine(run.Outcome)
+	if run.Withheld != "" {
+		outcome += " (" + drawableLine(run.Withheld) + ")"
+	}
+	return outcome
+}
+
+// runWords is a run's one line: when, how it came out, on which instructions,
+// and what it spent.
+func runWords(run standing.Occurrence) string {
+	parts := []string{sinceWord(runAt(run)), runOutcome(run), fmt.Sprintf("v%d", max(1, run.Spec))}
+	if run.USD > 0 {
+		parts = append(parts, fmt.Sprintf("$%.3f", run.USD))
+	}
+	if text := strings.TrimSpace(run.OutcomeText); text != "" && run.Outcome != "landed" {
+		parts = append(parts, drawableLine(text))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// runCause is what woke a run: the files its watch saw change, or the look's
+// own line.
+func runCause(run standing.Occurrence) string {
+	if len(run.Changes) > 0 {
+		changes := make([]string, 0, len(run.Changes))
+		for _, change := range run.Changes {
+			changes = append(changes, drawableLine(change.Kind+" "+change.Path))
+		}
+		return strings.Join(changes, " · ")
+	}
+	if run.ChangesUnknown {
+		return "the files it changed could not be listed"
+	}
+	return drawableLine(run.Because)
+}
+
+// checkWaysWords is how checks happen on the machine that keeps the work. It
+// names what is true there and never implies a timer nobody installed.
+func checkWaysWords(ways workspaceview.CheckWays) []string {
+	var parts []string
+	if ways.Window {
+		parts = append(parts, "this window's engine checks every "+standing.IntervalWords()+" while it is open")
+	} else {
+		parts = append(parts, "no open window is checking from here")
+	}
+	if ways.TimerKnown {
+		if ways.Timer {
+			parts = append(parts, "a background timer checks this home")
+		} else {
+			parts = append(parts, "no background timer for this home")
+		}
+	}
+	return append(parts, "or run aforge standing check")
+}
+
+// shortDigest is the head of a receipt's sha256, enough to tell two apart.
+func shortDigest(sha string) string {
+	if len(sha) > 8 {
+		return "sha " + sha[:8]
+	}
+	return ""
 }
 
 // collectionRelation says how a row is bound to the folder it is listed in. ONLY A

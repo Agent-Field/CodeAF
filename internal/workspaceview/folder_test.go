@@ -3,6 +3,7 @@ package workspaceview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -259,4 +260,58 @@ func (f *fixture) hold(t *testing.T, words string) string {
 		t.Fatalf("the fixture item would not be made: %v", err)
 	}
 	return item.ID
+}
+
+// ONGOING WORK IS READ WITH WHAT ITS OWNER RECORDS: the latest runs newest
+// first, the stored report destination resolved as the publisher resolves it,
+// the files its words name that are NOT that destination, and how checks happen
+// only when the reader can say so.
+func TestOngoingWorkIsReadWithItsRunsReportAndHowItIsChecked(t *testing.T) {
+	home := newHome(t)
+	ctx := context.Background()
+	product := home.collection(t, "Product")
+	must(os.MkdirAll(home.workspace, 0o700))
+	item, err := home.standing.Create(standing.Item{
+		Words: "keep reports/digest.md current", Workspace: home.workspace,
+		When:  standing.When{Kind: standing.WhenFile, Glob: "product/*"},
+		Does:  standing.Action{Kind: standing.ActionTask, Brief: "rewrite reports/old-digest.md from the spec", Report: "reports/digest.md"},
+		Rails: standing.Rails{MaxPerDay: 2, PerRunUSD: 0.05},
+	})
+	must(err)
+	ref := workspace.Ref{Kind: workspace.StandingKind, ID: item.ID}
+	must(home.collections.AddPlacement(ctx, product, ref))
+	for n, outcome := range []string{"landed", "failed"} {
+		dir := filepath.Join(home.standing.RunsDir(item.ID), fmt.Sprintf("%06d", n+1))
+		must(os.MkdirAll(dir, 0o700))
+		must(standing.WriteOccurrence(dir, standing.Occurrence{
+			ID: item.ID, ItemID: item.ID, Spec: 1, Phase: "finished", Outcome: outcome,
+			Changes:   []standing.Change{{Kind: "modified", Path: "product/spec.md"}},
+			Published: &standing.Publication{Path: "reports/digest.md", Bytes: 12},
+		}))
+	}
+
+	read, err := home.resolver().Item(ctx, home.collections, ref)
+	if err != nil || len(read.Errors) != 0 {
+		t.Fatalf("item: %v %v", err, read.Errors)
+	}
+	work := read.Work
+	if work == nil || len(work.Runs) != 2 || work.Runs[0].Outcome != "failed" {
+		t.Fatalf("the runs read as %+v", work)
+	}
+	if !strings.HasSuffix(work.ReportPath, filepath.Join("reports", "digest.md")) {
+		t.Fatalf("the stored destination read as %q", work.ReportPath)
+	}
+	if !reflect.DeepEqual(work.Named, []string{"reports/old-digest.md"}) {
+		t.Fatalf("the files the instructions name, other than the report, read as %v", work.Named)
+	}
+	if work.Checks != nil || work.Receipt != nil || work.Running != nil {
+		t.Fatalf("facts nobody could state were claimed: %+v", work)
+	}
+
+	resolver := home.resolver()
+	resolver.Checks = func() CheckWays { return CheckWays{Window: true, TimerKnown: true} }
+	read, _ = resolver.Item(ctx, home.collections, ref)
+	if read.Work.Checks == nil || !read.Work.Checks.Window || read.Work.Checks.Timer {
+		t.Fatalf("how checks happen read as %+v", read.Work.Checks)
+	}
 }
