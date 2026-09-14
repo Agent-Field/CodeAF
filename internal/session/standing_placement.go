@@ -640,12 +640,33 @@ func StandingNamedFiles(item standing.Item) []string {
 				filepath.Clean(path) == filepath.Clean(item.Does.Report) {
 				continue
 			}
-			if standingLooksLikeFile(path) && standingCouldReport(item, path) && !slices.Contains(named, path) {
+			if standingLooksLikeFile(path) && !standingNamesAnInput(item, path) &&
+				standingCouldReport(item, path) && !slices.Contains(named, path) {
 				named = append(named, path)
 			}
 		}
 	}
 	return named
+}
+
+// standingNamesAnInput answers whether a name in an item's words is one of the
+// files its own watch reads, either as written or as the instructions usually
+// write it — by its name inside the watched folder ("spec.md" for
+// product/spec.md under `product/**`). Those are what a run reads, and a surface
+// that listed them as rival reports would be warning about the work doing
+// exactly what it was set up to do. It reads no disk: the watch decides.
+func standingNamesAnInput(item standing.Item, path string) bool {
+	if item.Watches(path) {
+		return true
+	}
+	var root []string
+	for _, part := range strings.Split(filepath.ToSlash(item.When.Glob), "/") {
+		if strings.ContainsAny(part, "*?[{") {
+			break
+		}
+		root = append(root, part)
+	}
+	return len(root) > 0 && item.Watches(filepath.Join(append(root, path)...))
 }
 
 // standingCouldReport answers whether path could be this item's report at all,
