@@ -858,6 +858,48 @@ func TestAConnectionThatFailsSaysSoAndArmsNothing(t *testing.T) {
 	}
 }
 
+// C7: A failed browser return never sends its state nonce or exchange
+// vocabulary to either the event stream or the transcript the model reads.
+func TestABadSignInReturnDisclosesNoState(t *testing.T) {
+	const nonce = "STATE-NONCE-DO-NOT-DISCLOSE"
+	hub := &fakeHub{waitErr: errors.New("connect Slack: authorization error: state does not match (wants " + nonce + " but got bogus)")}
+	completer := &scriptedCompleter{steps: useServiceTurn("google")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "check my mail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+
+	if done, found := firstOfKind(collected, EventConnectDone); !found || !done.Failed {
+		t.Fatalf("the failed sign-in did not settle: %+v", done)
+	}
+	for name, text := range map[string]string{
+		"tool result": lastToolOutput(t, collected),
+		"transcript":  transcriptText(agent),
+	} {
+		lower := strings.ToLower(text)
+		if strings.Contains(text, nonce) || strings.Contains(lower, "authorization error") || strings.Contains(lower, "state does not match") {
+			t.Errorf("%s disclosed the failed exchange: %q", name, text)
+		}
+		if !strings.Contains(text, "the sign-in came back wrong and nothing was connected") {
+			t.Errorf("%s did not carry the honest replacement: %q", name, text)
+		}
+	}
+}
+
+// C7: A vendor-side denial keeps the vendor's reason, but in plain words and
+// without the exchange prefix.
+func TestAVendorDenialKeepsItsPlainReason(t *testing.T) {
+	reason := connectFailureReason(errors.New("connect Slack: authorization error from server: access_denied the workspace owner said no"))
+	if reason != "access denied the workspace owner said no" {
+		t.Fatalf("vendor denial = %q", reason)
+	}
+}
+
 // Nobody is watching — a headless run, a task node — so the question would be
 // asked into an empty room. The call refuses with a result the model can act on
 // instead of blocking on an answer that can never arrive.
