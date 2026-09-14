@@ -83,7 +83,7 @@ is not disguised as the whole reset.
 
 It was reset a third time on 2026-08-31, when furrow moved inside the binary
 (`internal/furrowbin`, the places wave's P0). This one is a decision and not a
-drift: the owner's ruling was **no variance — every codeaf is a codeaf with
+drift: the owner's ruling was **no variance — every codeaf build includes
 furrow, and if the only blocker is size, the limit rises**, so the four
 workspace verbs stop being a capability some machines have. The measurement on
 darwin/arm64, Go 1.26.5:

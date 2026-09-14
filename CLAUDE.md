@@ -1,5 +1,42 @@
 # Working in this repo
 
+## The name
+
+The product is `codeaf`, lowercase, and has had that one spelling since
+2026-09-14 — sentence starts, titles, release names, the wordmark and `--help`
+included. `CodeAF`, `Codeaf` and `CODEAF` outside an environment variable's name
+are not spellings of it.
+
+`internal/namelaw` is the gate. It reads every Go source under `cmd`, `internal`
+and `bench`, the build and workflow and script surfaces, both manual corpora,
+the session prompts and the documents an agent is pointed at, and it fails the
+pull request naming the file and the line that brought a retired spelling back.
+
+## The old name, and the three places it is still allowed
+
+codeaf was called `aforge` until 2026-09-14, in a repository named `aforge-v2`;
+`openaf` was a planned name that never shipped and never named a release. A
+memory older than that date will spell both, and so will a machine that has been
+running this program for a while.
+
+Three places may still say them, and nothing else may:
+
+- **The record.** `CHANGELOG.md`, `docs/changes/`, `docs/design/`, the captured
+  screen frames, `bench-results/`, `audit-notes/` and everything under a
+  `testdata` directory say what was true on the day they were written.
+- **The compatibility seams.** `~/.aforge` is adopted into `~/.codeaf` on first
+  start, an `AFORGE_*` variable is still read when its `CODEAF_*` spelling is
+  unset, and `.aforge-v3/config.json` in a repository is still read. Every line
+  that has to spell the old name for one of those reasons carries the marker
+  comment `legacy-name`, which is the ONLY way a live Go or shell line is
+  allowed to say it.
+- **The one page that explains it.** A Markdown section whose `## ` heading
+  contains the words *old name* — `internal/manual/chat/starting-codeaf.md` has
+  it — is where a person who asks "what happened to aforge?" is answered.
+
+A `CodeAF` in this org's Slack and benchmarks is a DIFFERENT PROGRAM (the
+swe-pro coding harness, whose variables carry `KNOB`); ours never do.
+
 ## Which surface is which
 
 One chat surface lives here, beside the resident that shares its binary and the

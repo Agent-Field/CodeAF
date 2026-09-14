@@ -1259,15 +1259,13 @@ is imported with it: an empty untitled session is reused rather than
 duplicated, and empties are reaped — the flat layout left 19 dead `/tmp`
 workspace dirs on the author's own machine, which is this law's whole case.
 
-**One home, one seam, one late rename.** Every v3 path goes through
+**One home, one seam, one name.** Every v3 path goes through
 `internal/home` — the three direct `os.UserHomeDir()` calls (`chatv3.go`,
-`task_run.go`) were the reason `CODEAF_HOME` half-worked. The product's final
-name is codeaf, and the rename happens ONCE, at the end, as its own refactor:
-until then every name stays on the `codeaf` scheme, which is why the
-project-config layer reads `<workspace>/.codeaf-v3/config.json` and the
-`.codeaf` path in Decision 6 is deferred to that rename. A test greps for
-hardcoded `.codeaf` literals outside the seam so the rename stays a
-constants-change plus a boot migration, not an excavation.
+`task_run.go`) were the reason `CODEAF_HOME` once half-worked. The product's
+name is codeaf, its state root is `~/.codeaf`, and the project-config layer
+reads `<workspace>/.codeaf/config.json`. A test greps for hardcoded state-root
+literals outside the seam so a path change remains a constants change plus a
+boot migration, not an excavation.
 
 **Migration is one boot pass, one-way, never fatal.** A flat-layout transcript
 found under `v3/sessions/<ws>/` is folded into a session folder named by its
