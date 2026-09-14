@@ -235,6 +235,11 @@ type hopCard struct {
 	// rest is how many conversations the fold is standing for, and it is zero
 	// once the fold is open, because nothing is behind it any more.
 	rest int
+	// tabs is how many of the rows are tabs on the row above — the leading run of
+	// them, since [app.hopReading] draws them first. It is the head's `3 of 12`,
+	// and it is kept rather than counted off the rows because opening the fold
+	// puts conversations with no tab on the list beside them.
+	tabs int
 	// total is how many conversations this machine has, counted once when the
 	// card opened and kept through the fold. It is what the head's `1 of 12`
 	// reads, and it may NOT be derived from rest: opening the fold empties rest,
@@ -325,26 +330,26 @@ func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 // the label says every chat, so a list that showed three of somebody's twelve
 // would be the control lying about what it opens.
 func (a *app) hopOpenAll() {
-	rows, rest := a.hopReading(true)
+	rows, tabs, rest := a.hopReading(true)
 	if len(rows) < 2 && rest == 0 {
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, tabs: tabs, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
 func (a *app) hopOpen() {
 	// A shared engine handle can only have one open conversation. Show its
 	// other saved chats immediately; an open-only list would offer no choice.
-	rows, rest := a.hopReading(a.shared)
+	rows, tabs, rest := a.hopReading(a.shared)
 	if len(rows) < 2 && rest == 0 {
 		// Nowhere to go. The guard above has already refused this, and this is
 		// the same refusal said where the rows are actually counted.
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, tabs: tabs, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -364,8 +369,8 @@ func (a *app) hopSpread(all bool) {
 	}
 	a.dropHover()
 	at := a.hop.at
-	rows, rest := a.hopReading(all)
-	a.hop.rows, a.hop.rest, a.hop.all, a.hop.armed, a.hop.say = rows, rest, all, -1, ""
+	rows, tabs, rest := a.hopReading(all)
+	a.hop.rows, a.hop.rest, a.hop.tabs, a.hop.all, a.hop.armed, a.hop.say = rows, rest, tabs, all, -1, ""
 	a.hop.at = min(at, max(0, len(rows)-1))
 	// AND THE CURSOR LEAVES `you are here` THE MOMENT THERE IS SOMEWHERE ELSE TO
 	// BE. Opening the fold on a session holding one conversation is a person
@@ -466,9 +471,9 @@ func (a *app) hopTick() tea.Cmd {
 // [app.rememberOpen]). That walk is what BUILDS the rows; [app.hopStripOrder]
 // then lays them out the way the strip above them is laid out, and the recency
 // walk survives as the tie-break for a conversation with no tab on the row.
-func (a *app) hopReading(all bool) ([]hopRow, int) {
+func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 	now := a.now()
-	rows := make([]hopRow, 0, hopShown)
+	rows = make([]hopRow, 0, hopShown)
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		held := a.behind[a.prev[at]]
 		if held == nil {
@@ -480,13 +485,49 @@ func (a *app) hopReading(all bool) ([]hopRow, int) {
 	}
 	rows = append(rows, a.hopFront(now))
 	rows = a.hopStripOrder(rows)
-	rest := a.hopRest(rows, now)
+	// AND THE LIST IS CUT WHERE THE TAB ROW IS. A conversation whose tab was
+	// dismissed is still held and still running, and it belongs with everything
+	// else this window is not showing rather than on a list that claims to BE the
+	// tab row ([app.hopTabbed]).
+	open, loose := make([]hopRow, 0, len(rows)), []hopRow(nil)
+	for _, row := range rows {
+		if a.hopTabbed(row) {
+			open = append(open, row)
+			continue
+		}
+		loose = append(loose, row)
+	}
+	// The held set hopRest skips is BOTH halves: a conversation this window holds
+	// must not be drawn a second time off the machine's own reading, where it
+	// would come back wearing the lock this very process is holding.
+	behind := append(loose, a.hopRest(append(append([]hopRow(nil), open...), loose...), now)...)
 	if !all {
 		// THE COUNT IS STILL TAKEN. The fold has to say what is behind it, and a
 		// door that could not name what it holds is a door nobody opens.
-		return rows, len(rest)
+		return open, len(open), len(behind)
 	}
-	return append(rows, rest...), 0
+	return append(open, behind...), len(open), 0
+}
+
+// hopTabbed is whether a row has a tab on the row above the card — the one
+// question that decides which side of the fold it is drawn on.
+//
+// IT ASKS [app.tabShut] AND NEVER THE DRAWN STRIP. `tabShut` is set the instant a
+// tab is dismissed, by the `✕`, by `ctrl+w` in the conversation and by `ctrl+w`
+// on this card alike, and it is cleared in [app.rememberOpen] — the one door
+// every road back to the front goes through. The drawn strip is a frame behind
+// that: the card rebuilt from it after its own `ctrl+w` would have kept the row
+// it had just closed until something else redrew the row.
+//
+// THE CONVERSATION IN FRONT IS ALWAYS TABBED. It is the one tab the strip cannot
+// be without ([app.tabList] appends it whatever else it found), and a `you are
+// here` row below the fold would be the card saying the person is standing
+// somewhere it is not showing.
+func (a *app) hopTabbed(row hopRow) bool {
+	if row.here {
+		return true
+	}
+	return !a.tabShut[a.convKey(row.file)]
 }
 
 // hopStripOrder lays the open rows out in the order the tab row above them is
@@ -1146,17 +1187,14 @@ func (a *app) hopStart(row hopRow) tea.Cmd {
 	return a.hopLand(cmd)
 }
 
-// hopOpenRows is how many of the card's rows this process is already holding: the
-// count the head row says, and the seam the rule is drawn on.
-func (a *app) hopOpenRows() int {
-	n := 0
-	for _, row := range a.hop.rows {
-		if row.open {
-			n++
-		}
-	}
-	return n
-}
+// hopOpenRows is how many conversations are OPEN IN THIS WINDOW — how many tabs
+// are on the row above — and it is the figure the head says `3 of 12` with.
+//
+// IT IS WHAT THE CARD WAS READ WITH and not a walk of the rows, because the rows
+// gain the rest of the machine when the fold opens and a count taken off them
+// then would say the window had twelve conversations open the moment somebody
+// looked at what else there was.
+func (a *app) hopOpenRows() int { return a.hop.tabs }
 
 // ── what the card looks like ────────────────────────────────────────────────
 //
@@ -1645,7 +1683,11 @@ func (a *app) hopAway() tea.Cmd {
 		return nil
 	}
 	row := a.hop.rows[a.hop.at]
-	if !row.open && !tabsHold(a.chatTabs, a.convKey(row.file)) {
+	// A ROW WITH NO TAB HAS NOTHING FOR THIS KEY TO CLOSE, and that is now both
+	// halves of the fold: a conversation this terminal never opened, and one
+	// whose tab was dismissed a moment ago and which is drawn below the fold for
+	// exactly that reason ([app.hopTabbed]).
+	if !a.hopTabbed(row) {
 		a.hop.say = hopNotOpenWord
 		a.touch()
 		return nil
@@ -1659,11 +1701,15 @@ func (a *app) hopAway() tea.Cmd {
 		return a.tabDismiss(chatTab{key: a.frontTabKey(), file: a.file, where: a.workspace, word: row.title})
 	}
 	a.tabShutKey(a.convKey(row.file))
-	// THE CARD STAYS UP AND RE-READS ITSELF. Putting conversations away is
-	// something a person does two or three of in a row, and a card that dropped
-	// after each one would make tidying up cost three openings.
-	rows, rest := a.hopReading(a.hop.all)
-	a.hop.rows, a.hop.rest, a.hop.armed = rows, rest, -1
+	// THE CARD STAYS UP AND RE-READS ITSELF, and the row it just closed LEAVES
+	// THE LIST — down behind the fold, or off the card entirely while the fold is
+	// shut. That is the whole of what the person asked for by pressing it, and
+	// the re-read sees it because [app.hopTabbed] asks [app.tabShut], which the
+	// line above has already set. Closing tabs is something a person does two or
+	// three of in a row, so the card stays up rather than making tidying up cost
+	// three openings.
+	rows, tabs, rest := a.hopReading(a.hop.all)
+	a.hop.rows, a.hop.rest, a.hop.tabs, a.hop.armed = rows, rest, tabs, -1
 	a.hop.at = min(a.hop.at, max(0, len(rows)-1))
 	a.hop.say = hopAwayWord + " · " + row.title
 	a.touch()

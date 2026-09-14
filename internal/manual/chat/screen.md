@@ -224,7 +224,9 @@ cells dismiss; the label beside them selects. With color disabled the newly
 visible `×` also identifies pointer hover.
 
 Unsent drafts, carets and attachments stay with their conversation. Reopen a
-closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. The keyboard
+closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. **A closed tab leaves the
+Chats list at the same moment it leaves the row** — the two are one reading — and its
+conversation waits behind that card's fold (`→`), still held and still running. The keyboard
 shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 
 **A closed tab's conversation keeps running unless you asked for it to stop**, over
@@ -239,8 +241,8 @@ their own question about work in flight, and act on every conversation this wind
 at once. Closing a tab never quits aforge, and quitting is not what any of the card's
 three answers does.
 
-On the switcher card, `ctrl+w` dismisses a selected background tab while keeping
-its work running. For the current conversation it uses the same close card when
+On the switcher card, `ctrl+w` closes a selected background tab while keeping
+its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
 work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.

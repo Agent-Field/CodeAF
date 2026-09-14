@@ -1725,8 +1725,8 @@ released Ctrl.
 ```
 
 Fixed columns — **number, glyph, subject, one clause, project, clock** — which is what
-makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many are
-open, of how many this machine has.
+makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many tabs
+are on the row above, of how many conversations this machine has.
 
 **The rows are in the same order as the tabs above them** — the leftmost tab is the first
 row, so `2` on the card is the second tab on the row. The strip's order is the order you
@@ -1739,13 +1739,16 @@ before this one — which is usually not the first row. That is what keeps the c
 journey two keys: `ctrl+k`, `enter`, and you are back where you just were. `↑↓` from there
 walk the list in the order you see it.
 
-**A conversation whose tab you closed is still on the card, after the ones with tabs.** It
-has no position on the row to take, so it sorts below them; `enter` opens it and its tab
-comes back.
+**The list above the fold IS the tab row.** Close a tab — with its `×`, with `ctrl+w` in
+the conversation, or with `ctrl+w` on this card — and the row leaves the list at the same
+moment the tab leaves the strip. The conversation is not closed: it is still held, still
+running, and behind the fold, where `enter` brings it and its tab back.
 
 **Everything else on the machine is behind the fold at the foot.** `→` reaches them and
-`←` puts them away again. A conversation below the fold is not open in this terminal;
-taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
+`←` puts them away again. Most rows down there are conversations this terminal is not
+holding at all; the exception is one whose tab you closed, which is still held and still
+running and is behind the fold because it is not on the row any more. Taking either kind
+puts it in front of you and gives it a tab, exactly as `enter` on home does, and the one
 you are in keeps running — over the ordinary engine socket, over `--host`, over `--at` and
 under `aforge chat --no-host` alike. Each conversation holds its own connection, so
 opening a second, third or fourth closes nothing and cancels nothing.
@@ -1772,7 +1775,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. An open row that is not the conversation you are in is dismissed at once with no question, and the card says `tab closed · <the conversation's name>`. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row that is not open in this window answers `that one is not open here — enter opens it`. See *Closing a tab* on the screen page |
+| `ctrl+w` | Close the tab of the conversation under the cursor. A row that is not the conversation you are in closes at once with no question, says `tab closed · <the conversation's name>`, and leaves the list for the fold — so a second press closes the next tab. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row below the fold has no tab to close and answers `that one is not open here — enter opens it`. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1870,8 +1873,10 @@ rightmost tab — and waits for your choice.
 
 **`ctrl+w` closes the tab under the cursor**, which is what the card's own legend
 says: `enter open · esc cancel · ↑↓ choose · ctrl+w close tab`. An inactive row leaves
-the card open with `tab closed · <title>`, so several tabs can be closed in succession.
-Its saved conversation and draft remain available; Enter reopens it.
+the card open with `tab closed · <title>` and **drops off the list**, behind the fold with
+everything else this window is not showing — so pressing it again closes the next tab
+rather than the same one, and several go in a row. Its conversation, its work and its
+draft are untouched; `→` reaches it and `enter` brings it back.
 
 **It does not put the conversation away.** Putting one away is a different act and is
 not on this card: `ctrl+e` on a home row archives it, and home says
@@ -1885,8 +1890,9 @@ conversation is working. The work keeps running over every door; selecting anoth
 ends nothing. Closing the final tab opens Home, leaving that conversation behind it.
 
 **`ctrl+w` on a row below the fold does nothing** and says
-`that one is not open here — enter opens it`. There is no tab here to close: this
-terminal is not holding it.
+`that one is not open here — enter opens it`. There is no tab down there to close —
+whether this terminal never opened that conversation, or you closed its tab a moment ago
+and this is where it went.
 
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving aforge when it was the last one this terminal held.

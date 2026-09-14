@@ -483,7 +483,10 @@ func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 	}
 }
 
-// Repeated dismissal remains harmless even while work is running.
+// Repeated dismissal remains harmless even while work is running — and each
+// press closes the NEXT row, because the one just closed has left the list
+// (hop.go's [app.hopTabbed]). That is what the key does on the strip, and it is
+// why the card stays up for it.
 func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
@@ -491,15 +494,26 @@ func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
 		&aside{since: a.now(), title: "the busy one"})
+	quiet := &fakeAgent{model: "m"}
+	a.stow(Conversation{Agent: quiet, SessionFile: "/tmp/lab/quiet.jsonl", Place: "lab"},
+		&aside{since: a.now().Add(-time.Hour), title: "the quiet one"})
+
 	drive(t, a, key(hopOpenKey), key(hopAwayKey), key(hopAwayKey))
-	if a.openCount() != 2 || busy.closes != 0 || busy.stops != 0 {
+	if a.openCount() != 3 || busy.closes != 0 || busy.stops != 0 {
 		t.Fatalf("dismissing stopped work: open=%d closes=%d stops=%d", a.openCount(), busy.closes, busy.stops)
 	}
-	if !a.tabShut[a.convKey("/tmp/lab/busy.jsonl")] {
-		t.Fatal("dismissal did not hide the running tab")
+	// BOTH BACKGROUND TABS ARE OFF THE ROW and neither conversation was touched.
+	for _, file := range []string{"/tmp/lab/busy.jsonl", "/tmp/lab/quiet.jsonl"} {
+		if !a.tabShut[a.convKey(file)] {
+			t.Fatalf("dismissal did not take %s off the row", file)
+		}
 	}
 	if !strings.Contains(a.hop.say, hopAwayWord) {
 		t.Fatalf("dismissal was not acknowledged: %q", a.hop.say)
+	}
+	// AND THE ONLY ROW LEFT IS THE ONE THE PERSON IS STANDING IN.
+	if len(a.hop.rows) != 1 || !a.hop.rows[0].here {
+		t.Fatalf("the card still lists %+v", a.hop.rows)
 	}
 }
 
@@ -1028,13 +1042,13 @@ func TestTheCardHoldsTheStripsOrderWhenRecencyDoesNot(t *testing.T) {
 	}
 }
 
-// TestAConversationWithNoTabSortsAfterTheOnesWithOne is the rule for the rows
-// the strip cannot place: a tab dismissed with `ctrl+w` leaves its conversation
-// held, running and on this card, and a row with no position to borrow takes
-// none — it goes after the tabbed rows, keeping the order it came in with.
-func TestAConversationWithNoTabSortsAfterTheOnesWithOne(t *testing.T) {
+// TestClosingATabTakesItOffTheCardAsWellAsTheRow is the sync, from the `✕`: the
+// list and the strip are one reading, so a tab dismissed with the pointer leaves
+// both. The conversation is still held and still running — it is BEHIND THE
+// FOLD, with everything else this window is not showing, and `enter` on it there
+// brings it and its tab back.
+func TestClosingATabTakesItOffTheCardAsWellAsTheRow(t *testing.T) {
 	a, _, _ := tabApp(t)
-	// The leftmost tab is dismissed from the row while its conversation stays.
 	shut := stripKeys(a)[0]
 	span := tabCloseSpanFor(t, a, "Refactor the rail scope model")
 	clickTab(t, a, span.from)
@@ -1047,15 +1061,104 @@ func TestAConversationWithNoTabSortsAfterTheOnesWithOne(t *testing.T) {
 	}
 
 	a.hopOpen()
-	keys := openKeys(a)
-	if len(keys) != 3 {
-		t.Fatalf("the card holds %d open rows: %+v", len(keys), a.hop.rows)
+	if keys := openKeys(a); !equalStrings(keys, stripKeys(a)) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", keys, stripKeys(a))
 	}
-	if keys[len(keys)-1] != shut {
-		t.Fatalf("the conversation with no tab came out at %+v, and the strip reads %+v", keys, stripKeys(a))
+	if a.hop.rest != 1 {
+		t.Fatalf("the fold stands for %d conversations and one tab was closed", a.hop.rest)
 	}
-	// AND THE TWO THAT STILL HAVE TABS ARE IN THE STRIP'S ORDER ABOVE IT.
-	if !equalStrings(keys[:2], stripKeys(a)) {
-		t.Fatalf("the tabbed rows read %+v and the strip reads %+v", keys[:2], stripKeys(a))
+	// THE HEAD COUNTS TABS, so it cannot say three while the row shows two.
+	if a.hopOpenRows() != len(stripKeys(a)) {
+		t.Fatalf("the head says %d open and the row has %d tabs", a.hopOpenRows(), len(stripKeys(a)))
+	}
+
+	// AND IT IS BEHIND THE FOLD, ALIVE, AND ONE `enter` FROM COMING BACK.
+	a.hopSpread(true)
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the closed conversation left the card entirely: %+v", a.hop.rows)
+	}
+	if !a.hop.rows[at].open || a.hop.rows[at].held || a.hop.rows[at].gone {
+		t.Fatalf("the closed conversation is drawn as unreachable: %+v", a.hop.rows[at])
+	}
+	a.hop.at = at
+	drive(t, a, key("enter"))
+	if a.convKey(a.file) != shut {
+		t.Fatalf("enter on the fold landed on %q", a.file)
+	}
+	_ = a.tabsRow(a.width)
+	if !keysHold(stripKeys(a), shut) {
+		t.Fatalf("its tab did not come back: %+v", tabWords(a))
+	}
+}
+
+// TestCtrlWOnTheCardTakesTheRowOffTheCardAtOnce is the same sync from the card's
+// own key: the row the person just closed leaves the list under their hand,
+// rather than sitting there looking open until something else redrew the strip.
+func TestCtrlWOnTheCardTakesTheRowOffTheCardAtOnce(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.hopOpen()
+	if len(a.hop.rows) != 3 {
+		t.Fatalf("the card opened with %d rows: %+v", len(a.hop.rows), a.hop.rows)
+	}
+	shut := a.convKey(a.hop.rows[0].file)
+
+	a.hop.at = 0
+	drive(t, a, key(hopAwayKey))
+	// THE CARD IS STILL UP — closing tabs is done two or three at a time — and
+	// the row is gone from it WITHOUT a frame having been drawn in between.
+	if !a.hopShowing() {
+		t.Fatal("the card came down on a close")
+	}
+	for _, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			t.Fatalf("the row ctrl+w closed is still on the card: %+v", a.hop.rows)
+		}
+	}
+	if a.hop.rest != 1 || a.hopOpenRows() != 2 {
+		t.Fatalf("the card says %d open and %d behind the fold", a.hopOpenRows(), a.hop.rest)
+	}
+	// AND THE STRIP AGREES THE MOMENT IT IS DRAWN.
+	_ = a.tabsRow(a.width)
+	if keysHold(stripKeys(a), shut) {
+		t.Fatalf("the strip still draws the closed tab: %+v", tabWords(a))
+	}
+	if !equalStrings(openKeys(a), stripKeys(a)) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", openKeys(a), stripKeys(a))
+	}
+}
+
+// TestCtrlWBelowTheFoldSaysThereIsNoTabToClose is the other half: a row with no
+// tab — one this terminal never opened, or one whose tab was closed a moment ago
+// — answers in words rather than closing something that is not there.
+func TestCtrlWBelowTheFoldSaysThereIsNoTabToClose(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.hopOpen()
+	shut := a.convKey(a.hop.rows[0].file)
+	a.hop.at = 0
+	drive(t, a, key(hopAwayKey))
+
+	a.hopSpread(true)
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the closed conversation is not behind the fold: %+v", a.hop.rows)
+	}
+	a.hop.at = at
+	drive(t, a, key(hopAwayKey))
+	if a.hop.say != hopNotOpenWord {
+		t.Fatalf("ctrl+w on a row with no tab said %q", a.hop.say)
+	}
+	if a.behind[shut] == nil {
+		t.Fatal("a second ctrl+w took the conversation out of the keeper")
 	}
 }
