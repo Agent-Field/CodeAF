@@ -186,9 +186,6 @@ func accountForService(service modelsource.Connected) modelAccount {
 	}
 }
 
-// newProviderClient is construction shared by New and a live cross-service
-// switch. The same routing and fallback seams must survive replacement; a
-// second, smaller constructor would silently change how the next turn runs.
 // routingInForce is the row THIS SESSION'S calls answer to: its own where a
 // caller handed one down, and the row installed in this process otherwise.
 //
@@ -204,6 +201,9 @@ func (c Config) routingInForce() provider.RoutingStrategy {
 	return provider.RoutingNow()
 }
 
+// newProviderClient is construction shared by New and a live cross-service
+// switch. The same routing and fallback seams must survive replacement; a
+// second, smaller constructor would silently change how the next turn runs.
 func newProviderClient(config Config, model string) (*provider.Client, error) {
 	settings := config.clientConfig(model, providerTimeout)
 	// AN EMPTY ROW HERE IS NOBODY HAVING CHOSEN, and that is what a launch from
