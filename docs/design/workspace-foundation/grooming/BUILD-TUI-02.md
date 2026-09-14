@@ -195,6 +195,16 @@ with `product/**`, `TestOngoingWorkIsPausedStoppedAndEditedOnlyThroughItsOwners`
 lead) and the re-read above. It was not re-accepted live: the setup path is unchanged and
 the accepted screens re-read identically.
 
+**Verification of `92ba84022`** (third independent Opus pass, read-only, job `…000455`): all
+seven review-2 findings RESOLVED with file:line evidence; runtime unchanged by the docs
+merge; nothing blocks. Non-blocking risks it named, kept open rather than changed now so the
+handed-off runtime stays the reviewed one: `e`'s lead stripping removes everything up to the
+first `”:` in a draft that starts with `Change the ` (a person's own such sentence, or a
+title containing `”:`, loses its start — fix by matching the exact `ongoing work “`/`rule “`
+opening on one line); a bare name such as `digest.md` under `product/**` is treated as an
+input (documented ambiguity); `./spec.md` is read as written and warned; untested branches:
+absolute watch, empty check line, `e` on a rule over an older lead, adopted word order.
+
 **Checks on committed source (Spark):** `go vet` on touched packages, `gofmt`, `make
 test-laws`, `internal/iconlaw`, untagged `internal/e2e`, `internal/manual`,
 `internal/standing`, `internal/workspaceview`, focused `internal/tui3` (`Folder|Ongoing|
@@ -257,6 +267,18 @@ is an ordinary paid call (acceptance total $0.031). Unsupported in the demo: a T
 (use the command above or the open window's 5-minute pass), a background timer (off in this
 profile), report-path renames, the Product → Marketing watch, and any guarantee about making
 verbs' models.
+
+## Integration with the journey checklist (job `20260914-220626-000455`)
+
+`origin/codex/personal-ai-backend` at `b99b784f7` (journey-driven NEXT-STEPS, NEXT-STEPS-HISTORY,
+PRODUCT-JOURNEY-MAP, C27–C28) merged into this lane as `218dbb086` (parents `b777ed109`,
+`b99b784f7`). Conflicts were docs only (NEXT-STEPS, DECISIONS, PRODUCT-EXPERIENCE-PATH):
+the journey checklist is the base, the lane's open-weight draft folded into C28, and this
+checkpoint's status was written into J1 from the evidence. `git diff 92ba84022 218dbb086`
+outside `docs/` is empty (manual included); `git ls-tree -r` without `docs/` hashes to
+`111496efc9005ba3` at both. `make build` on Spark at `218dbb0863cf1a36df2d2986b7cd250b3dc897b9`:
+exit 0, 2026-09-14T22:13:02Z–22:13:03Z (build cache warm). No paid call and no broad suite
+was run for the merge: runtime did not change. Later commits on the lane are docs only.
 
 ## Not in this checkpoint
 

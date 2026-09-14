@@ -19,7 +19,7 @@ secrets and no raw JSONL. The full working logs stay on Spark as reference only:
 | Acceptance fix (named-file warning on inputs) | 450 | `9d9beebc3` | Deterministic test |
 | Acceptance 2 — inspect, run, pause, resume, edit, stop | 450 | binary `9d9beebc3` | All PASS (below) |
 | Review-2 fixes (regression under `**` watches, lead stacking, wording) | 450 | `92ba84022` | Deterministic regression tests + re-read of the accepted, stopped record through the real engine with no model call. **Not** a live acceptance rerun |
-| Docs reconciliation with the journey checklist | `20260914-220626-000455` | merge of `b99b784f7` | Docs only; runtime diff against `92ba84022` empty; `make build` receipt in BUILD-TUI-02 |
+| Docs reconciliation with the journey checklist | `20260914-220626-000455` | merge `218dbb086` of `b99b784f7` | Docs only; runtime diff against `92ba84022` empty (runtime tree hash `111496efc9005ba3` at both); `make build` exit 0 at `218dbb086`, 22:13:03Z |
 
 No single binary ran the whole acceptance: setup ran on `061ffdc2f` and the remaining steps
 on `9d9beebc3`. Between them only `session.StandingNamedFiles` changed, which only the
@@ -98,7 +98,7 @@ extra model round.
 
 ## Builds and checks
 
-- `make build` on Spark: `5417b4b71`, `061ffdc2f`, `9d9beebc3`, `92ba84022` all exit 0.
+- `make build` on Spark: `5417b4b71`, `061ffdc2f`, `9d9beebc3`, `92ba84022`, merged `218dbb086` all exit 0.
 - Focused, Spark: `go vet` touched packages, `gofmt`, `make test-laws`, `internal/iconlaw`,
   untagged `internal/e2e`, `internal/manual`, `internal/standing`, `internal/workspaceview`,
   `internal/tui3 -run 'Folder|Ongoing|Collection|Manual|Draft|Standing|Home'`,
@@ -120,6 +120,10 @@ extra model round.
   `**` watch every relative name was hidden, silencing real rival reports). All resolved in
   `92ba84022`: only a bare name is placed inside the watched folder; `e` replaces an older
   lead; adopted wording; `checked` dot; manual; STAGE check order; comments.
+
+- Opus verification of `92ba84022` (job `…000455`): 7/7 review-2 findings resolved, runtime
+  identical after the merge, nothing blocks; non-blocking risks recorded in BUILD-TUI-02 and
+  as an open J1 step.
 
 ## Demo 2 launch (verified from the laptop form, no message sent)
 

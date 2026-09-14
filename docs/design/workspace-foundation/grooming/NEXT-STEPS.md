@@ -209,6 +209,10 @@ the `stand` card, `workspaceview.Item`, the Folders place.
   fast-forward) and share demo 2.
 - [ ] Not started — `find` stays on the tool list where `fd` cannot be fetched (absence
   law), seen in cp2 exploration.
+- [ ] Not started — cp2 non-blocking review risks: `e` lead stripping can drop the start of
+  a person's own draft beginning `Change the …”:` (match the exact lead); `./name` and
+  absolute-watch named-file cases; tests for the empty check line, `e` on a rule, adopted
+  word order ([BUILD-TUI-02.md](BUILD-TUI-02.md), verification of `92ba84022`).
 - [ ] Not started — model-written `when_words` for moments, rhythms, idle waits and probes
   are still shown as sent (only file watches are said from the record).
 - [ ] Not started — v1 `aforge models` prints the old default route and ignores v3
