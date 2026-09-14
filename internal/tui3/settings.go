@@ -903,10 +903,10 @@ type sheet struct {
 	// window, routing `off`, no model, a model served direct (lanes.go's
 	// [app.laneForceNow]).
 	//
-	// IT IS A DOOR AND NOT A SNAPSHOT, which is the one field here that is. The
-	// answer moves inside this panel — a pin written on the row two lines up
-	// changes it in the same keystroke — so a value copied when the panel opened
-	// would be the tail describing the pin before the one a person just set.
+	// IT IS A DOOR AND NOT A SNAPSHOT, unlike the two fields under it. The answer
+	// moves inside this panel — a pin written on the row two lines up changes it
+	// in the same keystroke — so a value copied when the panel opened would be
+	// the tail describing the pin before the one a person had just set.
 	force func() laneForce
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
