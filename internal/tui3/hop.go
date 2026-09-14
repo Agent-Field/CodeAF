@@ -908,6 +908,11 @@ func (a *app) hopSlide() tea.Cmd {
 	}
 	a.hop.rows[a.hop.at].here = true
 	a.hop.rows[a.hop.at].note = hopHereWord
+	// AND THE PLACE COMES DOWN ON THE BURST'S FIRST SWITCH, exactly as `enter`
+	// does: quick switching is the same act on a different chord, and a card
+	// fading over home while the conversation changed underneath it is the bug
+	// [app.hopLand] is about.
+	cmd = a.hopLand(cmd)
 	a.touch()
 	return tea.Batch(cmd, a.hopTick())
 }
@@ -958,10 +963,11 @@ func (a *app) hopWalk(by int) {
 
 // hopTake goes to the row under the cursor.
 //
-// THE ROW YOU ARE ALREADY ON IS NOT A SWITCH. Committing `you are here` closes
-// the card and does nothing else — [app.bringForward] answers the same way for
-// the same reason, and doing it here as well means the card never depends on
-// that agreement holding.
+// THE ROW YOU ARE ALREADY ON IS NOT A SWITCH. Committing `you are here` brings
+// nothing forward — [app.bringForward] answers the same way for the same reason,
+// and doing it here as well means the card never depends on that agreement
+// holding — but it still LANDS, because a place standing over the conversation
+// is a place `enter` has to come down off ([app.hopLand]).
 func (a *app) hopTake() (cmd tea.Cmd) {
 	if a.startingChat() {
 		back := a.parkChatStart()
@@ -974,7 +980,7 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 	row := a.hop.rows[a.hop.at]
 	a.hopClose()
 	if row.here {
-		return nil
+		return a.hopLand(nil)
 	}
 	if !row.open {
 		return a.hopStart(row)
@@ -984,10 +990,61 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 		// The conversation went away between the card opening and this key —
 		// another window took it over (takeover.go), or it was closed. The card
 		// is already down; saying so is better than a keystroke that did nothing.
-		a.note(hopGoneWord)
+		a.hopSay(hopGoneWord)
 		return nil
 	}
+	return a.hopLand(cmd)
+}
+
+// hopLand is the last step of every take that succeeded: the place a person was
+// standing on comes down, so `enter` on the card leaves them looking at the
+// conversation it named.
+//
+// ── WHY THE CARD HAS TO DO THIS AT ALL ──────────────────────────────────────
+//
+// The switcher is drawn over the screen rather than being a screen of its own,
+// which is what lets it open on home, tasks, standing, memory, spend, search and
+// settings alike. The cost of that is that taking a row moved the conversation
+// UNDERNEATH a place and left the place in front: from home, `enter` looked like
+// a key that did nothing, while it had in fact quietly swapped the conversation
+// behind the screen the person was reading. Reported by the owner, who pressed
+// `ctrl+k` on home, chose a conversation, and stayed on home.
+//
+// EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
+// itself: home's own `enter` ends in [app.closeHome] (home.go's
+// [app.homeWalkIn]), search's row door in [app.standDownFullscreen]
+// (place_search.go's [app.openConversationRow]), and `ctrl+shift+t` in
+// [app.closeHome] again (tabreopen.go). This is that same statement, made once
+// for the one door that can be opened from ANY place — which is why it asks
+// [app.pageShowing] rather than naming home.
+//
+// IT RUNS ONLY WHERE THE TAKE SUCCEEDED. A refusal leaves the place standing,
+// with its sentence on that place's own line ([app.hopSay]), because a person
+// who has just been told no must still be able to read it.
+func (a *app) hopLand(cmd tea.Cmd) tea.Cmd {
+	if a.pageShowing() {
+		a.leavePlace()
+	}
 	return cmd
+}
+
+// hopSay puts one of the card's refusals on whichever line the person can
+// actually see it on: home's own sentence, a place's one line, or the entry line
+// of the conversation underneath when no place is standing.
+//
+// IT IS [app.sayWhereQuestionWent] WITH THE THIRD CASE, and it exists for the
+// same reason that one does — there is no line invented for this. A refusal said
+// with [app.note] while home was up went into a transcript nobody was looking at,
+// which is the quietest way to answer a keystroke.
+func (a *app) hopSay(note string) {
+	switch {
+	case a.at(pageHome):
+		a.home.say(note, "")
+	case a.pageShowing():
+		a.pageMsg = note
+	default:
+		a.note(note)
+	}
 }
 
 // hopGoneWord is what the switcher says about a row that stopped existing while
@@ -1001,20 +1058,21 @@ const hopGoneWord = "that conversation is no longer open"
 // refuse. Nothing asks how many are already open — a window holds as many
 // conversations as somebody opens (keeper.go).
 //
-// IT SAYS THE REFUSAL WHERE THE PERSON IS. The card is already down by the time
-// this runs, so the sentence goes on the entry line of the conversation they are
-// standing in — which is where every other refusal made on a keystroke is said.
+// IT SAYS THE REFUSAL WHERE THE PERSON IS ([app.hopSay]). The card is already
+// down by the time this runs, so the sentence goes on the line the screen they
+// are looking at already has for saying things — home's own, a place's one line,
+// or the entry line of the conversation when nothing is standing over it.
 func (a *app) hopStart(row hopRow) tea.Cmd {
 	if !homeFolderThere(row.where) {
-		a.note(WorkspaceGoneWord + " · " + row.where)
+		a.hopSay(WorkspaceGoneWord + " · " + row.where)
 		return nil
 	}
 	cmd, refusal := a.openBeside(row.where, row.file)
 	if refusal != "" {
-		a.note(refusal)
+		a.hopSay(refusal)
 		return nil
 	}
-	return cmd
+	return a.hopLand(cmd)
 }
 
 // hopOpenRows is how many of the card's rows this process is already holding: the

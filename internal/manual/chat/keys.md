@@ -1763,7 +1763,14 @@ the tab you are in. See *Conversation tabs* and
 
 It works **in a conversation and on every place** — home, tasks, standing, memory, spend,
 search, settings — because it is drawn over the screen rather than being a screen of its
-own. Nothing under it moves by a cell.
+own. Nothing under it moves by a cell while the card is up.
+
+**Taking a row from a place leaves that place.** The place comes down and you are looking
+at the conversation you chose — the same arrival home's own `enter` on a conversation row
+makes, and the same one `ctrl+tab` makes where quick switch is on. That holds for a row
+below the fold too, which is opened beside the others and then walked into. The one case
+that does not move you is a door that refuses: the place stays up with the refusal on its
+own line, so you can read it.
 
 The cursor opens on the **first row you can actually go to**, never on `you are here`, so
 `ctrl+k` `enter` always lands somewhere.

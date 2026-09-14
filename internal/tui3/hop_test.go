@@ -770,3 +770,181 @@ func TestSwitcherShowsLongSelectedTitleBelowTheList(t *testing.T) {
 		t.Fatal("selected title still clipped its distinguishing suffix")
 	}
 }
+
+// ── THE CARD LANDS YOU IN WHAT YOU TOOK, FROM WHEREVER YOU TOOK IT ──────────
+//
+// The switcher opens over a place as readily as over a conversation, and for a
+// while taking a row from one only moved the conversation UNDERNEATH the place:
+// from home, `enter` read as a key that did nothing while it had quietly swapped
+// what was behind the screen. These four are that door, asserted from a place
+// (hop.go's [app.hopLand]).
+
+// TestTakingARowFromHomeLandsInTheConversation is the owner's own report: home
+// up, `ctrl+k`, `enter`, and you are IN the conversation you chose.
+func TestTakingARowFromHomeLandsInTheConversation(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+	if !a.at(pageHome) {
+		t.Fatal("the fixture is not standing on home")
+	}
+
+	drive(t, a, key(hopOpenKey))
+	if !a.hopShowing() {
+		t.Fatal("ctrl+k did not raise the switcher on home")
+	}
+	drive(t, a, key("enter"))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("enter left the surface on %q", a.file)
+	}
+	// THE PLACE CAME DOWN WITH THE TAKE. This is the whole defect: the line above
+	// passed while home stood in front of the conversation it had just switched.
+	if a.pageShowing() {
+		t.Fatalf("enter on the card left %v standing over the conversation", a.page)
+	}
+	// AND THE ONE HOME WAS OVER IS STILL RUNNING, the bargain every door between
+	// conversations makes (keeper.go).
+	if a.openCount() != 3 {
+		t.Fatalf("%d conversations are open after taking a row from home", a.openCount())
+	}
+}
+
+// TestTakingARowFromAnyOtherPlaceLandsToo holds the same law one door wider: the
+// card asks whether A place is standing and never whether HOME is, because it
+// opens on all seven.
+func TestTakingARowFromAnyOtherPlaceLandsToo(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageSpend))
+	if !a.at(pageSpend) {
+		t.Fatal("the fixture is not standing on the spend place")
+	}
+
+	drive(t, a, key(hopOpenKey), key("enter"))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("enter left the surface on %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("enter on the card left %v standing over the conversation", a.page)
+	}
+}
+
+// TestTakingTheRowYouAreOnFromHomeStillLandsInIt is the one row that is not a
+// switch and is still a door. `you are here` brings nothing forward — but from
+// home it is the person saying "that one", and answering with nothing at all
+// would leave them on the screen they pressed a conversation on.
+func TestTakingTheRowYouAreOnFromHomeStillLandsInIt(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopOpenKey))
+	here := -1
+	for at, row := range a.hop.rows {
+		if row.here {
+			here = at
+		}
+	}
+	if here < 0 {
+		t.Fatalf("no row is marked `you are here`: %+v", a.hop.rows)
+	}
+	a.hop.at = here
+	drive(t, a, key("enter"))
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatalf("taking `you are here` moved the surface to %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("taking `you are here` from home left %v standing", a.page)
+	}
+}
+
+// TestARefusedRowLeavesHomeStandingAndSaysSoThere is the other half of the law:
+// a take that did not happen must not move the person, and its sentence goes on
+// the line home already has for saying things rather than into a transcript
+// nobody is looking at (hop.go's [app.hopSay]).
+func TestARefusedRowLeavesHomeStandingAndSaysSoThere(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	other := filepath.Join(dir, "other.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "b", Title: "the other one", Transcript: other, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		return Conversation{}, session.ErrSessionLocked
+	}
+	drain(t, a, a.showPage(pageHome))
+
+	// `→` opens the fold and puts the cursor on the closed row, which is the row
+	// the door refuses.
+	drive(t, a, key(hopOpenKey), key("right"), key("enter"))
+	if a.file != filepath.Join(dir, "this-one.jsonl") {
+		t.Fatalf("a refused row moved the surface to %q", a.file)
+	}
+	if !a.at(pageHome) {
+		t.Fatalf("a refused row took home down and left %v", a.page)
+	}
+	if a.home.msg != sessionBusyWord {
+		t.Fatalf("home said %q about a row the door refused", a.home.msg)
+	}
+}
+
+// TestTakingAClosedRowFromHomeLandsInItToo is the fold's half of the door: a row
+// this terminal was NOT holding is opened beside the others, and the person ends
+// up looking at it rather than at the home they pressed it from.
+func TestTakingAClosedRowFromHomeLandsInItToo(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	other := filepath.Join(dir, "other.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "b", Title: "the other one", Transcript: other, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	opened := ""
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		opened = transcript
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: transcript, Workspace: workspace}, nil
+	}
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopOpenKey), key("right"), key("enter"))
+	if opened != other {
+		t.Fatalf("enter opened %q", opened)
+	}
+	if a.pageShowing() {
+		t.Fatalf("opening a closed row from home left %v standing over it", a.page)
+	}
+}
+
+// TestQuickSwitchingFromHomeLandsToo holds the chord that switches without a
+// choice to the same law: it is the same act on a different key.
+func TestQuickSwitchingFromHomeLandsToo(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick, a.keysDisambiguated = true, true
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopAlias))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("the press left the surface on %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("quick switching from home left %v standing over the conversation", a.page)
+	}
+}
