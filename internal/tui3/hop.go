@@ -638,10 +638,16 @@ func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
 		if len(open)+len(rest) >= hopShown {
 			break
 		}
+		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER. It
+		// used to be asked here for the GLYPH and left false on the row
+		// [hopRestNote] reads, so a conversation whose project had gone was drawn
+		// with the refusing `✕` and no clause saying why — a mark a person cannot
+		// account for, which is the whole of what the owner's report was about.
+		row.gone = !homeFolderThere(row.place)
 		rest = append(rest, hopRow{
 			file: row.session.Transcript, title: row.title, project: row.project,
 			note: hopRestNote(row), age: row.age, needs: row.needs, moving: row.moving,
-			where: row.place, held: row.held, gone: !homeFolderThere(row.place),
+			where: row.place, held: row.held, gone: row.gone,
 		})
 	}
 	return rest
@@ -1336,10 +1342,22 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// name was, and it cost the rows underneath it their places on a short card.
 	// The name is worth more room on the row itself, which is what the subject
 	// column now takes ([hopLine]). Asked for by the owner.
+	// AND THE WORD THAT SAYS WHERE THE OPEN ONES STOP, which is the fold's own
+	// half of the head's `open` ([hopClosedLabel]).
+	label := -1
+	if a.hop.all && a.hop.tabs > 0 && a.hop.tabs < len(a.hop.rows) {
+		label = a.hop.tabs
+	}
 	available := max(1, height-len(lines)-topEdge-foot)
+	if label >= 0 {
+		available = max(1, available-1)
+	}
 	start := max(0, a.hop.at-available+1)
 	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
+		if at == label {
+			lines = append(lines, inside(pal.dim(hopClosedLabel), false, false))
+		}
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
 		hovered := a.hot.kind == hoverHop && a.hot.index == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
@@ -1435,6 +1453,26 @@ func (a *app) hopHead(width int, pal palette) string {
 // already uses for a conversation this terminal is holding (keeper.go's header
 // states the law: `open`, never `behind`).
 const hopOpenWord = "open"
+
+// hopClosedLabel is the one dim word drawn between the tabs and everything else,
+// and it exists because WITHOUT IT THE FOLD OPENS INTO ONE UNDIFFERENTIATED
+// LIST.
+//
+// The head says `open` over the rows that are tabs. `→ show closed` then adds
+// rows that are not, and a conversation whose tab was closed a minute ago comes
+// back wearing the same `○` and the same live clause it had when it was open —
+// because it IS still open in every sense but the tab row's. Reported by the
+// owner, who read the `✕` on the rows below as "this tab is closed" and asked
+// why the ones they had closed did not have it. They do not: `✕` is
+// [tokens.GlyphFailed] and on this card it means the row REFUSES TO OPEN —
+// another window is holding that conversation, or its project folder has gone.
+// Two different facts, and only one of them had a mark.
+//
+// SO THE SEAM IS DRAWN AS A WORD AND NOT AS A RULE. The house rule is that
+// nothing is outlined (the card's own header states it), the ladder this surface
+// separates things with is ink, and one dim word at the seam answers the whole
+// question — everything under it has no tab.
+const hopClosedLabel = "closed"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
 //

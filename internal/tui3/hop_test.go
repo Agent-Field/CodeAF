@@ -1190,3 +1190,115 @@ func TestCtrlWBelowTheFoldSaysThereIsNoTabToClose(t *testing.T) {
 		t.Fatal("a second ctrl+w took the conversation out of the keeper")
 	}
 }
+
+// ── THE SEAM THE FOLD OPENS INTO ────────────────────────────────────────────
+
+// TestTheFoldSaysWhereTheTabsStop is the owner's own question — why the
+// conversations they closed look like the ones that are open, and what the `✕`
+// on some rows means. It is answered by a word at the seam (hop.go's
+// [hopClosedLabel]) and by every refusing row saying why it refuses.
+func TestTheFoldSaysWhereTheTabsStop(t *testing.T) {
+	dir := t.TempDir()
+	a, _, _ := tabApp(t)
+	gone := filepath.Join(dir, "vanished")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "x", Title: "a chat from last week", Transcript: filepath.Join(dir, "x.jsonl"), ProjectDir: dir},
+				{ID: "y", Title: "held elsewhere", Transcript: filepath.Join(dir, "y.jsonl"), ProjectDir: dir, Open: true},
+				{ID: "z", Title: "no folder", Transcript: filepath.Join(dir, "z.jsonl"), ProjectDir: gone},
+			},
+		}}}, true
+	}
+	// A closed tab, so the fold holds one of each kind: a conversation this
+	// window is still holding, and three it is not.
+	span := tabCloseSpanFor(t, a, "Refactor the rail scope model")
+	clickTab(t, a, span.from)
+	_ = a.tabsRow(a.width)
+
+	// WITH THE FOLD SHUT THERE IS NO SEAM TO DRAW, because every row is a tab.
+	a.hopOpen()
+	if seamAt(a.hopCardLines(120, 20, a.pal)) >= 0 {
+		t.Fatal("the shut card drew the closed label over a list that is all tabs")
+	}
+
+	// WITH IT OPEN THE WORD STANDS WHERE THE TABS STOP.
+	a.hopOpenAll()
+	body := a.hopCardLines(120, 20, a.pal)
+	label, first := seamAt(body), -1
+	for at, line := range body {
+		if strings.Contains(plain(line), "Refactor the rail scope model") {
+			first = at
+		}
+	}
+	if label < 0 {
+		t.Fatalf("the open fold drew no seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	if first != label+1 {
+		t.Fatalf("the seam is at %d and the first closed row at %d:\n%s", label, first, plain(strings.Join(body, "\n")))
+	}
+	// AND THE SEAM IS NOT A ROW: the cursor cannot land on it and a press on it
+	// opens nothing.
+	for _, spot := range a.hop.spots {
+		if spot.row == label {
+			t.Fatalf("the seam answered as a row: %+v", spot)
+		}
+	}
+}
+
+// TestEveryRowThatRefusesSaysWhy is the other half of that report: the `✕` means
+// this row will not open, and a mark a person cannot account for is worse than
+// no mark. A conversation another window holds said so already; one whose folder
+// has gone wore the mark with an empty clause.
+func TestEveryRowThatRefusesSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	gone := filepath.Join(dir, "vanished")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "y", Title: "held elsewhere", Transcript: filepath.Join(dir, "y.jsonl"), ProjectDir: dir, Open: true},
+				{ID: "z", Title: "no folder", Transcript: filepath.Join(dir, "z.jsonl"), ProjectDir: gone},
+			},
+		}}}, true
+	}
+	a.hopOpenAll()
+	for _, row := range a.hop.rows {
+		if !row.held && !row.gone {
+			continue
+		}
+		if strings.TrimSpace(row.note) == "" {
+			t.Fatalf("a row drawn with the refusing mark says nothing about why: %+v", row)
+		}
+	}
+	// AND THE TWO REASONS ARE THE TWO SENTENCES, not one sentence for both.
+	var words []string
+	for _, row := range a.hop.rows {
+		if row.held || row.gone {
+			words = append(words, row.note)
+		}
+	}
+	if len(words) != 2 {
+		t.Fatalf("the card drew %d refusing rows: %+v", len(words), a.hop.rows)
+	}
+	if !keysHold(words, hopHeldWord) || !keysHold(words, homeGoneWord) {
+		t.Fatalf("the refusing rows say %+v", words)
+	}
+}
+
+// seamAt is which drawn line is the fold's seam, and it is matched WHOLE: the
+// foot says `show closed` and `hide closed`, so a substring match finds the foot
+// on every card that has one.
+func seamAt(lines []string) int {
+	for at, line := range lines {
+		inside := strings.TrimSpace(plain(strings.Trim(plain(line), "│")))
+		if inside == hopClosedLabel {
+			return at
+		}
+	}
+	return -1
+}

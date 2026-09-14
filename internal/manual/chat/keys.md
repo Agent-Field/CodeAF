@@ -1797,6 +1797,16 @@ a `…` rather than repeated anywhere else.
 **The foot is one instruction: `→ show closed`**, and `← hide closed` once the fold is
 open. It is there only while there is something behind the fold.
 
+**With the fold open, one dim `closed` marks where the tabs stop.** Everything above that
+word has a tab on the row; everything below it does not. It is not a row — the cursor skips
+it and a click on it does nothing — and it is not drawn at all while the list is only tabs.
+
+**The `✕` on a row does not mean the tab is closed.** It means that row will not open, and
+it is always beside the reason: `open in another window`, or `that folder is gone`. A
+conversation whose tab you closed keeps its ordinary mark — `○`, or `◐` if work is turning
+in it — because nothing about it is wrong: it is still held and still running, and it is
+below the `closed` word only because it is not on the tab row any more.
+
 **A long name is never read out twice.** The card used to re-wrap the highlighted row's
 name in a block under the list; it does not any more. The name gets the room on its own
 row instead.
@@ -1844,6 +1854,12 @@ did.
 The mark on each row is the mark on that conversation's tab, taken from the same reading.
 That includes `you are here`: work in the conversation in front wears `◐`, and a question
 there wears `?`, without replacing the note that says where you are.
+
+**The marks, and the one that is not about tabs:** `○` quiet, `◐` working, `?` waiting on
+you, and `✕` **this row will not open** — which is the last two clauses in the table above
+and nothing to do with a tab being closed. The `✕` a person presses on a tab closes it; the
+`✕` on a card row is the card refusing, and the clause beside it always says why. A
+conversation whose tab you closed is `○` like any other, because nothing is wrong with it.
 
 The card is **frozen the moment it opens**. A conversation that finishes a turn while you
 are looking at the card does not re-rank the list under your finger.
