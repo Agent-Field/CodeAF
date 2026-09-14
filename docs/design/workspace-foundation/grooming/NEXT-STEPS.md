@@ -25,7 +25,9 @@ them.
 
 - A journey's first line, **Journey accepted**, is ticked only when its whole acceptance
   passes through the real surface (`bin/aforge` in a terminal on Spark, real stores,
-  isolated profile) on an open-weight model (C28). Its steps can be `[x]` while it is not.
+  isolated profile), on an open-weight model wherever the journey calls one (C28). Its steps
+  can be `[x]` while it is not. A journey needs no personal trial or routine approval to be
+  accepted; the person's feedback is always welcome and never a gate.
 - A backend or package pass is not TUI evidence. A TUI pass is not model reliability.
   A closed-model run is exploration and never acceptance (C28).
 - Record every failure, with its pass count and spend. Never retry until green, and never
@@ -100,14 +102,21 @@ recorded decision (C27 settles only that journeys organize the work).
 shared chat from both folders, previews an artifact, returns to the same row, and still
 starts an unfiled chat. Record: [BUILD-TUI-01.md](BUILD-TUI-01.md).
 
-- [ ] **Journey accepted** — Backend partial: the terminal checks below passed; the person's trial is not started.
+- [x] **Journey accepted** — real `bin/aforge` at `36922486c` in tmux on Spark, 48 PASS /
+  0 FAIL, run ending 2026-09-14T20:28:55Z ([BUILD-TUI-01.md](BUILD-TUI-01.md),
+  `validation/tui01-accept-checks.txt`). It covers browsing into Product and Marketing,
+  opening the same shared chat from both with no new session and an unchanged transcript,
+  back and return keeping path and row, work opened through its owners, an artifact
+  previewed through the engine, and the unfiled chat reached from home. The pinned
+  demonstration was delivered. Browsing calls no model.
 - [x] Folders place: browse, reserved inspector, open by identity, return keeps path and
   row, wide and 60-column, keys and mouse — `36922486c`, tmux on Spark, 48 PASS / 0 FAIL.
 - [x] Read-only `Collections.Page|Item|File` engine methods, including `--host`; an
   older engine is said, never drawn empty — `36922486c`, `collections_test.go`.
 - [x] Personal fixture and pinned stable demonstration — `36922486c`, fixture log in BUILD-TUI-01.
-- [ ] Not started — the person tries demo 1; record date, revision, what confused them and
-  the next smallest change in PRODUCT-EXPERIENCE-PATH.md.
+- Ongoing and optional, **not blocking any journey:** when the person tries a pinned demo,
+  append the date, revision, what confused them and the next smallest change to
+  PRODUCT-EXPERIENCE-PATH.md. No trial has been recorded, and work continues without one.
 
 ## J1 — Dependable ongoing work, set up and steered from chat (checkpoint 2)
 
@@ -117,19 +126,33 @@ current when `product/` changes. They answer the card, then inspect the work in 
 They change a file, run one explicit check, and see state, run, cause and report update in
 place. They pause (change ⇒ no run), start again (the pending change is observed), edit
 instructions through the chat, rename the report through the chat, and stop (no run, no
-restart). Contract: `BUILD-TUI-02.md` on the lane branch `codex/personal-experience-0914`
-(not yet on this branch; it arrives with the cp2 integration).
+restart).
 
-**Acceptance:**
-- the lane contract's proofs: a check after a change while paused admits no run; after
-  starting again the next run observes the pending change; after stop there is no run and
-  no restart;
+**Checkpoint 2 is a bounded slice of J1, and its scope is frozen while it is in flight.**
+Its contract is `BUILD-TUI-02.md` on the lane branch `codex/personal-experience-0914`, not
+yet on this branch.
+- **In cp2's scope:** chat setup through the card, the inspector, one explicit check,
+  pause, start again, stop, and an instructions edit through the chat card.
+- **Out of cp2's scope by design:** report rename and the rest of the W5-B chat journey
+  (second folder, the step-limit loops).
+- **When cp2 passes**, it ticks only the cp2 steps below. The J1 journey stays unchecked
+  until the full acceptance holds.
+- A closed-model run, including the earlier Haiku exploration, qualifies for neither.
+
+**Checkpoint 2's bounded acceptance** (from its contract):
+- a check after a change while paused admits no run;
+- after starting again, the next run observes the pending change;
+- after stop there is no run and no restart;
 - the inherited Product rule's id appears in the run's rules check;
 - the owner publishes the report with a receipt, and the stored path stays correct;
+- serial runs on the pinned open-weight model, with the pass count and spend recorded and
+  failures retained.
+
+**Full J1 acceptance: everything above, plus the W5-B remainder:**
+- the chat-driven journey including the second-folder turn passes (W5-B ended 21/37);
 - a one-file digest does not run to its step limit;
-- a report rename changes `does.report`, or is refused honestly with the tree and item unchanged;
-- runs are serial on the pinned open-weight model, with the pass count and spend
-  recorded and failures retained.
+- a report rename through chat changes `does.report`, or is refused honestly with the tree
+  and item unchanged (G2).
 
 **Reuses:** `standing.Store` (`Occurrences`, `Receipt`, `Running`, `SetStatus`, `Revise`),
 the `stand` card, `workspaceview.Item`, the Folders place.
@@ -162,8 +185,8 @@ the `stand` card, `workspaceview.Item`, the Folders place.
   running mark, how checks happen. Folders `p` pause/start again, `s` stop, `e` edit in its
   chat. Manual sections. (Lane commit `9687f15c5`, snapshot above.)
 - [ ] Working tree — the fixture pins open-weight talk, fallback, tier and vision models.
-- [ ] Working tree — checkpoint 2 terminal acceptance on the pinned open-weight model
-  (started 21:25:52Z, no result recorded).
+- [ ] Working tree — checkpoint 2's bounded terminal acceptance on the pinned open-weight
+  model (started 21:25:52Z, no result recorded; passing it does not tick J1).
 - [ ] Working tree — independent review of the cp2 source, and its fixes.
 - [ ] Not started — integrate the accepted cp2 into `codex/personal-ai-backend` with its
   change entry, and pin a demo 2 without touching demo 1.
@@ -490,5 +513,6 @@ confirmed. Each preserves existing authorized behavior until it is settled.
 | T14 | J1G (explicit watch) and J5 (impact with no watch) |
 | T15 | Later stage |
 | W5-B items (combined journey, G1, G2, G3, refusals, driver, stop card, `when_words`, suites) | J1 and DT2 |
-| TUI checkpoint 1; person tries it | J0 |
-| TUI checkpoint 2 | J1 |
+| TUI checkpoint 1 | J0 (accepted) |
+| "The person tries checkpoint 1" | J0 optional, non-blocking feedback note |
+| TUI checkpoint 2 | J1's bounded cp2 steps; J1 as a whole also needs the W5-B remainder |

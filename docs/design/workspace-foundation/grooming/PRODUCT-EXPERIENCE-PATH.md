@@ -338,8 +338,12 @@ and change entry in the same change.
 ## Living record
 
 > This list records the discussion's own milestones. From 2026-09-14 the open items are
-> tracked in [NEXT-STEPS.md](NEXT-STEPS.md): "let the person try" is J0; "extend the same
-> fixture" is J1, J1G and J5. Friction observations are still appended in this file.
+> tracked in [NEXT-STEPS.md](NEXT-STEPS.md). J0 (this fixture) is accepted on its terminal
+> evidence at `36922486c`. "Let the person try" is now optional, non-blocking feedback; its
+> "before expanding scope" gate below is historical, superseded by the instruction to
+> continue with the next unblocked slice without routine approval. "Extend the same
+> fixture" is J1, J1G and J5. Friction observations are still appended in this file
+> whenever the person tries a demo.
 
 - [x] Preserve the model, critique and separation of internal structure from UI.
 - [x] Inspect published backend source and saved task progress at the checkpoint above.
