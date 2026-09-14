@@ -550,6 +550,11 @@ straight to that row, and it carries the answer you were standing on with it —
 the row then says `it goes with 2 Adaptive`, which is "I will take that one, but
 not as it stands".
 
+**It is a real box**, not a bare line: the caret keys every other box answers
+work in it too — `⌘←`/`⌘→` to the ends of the line, `⌥⌫`/`ctrl+⌫` to kill a word,
+`ctrl+u` to kill to the start of the line (keys.md, *Word jump and line jump work
+in every box*).
+
 **A question with nothing to weigh is one row**, because a frame around one
 sentence is a box drawn around nothing:
 

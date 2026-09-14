@@ -3177,13 +3177,37 @@ func (a *app) questionWalkCount(q questionShown) int {
 // still *later* (it is read before this, with every other question's esc). A key
 // this row does not know is handed back rather than swallowed — the block takes
 // only the keys it draws, and a box is not a reason to stop being that.
+//
+// THE WORD JUMPS AND THE WORD KILL ARE THE SURFACE'S AND NOT THIS BOX'S
+// (editkeys.go). This row is a box like every other on the program, so it reads
+// the one vocabulary they all read rather than a hand-rolled copy of it — the
+// copy this file carried bound `alt+←`/`alt+b` and the two ends of the line and
+// nothing else, so ⌘←/⌘→ reached no part of the caret, ⌘⌫ killed no line and
+// ⌥⌫/ctrl+⌫ killed no word in the one box a person writes an answer in. A box
+// that answers to fewer names than the message box directly beneath it is the
+// defect editkeys.go was written for, said about the last box it had not reached.
 func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	open := a.questionHeld(head.token())
 	if open == nil {
 		return nil, false
 	}
 	box := &open.other.words
-	switch key := msg.String(); key {
+	key := msg.String()
+	// THE CARET JUMPS ANSWER TO EVERY NAME A TERMINAL SENDS THEM BY: `alt+←`,
+	// `alt+b`, `ctrl+←`, `super+←`/`meta+←` (⌘←), `ctrl+a` for the start of the
+	// line, and the same four forward for its end.
+	if editorMotion(box, key) {
+		a.touch()
+		return nil, true
+	}
+	// AND SO DOES THE WORD KILL: ⌥⌫ (`alt+backspace`), ctrl+⌫ (`ctrl+backspace`).
+	// `ctrl+w` is deliberately absent here as it is in the message box — it shuts
+	// the tab in front, read far above this box (tabclosekey.go).
+	if editorWordKill(box, key) {
+		a.touch()
+		return nil, true
+	}
+	switch key {
 	case questionEnterKey:
 		words := strings.TrimSpace(box.String())
 		if words == "" {
@@ -3213,14 +3237,16 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		box.left()
 	case "right", "ctrl+f":
 		box.right()
-	case "home", "ctrl+a":
+	case "home":
 		box.home()
 	case "end", "ctrl+e":
 		box.end()
-	case "alt+left", "alt+b":
-		box.wordLeft()
-	case "alt+right", "alt+f":
-		box.wordRight()
+	// THE LINE KILL ANSWERS TO BOTH OF ITS NAMES, exactly as it does in the
+	// message box and in every filterable overlay (input.go, palette.go's
+	// [listNavigate], settings.go): `ctrl+u` is readline's, and `super+backspace`
+	// is what ⌘⌫ sends on a terminal that reports the modifier at all.
+	case "ctrl+u", "super+backspace":
+		box.killToStart()
 	case "backspace":
 		box.deleteBackward()
 	case "delete":
