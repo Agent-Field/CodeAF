@@ -2039,10 +2039,19 @@ full of slivers can show rows that add to more than the heading above them; the 
 the `today` pointer line and the Spending tab all keep the exact arithmetic. A call that
 cost nothing has no row at all, which is the emptiness law and not a rounding.
 
-The bars stand in one column and the call counts in another, both measured off the widest
-model name and role word actually on the page. A bar is that model's share of the dearest
-one, and a share is read by comparing where the bars END — which only says something when
-their starts are level.
+**Both tables are laid out in columns.** Under *what ran it* the model name, the role word,
+the bar and the call counts each stand in one, and under *what it was for* so do the
+project and the word for what kind of thing it was. A bar is that model's share of the
+dearest one, and a share is read by comparing where the bars END — which only says
+something when their starts are level.
+
+**The role keeps its column whether or not anything is bound.** Its width is the longest
+word the crew has, so the bars stand in the same place on a machine that has bound a model
+and on one that has not, and they do not move when the model you are talking to changes
+under them. A row with no role word draws nothing there rather than closing the gap up.
+
+On a frame too narrow to carry them, the bar and the counts go together and the row keeps
+the name, the role and the money — never a count with its tail cut off.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a

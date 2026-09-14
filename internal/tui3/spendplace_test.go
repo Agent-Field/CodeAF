@@ -130,10 +130,19 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if !strings.Contains(text, "what ran it · by the model, and the role it was bound to") {
 		t.Fatalf("the caption does not say what the column is:\n%s", text)
 	}
-	if !strings.Contains(text, "opus 4.1 · conversation") {
+	// THE ROW IS READ WHOLE AND NOT AS ONE RUN OF CELLS: the role stands in a
+	// column of its own now ([spendReading.modelCols]), so the name and the word
+	// it wears are no longer neighbours in the string.
+	opus := ""
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "opus 4.1") {
+			opus = line
+		}
+	}
+	if !strings.Contains(opus, "conversation") {
 		t.Fatalf("opus does not wear the slot it is bound to:\n%s", text)
 	}
-	if strings.Contains(text, "opus 4.1 · execution") {
+	if strings.Contains(opus, "execution") {
 		t.Fatalf("opus wears the word its calls named themselves:\n%s", text)
 	}
 	// AND A MODEL IS DRAWN BY THE WORD A PERSON SAYS, not by the provider's slug:
@@ -226,47 +235,144 @@ func TestTheSpendModelBarsAndCountsStandInColumns(t *testing.T) {
 	}
 }
 
-// AND THE COLUMN IS WIDE ENOUGH FOR THE ROLE WORD, whatever the table turns out
-// to hold, because it is MEASURED off the rows being drawn rather than declared.
+// AND THE ROLE HAS A COLUMN OF ITS OWN, HELD WHETHER OR NOT ANY ROW USES IT.
 //
-// A constant is a guess, and a guess one cell short of some real pair of words
-// puts precisely the row wearing them out of line — which was the first shape of
-// this fix: a thirty-cell column was exactly one cell short of
-// `· claude-opus-4.1 · conversation`, so the only row carrying a role word was
-// the only row whose bar did not line up.
-func TestTheSpendModelColumnIsMeasuredAndNotGuessed(t *testing.T) {
+// Sharing one field with the name is what put the single row wearing a role
+// word out of line with every row without one: `deepseek-v4-pro-0813 ·
+// conversation` is twelve cells longer than the name alone, and exactly ONE
+// model can answer for a slot on this surface, so that is the ordinary table
+// rather than an edge of it.
+func TestTheSpendRoleColumnIsHeldWhetherOrNotARowUsesIt(t *testing.T) {
 	line := func(model string, usd float64) session.UsageLine {
 		return session.UsageLine{At: spendTestNow, Model: model, Calls: 9, Input: 100, Output: 10, USD: usd, Session: "talk-1"}
 	}
-	r := readSpend([]session.UsageLine{
-		line("anthropic/claude-opus-4.1", 1.41),
-		line("openai/gpt-5-mini", 0.46),
-	}, session.LastDays(spendTestNow, 14), spendTestNow).crewed(spendCrew{
-		role: map[string]string{"anthropic/claude-opus-4.1": "conversation"},
-	})
-	cols := r.modelCols()
-	for _, model := range r.models {
-		if head := ansi.StringWidth(r.modelHead(model)); head >= cols.bar {
-			t.Fatalf("%q is %d cells and the bar column is %d — its bar is pushed out of line",
-				r.modelHead(model), head, cols.bar)
+	lines := []session.UsageLine{
+		line("z-ai/glm-5.3-flash", 1.41),
+		line("deepseek/deepseek-v4-pro-0813", 0.96),
+		line("qwen/qwen3.8-27b", 0.46),
+	}
+	win := session.LastDays(spendTestNow, 14)
+	bare := readSpend(lines, win, spendTestNow)
+	bound := bare.crewed(spendCrew{role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"}})
+	// THE COLUMNS DO NOT MOVE WHEN A BINDING APPEARS. The reservation's floor is
+	// the crew's own ladder, so the same models draw the same layout on a machine
+	// that has bound one of them and on a machine that has bound none.
+	if bare.modelCols(120) != bound.modelCols(120) {
+		t.Fatalf("binding a model moved the table's columns: %+v then %+v", bare.modelCols(120), bound.modelCols(120))
+	}
+	for _, r := range []spendReading{bare, bound} {
+		cols := r.modelCols(120)
+		for _, model := range r.models {
+			name := ansi.StringWidth(r.modelNameField(model))
+			if name >= cols.role {
+				t.Fatalf("%q is %d cells and the role column is %d — its role is pushed out of line",
+					r.modelNameField(model), name, cols.role)
+			}
+			role := strings.TrimSpace(r.modelRole(model.Model))
+			if role == "" {
+				continue
+			}
+			if used := cols.role + ansi.StringWidth(tokens.GlyphProseBullet+" "+role); used >= cols.bar {
+				t.Fatalf("%q ends at %d and the bar column is %d — its bar is pushed out of line", role, used, cols.bar)
+			}
 		}
 	}
 }
 
-// AND AN IDENTITY TOO WIDE FOR THE CAP KEEPS EVERY CELL OF ITSELF. The model is
-// the row's payload, so an overrun pushes that row's own bar one space late
-// rather than being cut down to line a neighbour's bar up.
-func TestASpendModelNameWiderThanTheColumnIsNotCutDownToFitIt(t *testing.T) {
-	long := tokens.GlyphProseBullet + " deepseek-v4-flash-latest · verification · execution"
-	if ansi.StringWidth(long) <= spendModelHeadCap {
-		t.Fatalf("the overrun this test is about no longer overruns the %d-cell cap: %q", spendModelHeadCap, long)
+// AND A NAME TOO WIDE FOR ITS CAP KEEPS EVERY CELL OF ITSELF. The name is the
+// row's payload, so an overrun pushes the field behind it one space late rather
+// than being cut down to line a neighbour's up.
+func TestASpendNameWiderThanItsColumnIsNotCutDownToFitIt(t *testing.T) {
+	long := tokens.GlyphProseBullet + " deepseek-v4-flash-latest-0731-experimental"
+	if ansi.StringWidth(long) <= spendModelNameCap {
+		t.Fatalf("the overrun this test is about no longer overruns the %d-cell cap: %q", spendModelNameCap, long)
 	}
-	padded := spendColumnAt(long, spendModelHeadCap)
+	padded := spendColumnAt(long, spendModelNameCap)
 	if !strings.Contains(padded, long) {
-		t.Fatalf("an identity wider than the cap was cut down: %q", padded)
+		t.Fatalf("a name wider than its cap was cut down: %q", padded)
 	}
 	if got := ansi.StringWidth(padded) - ansi.StringWidth(long); got != 1 {
-		t.Fatalf("an overrunning row hangs its bar %d cells out, want the one space every row has: %q", got, padded)
+		t.Fatalf("an overrunning row hangs the next field %d cells out, want the one space every row has: %q", got, padded)
+	}
+}
+
+// `WHAT IT WAS FOR` IS A TABLE TOO: THE PROJECT AND THE KIND WORD EACH STAND IN
+// A COLUMN ([spendReading.subjectCols]).
+//
+// The names under this heading are whatever a person called their work, so the
+// two fields behind them landed wherever each name happened to end and the eye
+// had to find them again on every row — with the money, right-flushed, the only
+// thing on the page that stood in a column at all.
+func TestTheSpendSubjectFactsStandInColumns(t *testing.T) {
+	r := spendTestReading().unfolding(true)
+	for _, width := range []int{100, 160} {
+		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
+		head := 0
+		for i, row := range rows {
+			if strings.Contains(row, spendSubjectsWord) {
+				head = i + 1
+				break
+			}
+		}
+		if head+len(r.subjects) > len(rows) {
+			t.Fatalf("at %d cells the subjects table is short:\n%s", width, strings.Join(rows, "\n"))
+		}
+		tags, kinds := map[int]bool{}, map[int]bool{}
+		tagged, kinded := 0, 0
+		for i, subject := range r.subjects {
+			row := rows[head+i]
+			name := r.name(subject)
+			// THE SEARCH STARTS AFTER THE NAME. A promise's tag carries a
+			// separator of its own — `standing · 88 firings` — so a scan for the
+			// mark that introduces a field finds one inside a field too.
+			from := strings.Index(row, name)
+			if from < 0 {
+				t.Fatalf("at %d cells row %d does not name %q:\n%s", width, i, name, row)
+			}
+			from += len(name)
+			at := func(field string) int {
+				if field == "" {
+					return -1
+				}
+				found := strings.Index(row[from:], field)
+				if found < 0 {
+					t.Fatalf("at %d cells row %q does not carry %q", width, row, field)
+				}
+				return ansi.StringWidth(row[:from+found])
+			}
+			if col := at(spendSubjectTag(subject)); col >= 0 {
+				tags[col], tagged = true, tagged+1
+			}
+			if col := at(spendSubjectKind(subject, spendSubjectTag(subject))); col >= 0 {
+				kinds[col], kinded = true, kinded+1
+			}
+		}
+		// TWO ROWS ARE THE FEWEST THAT CAN PROVE A COLUMN, and the fixture's
+		// names are deliberately different lengths — a table whose rows happened
+		// to be the same width would pass this test without a column in it.
+		if tagged < 2 || kinded < 2 {
+			t.Fatalf("at %d cells only %d rows carried a tag and %d a kind word — too few to prove a column", width, tagged, kinded)
+		}
+		if len(tags) > 1 || len(kinds) > 1 {
+			t.Fatalf("at %d cells the subject tags start in columns %v and the kinds in %v, want one of each:\n%s",
+				width, tags, kinds, strings.Join(rows, "\n"))
+		}
+	}
+}
+
+// AND A SUBJECT WITH NO PROJECT DRAWS NOTHING IN THAT COLUMN, never a dot.
+// [filepath.Base] answers "." for the empty string, so a ledger line naming no
+// workspace used to read `· talk-1 · . · a conversation` — a mark standing in
+// for a fact nobody recorded, which is the emptiness law inverted.
+func TestASpendSubjectWithNoProjectDrawsNoTag(t *testing.T) {
+	line := session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 3, Input: 100, Output: 10, USD: 1.25, Session: "talk-1"}
+	text := strings.Join(plainSpendRows(readSpend([]session.UsageLine{line},
+		session.LastDays(spendTestNow, 1), spendTestNow).rows(120, newPalette(tokens.NoColor, false))), "\n")
+	if strings.Contains(text, tokens.GlyphProseBullet+" .") {
+		t.Fatalf("a line that named no project drew a dot for one:\n%s", text)
+	}
+	if !strings.Contains(text, "a conversation") {
+		t.Fatalf("the subject row lost its kind word with its tag:\n%s", text)
 	}
 }
 
