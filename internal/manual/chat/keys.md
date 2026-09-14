@@ -1486,8 +1486,10 @@ it instead of switching model.
 Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`;
 on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
 cursor: `→ lanes · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
-lanes — with `tab lanes` and `tab back` in place of the arrows while there is typed text the
-arrow would step over.
+lanes, and `enter unpin · ← back · esc` on the machine already pinned, where `enter` takes
+the pin off — with `tab lanes` and `tab back` in place of the arrows while there is typed
+text the arrow would step over. Typing while a fold is open filters that model's machines;
+only a query none of them match falls through to filtering the model list.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.

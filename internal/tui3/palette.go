@@ -89,11 +89,19 @@ type picker struct {
 	// chooser decides where a request goes — and the `auto` row is a claim about
 	// the second of those. Empty when nothing is believed, which draws no name.
 	auto string
-	// pin is the lane this conversation is held to, empty for auto. It is a
-	// snapshot taken when the list opened, exactly as current is, and for the
-	// same reason: it answers "what am I on", which cannot change while a modal
-	// overlay owns the keyboard.
+	// pin is the lane ROW this conversation is held to, VERBATIM — a machine's
+	// name, `auto` or `openrouter` — which is what tells the three rungs of the
+	// fold apart ([picker.marked]). It is a snapshot taken when the list opened,
+	// exactly as current is, and for the same reason: it answers "what am I on",
+	// which cannot change while a modal overlay owns the keyboard.
 	pin string
+	// force is the machine the next request would actually DEMAND ([app.pinnedNow]),
+	// and it is what every row that NAMES a machine draws. It differs from the
+	// row above it exactly when the wire has retired the pairing: the row goes on
+	// saying morph and no request asks for it, and the fold then marks `auto`,
+	// which is where the requests are really going (issue #1022). A snapshot for
+	// [picker.pin]'s reason.
+	force string
 	// guard is whether a slow answer may be rescued elsewhere. It rides here
 	// because it is a fact about what `auto` PROMISES, and this list is where a
 	// person decides whether to leave the choosing to it.
@@ -287,8 +295,14 @@ func (p *picker) rank() {
 	// same query and gets the same list.
 	tokens, terms := splitQuery(p.filter.String())
 	now := timeNow()
+	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
+	// the fold is forgotten below ([picker.narrowFold]).
+	open := p.unfold
 	p.hits = p.hits[:0]
 	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
+	if p.narrowFold(open, tokens, terms, now) {
+		return
+	}
 	for i, id := range p.lower {
 		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
 			continue
@@ -297,16 +311,8 @@ func (p *picker) rank() {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(id, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := queryScore(id, tokens)
+		if !hit {
 			continue
 		}
 		p.score[i] = total
@@ -340,6 +346,99 @@ func (p *picker) rank() {
 	if len(tokens) == 0 && len(terms) == 0 {
 		p.cursorToCurrent()
 	}
+}
+
+// narrowFold answers the filter box AS A QUESTION ABOUT THE MACHINES ALREADY ON
+// SCREEN, and false when it is not one — in which case the box filters models
+// exactly as it always has.
+//
+// WHAT IS OPEN IS WHAT IS BEING ASKED ABOUT. Somebody who has walked into a
+// model's fold and typed `morph` is looking at a list of machines and narrowing
+// it; the shipped reading took the same keystrokes as a hunt for a MODEL, found
+// `morph/morph-v3-large` in the catalog, and closed the fold they were standing
+// in (issue #1022). So an open fold gets the tokens first, and only a query that
+// matches none of its machines falls through to the models.
+//
+// IT IS THE SAME MATCHER AND NOT A SECOND ONE ([tokenScore], every token ANDed),
+// so `cloud fl` finds Cloudflare in a fold exactly as it finds a model in the
+// list, and a lane term (`@name`, `<1s`) is left to the list because those are
+// questions about which MODELS to keep.
+func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now time.Time) bool {
+	if model == "" || len(tokens) == 0 || len(terms) > 0 {
+		return false
+	}
+	at := -1
+	for i, hit := range p.all {
+		if hit.ID == model {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return false
+	}
+	views := laneViews(model, now)
+	matched := make([]scoredLane, 0, len(views))
+	for _, view := range views {
+		if total, hit := queryScore(strings.ToLower(view.Name), tokens); hit {
+			matched = append(matched, scoredLane{view: view, score: total})
+		}
+	}
+	if len(matched) == 0 {
+		return false
+	}
+	// THE MACHINES ARE RANKED THE WAY THE MODELS ARE, by the same rungs: a
+	// prefix first, then a substring by where it starts, then the loose letters
+	// last. `core` matches Cloudflare too — c-l-o-u-d-f-l-a-r-e carries the four
+	// letters in order — and a list that left it on top would put the cursor on
+	// the machine nobody typed for. Ties keep the ledger's own order, which is
+	// the order the fold draws when nothing is typed.
+	sort.SliceStable(matched, func(a, b int) bool { return matched[a].score < matched[b].score })
+	kept := make([]laneView, 0, len(matched))
+	for _, one := range matched {
+		kept = append(kept, one.view)
+	}
+	// The fold's own model is the only hit, so the machines that matched are
+	// drawn under the name they serve and nothing else is on the screen to
+	// wonder about. The `auto` row's prediction is taken over ALL the views: it
+	// is a claim about where the next turn goes and not about what was typed.
+	p.hits = append(p.hits, at)
+	p.unfold, p.lanes, p.first = model, kept, ""
+	p.auto = laneAuto(p.routing, model, views, now)
+	p.relist()
+	p.top = 0
+	// AND THE CURSOR LANDS ON THE FIRST MACHINE THAT MATCHED rather than on the
+	// `auto` row above them, because the machines are what was asked for and
+	// enter is what happens next.
+	for i, row := range p.list {
+		if row.lane >= 0 {
+			p.cursor = i
+			break
+		}
+	}
+	p.follow(pickerRows)
+	return true
+}
+
+// scoredLane is one machine of an open fold beside how well the filter box
+// matched its name, so the two can be sorted together.
+type scoredLane struct {
+	view  laneView
+	score int
+}
+
+// queryScore is [tokenScore] over a whole query: every token has to match and
+// the rungs are summed, which is exactly what [picker.rank] does to a model id.
+func queryScore(text string, tokens []string) (int, bool) {
+	total := 0
+	for _, token := range tokens {
+		score, hit := tokenScore(text, token)
+		if !hit {
+			return 0, false
+		}
+		total += score
+	}
+	return total, true
 }
 
 // splitQuery divides what is typed into the words that rank and the terms that
@@ -1366,24 +1465,28 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
-// row that names none — which is both `auto` and `openrouter`.
+// row that names none — `auto`, `openrouter`, and a pairing the wire has retired.
 //
 // It exists because [picker.pin] is the settings row VERBATIM, which is what
 // [picker.marked] needs to tell the three rungs of the fold apart, and is
 // exactly the wrong thing to hand to anything that draws a lane's name: the row
 // reading `auto` drew a model whose speed came `via auto`, a machine no router
-// has ever heard of.
-func (p *picker) pinnedLane() string {
-	switch strings.ToLower(strings.TrimSpace(p.pin)) {
-	case "", config.LaneAuto, config.LaneOpenRouter:
-		return ""
-	}
-	return p.pin
-}
+// has ever heard of. It is [picker.force] and not that row for the second half
+// of the same rule — a name may be drawn only while a request would demand it
+// (lanes.go's [laneInForce]).
+func (p *picker) pinnedLane() string { return p.force }
 
 // marked is the row an overlay's chosen band belongs to: the model in use, and
 // — inside an open fold — the lane this conversation is actually held to, which
-// is the pin when there is one and the `auto` row when there is not.
+// is the machine the next request would demand when there is one and the `auto`
+// row when there is not.
+//
+// THE MACHINE ROWS ARE MARKED AGAINST WHAT THE WIRE WOULD DEMAND and the two
+// answers that name no machine against the ROW, because those two are the only
+// thing the row says that the wire cannot: `auto` and `openrouter` both send no
+// lane, and only the row knows which of them a person wrote. So a pin the wire
+// has retired marks `auto` — the requests are going there — while the row itself
+// still reads `pinned: morph` on the panel that owns it.
 func (p *picker) marked(at int) bool {
 	if p.rowUnavailable(at) {
 		return false
@@ -1396,11 +1499,11 @@ func (p *picker) marked(at int) bool {
 	case model.ID != p.current:
 		return false
 	case row.lane == laneAutoAt:
-		return p.pin == "" || strings.EqualFold(p.pin, config.LaneAuto)
+		return p.force == "" && !strings.EqualFold(p.pin, config.LaneOpenRouter)
 	case row.lane == laneRoutAt:
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
-	return strings.EqualFold(p.pin, p.lanes[row.lane].Name)
+	return p.force != "" && strings.EqualFold(p.force, p.lanes[row.lane].Name)
 }
 
 // groupBefore is the dim service heading before a model row. Folded lane rows
@@ -1769,6 +1872,13 @@ const (
 	// pickerKeysFoldTab is the same with characters before the caret, where
 	// `←` edits the box and `tab` is the way out.
 	pickerKeysFoldTab = "enter choose · tab back · esc"
+	// pickerKeysUnpin is the row inside the fold that the requests are ALREADY
+	// going to: the same enter takes the pin off there (lanes.go's
+	// [app.applyLaneChoice]), and the hint is the only place that gesture
+	// announces itself.
+	pickerKeysUnpin = "enter unpin · ← back · esc"
+	// pickerKeysUnpinTab is that row with characters before the caret.
+	pickerKeysUnpinTab = "enter unpin · tab back · esc"
 	// pickerKeysSwitch is a list with no fold at all — a task's model, an
 	// empty result — where the keys are the two every list has.
 	pickerKeysSwitch = "enter switch · esc"
@@ -1789,9 +1899,16 @@ func (p *picker) keysHint() string {
 	if ok {
 		row = p.list[p.cursor]
 	}
+	// AND A MACHINE THAT IS ALREADY THE ANSWER SAYS WHAT ENTER DOES THERE, which
+	// is the one gesture in this fold that is not the same as its neighbours'.
+	unpin := ok && row.lane >= 0 && p.marked(p.cursor)
 	switch {
 	case !ok || p.laneSlot == "":
 		return pickerKeysSwitch
+	case unpin && p.filter.cursor > 0:
+		return pickerKeysUnpinTab
+	case unpin:
+		return pickerKeysUnpin
 	case row.lane != laneNone && p.filter.cursor > 0:
 		return pickerKeysFoldTab
 	case row.lane != laneNone:

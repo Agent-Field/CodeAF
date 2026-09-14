@@ -2614,7 +2614,9 @@ Setting **routing** yourself is how you turn it on, and it applies everywhere:
 - **`simple`** is the shipped row described above.
 - **`off`** sends no preference and stops timing endpoints altogether.
 
-A change lands on the next session.
+A change here takes effect on your **next message** — the row goes straight to the layer
+that sends requests, so nothing waits for a relaunch. The `lane` row under it re-reads what
+`auto` means in the new word on the same frame.
 
 Under `latency` or `price`, where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
 
@@ -2673,7 +2675,10 @@ your model is part of the same decision as the model:
  routing       simple
 ```
 
-The tail on the model row is the machine: `pinned: cloudflare` once you have pinned one,
+The tail on the model row is the machine **requests are actually going to**:
+`pinned: cloudflare` once you have pinned one and the wire is still carrying it,
+`auto (cloudflare cannot serve this model)` once that machine has refused the pairing —
+your `lane` row is untouched, but nothing is asking for it any more —
 `openrouter` when you have asked for no endpoint at all, and `auto (cloudflare now)` — a
 prediction of where the next turn would land — only under `latency` or `price`, where
 aforge is the one choosing. Under the shipped `simple` row nobody here is predicting, so

@@ -175,15 +175,17 @@ var settingReaders = map[string]string{
 	// turn end, beside the mouse and the gate posture — and becomes what the
 	// transcript draws of the clock (internal/tui3's timestamps.go).
 	KeyTimestamps: "TimestampsAt",
-	// The routing row is read by the v3 door and becomes session.Config.Routing,
-	// which the adapter turns into the preference object on every request
-	// (internal/provider's velocity.go). It names the accessor the door touches,
-	// which is the CHOICE reader rather than the resolved one: the door has to be
-	// able to hand down "nobody wrote a word", because that is what lets a client
-	// handed nothing fall to the row this process installed while an actual word
-	// still wins. RoutingAt is the settings sheet's read of the same row and
-	// stays what it always was.
-	KeyRouting: "RoutingChoiceAt",
+	// The routing row is INSTALLED rather than handed down — `InstallRoutingRow`
+	// puts it on the process-wide knob every client that was handed nothing
+	// reads (internal/provider's velocity.go), and the v3 door deliberately
+	// hands the session no answer of its own so that a row written mid-session
+	// reaches the very next request (#1022). So the reader named here is the
+	// installer, which is what is really called from outside this package — by
+	// the launch, and again by the settings panel on the keystroke that writes
+	// the row. `RoutingChoiceAt` is the choice reader it is built on and
+	// `RoutingAt` is the surface's resolved read of the same row; both stay what
+	// they were.
+	KeyRouting: "InstallRoutingRow",
 	// The fallback chain is read by the v3 door and becomes
 	// session.Config.ModelFallbacks, which the adapter walks when no endpoint
 	// serving the session's model will accept the request at all
