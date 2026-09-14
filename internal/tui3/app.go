@@ -1679,6 +1679,16 @@ type app struct {
 	// capability that cannot work is absent, not broken.
 	stand  *standingCard
 	stands StandingSeam
+	// collections is the folders place's seam, and browse its state
+	// (place_folders.go). foldersArm arms the quiet interval before a selected
+	// row is read closely; nil is the real timer, and only a test sets it, for
+	// [app.searchArm]'s reason.
+	collections CollectionSeam
+	browse      foldersPlace
+	// placeLater is a reading a place asked for from a gesture that answers no
+	// command ([app.takePlaceLater]).
+	placeLater tea.Cmd
+	foldersArm func(gen int) tea.Cmd
 	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
 	// about the connection the conversation is on the far end of. Its zero value
 	// is every local session — no segment, no notice, no waiting room — which is
@@ -2492,6 +2502,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
+		collections:         opts.Collections,
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
@@ -3297,7 +3308,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
 		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 && a.placeBodyWheel(delta) {
-			return a, nil
+			return a, a.takePlaceLater()
 		}
 		// And the rewind timeline, on the same terms as all three: it is the whole
 		// screen, and its window follows its cursor rather than an offset of its
@@ -4130,6 +4141,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case searchDoneMsg:
 		a.searchDone(msg)
+		return a, nil
+
+	case foldersPageMsg:
+		// A folder's page, read on the machine that keeps it, coming back. An
+		// answer for a folder the person has already walked out of is dropped
+		// (place_folders.go).
+		return a, a.foldersPageLanded(msg)
+
+	case foldersItemTickMsg:
+		return a, a.foldersItemTick(msg)
+
+	case foldersItemMsg:
+		a.foldersItemLanded(msg)
+		return a, nil
+
+	case foldersFileMsg:
+		a.foldersFileLanded(msg)
 		return a, nil
 
 	case taskPilotMsg:

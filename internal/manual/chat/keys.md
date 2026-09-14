@@ -226,7 +226,7 @@ keystroke on one screen.
 `?` **over an empty box** opens `/help`: every command and every chord, written into the
 transcript where you can scroll it.
 
-**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+**On a place** — home, tasks, standing, memory, spend, search, settings, folders — `?` draws **the
 map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
 was already using. One meaning, two screens: show me the keys for where I am standing.
 
@@ -651,7 +651,7 @@ rather than stopping at the edge.
 **With the keyboard**, `shift` with any motion key selects: `shift+←`/`shift+→` by a
 character, `shift+↑`/`shift+↓` by a line, `alt+shift+←`/`alt+shift+→` by a word,
 `shift+home`/`shift+end` to a line's ends, and `cmd+a` takes the whole message. Those
-`shift` chords are the message box's; on the seven places `shift+←→↑↓` are already the
+`shift` chords are the message box's; on the places `shift+←→↑↓` are already the
 time window that place is showing, so there they move the window and the pointer is how
 you select.
 
@@ -693,7 +693,7 @@ at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
 It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+too** — home, tasks, standing, memory, spend, search, settings, folders. Holding the button
 down and sweeping selects instead, and releasing copies what is lit (see "how do I
 select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
@@ -780,7 +780,7 @@ text when you click on the prompt's side of it. It works on a wrapped, multi-lin
 draft.
 
 It answers **on every place as well as in the conversation** — home, tasks,
-standing, memory, spend, search, settings. Until this wave only the conversation's
+standing, memory, spend, search, settings, folders. Until this wave only the conversation's
 message box answered it, so a click in home's box moved nothing.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
@@ -1655,7 +1655,7 @@ It works while either conversation is running, over every door: the one you leav
 streaming into its own transcript and is all there when you come back.
 
 **On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
-search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+search, settings and folders are one circle and `tab` walks it; `shift+tab` walks it back. That is
 the same key doing the same kind of thing — going to the next thing of the kind you are
 looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
 
@@ -1742,7 +1742,7 @@ the tab you are in. See *Conversation tabs* and
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
 It works **in a conversation and on every place** — home, tasks, standing, memory, spend,
-search, settings — because it is drawn over the screen rather than being a screen of its
+search, settings, folders — because it is drawn over the screen rather than being a screen of its
 own. Nothing under it moves by a cell.
 
 The cursor opens on the **first row you can actually go to**, never on `you are here`, so
@@ -1884,19 +1884,19 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of seven places, and
-every one of them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold
+**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of eight places, and
+every one of them answers to its position on the tab bar — `alt+1` through `alt+8`. Hold
 `alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
 keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
-**`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
+**`ctrl+1` … `ctrl+8` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
 sends exactly the keys that scheme cannot spell, and it tells aforge it does. Where that
-report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
-map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
+report arrives, `ctrl+1` … `ctrl+8` jump to the same eight places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…8 or ctrl+1…8 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
 WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
 way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
@@ -1907,7 +1907,7 @@ place key that does: `tab` belongs to the composer's path completion while you a
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
 is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
-frame saying what it is for, and none of the seven is ever a key that does nothing. **On
+frame saying what it is for, and none of the eight is ever a key that does nothing. **On
 such a page the line under the box names only the way out** — `tab next place · esc` — on
 tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
 filter` over a body with no rows would be naming a key with nothing to act on.
@@ -2020,7 +2020,7 @@ that change them. `alt+w` walks the folder round the projects on this machine an
 opens the model list in home's own body; pressing either label does the same as its chord.
 The scope chip that used to sit against the right of the box row — `here ~/aforge-v2` — is
 gone from home, because the rule says the same fact better and `enter` honours this one. The
-other six places keep the chip. The line under the box is the foot, and **at rest it is
+other seven places keep the chip. The line under the box is the foot, and **at rest it is
 exactly**
 `type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
 and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
@@ -2062,7 +2062,7 @@ seconds quits aforge.
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
-the row of seven words under the top line. The word you are standing in wears the cursor's
+the row of eight words under the top line. The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
 
 | Chord | What it does while the cursor is on the bar |
@@ -2074,7 +2074,7 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
-next and previous place, `alt+1` … `alt+7` jump, `alt+.` draws the map, and **any printable
+next and previous place, `alt+1` … `alt+8` jump, `alt+.` draws the map, and **any printable
 key goes into the composer** — taking the cursor back down into the page with it, because
 somebody who has started typing has stopped looking at the bar.
 
@@ -2608,7 +2608,7 @@ snapshot.
 **The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
 as the frame narrows, and at its narrowest it carries only the place you are standing in —
 so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
-and `alt+1`…`alt+7` still go everywhere.
+and `alt+1`…`alt+8` still go everywhere.
 
 **A file path is your terminal's click, not aforge's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
@@ -2806,7 +2806,7 @@ answer:
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+8` (`⌥1` … `⌥8` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same eight places. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |

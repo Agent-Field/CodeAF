@@ -250,16 +250,16 @@ Under the table `/help` prints the keys that have no slash command, including
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 
-**It also names the way into the seven places**, which it did not for a long while — three
+**It also names the way into the eight places**, which it did not for a long while — three
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…8        go to a place · in the tab bar's own order: home tasks standing memory spend search settings folders
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
+On a Mac those read `⌥1…8` and `⌥.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -990,7 +990,7 @@ box, opens it on a one-conversation machine and on an empty one alike — over `
 refuses.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
+of eight places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
 headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
 `✕` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the

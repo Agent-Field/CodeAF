@@ -238,6 +238,10 @@ type Engine struct {
 	// ([EngineMemory]).
 	Memory  EngineMemory
 	Archive func(dir string, archived bool) error
+	// Collections is this machine's logical folders, as three readings
+	// (collections.go). A zero value is folders unreadable here, answered as a
+	// refusal rather than as a machine with no folders.
+	Collections EngineCollections
 	// PlacesRoot is the directory World walked, carried on the welcome so the
 	// surface can put THIS conversation back into a walk taken before it existed
 	// ([Welcome.PlacesRoot] holds the argument). Empty says nothing about the
@@ -2395,6 +2399,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
 	if payload, handled, err := s.placesCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := s.collectionsCall(call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)

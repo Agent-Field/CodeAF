@@ -35,7 +35,7 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 		bar := plain(a.placeTabBar(width, false, a.pal))
 		for _, id := range pages() {
 			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of the seven places should be on the row:\n\t%q",
+				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every place should be on the row:\n\t%q",
 					width, bar, id.word(), plain(a.placeTabBar(200, false, a.pal)))
 			}
 		}
@@ -52,9 +52,14 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
 			wide, "  home   tasks   standing …")
 	}
-	if narrow := plain(a.placeTabBar(60, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
-		t.Fatalf("at 60 columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			narrow, "  home  tasks  standing  memory  spend  search  settings")
+	if tight := plain(a.placeTabBar(66, false, a.pal)); !strings.Contains(tight, "home  tasks") {
+		t.Fatalf("at 66 columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
+			tight, "  home  tasks  standing  memory  spend  search  settings  folders")
+	}
+	// AND AT SIXTY THE UNBANDED WORDS GIVE UP THEIR PADDING TOO, while the word
+	// you are standing in keeps the band it is painted on.
+	if narrow := plain(a.placeTabBar(60, false, a.pal)); !strings.Contains(narrow, " home tasks standing") {
+		t.Fatalf("at 60 columns the bar drew\n\t%q\nand it should read\n\t%q", narrow, "  home tasks standing memory spend search settings folders")
 	}
 }
 

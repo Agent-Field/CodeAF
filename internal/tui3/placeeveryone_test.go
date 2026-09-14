@@ -10,6 +10,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
+	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
 )
 
 // ── ONE GRAMMAR, EVERY PLACE — CHECKED ON EVERY PLACE ───────────────────────
@@ -123,7 +125,37 @@ func everyPlaceTable() []everyPlace {
 				return out
 			},
 		},
+		{
+			id:     pageFolders,
+			open:   foldersPlaceLab,
+			cursor: func(a *app) int { return a.browse.cursor },
+			hits: func(a *app) []int {
+				_, hits, _, _ := a.placeDraw(placeFolders{}, a.width, a.height)
+				return placeLineHits(hits)
+			},
+		},
 	}
+}
+
+// foldersPlaceLab is the folders place standing in a folder holding more rows
+// than the frame can draw.
+func foldersPlaceLab(t *testing.T) *app {
+	t.Helper()
+	f := newCollectionLab(t, 120)
+	rows := make([]workspaceview.FolderRow, 0, 40)
+	for i := 0; i < 40; i++ {
+		rows = append(rows, workspaceview.FolderRow{Filed: true, ResolvedRef: workspace.ResolvedRef{
+			Ref:   workspace.Ref{Kind: workspace.ArtifactKind, ID: "/srv/notes/n" + itoa(i) + ".md"},
+			Title: "note " + itoa(i) + ".md", Available: true,
+		}})
+	}
+	f.pages[""] = workspaceview.FolderPage{Rows: rows}
+	f.a.height = 20
+	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
+	if !f.a.at(pageFolders) || len(f.a.browse.page.Rows) != 40 {
+		t.Fatalf("the folders place did not open over forty rows: %d", len(f.a.browse.page.Rows))
+	}
+	return f.a
 }
 
 // ── the labs ────────────────────────────────────────────────────────────────

@@ -195,12 +195,12 @@ func (a *app) placeHint() string { return a.chords.say(a.placeHintSaid()) }
 
 // chordCtrlJumpWords is the alias clause the map grows where the terminal can
 // send it, and [chordSpelling.mapLine] is the only thing that adds it.
-const chordCtrlJumpWords = " or " + chordCtrlWord + "1…7"
+const chordCtrlJumpWords = " or " + chordCtrlWord + "1…" + placeLastDigit
 
 // chordJumpWords is the map's own name for the jump class, and it is spelled
 // here so [chordSpelling.mapLine] and [placeMapWords] cannot drift apart about
 // where the alias clause goes.
-const chordJumpWords = chordAltWord + "1…7"
+const chordJumpWords = chordAltWord + "1…" + placeLastDigit
 
 // chordMapAlias is `alt+.`'s second encoding, on the same terms as the digits:
 // live only where the terminal answered the keyboard query.
@@ -261,7 +261,7 @@ func chordCtrlDigit(key string) (page, bool) { return placeDigitAt(chordCtrlWord
 // a place's composer draws one dim line, once, that the next real chord retires.
 var chordDeadKeys = map[rune]string{
 	'¡': "alt+1", '™': "alt+2", '£': "alt+3", '¢': "alt+4",
-	'∞': "alt+5", '§': "alt+6", '¶': "alt+7",
+	'∞': "alt+5", '§': "alt+6", '¶': "alt+7", '•': "alt+8",
 	'≥': "alt+.",
 	'©': "alt+g", 'œ': "alt+q", 'ß': "alt+s",
 	'∑': "alt+w", 'ø': "alt+o", '∫': "alt+b", 'ƒ': "alt+f",
@@ -376,6 +376,6 @@ func (c chordSpelling) chordSetupWords() string {
 	if c.meta != chordMetaWord {
 		return ""
 	}
-	return "the seven places answer " + chordMetaWord + "1…" + chordMetaWord +
-		"7 · if " + chordMetaWord + " types a character instead, " + c.chordFixWords()
+	return "the " + placeCountWord + " places answer " + chordMetaWord + "1…" + chordMetaWord +
+		placeLastDigit + " · if " + chordMetaWord + " types a character instead, " + c.chordFixWords()
 }

@@ -523,6 +523,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).
 		Standing: v3StandingSeam(cfg.Standing),
+		// The folders place reads this process's own machine: there is no
+		// engine between this surface and the conversation (chatv3_organization.go).
+		Collections: v3Collections(cfg.Standing).surface(),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

@@ -669,7 +669,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// (internal/tui3's [app.readTaskTail]), so the wire's own deadline is the
 		// only clock it needs.
 		TaskRecord: client.TaskRecord,
-		TaskRoom:   agent.TaskRoom,
+		// AND THE PERSON'S FOLDERS, from the same machine: every reading is the
+		// engine's (chatv3_organization.go's [hostCollections]), so a folder
+		// listed over a connection is never this laptop's database standing in.
+		Collections: hostCollections(client),
+		TaskRoom:    agent.TaskRoom,
 		// TaskIndex is filled below, from the same shared walk, once this
 		// conversation's transcript is the only thing left to key it by.
 		Ledger:  ledger.read,

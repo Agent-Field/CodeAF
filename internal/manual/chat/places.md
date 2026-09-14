@@ -1,11 +1,11 @@
 # Places
 
-## What a place is, and the seven of them
+## What a place is, and the eight of them
 
-A **place** is a full-screen room in aforge that is not this conversation. There are seven,
+A **place** is a full-screen room in aforge that is not this conversation. There are eight,
 and they are always in the same order:
 
-`home` · `tasks` · `standing` · `memory` · `spend` · `search` · `settings`
+`home` · `tasks` · `standing` · `memory` · `spend` · `search` · `settings` · `folders`
 
 They are drawn as a **tab bar** on the second row of every place, under the top line. The
 one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
@@ -14,7 +14,7 @@ looks like that bar, so "which place am I in" is one glance.
 Every place is drawn in the same frame:
 
 1. the top line — this machine's own signs: what is on watch, what today has cost, the time
-2. the tab bar — the seven words
+2. the tab bar — the eight words
 3. a dim rule
 4. the place's own body
 5. a rule, then the **composer** — one line you can type into, wherever you are
@@ -25,17 +25,17 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
-Four ways, and they all reach the same seven rooms:
+Four ways, and they all reach the same eight rooms:
 
 - **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
-- **`alt+1`** … **`alt+7`** (**`⌥1`** … **`⌥7`** on a Mac) — jump straight to one, **from a
-  place or from a conversation**. The numbers are the tab bar's own order, so `alt+1` is home
-  and `alt+7` is settings. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
+- **`alt+1`** … **`alt+8`** (**`⌥1`** … **`⌥8`** on a Mac) — jump straight to one, **from a
+  place or from a conversation**. The numbers are the tab bar's own order, so `alt+1` is home,
+  `alt+7` is settings and `alt+8` is folders. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
   because that is what the keycap says; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
-- **`ctrl+1`** … **`ctrl+7`** — the same jump, on the terminals that can send it. `ctrl` and
+- **`ctrl+1`** … **`ctrl+8`** — the same jump, on the terminals that can send it. `ctrl` and
   a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
   never the first: it works only where the terminal runs the kitty keyboard protocol and says
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
@@ -51,7 +51,7 @@ Four ways, and they all reach the same seven rooms:
   says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
   to count, or nothing in it, says `a place` alone.
 - **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
-  place it names.
+  place it names. `folders` has no command; the keys, the word and the bar reach it.
 - **click the word** — the tab bar itself is the control. A press on a place's word goes
   there; a press in the gap between two words does nothing, and a press on the word you are
   already standing on does nothing (going there would throw away what you have typed and
@@ -74,7 +74,7 @@ says what tasks are and ends `no tasks yet — /task <brief> starts one`.
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
 
 **Press `↑` from the first row of the page you are on.** The cursor leaves the list and
-lands on the **tab bar** — the row of seven words under the top line — and from there:
+lands on the **tab bar** — the row of eight words under the top line — and from there:
 
 | Key | What it does on the bar |
 | --- | --- |
@@ -84,7 +84,7 @@ lands on the **tab bar** — the row of seven words under the top line — and f
 | `esc` | back into the page, on the row you walked up from |
 | `↑` | nothing. There is nothing above the bar but the top line, which is a reading rather than a control |
 | `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
-| `alt+1` … `alt+7` | jump straight to one, exactly as everywhere else |
+| `alt+1` … `alt+8` | jump straight to one, exactly as everywhere else |
 | any printable key | goes to the composer, and the cursor comes back down into the page with it |
 
 **The word your cursor is on wears the cursor's band**, in place of the mark the word you
@@ -94,7 +94,7 @@ is still saying which room that is, on every one of its rows.
 
 **Walking the bar opens nothing.** That is the whole difference between this and `tab`:
 `tab` steps into each room as it passes, which closes the last one and throws away whatever
-you had typed into it, so looking along seven words used to cost seven openings. `←` and
+you had typed into it, so looking along the words used to cost one opening each. `←` and
 `→` move a cursor and nothing else; `enter` is what goes in.
 
 **`←` and `→` do not open a row's verbs while the cursor is on the bar**, and they do not
@@ -132,7 +132,7 @@ a press on the word you are already standing on does nothing.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
-Three gestures, the same on all seven places:
+Three gestures, the same on all eight places:
 
 - **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
   what the card beside the list is about, and on home it is what the right-hand card shows.
@@ -264,8 +264,8 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) | jump straight to a place |
-| `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
+| `alt+1` … `alt+8` (`⌥1` … `⌥8` on a Mac) | jump straight to a place |
+| `ctrl+1` … `ctrl+8` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
@@ -380,7 +380,7 @@ Press `alt+.` and the whole key map appears **in the cells you were already read
 the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
 
 **The chord list is built from the place you are on.** It reads
-`alt+1…7 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
+`alt+1…8 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
 — and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
 than naming a key that would open nothing there.
 
@@ -555,26 +555,59 @@ Every setting, in sections, with a search that crosses all of them. `/settings`,
 `/config` open it, and so does `alt+7`.
 
 It has a **second bar** under the place bar: its own sections. Those two bars are not a
-repetition — the upper one is the seven places, the lower one is settings' own pages. `←` and
+repetition — the upper one is the eight places, the lower one is settings' own pages. `←` and
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
+## folders — the logical folders you filed chats, work and files in, and how to look through them
+
+The eighth place, after settings: your collections, the logical folders `aforge collections`
+and the chat's `collections` tool make. `alt+8` (`⌥8` on a Mac), `tab` and the tab bar open
+it; there is no slash command. It is **not** `/folder`, never attaches a directory, and
+changes nothing — to file, place, move, pause or start, use `aforge collections …`, ask in a
+chat, or ongoing work's own keys on the standing place.
+
+The top level lists the folders no other folder files. `enter` goes into one; `←` or
+`backspace` on an empty box walks back out. The first line is the path you walked —
+`folders / Startup / Product` — so a folder filed in two folders is reachable through both.
+
+Each row is a mark, the title and dim words at the right: its kind (`folder`, `chat`,
+`work`, `ongoing work`, `artifact` — a file a folder names), its own state, and `placed` when this folder's rules reach
+it. Something filed and placed is **one row**. A record whose owner is gone stays, saying
+`missing`.
+
+`enter` on a chat opens **that one conversation**: a chat in two folders is one chat, not
+two — brought forward if this window holds it, never copied, its folders unchanged. On finite
+work it opens its record on tasks, on ongoing work the standing place at that item, on a
+file a preview across the page.
+
+A window of 88 columns or more draws the selected row's details in a column on the right.
+`→` shows `o open` (`go in`, `preview`) and `d details`; on a narrower window `d` is how you
+read them, across the page — `↑↓` scroll, `esc back to the list`. A click selects and never
+opens.
+
+Leave and come back: same folder, same row. Words typed in the box start a new conversation
+in **no** folder. The folders read are the machine the conversation runs on, over `--host`
+too; with no door it says `Folders cannot be read here: this conversation's machine did not
+offer them.`
+
 ## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
 
-**Every one of the seven words is still on the bar at 60 columns.** What a narrow frame
-gives up is the *air between the chips*, not a place: the seven words with the padding each
-chip carries are 57 cells, and the spaces between them are six more, so a 60-column
-terminal — a split pane, an ssh session, a phone in landscape — draws
+**Every one of the eight words is still on the bar at 60 columns.** What a narrow frame
+gives up is the *air around the words*, not a place. The eight words with the padding each
+chip carries are 66 cells and the spaces between them are seven more, so from 66 to 72
+columns the spaces go and every word keeps its padding. Below that the words nobody is
+standing on give up their padding too, and one space separates them; only the word wearing
+the band keeps its cells. A 60-column split pane standing on home draws
 
 ```
-  home  tasks  standing  memory  spend  search  settings
+  home tasks standing memory spend search settings folders
 ```
 
-with two cells between the words instead of three. Nothing else changes: the band under the
-word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+7` all mean exactly
-what they mean on a wide screen.
+Nothing else changes: the band under the word you are standing in, the counts, `tab`, `←`
+`→` and `alt+1`…`alt+8` mean what they mean on a wide screen.
 
-**Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
+**Under about 58 columns the bar carries what it can and counts the rest.** It keeps the
 place you are standing in, the word the cursor is on, and any place wearing a count, then
 fills in the bar's own order until the row is full and ends with a dim `▸ 3` — the number of
 places that are not on the row:
@@ -591,9 +624,9 @@ count is a sign and not a button** — pressing it does nothing, because it stan
 places at once and no single one of them is the answer.
 
 **The key that reaches them is `tab`**, and it is named on the foot of every place —
-`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
+`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+8`
 still go straight to a place whether or not its word is on the row, and the numbers never
-move: they are the bar's full seven-place order, not the order of what happens to be drawn.
+move: they are the bar's full eight-place order, not the order of what happens to be drawn.
 
 ## Why a nearly-empty place says what it is for
 
@@ -601,7 +634,7 @@ You only ever arrive at a place on purpose — from the tab bar, from a number, 
 the word. That arrival is the one moment somebody is asking "what is this", so a place with
 nothing of its own to draw answers, in a few sentences, and says nothing else.
 
-**Every place opens, always.** There is no state of the machine in which one of the seven
+**Every place opens, always.** There is no state of the machine in which one of the eight
 words on the bar is a key that does nothing. On a machine aforge was installed on an hour
 ago, `alt+2`, `alt+3` and `alt+4` all open:
 
@@ -616,9 +649,9 @@ ago, `alt+2`, `alt+3` and `alt+4` all open:
   it: `memory is off for this session · turn it on under /settings`.
 - **spend** inside a window nothing was spent in says what spend is for.
 - **search** with an empty box says what search is for.
+- **folders** on a machine with no folders says `No folders yet.` and how to make one.
 - **spend**, **search** and **memory** over `--host` each say one dim line where their rows
-  would be — see *The places over --host* below for the exact words and why three of the
-  seven still say them.
+  would be — see *The places over --host* below for the exact words and when they are still said.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -637,8 +670,8 @@ place** — not how many things are in there. A permanent count is furniture, an
 what people stop seeing.
 
 Home, tasks, standing and memory can wear one. Spend is a sum, search is something you do,
-and settings is how this machine is set — a number in front of any of those would be a number
-about nothing.
+settings is how this machine is set, and folders is browsing — a number in front of any of
+those would be a number about nothing.
 
 **Leaving a place is what counts as having looked at it.** The stamp is written on the way
 out, not on the way in: a stamp taken on arrival would call everything seen the instant it
@@ -657,7 +690,7 @@ walk in.
 ## The rewind timeline is not a place
 
 `/rewind` (also `/undo`, `/back`) opens a full-screen page too, and it is deliberately **not**
-one of the seven. It is something you do to *this conversation* — pick a point and cut back
+one of the eight. It is something you do to *this conversation* — pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
 
 ## The places over --host — whose machine am I looking at
@@ -682,6 +715,7 @@ their readings have not crossed:
 | **spend** | the far machine's priced model calls |
 | **search** | the far machine's conversation index |
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |
+| **folders** | the far machine's folders, read by the engine; never this computer's `collections.db` |
 
 **No place silently substitutes this laptop's rows for the far machine's.** Settings names
 the split as it opens. Spend, search and memory draw no local rows at all over `--host` and
@@ -722,7 +756,7 @@ something true to say.
 The tasks place reads its rows out of the same reading home lists, so the door that carried
 home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
 
-This was the worst of the seven before it crossed. The page walked *this* computer's
+This was the worst of the places before it crossed. The page walked *this* computer's
 `~/.aforge/v3` and drew what it found — a count and a total in dollars, `work aforge ran on
 its own. 8, $22.54 of it.` — under a conversation on a server that had run none of it. A page
 that reads a real disk and names the wrong machine is worse than a page that says nothing.

@@ -1010,6 +1010,13 @@ type Options struct {
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
 
+	// Collections is the person's logical folders, read on the machine that
+	// keeps them ([CollectionSeam] says what each reading owes). The zero value
+	// is a surface whose folders place says it cannot read folders here — never
+	// a machine with no folders, and never this process's own database standing
+	// in for an engine's.
+	Collections CollectionSeam
+
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
 	// link is being redialled, the empty round trip to measure on a slow clock,
