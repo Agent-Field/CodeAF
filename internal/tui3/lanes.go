@@ -692,6 +692,7 @@ func (a *app) routingOff() bool { return a.routing == config.RoutingOff }
 // (palette.go's [app.pickerKey]) and the settings panel's model and lane rows
 // (settings.go's [app.sheetSelectKey]) — and a pin written two ways is a pin
 // that drifts the first time one of the two is fixed.
+//
 // ENTER ON THE MACHINE ALREADY IN FORCE TAKES THE PIN OFF. It is a toggle on
 // the same key that put the pin on, which is the only way back to `auto` a
 // person can find without being told: the `auto` row sits above every machine in
