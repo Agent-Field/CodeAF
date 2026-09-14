@@ -1030,9 +1030,13 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 		return nil, false, func() {}
 	}
 	hub := a.hub
+	// AND WHAT IS STILL BEING ASKED, taken under this same lock rather than read
+	// through the map afterwards: the reply's cards are filtered against it
+	// ([eventHub.attach]), and a.questionWords belongs to a.mu.
+	asking := a.stillAskedLocked()
 	a.mu.Unlock()
 
-	stream, live := hub.attach()
+	stream, live := hub.attach(asking)
 	if !live {
 		// The turn ended between the two locks. Its channel is already closed,
 		// and saying "not running" is the honest answer to a question that was
@@ -1076,7 +1080,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 	// running under a.mu before it closes the hub, and we hold a.mu. The
 	// defensive arm keeps the honest answer anyway — a dead stream would hang
 	// the caller where the full record answers them.
-	stream, live := a.hub.attach()
+	stream, live := a.hub.attach(a.stillAskedLocked())
 	if !live {
 		return shapeEntries(a.messages, a.file), nil, func() {}
 	}
@@ -3512,11 +3516,25 @@ func (h *eventHub) subscribe() <-chan Event {
 // [eventHub.send]'s own reason — an eventStream send is an append and a signal,
 // never a wait.
 //
+// A CARD FOR A DECISION SOMEBODY HAS ALREADY MADE IS NOT REPLAYED, and asking
+// is what says which those are — the questions still waiting on somebody, as
+// [Agent.stillAskedLocked] reads them off the book at the moment of the attach.
+// The backlog is a faithful log of the turn and stays one; what is filtered is the
+// REPLAY, because a card is the one event in a turn that is not a report of
+// something that happened but a question about something that has not. Without
+// this, a person who approved a task and then looked at another tab was asked
+// the same question again every time they came back, for as long as the turn ran
+// — and the question, which takes the keyboard where it is drawn, made the
+// conversation behind it unscrollable with it.
+//
+// A nil map filters nothing, which is the honest answer for a caller that cannot
+// say what is open: every card replays, exactly as it did before this existed.
+//
 // false is a hub that has already closed, and the stream is closed with it: the
 // turn whose events it would carry is over, and a caller is owed that answer
 // rather than a channel that never ends. It is the same shape [taskRoom.join]
 // answers a landed node with.
-func (h *eventHub) attach() (*eventStream, bool) {
+func (h *eventHub) attach(asking map[string]bool) (*eventStream, bool) {
 	stream := newEventStream()
 	if h == nil {
 		stream.close()
@@ -3530,6 +3548,9 @@ func (h *eventHub) attach() (*eventStream, bool) {
 	}
 	h.foldedLocked()
 	for _, event := range h.backlog {
+		if key, asks := questionAsked(event); asks && !asking[key] {
+			continue
+		}
 		stream.send(event)
 	}
 	h.subscribers = append(h.subscribers, stream)
