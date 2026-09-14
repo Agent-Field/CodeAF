@@ -156,22 +156,20 @@ func TestAOneShotErrandDoesNotDivideATwoPartAsk(t *testing.T) {
 	}
 }
 
-// The floor is not a ban: three parts that owe each other nothing are a real
-// division, and the errand runs it as drawn.
-func TestAOneShotErrandMayStillDivideManyIndependentParts(t *testing.T) {
+// AND THREE INDEPENDENT PARTS FOLD TOO: the floor that called itself
+// evidence still passed the measured failure. The errand never divides —
+// it is one worker, and the claim-time JIT holds the payer's voice.
+func TestAOneShotErrandFoldsEvenThreeIndependentParts(t *testing.T) {
 	graph := threeIndependentSittings("caption the twelve image files")
-	if folded := gateErrandDivision(graph); folded != 0 {
-		t.Fatalf("three independent parts folded %d leaves, want the plan as drawn", folded)
+	if folded := gateErrandDivision(graph); folded != 3 {
+		t.Fatalf("three independent parts folded %d leaves, want all three", folded)
 	}
-	if got := len(graph.Leaves()); got != 3 {
-		t.Fatalf("the kept plan has %d work nodes, want the three parts", got)
+	if got := len(graph.Leaves()); got != 1 {
+		t.Fatalf("the folded plan has %d work nodes, want one worker", got)
 	}
 }
 
-// And "genuinely independent" is read off the edges, not the node count:
-// three links of a strict chain are one sitting drawn as three, because every
-// link after the first is one worker waiting on another.
-func TestAOneShotErrandReadsAChainAsOneSitting(t *testing.T) {
+func TestAOneShotErrandFoldsAChainToo(t *testing.T) {
 	graph := &plan.Graph{
 		Goal:   "Port the parser, then its tests, then the docs",
 		Stages: []plan.Stage{{Title: "the port"}},
