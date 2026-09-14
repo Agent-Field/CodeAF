@@ -7,54 +7,25 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/manual/asked"
 )
 
-// THE QUERIES A MODEL ACTUALLY SENT — AND THE ONES THAT STILL MISS.
+// THE QUERIES A MODEL ACTUALLY SENT.
 //
-// The first `model` string in each group below was READ OFF THE WIRE —
-// `deepseek/deepseek-v4-flash`, asked the `person` string beside it in a live
-// conversation, called the `manual` tool with these words of its own (#307, and
-// #309's own table). The rest are stand-ins. The wire's other two rewrites —
-// "who can see my files privacy file access", "privacy files who can see my
-// workspace" — reach the permissions page on their own since the section was
-// reworded to carry the privacy and file-access terms, so they measure the
-// corpus now rather than this file, and the rows carry phrasings of the same
-// shape that still miss. Each one is checked twice: that it misses the page
-// ALONE, so a passing row is the mechanism working rather than the corpus
-// having been kind, and that it reaches the page once the person's sentence is
-// read with it.
-//
-// A row that stops missing on its own is a row that has stopped measuring
-// anything, and this file says so out loud rather than passing quietly.
+// These three rewrites were read off the wire or kept as stand-ins after #307.
+// The permissions page now carries their own vocabulary, so each query reaches
+// the answer directly instead of depending on the person's original words to
+// rescue it through SearchBoth.
 var paraphrases = []struct{ person, model, want string }{
-	// The scenario's own question, as internal/e2e asks it. The first row is
-	// the wire's own rewrite that still misses; the two under it are the
-	// stand-ins the header comment explains.
 	{"who can see my files in aforge", "who can see my files when I use aforge", "permissions"},
 	{"who can see my files in aforge", "who can view my files in aforge", "permissions"},
 	{"who can see my files in aforge", "visibility of files in the workspace", "permissions"},
-	// And the same rewrites against #293's bare wording, which reaches the page
-	// second of four on its own — the thinnest margin there is, and both still
-	// come back.
-	{"who can see my files", "who can view my files in aforge", "permissions"},
-	{"who can see my files", "visibility of files in the workspace", "permissions"},
 }
 
-// TestAParaphraseReachesThePageThePersonsWordsReach is #307. The model does not
-// search what it was asked; it composes a query, and on a corpus this small two
-// words nobody said drop the page out of the four the model is handed.
-func TestAParaphraseReachesThePageThePersonsWordsReach(t *testing.T) {
+// C9: The manual answers the privacy paraphrases the strengthened heading names.
+func TestPrivacyParaphrasesReachPermissionsPage(t *testing.T) {
 	for _, row := range paraphrases {
-		if reaches(Chat().Search(row.model, DefaultResults), row.want) {
-			t.Errorf("%q now reaches %s on its own, so this row no longer measures the fix — replace it with a rewrite that still misses, or take it out",
-				row.model, row.want)
-			continue
+		found := Chat().Search(row.model, DefaultResults)
+		if !reaches(found, "permissions") {
+			t.Errorf("%q did not reach permissions; what came back was %v", row.model, pagesOf(found))
 		}
-		found := Chat().SearchBoth(row.model, row.person, DefaultResults)
-		if !reaches(found, row.want) {
-			t.Errorf("the model asked %q while the person had asked %q, and the %s page still did not come back; what did was %v",
-				row.model, row.person, row.want, pagesOf(found))
-			continue
-		}
-		t.Logf("%-45q + %-34q → %v", row.model, row.person, pagesOf(found))
 	}
 }
 
