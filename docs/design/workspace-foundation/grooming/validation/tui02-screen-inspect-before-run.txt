@@ -1,0 +1,52 @@
+ aforge                                                                                                                                                                       $0.02 / $500 · mon 5:52pm
+  home   tasks   standing   memory   spend   search   settings   folders
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ › Pricing and positioning                                                                                                     chat     Work · ongoing
+ › Roadmap notes                                                                                                               chat     Keep reports/product-digest.md current: whenever a file in
+  Draft the onboarding FAQ                                                                                             work · done     product/ changes, rewrite it as a short digest of the product
+  spec.md                                                                                                                 artifact     spec. At most $0.05 a run.
+ — ffffffffffff0009                                                                                                  chat · missing
+ › Product reports                                                                                             chat · idle · placed     here      placed here · this folder's rules reach it
+  product spec digest                                                                               ongoing work · active · placed     state     active
+                                                                                                                                        wakes     when product/** changes
+                                                                                                                                        report    reports/product-digest.md · published by aforge
+                                                                                                                                        checks    this window's engine checks every 5 minutes while it
+                                                                                                                                                  is open
+                                                                                                                                                  no background timer for this home
+                                                                                                                                                  or run aforge standing check
+                                                                                                                                        limits    $0.05 a run · 10 runs a day
+                                                                                                                                        version   instructions v1
+                                                                                                                                        does      Read every file under product/ (currently spec.md and
+                                                                                                                                                  onboarding-faq.md; check for others, they may change
+                                                                                                                                                  between runs). Write a short digest of the product
+                                                                                                                                        project   /tmp/af-pai-cp2-accept2/fixture/startup
+                                                                                                                                        placed in Product
+                                                                                                                                        rules     “(fixture) Product reports never quote customer
+                                                                                                                                                  contact details.”
+                                                                                                                                        set up    in a chat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                           here /t/a/f/startup
+ enter open · → verbs: open, details · ← back out · ↑↓ pick · tab next place · esc

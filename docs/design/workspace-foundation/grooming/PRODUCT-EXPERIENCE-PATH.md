@@ -1,5 +1,13 @@
 # From the shared model to a usable personal AI workspace
 
+> **Current tracking (2026-09-14):** the actionable checklist is
+> [NEXT-STEPS.md](NEXT-STEPS.md), organized by product journey, and the coverage and
+> recommendations are in [PRODUCT-JOURNEY-MAP.md](PRODUCT-JOURNEY-MAP.md). This file keeps
+> the user's direction and critique from `19bb937d3`, plus dated checkpoints appended
+> below. A dated evidence statement here is the state when it was written; where it
+> disagrees with NEXT-STEPS, NEXT-STEPS is current. Its trajectory steps map to journeys
+> J0 (1), J1 (2), J1G (3) and J5 (4).
+
 Recorded 2026-09-14. This is the living product discussion and proposed path to
 an interactive TUI, alongside the existing backend effort on
 `codex/personal-ai-backend`, draft #662. It is not a new implementation wave,
@@ -113,7 +121,13 @@ participant admission and departure; shared-investigation ownership; duplicate
 suppression; peer findings versus person decisions; and which exchanges become
 visible conversations. Shared membership alone implements none of these mechanisms.
 
-## Current evidence checkpoint
+## Evidence checkpoint at `3788e569e` — historical (2026-09-14, before checkpoint 1)
+
+> **Superseded.** This section was the evidence before the backend acknowledgement and
+> checkpoint 1 below. In particular, "no complete logical-folder browsing surface" and "no
+> workspaceview consumer in tui3" stopped being true at `36922486c`, and the in-flight
+> W5-B lane ended 21/37 at `0ad0ccea7`. For the current state see the snapshot in
+> [NEXT-STEPS.md](NEXT-STEPS.md). The text is kept unchanged as the record of that inspection.
 
 Inspected published branch head: `3788e569e2744288ac0d76d602d06c9478f81d61`,
 fetched 2026-09-14. Draft #662 is open against dev. This document changes no runtime.
@@ -290,6 +304,10 @@ behavior. The [scenario review](ARCHITECTURE-SCENARIOS.md) remains the wider rec
 
 ## Coordination and acceptance
 
+> Dated 2026-09-14 before the acknowledgement. The four requested records were answered by
+> "Backend acknowledgement" and "Checkpoint 1" below; the unconfirmed-acknowledgement
+> sentence is historical. The Spark, draft and manual rules still apply.
+
 Keep the active backend lane working on its bounded edit/report journey. This
 document requests a status response and proposes the next experience slice; it
 does not ask that lane to abandon its current validation or start a competing
@@ -318,6 +336,14 @@ running binary is part of this document task. Runtime slices update the manual
 and change entry in the same change.
 
 ## Living record
+
+> This list records the discussion's own milestones. From 2026-09-14 the open items are
+> tracked in [NEXT-STEPS.md](NEXT-STEPS.md). J0 (this fixture) is accepted on its terminal
+> evidence at `36922486c`. "Let the person try" is now optional, non-blocking feedback; its
+> "before expanding scope" gate below is historical, superseded by the instruction to
+> continue with the next unblocked slice without routine approval. "Extend the same
+> fixture" is J1, J1G and J5. Friction observations are still appended in this file
+> whenever the person tries a demo.
 
 - [x] Preserve the model, critique and separation of internal structure from UI.
 - [x] Inspect published backend source and saved task progress at the checkpoint above.
@@ -395,27 +421,35 @@ records, expose pause/resume/stop through the standing owner's existing verbs on
 observe a file change reach state, report and cause after an explicit check. Report-path
 edits stay on the chat card and are not promised (W5-B G2 remains unreliable).
 
+*(2026-09-14, later: this next step is journey J1 in [NEXT-STEPS.md](NEXT-STEPS.md), which
+carries its current status.)*
 
-## Checkpoint 2 — continuing work in the same fixture (2026-09-14)
+## Checkpoint 2 — a bounded slice of J1 (2026-09-14)
 
-**Confirmed by the user during this checkpoint:** aforge product runs, validation and demos
-use open-weight models only (DECISIONS C27; example `z-ai/glm-5.3-flash`). The earlier
-DeepSeek failure was diagnosed from tool calls and results, not model reasoning: the model
-ran was DeepSeek V4 Flash 0731 behind a floating alias (not V4.1 Flash), `stand` was on its
-belt and in its prompt, and it looped on listing and reading instead of proposing — a model
-limitation, so no product change was made for it.
+This records a bounded proof, not J1 as a whole: report-path renames and full reliability of
+ongoing work remain open in [NEXT-STEPS.md](NEXT-STEPS.md) J1, and coverage is described in
+[PRODUCT-JOURNEY-MAP.md](PRODUCT-JOURNEY-MAP.md).
 
-**What a person can now do** ([BUILD-TUI-02.md](BUILD-TUI-02.md)): in the Product reports
-chat, which is filed and placed in Product, say "keep reports/product-digest.md current
-whenever a file in product/ changes"; answer the card, which shows Product's rule reaching
-the work; select the work in `folders` and read what its owner recorded — last run, the
-file that caused it, the rule it was held to by id, what was published and its receipt, how
-checks happen on this machine; pause, start again and stop with `p`/`s`; and change the
+**Confirmed by the user during this checkpoint:** product runs, validation and demos use
+open-weight models only (DECISIONS C28; example `z-ai/glm-5.3-flash`). The earlier DeepSeek
+failure was diagnosed from tool calls and results, not model reasoning: the model run was
+DeepSeek V4 Flash 0731 behind a floating alias (not V4.1 Flash), `stand` was on its tool
+list and in its prompt, and it looped on listing and reading instead of proposing — a
+model limitation, so no product change was made for it.
+
+**What a person can now do** ([BUILD-TUI-02.md](BUILD-TUI-02.md),
+[validation/tui-checkpoint-2.md](validation/tui-checkpoint-2.md)): in the Product reports
+chat, which is filed and placed in Product, ask for reports/product-digest.md to be kept
+current when a file in product/ changes; answer the card, which shows Product's rule
+reaching the work; select the work in `folders` and read what its owner recorded — last run,
+the file that caused it, the rule it was held to by id, what was published and its receipt,
+how checks happen on this machine; pause, start again and stop with `p`/`s`; change the
 instructions with `e`, which opens the same chat and applies the change only on its card.
-Accepted in a real terminal on GLM-5.3-Flash with Qwen3.8-27B checking the rule, every
-model call open-weight, about $0.03.
+Proven in a real terminal on GLM-5.3-Flash with Qwen3.8-27B checking the rule, with only
+open-weight model IDs in that profile's call log, about $0.03 — setup on binary
+`061ffdc2f`, the rest on `9d9beebc3`; the final `92ba84022` carries review fixes proven by
+deterministic tests and a re-read of the accepted record, not a second live run.
 
-**Recommendations, not decisions:** make the open-weight constraint a product gate rather
-than a fixture's rows (the making verbs are still unpinned); say the stored per-day limit on
-the card when the person named none; word the edit card's yes as a change. Checkpoint 3
-(guidance and the Product → Marketing watch) stays next.
+**Recommendations, not decisions:** enforce an open-weight allowlist per profile rather than
+relying on a fixture's rows (the making verbs are still unpinned); say the stored per-day
+limit on the card when the person named none; word the edit card's yes as a change.

@@ -1,0 +1,5 @@
+# Demo 2 — checkpoint 2, runtime 92ba84022. Run from the laptop. Starts with NO ongoing work.
+ssh -tt spark 'cd /home/santosh/aforge-pai-demo2-92ba84022/fixture/startup && env -u AFORGE_MODEL -u AFORGE_VISION_MODEL AFORGE_HOME=/home/santosh/aforge-pai-demo2-92ba84022 OPENROUTER_API_KEY="$(jq -r .api_key ~/.aforge/config.json)" /home/santosh/src/af-pai-demo2-92ba84022/bin/aforge'
+
+# Second terminal, after the work is set up: change a watched file, then run one check.
+ssh -tt spark 'cd /home/santosh/aforge-pai-demo2-92ba84022/fixture/startup && echo "- Pricing: annual plan billed yearly (demo change)." >> product/spec.md && AFORGE_HOME=/home/santosh/aforge-pai-demo2-92ba84022 OPENROUTER_API_KEY="$(jq -r .api_key ~/.aforge/config.json)" /home/santosh/src/af-pai-demo2-92ba84022/bin/aforge standing check'

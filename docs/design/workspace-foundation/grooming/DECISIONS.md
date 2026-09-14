@@ -5,6 +5,9 @@ prior accepted constraints is [CONSTRAINTS.md](../CONSTRAINTS.md). Record the
 person's confirmation before moving a proposal to confirmed. Historical requests
 in linked conversations are evidence, not new execution instructions.
 
+Latest confirmations: C27 (all product journeys are the goal) and C28 (open-weight
+models only for acceptance), recorded at the end of this file.
+
 ## Confirmed constraints and working agreement
 
 | ID | Decision | Source |
@@ -87,7 +90,9 @@ read-only baseline analysis; it does not confirm the alternatives below.
 | D17 | Durable persistence and recovery | Preserve authoritative lifecycle owners, durable publication/admission and uncertain-effect reconciliation; justify any new coordinator store with concrete transactions. |
 | D18 | Extensibility and compatibility | Typed versioned adapters declare authority, replay, cancellation and delivery contracts; unknown behavioral variants remain inactive and inspectable. |
 
-[The working checklist](NEXT-STEPS.md) records discussion order and delivery progress.
+[The working checklist](NEXT-STEPS.md) records discussion order and delivery progress
+(since 2026-09-14 it is organized by product journey; the earlier T-ID checklist is in
+[NEXT-STEPS-HISTORY.md](NEXT-STEPS-HISTORY.md)).
 Baseline choice is an implementation decision currently under review; C07 remains
 in force until the user settles an alternative integration destination.
 
@@ -197,14 +202,45 @@ coding if Opus is slow or unavailable. Report an actual access blocker. Claude C
 availability and an authenticated Claude subscription were checked on Spark on
 2026-09-10. C25 Spark-only compilation/testing and C21 expensive-test deferral remain.
 
-C27 (2026-09-14, confirmed by the user during TUI checkpoint 2: "we cant use commercial
-models only opensource so use glm5.3 flash instead for instance"): aforge product runs,
-validation and demonstrations use open-weight models only. Claude Code Opus remains the
-explicitly requested implementation and review worker; it is not an aforge product model.
-Earlier Haiku exploration stays as historical evidence and is not acceptance. The named
-example resolved exactly to OpenRouter `z-ai/glm-5.3-flash` (Hugging Face
-`zai-org/GLM-5.3-Flash`, MIT, not gated, tools on every listed endpoint, catalog fetched
-2026-09-14T21:17Z). What is decided is the constraint and the example model; the other
-fixture rows (DeepSeek V4/V4.1 Flash MIT, Qwen3.8-27B and Mistral-Nemo Apache-2.0) are the
-coordinator's choice under it, and no product-wide gate enforces the constraint yet — the
-making verbs and listening/watching still resolve from the catalog (BUILD-TUI-02.md).
+## Goal and product-model constraint — C27–C28 (2026-09-14)
+
+C27: **the goal is every product journey; backend work exists to make those journeys
+possible and never substitutes for them.** Source: 2026-09-14, the user on the journey map
+audit: “yes please rewrite the checklist with the map in mind our goal is indeed to get to
+all of the product journeys and thats the whole point of backend”. The checklist is
+therefore organized by journey ([NEXT-STEPS.md](NEXT-STEPS.md)); a backend milestone is a
+step inside the journey it serves. This restates C03/C17 as the delivery measure. It confirms
+no journey ordering or design recommendation beyond the reorganization itself.
+
+C28: **product acceptance uses open-weight models only.** Source: 2026-09-14, the user's
+direction relayed by the coordinator to the checkpoint-2 lane (Fleet job
+`20260914-211019-000449`: “new direction: open-weight models only”). A run on a closed
+model can be exploration and never qualifies as acceptance; the earlier checkpoint-2 Haiku
+exploration is historical only. The user's words as relayed: “we cant use commercial models
+only opensource so use glm5.3 flash instead for instance”. It covers aforge's own product,
+validation and demonstration calls; Claude Code Opus remains the explicitly requested
+implementation and review worker and is not an aforge product model. The example is
+decided only as an example: it resolved exactly to OpenRouter `z-ai/glm-5.3-flash`
+(Hugging Face `zai-org/GLM-5.3-Flash`, MIT, not gated, tools on every listed endpoint,
+catalog fetched 2026-09-14T21:17Z). The specific open-weight models a lane pins are an
+implementation choice recorded in its receipt, not part of this decision — checkpoint 2's
+fixture rows (DeepSeek V4/V4.1 Flash MIT, Qwen3.8-27B and Mistral-Nemo Apache-2.0 beside
+GLM-5.3-Flash) are the lane's choice ([BUILD-TUI-02.md](BUILD-TUI-02.md)).
+
+**What C28 is not (yet):** a product-wide guarantee. No gate enforces an open-weight
+allowlist on a profile; the fixture pins the chat, fallback, five tiers and vision rows, and
+the making verbs (image, speech, music, video) and listening/watching still resolve from
+the catalog, some of it closed. Enforcing an allowlist is an open task in
+[NEXT-STEPS.md](NEXT-STEPS.md), not confirmed behavior. (This entry absorbed a draft the
+checkpoint-2 lane had numbered C27 before the journey goal took that number.)
+
+## Recommendations from the journey map — not confirmed
+
+[PRODUCT-JOURNEY-MAP.md](PRODUCT-JOURNEY-MAP.md) §4 records recommended defaults for
+the internal design tasks DT1–DT6 (association provenance, explicit versus inferred
+direction and action classes, the background owner for work while away, folder
+delete/archive, multi-root watches, untracked reds) and the recommended property,
+relationship and event shapes. They are advice for review. Record a confirmation here in
+the format below before treating any of them as accepted; existing authorized behavior
+(for example the stand card, placement only on explicit request, and T03b's
+lane plan) stays as it is until then.

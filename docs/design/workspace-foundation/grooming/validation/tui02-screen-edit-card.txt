@@ -1,0 +1,16 @@
+  ╭─  ◦ Keep reports/product-digest.md current: whenever a file ─────────────────────────────────────────────────────────────────────────────────────────────────────────│
+  │ Keep reports/product-digest.md current: whenever a file in product/ changes, rewrite it as a short digest of the product spec. At most $0.05 a run.                   │
+  │ when · when product/** changes                                                                                                                                        │
+  │ where · for this project                                                                                                                                              │
+  │ changes · instructions — the same work; what it has read and published stays                                                                                          │
+  │ does · …substance; skip boilerplate. Never quote customer contact details (names, emails, phone numbers) in the digest. Your final answer is published as reports/… → │
+  │ …substance; skip boilerplate. End the digest with a short “Open questions” list: points the spec leaves undecided, ambiguous, or unanswered — a few i…                │
+  │ report · reports/product-digest.md — aforge publishes this file; the run never writes it                                                                              │
+  │ folder · Product — its rules reach every run                                                                                                                          │
+  │ rule · (fixture) Product reports never quote customer contact details.                                                                                                │
+  │ costs · up to $0.05 a run · shares the day's $500.00 allowance · checked every 5 minutes                                                                              │
+  ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+
+    1  yes, set it up  it keeps happening until you stop it
+    0  no              nothing happens, now or later
+  [esc] later · [c] change · [?] ask back · [d] you decide · [D] decide these from now on

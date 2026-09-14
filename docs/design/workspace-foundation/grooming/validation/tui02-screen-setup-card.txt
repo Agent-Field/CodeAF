@@ -1,0 +1,15 @@
+  ╭─  ∙ Keep reports/product-digest.md current: whenever a file ─────────────────────────────────────────────────────────────────────────────────────────────────────────│
+  │ Keep reports/product-digest.md current: whenever a file in product/ changes, rewrite it as a short digest of the product spec. At most $0.05 a run.                   │
+  │ when · when product/** changes                                                                                                                                        │
+  │ where · for this project                                                                                                                                              │
+  │ does · Read every file under product/ (currently spec.md and onboarding-faq.md; check for others, they may change between runs). Write a short digest of the product… │
+  │ report · reports/product-digest.md — aforge publishes this file; the run never writes it                                                                              │
+  │ folder · Product, where this conversation is placed — its rules reach every run                                                                                       │
+  │ rule · (fixture) Product reports never quote customer contact details.                                                                                                │
+  │ costs · up to $0.05 a run · shares the day's $500.00 allowance · checked every 5 minutes                                                                              │
+  ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+
+    1  yes, set it up  it keeps happening until you stop it
+    3  just once       it happens now, and nothing is kept
+    0  no              nothing happens, now or later
+  [esc] later · [c] change · [?] ask back · [d] you decide · [D] decide these from now on

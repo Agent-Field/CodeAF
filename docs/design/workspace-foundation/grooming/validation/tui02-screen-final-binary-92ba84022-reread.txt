@@ -1,0 +1,52 @@
+ aforge                                                                                                                                                                       $0.03 / $500 · mon 6:03pm
+  home   tasks   standing   memory   spend   search   settings   folders
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ folders / Startup / Product
+
+ › Pricing and positioning                                                                                                     chat     Work · ongoing
+ › Roadmap notes                                                                                                               chat     Keep reports/product-digest.md current: whenever a file in
+  Draft the onboarding FAQ                                                                                             work · done     product/ changes, rewrite it as a short digest of the product
+  spec.md                                                                                                                 artifact     spec. At most $0.05 a run.
+ — ffffffffffff0009                                                                                                  chat · missing
+ › Product reports                                                                                             chat · idle · placed     here      placed here · this folder's rules reach it
+  product spec digest                                                                              ongoing work · stopped · placed     state     stopped
+                                                                                                                                        wakes     when product/** changes
+                                                                                                                                        report    reports/product-digest.md · published by aforge
+                                                                                                                                        last run  9m ago · landed · v1 · $0.002
+                                                                                                                                        why       modified product/spec.md
+                                                                                                                                        published reports/product-digest.md · 611 bytes · 9m ago
+                                                                                                                                        held to   1 kept · rule 659dac6d
+                                                                                                                                        checks    this window's engine checks every 5 minutes while it
+                                                                                                                                                  is open
+                                                                                                                                                  no background timer for this home
+                                                                                                                                                  or run aforge standing check
+                                                                                                                                        checked   9m ago · the files you are watching changed
+                                                                                                                                        limits    $0.05 a run · 10 runs a day
+                                                                                                                                        version   instructions v2
+                                                                                                                                        does      Read every file under product/ (currently spec.md and
+                                                                                                                                                  onboarding-faq.md; check for others, they may change
+                                                                                                                                                  between runs). Write a short digest of the product
+                                                                                                                                        on disk   611 bytes · put there by aforge 9m ago · sha 6939835e
+                                                                                                                                        before    10m ago landed
+                                                                                                                                        project   /tmp/af-pai-cp2-accept2/fixture/startup
+                                                                                                                                        placed in Product
+                                                                                                                                        rules     “(fixture) Product reports never quote customer
+                                                                                                                                                  contact details.”
+                                                                                                                                        set up    in a chat
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                                                           here /t/a/f/startup
+ enter open · → verbs: open, details · ← back out · ↑↓ pick · tab next place · esc
