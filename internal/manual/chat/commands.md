@@ -889,7 +889,8 @@ filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
 and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its lanes.
+model, `enter choose · ← back · esc` inside its lanes — and `enter unpin · ← back · esc`
+on the machine you are already pinned to, where the same key takes the pin off again.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -1697,8 +1698,12 @@ order:
    what has been measured of each, and enter on one pins it.
 3. **speed guard** — whether an answer slow to start is asked of the next-best machine as
    well.
-4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
-   With `off` nothing is measured, so the two rows above it have no machine to name.
+4. **routing** — what every request prefers among the endpoints, and it cycles
+   `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: aforge sends no
+   preference of its own, a lane you pinned goes out as the whole request, and with no pin
+   the router's own default routing answers. `latency` asks for the fastest endpoint and
+   `price` for the cheapest, on every call. With `off` nothing is measured, so the two rows
+   above it have no machine to name.
 5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).

@@ -158,15 +158,17 @@ func forgetLiveSession(agent *Agent) {
 	liveSessionsMu.Unlock()
 }
 
-// someoneIsWatching reports whether this process holds a conversation somebody
-// is sitting in front of.
+// someoneIsWatching reports whether a person is in front of this process: a
+// conversation they opened, or a command they typed and are waiting on.
 //
 // IT IS THE ONE READING OF "ATTENDED" THIS BUILD CAN HONESTLY MAKE, and it is
-// this map because of what the map already refuses: a task node's own agent and
-// an errand's pane both decline to register ([registerLiveSession]), so an
-// entry here is a room with a person in it and nothing else is. A headless run
-// opens no conversation and answers false, which is the correct reading of a
-// process nobody is watching.
+// this map plus the door's latch because of what the map already refuses: a
+// task node's own agent and an errand's pane both decline to register
+// ([registerLiveSession]), so an entry here is a room with a person in it and
+// nothing else is. A headless run opens no conversation; it answers true only
+// when the door said a person typed it (internal/provider's
+// [provider.SetPersonAtTheDoor]), which is the difference between `aforge do`
+// at somebody's terminal and a node a spawner built with nobody there.
 //
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
 // nobody is waiting on, and that is a true statement about a run whose owner
@@ -176,6 +178,9 @@ func forgetLiveSession(agent *Agent) {
 // they are looking at this particular node, which is a distinction no plan
 // graph in this build can yet draw.
 func someoneIsWatching() bool {
+	if provider.PersonAtTheDoor() {
+		return true
+	}
 	liveSessionsMu.Lock()
 	defer liveSessionsMu.Unlock()
 	return len(liveSessions) > 0
@@ -1051,8 +1056,8 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// every time and the item's own choice would do nothing (provider's
 		// requestedEffort).
 		//
-		// IntentBackground says the same thing to the router — nobody is
-		// waiting, so route on price rather than on speed.
+		// IntentBackground says the same thing where the lane chooser reads it —
+		// nobody is waiting, so a second of this wait is worth nothing.
 		//
 		// And the role says both of those once, in the vocabulary the router and
 		// the phase clock share: a standing run has no one in front of it, so

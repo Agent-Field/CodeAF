@@ -171,6 +171,12 @@ var salienceTable = []salienceCase{
 		ev: session.Event{Kind: session.EventQuestionAnswered, ID: 1, Question: &session.Question{
 			ID: 1, Kind: session.QuestionConsent, Head: "needs your ok to run bash",
 		}, Answer: &session.Answer{Kind: session.QuestionConsent, ID: 1, Key: "1"}}},
+	// A ROW THE PERSON WROTE IS NO LONGER BEING SENT, and a node's room draws it
+	// for the reason the lens exists: the pin is the WINDOW'S row and the node
+	// is running on it too, so somebody watching a node's work is owed the same
+	// sentence about why the machine they named stopped answering.
+	{name: "EventRowNews", ev: session.Event{Kind: session.EventRowNews,
+		Text: "deepseek cannot serve this model; routing on auto for this model until you pin again"}},
 }
 
 // errSalience is the engine failing, in the one shape both pumps read.

@@ -264,12 +264,17 @@ func parkUncarriedPin(base string) {
 // does nothing at all on one they are not. The two conditions are
 // [tellRetiredPins]'s, for its reasons: there has to be a stream to say it on,
 // and the errand this call belongs to has to be one a person is watching.
+//
+// AND IT TRAVELS AS [StreamRowNews] FOR THAT FUNCTION'S REASON TOO: this is a
+// sentence about a row the person WROTE and not about the shape of a request,
+// and a surface that folded it in with the machinery would leave them with a
+// pin that silently stopped being sent.
 func tellUncarriedPins(ctx context.Context) {
 	if ctx == nil || streamObserverFrom(ctx) == nil || !RoleFrom(ctx).Visible() {
 		return
 	}
 	for _, line := range takeUncarriedPins() {
-		Emit(ctx, StreamNotice, line)
+		Emit(ctx, StreamRowNews, line)
 	}
 }
 

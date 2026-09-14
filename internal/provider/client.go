@@ -453,6 +453,18 @@ type callKnobs struct {
 	trace *callTrace
 }
 
+// carriesTheDemand reports whether the body THIS attempt encodes still asks for
+// one named machine — whether `provider.only` is going out at all.
+//
+// IT IS ASKED OF THE KNOBS AND ANSWERED FROM THE TWO THINGS THAT TAKE THE FIELD
+// OFF, so that the log and the encoder cannot disagree about a request that has
+// already travelled: [relaxEndpointFilter] is the rung that drops every
+// membership restriction (velocity.go's [relaxedPreferences]) and [noProvider]
+// is the one encode that sends no preference object at all.
+func (k callKnobs) carriesTheDemand() bool {
+	return !k.noProvider && !k.relaxed.has(relaxEndpointFilter)
+}
+
 func knobsFrom(ctx context.Context) callKnobs {
 	knobs := callKnobs{
 		cacheKey:  CacheKeyFrom(ctx),
@@ -508,17 +520,6 @@ func (c *Client) modelFor(request *ai.Request) string {
 // way out rather than at each return so that no future rung can be added past
 // it and quietly keep a dead pin.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
-	// AND ANYTHING A PERSON IS STILL OWED IS SAID HERE, on the first request of
-	// theirs that goes out after it was learned (lanepin.go's
-	// [tellRetiredPins]). It is one nil check on a call nobody is reading and
-	// on every call after the sentence has been said.
-	tellRetiredPins(ctx)
-	tellUncarriedPins(ctx)
-	// AND THE TAKEOVER SAYS ITSELF THROUGH THE SAME DOOR (routefirst.go). One
-	// more parked sentence, one more nil check; the three share the two
-	// conditions above because they are the same promise about three different
-	// rows.
-	tellTakeover(ctx)
 	// AND THE MODEL IS WRITTEN DOWN BEFORE THE REQUEST LEAVES. This is the one
 	// door every send passes through, and since the adapter stopped changing the
 	// model (endpoints.go) every attempt below this line is on the model named

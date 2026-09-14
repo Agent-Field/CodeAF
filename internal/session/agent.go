@@ -471,7 +471,7 @@ func (a *Agent) startLaneBeat() {
 	// (lanenews.go's [Agent.Typing]), and a session that runs no beat may still
 	// buy a measurement. It is cancelled once, by Close.
 	a.laneCtx, a.laneStop = context.WithCancel(context.Background())
-	if a.config.Routing == provider.RoutingOff {
+	if a.config.routingInForce() == provider.RoutingOff {
 		return
 	}
 	models := laneBeatModels(a.config)

@@ -727,3 +727,30 @@ func generatedPicturePath(output string) string {
 	}
 	return ""
 }
+
+// generatedModelMarker is what `generate_image`'s result line puts in front of
+// the model that drew the picture (internal/session's [describeGeneratedImage]
+// writes it). It is spelled here rather than derived because this file already
+// reads that line's other half the same way ([generatedPicturePath]), and one
+// parser for one sentence is easier to keep true than two halves in two places.
+const generatedModelMarker = ", generated on "
+
+// generatedPictureModel is the image model a finished `generate_image` call
+// actually drew with, read out of the tail of its own result line:
+//
+//	.aforge-v3/images/harbour.png — 1024×1024 png, 1.4MB, generated on vendor/paint-5
+//
+// THE RESULT IS THE ONE AUTHORITY ON THIS. The model that drew is chosen inside
+// the tool, after the call's own `model` word has been resolved against the
+// catalog — so a word the caller wrote ("best", "seedream") is a REQUEST and
+// this is the answer. A call that has not finished, or whose result does not
+// carry the marker, yields nothing, and the row draws nothing: the emptiness
+// law, applied to a name nobody here is in a position to invent.
+func generatedPictureModel(output string) string {
+	line := firstLine(strings.TrimSpace(resultText(output)))
+	at := strings.LastIndex(line, generatedModelMarker)
+	if at < 0 {
+		return ""
+	}
+	return strings.TrimSpace(line[at+len(generatedModelMarker):])
+}

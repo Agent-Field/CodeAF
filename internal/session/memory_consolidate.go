@@ -345,9 +345,9 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 	response, err := client.CompleteWithMessages(
 		// WithoutStream for the sentinel's reason: nobody is watching this, and
 		// a stream would be typing JSON into a room that is not open.
-		// IntentBackground is the same fact aimed at the router: a pass that runs
-		// six hours from now is not waiting on the fastest endpoint, it is
-		// waiting on the cheapest one.
+		// IntentBackground is the same fact said where the lane chooser reads it:
+		// a pass that runs six hours from now has nobody waiting on it, so a
+		// second of its wait is worth nothing.
 		// And the role, which is the same fact said where the table can price it:
 		// a consolidation is the memory reflex's slow half, unattended and
 		// judged on nothing but whether its answer is usable (internal/lane's
