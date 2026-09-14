@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 )
 
 func TestGateDecisions(t *testing.T) {
@@ -115,4 +120,119 @@ func threeIndependentSittings(goal string) *plan.Graph {
 		})
 	}
 	return graph
+}
+
+// ── the one-shot door's smallness gate ─────────────────────────────────────
+//
+// Issue #1007's live cell: `aforge do` divided a two-file fix into three task
+// nodes, spent its whole token budget on coordination and never settled,
+// where one worker did the same job and landed. These pin the gate that cell
+// bought: a one-shot errand divides at three genuinely independent parts and
+// not below, and it answers to no pin — the gate stands on the `do` door
+// because of what that door is, not because somebody asked.
+
+// The cell itself: a two-part ask is one worker doing them in order, however
+// the planner draws it. The fold leaves one work node holding the whole goal
+// as its brief — the shape `aforge exec` would have given the run.
+func TestAOneShotErrandDoesNotDivideATwoPartAsk(t *testing.T) {
+	graph := &plan.Graph{
+		Goal:   "Fix the nil cursor in intervals.py and the off-by-one in merge.py",
+		Stages: []plan.Stage{{Title: "the fixes"}},
+	}
+	graph.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "nil cursor", Size: plan.SizeAtomic, Brief: "fix intervals.py"})
+	graph.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "off-by-one", Size: plan.SizeAtomic, Brief: "fix merge.py"})
+
+	if folded := gateErrandDivision(graph); folded != 2 {
+		t.Fatalf("the gate folded %d leaves, want the two it was handed", folded)
+	}
+	if leaves := graph.Leaves(); len(leaves) != 1 {
+		t.Fatalf("the folded plan has %d work nodes, want one worker", len(leaves))
+	}
+	if got := graph.Nodes[0].Brief; got != graph.Goal {
+		t.Fatalf("the one worker's brief is %q, want the whole goal", got)
+	}
+	if !strings.HasPrefix(graph.Nodes[0].Undivided, "smallness gate:") {
+		t.Fatalf("the fold does not say why: %q", graph.Nodes[0].Undivided)
+	}
+}
+
+// The floor is not a ban: three parts that owe each other nothing are a real
+// division, and the errand runs it as drawn.
+func TestAOneShotErrandMayStillDivideManyIndependentParts(t *testing.T) {
+	graph := threeIndependentSittings("caption the twelve image files")
+	if folded := gateErrandDivision(graph); folded != 0 {
+		t.Fatalf("three independent parts folded %d leaves, want the plan as drawn", folded)
+	}
+	if got := len(graph.Leaves()); got != 3 {
+		t.Fatalf("the kept plan has %d work nodes, want the three parts", got)
+	}
+}
+
+// And "genuinely independent" is read off the edges, not the node count:
+// three links of a strict chain are one sitting drawn as three, because every
+// link after the first is one worker waiting on another.
+func TestAOneShotErrandReadsAChainAsOneSitting(t *testing.T) {
+	graph := &plan.Graph{
+		Goal:   "Port the parser, then its tests, then the docs",
+		Stages: []plan.Stage{{Title: "the port"}},
+	}
+	first := graph.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "parser", Size: plan.SizeAtomic, Brief: "port the parser"})
+	second := graph.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "tests", Size: plan.SizeAtomic, Brief: "port the tests"})
+	third := graph.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "docs", Size: plan.SizeAtomic, Brief: "port the docs"})
+	if err := graph.AddNeed(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.AddNeed(third, second); err != nil {
+		t.Fatal(err)
+	}
+
+	if folded := gateErrandDivision(graph); folded != 3 {
+		t.Fatalf("a strict chain folded %d leaves, want all three — one independent part is one sitting", folded)
+	}
+	if got := len(graph.Leaves()); got != 1 {
+		t.Fatalf("the folded chain has %d work nodes, want one worker", got)
+	}
+}
+
+// AND THE GATE STANDS AT THE DOOR THE ERRAND PLANS THROUGH, NOT BESIDE IT.
+// The same scripted planner draws the same two independent parts for both
+// surfaces; the conversation keeps them, and the one-shot errand runs one
+// worker on the whole goal. This is the seam the live cell went through —
+// the planner's first reading of the ask, where most divisions are born.
+func TestTheErrandDoorFoldsWhatAConversationKeeps(t *testing.T) {
+	// The pin-driven gate is stood down for the reason the parts-route tests
+	// state: the only gate speaking here must be the one under test.
+	t.Setenv("AFORGE_SPLITGATE", "0")
+	const goal = "Two things, unrelated: a haiku about the first cold morning, and what the parser vendors charge."
+	for _, probe := range []struct {
+		name      string
+		errand    bool
+		wantNodes int
+	}{
+		{"a conversation keeps the two parts", false, 3},
+		{"a one-shot errand runs one worker", true, 1},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			graph := openCacheStore(t)
+			settings := config.Config{Model: "worker/model", MaxDepth: 1, NodeBudget: 8}
+			planner := &partsPlanClient{model: "worker/model", stages: []string{"Answer"}, parts: map[int][]scriptPart{
+				1: {{title: "Haiku", summary: "Write the haiku."}, {title: "Vendors", summary: "Price the vendors."}},
+			}}
+			client := adoptLiveClient(settings, planner.model, planner)
+			plans := &jobPlans{graphs: map[string]plannedJob{}}
+
+			subtree, err := planSubtree(settings, client, client, plans, graph, "", probe.errand)(context.Background(), resident.Compiled{
+				Goal: goal, Scale: head.ScaleProject,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(subtree.Nodes) != probe.wantNodes {
+				t.Fatalf("the plan admitted %d nodes, want %d — %s", len(subtree.Nodes), probe.wantNodes, probe.name)
+			}
+			if probe.errand && subtree.Nodes[0].Brief != goal {
+				t.Fatalf("the one worker's brief is %q, want the whole goal", subtree.Nodes[0].Brief)
+			}
+		})
+	}
 }

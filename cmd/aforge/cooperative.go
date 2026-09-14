@@ -196,7 +196,95 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 	if splitgate.Judge(goal, gateLeaves(graph, leaves)).Keep {
 		return 0
 	}
-	folded := len(leaves)
+	folded := foldPlanToOneLeaf(graph, fmt.Sprintf(
+		"split gate: goal enumerates %d items, under the %d-item floor — one sitting",
+		splitgate.Items(goal), divisionFloor))
+	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
+		folded, splitgate.Items(goal), divisionFloor)
+	return folded
+}
+
+// errandPartsFloor is the smallest number of genuinely independent parts a
+// one-shot errand's plan may be admitted with. It is three and not the
+// evidence gate's six because the two gates count different things: the floor
+// counts items enumerated in a brief, and this counts parts a planner has
+// already drawn. The measurement it comes from is issue #1007's live cell:
+// `aforge do` divided a two-file fix into three task nodes, burned its whole
+// token budget and never settled, where one worker did the same job and
+// landed. Below three independent parts a division buys no simultaneity worth
+// what each part costs — a briefing, a working copy and a wait apiece —
+// because two parts is one worker doing them in order however they are drawn.
+const errandPartsFloor = 3
+
+// gateErrandDivision is the smallness gate on the `aforge do` door, and it
+// stands on that door ONLY. A conversation plans wide on purpose — visible
+// fan-out is the product there, and a person is watching — but a one-shot
+// errand is one job with nobody to ask and one budget, and the measured cost
+// of letting its planner divide small work is the whole run spent on
+// coordination. So before any division is admitted here the plan must name at
+// least errandPartsFloor genuinely independent parts; below that the errand
+// runs as one worker, the shape `aforge exec` would have given it.
+//
+// It counts the plan and not the goal's text, which is what splitgate's
+// evidence floor counts. divide_work's own gate reads prose because prose is
+// all a dividing worker holds; here the parts exist, so what each one waits
+// on is read directly rather than guessed out of wording.
+func gateErrandDivision(graph *plan.Graph) int {
+	if graph == nil {
+		return 0
+	}
+	leaves := graph.Leaves()
+	if len(leaves) < 2 {
+		return 0
+	}
+	independent := independentParts(graph, leaves)
+	if independent >= errandPartsFloor {
+		return 0
+	}
+	folded := foldPlanToOneLeaf(graph, fmt.Sprintf(
+		"smallness gate: the plan names %d independent parts, under the %d-part floor a one-shot errand divides at — one sitting",
+		independent, errandPartsFloor))
+	log.Printf("smallness gate: collapsed %d leaves to one (plan names %d independent parts, floor %d)",
+		folded, independent, errandPartsFloor)
+	return folded
+}
+
+// independentParts counts the planned work nodes that wait on no other work
+// node in the same plan — the parts that could genuinely run at the same
+// time. A strict chain counts one however long it is, because every link
+// after the first is one worker waiting on another, and that is one sitting
+// drawn as several.
+func independentParts(graph *plan.Graph, leaves []int) int {
+	work := make(map[int]bool, len(leaves))
+	for _, id := range leaves {
+		work[id] = true
+	}
+	independent := 0
+	for _, node := range graph.Nodes {
+		if !work[node.ID] {
+			continue
+		}
+		waitsOnAPart := false
+		for _, need := range node.Needs {
+			if work[need] {
+				waitsOnAPart = true
+				break
+			}
+		}
+		if !waitsOnAPart {
+			independent++
+		}
+	}
+	return independent
+}
+
+// foldPlanToOneLeaf collapses a drawn plan to the smallest plan there is: one
+// work node, the goal as its brief, and the reason recorded in Undivided so a
+// later pass can see why the graph is one leaf when the spine drew several.
+// Both plan-door gates fold through it, so a folded graph is the same shape
+// whichever gate folded it.
+func foldPlanToOneLeaf(graph *plan.Graph, why string) int {
+	folded := len(graph.Leaves())
 	title := graph.Nodes[0].Title
 	summary := graph.Nodes[0].Summary
 	graph.Nodes = graph.Nodes[:0]
@@ -204,16 +292,13 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 		graph.Stages = graph.Stages[:1]
 	}
 	graph.Add(plan.Node{
-		Kind:    plan.KindWork,
-		Stage:   1,
-		Title:   title,
-		Summary: summary,
-		Brief:   graph.Goal,
-		Undivided: fmt.Sprintf("split gate: goal enumerates %d items, under the %d-item floor — one sitting",
-			splitgate.Items(goal), divisionFloor),
+		Kind:      plan.KindWork,
+		Stage:     1,
+		Title:     title,
+		Summary:   summary,
+		Brief:     graph.Goal,
+		Undivided: why,
 	})
-	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
-		folded, splitgate.Items(goal), divisionFloor)
 	return folded
 }
 

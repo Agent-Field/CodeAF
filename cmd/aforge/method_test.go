@@ -26,7 +26,7 @@ func TestTaskScaleLeafCarriesAWorkingMethod(t *testing.T) {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const goal = "write the note that announces the change"
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal: goal, Scale: head.ScaleTask,
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal: "say what the current total is", Scale: head.ScaleLookup,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal:  "review the pull request and deliver REVIEW.md",
 		Scale: head.ScaleProject,
 	})

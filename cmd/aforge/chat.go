@@ -5153,7 +5153,10 @@ func planWindow(settings config.Config, client *liveClient) int {
 // terrainRoot is the directory the planner is allowed to look at before it
 // plans, and it is empty for every surface but a shared workspace. See
 // buildBrain, where the judgement is made once.
-func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.PlanFunc {
+// oneShotErrand says this planner serves `aforge do`: the smallness gate then
+// stands in front of any division the build draws, because a one-shot errand
+// under three independent parts runs as one worker (cooperative.go).
+func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string, oneShotErrand bool) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		anchor, anchored := resident.PlanAnchorFromContext(ctx)
 		prefix := anchor.NodeID
@@ -5372,6 +5375,17 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			log.Printf("note: the plan for %s was drawn with faults (%s); running it as drawn", prefix, pool.CauseInWords(err))
 		}
 		gatePlanDivision(graph, compiled.Goal)
+		// AND THE ONE-SHOT DOOR HOLDS THE PLAN TO A SECOND, STRICTER READING.
+		// A conversation's two-part plan stands — the fan-out is visible and
+		// the person is there for it — but a one-shot errand has one budget
+		// and nobody to ask, and the measured cost of a small division there
+		// is the whole run spent on coordination: issue #1007's `do` cell
+		// divided a two-file fix into three nodes and never settled, where one
+		// worker landed the same job. Below three genuinely independent parts
+		// the errand runs as one worker (gateErrandDivision).
+		if oneShotErrand {
+			gateErrandDivision(graph)
+		}
 		// The acceptance checklist, on the one node that hands the finished
 		// thing over. See plan.Graph.SetAcceptance for why it goes there and
 		// nowhere else.

@@ -25,7 +25,7 @@ func TestACompiledMethodCostsNoSecondCall(t *testing.T) {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const method = "Read the diff first. Done means the note names every migration step."
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal: "write the note that announces the change", Scale: head.ScaleTask, Contract: method,
 	})
 	if err != nil {

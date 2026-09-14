@@ -46,7 +46,7 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 	}
 	reconciler := resident.New(graph,
 		compileIntent(settings, compiler, taskClient, planClient, plans, graph),
-		planSubtree(settings, planClient, taskClient, plans, graph, terrainRoot),
+		planSubtree(settings, planClient, taskClient, plans, graph, terrainRoot, oneShotErrand),
 	)
 	if oneShotErrand {
 		reconciler = reconciler.WithOneShotErrands()

@@ -45,7 +45,7 @@ func TestTwoUnrelatedRequestsBecomeOnePlannedJobWithNoMachineryTitle(t *testing.
 	client := adoptLiveClient(settings, planner.model, planner)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal:  "Two things, unrelated: a haiku, and what the parser vendors charge.",
 		Scale: head.ScaleProject,
 		Parts: []string{haiku, research},
@@ -173,7 +173,7 @@ func TestAPlannedGatheringRequestCannotBeClaimedWhileAnInputRuns(t *testing.T) {
 	client := adoptLiveClient(settings, planner.model, planner)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal:  "Compare how three countries measure road distance.",
 		Scale: head.ScaleProject,
 		Parts: requests,
@@ -255,7 +255,7 @@ func TestAnAskWithNoSeparableRequestsPlansExactlyAsBefore(t *testing.T) {
 		client := adoptLiveClient(settings, planner.model, planner)
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-		subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+		subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 			Goal: goal, Scale: head.ScaleProject, Parts: parts,
 		})
 		if err != nil {
