@@ -292,7 +292,7 @@ func connectRemoteOptions(options []session.AnswerOption) []session.AnswerOption
 func (a *app) settleConnectAsk(ask connAsk, answer session.Answer) {
 	a.forgetConnectAsk(ask.id)
 	words := strings.TrimSpace(answer.Words())
-	if words == "" || ask.blank != "" {
+	if words == "" || !ask.needsKey || ask.blank != "" {
 		return
 	}
 	// The key is on its way to the far end, which takes a network trip and can
@@ -901,6 +901,21 @@ func (a *app) settleConnect(service, name, account string, failed bool) {
 	})
 	a.follow()
 	a.touch()
+}
+
+// settleTurnConnects closes every connect report that belonged to the turn now
+// ending. Its listener has ended with that turn, so a waiting row would be a
+// live-looking link to a dead port; moving it to the existing failed state also
+// puts the row back behind the render cache.
+func (a *app) settleTurnConnects(turn int) {
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.turn != turn || e.kind != entryConnect || e.conn == nil || e.conn.state != connectWaiting {
+			continue
+		}
+		e.conn.state = connectFailed
+		e.stale = true
+	}
 }
 
 // rememberService and serviceName are the surface's own memory of what a

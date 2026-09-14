@@ -5485,6 +5485,10 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	// A browser wait belongs to the turn that opened it. Once that turn is over,
+	// the loopback listener is gone as well, so its report must stop claiming the
+	// browser can still finish and must stop bypassing the render cache.
+	a.settleTurnConnects(a.turn)
 	// AND AN ENGINE THAT SENT NO NEWS FOR A WHOLE ANSWER IS NAMED, once
 	// (hostlink.go's [app.sayNewsSilence]), so a status line with no provider
 	// and no rate on it is explained rather than left to look broken.
