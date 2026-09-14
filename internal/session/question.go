@@ -1416,6 +1416,90 @@ func questionToken(kind QuestionKind, token string) string {
 	return string(kind) + ":" + token
 }
 
+// questionAsked names the question one event on a TURN'S STREAM put in front of
+// somebody, and false for an event that asks nothing.
+//
+// IT EXISTS FOR THE REPLAY AND FOR NOTHING ELSE ([eventHub.attach]). A turn's
+// backlog is every event that turn has sent, kept verbatim so a surface arriving
+// mid-turn reads the work from its first line — and a card is the one kind of
+// event in it that is not a report of something that happened but a QUESTION
+// about something that has not. A decision somebody already made must not be
+// replayed as one still waiting for them, so the replay asks this which question
+// a card was, and [Agent.askingLocked] whether that question is still open.
+//
+// THE KEYS ARE THE LANES' OWN AND ARE NEVER GUESSED. Each case names the field
+// its lane's question is keyed by — consent's id, the proposal's node id, the
+// standing item's id inside its card, the harness offer's id, connect's string —
+// and each is the same token the lane's builder further down this file gives the
+// question it banks, so the two cannot mean different things. A kind missing
+// from this list replays exactly as it always did, which is the safe half of
+// being wrong about one.
+func questionAsked(event Event) (string, bool) {
+	switch event.Kind {
+	case EventConsentRequest:
+		if event.ID == 0 {
+			return "", false
+		}
+		return questionToken(QuestionConsent, strconv.FormatUint(event.ID, 10)), true
+
+	case EventTaskProposal:
+		if event.Task == nil || event.Task.ID == 0 {
+			return "", false
+		}
+		if event.Task.Decided != nil || event.Task.Withdrawn != "" {
+			// A CARD THAT STATES ITS OWN OUTCOME IS NOT ASKING ANYTHING. The
+			// proposal is the one lane that restates its card when it is settled
+			// ([taskWait.decided], [taskWait.withdraw]), and that restatement is
+			// what the replay carries in the open card's place: the assignment,
+			// with the answer under it.
+			return "", false
+		}
+		return questionToken(QuestionTask, strconv.FormatUint(event.Task.ID, 10)), true
+
+	case EventStandingProposal:
+		if event.Standing == nil || event.Standing.ID == 0 {
+			return "", false
+		}
+		return questionToken(QuestionStanding, strconv.FormatUint(event.Standing.ID, 10)), true
+
+	case EventHarnessOffer:
+		if event.ID == 0 {
+			return "", false
+		}
+		return questionToken(QuestionHarness, strconv.FormatUint(event.ID, 10)), true
+
+	case EventConnectAsk:
+		id := strings.TrimSpace(event.ConnectID)
+		if id == "" {
+			return "", false
+		}
+		return questionToken(QuestionConnect, id), true
+	}
+	return "", false
+}
+
+// stillAskedLocked is every question this session is still waiting on somebody for,
+// as the keys [questionAsked] names a card by. The caller holds a.mu.
+//
+// IT IS THE BANKED WORDS AND NOT A SECOND LIST, which is the whole reason it can
+// be read here: [Agent.rememberQuestion] puts a question on that book as it is
+// raised and [Agent.claimQuestionLocked] takes it off the moment it is answered
+// or withdrawn, under this same lock — so "still on the book" is exactly "still
+// a question", with no lock of anybody else's to take and no reconciliation to
+// get wrong. [Agent.OpenQuestions] walks the lanes themselves and takes three
+// locks doing it, which is the reading a surface asks for and not one an attach
+// may make while it holds this one.
+func (a *Agent) stillAskedLocked() map[string]bool {
+	if len(a.questionWords) == 0 {
+		return nil
+	}
+	asking := make(map[string]bool, len(a.questionWords))
+	for key := range a.questionWords {
+		asking[key] = true
+	}
+	return asking
+}
+
 // rememberQuestion banks the words of a question this session has just put, and
 // answers the func that forgets them.
 //

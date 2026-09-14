@@ -605,7 +605,14 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 // twice sent the model two identical lines about one decision it was already
 // holding; the answer now is the plain fact.
 func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	// THE MODEL IS STILL HOLDING THE DECISION WHILE THE SECOND PRESS LANDS, and
+	// that is what a completer which never answers buys: the hand-over wakes a
+	// turn ([Agent.wakeLocked]) and this test is about the press that arrives
+	// during it. A turn that ANSWERS ends, and the end-of-turn floor gives every
+	// undecided node back to the person (task_run.go's
+	// [Agent.handBackUnsettled]) — so a fixture that lets the turn finish is
+	// racing the floor for the fact it is asserting (#1020).
+	agent, _ := newTestAgent(t, &holdingCompleter{}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -619,7 +626,10 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	if err := agent.HandUnverifiedToModel(id); err != nil {
 		t.Fatalf("handing the decision over: %v", err)
 	}
-	said := len(steeringQueue(agent))
+	said := timesSaidToModel(agent, handOverLead)
+	if said != 1 {
+		t.Fatalf("the first hand-over told the model %d times, want once", said)
+	}
 	err := agent.HandUnverifiedToModel(id)
 	if err == nil {
 		t.Fatal("a second hand-over was taken as a fresh one")
@@ -634,8 +644,8 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	if !errors.Is(err, ErrTaskHandedOver) || errors.Is(err, ErrTaskDecided) {
 		t.Fatalf("the second press answers with %v, which a surface cannot tell from a settled node", err)
 	}
-	if again := len(steeringQueue(agent)); again != said {
-		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	if again := timesSaidToModel(agent, handOverLead); again != said {
+		t.Fatalf("the model has been told to decide this %d times, want the %d the first press said", again, said)
 	}
 	// AND TAKING IT BACK MAKES A HAND-OVER POSSIBLE AGAIN: the refusal is about
 	// who is holding the question, not a door that closes for good.
@@ -655,7 +665,11 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 // refusal would put trouble on a card whose question was answered correctly.
 // Every other refusal on that key is still handed back.
 func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	// The stale card is pressed WHILE aforge is holding the decision, so the
+	// turn the first press woke has to still be in front of the model when the
+	// second one lands — see the sibling test above for why a completer that
+	// answers would be racing the end-of-turn floor for that fact (#1020).
+	agent, _ := newTestAgent(t, &holdingCompleter{}, func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -670,15 +684,18 @@ func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the first press: %v", err)
 	}
-	said := len(steeringQueue(agent))
+	said := timesSaidToModel(agent, handOverLead)
+	if said != 1 {
+		t.Fatalf("the first press told the model %d times, want once", said)
+	}
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the second press was refused: %v", err)
 	}
 	// AND IT SENT NOTHING A SECOND TIME. Standing is not repeating: the model is
 	// already holding this decision and a second identical line about it is the
 	// defect, not the refusal.
-	if again := len(steeringQueue(agent)); again != said {
-		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	if again := timesSaidToModel(agent, handOverLead); again != said {
+		t.Fatalf("the model has been told to decide this %d times, want the %d the first press said", again, said)
 	}
 	if node := agent.taskNode(id); node == nil || node.decidedBy() != TaskAskOwnerModel {
 		t.Fatal("the node is not held by aforge after two presses")

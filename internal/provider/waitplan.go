@@ -79,14 +79,22 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// A DECISION SITE (#433). An alternative is a machine a SECOND REQUEST
 	// would demand with `provider.only`, so "could not be demanded" is the
 	// base's own answer about carrying a preference and not its hostname.
-	if !c.carriesPreferences() || c.routing() == RoutingOff {
+	//
+	// AND UNDER `simple` WITH NO PIN THERE IS NOWHERE TO GO EITHER. The row's
+	// whole promise is that nothing on this side names a machine, and a rescue
+	// is exactly that — a second request demanding a lane this process chose
+	// off the sheet, sent while the first is still streaming. So the frontier
+	// is empty and a stall is reported rather than rescued. With a pin the
+	// alternatives stay, because there the act is the offer — `switch to
+	// auto?` — and a question has to name where a `y` would go (offer.go).
+	if !c.carriesPreferences() || c.routing() == RoutingOff || (c.routing() == RoutingSimple && !choice.Pinned) {
 		plan.Alts = nil
 	} else if len(plan.Alts) == 0 {
 		// THE CHOOSER RETURNS THE ZERO CHOICE WHEN IT HOLDS FEWER THAN TWO
 		// BELIEFS. That is right about ranking and wrong about waiting: a
 		// later turn on a model this process has barely measured still has
 		// a sheet of other machines, and leaving them off is how a stall
-		// sat at "all lanes slow" for 129s with arms:None (F33). Routing
+		// sat at "all providers slow" for 129s with arms:None (F33). Routing
 		// and waiting are two questions; an empty Choice is not an empty
 		// frontier.
 		plan.Alts = sheetAlts(model, plan.Lane)

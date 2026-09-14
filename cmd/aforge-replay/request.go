@@ -208,11 +208,12 @@ func measuredFelt(end callrows.Row, role lane.Role) float64 {
 // delete when the role reaches the row (#928, which carries the acceptance).
 //
 // THE RULE IS THAT AN ERRAND'S TAG IS ALREADY ITS ROLE. Every side call of a
-// turn is tagged with its own role word — internal/session's auxiliary.go writes
-// `WithCallTag(errandCtx, string(role))` for exactly this reason, "so three
-// records of one call agree about what to call it" — which resolves `judge`,
-// `memory`, `design`, `auxiliary`, `recall`, `tool`, `probe` and `standing` with
-// no table at all. What is left is the handful of tags that name a CALL SITE
+// turn is tagged with its own role word — internal/session's auxiliary.go hands
+// `callPurpose(role)` to the one door, which spells it onto the request
+// (clientdoor.go), so three records of one call agree about what to call it —
+// which resolves `judge`, `memory`, `design`, `auxiliary`, `recall`, `tool`,
+// `probe` and `standing` with no table at all. What is left is the handful of
+// tags that name a CALL SITE
 // rather than a role, and each of those is one row of data below with the file
 // that sets it.
 //
@@ -248,15 +249,46 @@ func roleOf(tag string) lane.Role {
 //
 // IT IS COMPLETE, AND A LAW READS THE TREE TO KEEP IT SO
 // (`TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared`). Every tag this
-// build can write is reachable from source: the string literals handed to
-// `provider.WithCallTag`, the errand names `cmd/aforge`'s errandContext passes,
-// and — because internal/session/auxiliary.go writes `string(role)` — every
-// [roles.Role] constant there is. A word missing from here reads as a background
+// build can write is reachable from source: the [session.callPurpose] values
+// handed to internal/session's one door (clientdoor.go, which is the only file
+// in that package that spells `provider.WithCallTag`), the errand names
+// `cmd/aforge`'s errandContext passes, and — because auxiliary.go hands the door
+// `callPurpose(role)` — every [roles.Role] constant there is. A word missing
+// from here reads as a background
 // errand, which is quiet, plausible and moves every number in the table, so the
 // law fails the build rather than the report going quietly wrong.
 var callSiteRoles = map[string]lane.Role{
 	// internal/session/loop.go's laneRole: a conversation's own turn is talk.
 	"turn": lane.RoleTalk,
+	// internal/session/checkpoint.go's draft rung: the model that has just spent
+	// the turn, asked on the turn's own transcript for the document a worker will
+	// finish from. It is made with lane.RoleAuxiliary and billed to the turn, and
+	// it reached the log with NO TAG AT ALL until #996 — which made the dearest
+	// side-call on the ceiling road invisible to every reading of this file.
+	"handoff-draft": lane.RoleAuxiliary,
+	// internal/session/subharness_env.go: one AI step of a saved program, which
+	// runs on the program's own model rather than on any role's. Nobody is
+	// reading its stream and nobody is waiting on its first word.
+	"subharness": lane.RoleAuxiliary,
+	// ── two of the three roads that carry their own provider client ─────────
+	//
+	// Each builds a client the one door does not make and completes on it
+	// directly (internal/session/clientdoor.go's withPurpose), and all three
+	// reached this file with NO TAG AT ALL until #996 — so the errand this build
+	// runs most often with nobody there was priced as anonymous. The third,
+	// `consolidate`, already had a row below because internal/roles has that
+	// word: the tidy-up and the role are the same errand and the same reading.
+	//
+	// internal/session/standing_run.go: one standing item's yes-or-no, on every
+	// check of every item forever. It is spelled `standing-check` and NOT
+	// `sentinel`, which is already the resident's own quorum errand above and is
+	// judged: this one sets lane.RoleStanding on its own context, and pricing it
+	// as a judge would put a wait nobody is having into the table.
+	"standing-check": lane.RoleStanding,
+	// internal/session/tools_doc.go: the model's own eyes on a document the
+	// `read` tool cannot open as text. A TOOL CALL INSIDE A TURN, so somebody IS
+	// waiting — the one of the three whose seconds are a person's.
+	"document": lane.RoleTalk,
 	// The same function, in a task. WHICH LEAF ROLE IT IS CANNOT BE READ FROM
 	// THE ROW — laneRole asks `someoneIsWatching()` at the moment of the call
 	// and nothing records the answer — so the unattended reading is taken,
@@ -303,21 +335,42 @@ var callSiteRoles = map[string]lane.Role{
 	"planner":       lane.RoleDesign,
 	"designer":      lane.RoleDesign,
 	"division":      lane.RoleDesign,
-	"title":         lane.RoleAuxiliary,
-	"compaction":    lane.RoleAuxiliary,
-	"vision":        lane.RoleAuxiliary,
-	"imagegen":      lane.RoleAuxiliary,
-	"worker":        lane.RoleAuxiliary,
-	"speech":        lane.RoleAuxiliary,
-	"video":         lane.RoleAuxiliary,
-	"handoff":       lane.RoleAuxiliary,
-	"taskname":      lane.RoleAuxiliary,
-	"jobname":       lane.RoleAuxiliary,
-	"caption":       lane.RoleAuxiliary,
-	"shaper":        lane.RoleAuxiliary,
-	"intake":        lane.RoleAuxiliary,
-	"careful":       lane.RoleAuxiliary,
-	"distill":       lane.RoleAuxiliary,
+	// internal/session/taxonomy_boundary.go hands this word to the classifier
+	// that reads a repair round's evidence, and internal/session/repair_role.go
+	// resolves the hands the round itself runs on. Both are work inside a task
+	// with nobody's stream open, which is what an errand IS — the table's own
+	// default, said out loud because this word only became visible here when the
+	// role stopped being conjured at its call site as roles.Role("repair").
+	"repair": lane.RoleAuxiliary,
+	"title":  lane.RoleAuxiliary,
+	// internal/session/image.go is the only writer of this tag and it sets
+	// lane.RoleTalk, deliberately and with the reasoning beside it: a look at an
+	// image STREAMS INTO THE ROOM the person is reading, delta by delta, during
+	// their own turn. This row said RoleAuxiliary — a call nobody's seconds are
+	// being spent on — which is the opposite of what that file says, and it moved
+	// every number in this table that separates a person's wait from a machine's.
+	"vision": lane.RoleTalk,
+	// internal/session/spellout.go declares lane.RoleAuxiliary on its own
+	// context, so this row is that file's own reading and not a second one.
+	//
+	// IT IS WORTH A LOOK AND IT IS NOT THIS FILE'S CALL. A person is SITTING AND
+	// WATCHING a spell-out — it writes three lines they read before deciding
+	// whether to keep them — and an auxiliary is by definition a call nobody's
+	// seconds are being spent on. Either the lane role or the product is wrong
+	// there; the table's job is to agree with the build.
+	"spellout": lane.RoleAuxiliary,
+	"imagegen": lane.RoleAuxiliary,
+	"worker":   lane.RoleAuxiliary,
+	"speech":   lane.RoleAuxiliary,
+	"video":    lane.RoleAuxiliary,
+	"handoff":  lane.RoleAuxiliary,
+	"taskname": lane.RoleAuxiliary,
+	"jobname":  lane.RoleAuxiliary,
+	"caption":  lane.RoleAuxiliary,
+	"shaper":   lane.RoleAuxiliary,
+	"intake":   lane.RoleAuxiliary,
+	"careful":  lane.RoleAuxiliary,
+	"distill":  lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

@@ -2,8 +2,8 @@
 // call the surface makes, and one rule for which model answers it.
 //
 // An auxiliary call is any call the person did not type — the title a session
-// names itself, the summary a compaction writes, the advisor's aside, a commit
-// message. Each is a ROLE. Roles group under TIERS, and a tier is what the
+// names itself, the judge that asks whether a turn should have been work, the
+// gate that reads one tool call for safety. Each is a ROLE. Roles group under TIERS, and a tier is what the
 // person actually configures: "low model = X, high model = Y", set once. New
 // auxiliary calls register a role, inherit their tier's model, and need no
 // settings of their own; the person never learns a new knob per feature.
@@ -37,8 +37,6 @@ type Role string
 const (
 	// RoleTitle names a session from its opening exchange.
 	RoleTitle Role = "title"
-	// RoleCompaction summarizes a transcript that outgrew its window.
-	RoleCompaction Role = "compaction"
 	// RoleConsolidate is the dreaming pass over what a session has remembered:
 	// one call over fifty short lines whose whole instruction is "merge the
 	// duplicates and drop what is superseded" (internal/session's
@@ -214,6 +212,46 @@ const (
 	// internal/session/subharness_intake.go, which owns the call.
 	RoleIntake Role = "intake"
 
+	// RoleRepair is the hands that fix what the cheap hands got wrong.
+	//
+	// THE TIER IS HIGH AND NOT THE MASTERMIND'S, for [RoleCareful]'s reason: a
+	// repair round is many turns of ordinary work done by a model that can be
+	// trusted with something subtle, not one answer that decides what every other
+	// call does. Registered from internal/session/repair_role.go, which owns the
+	// call.
+	RoleRepair Role = "repair"
+
+	// RoleSentinel is one standing item's cheap yes-or-no: is what this check
+	// found worth telling the person about.
+	//
+	// IT SITS LOW for the guardian's reason — it reads a few kilobytes and
+	// answers one binary question, and a wrong no costs a check that said nothing
+	// rather than money. It is also the call this build makes most often with
+	// nobody in front of it, once per check of every item forever. Registered
+	// from internal/session/standing_run.go, which owns the call.
+	RoleSentinel Role = "sentinel"
+
+	// RoleSpellOut expands a half-written request into what it obviously meant,
+	// for the person to read and keep or drop.
+	//
+	// IT SITS LOW, with the namer and the sentinel rather than with the shaper.
+	// The shaper writes the only document an autonomous worker will ever read, so
+	// a vague answer there costs a whole task's spend; this one writes three lines
+	// a person reads on screen before deciding whether to keep them, and a weak
+	// answer costs one esc. A person who wants it thought about harder pins it
+	// (`roles.spellout: <model>`). Registered from internal/session/spellout.go,
+	// which owns the call.
+	//
+	// THE WORD LIVES HERE AND NOT AT THE CALL SITE, which is the whole reason
+	// this constant moved. It was `const spellOutRole roles.Role = "spellout"` in
+	// internal/session, and every reader that asks this package what the role
+	// vocabulary IS — cmd/aforge-replay's roleWords, which parses this file — could
+	// not see it. So `spellout` reached the cost report as an unrecognised tag and
+	// was priced as a background errand with nobody waiting, when it is the one
+	// auxiliary a person sits and watches. A role declared anywhere else is a role
+	// that is invisible to everything that reads roles.
+	RoleSpellOut Role = "spellout"
+
 	// RoleDivision reviews a DIVISION as a plan. A worker halfway through its
 	// own work has named the parts it wants to hand out, and this is the one
 	// call that reads them TOGETHER — the evidence, the parent's own brief, and
@@ -290,7 +328,6 @@ const (
 	// designer that writes badly puts a wrong answer on the menu with a name on
 	// it; a division reviewed badly hands four workers four briefs that nobody
 	// inside them can correct. The first two were on the high tier, beside the
-	// compaction summary and the
 	// auditor, which made a person choosing "the capable model" choose one
 	// figure for two very different bills: the careful calls are many and short,
 	// the mastermind's are few and worth thinking about. Separating them is what
@@ -317,10 +354,10 @@ func known(tier Tier) bool {
 // DefaultAssignment is the tier each built-in role starts on.
 //
 // Titles are disposable prose: a wrong one costs a glance and is rewritten by
-// the next session, so it goes to the cheap model. A compaction summary is the
-// session's memory — everything before the cut is gone and only the summary
-// survives it — so it goes to the capable one. The asymmetry is about what a
-// bad answer destroys, not about how hard the task reads.
+// the next session, so it goes to the cheap model. The planner's amendment is
+// the opposite — every node the rest of a run pays for is a node it cut — so it
+// goes to the most capable one there is. The asymmetry is about what a bad
+// answer destroys, not about how hard the task reads.
 //
 // THE THREE RUN ROLES ARE ASSIGNED HERE rather than from the files that make
 // their calls, which is the arrangement guardian, vision and the auditor keep.
@@ -330,14 +367,13 @@ func known(tier Tier) bool {
 // happens, many cheap ones that do it. Split across three files, that balance
 // is three unrelated lines nobody reads together.
 var DefaultAssignment = map[Role]Tier{
-	RoleTitle:      TierLow,
-	RoleCaption:    TierLow,
-	RoleCompaction: TierHigh,
-	RolePlanner:    TierMastermind,
-	RoleDesigner:   TierMastermind,
-	RoleWorker:     TierWorker,
-	RoleRouter:     TierLow,
-	RoleReflex:     TierReflex,
+	RoleTitle:    TierLow,
+	RoleCaption:  TierLow,
+	RolePlanner:  TierMastermind,
+	RoleDesigner: TierMastermind,
+	RoleWorker:   TierWorker,
+	RoleRouter:   TierLow,
+	RoleReflex:   TierReflex,
 }
 
 // ErrUnknownRole is returned by [Resolve] for a role that was never
@@ -383,15 +419,14 @@ func TierKey(tier Tier) string { return tierPrefix + string(tier) }
 // A package that does pass one to [Register] overwrites its entry here, which is
 // the same last-one-wins rule the tier assignment keeps.
 var roleDescriptions = map[Role]string{
-	RolePlanner:    "the plan that steers an adaptive run",
-	RoleDesigner:   "writes and reviews a harness page",
-	RoleAuditor:    "whether finished-looking work is actually finished",
-	RoleCompaction: "the summary that survives a compaction",
-	RoleWorker:     "one node of an adaptive run",
-	RoleTitle:      "the name a session gives itself",
-	RoleIntake:     "filling in a program's form from what was already said",
-	RoleGuardian:   "is this one tool call plainly safe",
-	RoleRouter:     "whether a turn should have been work",
+	RolePlanner:  "the plan that steers an adaptive run",
+	RoleDesigner: "writes and reviews a harness page",
+	RoleAuditor:  "whether finished-looking work is actually finished",
+	RoleWorker:   "one node of an adaptive run",
+	RoleTitle:    "the name a session gives itself",
+	RoleIntake:   "filling in a program's form from what was already said",
+	RoleGuardian: "is this one tool call plainly safe",
+	RoleRouter:   "whether a turn should have been work",
 	// The cascade's second half, and the two calls a division makes.
 	RoleRouterConfirm: "a second look before work starts itself",
 	RoleMarkReader:    "what is left of a long answer, and whether it has parts",
@@ -480,6 +515,68 @@ func Registered() []Role {
 	registryMu.RUnlock()
 	sort.Slice(roles, func(i, j int) bool { return roles[i] < roles[j] })
 	return roles
+}
+
+// Vocabulary is EVERY role this build has a word for, which is not the same set
+// as [Registered].
+//
+// A ROLE WITH NO TIER IS STILL A ROLE. [RoleImageGen] is the standing example:
+// a painter is chosen by a pin or not at all — "a chat model in tiers.high is
+// not a statement about painting" — so nothing ever calls [Register] for it and
+// the registry has never heard of it. Reading the registry as the answer to
+// "what are the roles" therefore throws a person's `imagegen:` pin away, which
+// is a real setting doing real work.
+//
+// So this is the vocabulary and the registry is the tier table. They are
+// different questions and this package now answers both.
+//
+// THE LIST IS COMPLETE BECAUSE A LAW SAYS SO, not because somebody remembers:
+// cmd/aforge-replay's TestEveryRoleWordIsDeclaredWhereTheVocabularyIs already
+// parses this file for every Role constant, and fails when one of them is
+// missing from here.
+func Vocabulary() []Role {
+	return append([]Role(nil), vocabulary...)
+}
+
+// Known reports a written name as one of this build's roles, registered or not.
+func Known(name string) bool {
+	key := RoleKey(name)
+	for _, role := range vocabulary {
+		if RoleKey(string(role)) == key {
+			return true
+		}
+	}
+	return false
+}
+
+var vocabulary = []Role{
+	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
+	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
+	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
+	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
+	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
+	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
+	RoleVision, RoleWorker,
+}
+
+// RoleKey is how a role name written by a person is compared: trimmed and
+// lower-cased.
+//
+// IT IS ONE SPELLING BECAUSE A SECOND ONE EVENTUALLY DISAGREES. A row typed
+// `Compaction: x` and one typed `compaction:x` are the same pin, and every
+// reader that decides whether a word is a role has to answer that the same way
+// or one of them will recognise a name the others do not.
+//
+// THERE IS NO LEDGER OF RETIRED ROLES, DELIBERATELY. One was written here and
+// then deleted: a map of the words this build used to answer to, so a dropped
+// pin could be told apart from a typo. It could not earn its keep. Both are a
+// pin no call will ever consult, both should stop being written back, and the
+// only reader who can act on either is the person adding a word right now —
+// which is the one place internal/config still refuses (its writeModelRoles).
+// Keeping the ledger meant every future deletion owed it an entry, and the day
+// somebody forgot, the old failure would come back exactly as it was.
+func RoleKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 // TierOf reports the tier a role resolves under, and false if the role was
@@ -639,9 +736,12 @@ func Patience(tier Tier) time.Duration {
 		// already cost more than the answer is worth.
 		return 45 * time.Second
 	case TierHigh:
-		// Long enough for a compaction summary over a full window — the one
-		// call on this tier that legitimately reads a great deal before it
-		// writes anything.
+		// Long enough for the AUDITOR over a whole piece of finished-looking
+		// work — the one call on this tier that legitimately reads a great deal,
+		// and gathers evidence of its own, before it writes anything. (It was
+		// derived from the compaction summary until that role was deleted; the
+		// summariser had already stopped existing, and the figure it justified
+		// had outlived it.)
 		return 5 * time.Minute
 	case TierMastermind:
 		// A planner reading a whole run, or a designer writing a page everybody

@@ -1384,6 +1384,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			"making-pictures-audio-and-video"},
 		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
 		{"why is the picture you generated over --host not painted in my terminal", "making-pictures-audio-and-video"},
+		// The step row names the image model behind the file, and opening the
+		// step shows what was sent to it. Both are asked about the PICTURE — the
+		// person is looking at a row in their transcript — so they land on the
+		// making page rather than on the screen or the model pages.
+		{"which image model drew this picture", "making-pictures-audio-and-video"},
+		{"show me the prompt you sent to the image model", "making-pictures-audio-and-video"},
 		// Written from a real run: twelve clips rendered in parallel with
 		// nothing shared, stitched with a video-only crossfade — the person
 		// asked all three of these, in these words, and the answers were
@@ -2640,7 +2646,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 	for _, sentence := range []string{
 		"enter again to disconnect",
 		"the disconnected sentence first and then says",
-		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
+		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
 		"That written host name is the row's name everywhere",
 		"a **Something else** service must provide the compatible chat path",
 		"tries `GET <base>/models` first",

@@ -1223,6 +1223,25 @@ func (a *app) proposeTask(ev session.Event) {
 	} else {
 		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
 	}
+	// A CARD THAT ARRIVES ALREADY DECIDED IS NOT ASKED, and this is the whole of
+	// what a surface joining a turn late does with one. The engine restates a
+	// proposal the moment anybody settles it (session's [TaskNotice.Decided]) and
+	// leaves the open card out of the replay in its favour, so what lands here is
+	// the assignment with an answer already on it: the person approved this, went
+	// to another tab and came back, and what they are owed is what they decided —
+	// never the question again.
+	//
+	// IT IS ONLY EVER THE CREATE PATH. A window that already holds this card has
+	// been watching all along and has drawn its own verdict from the key it
+	// pressed or the clock it ran ([app.taskAnswered]); the branch above leaves
+	// that drawing alone.
+	if notice.Decided != nil {
+		card.verdict = taskVerdict(notice.Decided.Approved, notice.Decided.Redirect)
+		card.answer = taskAnswerWord(notice.Decided.Approved)
+		a.markCardStale(card)
+		a.touch()
+		return
+	}
 	// AND THE QUESTION IS RAISED FROM HERE TOO, dressed with the lane's own two
 	// hands. It arrives on the questions lane as well and the block replaces by
 	// token, so whichever gets here first draws and the second is the same
@@ -1232,6 +1251,36 @@ func (a *app) proposeTask(ev session.Event) {
 	a.raiseQuestion(a.taskShown(notice))
 	a.follow()
 	a.touch()
+}
+
+// taskVerdict is the word a settled proposal keeps, from what was decided about
+// it. It is ONE READING used twice — by the window whose key answered
+// ([app.taskAnswered]) and by a window replaying a card the engine says was
+// already settled — because a verdict spelled in two places is two accounts of
+// one decision the first time either moves.
+func taskVerdict(approved bool, redirect string) string {
+	switch {
+	case approved && strings.TrimSpace(redirect) != "":
+		return taskRedirectWord
+	case approved:
+		return taskApprovedWord
+	default:
+		return taskDeclinedWord
+	}
+}
+
+// taskAnswerWord is the label the answer wears on a settled card, for the answer
+// the engine says was taken. It is read off the proposal's own options rather
+// than spelled here, so a replayed card and the card somebody answered say the
+// same word.
+func taskAnswerWord(approved bool) string {
+	for _, option := range session.AnswerOptions(session.QuestionTask) {
+		action, ok := session.AnswerFromKey(session.QuestionTask, option.Key)
+		if ok && action.Task.Approved == approved {
+			return strings.TrimSpace(option.Label)
+		}
+	}
+	return ""
 }
 
 // taskShown is one proposal as the block holds it: the engine's own question
@@ -1492,14 +1541,7 @@ func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 			word = strings.TrimSpace(option.Label)
 		}
 	}
-	switch {
-	case approve && redirect != "":
-		card.verdict = taskRedirectWord
-	case approve:
-		card.verdict = taskApprovedWord
-	default:
-		card.verdict = taskDeclinedWord
-	}
+	card.verdict = taskVerdict(approve, redirect)
 	card.answer = word
 	// A YES OPENS THE FORMING BLOCK. The task the card names does not exist
 	// until its first update arrives, and the person who just said yes is owed

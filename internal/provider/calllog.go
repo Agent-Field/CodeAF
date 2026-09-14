@@ -363,6 +363,9 @@ func (c *Client) record(facts recordFacts) {
 	// is what the headless waiting line reads, and the file's own switch is
 	// read where the file is written.
 	model := c.modelFor(facts.request)
+	// THE BODY THIS ROW IS ABOUT, which on a row that ENDS an attempt is not the
+	// caller's current one (bodyKnobs).
+	body := bodyKnobs(facts)
 	record := calllog.Record{
 		Time: logNow().Format("2006-01-02T15:04:05.000Z07:00"),
 		// The run this call belongs to, read off the context the caller
@@ -375,7 +378,7 @@ func (c *Client) record(facts recordFacts) {
 		Tag:       callTag(facts.ctx),
 		Node:      callNode(facts.ctx),
 		Model:     model,
-		Served:    recordedServed(facts),
+		Served:    recordedServed(facts, body),
 		Effort:    c.recordedEffort(model, facts.knobs),
 		EffortPin: c.recordedEffortPin(model, facts.knobs),
 		// The ceiling that TRAVELLED, from the one function that works it out
@@ -388,7 +391,7 @@ func (c *Client) record(facts recordFacts) {
 		Tools:          len(facts.request.Tools),
 		Stream:         facts.stream,
 		Attempt:        facts.attempt,
-		Relaxed:        relaxNames(facts.knobs.relaxed),
+		Relaxed:        c.relaxNames(model, body),
 		Status:         facts.status,
 		Millis:         logNow().Sub(facts.began).Milliseconds(),
 		Learned:        facts.learned,
@@ -436,7 +439,7 @@ func (c *Client) record(facts recordFacts) {
 	// THIS attempt, so that the row of a rescue says what the rescue did and
 	// the row of the request it rescued says what happened to that one.
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
-		record.Lane = wait.lane
+		record.Lane = recordedLane(body, wait.lane)
 		record.HazardCeilingMs = wait.deadline.Milliseconds()
 		// WHAT WAS PLANNED AND WHAT HAPPENED ARE TWO FIELDS, AND THE ROW MAY
 		// CARRY BOTH. The ceiling above is when the watch was going to start
@@ -597,23 +600,81 @@ func firstTokenAfter(began, first time.Time) time.Duration {
 // another machine's refusal (docs/design/recovery/DESIGN.md §1's third
 // reading). Filling an empty `served` with `lane` would make that disagreement
 // permanently invisible, so it is never done.
-func recordedServed(facts recordFacts) string {
+func recordedServed(facts recordFacts, body callKnobs) string {
 	if served := strings.TrimSpace(facts.served); served != "" {
 		return served
 	}
-	return soleDemandedLane(facts.knobs)
+	return soleDemandedLane(body)
 }
 
-// soleDemandedLane is the one machine this request was pinned to, and "" when
-// it was free to be routed anywhere. A rescue demands the single arm it walked
-// to (hedge.go's [hedgePreference]) and a person's pin is one machine
+// bodyKnobs is the knobs describing the request THIS ROW IS ABOUT.
+//
+// A ROW THAT ENDS AN ATTEMPT IS ABOUT THAT ATTEMPT'S BODY AND NOT THE CALLER'S
+// CURRENT ONE. The widen and the ladder relax a COPY of the knobs and hand it
+// down, so the door that records the answer is still holding the unrelaxed
+// original — and a row built from that said the bare retry of a retired pin had
+// gone to the very machine whose refusal it was recovering from
+// (`"lane":"DeepSeek"` over a body with no `provider` key, measured
+// 2026-09-13). The trace already keeps each attempt's own knobs for exactly
+// this reason ([openAttempt]); this is the second reader of them.
+//
+// THE THREE CASES ARE ONE RULE. A start row is written before the attempt is
+// tracked, so nothing is open and the caller's knobs are the body's. An
+// ordinary end row is written while its own attempt is still open, so the open
+// one is this row's. And the unconditional closing row ([Client.closeOpenAttempt])
+// has already taken the attempt off the trace and is CARRYING its knobs, so the
+// caller's are the body's again.
+func bodyKnobs(facts recordFacts) callKnobs {
+	if facts.phase == calllog.PhaseStart {
+		return facts.knobs
+	}
+	if trace := facts.knobs.trace; trace != nil && trace.open != nil {
+		return trace.open.knobs
+	}
+	return facts.knobs
+}
+
+// soleDemandedLane is the one machine THIS ATTEMPT'S BODY was pinned to, and ""
+// when it was free to be routed anywhere. A rescue demands the single arm it
+// walked to (hedge.go's [hedgePreference]) and a person's pin is one machine
 // (lanes.go), so either is a commitment the router cannot answer around.
+//
+// AND AN ATTEMPT THAT HAS WITHDRAWN THE DEMAND HAS NO COMMITMENT LEFT, which is
+// the half this used to get wrong. The knobs travel by value through the widen
+// and the ladder, so the choice that named the machine is still sitting on them
+// after the encoder has stopped sending it ([relaxedPreferences] takes `only`
+// off) — and the bare retry of a retired pin was logged `served: DeepSeek` over
+// a body with no `provider` key at all, which is the one machine that certainly
+// did not answer it. The demand is read the way the encoder reads it or not at
+// all.
 func soleDemandedLane(knobs callKnobs) string {
+	if !knobs.carriesTheDemand() {
+		return ""
+	}
 	if lane := strings.TrimSpace(knobs.hedgeLane); lane != "" {
 		return lane
 	}
 	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) == 1 {
 		return strings.TrimSpace(knobs.laneChoice.Only[0])
+	}
+	return ""
+}
+
+// recordedLane is the machine THIS ATTEMPT'S preference asked for: the head of
+// the order it sent, or the one machine it demanded.
+//
+// THE WATCH KNOWS WHAT THE CALL CHOSE AND NOT WHAT EACH ATTEMPT SENT
+// (waitreport.go's askedLane), and the two part company exactly once: on the
+// rung that widens. It takes `only` and `allow_fallbacks` off and leaves
+// `order` standing, so a lane the choice merely RANKED is still this body's ask
+// and a lane it DEMANDED is not — and a pinned request's bare retry was
+// reported under the name of the machine whose refusal it was recovering from.
+func recordedLane(knobs callKnobs, asked string) string {
+	if asked == "" || knobs.carriesTheDemand() {
+		return asked
+	}
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Order) > 0 && !knobs.noProvider {
+		return asked
 	}
 	return ""
 }
@@ -726,12 +787,25 @@ func (c *Client) emptyAtCeiling(request *ai.Request, response *ai.Response) bool
 // words (endpoints.go's relaxRungs). It is the same table the retry line a
 // person watches is built from, so the log and the surface can never call the
 // same rung two things.
-func relaxNames(set relaxSet) []string {
+//
+// AND A RUNG THAT TAKES OFF MORE THAN ONE FIELD NAMES THE ONES THIS BODY HAD
+// (endpoints.go's [relaxStep.took]). The row is read to find out what changed
+// about a request, so a rung's general word is only worth writing where it is
+// also the particular truth — and the widening rung's was not, on every pinned
+// request there has ever been.
+func (c *Client) relaxNames(model string, knobs callKnobs) []string {
 	var names []string
 	for _, rung := range relaxRungs {
-		if set.has(rung.bit) {
-			names = append(names, rung.name)
+		if !knobs.relaxed.has(rung.bit) {
+			continue
 		}
+		if rung.took != nil {
+			if took := c.widenedNames(model, knobs); len(took) > 0 {
+				names = append(names, took...)
+				continue
+			}
+		}
+		names = append(names, rung.name)
 	}
 	return names
 }

@@ -1137,9 +1137,11 @@ true, require_parameters: true}` — the router picks the currently-fastest
 endpoint, fallbacks keep every preference advisory (a slow answer beats no
 answer), and `require_parameters` stops a request carrying the reasoning knob
 from landing on an endpoint that would silently drop it. The `routing` settings
-row is the only dial: `latency` (default) · `price` · `off`, and `off` is total
-— no preference object, and no measurement either, because a session that asked
-for no routing asked for no ledger.
+row is the only dial: `simple` (default) · `latency` · `price` · `off`. The
+object above is what `latency` and `price` send; `simple` sends no preference of
+ours at all — the router's own default routing answers, and a provider you pinned is
+the whole request — and `off` is total, no preference object and no measurement
+either, because a session that asked for no routing asked for no ledger.
 
 **The check is a ledger, and it names no vendor.** Every completion is timed —
 TTFT from the send to the first token (reasoning counts; it is the endpoint

@@ -1033,6 +1033,7 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	// rather than through its token stream (internal/lane's roles.go).
 	response, err := a.completeWithModel(
 		provider.WithRole(streamCtx, lane.RoleDesign),
+		callPurpose(roles.RoleDesigner),
 		messages,
 		model)
 	close(done)

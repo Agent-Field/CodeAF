@@ -73,6 +73,21 @@ the life of the conversation. Starting in the "wrong" place is not a dead end,
 though: name the folder you actually meant with `/folder`, and the work goes
 there.
 
+## /status says an older build is holding this conversation
+
+On every launch aforge performs one sweep: it reads every presence file under
+`~/.aforge/v3/projects`, and if a live session there is running from an older
+rev than this binary's own, one line in the conversation names the pids. That
+is all `on an older build` means — the sweep warns. It never blocks, never
+locks, never kills.
+
+The `/status` build line shows the serving process's build: for a chat that is
+the process typed `aforge` with; for a conversation hosted by the resident
+engine (`engine --daemon`) it is still whatever binary the engine launched
+from. In both cases the fix is a close: close the older session or the older
+engine, and its next open runs this build. No line at launch means nothing
+stale is running.
+
 ## The flags you can start it with
 
 | Flag | What it does |
@@ -687,3 +702,8 @@ do?", "what does ctrl+b do?", "can you read a PDF?" and "why did you just ask me
 that?" are all fair questions to type straight into the conversation. If the
 manual has nothing on something, that usually means aforge does not do it, and it
 will tell you so instead of inventing an answer.
+
+## /drafts and the ↑ walk — cleared drafts come back too
+
+`ctrl+u`, a conversation switch, any clear that empties the whole box — aforge pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
+

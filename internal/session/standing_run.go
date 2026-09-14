@@ -98,16 +98,11 @@ const (
 	standingOutcomeClip = 400
 )
 
-// standingSentinelRole is the cheap yes/no judgment, registered as a ROLE so it
-// resolves the way every other auxiliary call in this build resolves: the
-// person's pin, then the low tier, then the conversation's own model
-// (internal/roles). It sits low for the guardian's reason — it reads a few
-// kilobytes and answers one binary question, and a wrong no costs a check that
-// said nothing rather than money.
-const standingSentinelRole roles.Role = "sentinel"
-
+// The cheap yes/no judgment is [roles.RoleSentinel] — declared there with every
+// other role's word, which carries the reasoning — and registered here, where
+// the call is.
 func init() {
-	roles.Register(standingSentinelRole, roles.TierLow, "is this worth telling you about")
+	roles.Register(roles.RoleSentinel, roles.TierLow, "is this worth telling you about")
 }
 
 // ── the live-window registry ────────────────────────────────────────────────
@@ -163,15 +158,17 @@ func forgetLiveSession(agent *Agent) {
 	liveSessionsMu.Unlock()
 }
 
-// someoneIsWatching reports whether this process holds a conversation somebody
-// is sitting in front of.
+// someoneIsWatching reports whether a person is in front of this process: a
+// conversation they opened, or a command they typed and are waiting on.
 //
 // IT IS THE ONE READING OF "ATTENDED" THIS BUILD CAN HONESTLY MAKE, and it is
-// this map because of what the map already refuses: a task node's own agent and
-// an errand's pane both decline to register ([registerLiveSession]), so an
-// entry here is a room with a person in it and nothing else is. A headless run
-// opens no conversation and answers false, which is the correct reading of a
-// process nobody is watching.
+// this map plus the door's latch because of what the map already refuses: a
+// task node's own agent and an errand's pane both decline to register
+// ([registerLiveSession]), so an entry here is a room with a person in it and
+// nothing else is. A headless run opens no conversation; it answers true only
+// when the door said a person typed it (internal/provider's
+// [provider.SetPersonAtTheDoor]), which is the difference between `aforge do`
+// at somebody's terminal and a node a spawner built with nobody there.
 //
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
 // nobody is waiting on, and that is a true statement about a run whose owner
@@ -181,6 +178,9 @@ func forgetLiveSession(agent *Agent) {
 // they are looking at this particular node, which is a distinction no plan
 // graph in this build can yet draw.
 func someoneIsWatching() bool {
+	if provider.PersonAtTheDoor() {
+		return true
+	}
 	liveSessionsMu.Lock()
 	defer liveSessionsMu.Unlock()
 	return len(liveSessions) > 0
@@ -1025,7 +1025,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 	)
 	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
 		once.Do(func() {
-			model, built = roles.Resolve(roles.Source(parent.RolesSource), standingSentinelRole, parent.Model)
+			model, built = roles.Resolve(roles.Source(parent.RolesSource), roles.RoleSentinel, parent.Model)
 			if built != nil {
 				return
 			}
@@ -1056,15 +1056,22 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		// every time and the item's own choice would do nothing (provider's
 		// requestedEffort).
 		//
-		// IntentBackground says the same thing to the router — nobody is
-		// waiting, so route on price rather than on speed.
+		// IntentBackground says the same thing where the lane chooser reads it —
+		// nobody is waiting, so a second of this wait is worth nothing.
 		//
 		// And the role says both of those once, in the vocabulary the router and
 		// the phase clock share: a standing run has no one in front of it, so
 		// its wait is worth nothing and its stream is nobody's to watch
 		// (internal/lane's roles.go).
+		//
+		// And the purpose, because this road builds its own client and never
+		// passes the door: it is the call this build makes most often with
+		// nobody there, and until it said so it reached the log with no tag at
+		// all (clientdoor.go's [withPurpose]).
 		callCtx := provider.WithRole(
-			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			provider.WithRoutingIntent(
+				provider.WithoutStream(withPurpose(ctx, purposeSentinel)),
+				provider.IntentBackground),
 			lane.RoleStanding)
 		if rung := effort.Resolve(effort.Scope{
 			Task: restoredRung(judgment.Item.Does.Effort),

@@ -12,10 +12,15 @@ import (
 //
 // A cost autopsy over 44 bench cells found this adapter paying ~3.5× the list
 // price of the very models it named, because `sort: latency` asked for the
-// fastest endpoint and named no ceiling at all. These tests pin the two halves
-// of the answer: a latency ask carries a ceiling derived from the model's own
-// published price, and a call nobody is waiting on does not ask for latency in
-// the first place.
+// fastest endpoint and named no ceiling at all. The answer was a ceiling derived
+// from the model's own published price, and these tests pin it to the ask it
+// rides on.
+//
+// THE OTHER HALF OF THAT ANSWER IS GONE, and the tests below say so: a call
+// nobody was waiting on used to be routed by price WITHOUT ANYBODY ASKING, and
+// a person's own turn by speed. The road is nobody's to guess now — a client
+// that was handed no row takes [DefaultRouting] whoever is waiting on it
+// (velocity.go), and `latency` and `price` are words somebody writes.
 
 // pricedClient is a router-shaped client that knows what its model lists at.
 // The prices are per token in US dollars, as the catalog publishes them.
@@ -59,7 +64,7 @@ func ceilingOn(t *testing.T, recorded *capture, index int) map[string]any {
 
 func TestALatencyAskCarriesACeilingDerivedFromTheModelsOwnListPrice(t *testing.T) {
 	// $0.40/M in and $1.60/M out, spelled per token the way the catalog does.
-	client, recorded := pricedClient(t, nil, 0.0000004, 0.0000016, true)
+	client, recorded := pricedClient(t, StaticRouting(RoutingLatency), 0.0000004, 0.0000016, true)
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +92,7 @@ func TestALatencyAskCarriesACeilingDerivedFromTheModelsOwnListPrice(t *testing.T
 // because a ceiling invented from nothing would refuse endpoints on a number
 // that does not exist.
 func TestNoPublishedPriceSendsNoCeiling(t *testing.T) {
-	client, recorded := pricedClient(t, nil, 0, 0, false)
+	client, recorded := pricedClient(t, StaticRouting(RoutingLatency), 0, 0, false)
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -112,38 +117,46 @@ func TestAnUnwiredPriceSeamSendsNoCeiling(t *testing.T) {
 	}
 }
 
-// ── WHO IS WAITING ──────────────────────────────────────────────────────────
+// ── WHO IS WAITING NO LONGER CHOOSES THE ROAD ───────────────────────────────
 
-func TestACallNobodyIsWaitingOnRoutesByPrice(t *testing.T) {
-	client, recorded := pricedClient(t, nil, 0.0000004, 0.0000016, true)
-	ctx := WithRoutingIntent(context.Background(), IntentBackground)
-	if _, err := client.CompleteWithMessages(ctx, userMessages("name this")); err != nil {
-		t.Fatal(err)
+// The two tests this replaces were TestACallNobodyIsWaitingOnRoutesByPrice and
+// TestTheConversationsOwnTurnStillRoutesByLatency, and between them they were
+// the per-request default: an errand sorted by price and a person's own turn by
+// speed, neither of them anybody's instruction. What is left is one answer for
+// both, and it is the row somebody wrote or the row this build ships.
+func TestWhoIsWaitingNoLongerPicksTheRoad(t *testing.T) {
+	for _, intent := range []RoutingIntent{IntentBackground, IntentInteractive} {
+		client, recorded := pricedClient(t, nil, 0.0000004, 0.0000016, true)
+		ctx := WithRoutingIntent(context.Background(), intent)
+		if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+			t.Fatal(err)
+		}
+		if prefs := prefsOn(t, recorded, 0); prefs != nil {
+			t.Fatalf("a client nobody routed sent %v for intent %v, want nothing at all", prefs, intent)
+		}
 	}
-	prefs := prefsOn(t, recorded, 0)
-	if prefs == nil || prefs["sort"] != "price" {
-		t.Fatalf("preferences = %v, want an errand routed on price", prefs)
-	}
-	// And no ceiling with it: sorting by price is already asking for the
-	// cheapest thing available, and a ceiling could only take endpoints away.
-	if _, carried := prefs["max_price"]; carried {
-		t.Fatalf("a price-sorted request carried a ceiling: %v", prefs["max_price"])
+	// AND A WRITTEN ROW IS THE SAME ROW FOR BOTH OF THEM. `price` was what an
+	// errand used to get for free; it is now what asking for it gets, and a
+	// person's own turn gets it too.
+	for _, intent := range []RoutingIntent{IntentBackground, IntentInteractive} {
+		client, recorded := pricedClient(t, StaticRouting(RoutingPrice), 0.0000004, 0.0000016, true)
+		ctx := WithRoutingIntent(context.Background(), intent)
+		if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+			t.Fatal(err)
+		}
+		prefs := prefsOn(t, recorded, 0)
+		if prefs == nil || prefs["sort"] != "price" {
+			t.Fatalf("preferences = %v for intent %v, want the written price sort", prefs, intent)
+		}
+		// And no ceiling with it: sorting by price is already asking for the
+		// cheapest thing available, and a ceiling could only take endpoints away.
+		if _, carried := prefs["max_price"]; carried {
+			t.Fatalf("a price-sorted request carried a ceiling: %v", prefs["max_price"])
+		}
 	}
 }
 
-func TestTheConversationsOwnTurnStillRoutesByLatency(t *testing.T) {
-	client, recorded := pricedClient(t, nil, 0.0000004, 0.0000016, true)
-	ctx := WithRoutingIntent(context.Background(), IntentInteractive)
-	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
-		t.Fatal(err)
-	}
-	if prefs := prefsOn(t, recorded, 0); prefs == nil || prefs["sort"] != "latency" {
-		t.Fatalf("preferences = %v, want the person's own turn still chasing speed", prefs)
-	}
-}
-
-// A ROW A PERSON WROTE WINS OVER BOTH. The default moves with who is waiting;
-// an explicit choice does not move at all.
+// A ROW A PERSON WROTE IS THE WHOLE ANSWER, whoever is waiting on the call.
 func TestAnExplicitRoutingRowOverridesTheIntent(t *testing.T) {
 	client, recorded := pricedClient(t, StaticRouting(RoutingLatency), 0.0000004, 0.0000016, true)
 	ctx := WithRoutingIntent(context.Background(), IntentBackground)
@@ -184,7 +197,7 @@ func TestRoutingOffStaysOffForAnErrand(t *testing.T) {
 // first — so sending it beside a price sort would silently undo the sort. The
 // refusals still ride: those are about endpoints that will not answer at all.
 func TestAPriceSortedRequestCarriesTheRefusalsAndNoSpeedRanking(t *testing.T) {
-	client, recorded := pricedClient(t, nil, 0.0000004, 0.0000016, true)
+	client, recorded := pricedClient(t, StaticRouting(RoutingPrice), 0.0000004, 0.0000016, true)
 	const model = "vendor/fast-model"
 	client.velocity.brisk(model, "quicksilver")
 	for i := 0; i < ignoreAfter; i++ {
@@ -329,6 +342,87 @@ func TestAStrictLaneDemandCarriesNoPriceCeiling(t *testing.T) {
 	}
 	if prefs.MaxPrice != nil {
 		t.Fatalf("the strict lane demand kept its ceiling: %+v", prefs.MaxPrice)
+	}
+}
+
+// ── THE CACHE PIN BESIDE THE FRONTIER ────────────────────────────────────
+
+// A warm lane the frontier did not name is admitted into the enforced set
+// rather than dropped, because a demand priced on speed alone rotates the
+// lineage through cold prefixes — measured at five machines in eight calls,
+// 4.7× the warm bill each hop.
+func TestACachePinOutsideTheFrontierIsAdmittedBesideIt(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{Only: []string{"Fireworks"}, Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if len(prefs.Only) != 2 || !namesEndpoint(prefs.Only, "Wafer") ||
+		!namesEndpoint(prefs.Only, "Fireworks") {
+		t.Fatalf("demand = %v, want the warm lane admitted beside the frontier", prefs.Only)
+	}
+	if len(prefs.Order) == 0 || prefs.Order[0] != "Wafer" {
+		t.Fatalf("order = %v, want the admitted pin still leading it", prefs.Order)
+	}
+	if prefs.AllowFallbacks == nil || *prefs.AllowFallbacks {
+		t.Fatalf("allow_fallbacks = %v, want it off on a demand no matter who joined it",
+			prefs.AllowFallbacks)
+	}
+	// The frontier priced every admitted lane, including the pin, so the
+	// ceiling still comes off — the same answer the strict-demand test above
+	// pins.
+	if prefs.MaxPrice != nil {
+		t.Fatalf("the admitted pin kept a ceiling: %+v", prefs.MaxPrice)
+	}
+}
+
+// A pin a role refused on its own declared patience is dropped even when a
+// demand exists, which is the 2026-09-11 measured case the admission must
+// not erase.
+func TestACachePinBeyondThePatienceIsDropped(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{
+		Only:   []string{"Fireworks"},
+		Order:  []string{"Fireworks"},
+		Ignore: []string{"Wafer"},
+	}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if namesEndpoint(prefs.Only, "Wafer") || namesEndpoint(prefs.Order, "Wafer") {
+		t.Fatalf("the refused lane still rode: %+v", prefs)
+	}
+	if !namesEndpoint(prefs.Ignore, "Wafer") {
+		t.Fatalf("the refusal was not carried onto ignore: %+v", prefs.Ignore)
+	}
+}
+
+// A person's own lane row clears the cache pin from the demand as well as
+// from the order, because a borrowable pin is an instruction and a cache is
+// a guess.
+func TestAPersonsOwnPinClearsTheCachePinFromTheDemand(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	RepinLane(LanePin{Lane: "Novita"})
+	t.Cleanup(func() { RepinLane(LanePin{}) })
+	choice := lanes.Choice{Only: []string{"Fireworks"}, Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if namesEndpoint(prefs.Only, "Wafer") || namesEndpoint(prefs.Order, "Wafer") {
+		t.Fatalf("the cache pin jumped the person: %+v", prefs)
+	}
+}
+
+// A chooser that demanded nothing leaves the advisory path exactly as it has
+// always been: the pin leads the order, no demand exists to join, and no
+// fallback switch is written.
+func TestNoDemandLeavesTheAdvisoryPathUntouched(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{Order: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency"}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, "Wafer")
+	if prefs.Only != nil || prefs.AllowFallbacks != nil {
+		t.Fatalf("a demand came from nowhere: %+v", prefs)
+	}
+	if len(prefs.Order) != 2 || prefs.Order[0] != "Wafer" || prefs.Order[1] != "Fireworks" {
+		t.Fatalf("order = %v, want the pin still leading an advisory preference", prefs.Order)
 	}
 }
 

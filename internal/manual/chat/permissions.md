@@ -721,7 +721,7 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## Who can see my files — privacy and file access: what aforge can read without asking, does git status need approval
+## Who can see or view my files — privacy, file access and workspace visibility, what aforge can read without asking, does git status need approval
 
 **Privacy: who can see my files.** In the default `prompt` mode, a look is not
 a question. aforge can read and open these files without asking — the policy
@@ -730,13 +730,18 @@ itself allows these without a card, even before the seeded row below is applied:
 - **`read`, `ls`, `grep`, `find`** — they change no file.
 - **`tasks` when it is a look** — a search, or one task's page. `say`,
   `continue` and `resolve` still ask, because they write into a node.
+- **`services` and `use_service`** — the first only lists accounts; the second
+  has its own connect card as the one question about connecting, and every tool
+  it brings is judged when called.
 - **`git status`** and its flags (`git status --short`, `git status --porcelain`)
   when no shell-command rule list has been written. A compound line
   (`git status && curl …`) still asks. A pattern you wrote still wins.
 
-A written `read:prompt` still asks about `read`. A deny-everything blanket
-still denies. A Policy with nothing configured still asks — "no settings" is
-not the shipped default.
+A written `read:prompt`, `services:prompt` or `use_service:prompt` still asks
+about that tool. A deny-everything blanket still denies. A Policy with nothing
+configured still asks — "no settings" is not the shipped default.
+
+## Other tools that run without an approval question by default
 
 Some tools this build never had a reason to ask about are also seeded as `allow`
 underneath whatever you wrote:

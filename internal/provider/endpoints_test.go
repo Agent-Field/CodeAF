@@ -23,6 +23,8 @@ const refusalBody = `{"error":{"message":"No endpoints found that can handle the
 // provider.test would be testing a shorter ladder than the product climbs.
 func refusingClient(t *testing.T, accept func(map[string]any) bool, config Config) (*Client, *capture) {
 	t.Helper()
+	// The ladder these tests climb is the ranked road's ([rankedRoad]).
+	config = rankedRoad(config)
 	forgetLanes(t)
 	recorded := &capture{}
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -142,8 +144,8 @@ func TestAnAllProvidersIgnoredRefusalClimbsTheLadder(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop",` +
 			`"message":{"role":"assistant","content":"ok"}}]}`))
 	})
-	config := Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
-		HTTPClient: handlerClient(handler), Model: "sim/model"}
+	config := rankedRoad(Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
+		HTTPClient: handlerClient(handler), Model: "sim/model"})
 	client, err := NewClient(config)
 	if err != nil {
 		t.Fatal(err)

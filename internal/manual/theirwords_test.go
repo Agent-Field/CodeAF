@@ -9,38 +9,24 @@ import (
 
 // THE QUERIES A MODEL ACTUALLY SENT — AND THE ONES THAT STILL MISS.
 //
-// The first `model` string in each group below was READ OFF THE WIRE —
-// `deepseek/deepseek-v4-flash`, asked the `person` string beside it in a live
-// conversation, called the `manual` tool with these words of its own (#307, and
-// #309's own table). The rest are stand-ins. The wire's other two rewrites —
-// "who can see my files privacy file access", "privacy files who can see my
-// workspace" — reach the permissions page on their own since the section was
-// reworded to carry the privacy and file-access terms, so they measure the
-// corpus now rather than this file, and the rows carry phrasings of the same
-// shape that still miss. Each one is checked twice: that it misses the page
-// ALONE, so a passing row is the mechanism working rather than the corpus
-// having been kind, and that it reaches the page once the person's sentence is
-// read with it.
-//
-// A row that stops missing on its own is a row that has stopped measuring
-// anything, and this file says so out loud rather than passing quietly.
+// R5: The wire rewrites and the earlier stand-ins now reach directly because
+// R4 restores both old and new asker vocabulary to the permissions heading.
+// The replacements below keep the same paraphrase shape and still miss alone;
+// "document exposure boundaries", "local data disclosure controls", and
+// "workspace inspection authorization" were all tried against Search before
+// they were put here. "Repository observation permissions" was tried too and
+// rejected because it already reached. Each row must miss alone and reach
+// through SearchBoth, because a row that reaches without the person's words no
+// longer measures #307.
 var paraphrases = []struct{ person, model, want string }{
-	// The scenario's own question, as internal/e2e asks it. The first row is
-	// the wire's own rewrite that still misses; the two under it are the
-	// stand-ins the header comment explains.
-	{"who can see my files in aforge", "who can see my files when I use aforge", "permissions"},
-	{"who can see my files in aforge", "who can view my files in aforge", "permissions"},
-	{"who can see my files in aforge", "visibility of files in the workspace", "permissions"},
-	// And the same rewrites against #293's bare wording, which reaches the page
-	// second of four on its own — the thinnest margin there is, and both still
-	// come back.
-	{"who can see my files", "who can view my files in aforge", "permissions"},
-	{"who can see my files", "visibility of files in the workspace", "permissions"},
+	{"who can see my files in aforge", "document exposure boundaries", "permissions"},
+	{"who can see my files in aforge", "workspace inspection authorization", "permissions"},
+	{"who can see my files in aforge", "local data disclosure controls", "permissions"},
 }
 
-// TestAParaphraseReachesThePageThePersonsWordsReach is #307. The model does not
-// search what it was asked; it composes a query, and on a corpus this small two
-// words nobody said drop the page out of the four the model is handed.
+// R5: TestAParaphraseReachesThePageThePersonsWordsReach is #307. The model does
+// not search what it was asked; it composes a query, and on a corpus this small
+// two words nobody said can drop the page out of the four the model is handed.
 func TestAParaphraseReachesThePageThePersonsWordsReach(t *testing.T) {
 	for _, row := range paraphrases {
 		if reaches(Chat().Search(row.model, DefaultResults), row.want) {

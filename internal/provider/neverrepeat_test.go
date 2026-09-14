@@ -160,8 +160,8 @@ func (h *poolHandler) wire(attempt int) wirePrefs {
 func poolClient(t *testing.T, name string, handler http.Handler) *Client {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
-	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://openrouter.ai/api/v1",
-		Model: "openrouter/" + name, HTTPClient: handlerClient(handler)})
+	client, err := NewClient(rankedRoad(Config{APIKey: "k", BaseURL: "https://openrouter.ai/api/v1",
+		Model: "openrouter/" + name, HTTPClient: handlerClient(handler)}))
 	if err != nil {
 		t.Fatal(err)
 	}

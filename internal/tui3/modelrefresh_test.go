@@ -58,20 +58,36 @@ func boxLine(t *testing.T, a *app) string {
 	return ""
 }
 
-// RULE 2: the key is named on the picker's own lines. On sixty cells the
-// placeholder is the ranked tail — whole keys, from the right, `enter · esc`
-// given up first — and a filter that matches nothing offers the newest list.
+// RULE 2: the key is named on the picker's own lines. The placeholder is the
+// ranked tail — whole keys, from the right, `enter · esc` given up first — and a
+// filter that matches nothing offers the newest list.
+//
+// THE SIXTY-CELL LINE IS ONE KEY SHORTER THAN IT WAS. `→ lanes` became
+// `→ providers` when the owner ruled on the word (issue #1023), and four cells
+// is exactly what `ctrl+r refresh` had bought from `enter · esc` — so the
+// narrowest frame gives the refresh key up rather than say it as `ctrl+r`, which
+// is the ladder's own law about whole keys ([pickerHint] has the whole of it).
+// Both readings are pinned here, because a line that quietly stopped naming the
+// key at EVERY width is exactly the regression this test exists to catch.
 func TestTheRefreshKeyIsNamedInThePlaceholderAndTheEmptyList(t *testing.T) {
 	a := refreshApp(t, &fakeRefresh{})
 	typeLine(t, a, "/model")
 
-	want := "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint
+	want := "filter · ↑↓ · → providers · ctrl+t effort"
 	if got := boxLine(t, a); got != want {
 		t.Fatalf("on sixty cells the box reads %q, want %q", got, want)
 	}
 	if !strings.HasPrefix(pickerHint, want) {
 		t.Fatalf("the sixty-cell line %q is not the head of %q", want, pickerHint)
 	}
+
+	// AND THE KEY IS NAMED THE MOMENT THERE IS ROOM TO SAY IT WHOLE. Eighty
+	// cells is an ordinary terminal, and the whole line fits there.
+	a.width = 80
+	if got := boxLine(t, a); got != pickerHint {
+		t.Fatalf("on eighty cells the box reads %q, want the whole line %q", got, pickerHint)
+	}
+	a.width = 60
 
 	typeInto(t, a, "zzz")
 	if got := plain(frame(a)); !strings.Contains(got, noModelMatchesFetch) {
@@ -182,9 +198,15 @@ func TestAFailedFetchKeepsTheListAndSaysWhy(t *testing.T) {
 	if after := strings.Join(pickerIDs(a), ","); after != before {
 		t.Fatalf("a failed fetch changed the list: %s → %s", before, after)
 	}
+	// The frame is widened for the reading, because on sixty cells the
+	// placeholder gives the refresh key up to fit `→ providers` whole
+	// ([pickerHint]); what this rule is about is that a FAILED fetch leaves the
+	// key on offer, not how many cells the box has.
+	a.width = 80
 	if !strings.Contains(boxLine(t, a), refreshModelsHint) {
 		t.Fatalf("the key is not offered again: %q", boxLine(t, a))
 	}
+	a.width = 60
 	want := ModelsFetchFailed + " · dial tcp: lookup openrouter.ai: no such host"
 	if got := plain(lastNote(t, a)); got != want {
 		t.Fatalf("the note reads %q, want %q — one line, as the door said it", got, want)

@@ -381,6 +381,15 @@ compact failed: <error>
 
 `/compact` has no argument form and no alias.
 
+**A compaction costs nothing and asks no model.** It is two mechanical passes over
+the messages this session already has: tool results the model has already used
+become pointers to their own bytes, and if that is not enough the oldest assistant
+work is replaced by one marker line naming how much went and where it can be read.
+Your own words are never folded. There is **no summariser** and there is **no
+`compaction` role in settings** — there was one, and it was a priced row wired to
+nothing. What the model is handed instead of a summary is the state card, which is
+maintained a little at a time by the reader that runs after each turn.
+
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
@@ -860,8 +869,8 @@ reasoning effort of the model under the cursor through
 `auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
 thinking control takes. enter switches.
 
-**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
-lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+**→ or tab on a model opens its providers and walks the cursor into them**, onto the pinned
+provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
@@ -873,11 +882,12 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
+filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
-and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its lanes.
+and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
+on the provider you are already pinned to, where the same key takes the pin off again.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -1679,14 +1689,18 @@ is the `--linear` flag at launch rather than a persisted setting.
 order:
 
 1. **your model** — the model you are talking to. It is the conversation slot, and picking
-   here is the same road `/model` takes — the same picker, lanes and all. Its value carries
-   the machine serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
-2. **lane** — which endpoint behind that model answers you. enter opens the machines with
+   here is the same road `/model` takes — the same picker, providers and all. Its value carries
+   the provider serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
+2. **provider** — which provider answers your model. enter opens them with
    what has been measured of each, and enter on one pins it.
-3. **speed guard** — whether an answer slow to start is asked of the next-best machine as
+3. **speed guard** — whether an answer slow to start is asked of the next-best provider as
    well.
-4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
-   With `off` nothing is measured, so the two rows above it have no machine to name.
+4. **routing** — what every request prefers among the providers, and it cycles
+   `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: aforge sends no
+   preference of its own, a provider you pinned goes out as the whole request, and with no pin
+   the router's own default routing answers. `latency` asks for the fastest provider and
+   `price` for the cheapest, on every call. With `off` nothing is measured, so the two rows
+   above it have no provider to name.
 5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).
@@ -1695,11 +1709,23 @@ order:
 7. **reflex** — `near-free · reads every turn — memory, titles, safety`
 8. **small work** — `cheap · the small calls — names, digests, the safety gate`
 9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-10. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+10. **careful work** — `careful · checks what must not be wrong — audits, briefs, vision`
 11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
 12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
+
+**A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
+come and go with the calls that use them — `compaction` was one, and a compaction has not asked
+a model since long before it was deleted. A pin left behind for a word like that is dropped
+when the row is read, never written back, and the foot line says `compaction is no longer a
+role — that pin is ignored` the next time you change any pin. **Every other pin on the row
+keeps working**, which is the whole point: the row is one string holding all of them, and
+refusing the lot over one dead word would leave you unable to change any of them without
+editing `config.json` by hand.
+
+Typing a word that is not a role is still refused outright, with the real names listed — that
+refusal is for the pin you are adding now, which is the one you can do something about.
 
 The four machine rows lead because the endpoint serving your model is part of the same
 decision as the model, and they used to sit at the foot of the tab, forty rows below it.
@@ -1742,13 +1768,13 @@ hear, and everything else follows the general chat rule. Its legend is
 `↑↓ move · enter choose · esc cancel · type to filter`.
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
-and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
-them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
+and its ctrl+t effort knob is true here too — **including the providers** on the row that has
+them. On **your model**, `→` or `tab` unfolds the providers serving the model under the
 cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
-`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+`/model`. The legend says `↑↓ move · → or tab providers · enter choose · esc cancel · type to filter`
 on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
-inside its lanes. The media slots
-have no lane row behind them, so nothing unfolds there and the legend does not offer the
+inside its providers. The media slots
+have no provider row behind them, so nothing unfolds there and the legend does not offer the
 key.
 
 While any of those layers is up — the value box, the model picker, the key box on the
@@ -1757,7 +1783,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call aforge makes outside a turn — `title`, `compaction`, `guardian`, `auditor`,
+one call aforge makes outside a turn — `title`, `guardian`, `auditor`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.

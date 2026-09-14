@@ -38,6 +38,14 @@
 // a table of product sentences is a source of truth, and a table of things a
 // model happened to say is a table of coincidences.
 //
+// AND AN ANSWER IS BOTH, SO IT IS COMPOSED RATHER THAN PASTED. `1 delete it` is
+// the scenario's own word with the PRODUCT's key grammar in front of it, so it
+// goes through [keyedWord] and never into a literal here. Nine of them were
+// pasted as `[1] delete it`, #933 took the brackets off every key, and this
+// suite spent a fortnight waiting three minutes at a time for screens that were
+// already right (issue #998). [TestNoNeedleSpellsAKeyTheSurfaceStoppedSpelling]
+// is the untagged law that now refuses one.
+//
 // ── WHAT IT COSTS ──────────────────────────────────────────────────────────
 //
 // About a dollar for the whole file on deepseek/deepseek-v4-flash, and about
@@ -177,6 +185,35 @@ func press(t *testing.T, r *rig, names ...string) {
 	time.Sleep(questionSettleWait)
 	r.keys(names...)
 	time.Sleep(600 * time.Millisecond)
+}
+
+// aim is the gesture that makes the block's LETTER verbs live, and every
+// scenario that presses one does it first.
+//
+// A LETTER IS THE QUESTION'S ONLY ONCE YOU HAVE AIMED AT IT. `o`, `c`, `x`, `?`
+// and the rest are each the first letter of a word people type into the box —
+// the `d` of "do the schema first" once handed the call back to the asker and
+// left "o the schema first" behind — so internal/tui3 does not take one from
+// somebody who has not yet looked at the question (questionkeys.go's
+// [questionAimKey], and the manual's own questions.md says it in a person's
+// words). Aiming is any key a sentence could not carry: the arrows, `tab`,
+// `enter`, `esc`, or a click on an answer. The answers' own digits are exempt
+// and answer the moment the row is on screen, which is why the scenarios that
+// only press a number never needed this.
+//
+// IT IS `↓` AND THEN `↑` BECAUSE AN AIM MAY NOT BE AN ANSWER. `enter` would take
+// the pick and `esc` would put the question away, which leaves the walk — and
+// the walk moves the pointer, so it is walked straight back. The pointer ends
+// where it started and the block has the hand, which is all a scenario about a
+// page needs before it can open one.
+//
+// WITHOUT IT THE `o` GOES IN THE BOX, and the scenario waits out its patience
+// for a page nobody opened while the screen shows `› o`. That is what six of
+// these scenarios were doing.
+func aim(t *testing.T, r *rig) {
+	t.Helper()
+	press(t, r, "Down")
+	press(t, r, "Up")
 }
 
 // type_ is the same for literal bytes.
@@ -322,8 +359,8 @@ func questionsLine(t *testing.T) {
 		`reason "the build directory is stale", stakes reversible, `+
 		`options [{"key":"1","label":"delete it"},{"key":"2","label":"leave it"}].`)
 
-	screen := awaitQuestion(t, r, "delete the build directory?", "[1] delete it")
-	screenSays(t, screen, "[2] leave it", "the line's second answer")
+	screen := awaitQuestion(t, r, "delete the build directory?", keyedWord("1", "delete it"))
+	screenSays(t, screen, keyedWord("2", "leave it"), "the line's second answer")
 	screenSays(t, screen, say(t, "questionLaterKeyWord"), "the line's way out")
 	screenSays(t, screen, "the build directory is stale", "the line's reason")
 	screenSays(t, screen, say(t, "questionChipTail"), "the chip counting one question")
@@ -332,7 +369,7 @@ func questionsLine(t *testing.T) {
 	// `esc` IS LATER AND CANCELS NOTHING: the rows fold, the chip keeps counting.
 	press(t, r, "Escape")
 	folded := r.capture()
-	screenSilent(t, folded, "[1] delete it", "esc folded the block away")
+	screenSilent(t, folded, keyedWord("1", "delete it"), "esc folded the block away")
 	screenSays(t, folded, say(t, "questionChipTail"), "esc kept the question counted")
 	shot(t, r, "folded")
 
@@ -349,7 +386,7 @@ func questionsLine(t *testing.T) {
 
 	// The chord brings it back from wherever a person is standing.
 	press(t, r, "M-a")
-	back := r.waitFor(20*time.Second, "[1] delete it")
+	back := r.waitFor(20*time.Second, keyedWord("1", "delete it"))
 	screenSays(t, back, "delete the build directory?", "the chord raised the question again")
 
 	type_(t, r, "1")
@@ -471,6 +508,7 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 			asks, turnedAway, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
 	}
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "HRV", "the page lists the answers")
@@ -541,11 +579,26 @@ func questionsRoom(t *testing.T) {
 	screenEchoes(t, card, "postgres", "the card lists the answers before the page is opened")
 	shot(t, r, "card")
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "which store should the ledger sit on?", "the page's head")
 	screenSays(t, room, say(t, "questionRoomWaitsWord"), "the room says what is stopped on it")
-	screenSays(t, room, say(t, "questionRoomNoPickWord"), "the foot with nothing chosen yet")
+	// THE PAGE OPENS WHERE THE BLOCK'S POINTER STOOD, so the foot already says
+	// what `enter` would send — `answering 1 postgres` — rather than nothing.
+	// That is #789's law arriving on the page ("every answer has a pointer the
+	// arrows walk and enter takes"), and questionroom.go's own enter path states
+	// it: "It costs nothing on a page nobody has walked, because the page opens
+	// where the block's pointer stood."
+	screenSays(t, room, say(t, "questionAnsweringWord"),
+		"the foot says what enter would send from the row the page opened on")
+	// AND IT MAY NOT CLAIM NOTHING IS CHOSEN WHILE THE POINTER IS ON AN ANSWER.
+	// `nothing chosen yet` is the foot of a page standing on the one row that
+	// names no answer — `something else…`, which comes after the last option and
+	// carries no key ([questionRoomSends] finds none there). A page that opened
+	// on an answer and said it anyway would be the emptiness law read backwards.
+	screenSilent(t, room, say(t, "questionRoomNoPickWord"),
+		"the page opened on an answer, so the foot may not say nothing is chosen")
 	screenSays(t, room, "what it would look like", "the attached block")
 	screenSays(t, room, say(t, "questionWouldSwitchWord"), "what would change the asker's mind")
 	shot(t, r, "open")
@@ -649,6 +702,7 @@ func questionsBlanks(t *testing.T) {
 	awaitQuestion(t, r, "name the three columns", say(t, "questionOpenKeyWord"))
 	shot(t, r, "card")
 
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	// THE HOLES WEAR THEIR OWN NAMES. A form of unlabelled boxes is a form
@@ -686,6 +740,7 @@ func questionsChecklist(t *testing.T) {
 		`pick {"key":"1"}.`)
 
 	awaitQuestion(t, r, "which checks should run before merge?", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"), "unit tests")
 	screenSays(t, room, say(t, "questionTickKeyWord"),
@@ -697,7 +752,7 @@ func questionsChecklist(t *testing.T) {
 	press(t, r, "Space")
 	ticked := r.capture()
 	screenSays(t, ticked, say(t, "questionAnsweringWord"), "the foot says what enter would send")
-	screenEchoes(t, ticked, "1 unit tests, 2 vet",
+	screenEchoes(t, ticked, keyedWord("1", "unit tests")+", "+keyedWord("2", "vet"),
 		"both ticks are in the answer, in their own keys and in the order they were given")
 	shot(t, r, "ticked")
 
@@ -722,6 +777,7 @@ func questionsPairs(t *testing.T) {
 		`options [{"key":"1","label":"take these"},{"key":"2","label":"leave both"}].`)
 
 	awaitQuestion(t, r, "settle the two naming calls", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "the table", "the first pair's own name")
@@ -748,6 +804,7 @@ func questionsDial(t *testing.T) {
 		`options [{"key":"1","label":"use it"},{"key":"2","label":"leave it alone"}].`)
 
 	awaitQuestion(t, r, "how hard should the retry loop try?", say(t, "questionOpenKeyWord"))
+	aim(t, r)
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, say(t, "questionMoveItWord"), "the arrows move the dial rather than a cursor")
@@ -935,7 +992,7 @@ func questionsReach(t *testing.T) {
 		`head "publish the draft?", kind permission, form line, `+
 		`reason "the draft has not been read by anybody else", stakes reversible, `+
 		`options [{"key":"1","label":"publish it"},{"key":"2","label":"hold it"}].`)
-	raised := awaitQuestion(t, first, "publish the draft?", "[1] publish it")
+	raised := awaitQuestion(t, first, "publish the draft?", keyedWord("1", "publish it"))
 	screenSays(t, raised, say(t, "questionChipTail"), "the first window is counting it")
 	shot(t, first, "raised")
 
@@ -947,7 +1004,7 @@ func questionsReach(t *testing.T) {
 	// every open question under the conversation that raised it, with the same
 	// keys, because a person standing on home is still the person being asked.
 	elsewhere := second.waitFor(60*time.Second, "publish the draft?")
-	screenSays(t, elsewhere, "1 publish it",
+	screenSays(t, elsewhere, keyedWord("1", "publish it"),
 		"home offers the question's OWN answers, on its own keys — the whole of what makes a row "+
 			"answerable rather than a notice")
 	shot(t, second, "home")
@@ -973,7 +1030,7 @@ func questionsWithdrawn(t *testing.T) {
 		`head "overwrite the checkpoint?", kind permission, form line, `+
 		`reason "the checkpoint is from the run before this one", stakes reversible, `+
 		`options [{"key":"1","label":"overwrite it"},{"key":"2","label":"keep it"}].`)
-	awaitQuestion(t, r, "overwrite the checkpoint?", "[1] overwrite it")
+	awaitQuestion(t, r, "overwrite the checkpoint?", keyedWord("1", "overwrite it"))
 	shot(t, r, "raised")
 
 	// `esc` twice: the first folds the question to the chip (it is LATER, not
@@ -1110,7 +1167,7 @@ func questionsDefaultDoor(t *testing.T) {
 		`head "delete the build directory?", kind permission, form line, `+
 		`reason "the build directory is stale", stakes reversible, `+
 		`options [{"key":"1","label":"delete it"},{"key":"2","label":"leave it"}].`)
-	screen := awaitQuestion(t, r, "delete the build directory?", "[1] delete it")
+	screen := awaitQuestion(t, r, "delete the build directory?", keyedWord("1", "delete it"))
 	screenSays(t, screen, say(t, "questionChipTail"),
 		"the ordinary road has to be able to put a question in front of somebody")
 	shot(t, r, "asked")

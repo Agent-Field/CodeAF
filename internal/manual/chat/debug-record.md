@@ -15,6 +15,13 @@ AFORGE_DEBUG=1 aforge             for one shell, one run
 `AFORGE_CALL_LOG_BODIES=1` — the older word, if it is the one in your shell history —
 means the same thing now.
 
+**A recording launch keeps its conversation in this terminal.** The record is written by
+the process that makes the calls, and ordinarily `aforge` hands your conversation to this
+folder's background session host — which was never told to record, and would leave you a
+folder holding `run.json` and no request bodies at all. So a run that is recording takes
+the in-process road, by the pin exactly as by the flag. The conversation ends with the
+terminal, the way `--no-host` does.
+
 **It does not change what the run does.** Nothing is asked differently, nothing is slower,
 no model is told anything new. With it off, a run costs one check and writes nothing at
 all; that is why it is safe to leave the flag out and reach for it only on the day you
@@ -106,9 +113,9 @@ ways, and a turn that waited ninety seconds with nothing saying why is the folde
 exists to prevent.
 
 The **model-call log** is still there and still always on: `aforge logs` prints the last
-calls with the status each came back with, the endpoint's own first sentence on a
+calls with the status each came back with, the provider's own first sentence on a
 failure, how long it took and what it cost. What the log holds is the **shape** of a
-call — how many messages, how many tools, which ceiling, which lane — and not what you
+call — how many messages, how many tools, which ceiling, which provider — and not what you
 wrote. The old `AFORGE_CALL_LOG_BODIES` pin still adds the whole request and reply to each
 line of `calls.jsonl` as well as turning the debug record on. With that pin on, the live
 file is allowed 256 MB (32 MB without it). The bodies also live in the run's folder now,

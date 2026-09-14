@@ -553,14 +553,14 @@ func TestABacklogFoldedAcrossTwoAttachesStillSpellsTheWholeAnswer(t *testing.T) 
 	}
 
 	send("the ", "answer ")
-	early, running := hub.attach()
+	early, running := hub.attach(nil)
 	if !running {
 		t.Fatal("attach to a live hub said nothing was running")
 	}
 	// The run CONTINUES past the attach, into the same backlog entry the first
 	// reader was just handed.
 	send("so ", "far", ", and ", "the rest")
-	late, running := hub.attach()
+	late, running := hub.attach(nil)
 	if !running {
 		t.Fatal("the second attach to a live hub said nothing was running")
 	}
@@ -635,4 +635,120 @@ func waitClosed(t *testing.T, events <-chan Event, what string) {
 			t.Fatalf("%s never closed", what)
 		}
 	}
+}
+
+// ── a card for a decision already made ──────────────────────────────────────
+//
+// A turn's backlog is replayed to whoever attaches next, and a CARD in it is the
+// one event that is not a report of something that happened but a question about
+// something that has not. These two hold both halves of the one rule: a question
+// somebody has answered is not asked again, and a question nobody has answered
+// still is.
+
+// attachedLate is one surface arriving at a turn already under way, reading the
+// replay it is handed and nothing more. It is [Agent.AttachReplay]'s own two
+// lines — the hub, and what is still being asked, read under one hold of a.mu —
+// without the transcript, which these tests are not about.
+func attachedLate(t *testing.T, agent *Agent) []Event {
+	t.Helper()
+	agent.mu.Lock()
+	hub := agent.hub
+	stream, live := hub.attach(agent.stillAskedLocked())
+	agent.mu.Unlock()
+	if !live {
+		t.Fatal("attaching to the turn said nothing was running")
+	}
+	// The hub is closed so the replay ends: what a late reader is handed is
+	// everything the backlog held, and nothing is left waiting on a channel.
+	hub.close()
+	return collect(t, stream.out)
+}
+
+// TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater is the defect
+// the owner met: approve a task, look at another tab, come back, and be asked
+// the same question again — every time, for as long as the turn ran. The answer
+// was recorded and the engine knew it; the REPLAY did not consult it, so the
+// card that raised the question went out again as though nobody had decided.
+func TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+		config.TaskAutoApproveSeconds = 15
+	})
+	heldClock(agent)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) {
+		ran <- node
+		node.graph.complete(node, TaskDone)
+	})
+	events := watched(agent)
+
+	held := holdProposal(t, agent, proposalArgs("Port the resume picker"))
+	card := nextTurnEvent(t, events, EventTaskProposal)
+
+	// THE PERSON SAYS YES, through the one door every answer on this surface
+	// goes through, and the reply that proposed the work then arrives whole.
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionTask, ID: card.Task.ID, Key: "1"}); err != nil {
+		t.Fatalf("answering the proposal: %v", err)
+	}
+	held.hold.Release()
+	if result := held.await(t); result.isError {
+		t.Fatalf("the approved proposal answered %+v", result)
+	}
+	if open := agent.OpenQuestions(); len(open) != 0 {
+		t.Fatalf("OpenQuestions() = %+v after the answer, want none", open)
+	}
+
+	// THE REPLAY CARRIES THE ASSIGNMENT WITH THE ANSWER ON IT, ONCE. The open
+	// card — the one that asks — is left out; the restatement takes its place, so
+	// a surface arriving now draws what was decided and has nothing to answer.
+	cards := 0
+	for _, event := range attachedLate(t, agent) {
+		if event.Kind != EventTaskProposal {
+			continue
+		}
+		cards++
+		if event.Task == nil || event.Task.Decided == nil {
+			t.Fatalf("the replay asked about task %d again after it was approved: %+v", card.Task.ID, event.Task)
+		}
+		if !event.Task.Decided.Approved {
+			t.Fatalf("the replayed card says the proposal was declined: %+v", event.Task.Decided)
+		}
+		if !event.Task.Deadline.IsZero() {
+			t.Fatal("a decided card still carries a clock")
+		}
+	}
+	if cards != 1 {
+		t.Fatalf("the replay carried %d cards for one proposal, want the settled one alone", cards)
+	}
+	ran.await(t)
+}
+
+// TestAProposalNobodyAnsweredIsStillAskedOfASurfaceThatArrivesLater is the other
+// half, and it is the one that keeps the fix from being a deletion: a card still
+// waiting on somebody is exactly what a surface arriving mid-turn must be handed,
+// or a person who opened a second tab while a question stood would come back to a
+// conversation that had stopped and said nothing about why.
+func TestAProposalNobodyAnsweredIsStillAskedOfASurfaceThatArrivesLater(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+		config.TaskAutoApproveSeconds = 15
+	})
+	heldClock(agent)
+	stubbedGraph(agent, func(node *TaskNode) { node.graph.complete(node, TaskDone) })
+	events := watched(agent)
+
+	held := holdProposal(t, agent, proposalArgs("Port the resume picker"))
+	card := nextTurnEvent(t, events, EventTaskProposal)
+
+	asked := false
+	for _, event := range attachedLate(t, agent) {
+		if event.Kind == EventTaskProposal && event.Task != nil && event.Task.ID == card.Task.ID {
+			asked = true
+		}
+	}
+	if !asked {
+		t.Fatal("the replay left out a proposal nobody has answered")
+	}
+	held.hold.Withdraw()
+	held.await(t)
 }

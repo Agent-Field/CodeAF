@@ -406,9 +406,9 @@ a task".
 Yes. All of it crosses the connection, and it is the same row you read locally.
 
 - **The live rate at the right edge** — `38 tok/s` — while the answer is being written.
-- **`via <machine>`** beside the model on the line above the message box, as soon as the
-  machine writing the answer has named itself and then for the answer that came back:
-  the lane that actually served it, and `via parasail · rescued` when a second machine
+- **`via <provider>`** beside the model on the line above the message box, as soon as the
+  provider writing the answer has named itself and then for the answer that came back:
+  the provider that actually served it, and `via parasail · rescued` when a second provider
   finished what the first one started.
 - **The phase words** on the row while a request is in flight: `connecting · 1.2s`,
   `first word · 3.1s → parasail at 4.4s`, `thinking · 12s · friendli 38 t/s`,

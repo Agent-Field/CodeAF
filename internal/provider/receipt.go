@@ -100,8 +100,8 @@ func (m *receiptRouteMemo) askable(base string, now time.Time) bool {
 // heard records the base's definite answer that the route does not exist.
 func (m *receiptRouteMemo) heard(base string, now time.Time) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.refused[base] = now
-	m.mu.Unlock()
 }
 
 // settle closes one of the four streamed endings that may still hold provider

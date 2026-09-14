@@ -348,15 +348,26 @@ type begunCall struct {
 // to the caller's own context, in the order the provider raised the events.
 func (k *kept) listen(caller context.Context) provider.StreamObserver {
 	return func(event provider.StreamEvent) {
-		k.mu.Lock()
-		if k.closed {
-			k.mu.Unlock()
+		if !k.keep(event) {
 			return
 		}
-		k.note(event)
-		k.mu.Unlock()
 		provider.EmitEvent(caller, event)
 	}
+}
+
+// keep folds one event into what is kept and reports whether it still belongs
+// to this completion: false once the completion has ended, in which case
+// nothing is forwarded either. The lock is held from a defer over exactly the
+// fold, because the forward to the caller's own observer is somebody else's
+// code and this lock stays underneath none of it.
+func (k *kept) keep(event provider.StreamEvent) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.closed {
+		return false
+	}
+	k.note(event)
+	return true
 }
 
 // note folds one event into what is kept. Callers hold k.mu.
@@ -453,13 +464,19 @@ func (k *kept) answerAsk(messages []ai.Message) ([]ai.Message, bool) {
 // ask's reply is the whole answer and would otherwise be drawn after half of
 // one; a surface holding only "thinking" is told what the next wait is.
 func (k *kept) tell(caller context.Context) {
+	provider.Emit(caller, k.announcement(), askingForTheAnswer)
+}
+
+// announcement is the event kind the caller's surface is owed, read in its own
+// locked half: a replacement when it is holding part of this completion's
+// answer, a notice otherwise.
+func (k *kept) announcement() provider.StreamEventKind {
 	k.mu.Lock()
-	kind := provider.StreamNotice
+	defer k.mu.Unlock()
 	if k.shown {
-		kind = provider.StreamReplaced
+		return provider.StreamReplaced
 	}
-	k.mu.Unlock()
-	provider.Emit(caller, kind, askingForTheAnswer)
+	return provider.StreamNotice
 }
 
 // askingForTheAnswer is the line a person watching the call reads when its wall

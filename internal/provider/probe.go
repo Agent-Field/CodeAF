@@ -242,6 +242,13 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 	if c == nil || !c.carriesPreferences() || c.connectionWaiting() {
 		return
 	}
+	// SIMPLE ROUTING BUYS NO MEASUREMENTS. A probe exists to teach the belief
+	// which machine to choose, and under this row choosing is the person's
+	// row and nothing else — so a probe would spend real money on an answer
+	// no request will ever read.
+	if c.routing() == RoutingSimple {
+		return
+	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return

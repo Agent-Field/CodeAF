@@ -159,8 +159,8 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 			}
 			// The picture is paid for whether or not it is any good, so the
 			// accounting lands before the write can fail. It folds into the
-			// SESSION total and not the turn's, exactly as the title and the
-			// compaction summary do: no turn asked for a picture at this price,
+			// SESSION total and not the turn's, exactly as the title call does:
+			// no turn asked for a picture at this price,
 			// and charging one turn for it would make an ordinary question read
 			// as the cost of a rendering (see [Agent.addAuxiliaryUsage]).
 			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
