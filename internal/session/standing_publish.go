@@ -490,8 +490,10 @@ func (e firingEnd) body() string {
 // glued after it. The W5-B acceptance run wrote `<report># Digest` and a
 // closing line of its own, and a whole report was withheld as closed but never
 // opened. At the very start of a line the tag has no sentence around it to be a
-// mention in, so the rest of that line is the report's first line. A tag later
-// in a line is still a mention, and the closing line stays strict.
+// mention in, so the rest of that line is the report's first line. It opens
+// only when nothing has opened yet: after a report, a line such as `<report>
+// above is this week's digest` is a mention and must not reopen and withhold
+// it. A tag later in a line is still a mention, and the closing line stays strict.
 func delimitedReport(text string) (string, reportLines) {
 	lines := strings.Split(strings.TrimPrefix(text, "\uFEFF"), "\n")
 	open, closing, strayClose := -1, -1, false
@@ -502,7 +504,7 @@ func delimitedReport(text string) (string, reportLines) {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
-		if rest, glued := strings.CutPrefix(trimmed, standingReportOpen); glued && rest != "" && !strings.Contains(rest, standingReportClose) {
+		if rest, glued := strings.CutPrefix(trimmed, standingReportOpen); open < 0 && glued && rest != "" && !strings.Contains(rest, standingReportClose) {
 			open, closing, first = i, -1, strings.TrimSpace(rest)
 			continue
 		}

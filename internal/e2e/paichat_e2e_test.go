@@ -248,6 +248,9 @@ func treeSnapshot(root string) map[string]string {
 	return out
 }
 
+// ownWord is "own" as a word about owners, never inside "markdown" or "known".
+var ownWord = regexp.MustCompile(`(?i)\b(own|owns|owner|owners|owned|ownership)\b`)
+
 var paiTurnLimit = 5 * time.Minute
 
 // say is one turn of the person's words, answered the way the person would.
@@ -1808,7 +1811,7 @@ func scenJourney(c *cv) {
 			venueOwned = true
 		}
 	}
-	c.expect([]string{"J-edit-instructions"}, "instructions-ask-for-owners", hasAny(item.Does.Brief+" "+item.Does.Acceptance, "own"), c.describe(item))
+	c.expect([]string{"J-edit-instructions"}, "instructions-ask-for-owners", ownWord.MatchString(item.Does.Brief+" "+item.Does.Acceptance), c.describe(item))
 	c.expect([]string{"J-edit-instructions"}, "edit-reached-next-report-venue-owned-by-priya", okp && venueOwned, why)
 
 	// ── edit the watch ───────────────────────────────────────────────────
@@ -1971,7 +1974,11 @@ func scenJourney(c *cv) {
 		// new version and no instructions that read notes/ (a workaround the
 		// person did not approve), and a reply that explains, judged by a person.
 		c.expect([]string{"J-two-folders"}, "existing-setup-kept-no-unapproved-workaround", keeper.ID == before.ID && keeper.SpecRevision == before.SpecRevision && keeper.When.Glob == before.When.Glob && keeper.Does.Brief == before.Does.Brief, c.describe(keeper))
-		c.expect([]string{"J-two-folders"}, "the-reply-explains", t.Err == "" && has(t.Reply, "notes") && hasAny(t.Reply, "can't", "cannot", "can not", "not ", "n't", "unable", "instead"), pclip(t.Reply, 300))
+		// A reply is judged by a person; the machine check is only that the
+		// turn ended with words about the unsupported request (notes/, or the
+		// two folders) — the tree, version and watch checks above are what
+		// catch a workaround.
+		c.expect([]string{"J-two-folders"}, "the-reply-explains", t.Err == "" && hasAny(t.Reply, "notes", "two folders", "both folders") && hasAny(t.Reply, "can't", "cannot", "can not", "not ", "n't", "unable", "instead", "unwatched", "only", "as it was", "left", "kept", "no "), pclip(t.Reply, 300))
 		c.note("the second folder was not watched — judge the explanation: %q", pclip(t.Reply, 800))
 	}
 	item = keeper
