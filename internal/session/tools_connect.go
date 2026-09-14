@@ -33,7 +33,12 @@ const servicesDescription = "List the accounts the person can connect to this co
 
 const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"description":"Show only the accounts whose name or id contains this, for example stripe or fresh","type":"string"}},"additionalProperties":false}`
 
-const useServiceDescription = "Pick up one account's tools. If it is connected, its tools arrive in your tool list on your next turn. If it is not, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs. Use services first if you do not know the id."
+// sameTurnToolArrival is the one sentence both the tool description and its
+// success result use. A second spelling drifted to "next turn", which tells a
+// model to stop at exactly the moment the current turn can carry on.
+const sameTurnToolArrival = "The account's tools are in your tool list from your very next request, which is still this turn — carry on and use them now"
+
+const useServiceDescription = "Pick up one account's tools. " + sameTurnToolArrival + ". If it is not connected, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs. Use services first if you do not know the id."
 
 const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"string","description":"The id of the account, as services lists it — for example google"},"tools":{"type":"string","description":"Only these of the tools the account serves, by name, separated by commas. Leave it out to take everything it brings; an account with too many to carry says so and lists them"}},"required":["service"],"additionalProperties":false}`
 
@@ -309,7 +314,15 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 	case err != nil:
 		return "", "The turn ended before the person answered about connecting " + service.Name + "."
 	case !answer.approved:
-		return "", "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
+		switch answer.kind {
+		case connectSilent:
+			return "", "The person did not answer about connecting " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
+		case connectMovedOn:
+			return "", "The person moved on to something else. Their words were:\n\n" + answer.words +
+				"\n\nConnecting " + service.Name + " was left undone. Do what the person asked now; do not ask again this turn."
+		default:
+			return "", "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
+		}
 	}
 
 	// An account opened with a key has no page to send anybody to: the person
@@ -353,10 +366,11 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 
 // armService puts one service's family on the belt and says what arrived.
 //
-// The reply names the TOOLS rather than the account, because the next turn's
+// The reply names the TOOLS rather than the account, because the next request's
 // tool list is what the model will actually be holding — and it says WHEN,
 // because the belt it is reading right now does not have them yet and a model
-// that calls gmail_search this turn gets an unknown-tool error for its trouble.
+// that calls gmail_search in the same request gets an unknown-tool error for
+// its trouble.
 func (a *Agent) armService(ctx context.Context, service connectStatus, account, want string) string {
 	connected := connectedLine(service.Name, account)
 	// AN ACCOUNT THIS BUILD HAS NO FAMILY FOR IS ASKED WHAT IT BRINGS, and that
@@ -396,8 +410,7 @@ func (a *Agent) armService(ctx context.Context, service connectStatus, account, 
 		return "Already loaded — " + strings.Join(toolNames(tools), ", ") +
 			" are in your tool list now. Use them; do not ask again."
 	}
-	return connected + ". Loaded for your next turn and every turn after: " + strings.Join(armed, ", ") +
-		". Their full descriptions are in your tool list from here on."
+	return connected + ". " + sameTurnToolArrival + ". They are: " + strings.Join(armed, ", ") + "."
 }
 
 func toolNames(tools []bare.Tool) []string {

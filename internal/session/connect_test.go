@@ -535,8 +535,16 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 	if strings.Join(afterDefinitions, ",") != strings.Join(after, ",") {
 		t.Fatalf("the definitions and the belt disagree:\n%v\n%v", afterDefinitions, after)
 	}
-	if !strings.Contains(text, "next turn") {
+	// C3: The result and the description use one sentence to say the next
+	// request is still this turn, and neither tells the model to wait for a turn.
+	if !strings.Contains(text, sameTurnToolArrival) {
 		t.Fatalf("the result does not say when the tools arrive: %q", text)
+	}
+	if !strings.Contains(useServiceDescription, sameTurnToolArrival) {
+		t.Fatalf("use_service does not carry the shared same-turn sentence: %q", useServiceDescription)
+	}
+	if strings.Contains(text, "next turn") || strings.Contains(useServiceDescription, "next turn") {
+		t.Fatalf("the model is still told to wait for its next turn:\nresult: %s\ndescription: %s", text, useServiceDescription)
 	}
 
 	// Asking again is the cheap no-op that lets the two tools stay on the belt
@@ -634,6 +642,71 @@ func TestConnectingAnAccountAsksThenArmsTheFamily(t *testing.T) {
 	}
 }
 
+// C2: A connection completed inside a turn puts the account's tools on the
+// very next model request; the model calls one there and reaches its final
+// answer without a human message or another question in between.
+func TestAConnectedAccountCarriesOnInTheSameTurn(t *testing.T) {
+	hub := &fakeHub{transport: &stubTransport{answer: `{"messages":[]}`}}
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("connect-call", "use_service", `{"service":"google"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("mail-call", "gmail_search", `{"query":"release"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("No release mail arrived."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, recorder, func(config *Config) {
+		config.connectHub = hub
+		config.AskConsent = true
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	})
+
+	events, err := agent.Submit(context.Background(), "check my mail for the release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+
+	if got := countKind(collected, EventConnectAsk); got != 1 {
+		t.Fatalf("the turn asked %d connect questions, want one", got)
+	}
+	if got := countKind(collected, EventConsentRequest); got != 0 {
+		t.Fatalf("the same turn raised %d tool-approval questions", got)
+	}
+	if _, carried := recorder.blockAt(t, 0)["gmail_search"]; carried {
+		t.Fatal("gmail_search was carried before the account was connected")
+	}
+	if _, carried := recorder.blockAt(t, 1)["gmail_search"]; !carried {
+		t.Fatal("the request immediately after connecting carries no gmail_search")
+	}
+	if hub.transport.calls() == 0 {
+		t.Fatal("the newly armed tool did not run")
+	}
+	if result := recorder.resultAt(t, 2, "mail-call"); strings.Contains(result, "Unknown tool") {
+		t.Fatalf("the newly armed call was refused: %q", result)
+	}
+	recorder.mu.Lock()
+	secondMessages := append([]ai.Message(nil), recorder.sent[1]...)
+	recorder.mu.Unlock()
+	var human []string
+	for _, message := range secondMessages {
+		if message.Role == "user" {
+			human = append(human, messageText(message))
+		}
+	}
+	if len(human) != 1 || human[0] != "check my mail for the release" {
+		t.Fatalf("a human message intervened before the new tool ran: %q", human)
+	}
+	if got := messageText(lastMessage(agent)); got != "No release mail arrived." {
+		t.Fatalf("the same turn did not finish with its final answer: %q", got)
+	}
+}
+
 // A browser account with one missing address piece takes the same typed-answer
 // road as a key, then carries that answer into the ordinary browser trip.
 func TestAnAddressBlankAsksAndReachesBeginAuth(t *testing.T) {
@@ -660,10 +733,10 @@ func TestAnAddressBlankAsksAndReachesBeginAuth(t *testing.T) {
 	}
 }
 
-// SILENCE IS A NO. The clock runs out, nothing is connected, nothing is armed,
-// and the model is told the person did not agree rather than told the machine
-// broke.
-func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
+// C4b: Silence is its own event. The clock runs out, nothing is connected or
+// armed, and the model is told the person did not answer rather than that they
+// refused.
+func TestAConnectQuestionNobodyAnswersSaysTheyDidNotAnswer(t *testing.T) {
 	restore := connectAskTimeout
 	connectAskTimeout = 20 * time.Millisecond
 	t.Cleanup(func() { connectAskTimeout = restore })
@@ -690,7 +763,7 @@ func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
 	if hasTool(agent, "gmail_search") {
 		t.Fatalf("an unanswered question still armed the family: %v", beltNames(agent))
 	}
-	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") {
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not answer") || strings.Contains(output, "did not agree") {
 		t.Fatalf("the model was not told plainly: %q", output)
 	}
 	if pending := agent.PendingConnect(); len(pending) != 0 {
@@ -698,8 +771,8 @@ func TestAConnectQuestionNobodyAnswersIsANo(t *testing.T) {
 	}
 }
 
-// A person who says no is a person who said no: the account stays unconnected
-// and the model is told to do the work without it.
+// C4a: A person who picks `2 not now` is a person who said no: the account
+// stays unconnected and the model is told not to ask again this turn.
 func TestADeclinedConnectionIsSaidPlainly(t *testing.T) {
 	hub := &fakeHub{}
 	completer := &scriptedCompleter{steps: useServiceTurn("google")}
@@ -719,8 +792,41 @@ func TestADeclinedConnectionIsSaidPlainly(t *testing.T) {
 	if hasTool(agent, "gmail_search") {
 		t.Fatalf("a refusal still armed the family: %v", beltNames(agent))
 	}
-	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") {
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") || !strings.Contains(output, "do not ask again this turn") {
 		t.Fatalf("the model was not told plainly: %q", output)
+	}
+}
+
+// C4c: Words typed at a browser connect question are the person's next
+// instruction. They reach the model verbatim, nothing is connected or stored,
+// and the result says to do that work now.
+func TestWordsAtABrowserConnectQuestionCarryThePersonOn(t *testing.T) {
+	const words = "actually forget the calendar; just tell me what 2+2 is"
+	hub := &fakeHub{}
+	completer := &scriptedCompleter{steps: useServiceTurn("google")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "check my calendar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		if err := agent.ResolveQuestion(Answer{Kind: QuestionConnect, Ref: event.ConnectID, Change: words}); err != nil {
+			t.Fatalf("answer connect question: %v", err)
+		}
+	})
+
+	if hub.attempts() != 0 || hub.Connected("google") {
+		t.Fatal("moving on still connected or wrote the account")
+	}
+	output := lastToolOutput(t, collected)
+	for _, want := range []string{words, "left undone", "Do what the person asked now"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("the moved-on result lost %q: %q", want, output)
+		}
+	}
+	if strings.Contains(output, "did not agree") {
+		t.Fatalf("moving on was reported as a refusal: %q", output)
 	}
 }
 

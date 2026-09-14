@@ -298,7 +298,7 @@ var beltFacts = []beltFact{{
 	// the same account and that nothing connects without the person agreeing.
 	// What is left is the one thing the page must say BEFORE any of them is on
 	// the belt: that the accounts are there and which verb reaches them.
-	present: "- A connected account is the person's own and you act in it on their behalf, so call `use_service` when the work needs one; its tools arrive in your tool list on your next request, still this turn, and each one states its own limits and what it asks them about first.",
+	present: "- The person has accounts you can act in; NEVER answer \"I don't have access to your X\" before calling `services`: when the work needs one that is not connected yet, ask for it through `use_service`, the person connects it, and its tools arrive on your next request of this same turn.",
 	// NOTHING IS SAID WHERE THERE IS NO HUB. An agent with no accounts seam has
 	// no account to act in, no consent to relay and nothing to do instead.
 	absent: "",
