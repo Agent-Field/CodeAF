@@ -25,6 +25,16 @@ import (
 const (
 	spendModelBarCap = 12
 	spendSubjectCap  = 3
+	// spendModelBarCol is HOW FAR FROM THE START OF THE MODEL NAME EVERY BAR IN
+	// THE MODELS TABLE BEGINS, in cells, so that the bars stand in one column
+	// ([spendModelBarAt]).
+	//
+	// IT IS WIDE ENOUGH FOR THE NAME AND THE ROLE WORD BESIDE IT — a model drawn
+	// the way a person says it out loud ([spendReading.modelName]) and the
+	// longest slot word the crew has, `verification`, with the separator between
+	// them. A column narrower than that would be a column most rows overran,
+	// which is the unaligned table this constant exists to end.
+	spendModelBarCol = 30
 )
 
 // spendReading is the complete, immutable answer drawn by one spend page.
@@ -830,7 +840,7 @@ func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette)
 	if width >= 80 {
 		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
 		if bar != "" {
-			left += " " + bar
+			left = spendModelBarAt(left) + bar
 		}
 	}
 	if width >= 80 && stats != "" {
@@ -856,6 +866,38 @@ func spendModelStats(model session.ModelSpend) string {
 		parts = append(parts, tokenWord(model.Tokens))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// spendModelBarAt pads a model row's name-and-role field out to the one column
+// every bar in the table starts in ([spendModelBarCol]), measured from the start
+// of the model name.
+//
+// UNALIGNED BARS ARE NOT A CHART. Each bar is that model's share of the dearest
+// one, and a share is read by comparing it with the shares above and below it —
+// which the eye does on the bars' ENDS, and can only do when their starts are
+// already level. Hung one space after names of six different lengths, the
+// longest bar on the table could begin further right than a shorter one ended,
+// and the column said nothing that its own figures did not say better.
+//
+// A FIELD WIDER THAN THE COLUMN PUSHES ITS OWN BAR AND CLIPS NOTHING. The model
+// is this row's payload — [spendReading.modelRow]'s own ink says so — so a name
+// long enough to overrun the column keeps every cell of itself and starts its
+// bar one space late, rather than being cut down to make a neighbour's bar line
+// up. One row out of column is the shape this table had everywhere before; a
+// name cut in half to buy it back is a fact lost.
+// spendModelNameAt is where a model row's name begins inside its own left
+// field: after the bullet and the one space behind it. The bar column is
+// measured from HERE rather than from the edge of the row, because the distance
+// a person reads is the one between the name they are looking at and the bar
+// beside it.
+func spendModelNameAt() int { return ansi.StringWidth(tokens.GlyphProseBullet) + 1 }
+
+func spendModelBarAt(left string) string {
+	gap := spendModelNameAt() + spendModelBarCol - ansi.StringWidth(left)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap)
 }
 
 func spendBar(fraction float64, cap int) string {

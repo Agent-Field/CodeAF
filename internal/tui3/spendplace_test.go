@@ -145,8 +145,11 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if got := (spendReading{}).modelName("~deepseek/deepseek-v4-flash-latest"); got != "deepseek-v4-flash" {
 		t.Fatalf("an aliased slug is drawn as %q", got)
 	}
-	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL.
-	if !strings.Contains(text, "gemini 2.5 pro █") {
+	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL. It is asserted on
+	// the separator and not on the cell after the name, because what follows the
+	// name now is the run of spaces that carries the bar to its column
+	// ([spendModelBarAt]) and not a single space.
+	if !strings.Contains(text, "gemini 2.5 pro ") || strings.Contains(text, "gemini 2.5 pro ·") {
 		t.Fatalf("an unbound model grew a role word:\n%s", text)
 	}
 	// AND THE SLOT NOTHING IS BOUND TO IS A ROW OF ITS OWN, with no figure.
@@ -157,6 +160,78 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 		if strings.Contains(line, "unbound") && strings.Contains(line, "$") {
 			t.Fatalf("the unbound row carries a figure nobody measured: %q", line)
 		}
+	}
+}
+
+// EVERY BAR IN THE MODELS TABLE STANDS IN ONE COLUMN, a constant distance from
+// the start of the model name ([spendModelBarCol]).
+//
+// A bar is that model's share of the dearest one, and a share is read off the
+// bars' ENDS — which says nothing unless their starts are already level. Hung
+// one space behind names and role words of six different lengths, they were a
+// ragged set of unrelated marks: the second-dearest model's bar could BEGIN
+// further right than the fourth's ended, so the column a person came to this
+// table to compare was the one thing on it they could not.
+func TestTheSpendModelBarsStandInOneColumn(t *testing.T) {
+	crew := spendCrew{role: map[string]string{
+		"opus 4.1": "conversation", "haiku 4.5": "naming", "sonnet 4.5": "execution",
+	}}
+	r := spendTestReading().crewed(crew)
+	// THE WIDTHS ARE ONES THAT DRAW BARS AT ALL. A narrow frame spends its cells
+	// on the name, the role and the money and gives up the bar and the counts
+	// together ([spendReading.modelRow]), and a frame with no bars on it has no
+	// column for this test to measure.
+	for _, width := range []int{81, 100, 160} {
+		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
+		// THE MODEL ROWS ARE THE ONES UNDER THEIR OWN HEADING and not every row
+		// carrying a bar cell: the chart above them is drawn out of the same
+		// vocabulary, and a test that swept the whole page would measure it too.
+		at, seen := 0, 0
+		for i, row := range rows {
+			if strings.Contains(row, spendModelsWord) {
+				at = i + 1
+				break
+			}
+		}
+		for _, row := range rows[at:] {
+			if strings.Contains(row, spendSubjectsWord) {
+				break
+			}
+			bar := strings.Index(row, spendBar(1, 1))
+			if bar < 0 {
+				continue
+			}
+			seen++
+			col := ansi.StringWidth(row[:bar])
+			switch {
+			case seen == 1:
+				at = col
+			case col != at:
+				t.Fatalf("at %d cells a bar starts in column %d and its neighbours in %d:\n%s",
+					width, col, at, strings.Join(rows, "\n"))
+			}
+		}
+		if seen != len(r.models) {
+			t.Fatalf("at %d cells %d of the %d models drew a bar:\n%s",
+				width, seen, len(r.models), strings.Join(rows, "\n"))
+		}
+	}
+}
+
+// AND A NAME TOO LONG FOR THE COLUMN KEEPS EVERY CELL OF ITSELF. The model is
+// the row's payload, so an overrun pushes that row's own bar one space late
+// rather than cutting the name down to line a neighbour's bar up.
+func TestASpendModelNameWiderThanTheColumnIsNotCutDownToFitIt(t *testing.T) {
+	long := "deepseek-v4-flash · verification · execution"
+	if ansi.StringWidth(long) <= spendModelBarCol {
+		t.Fatalf("the overrun this test is about no longer overruns a %d-cell column: %q", spendModelBarCol, long)
+	}
+	padded := spendModelBarAt(tokens.GlyphProseBullet + " " + long)
+	if !strings.Contains(padded, long) {
+		t.Fatalf("a name wider than the column was cut down: %q", padded)
+	}
+	if got := ansi.StringWidth(padded) - ansi.StringWidth(tokens.GlyphProseBullet+" "+long); got != 1 {
+		t.Fatalf("an overrunning row hangs its bar %d cells out, want the one space every row has: %q", got, padded)
 	}
 }
 
