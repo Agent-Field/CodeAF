@@ -386,14 +386,31 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 		return false
 	}
 	views := laneViews(model, now)
-	kept := make([]laneView, 0, len(views))
+	matched := make([]struct {
+		view  laneView
+		score int
+	}, 0, len(views))
 	for _, view := range views {
-		if matchesEvery(strings.ToLower(view.Name), tokens) {
-			kept = append(kept, view)
+		if total, hit := queryScore(strings.ToLower(view.Name), tokens); hit {
+			matched = append(matched, struct {
+				view  laneView
+				score int
+			}{view, total})
 		}
 	}
-	if len(kept) == 0 {
+	if len(matched) == 0 {
 		return false
+	}
+	// THE MACHINES ARE RANKED THE WAY THE MODELS ARE, by the same rungs: a
+	// prefix first, then a substring by where it starts, then the loose letters
+	// last. `core` matches Cloudflare too — c-l-o-u-d-f-l-a-r-e carries the four
+	// letters in order — and a list that left it on top would put the cursor on
+	// the machine nobody typed for. Ties keep the ledger's own order, which is
+	// the order the fold draws when nothing is typed.
+	sort.SliceStable(matched, func(a, b int) bool { return matched[a].score < matched[b].score })
+	kept := make([]laneView, 0, len(matched))
+	for _, one := range matched {
+		kept = append(kept, one.view)
 	}
 	// The fold's own model is the only hit, so the machines that matched are
 	// drawn under the name they serve and nothing else is on the screen to
@@ -417,15 +434,18 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	return true
 }
 
-// matchesEvery is [tokenScore]'s yes-or-no half over a whole query: every token
-// has to match, which is the same ANDing the model list does.
-func matchesEvery(text string, tokens []string) bool {
+// queryScore is [tokenScore] over a whole query: every token has to match and
+// the rungs are summed, which is exactly what [picker.rank] does to a model id.
+func queryScore(text string, tokens []string) (int, bool) {
+	total := 0
 	for _, token := range tokens {
-		if _, hit := tokenScore(text, token); !hit {
-			return false
+		score, hit := tokenScore(text, token)
+		if !hit {
+			return 0, false
 		}
+		total += score
 	}
-	return true
+	return total, true
 }
 
 // splitQuery divides what is typed into the words that rank and the terms that

@@ -142,17 +142,30 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatalf("typing inside the fold closed it (fold %q)", a.pick.unfold)
 	}
-	if len(a.pick.lanes) != 1 || !strings.EqualFold(a.pick.lanes[0].Name, "coreweave") {
-		t.Fatalf("the fold holds %d machines, want coreweave alone: %+v", len(a.pick.lanes), a.pick.lanes)
+	// THE RUNGS ARE THE MODEL LIST'S OWN, so the machine that CARRIES the word
+	// sorts above the one whose letters merely appear in order — `core` is a
+	// subsequence of `cloudflare` — and deepinfra, which carries no `c` at all,
+	// is not here.
+	if names := laneNames(a.pick.lanes); len(names) != 2 || names[0] != "coreweave" || names[1] != "cloudflare" {
+		t.Fatalf("the fold holds %v, want coreweave then cloudflare", names)
 	}
 	row, on := a.pick.laneUnder()
 	if !on || row.lane != 0 {
-		t.Fatalf("the cursor is not on the machine that matched: %+v (on=%v)", row, on)
+		t.Fatalf("the cursor is not on the machine that matched best: %+v (on=%v)", row, on)
 	}
 	drive(t, a, key("enter"))
 	if got := a.pinnedNow(); !strings.EqualFold(got, "coreweave") {
 		t.Fatalf("enter on the matched machine pinned %q", got)
 	}
+
+	// AND A QUERY ONLY ONE MACHINE ANSWERS LEAVES ONLY THAT ONE.
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"))
+	typeInto(t, a, "corew")
+	if names := laneNames(a.pick.lanes); len(names) != 1 || names[0] != "coreweave" {
+		t.Fatalf("the fold holds %v, want coreweave alone", names)
+	}
+	drive(t, a, key("esc"))
 
 	// AND A QUERY NO MACHINE MATCHES STILL FILTERS THE MODELS, closing the fold
 	// with it — the fall-through that keeps one filter box doing one thing.
@@ -165,6 +178,16 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	if chosen, _ := a.pick.choice(); chosen.ID != "moonshotai/kimi-k3" {
 		t.Fatalf("the model filter landed on %q", chosen.ID)
 	}
+}
+
+// laneNames is a fold's machines, lowercased, for a test that is about which of
+// them survived a filter and in what order.
+func laneNames(views []laneView) []string {
+	out := make([]string, 0, len(views))
+	for _, view := range views {
+		out = append(out, strings.ToLower(view.Name))
+	}
+	return out
 }
 
 // ── A ROUTING CHANGE LANDS ON THE NEXT MESSAGE ──────────────────────────────
