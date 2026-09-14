@@ -248,10 +248,12 @@ capability that cannot work is left off it rather than offered and failing.
 | Media | `generate_image`, `speak`, `generate_music`, `generate_video`, `view_image`, `edit_video`, `load_capability` |
 
 `remember` needs memory switched on. The four `workspace_*` tools need a folder under
-Furrow watch. `view_image` needs a vision model. `edit_video` needs its local video
-binaries. Each media-generation tool needs both a media client and a resolved model for
-its modality. A keyed connected account can add `<service-id>_request`; a connected
-service may also provide dynamically named tools of its own.
+Furrow watch. The five `gmail_*` and `calendar_*` tools arrive only with a connected
+Google account and the four `slack_*` only with Slack; `/connect` — `your connected
+accounts · connect another` — is the door, and any other keyed account brings one
+`<service-id>_request` instead, plus whatever the service names for itself.
+`view_image` needs a vision model. `edit_video` needs its local video binaries. Each
+media-generation tool needs both a media client and a resolved model for its modality.
 
 </details>
 
