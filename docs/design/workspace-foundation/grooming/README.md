@@ -1,5 +1,17 @@
 # Personal AI: living design and delivery record
 
+**Current entry (2026-09-14).** The goal is every product journey (C27):
+- [NEXT-STEPS.md](NEXT-STEPS.md) is the single journey-driven execution checklist, with
+  the dated current snapshot;
+- [PRODUCT-JOURNEY-MAP.md](PRODUCT-JOURNEY-MAP.md) describes coverage, foundations and
+  unconfirmed recommendations;
+- [DECISIONS.md](DECISIONS.md) is the authority for accepted behavior (latest: C27, C28
+  open-weight models only).
+
+The earlier checklist is kept unedited in [NEXT-STEPS-HISTORY.md](NEXT-STEPS-HISTORY.md).
+Per-slice receipts are in the BUILD-* records. Everything below this paragraph is dated
+index and history; where it names a different starting point, this paragraph is current.
+
 **2026-09-14 product experience discussion:**
 [From the shared model to a usable workspace](PRODUCT-EXPERIENCE-PATH.md)
 preserves the folder/chat/work/artifact critique, separates internal structure
@@ -11,7 +23,7 @@ a proposed experience path, not a new approved runtime contract or completed UI.
 Updated 2026-09-10. Consolidated design and implementation record for draft #662.
 The earlier discussion originated in Codex task `01a08653-1fcf-7880-b64f-dae46f29b86a`.
 
-Start with the [active checklist](NEXT-STEPS.md), the
+*(2026-09-10 starting point, historical:)* Start with the [active checklist](NEXT-STEPS.md), the
 [first build contract](BUILD-WAVE-01.md) and the [critical review](CRITICAL-REVIEW.md).
 Earlier studies below preserve reasoning history; they are not competing active
 plans. The decision ledger records which proposals are confirmed.
@@ -183,5 +195,6 @@ The [critical review](CRITICAL-REVIEW.md) challenges the architecture, traces th
 actual #662 execution paths and orders the required refactoring. It separates
 design plausibility, static source evidence and fresh Spark test receipts.
 
-Use [NEXT-STEPS.md](NEXT-STEPS.md) for the active checklist and decision session;
+Use [NEXT-STEPS.md](NEXT-STEPS.md) for the active journey checklist (the 2026-09-10
+decision-session order is kept in [NEXT-STEPS-HISTORY.md](NEXT-STEPS-HISTORY.md));
 accepted choices continue to live in [DECISIONS.md](DECISIONS.md).
