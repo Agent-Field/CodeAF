@@ -13,8 +13,8 @@ import (
 // THE MEASURED FAILURE (issue #1022). This door read the routing row and wrote
 // it onto the session's config, which the session handed to every client it
 // built as an answer OF ITS OWN — and an answer handed down beats the row this
-// process installs, because an engine host and a task child carry their parent's
-// row that way on purpose. So the conversation's clients were pinned to the word
+// process installs, which is what a caller holding a row this process did not
+// install needs it to do. So the conversation's clients were pinned to the word
 // that was on disk at launch: somebody cycled `routing` in the settings panel,
 // watched the row change, and went on being routed by the old word until they
 // relaunched.
