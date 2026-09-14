@@ -1483,8 +1483,34 @@ func (a *app) completePath() tea.Cmd {
 }
 
 // inputBlock renders the draft — or the picker's filter box in its place — and
-// says where the caret sits inside it.
+// says where the caret sits inside it, held open to the composer's floor.
+//
+// THE FLOOR IS APPLIED HERE AND NOWHERE ELSE, because this is the one function
+// every geometric question below the conversation goes through
+// ([app.inputHeight] asks it for the rows it will subtract, and view.go asks it
+// for the rows it will draw). A floor applied at the drawing would be a floor
+// the height did not know about, and rows the geometry did not subtract are
+// rows [app.frameOut] loses off the TOP of the window, which is where the
+// room's header is.
+//
+// AND IT IS APPLIED TO EVERY BOX THAT STANDS IN THE DRAFT'S POSITION, not only
+// to the draft: a picker's filter, the rewind bar, the watch line and the
+// secret row each take this row while something else has the keyboard, and a
+// one-row stand-in under a three-row draft would move the whole foot the moment
+// the overlay opened — which is the defect below, one size smaller.
 func (a *app) inputBlock(width int) ([]string, int, int) {
+	rows, caretX, caretRow := a.inputBlockUnfloored(width)
+	_, height := a.size()
+	// The rows are added BELOW what is there, for [placeFrameWithBar]'s reason:
+	// the caret's row is counted from the head of this block, so a pad at the
+	// bottom leaves every row above it — and the caret on it — where it was.
+	for floor := boxFloor(height); len(rows) > 0 && len(rows) < floor; {
+		rows = append(rows, "")
+	}
+	return rows, caretX, caretRow
+}
+
+func (a *app) inputBlockUnfloored(width int) ([]string, int, int) {
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to
 	// the ceiling, is the box's: a six-line paste into a four-line window shows
@@ -1714,7 +1740,12 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 	caretColumn := caretColumnIn(e, segments[caretRow])
 	end := min(top+maxRows, len(segments))
 
-	out := make([]string, 0, end-top)
+	// The block is allocated at its CAP and not at the rows it happens to hold,
+	// so the floor [app.inputBlock] holds it to is padding into room that is
+	// already there. Allocated at `end-top` instead, every frame of a scroll
+	// paid a fresh slice for two empty strings — which the allocation law in
+	// inputsmooth_test.go priced at five allocations a screen.
+	out := make([]string, 0, maxRows)
 	// Every row after the first is indented to where the text starts, segment
 	// included: a continuation that began under the segment would be a wrapped
 	// sentence with a step in its left margin.

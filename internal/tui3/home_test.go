@@ -3100,8 +3100,10 @@ func TestTheListIsPaddedOffTheFoot(t *testing.T) {
 			width, h := a.size()
 			lines, _, _, _ := a.homeFrame(width, h)
 			// The foot is the rule, the box and the hint; the row above it is the
-			// padding, and it is empty whatever the list did.
-			pad := len(lines) - 4
+			// padding, and it is empty whatever the list did. How tall the box is
+			// depends on the height ([boxFloor]), so the foot is asked rather than
+			// counted out here.
+			pad := len(lines) - placeFootRowsAt(h)
 			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" {
 				t.Fatalf("at height %d (typed %v) the list touches the foot: row %d is %q\n%s",
 					height, typed, pad, got, strings.Join(lines, "\n"))

@@ -136,9 +136,11 @@ func fadeWord(i int) string { return strings.Repeat("i", i%7+1) + itoa(i) }
 func historyRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
-	// The foot the router draws is four rows on every place, filtering or not:
-	// the note rides the rule (placebodies.go's [placeNoteRule]).
-	return lines[placeHeadRows : len(lines)-placeFootRows]
+	// The foot the router draws is the same rows on every place, filtering or
+	// not — the note rides the rule (placebodies.go's [placeNoteRule]) — and how
+	// many of them the composer is worth depends on the height ([boxFloor]), so
+	// the frame's own door is asked for the count.
+	return lines[placeHeadRows : len(lines)-placeFootRowsAt(height)]
 }
 
 // THE TAIL OF THE RECORD FADES AND ITS HEAD DOES NOT. A page holding two hundred
