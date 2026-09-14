@@ -1728,6 +1728,21 @@ Fixed columns — **number, glyph, subject, one clause, project, clock** — whi
 makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many are
 open, of how many this machine has.
 
+**The rows are in the same order as the tabs above them** — the leftmost tab is the first
+row, so `2` on the card is the second tab on the row. The strip's order is the order you
+first entered each conversation and it never re-sorts itself, which means the card does not
+either: a conversation stays at the number you last saw it at. The one you are in wears
+`you are here` wherever its tab is, rather than being drawn at the end.
+
+**The cursor still opens on the conversation `tab` would go to** — the one you were in
+before this one — which is usually not the first row. That is what keeps the common
+journey two keys: `ctrl+k`, `enter`, and you are back where you just were. `↑↓` from there
+walk the list in the order you see it.
+
+**A conversation whose tab you closed is still on the card, after the ones with tabs.** It
+has no position on the row to take, so it sorts below them; `enter` opens it and its tab
+comes back.
+
 **Everything else on the machine is behind the fold at the foot.** `→` reaches them and
 `←` puts them away again. A conversation below the fold is not open in this terminal;
 taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
@@ -1848,8 +1863,8 @@ and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS
 `ctrl+shift+k` and `ctrl+k` as the same byte, so it is bound only where the terminal
 answered the keyboard query — and it costs nothing that half the terminals in the world
 cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
-card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
-unlooked-at — and waits for your choice.
+card down, `ctrl+shift+k` opens the ring at its far end — the last row, which is the
+rightmost tab — and waits for your choice.
 
 ## Close a tab from the switcher — ctrl+w, closing a chat, too many open
 

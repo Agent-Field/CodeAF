@@ -330,7 +330,7 @@ func (a *app) hopOpenAll() {
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -344,7 +344,7 @@ func (a *app) hopOpen() {
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -372,19 +372,36 @@ func (a *app) hopSpread(all bool) {
 	// asking for the others; leaving the cursor on the row they are already in
 	// would make `enter` do nothing at the end of that gesture.
 	if a.hop.at < len(rows) && rows[a.hop.at].here {
-		a.hop.at = hopFirstStop(rows)
+		a.hop.at = a.hopFirstStop(rows)
 	}
 	a.touch()
 }
 
-// hopFirstStop is where the cursor opens: the first row that is not the one you
-// are already standing in.
+// hopFirstStop is where the cursor opens: THE ROW `tab` WOULD HAVE GONE TO —
+// the conversation this window was in before this one — and the first row that
+// is not `you are here` when there is no such conversation.
 //
-// IT IS NOT SIMPLY ZERO. With conversations in the keeper, row zero is the one
-// `tab` would go to and the cursor belongs there; on a fresh session the only
-// open conversation IS the front one, so zero would open the card with the
-// cursor on `you are here` and make `enter` do nothing.
-func hopFirstStop(rows []hopRow) int {
+// IT IS NOT SIMPLY ZERO, AND IT STOPPED BEING ROW ZERO WHEN THE ROWS TOOK THE
+// STRIP'S ORDER ([app.hopStripOrder]). The two keystrokes this card exists for
+// are `ctrl+k` `enter`, and what they have always meant is "the last one" — so
+// the cursor follows the recency stack even though the LIST no longer does.
+// Losing that would have made the commonest journey through the card a walk.
+//
+// On a fresh session the only open conversation IS the front one, so a cursor
+// left at zero would open the card on `you are here` and make `enter` do
+// nothing; the walk below is what answers that.
+func (a *app) hopFirstStop(rows []hopRow) int {
+	for at := len(a.prev) - 1; at >= 0; at-- {
+		key := a.prev[at]
+		if key == a.convKey(a.file) {
+			continue
+		}
+		for i, row := range rows {
+			if !row.here && a.convKey(row.file) == key {
+				return i
+			}
+		}
+	}
 	for at, row := range rows {
 		if !row.here {
 			return at
@@ -439,14 +456,16 @@ func (a *app) hopTick() tea.Cmd {
 	return surfaceTick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
 }
 
-// hopReading is the card's whole reading: the conversations in the keeper,
-// most recently in front first, and then the one on screen.
+// hopReading is the card's whole reading: the conversations this window is
+// holding, IN THE ORDER THE TAB ROW DRAWS THEM, and then everything else on the
+// machine behind the fold.
 //
 // IT WALKS THE PREVIOUS-STACK AND NEVER THE MAP. Go's map order is random, and a
 // switcher whose rows moved between two presses of the same key would be
-// unusable; [app.prev] is the order the keeper already keeps and the order `tab`
-// already walks (keeper.go's [app.rememberOpen]), so the card and the key agree
-// about what "the last one" means by construction.
+// unusable; [app.prev] is the order the keeper already keeps (keeper.go's
+// [app.rememberOpen]). That walk is what BUILDS the rows; [app.hopStripOrder]
+// then lays them out the way the strip above them is laid out, and the recency
+// walk survives as the tie-break for a conversation with no tab on the row.
 func (a *app) hopReading(all bool) ([]hopRow, int) {
 	now := a.now()
 	rows := make([]hopRow, 0, hopShown)
@@ -460,6 +479,7 @@ func (a *app) hopReading(all bool) ([]hopRow, int) {
 		rows = append(rows, a.hopKept(held, now))
 	}
 	rows = append(rows, a.hopFront(now))
+	rows = a.hopStripOrder(rows)
 	rest := a.hopRest(rows, now)
 	if !all {
 		// THE COUNT IS STILL TAKEN. The fold has to say what is behind it, and a
@@ -467,6 +487,56 @@ func (a *app) hopReading(all bool) ([]hopRow, int) {
 		return rows, len(rest)
 	}
 	return append(rows, rest...), 0
+}
+
+// hopStripOrder lays the open rows out in the order the tab row above them is
+// drawn in: the leftmost tab is the first row on the card.
+//
+// ── WHY THE CARD FOLLOWS THE STRIP AND NOT THE RING ─────────────────────────
+//
+// These are two readings of one set of conversations shown one line apart, and a
+// person uses them together: they see `Chats` on the row, press `ctrl+k`, and
+// look for the conversation they were just looking at. Ordered by recency the
+// card put it somewhere else — the third tab could be the first row — so the two
+// lines disagreed about the same five conversations and neither position meant
+// anything. Asked for by the owner.
+//
+// THE STRIP'S ORDER IS FIRST-ENTERED AND IT NEVER MOVES (chattabs.go says why: a
+// person reaches for the position, not for the word). Taking that order here
+// buys the card the same stability, and it is what makes the digits worth
+// drawing — `3` on the card is the third tab on the row.
+//
+// A CONVERSATION WITH NO TAB KEEPS ITS PLACE AFTER THE ONES THAT HAVE ONE. A tab
+// dismissed with `ctrl+w` leaves the conversation held, running and on this card
+// (hop.go's [app.hopAway]), and a row the strip never drew has no position to
+// borrow — so those sort after the tabbed rows, most recently in front first,
+// which is the order this function was handed. The sort is STABLE for exactly
+// that reason.
+//
+// AND IT READS THE STRIP THAT WAS DRAWN, never [app.tabList], which rebuilds the
+// row in place and would have the card writing to the thing it is reading. On a
+// frame too short to draw the strip at all there is no visible order to follow
+// and the rows keep the one they came in with.
+func (a *app) hopStripOrder(rows []hopRow) []hopRow {
+	if len(a.chatTabs) == 0 || len(rows) < 2 {
+		return rows
+	}
+	at := make(map[string]int, len(a.chatTabs))
+	for i, tab := range a.chatTabs {
+		if tab.key != "" && !tab.start {
+			if _, seen := at[tab.key]; !seen {
+				at[tab.key] = i
+			}
+		}
+	}
+	place := func(row hopRow) int {
+		if i, ok := at[a.convKey(row.file)]; ok {
+			return i
+		}
+		return len(a.chatTabs)
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return place(rows[i]) < place(rows[j]) })
+	return rows
 }
 
 // hopRest is every OTHER conversation on this machine, ranked the way home ranks
@@ -849,7 +919,8 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // hopLastStop is where the reverse chord enters the ring: the last row that is
-// not the one you are standing in — the open conversation longest unlooked-at.
+// not the one you are standing in — which is the last tab on the row, now that
+// the rows are laid out the way the strip is ([app.hopStripOrder]).
 func hopLastStop(rows []hopRow) int {
 	for at := len(rows) - 1; at >= 0; at-- {
 		if !rows[at].here {

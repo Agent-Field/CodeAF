@@ -44,12 +44,17 @@ func emptyMachine(a *app) {
 	a.world = func() (session.World, bool) { return session.World{}, true }
 }
 
-// TestTheSwitcherDrawsEveryOpenConversationWithHereLast is the reading, asserted
-// row by row: the order, the seam, and where the cursor opens.
-func TestTheSwitcherDrawsEveryOpenConversationWithHereLast(t *testing.T) {
+// TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder is the reading,
+// asserted row by row: the order, the seam, and where the cursor opens.
+func TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
+	// THE STRIP IS DRAWN FIRST, because it is what the card's order comes from
+	// now (hop.go's [app.hopStripOrder]) and a card read against a row nobody
+	// laid out is a card asserted on its fallback.
+	a.width, a.height = 160, 40
+	_ = a.tabsRow(a.width)
 
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {
@@ -59,19 +64,27 @@ func TestTheSwitcherDrawsEveryOpenConversationWithHereLast(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("the card holds %d rows, and three conversations are open", len(rows))
 	}
-	// MOST RECENTLY IN FRONT FIRST, which is the order `tab` already walks.
+	// THE LEFTMOST TAB IS THE FIRST ROW, and on a window that has entered its
+	// three conversations in this order the strip reads rail-scope, price-scrape,
+	// the one in front.
 	if !strings.Contains(rows[0].title, "rail scope") {
-		t.Fatalf("the first row is %q, and the last conversation was rail-scope", rows[0].title)
+		t.Fatalf("the first row is %q, and the leftmost tab is rail-scope", rows[0].title)
+	}
+	if words := tabWords(a); len(words) != 3 || !strings.Contains(words[0], "rail scope") {
+		t.Fatalf("the strip this card is asserted against reads %+v", words)
 	}
 	if !strings.Contains(rows[1].title, "price scrape") {
 		t.Fatalf("the second row is %q", rows[1].title)
 	}
-	// AND THE ONE ON SCREEN IS LAST, WITH THE SEAM ON IT.
+	// AND THE ONE ON SCREEN IS THE LAST TAB HERE, WITH THE SEAM ON IT. It is last
+	// because it is the newest tab on this row and not because the card puts the
+	// front conversation anywhere in particular — see the strip-order test below.
 	if !rows[2].here || rows[2].note != hopHereWord {
 		t.Fatalf("the front conversation came out as %+v", rows[2])
 	}
 	// THE CURSOR OPENS ON THE ROW `tab` WOULD HAVE GONE TO, so the commonest
-	// journey through this card is two keys.
+	// journey through this card is two keys. Here that is also row zero; the test
+	// below is the one that holds them apart.
 	if a.hop.at != 0 {
 		t.Fatalf("the cursor opened on row %d", a.hop.at)
 	}
@@ -946,5 +959,103 @@ func TestQuickSwitchingFromHomeLandsToo(t *testing.T) {
 	}
 	if a.pageShowing() {
 		t.Fatalf("quick switching from home left %v standing over the conversation", a.page)
+	}
+}
+
+// ── THE CARD IS LAID OUT THE WAY THE TAB ROW IS ─────────────────────────────
+//
+// The strip and the card are two readings of one set of conversations, drawn one
+// line apart and used together. The card used to be ordered by recency, so the
+// third tab could be the first row and neither position meant anything; it now
+// takes the strip's own order (hop.go's [app.hopStripOrder]).
+
+// stripKeys is the strip's order, as the keys the card is addressed by.
+func stripKeys(a *app) []string {
+	keys := make([]string, 0, len(a.chatTabs))
+	for _, tab := range a.chatTabs {
+		if tab.key != "" && !tab.start {
+			keys = append(keys, tab.key)
+		}
+	}
+	return keys
+}
+
+// openKeys is the card's order, open rows only — the half the strip draws.
+func openKeys(a *app) []string {
+	keys := make([]string, 0, len(a.hop.rows))
+	for _, row := range a.hop.rows {
+		if row.open {
+			keys = append(keys, a.convKey(row.file))
+		}
+	}
+	return keys
+}
+
+// TestTheCardHoldsTheStripsOrderWhenRecencyDoesNot is the claim with the two
+// orders pulled apart: going to the middle tab and opening the card must not
+// move a single row, because the strip did not move either.
+func TestTheCardHoldsTheStripsOrderWhenRecencyDoesNot(t *testing.T) {
+	a, _, _ := tabApp(t)
+	before := stripKeys(a)
+	if len(before) != 3 {
+		t.Fatalf("the fixture drew %d tabs: %+v", len(before), tabWords(a))
+	}
+
+	// GO TO THE MIDDLE TAB. Recency now says this one, then the one just left;
+	// the strip still says what it said.
+	a.hopOpen()
+	a.hop.at = 1
+	drive(t, a, key("enter"))
+	_ = a.tabsRow(a.width)
+	if now := stripKeys(a); !equalStrings(now, before) {
+		t.Fatalf("the strip re-ordered itself on a switch: %+v then %+v", before, now)
+	}
+
+	a.hopOpen()
+	if got := openKeys(a); !equalStrings(got, before) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", got, before)
+	}
+	// AND THE ONE IN FRONT IS WHEREVER ITS TAB IS — the middle — rather than at
+	// either end. This is the row the old reading always drew last.
+	if !a.hop.rows[1].here {
+		t.Fatalf("the `you are here` mark is not on the middle row: %+v", a.hop.rows)
+	}
+	// THE CURSOR STILL OPENS ON THE ONE `tab` WOULD GO TO, which is now row two
+	// rather than row zero: the LIST follows the strip and the CURSOR follows
+	// recency, and `ctrl+k` `enter` still means "the last one" (hopFirstStop).
+	if a.hop.at != 2 || a.convKey(a.hop.rows[a.hop.at].file) != before[2] {
+		t.Fatalf("the cursor opened on row %d of %+v", a.hop.at, a.hop.rows)
+	}
+}
+
+// TestAConversationWithNoTabSortsAfterTheOnesWithOne is the rule for the rows
+// the strip cannot place: a tab dismissed with `ctrl+w` leaves its conversation
+// held, running and on this card, and a row with no position to borrow takes
+// none — it goes after the tabbed rows, keeping the order it came in with.
+func TestAConversationWithNoTabSortsAfterTheOnesWithOne(t *testing.T) {
+	a, _, _ := tabApp(t)
+	// The leftmost tab is dismissed from the row while its conversation stays.
+	shut := stripKeys(a)[0]
+	span := tabCloseSpanFor(t, a, "Refactor the rail scope model")
+	clickTab(t, a, span.from)
+	_ = a.tabsRow(a.width)
+	if keysHold(stripKeys(a), shut) {
+		t.Fatalf("the dismissed tab is still on the row: %+v", tabWords(a))
+	}
+	if a.behind[shut] == nil {
+		t.Fatal("dismissing the tab took its conversation out of the keeper")
+	}
+
+	a.hopOpen()
+	keys := openKeys(a)
+	if len(keys) != 3 {
+		t.Fatalf("the card holds %d open rows: %+v", len(keys), a.hop.rows)
+	}
+	if keys[len(keys)-1] != shut {
+		t.Fatalf("the conversation with no tab came out at %+v, and the strip reads %+v", keys, stripKeys(a))
+	}
+	// AND THE TWO THAT STILL HAVE TABS ARE IN THE STRIP'S ORDER ABOVE IT.
+	if !equalStrings(keys[:2], stripKeys(a)) {
+		t.Fatalf("the tabbed rows read %+v and the strip reads %+v", keys[:2], stripKeys(a))
 	}
 }
