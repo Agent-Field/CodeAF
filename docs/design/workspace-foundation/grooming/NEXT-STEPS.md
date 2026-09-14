@@ -1,5 +1,15 @@
 # Working checklist
 
+**2026-09-14 discussion handoff:** see
+[PRODUCT-EXPERIENCE-PATH.md](PRODUCT-EXPERIENCE-PATH.md) for the user's request to
+try the logical-folder TUI, the preserved model/critique, the source inspection
+and a proposed first real-store browsing fixture. The active backend task
+`01a08ba9-2fc0-7102-a5ad-d6f18934cdf8` keeps ownership of its current edit/report
+validation. Please return the final integrated revision/receipt and the smallest
+missing engine-to-TUI read/action boundary before starting the proposed fixture.
+This handoff does not mark a new implementation slice approved or any unrun
+acceptance passed. Its acknowledgement remains pending.
+
 Updated 2026-09-10. This is the single execution checklist for the current review
 and implementation preparation. [DECISIONS.md](DECISIONS.md) remains the authority
 for accepted behavior; [CRITICAL-REVIEW.md](CRITICAL-REVIEW.md) contains the evidence.

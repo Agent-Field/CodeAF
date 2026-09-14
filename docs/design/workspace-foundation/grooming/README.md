@@ -1,5 +1,13 @@
 # Personal AI: living design and delivery record
 
+**2026-09-14 product experience discussion:**
+[From the shared model to a usable workspace](PRODUCT-EXPERIENCE-PATH.md)
+preserves the folder/chat/work/artifact critique, separates internal structure
+from presentation, and proposes a real TUI browse/inspect/open/return fixture
+before extending it with activation and collaboration. It records the inspected
+published baseline and the backend task's in-flight acceptance boundary. This is
+a proposed experience path, not a new approved runtime contract or completed UI.
+
 Updated 2026-09-10. Consolidated design and implementation record for draft #662.
 The earlier discussion originated in Codex task `01a08653-1fcf-7880-b64f-dae46f29b86a`.
 
