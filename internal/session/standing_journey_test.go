@@ -187,6 +187,9 @@ func TestAnOpeningTagGluedToTheFirstLineOpensTheReport(t *testing.T) {
 	if _, lines := delimitedReport("<report># Digest\n- one\nLAUNCH-CHECKED</report>"); lines != unclosedReport {
 		t.Fatalf("a closing tag glued to words closed a report: %v", lines)
 	}
+	if body, lines := delimitedReport("<report>\n# Digest\n</report>\n<report> above is this week's digest"); lines != closedReport || body != "# Digest" {
+		t.Fatalf("a glued mention after a closed report reopened it: %v %q", lines, body)
+	}
 	if body, lines := delimitedReport("<report>\n# Digest\n</report>"); lines != closedReport || body != "# Digest" {
 		t.Fatalf("a whole opening line no longer opens: %v %q", lines, body)
 	}
