@@ -374,7 +374,7 @@ var tuiWords = map[string]tuiWord{
 	// internal/provider). So each half is its own row and the suite asserts the
 	// join, which is the shape `standYesWord` and `standSetWord` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
-	// run pinned, and the lane a rescue would go to is whatever the frontier
+	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.
 	"phaseSlowWord": {
 		screen: " is slow",
@@ -392,8 +392,8 @@ var tuiWords = map[string]tuiWord{
 			"an offer whose key was cut is a question nobody can answer",
 	},
 	"phaseAllSlowWord": {
-		screen: "all lanes slow",
-		why:    "every reachable machine is believed slow, so there is nowhere better to be",
+		screen: "all providers slow",
+		why:    "every reachable provider is believed slow, so there is nowhere better to be",
 	},
 	"phaseWaitingWord": {
 		screen: "still waiting",
@@ -411,7 +411,7 @@ var tuiWords = map[string]tuiWord{
 	// so this gate can find them.
 	"laneRefusedTrying": {
 		screen: " · refused · trying ",
-		why:    "a lane said no and the answer is already on its way somewhere else",
+		why:    "a provider said no and the answer is already on its way somewhere else",
 	},
 	"laneRefusedTail": {
 		screen: " refused",
@@ -420,7 +420,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"laneSlowTrying": {
 		screen: " · slow · trying ",
-		why: "the same row about a lane that was merely LATE — waited for as an ABSENCE " +
+		why: "the same row about a provider that was merely LATE — waited for as an ABSENCE " +
 			"by the refusal subtest, which is how a wrong word is caught rather than a missing one",
 	},
 

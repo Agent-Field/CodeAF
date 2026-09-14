@@ -3448,9 +3448,9 @@ between **0.7 and 8 seconds**.
 are the provider's own `Retry-After` rather than anything aforge chose.
 
 **No arrow is drawn unless both halves are real** — a moment, and something that really
-happens at it. So there is no countdown when there is no other machine to go to: a home
-whose lane row pins one machine, `routing` set to `off` or `simple`, an endpoint that is not a router,
-or a model with only one machine behind it. You still get the phase and the count-up,
+happens at it. So there is no countdown when there is no other provider to go to: a home
+whose provider row pins one provider, `routing` set to `off` or `simple`, a base that is not a router,
+or a model with only one provider behind it. You still get the phase and the count-up,
 which are true, and no promise, which is the point — aforge would rather show you nothing
 than a countdown that expires and does nothing.
 
@@ -3513,7 +3513,7 @@ none of them is in the conversation, and the answer you keep is the second machi
 whole. This one line is drawn once where the withdrawn text was:
 
 ```
-  that lane went quiet — this answer is coming from another one
+  that provider went quiet — this answer is coming from another one
 ```
 
 A rescue that wins before the first word takes nothing away and says nothing.
@@ -3617,7 +3617,7 @@ either. The answer you keep is the second machine's, whole, and this line is dra
 where the withdrawn text was:
 
 ```
-  that lane went quiet — this answer is coming from another one
+  that provider went quiet — this answer is coming from another one
 ```
 
 If the rescue wins before the first word, there is nothing to take away and no line is

@@ -94,16 +94,16 @@ const maxArms = 4
 // right way round.
 const heldEvents = 512
 
-// hedgeNotice is the line a replacement carries when an answer changes lanes
+// hedgeNotice is the line a replacement carries when an answer changes providers
 // mid-flow. It is shown only when there was text on the screen to replace: a
 // rescue that fires before the first token replaces nothing and says nothing.
-const hedgeNotice = "that lane went quiet — this answer is coming from another one"
+const hedgeNotice = "that provider went quiet — this answer is coming from another one"
 
 // firstPromptNotice is the missing half of that silence. A first prompt has
 // nothing on the screen yet, so [hedgeNotice] never fires, and a stall sat
 // through the ninety-second first-token cut with no door named (F42). `/model`
 // is the switch a person would otherwise have to discover.
-const firstPromptNotice = "still no answer — trying another lane · /model switches"
+const firstPromptNotice = "still no answer — trying another provider · /model switches"
 
 // A wait without another request must not claim a rescue or draw switching.
 const firstPromptWaitNotice = "still waiting for an answer · /model switches"
@@ -215,7 +215,7 @@ type hedgeRace struct {
 	asked  string
 	asking bool
 	// reported is whether the wait has already been said out loud. The HUD says
-	// "all lanes slow · still waiting" once and then lets the phase clock's own
+	// "all providers slow · still waiting" once and then lets the phase clock's own
 	// beat carry it.
 	reported bool
 	// note is the one sentence this question needs the row to carry, and it is
@@ -679,7 +679,7 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		// A REPORT IS "THE PURSE WILL NOT BET ON SLOWNESS", NOT "SIT UNTIL
 		// THE LANE DIES". Walk only runs after a terminal error. A stall that
 		// keeps the stream open — a late first token, keepalives — never
-		// reaches it, which is how a turn sat at "all lanes slow" for 129s
+		// reaches it, which is how a turn sat at "all providers slow" for 129s
 		// with arms:None (F33). The ceiling still owes one rescue; if that
 		// arm can start, the wait is being answered and is not said as a
 		// report. Only a stall with nowhere left to go is told out loud.
@@ -1207,7 +1207,7 @@ func (r *hedgeRace) beginAsking() (already bool, pinned string) {
 func (r *hedgeRace) noteBorrow(pinned, alt string, silence time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.note = "pinned lane " + pinned + " was silent for " + quietWords(silence) +
+	r.note = "pinned provider " + pinned + " was silent for " + quietWords(silence) +
 		" — borrowing " + alt + " for this answer"
 }
 
@@ -1284,7 +1284,7 @@ func (r *hedgeRace) markReported() (already bool) {
 // this decision was made twice on one path — [hedgeRace.exhaust] said
 // [PhaseBelowPace] and then [hedgeRace.tellFirstPrompt] or [hedgeRace.tellTheWait]
 // said [PhaseAllSlow] over the top of it a statement later — so the sentence
-// left on the screen was `all lanes slow · still waiting` for a stream that was
+// left on the screen was `all providers slow · still waiting` for a stream that was
 // visibly writing. That is the sentence [PhaseBelowPace] exists to replace, and
 // a test that scans every phase ever emitted cannot tell the two apart.
 //
@@ -1292,7 +1292,7 @@ func (r *hedgeRace) markReported() (already bool) {
 // wire that IS answering and answering too slowly to read, and there is text on
 // the screen to prove it; everything else that reaches here — a drift report, an
 // escalate, a silence with no lane left — is a wait with nothing arriving, which
-// is what `all lanes slow · still waiting` describes.
+// is what `all providers slow · still waiting` describes.
 func (r *hedgeRace) theWait(act control.Act) {
 	if act.Kind == control.Report && act.Reason == control.RateReason {
 		r.phase.belowPace("")
@@ -1307,17 +1307,17 @@ func (r *hedgeRace) theWait(act control.Act) {
 // model has been asked and none answered; every one of them was weighed and
 // none is believed better than the one already running; or there was never more
 // than one machine to begin with, which is what a call to an endpoint that is
-// not a router looks like. Saying "all lanes slow" about a request that had one
-// lane would be inventing a comparison nobody made.
+// not a router looks like. Saying "all providers slow" about a request that had one
+// provider would be inventing a comparison nobody made.
 func (r *hedgeRace) waitWords(act control.Act) string {
 	// THE SURFACE OWNS THE SENTENCE and this owns only the exception to it.
-	// `all lanes slow · still waiting` is one line, spelled in `internal/tui3`
+	// `all providers slow · still waiting` is one line, spelled in `internal/tui3`
 	// where the words a person reads live, and a machine word posted beside it
 	// would be the same fact said twice. What this layer knows that the surface
-	// cannot is that the ladder itself is spent — every lane of this model has
+	// cannot is that the ladder itself is spent — every provider of this model has
 	// been asked — and that is a different sentence.
 	if act.Kind == control.Escalate {
-		return "every lane tried"
+		return "every provider tried"
 	}
 	return ""
 }

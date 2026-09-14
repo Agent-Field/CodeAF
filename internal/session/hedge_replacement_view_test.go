@@ -9,7 +9,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const hedgeReplacementLine = "that lane went quiet — this answer is coming from another one"
+const hedgeReplacementLine = "that provider went quiet — this answer is coming from another one"
 
 // A replacement mid-stream discards the dead answer from the live page just as
 // it does from the journal. Replaying the public events as a surface does must

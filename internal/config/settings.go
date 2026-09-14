@@ -720,8 +720,8 @@ const (
 	RoutingLatency = "latency"
 	// RoutingPrice asks for the cheapest one that can serve the request.
 	RoutingPrice = "price"
-	// RoutingSimple sends no preference of ours at all: when no lane is
-	// pinned the router's own default answers, and a pinned lane is the
+	// RoutingSimple sends no preference of ours at all: when no provider is
+	// pinned the router's own default answers, and a pinned provider is the
 	// whole request.
 	RoutingSimple = "simple"
 	// RoutingOff sends no preference at all, and stops measuring with it.
@@ -1976,16 +1976,16 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
-			Hint: "one model id is served by many endpoints, and they answer at very " +
+			Hint: "one model id is served by many providers, and they answer at very " +
 				"different speeds AND very different prices. Left alone — simple — aforge " +
-				"sends no preference of its own at all: with no lane pinned the router's own " +
-				"default routing answers, and a lane you pinned is the whole request, that " +
-				"machine and no fallbacks. Choosing another word here changes that " +
+				"sends no preference of its own at all: with no provider pinned the router's own " +
+				"default routing answers, and a provider you pinned is the whole request, that " +
+				"provider and no fallbacks. Choosing another word here changes that " +
 				"everywhere: latency asks " +
-				"for the fastest endpoint for every call, capped at a quarter over the " +
+				"for the fastest provider for every call, capped at a quarter over the " +
 				"model's list price, and times every answer, demoting one that keeps being " +
 				"slow; price asks for the cheapest for every call; off asks for nothing and " +
-				"measures nothing — and with nothing measured there is no lane to choose, " +
+				"measures nothing — and with nothing measured there is no provider to choose, " +
 				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
@@ -2004,25 +2004,25 @@ func (s *Settings) build() []Setting {
 				"goes lean. lean takes one section off the page, leaves seven verbs one " +
 				"load_capability call away, puts ask straight in the list, turns saved " +
 				"memories off and cuts the project's own instructions to 2KiB. full sends " +
-				"everything. Choose one of those two when the endpoint reports a window its " +
+				"everything. Choose one of those two when the provider reports a window its " +
 				"model does not really have. A change lands the next time aforge starts.",
 			read:  func() string { return PromptProfileAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyPromptProfile, raw, PromptProfileModes) },
 		},
-		// AND THE ROW UNDER IT NAMES A MACHINE. Routing says what a request
-		// prefers; this says which endpoint requests from this home actually go
+		// AND THE ROW UNDER IT NAMES A PROVIDER. Routing says what a request
+		// prefers; this says which provider requests from this home actually go
 		// to, for the person who has watched the numbers and knows.
 		Setting{
 			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
-			Label: "lane", EmptyLabel: LaneAuto,
-			Hint: "which machine behind your model answers requests from this home. One model id is served by " +
-				"a dozen endpoints that differ by seven times on the wait before the first " +
+			Label: "provider", EmptyLabel: LaneAuto,
+			Hint: "which provider answers your model, for requests from this home. One model id is served by " +
+				"a dozen providers that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets the router " +
-				"route — and aforge takes over choosing the machine when its answers start coming " +
+				"route — and aforge takes over choosing the provider when its answers start coming " +
 				"back refused or unusable, handing it back once it has been well for a while; " +
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
-				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
+				"a slow answer be rescued elsewhere; openrouter asks for no provider at all and " +
 				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
@@ -2032,7 +2032,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
 			Label: "speed guard",
-			Hint: "when an answer takes much longer to start than that endpoint normally " +
+			Hint: "when an answer takes much longer to start than that provider normally " +
 				"does, the same question is asked of the next-best one and whichever replies " +
 				"first is the one you read. It hedges at most one extra call, under a tenth of " +
 				"spend; off under price routing.",

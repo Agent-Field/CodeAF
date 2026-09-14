@@ -466,7 +466,7 @@ func (a *app) windowWorking() bool {
 //	thinking · 12s · friendli 38 t/s
 //	writing · 4s · friendli 61 t/s
 //	coreweave is slow · switch to auto? (y)
-//	all lanes slow · still waiting
+//	all providers slow · still waiting
 //	paced · retry in 6s
 //	trying again · 2 of 6
 //	stalled 9s · switching to parasail
@@ -597,12 +597,12 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		}
 		return []rowField{rowSay(news.Detail), rowSay(question, "switch? (y)", "(y)")}
 	case session.PhaseAllSlow:
-		// EVERY REACHABLE LANE IS BELIEVED SLOW, so there is nowhere better to
+		// EVERY REACHABLE PROVIDER IS BELIEVED SLOW, so there is nowhere better to
 		// go and acting would buy nothing. Saying so is the act: this row is the
 		// visible half of the controller's report, and the alternative — which is
 		// what this surface did before — is a person watching a line that says
 		// nothing while a real wait runs.
-		return []rowField{rowSay("all lanes slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
+		return []rowField{rowSay("all providers slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
 	case provider.PhaseBelowPace:
 		// THE ANSWER IS ARRIVING AND IT IS TOO SLOW TO READ, and there is no
 		// faster machine to move it to. It is a different sentence from the one

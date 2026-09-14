@@ -2641,7 +2641,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 	for _, sentence := range []string{
 		"enter again to disconnect",
 		"the disconnected sentence first and then says",
-		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
+		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
 		"That written host name is the row's name everywhere",
 		"a **Something else** service must provide the compatible chat path",
 		"tries `GET <base>/models` first",

@@ -585,7 +585,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 		t.Fatal("← left the lanes open")
 	}
 	// Back on the model's row, the foot offers the fold again.
-	if !strings.Contains(a.sheet.keysLine(), "→ or tab lanes") {
+	if !strings.Contains(a.sheet.keysLine(), "→ or tab providers") {
 		t.Fatalf("the foot on the model row reads %q", a.sheet.keysLine())
 	}
 }
@@ -654,16 +654,16 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	}
 }
 
-// ENTER ON THE `lane` ROW OPENS THE MACHINES rather than walking four words
-// blind: the same fold, on the model in use, with the cursor on the lane in
-// force — which with nothing pinned is `auto`.
+// ENTER ON THE `provider` ROW OPENS THE PROVIDERS rather than walking four
+// words blind: the same fold, on the model in use, with the cursor on the
+// provider in force — which with nothing pinned is `auto`.
 func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.LaneSettingKey(talkSlot))
-	if !sheetHas(a, "lane") {
-		t.Fatal("the providers tab has no lane row")
+	if !sheetHas(a, "provider") {
+		t.Fatal("the providers tab has no provider row")
 	}
 	drive(t, a, key("enter"))
 	if a.sheet.sel == nil {
@@ -763,7 +763,7 @@ func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
 	if a.sheet.sel.pick.laneSlot != "" {
 		t.Fatalf("the looking row's picker is armed for lane slot %q", a.sheet.sel.pick.laneSlot)
 	}
-	if strings.Contains(a.sheet.keysLine(), "tab lanes") {
+	if strings.Contains(a.sheet.keysLine(), "tab providers") {
 		t.Fatalf("the hint offers a fold the looking row does not have: %q", a.sheet.keysLine())
 	}
 }

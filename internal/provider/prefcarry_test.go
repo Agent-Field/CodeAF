@@ -80,7 +80,7 @@ func (l *noticeLog) uncarried() []string {
 	defer l.mu.Unlock()
 	var kept []string
 	for _, line := range l.lines {
-		if strings.Contains(line, "does not take a lane choice") {
+		if strings.Contains(line, "does not take a provider choice") {
 			kept = append(kept, line)
 		}
 	}
