@@ -7,25 +7,40 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/manual/asked"
 )
 
-// THE QUERIES A MODEL ACTUALLY SENT.
+// THE QUERIES A MODEL ACTUALLY SENT — AND THE ONES THAT STILL MISS.
 //
-// These three rewrites were read off the wire or kept as stand-ins after #307.
-// The permissions page now carries their own vocabulary, so each query reaches
-// the answer directly instead of depending on the person's original words to
-// rescue it through SearchBoth.
+// R5: The wire rewrites and the earlier stand-ins now reach directly because
+// R4 restores both old and new asker vocabulary to the permissions heading.
+// The replacements below keep the same paraphrase shape and still miss alone;
+// "document exposure boundaries", "local data disclosure controls", and
+// "workspace inspection authorization" were all tried against Search before
+// they were put here. "Repository observation permissions" was tried too and
+// rejected because it already reached. Each row must miss alone and reach
+// through SearchBoth, because a row that reaches without the person's words no
+// longer measures #307.
 var paraphrases = []struct{ person, model, want string }{
-	{"who can see my files in aforge", "who can see my files when I use aforge", "permissions"},
-	{"who can see my files in aforge", "who can view my files in aforge", "permissions"},
-	{"who can see my files in aforge", "visibility of files in the workspace", "permissions"},
+	{"who can see my files in aforge", "document exposure boundaries", "permissions"},
+	{"who can see my files in aforge", "workspace inspection authorization", "permissions"},
+	{"who can see my files in aforge", "local data disclosure controls", "permissions"},
 }
 
-// C9: The manual answers the privacy paraphrases the strengthened heading names.
-func TestPrivacyParaphrasesReachPermissionsPage(t *testing.T) {
+// R5: TestAParaphraseReachesThePageThePersonsWordsReach is #307. The model does
+// not search what it was asked; it composes a query, and on a corpus this small
+// two words nobody said can drop the page out of the four the model is handed.
+func TestAParaphraseReachesThePageThePersonsWordsReach(t *testing.T) {
 	for _, row := range paraphrases {
-		found := Chat().Search(row.model, DefaultResults)
-		if !reaches(found, "permissions") {
-			t.Errorf("%q did not reach permissions; what came back was %v", row.model, pagesOf(found))
+		if reaches(Chat().Search(row.model, DefaultResults), row.want) {
+			t.Errorf("%q now reaches %s on its own, so this row no longer measures the fix — replace it with a rewrite that still misses, or take it out",
+				row.model, row.want)
+			continue
 		}
+		found := Chat().SearchBoth(row.model, row.person, DefaultResults)
+		if !reaches(found, row.want) {
+			t.Errorf("the model asked %q while the person had asked %q, and the %s page still did not come back; what did was %v",
+				row.model, row.person, row.want, pagesOf(found))
+			continue
+		}
+		t.Logf("%-45q + %-34q → %v", row.model, row.person, pagesOf(found))
 	}
 }
 

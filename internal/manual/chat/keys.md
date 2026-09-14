@@ -3028,11 +3028,11 @@ Indented reply text is also **greyer** than the answer, and carries no markdown 
 bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
 the actual answer" on the screen page.
 
-## How do I see what aforge did?
+## How do I see what aforge did — see aforge's work and tool calls behind the answer
 
-This is the answer to "what did aforge just do", "show me the work behind that answer",
-"see the tool calls it ran", and "what happened during that turn" — the finished work is
-folded, and one gesture opens it.
+This is the answer to "how do I see what aforge did?", "what did aforge just do",
+"show me the work behind that answer", "see the tool calls it ran", and "what happened
+during that turn" — the finished work is folded, and one gesture opens it.
 
 When a successful turn has work and a trailing answer, the finished work collapses to
 one indented chip between your message and the answer, such as

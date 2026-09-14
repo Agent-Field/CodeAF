@@ -721,7 +721,7 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## Who can see or view my files — privacy, file access and workspace visibility
+## Who can see or view my files — privacy, file access and workspace visibility, what aforge can read without asking, does git status need approval
 
 **Privacy: who can see my files.** In the default `prompt` mode, a look is not
 a question. aforge can read and open these files without asking — the policy

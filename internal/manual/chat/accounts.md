@@ -262,7 +262,7 @@ safeguard in the gate catches that, checked first. The model then reads:
 the work without it and say so plainly; calling again, or calling it another way, will
 not change their answer.`
 
-## The services and use_service tools
+## The services and use_service tools — does it ask permission to run services
 
 Two tools are always on the belt when an accounts layer exists.
 
@@ -402,14 +402,6 @@ Twenty-eight ship, each at the address on the vendor's own page:
 | ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
 | Datadog | `https://mcp.<site>/v1/mcp` | your metrics, logs and monitors |
-
-## MCP accounts from GitLab through Notion
-
-These are the middle eight of the 28 tool-server accounts that ship. Each works with
-zero registration and uses the vendor's own address:
-
-| Service | Address | What it brings |
-| --- | --- | --- |
 | GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
 | Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
 | Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
@@ -421,14 +413,6 @@ zero registration and uses the vendor's own address:
 | Neon | `https://mcp.neon.tech/mcp` | your projects, branches and queries |
 | Netlify | `https://netlify-mcp.netlify.app/mcp` | your sites, deploys and domains |
 | Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
-
-## MCP accounts from PayPal through Todoist
-
-These are the final eight of the 28 tool-server accounts that ship. Each works with
-zero registration and uses the vendor's own address:
-
-| Service | Address | What it brings |
-| --- | --- | --- |
 | PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
 | PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
 | Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
@@ -442,8 +426,6 @@ GitLab's own line adds: "Your GitLab admin may have to turn its AI features on f
 Airtable's adds: "An enterprise admin may have to allow it first."
 Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
 address signs in with a key and nothing else, so it is deliberately not shipped.
-
-## How MCP accounts register and reconnect
 
 **All 28 work with zero registration.** aforge introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
