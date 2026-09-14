@@ -1446,6 +1446,14 @@ func questionAsked(event Event) (string, bool) {
 		if event.Task == nil || event.Task.ID == 0 {
 			return "", false
 		}
+		if event.Task.Decided != nil || event.Task.Withdrawn != "" {
+			// A CARD THAT STATES ITS OWN OUTCOME IS NOT ASKING ANYTHING. The
+			// proposal is the one lane that restates its card when it is settled
+			// ([taskWait.decided], [taskWait.withdraw]), and that restatement is
+			// what the replay carries in the open card's place: the assignment,
+			// with the answer under it.
+			return "", false
+		}
 		return questionToken(QuestionTask, strconv.FormatUint(event.Task.ID, 10)), true
 
 	case EventStandingProposal:

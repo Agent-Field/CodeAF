@@ -698,10 +698,27 @@ func TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater(t *testing.
 		t.Fatalf("OpenQuestions() = %+v after the answer, want none", open)
 	}
 
+	// THE REPLAY CARRIES THE ASSIGNMENT WITH THE ANSWER ON IT, ONCE. The open
+	// card — the one that asks — is left out; the restatement takes its place, so
+	// a surface arriving now draws what was decided and has nothing to answer.
+	cards := 0
 	for _, event := range attachedLate(t, agent) {
-		if event.Kind == EventTaskProposal {
-			t.Fatalf("the replay asked about task %d again after it was approved", event.Task.ID)
+		if event.Kind != EventTaskProposal {
+			continue
 		}
+		cards++
+		if event.Task == nil || event.Task.Decided == nil {
+			t.Fatalf("the replay asked about task %d again after it was approved: %+v", card.Task.ID, event.Task)
+		}
+		if !event.Task.Decided.Approved {
+			t.Fatalf("the replayed card says the proposal was declined: %+v", event.Task.Decided)
+		}
+		if !event.Task.Deadline.IsZero() {
+			t.Fatal("a decided card still carries a clock")
+		}
+	}
+	if cards != 1 {
+		t.Fatalf("the replay carried %d cards for one proposal, want the settled one alone", cards)
 	}
 	ran.await(t)
 }
