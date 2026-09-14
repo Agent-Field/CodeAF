@@ -3177,13 +3177,41 @@ func (a *app) questionWalkCount(q questionShown) int {
 // still *later* (it is read before this, with every other question's esc). A key
 // this row does not know is handed back rather than swallowed — the block takes
 // only the keys it draws, and a box is not a reason to stop being that.
+//
+// THE WORD AND LINE MOTIONS COME FROM THE ONE VOCABULARY (editkeys.go), which is
+// what every OTHER box on this surface reads them from. Hand-binding them here
+// is how this box came to answer only `alt+left`/`alt+right` and the two ends:
+// `ctrl+left`, the `super`/`meta` spellings, and both word kills were silently
+// dead in a question's own answer box, which is the exact defect editkeys.go was
+// written for said about home, the errand pane and the filters.
 func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	open := a.questionHeld(head.token())
 	if open == nil {
 		return nil, false
 	}
 	box := &open.other.words
-	switch key := msg.String(); key {
+	key := msg.String()
+	// THE MOTIONS AND THE WORD KILL FIRST, from the shared map, so a keyboard
+	// that moves the caret in the message box moves it here.
+	//
+	// THE LINE ENDS STAY BELOW. `home`, `end`, `ctrl+a` and `ctrl+e` are this
+	// box's own spelling of the two ends and have always been read here; the
+	// shared map's `ctrl+a` happens to agree with the `home` case below it, and
+	// `ctrl+e` it deliberately does not claim (editkeys.go). `ctrl+b`/`ctrl+f`
+	// are the plain caret motions and the shared map claims neither.
+	if editorMotion(box, key) {
+		a.touch()
+		return nil, true
+	}
+	// `ctrl+w` IS NOT HERE, ON PURPOSE. It shuts the tab in front everywhere on
+	// this surface (tabclosekey.go), and the word kill on a question's box is
+	// spelled by the two names a hand actually presses — `alt+backspace` and
+	// `ctrl+backspace` — exactly as the message box spells it (input.go).
+	if editorWordKill(box, key) {
+		a.touch()
+		return nil, true
+	}
+	switch key {
 	case questionEnterKey:
 		words := strings.TrimSpace(box.String())
 		if words == "" {
@@ -3217,10 +3245,13 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		box.home()
 	case "end", "ctrl+e":
 		box.end()
-	case "alt+left", "alt+b":
-		box.wordLeft()
-	case "alt+right", "alt+f":
-		box.wordRight()
+	case "ctrl+u", "super+backspace":
+		// KILL TO THE START OF THE LINE, under both of its names — the same
+		// pair the message box binds (input.go), so ⌃U and ⌘⌫ do here what a
+		// hand already knows them to do there. It is the line rather than the
+		// draft ([editor.killToStart]), which is the same promise the message
+		// box makes.
+		box.killToStart()
 	case "backspace":
 		box.deleteBackward()
 	case "delete":
