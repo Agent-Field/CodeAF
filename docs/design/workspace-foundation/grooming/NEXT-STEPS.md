@@ -17,7 +17,8 @@ fixture.
   `bin/aforge` in tmux on Spark, wide and narrow, keyboard and mouse, 48/48 checks.
   Stable demo: `/home/santosh/src/af-pai-demo-36922486c` + `/home/santosh/aforge-pai-demo-36922486c`.
 - [ ] The person tries checkpoint 1; record friction in PRODUCT-EXPERIENCE-PATH.
-- [x] **TUI checkpoint 2 — continuing work.** `9d9beebc3` on the same lane; record
+- [x] **TUI checkpoint 2 — continuing work.** `92ba84022` on the same lane (accepted on
+  `9d9beebc3`); demo `/home/santosh/src/af-pai-demo2-92ba84022` + `/home/santosh/aforge-pai-demo2-92ba84022`; record
   [BUILD-TUI-02.md](BUILD-TUI-02.md). Set up through the Product reports chat, Folders
   inspector from the owner's records, `p`/`s` through the standing seam, `e` into the
   setup chat's edit card; real `bin/aforge` in tmux on Spark against an isolated profile:

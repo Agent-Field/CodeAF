@@ -2,8 +2,9 @@
 
 **Status: ACCEPTED on open-weight models (2026-09-14).** Lane `codex/personal-experience-0914`,
 base `0ac146768` (runtime identical to checkpoint 1's `36922486c`). Source `9687f15c5`
-(implementation), `061ffdc2f` (review fixes), `9d9beebc3` (acceptance fix); real-terminal
-acceptance on `9d9beebc3` with setup on `061ffdc2f` (see *Acceptance*). Claude Code Opus,
+(implementation), `061ffdc2f` (review fixes), `9d9beebc3` (acceptance fix), `92ba84022`
+(re-review fixes, final code); real-terminal acceptance on `9d9beebc3` with setup on
+`061ffdc2f`, and the accepted record re-read on `92ba84022` (see *Acceptance*). Claude Code Opus,
 Fleet jobs `20260914-203238-000447` (interrupted for the model correction) and
 `20260914-211019-000449` onward, host `spark`. W5-B stays **not accepted** (21/37). The
 user's checkpoint-1 demo (`/home/santosh/src/af-pai-demo-36922486c`,
@@ -134,7 +135,13 @@ strings; rules show no `checks`; adopted receipts; failed receipt read shown; no
 and no report quote in `held to`; empty `·` slots; glyph door; stale host comment; tests
 for `s`, the draft and the word helpers). Acceptance then showed finding 6 live — `the
 instructions also name spec.md` for the digest's own inputs — fixed in `9d9beebc3` by the
-watch's own matcher. A second Opus pass over the fixes: see *Re-review*.
+watch's own matcher. **Re-review** (second Opus pass over `9687f15c5..9d9beebc3`): nine
+findings fixed, three partial, and one new regression — the input filter put every name
+inside the watched folder, so under `product/**` a real rival report
+(`reports/old-digest.md`) was silenced. Fixed in `92ba84022` with the smaller items (only a
+bare name is put inside the watched folder; `e` replaces an older lead instead of stacking;
+adopted wording; `checked` dot; manual on `e` and rules; fixture STAGE check before the
+seeder build). Tests cover `product/**` and the older lead.
 
 ## Acceptance — real terminal, isolated profile, open-weight models
 
@@ -154,7 +161,11 @@ serial live calls, no retries. Evidence `/tmp/af-pai-exp-logs/cp2-accept2/` (scr
 | Open-weight receipts | calls.jsonl + usage.jsonl: `z-ai/glm-5.3-flash` (chat turns and both runs), `qwen/qwen3.8-27b` (rules check), `deepseek/deepseek-v4-flash-0731` (captions/titles). **NON-OPEN MODELS: none.** |
 
 Setup ran on `061ffdc2f` and the rest on `9d9beebc3`; the only source change between them
-is `session.StandingNamedFiles`, which only the inspector reads. Acceptance 1
+is `session.StandingNamedFiles`, which only the inspector reads. The final `92ba84022`
+changes the inspector's named-file filter, `e`'s lead handling and two wordings; the
+stopped item was re-read on it through the real engine (`40-final-binary-inspect-stopped.txt`):
+the same lines (`held to 1 kept · rule 659dac6d`, `instructions v2`, `on disk 611 bytes · put
+there by aforge`, no named-file warning), with no model call (`calls.jsonl` 46 → 46). Acceptance 1
 (`/tmp/af-pai-exp-logs/cp2-accept1/`, binary `5417b4b71`) is retained: setup passed
 (3 tool calls; first `stand` refused `folder scope is only available for a rule that does
 not wake`), then stopped for the review fixes.
@@ -177,6 +188,30 @@ per-day limit is silent while the store records `10 runs a day`; GLM paraphrased
 folder rule into the instructions on one setup (the rule still reached the run by
 placement); the harness added `the ask is not finished · carrying on` after a successful
 setup in acceptance 1.
+
+## Demonstration (pinned, separate from development)
+
+Worktree `/home/santosh/src/af-pai-demo2-92ba84022` (detached at `92ba84022`, `make build`
+on Spark), profile `/home/santosh/aforge-pai-demo2-92ba84022` (`STAGE=2`, open-weight rows
+above). Verified 2026-09-14 ~22:04Z: opens on `glm-5.3-flash`, `folders` reaches Startup →
+Product → Product reports (`chat · idle · placed`), no model call logged, engine stopped
+afterwards. Nothing stands in it yet: the person sets the work up in that chat.
+
+```sh
+cd /home/santosh/aforge-pai-demo2-92ba84022/fixture/startup && \
+  env -u AFORGE_MODEL -u AFORGE_VISION_MODEL AFORGE_HOME=/home/santosh/aforge-pai-demo2-92ba84022 \
+  /home/santosh/src/af-pai-demo2-92ba84022/bin/aforge
+# alt+8 → Startup → Product → Product reports → enter, then e.g.
+#   Keep reports/product-digest.md current: whenever a file in product/ changes,
+#   rewrite it as a short digest of the product spec. At most $0.05 a run.
+# change product/spec.md in another terminal, then:
+#   AFORGE_HOME=/home/santosh/aforge-pai-demo2-92ba84022 /home/santosh/src/af-pai-demo2-92ba84022/bin/aforge standing check
+```
+
+Unsupported in the demo: a TUI "check now" (use `aforge standing check` or wait for the open
+window's 5-minute pass), a background timer (off in this profile), report-path renames,
+and the Product → Marketing watch. `stand` asks `allow?` before its card under the default
+approval policy.
 
 ## Not in this checkpoint
 
