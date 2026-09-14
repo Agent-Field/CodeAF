@@ -1620,7 +1620,7 @@ with no answer, no error, no note and an idle status line, and there was no way
 — on the screen, in the transcript, or in the log — to tell your own stop from a
 second window taking the conversation over.
 
-## It said nobody was left watching but I was sitting right here — the reply stopped, bash cancelled, which window did it think had gone, the engine was stopped
+## It said nobody was left watching but I was sitting right here — the reply stopped, bash cancelled, which window did it think had gone, the engine holding this conversation was stopped
 
 `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` is only what you read when the conversation was let go of because nobody was watching it. A goodbye of your own says `the reply stopped when this conversation was left — ask again to pick it up`. An engine stopped on somebody's word while a window is still in the room says `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up`.
 

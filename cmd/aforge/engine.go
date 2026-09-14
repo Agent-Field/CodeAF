@@ -85,6 +85,13 @@ func runRemoteEngine(args []string) error {
 	// refusal below sends them to it: something older is holding this
 	// workspace and has to be let go of before a current build can hold it.
 	stop := flags.Bool("stop", false, "stop whatever is holding this workspace's conversations on this machine")
+	// --stop-all IS THE ONE A PERSON REACHES FOR WHEN THEY DO NOT KNOW WHICH
+	// WORKSPACE IS THE PROBLEM, and that is the ordinary case: the refusal names
+	// a machine, a person has run aforge in six folders this month, and finding
+	// the one that will not let go means reading a directory of hashes. It is
+	// the same stand-down as --stop, asked of every workspace this machine has a
+	// host directory for, one at a time and named as it goes.
+	stopAll := flags.Bool("stop-all", false, "stop every engine this machine is holding, in every workspace")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -93,11 +100,17 @@ func runRemoteEngine(args []string) error {
 		// and nothing a person accomplishes by typing it, so the usage line
 		// offers the two flags somebody might mean and stays quiet about the
 		// one they would only ever mean by accident.
-		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host] [--stop]")
+		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host] [--stop] [--stop-all]")
 	}
 
 	if *daemon {
 		return runEngineHost(*workspace, *file)
+	}
+	if *stopAll {
+		// THE TWO FLAGS ARE NOT COMBINED, they are ordered: --stop-all is a
+		// superset of --stop, so a person who typed both meant the larger one
+		// and being refused for saying it twice would be pedantry.
+		return runEngineStopAll()
 	}
 	if *stop {
 		return runEngineStop(*workspace)
@@ -397,6 +410,74 @@ func runEngineStop(workspaceFlag string) error {
 	}
 	fmt.Printf("stopped holding %s — the next connection starts fresh from this build\n", workspace)
 	return nil
+}
+
+// runEngineStopAll is `aforge engine --stop-all`: every engine this machine is
+// holding, in every workspace, let go of.
+//
+// IT EXISTS BECAUSE THE REMEDY USED TO REQUIRE KNOWING THE ANSWER. A stale host
+// announces itself by refusing a launch, and the fix is `--stop --workspace
+// <path>` — but the person reading that has run aforge in six folders and the
+// state root names them by hash. On 2026-09-12 a host on an older wire held one
+// checkout for twenty-two hours and eight rebuilds, and clearing it took reading
+// a directory of hashes to find which one it was. This is that reading, done by
+// the program.
+//
+// EVERY WORKSPACE IS NAMED AS IT GOES, and one that refuses does not stop the
+// sweep: the whole point is the workspace you did not know about, so a failure
+// on the third of five must not hide the fourth. The refusals are collected and
+// reported together at the end, and the exit code says whether any of them
+// happened.
+//
+// A DIRECTORY WHOSE HOST HAS GONE IS NOT A FAILURE. [enginehost.Stop] answers
+// false for a socket nobody is listening on, which is the ordinary state of
+// every workspace anybody has ever opened and closed, so those are counted and
+// summarised rather than printed one by one — a sweep that listed thirteen
+// "nothing there" lines would bury the one line that mattered.
+func runEngineStopAll() error {
+	held, err := enginehost.Held()
+	if err != nil {
+		return err
+	}
+	if len(held) == 0 {
+		fmt.Println("nothing is holding any workspace here")
+		return nil
+	}
+	var stopped, quiet int
+	var refused []string
+	for _, workspace := range held {
+		went, err := enginehost.Stop(workspace)
+		switch {
+		case err != nil:
+			refused = append(refused, fmt.Sprintf("%s: %v", workspace, err))
+		case went:
+			stopped++
+			fmt.Printf("stopped holding %s\n", workspace)
+		default:
+			quiet++
+		}
+	}
+	if stopped == 0 && len(refused) == 0 {
+		fmt.Printf("nothing is holding any of the %s here\n", placesWord(quiet))
+		return nil
+	}
+	if quiet > 0 {
+		fmt.Printf("%s had nothing holding them\n", placesWord(quiet))
+	}
+	if len(refused) > 0 {
+		return fmt.Errorf("could not stop %s:\n  %s", placesWord(len(refused)), strings.Join(refused, "\n  "))
+	}
+	fmt.Println("the next connection in any of them starts fresh from this build")
+	return nil
+}
+
+// placesWord counts workspaces the way a sentence does, because "1 workspaces"
+// is the kind of line that makes a person doubt the number beside it.
+func placesWord(n int) string {
+	if n == 1 {
+		return "1 workspace"
+	}
+	return fmt.Sprintf("%d workspaces", n)
 }
 
 // runEngineHost is this process being the host: it moves into the workspace

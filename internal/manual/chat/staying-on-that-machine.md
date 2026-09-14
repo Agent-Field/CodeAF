@@ -393,9 +393,43 @@ nothing is holding /home/you/api here
 ```
 
 `--workspace` picks which one; with no flag it means your home directory, exactly as it does
-for `aforge engine` itself. The reason to type it is that a connection told you to: both
-refusals about an older aforge still holding a machine name this command (*Running on
-another machine*).
+for `aforge engine` itself. **Type the flag.** Without it you stop whatever is holding your
+home directory, which is usually not the folder that refused you — and the refusal comes
+back on the next launch because the engine it was about is still running. Both refusals
+about an older aforge spell the workspace out in the command they give you (*Running on
+another machine*); copy the line as written.
+
+## Stop every engine on this machine — aforge engine --stop-all, I don't know which folder is stuck
+
+When you do not know which workspace is the problem, do not go looking for it:
+
+```
+aforge engine --stop-all
+```
+
+It stands down every engine this machine is holding, in every workspace, one at a time, and
+names each one as it goes:
+
+```
+stopped holding /home/you/api
+stopped holding /home/you/site
+11 workspaces had nothing holding them
+the next connection in any of them starts fresh from this build
+```
+
+Folders you once opened and have long since closed are counted on that one line rather than
+listed, so the workspaces that actually let go are the ones you read. A workspace that
+refuses does not stop the sweep — the whole point is the folder you did not know about, so a
+failure on the third of five must not hide the fourth — and every refusal is reported
+together at the end.
+
+This is the blunt instrument and it is safe to reach for: a host let go of this way writes
+every transcript out before it goes, and a turn the sweep catches keeps the part of its
+reply that had arrived. What it costs you is that everything on this machine comes back
+cold on the next connection rather than staying warm.
+
+If what you are actually chasing is a reply that stopped and said so on screen, this is
+not the page — *Models and cost* has the sentence you read and what each of them means.
 
 ## Rebuilt aforge but your conversation was still on the old engine — how aforge tells you
 

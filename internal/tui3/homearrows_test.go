@@ -27,7 +27,11 @@ import (
 func narrowHome(t *testing.T, lab *homeLab, standing string, width int) *app {
 	t.Helper()
 	a := lab.app(standing)
-	a.width, a.height = width, 30
+	// Tall enough that the column still has rows to spare once the composer
+	// takes its floor ([boxFloor] hands it back under twenty-six): the law here
+	// is that ↑ and ↓ reach every row there is, and it proves nothing on a
+	// column with three of them.
+	a.width, a.height = width, 34
 	a.openHome()
 	// The frame settles the tier before a key is read, exactly as a paint does
 	// (home.go's [app.homeFrame] rebuilds the column when it crosses

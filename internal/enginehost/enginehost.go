@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -266,6 +267,49 @@ func Ask(workspace string, ask remote.WhoIs) (remote.HostSelf, error) {
 // asks for it regardless, which is one person's own `aforge engine --stop` and
 // nothing else. Either way the ending is the host's own shutdown — every
 // conversation closed, every journal flushed — and never a signal from outside.
+// Held is every workspace this machine has a host directory for, in the plain
+// text each host wrote there ([placeName]).
+//
+// IT READS THE DIRECTORIES AND NOT THE PROCESS TABLE. A host is known by the
+// state it left under ~/.aforge/v3/hosts, so this answers for hosts started by
+// any build and by any terminal, including one whose process has gone and left
+// its socket behind. Whether anybody is actually listening is the caller's next
+// question, asked through [Dial] or [Stop] — and a directory whose host is gone
+// answers "nothing was holding it", which is the truth a sweep wants.
+//
+// A directory with no workspace file is SKIPPED rather than guessed at: the
+// name is a hash and there is no way back from it to a path, so the honest
+// answer for one is nothing at all. Nothing here is an error a caller should
+// stop for — a state root that cannot be read is a machine with no hosts.
+func Held() ([]string, error) {
+	root, err := home.Join("v3", "hosts"), error(nil)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("engine host: %w", err)
+	}
+	var held []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name, err := os.ReadFile(filepath.Join(root, entry.Name(), placeName))
+		if err != nil {
+			continue
+		}
+		if workspace := strings.TrimSpace(string(name)); workspace != "" {
+			held = append(held, workspace)
+		}
+	}
+	sort.Strings(held)
+	return held, nil
+}
+
 func Retire(workspace string, anyway bool) error {
 	self, err := Ask(workspace, remote.WhoIs{StandDown: true, Anyway: anyway})
 	if err != nil {

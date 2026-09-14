@@ -1186,9 +1186,30 @@ func placeFrameWithBar(a *app, width, height int,
 	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
+	// THE BOX HAS A FLOOR ([boxFloor]) AND EVERY BRANCH ABOVE IS HELD TO IT, the
+	// target's filter included. The rows that make it up are added BELOW what was
+	// typed: padding above would move the first line a person typed off the first
+	// row, and the caret's own row is derived by subtracting this block's height
+	// from the rows placed below — so a pad at the bottom moves both by the same
+	// amount and the caret stays on the letter it is on.
+	//
+	// An empty block means the box is at REST and the rows are drawn as its
+	// silhouette further down, so it is left empty here rather than padded into
+	// a surface a press could land in.
+	for floor := boxFloor(height); len(draftRows) > 0 && len(draftRows) < floor; {
+		draftRows = append(draftRows, "")
+	}
+	// THE BOX IS THE SAME HEIGHT TYPED IN OR NOT ([homeDraftFloor]). At rest it
+	// is the place's dim sentence with the same rows under it, so the one thing
+	// on this screen a person types into is a block they can see before they
+	// have typed anything — which is the whole point, since somebody who cannot
+	// find the box has nothing to type into it. It also means the foot does not
+	// move on the first keystroke: a box that jumped from one row to three the
+	// moment a letter landed would shift the list up under the hand that was
+	// reaching for it.
 	draftHeight := len(draftRows)
-	if draftHeight < 1 {
-		draftHeight = 1
+	if floor := boxFloor(height); draftHeight < floor {
+		draftHeight = floor
 	}
 	// THE VERB STRIP IS A ROW OF THE BODY AND THE ANSWER STRIP IS A ROW OF THE
 	// FOOT, and they are asked for separately because they are two different
@@ -1357,6 +1378,14 @@ func placeFrameWithBar(a *app, width, height int,
 	boxTop, boxHeight := len(lines), len(draftRows)
 	if len(draftRows) == 0 {
 		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
+		// AND THE REST OF THE BLOCK IS HELD OPEN UNDER IT, so the box is the same
+		// shape before the first keystroke as after it. The span stays EMPTY
+		// (boxHeight is still zero above): these rows are the box's silhouette
+		// and not its surface, so a press on them falls through to the place
+		// underneath exactly as a press on the resting row always has.
+		for row := 1; row < boxFloor(height); row++ {
+			add("", nil)
+		}
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
 		// than left blinking at the frame's origin. The moment a character lands
 		// the box stops being empty and the caret comes back, in the box.
@@ -1600,6 +1629,77 @@ const (
 	// close` is the way out and the way out is always said last.
 	mapCloseWords = "esc close"
 )
+
+// placeFootRows is how many rows every place spends under its body when it has
+// nothing extra to say: the blank ([spacingRuleClearance]), the rule, the box
+// at its floor, and the hint. A note, a tray, a verb strip or the composer
+// layer each add their own rows on top of these, which is why the frame counts
+// them separately — this is the floor of the foot, not its whole height, and it
+// is the number every place is measured against ([placeFrameWithBar] builds it
+// row by row and TestEveryPlaceSpendsTheSameHeadAndFoot reads it back).
+const placeFootRows = 3 + homeDraftFloor
+
+// placeSmallestFrame is the shortest terminal this surface is laid out for, and
+// the height nearly every law in this package is stated at. Eighty by
+// twenty-four is not a guess: it is the size the design's own screens are drawn
+// at and the size a frame has to survive without losing anything a person came
+// for.
+const placeSmallestFrame = 24
+
+// placeFootRowsAt is [placeFootRows] on a frame of a given height: the same
+// blank, the same rule and the same last line, over a box held to whatever
+// floor that height can afford ([boxFloor]).
+//
+// IT EXISTS SO THAT NOTHING KEEPS A SECOND COPY OF THIS ARITHMETIC. The foot
+// was a constant while the box was one row on every frame; it stopped being one
+// the moment the floor started depending on the height, and four laws that had
+// quietly written `- 3` or `- 4` into their own slicing went on reading the
+// rule as though it were a row of the body.
+func placeFootRowsAt(height int) int {
+	return placeFootRows - homeDraftFloor + boxFloor(height)
+}
+
+// boxFloor is how many rows the composer occupies, and it is the same number
+// typed in or not ([homeDraftFloor]) — in the conversation and on every place —
+// on any frame with rows to spare for it.
+//
+// THE FLOOR IS SPENT OUT OF ROOM THE FRAME HAS OVER THE SMALLEST ONE, NEVER OUT
+// OF THE SMALLEST FRAME'S OWN BODY. Held open unconditionally it cost three
+// rows everywhere, and at [placeSmallestFrame] those three are not spare: home
+// dropped a whole panel off the bottom of its column, an empty place drew its
+// rule where its whisper had been, and the rail's standing section was squeezed
+// out by a long roster. A box nobody can miss is not worth the list they came
+// to read, so a frame that cannot afford the floor draws the single row the box
+// has always drawn. The box is just as usable; what gives way is the space
+// around it.
+//
+// So the test is the BODY the floor would leave, against the body an eighty by
+// twenty-four frame has under a one-row box — which works out at twenty-six rows
+// and taller. It is written as that comparison rather than as the number,
+// because the number is a consequence of the head and the foot and would be
+// wrong the next time either of them moves.
+//
+// THE SAME ANSWER FEEDS THE HEIGHT AND THE DRAWING, so the rows a foot reserves
+// and the rows it then adds can never disagree. That is not tidiness: they are
+// read far apart on both surfaces, and a frame that reserved three and drew one
+// would lose a row off the top of the window, which is where the head is. It is
+// why the chat applies it inside [app.inputBlock], which its height and its
+// drawing both go through.
+//
+// It is handed the frame's own height rather than asking [app.size] for one,
+// because a frame is drawn at the height it was given — the rigs draw many
+// sizes through one app, and a floor decided from the window would be the wrong
+// floor for every frame but the last.
+func boxFloor(height int) int {
+	// The body the smallest frame has under a box of one row: its height, less
+	// the head, less that foot — the blank, the rule, the one box row and the
+	// last line.
+	const spare = placeSmallestFrame - placeHeadRows - (placeFootRows - homeDraftFloor + 1)
+	if height-placeHeadRows-placeFootRows < spare {
+		return 1
+	}
+	return homeDraftFloor
+}
 
 // placeRestWord is what this place's box row says with nothing typed in it.
 //
