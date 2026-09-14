@@ -1,0 +1,14 @@
+# job    20260914-192632-000445
+# cwd    /home/santosh/work/af-pai-next-0914
+# cmd    cd /home/santosh/src/af-pai-integrated-0914 && export GOMAXPROCS=4 GOFLAGS=-p=2 && git rev-parse HEAD && make build && bin/aforge --version
+# start  2026-09-14T19:26:33Z
+# ---
+[fleet-guard] cgroup memory cap 107G
+e1f4de1c1a420ceccad0bdc531960c992bf664d7
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go build -tags=aforge_packed_manual -trimpath -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=e1f4de1c1 -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=false -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=2026-09-14T19:26:33Z" -o bin/aforge ./cmd/aforge
+aforge e1f4de1c1 built 2026-09-14 15:26 · go1.26.5 linux/arm64
+# ---
+# exit   0
+# end    2026-09-14T19:26:36Z

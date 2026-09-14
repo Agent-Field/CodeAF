@@ -344,3 +344,15 @@ Read-only Opus recon for the browse/inspect boundary is running on Spark under
 Fleet job `20260914-191334-000444`; this is not yet an implemented TUI checkpoint.
 The original conceptual recommendations above are preserved, not blanket runtime
 authorization. The quarantined integration checkout remains untouched.
+
+Integration candidate `e1f4de1c1` preserves both `19bb937d3` and `aa8c52e4a`;
+its runtime/test tree equals the reviewed lane (only documentation differs).
+Spark Fleet `20260914-192632-000445` ran `make build` and the version check at
+that exact merge, exit 0, 19:26:33–19:26:36 UTC. Receipt:
+[merged build](validation/w05b-integration-build.log). This is build evidence,
+not a passing combined chat journey or broad merge acceptance.
+
+Coordinator decision for checkpoint 1: use the existing additive place model
+for a Folders entry and preserve Home/direct chat. This is a reversible surface
+choice under the user's instruction, not a new folder/runtime semantic. The
+inspector initially reads only; no unsupported controls will be implied.
