@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""List-price cost for aforge cells, from the session's own usage records.
+"""List-price cost for codeaf cells, from the session's own usage records.
 
 The journal's cost_usd is OpenRouter's REPORTED bill, which depends on the
 endpoint the request was routed to. To compare harnesses on one price table,
-this reprices every aforge cell's tokens at the model's list price — the same
+this reprices every codeaf cell's tokens at the model's list price — the same
 arithmetic competitor_cost.py applies to pi and opencode. Both figures stay in
 the row: `cost_usd` (what was actually billed) and `cost_list_usd` (the fair
 comparison), so a routing change shows up as the gap between them closing.
@@ -35,7 +35,7 @@ def main():
     rows = list(csv.DictReader(open(res + "/results.csv"))); fields = list(rows[0].keys())
     if "cost_list_usd" not in fields: fields.append("cost_list_usd")
     for r in rows:
-        if not r["harness"].startswith("aforge"): continue
+        if not r["harness"].startswith("codeaf"): continue
         cell = os.path.join(res, f'{r["harness"]}-{r["task"]}-{r["seed"]}')
         tok, n = usage(cell)
         if n == 0: continue
@@ -51,6 +51,6 @@ def main():
     with open(res + "/results.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields); w.writeheader()
         for r in rows: w.writerow({k: r.get(k, "") for k in fields})
-    print("repriced", sum(1 for r in rows if r.get("cost_list_usd")), "aforge cells")
+    print("repriced", sum(1 for r in rows if r.get("cost_list_usd")), "codeaf cells")
 
 if __name__ == "__main__": main()

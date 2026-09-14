@@ -3,7 +3,7 @@
 2026-09-10. Read-only audit of everything the v3 conversation sends a model per request,
 three Opus passes (page, tool block, per-turn dynamic context), Pi as the lean baseline.
 Numbers are measured on the rendered widest page and the marshalled belt, not guessed.
-Coordinated with the quick-task lane (aforge-v2-38, PR #811 + quick/choice), which owns
+Coordinated with the quick-task lane (codeaf-38, PR #811 + quick/choice), which owns
 `task_quick.go`, `taskDescription`'s tail, `handoffFacts`, the routing lines of
 `system.md` and the worker pages; it has the findings that touch those and is folding
 them in. Everything else in the prefix is free to move.
@@ -33,7 +33,7 @@ Where we stand (conversation shape, this repo):
 | Pi, prompt + 4–7 tools | ~14,000 | ~3,500 |
 
 Pi is small because it has seven verbs and no tasks, standing, memory, accounts, steering,
-or media. The honest comparison is not "aforge vs Pi" but "aforge's Pi-equivalent core vs
+or media. The honest comparison is not "codeaf vs Pi" but "codeaf's Pi-equivalent core vs
 Pi" — and that core should be Pi-sized, with everything else paid for only when it is used.
 **That is the whole strategy in one line: a Pi-sized core, pay-per-use for the rest.**
 
@@ -91,8 +91,8 @@ Two laws about the classes:
 2. **Verbs can be pulled; laws must be pushed.** A model asks for a tool it can see the
    name of (`load_capability`'s catalog). It never asks "is there a law about X". So the
    shelf is right for verbs and wrong for laws, and ON DEMAND law needs a recognisable
-   trigger in CORE: "anything about aforge itself → `manual`" works because a question
-   about aforge is recognisable. "Making media? read the manual page" is the same shape.
+   trigger in CORE: "anything about codeaf itself → `manual`" works because a question
+   about codeaf is recognisable. "Making media? read the manual page" is the same shape.
 
 ## 3. Ideas considered, and the critique of each
 

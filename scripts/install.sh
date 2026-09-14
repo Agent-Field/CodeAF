@@ -2,20 +2,20 @@
 
 set -euo pipefail
 
-REPOSITORY="Agent-Field/aforge-v2"
+REPOSITORY="Agent-Field/codeaf"
 CHANNEL="${CHANNEL:-stable}"
 VERSION="${VERSION:-}"
 VERBOSE="${VERBOSE:-0}"
-NO_MODIFY_PATH="${AFORGE_NO_MODIFY_PATH:-0}"
-INSTALL_DIR="${AFORGE_INSTALL_DIR:-${HOME}/.aforge/bin}"
-GITHUB_API="${AFORGE_GITHUB_API:-https://api.github.com}"
-GITHUB_DOWNLOAD="${AFORGE_GITHUB_DOWNLOAD:-https://github.com}"
+NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-0}"
+INSTALL_DIR="${CODEAF_INSTALL_DIR:-${HOME}/.codeaf/bin}"
+GITHUB_API="${CODEAF_GITHUB_API:-https://api.github.com}"
+GITHUB_DOWNLOAD="${CODEAF_GITHUB_DOWNLOAD:-https://github.com}"
 # GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 
 usage() {
   cat <<'EOF'
-Install aforge from a GitHub release.
+Install codeaf from a GitHub release.
 
 Usage:
   install.sh [--stable|--rc|--dev|--staging] [--version TAG]
@@ -29,25 +29,25 @@ Channels:
 
 Flags:
   --version TAG       Install one named release tag.
-  --dir PATH          Install somewhere other than ~/.aforge/bin.
+  --dir PATH          Install somewhere other than ~/.codeaf/bin.
   --no-modify-path    Print the PATH line without editing a shell file.
   --verbose           Print download details.
   --help              Show this help.
 
 Environment:
-  CHANNEL, VERSION, AFORGE_INSTALL_DIR, AFORGE_NO_MODIFY_PATH, VERBOSE
+  CHANNEL, VERSION, CODEAF_INSTALL_DIR, CODEAF_NO_MODIFY_PATH, VERBOSE
   GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
-  AFORGE_GITHUB_API and AFORGE_GITHUB_DOWNLOAD for mirrors and tests
+  CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
 EOF
 }
 
 fail() {
-  printf 'aforge: %s\n' "$*" >&2
+  printf 'codeaf: %s\n' "$*" >&2
   exit 1
 }
 
 usage_error() {
-  printf 'aforge: %s\n\n' "$*" >&2
+  printf 'codeaf: %s\n\n' "$*" >&2
   usage >&2
   exit 2
 }
@@ -84,7 +84,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
   fail "curl or wget is required"
 fi
 
-TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/aforge.XXXXXX")
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/codeaf.XXXXXX")
 INSTALL_TEMP=""
 cleanup() {
   rm -rf "$TMP_ROOT"
@@ -102,7 +102,7 @@ http_get() {
   local authenticate="${4:-0}"
   local status
   if [[ "$VERBOSE" == "1" ]]; then
-    printf 'aforge: GET %s\n' "$url"
+    printf 'codeaf: GET %s\n' "$url"
   fi
   if command -v curl >/dev/null 2>&1; then
     local args=(-sSL --output "$destination" --write-out '%{http_code}' -H "Accept: ${accept}")
@@ -220,7 +220,7 @@ extension=""
 if [[ "$OS" == "windows" ]]; then
   extension=".exe"
 fi
-ASSET="aforge-${OS}-${ARCH}${extension}"
+ASSET="codeaf-${OS}-${ARCH}${extension}"
 
 download_asset() {
   local name="$1"
@@ -231,9 +231,9 @@ download_asset() {
 }
 
 if [[ -n "$DISPLAY_CHANNEL" ]]; then
-  printf 'aforge: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH"
+  printf 'codeaf: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH"
 else
-  printf 'aforge: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
+  printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
 fi
 download_asset "$ASSET" "$TMP_ROOT/$ASSET"
 download_asset "checksums.txt" "$TMP_ROOT/checksums.txt"
@@ -252,12 +252,12 @@ if [[ "$actual" != "$expected" ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-INSTALL_TEMP="$INSTALL_DIR/.aforge.tmp.$$"
+INSTALL_TEMP="$INSTALL_DIR/.codeaf.tmp.$$"
 cp "$TMP_ROOT/$ASSET" "$INSTALL_TEMP"
 chmod 0755 "$INSTALL_TEMP"
-mv -f "$INSTALL_TEMP" "$INSTALL_DIR/aforge${extension}"
+mv -f "$INSTALL_TEMP" "$INSTALL_DIR/codeaf${extension}"
 INSTALL_TEMP=""
-printf 'aforge: installed %s\n' "$INSTALL_DIR/aforge${extension}"
+printf 'codeaf: installed %s\n' "$INSTALL_DIR/codeaf${extension}"
 
 path_has_dir() {
   case ":${PATH}:" in
@@ -270,31 +270,31 @@ append_path_line() {
   local file="$1"
   local line="$2"
   mkdir -p "$(dirname "$file")"
-  if [[ ! -f "$file" ]] || ! grep -F '# aforge installer' "$file" >/dev/null 2>&1; then
+  if [[ ! -f "$file" ]] || ! grep -F '# codeaf installer' "$file" >/dev/null 2>&1; then
     printf '%s\n' "$line" >> "$file"
   fi
 }
 
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
-  printf 'aforge: add it to this shell with: %s\n' "$export_line"
+  printf 'codeaf: add it to this shell with: %s\n' "$export_line"
   if [[ "$NO_MODIFY_PATH" != "1" ]]; then
     shell_name=$(basename "${SHELL:-/bin/bash}")
     case "$shell_name" in
       zsh)
-        append_path_line "$HOME/.zshrc" "$export_line # aforge installer"
+        append_path_line "$HOME/.zshrc" "$export_line # codeaf installer"
         ;;
       fish)
-        append_path_line "$HOME/.config/fish/config.fish" "fish_add_path \"$INSTALL_DIR\" # aforge installer"
+        append_path_line "$HOME/.config/fish/config.fish" "fish_add_path \"$INSTALL_DIR\" # codeaf installer"
         ;;
       *)
-        append_path_line "$HOME/.bashrc" "$export_line # aforge installer"
+        append_path_line "$HOME/.bashrc" "$export_line # codeaf installer"
         if [[ "$OS" == "darwin" && -f "$HOME/.bash_profile" ]]; then
-          append_path_line "$HOME/.bash_profile" "$export_line # aforge installer"
+          append_path_line "$HOME/.bash_profile" "$export_line # codeaf installer"
         fi
         ;;
     esac
   fi
 fi
 
-"$INSTALL_DIR/aforge${extension}" version
+"$INSTALL_DIR/codeaf${extension}" version

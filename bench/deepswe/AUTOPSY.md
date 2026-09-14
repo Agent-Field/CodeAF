@@ -1,6 +1,6 @@
 # What the first two sweeps show
 
-Ten runs: five DeepSWE tasks × two seeds, `aforge do` headless with every model
+Ten runs: five DeepSWE tasks × two seeds, `codeaf do` headless with every model
 knob pinned to `deepseek/deepseek-v4-flash`, in each task's own pinned container,
 graded by that task's verifier image. s1 on `44e6a4f4`, s2 on `5fa2561e`.
 The grading path is proved by `gold.sh`: all five reference solutions score 1.
@@ -1518,10 +1518,10 @@ Setup: rig `bench/deepswe/` with the new `DOOR=chat` (PR #634), one linux/amd64 
 ## Rig faults this campaign found and fixed (all on PR #634 or in DECISIONS.md)
 
 1. **A cell started from a Codex tool call dies when the call returns** (process-group kill). Every first cell died that way at 15:23; relaunched detached via `launch.sh` (setsid). Cost: ~15 min, nothing spent.
-2. **The qemu emulation guard under Rosetta**: `GOGC=off` pinned every aforge process at its 6 GiB `GOMEMLIMIT`; seven cells held 32 GB of a 40 GB VM. Proved unnecessary under Rosetta (gold reward 1 with normal GC), switched for cells starting after 15:45, three young cells restarted (ofetch/do, cattrs/chat, aiomonitor/chat), a launch gate added. Rows carry the regime in the `GC` column.
+2. **The qemu emulation guard under Rosetta**: `GOGC=off` pinned every codeaf process at its 6 GiB `GOMEMLIMIT`; seven cells held 32 GB of a 40 GB VM. Proved unnecessary under Rosetta (gold reward 1 with normal GC), switched for cells starting after 15:45, three young cells restarted (ofetch/do, cattrs/chat, aiomonitor/chat), a launch gate added. Rows carry the regime in the `GC` column.
 3. **Binary hunks counted as source in the candidate pick**: igel/do was graded from a branch made "richest" by a committed 502 KB `model.joblib`, missing `igel/configs.py` and every fixture; its 6/24 is a lower bound and cannot be regraded (candidates lived only in the removed container). Fixed: git's binary markers and a list of binary extensions go to the generated side, and `/bench/candidates` is copied out beside every result.
 4. **Bookkeeping**: `cost.json`'s `calls` (store usage rows) and `calllog_calls` differ on every `do` cell (e.g. 329 vs 400) while the dollars agree; textual/do's store cost ($1.144) and call-log cost ($1.082) differ by 6%; chat's `cost.json` carries no token counts. The lead's operator restart at 15:59 (a mistaken duplicate cleanup) interleaved two operators' `monitor.md` on igel/do and lost the chat operator's final message on igel; no cell was affected.
 
 ## Where the campaign lives
 
-`~/aforge-benchmarks/deepswe-dev-flash-20260904-b3922479/` on the box that ran it: `results/<task>-deepseek-deepseek-v4-flash-<door>/` per cell (meta, cost, reward, the graded patch, every candidate patch for cells after 16:35 UTC, the run's home with the key scrubbed, and for chat the screen it ended on and the status line every five seconds), `reports/<task>.md` written by the lane that ran the task, `REPORT.md`, `DECISIONS.md`, `FINDINGS-NOTES.md`, `render-report.py` for the tables. The rig is this directory at PR #634 plus `DOOR=chat`; `cell.sh` there pins `AGENT_SECONDS=5400`, `CHAT_CAP=3`, `EMU_GOGC=100`.
+`~/codeaf-benchmarks/deepswe-dev-flash-20260904-b3922479/` on the box that ran it: `results/<task>-deepseek-deepseek-v4-flash-<door>/` per cell (meta, cost, reward, the graded patch, every candidate patch for cells after 16:35 UTC, the run's home with the key scrubbed, and for chat the screen it ended on and the status line every five seconds), `reports/<task>.md` written by the lane that ran the task, `REPORT.md`, `DECISIONS.md`, `FINDINGS-NOTES.md`, `render-report.py` for the tables. The rig is this directory at PR #634 plus `DOOR=chat`; `cell.sh` there pins `AGENT_SECONDS=5400`, `CHAT_CAP=3`, `EMU_GOGC=100`.

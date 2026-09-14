@@ -157,7 +157,7 @@ is the healthy one, and it is where a false hedge would have to come from.
 
 | row | staged with |
 |---|---|
-| `cold store` | a fresh `AFORGE_HOME` per seed, nothing primed, no sheet — and the lane that serves goes quiet, because a cold store with nothing to wait for proves nothing about a clock |
+| `cold store` | a fresh `CODEAF_HOME` per seed, nothing primed, no sheet — and the lane that serves goes quiet, because a cold store with nothing to wait for proves nothing about a clock |
 | `stalled lane` | the sheet primed, the serving lane quiet five visible words into its answer (`lanestub.Profile.StallAfter`/`StallFor`) |
 | `thinking model` | `Profile.Reasoning` deltas before the first visible word, on a world published at the rate it really writes; the healthy half is a legitimate long think, the sick half stalls inside one |
 | `pinned lane` | `only:[pin]`, twice: with a reader for the offer, and headless, where §E has the offer become a borrow |

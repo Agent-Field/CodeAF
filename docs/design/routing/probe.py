@@ -4,7 +4,7 @@ URL='https://openrouter.ai/api/v1/chat/completions'
 MODELS=['z-ai/glm-5.3-flash','deepseek/deepseek-v4.1-flash','qwen/qwen3.8-27b','mistralai/mistral-nemo','moonshotai/kimi-k3']
 # lanes per model = every provider that served it in the last 3 days of the log
 recs=[]
-for l in open(os.path.expanduser('~/.aforge/logs/calls.jsonl')):
+for l in open(os.path.expanduser('~/.codeaf/logs/calls.jsonl')):
     try: recs.append(json.loads(l))
     except: pass
 lanes=collections.defaultdict(collections.Counter)

@@ -5,7 +5,7 @@ it is not a new result table.
 
 ## Use the two existing rigs
 
-`bench/conversation` already compares Aforge, Pi and OMP through print and real
+`bench/conversation` already compares codeaf, Pi and OMP through print and real
 tmux conversation doors, with frozen campaigns and attributable model billing.
 Its small fixtures are good diagnostics but cannot establish performance on large
 repository changes.
@@ -29,7 +29,7 @@ Actual GitHub defects supply clear provenance and realistic reports. The initial
 five local-repository candidates cover jobs on reopen, spending display, usage
 frames, named-file scope and JSON error reporting. They remain diagnostics from
 one Go repository. A twelve-line fix is a real issue but not evidence of complex
-parallel execution. Aforge working on its own code may have product-specific
+parallel execution. codeaf working on its own code may have product-specific
 advantages; disclose them and include unrelated repositories.
 
 DeepSWE supplies broader repository feature work. These are benchmark tasks with

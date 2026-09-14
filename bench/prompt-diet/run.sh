@@ -66,7 +66,7 @@ RIG_ROOT="$(cd "$DIET_ROOT/../.." && pwd)"
 #             end). These carry their own verdicts, costs and token counts.
 # D  wire     the per-request ledger, rolled up from the guard's own usage file
 #             (bench/conversation/lib/guard.py, which every cell already stands
-#             in front of OpenRouter) and from aforge's built-in call log.
+#             in front of OpenRouter) and from codeaf's built-in call log.
 LAYERS="a,c,d"
 
 # THE PIN IS THE ONE THE BATTERIES WERE CALIBRATED ON, and it is not the one
@@ -76,9 +76,9 @@ LAYERS="a,c,d"
 # cells died mid-turn with the provider's own sentence: "0 endpoints out of 1
 # requested are available matching your guardrail restrictions and data policy
 # … Paid model training violation (account settings): 1 endpoint excluded". It
-# is intermittent and it is not aforge's fault twice over — the id is real and a
+# is intermittent and it is not codeaf's fault twice over — the id is real and a
 # bare curl to it answered three times out of three, from GMICloud and DeepInfra
-# — but aforge asks for ONE endpoint per request and takes no fallback, so an
+# — but codeaf asks for ONE endpoint per request and takes no fallback, so an
 # endpoint this account's privacy settings exclude is a dead turn rather than a
 # hop. It failed `research-brief`, which had passed twice, and `code-fix`, on
 # the same afternoon, on the same build. A parity ruling cannot be made through
@@ -144,14 +144,14 @@ done
 
 has_layer() { case ",$LAYERS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
-# THE EVIDENCE ROOT LIVES OUTSIDE EVERY AFORGE CHECKOUT, and this is a
+# THE EVIDENCE ROOT LIVES OUTSIDE EVERY codeaf CHECKOUT, and this is a
 # correctness rule rather than tidiness.
 #
 # MEASURED, 2026-09-10, the first baseline run: with the evidence under
 # `bench/prompt-diet/out/`, a cell's scratch workspace sat inside the rig's own
 # git checkout. The `code-fix` cell handed the model a small Go module to fix;
-# the model walked up out of it, found the aforge repository around it, and ran
-# `cd <rig> && go test ./...` — a full-tree build of aforge, on a shared box,
+# the model walked up out of it, found the codeaf repository around it, and ran
+# `cd <rig> && go test ./...` — a full-tree build of codeaf, on a shared box,
 # inside a cell whose wall clock was supposed to be measuring a two-file fix.
 # The cell was thrown away and the run started again from here.
 #
@@ -186,7 +186,7 @@ fi
 # a branch name that will have moved by the time anybody reads the table.
 # THE BUILD IS NOT UNDER THE EVIDENCE, for the same reason the evidence is not
 # under a checkout: a cell's workspace sits inside the evidence tree, and a
-# model that walks up out of its fixture must not arrive in an aforge checkout.
+# model that walks up out of its fixture must not arrive in a codeaf checkout.
 # Two roots, and the only thing between them is the label.
 WORKTREE="${DIET_WORKTREE:-${DIET_BUILD_ROOT:-$HOME/bench-diet-build}/$LABEL}"
 if [ "$REUSE_WORKTREE" = "1" ] && [ -e "$WORKTREE/.git" ]; then
@@ -223,7 +223,7 @@ cleanup_worktree() {
 }
 trap cleanup_worktree EXIT
 
-AFORGE_BIN="$WORKTREE/bin/codeaf"
+CODEAF_BIN="$WORKTREE/bin/codeaf"
 
 rule "prompt diet · $LABEL"
 say "branch:     $BRANCH"
@@ -250,8 +250,8 @@ if ! make -C "$WORKTREE" build > "$OUT/build.log" 2>&1; then
   tail -20 "$OUT/build.log" >&2
   exit 1
 fi
-[ -x "$AFORGE_BIN" ] || { warn "no binary at $AFORGE_BIN"; exit 1; }
-say "built $AFORGE_BIN"
+[ -x "$CODEAF_BIN" ] || { warn "no binary at $CODEAF_BIN"; exit 1; }
+say "built $CODEAF_BIN"
 say ""
 
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -298,7 +298,7 @@ if has_layer b && [ "$SUITES" != "none" ]; then
   for suite in ${SUITES//,/ }; do
     log="$OUT/suites/$suite.log"
     say "running $suite (output → $log)"
-    ( cd "$WORKTREE" && AFORGE_CALL_LOG="$OUT/suites/$suite.calllog.jsonl" \
+    ( cd "$WORKTREE" && CODEAF_CALL_LOG="$OUT/suites/$suite.calllog.jsonl" \
         "$GO" test -tags e2e -count=1 -timeout 40m -v \
         -run "^$suite$" ./internal/e2e/ ) > "$log" 2>&1
     printf '   %s: %s pass, %s fail, %s skip\n' "$suite" \
@@ -334,17 +334,17 @@ if has_layer c; then
       # AND THE CALLER'S OWN LIST IS ADDED TO IT, NEVER REPLACED BY IT. This line
       # used to assign the two names flat, which silently dropped whatever the
       # caller had asked to carry — and the one recipe in this tree that needs
-      # that (BENCH.md §4a's lean cell, `CONV_PASS_ENV=AFORGE_PROMPT_PROFILE`)
+      # that (BENCH.md §4a's lean cell, `CONV_PASS_ENV=CODEAF_PROMPT_PROFILE`)
       # therefore measured the FULL profile and read as a lean arm that saved
       # nothing. The e2e cells below never had the problem because they inherit
       # the whole environment; only bench/conversation filters, which is what
       # made the failure invisible: half the run was lean and half was not.
-      CONV_PASS_ENV="AFORGE_CALL_LOG AFORGE_CALL_LOG_BODIES${CONV_PASS_ENV:+ $CONV_PASS_ENV}" \
-      AFORGE_CALL_LOG="$OUT/cells/conversation.calllog.jsonl" \
-      AFORGE_CALL_LOG_BODIES=1 \
-      AFORGE_BIN="$AFORGE_BIN" \
+      CONV_PASS_ENV="CODEAF_CALL_LOG CODEAF_CALL_LOG_BODIES${CONV_PASS_ENV:+ $CONV_PASS_ENV}" \
+      CODEAF_CALL_LOG="$OUT/cells/conversation.calllog.jsonl" \
+      CODEAF_CALL_LOG_BODIES=1 \
+      CODEAF_BIN="$CODEAF_BIN" \
         "$RIG_ROOT/bench/conversation/run.sh" \
-          --arms aforge --model "$MODEL" --allowlist "$ALLOWLIST" \
+          --arms codeaf --model "$MODEL" --allowlist "$ALLOWLIST" \
           --scenarios "${SCENARIOS//,/ }" \
           --out "$OUT/cells/conversation" \
           > "$OUT/cells/conversation.log" 2>&1
@@ -352,7 +352,7 @@ if has_layer c; then
     fi
     if [ "$CELLS" != "none" ]; then
       say "e2e cells: $CELLS"
-      AFORGE_BIN="$AFORGE_BIN" E2E_MODEL="$MODEL" \
+      CODEAF_BIN="$CODEAF_BIN" E2E_MODEL="$MODEL" \
       CSV="$OUT/cells/e2e.csv" RUN_DIR="$OUT/cells/e2e" \
         "$RIG_ROOT/bench/e2e/run.sh" --cells "$CELLS" \
           > "$OUT/cells/e2e.log" 2>&1

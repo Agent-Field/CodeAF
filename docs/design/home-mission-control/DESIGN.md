@@ -12,7 +12,7 @@ question a person has when they walk up to a colleague's desk, each with its
 own keys, each a door to the place that owns it. The chat list is one panel.
 
 ```
- aforge                                                      $0.14 / $20.00 · thu 9:49am
+ codeaf                                                      $0.14 / $20.00 · thu 9:49am
  home   tasks 1   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -25,19 +25,19 @@ own keys, each a door to the place that owns it. The chat list is one panel.
  where you were                                    Spark Fleet Ssh Audit · 2 hosts up, 1 not
  › Understanding Hash Tables in Data …    here     made reports/apartments-minto-street.md
    explain open addressing vs chaining             the 6am repo watch found nothing changed
-   Understanding Bloom Filters in Eight …   11h    learned 2 things about aforge-v2
+   Understanding Bloom Filters in Eight …   11h    learned 2 things about codeaf
    AI Influencers and Developers in …       11h
    Locate Recent Sandbox Task in …           1d   spend                    today $0.14 of $20
    70 more · type to find one                      ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪  under a cent per chat
                                                    ▁▂▁▃▅▂▁▁▇▃▂▅▂▁   14 days $34.10 · opus 63%
  projects
- ~/aforge-v2      12 chats · 1 running   master, 2 dirty
+ ~/codeaf      12 chats · 1 running   master, 2 dirty
  ~/pricing-site   5 chats · a job up     main       next up
  ~/infra          3 chats · quiet 4d                 the 6am repo watch                in 20h
                                                      top movers before the open      mon 8:30
                                                      2 rules hold
  ───────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                               here ~/aforge-v2
+ › say what you want done                                               here ~/codeaf
    type to reach anything · ↑↓ ←→ move · enter open · 1 2 answer · alt for the map
 ```
 
@@ -118,7 +118,7 @@ own keys, each a door to the place that owns it. The chat list is one panel.
   `~` as a project name. A chat whose workspace is the home directory or a
   scratch folder at the top of `/tmp` wears no tag at all; the projects panel
   still lists both, as the paths `~` and `/tmp/af-stop-ws`, and cuts any path
-  from the left (`…/code/aforge-v2`) so its counts stay on the row.
+  from the left (`…/code/codeaf`) so its counts stay on the row.
 
 ## 2. What the engine knows today, panel by panel
 
@@ -127,7 +127,7 @@ Verified 2026-09-10. "On disk" means readable by any window without a live agent
 | Panel | On disk today | Not on disk | Model call |
 |---|---|---|---|
 | needs you | `PresenceQuestion{Kind, Text, Options, Asked, Full *Question}` per session (`taskpresence.go:228`); task `your call` from `Status`+`Ending` (`task_status.go`); `standing.Item.NeedsPerson` | — | none |
-| running | `PresenceTask{Title, State, StartedAt, Phase}` per session, fresh 15s (`taskpresence.go:160`) | activity line (`TaskIndexEntry.Activity` is `json:"-"`), adaptive `done/total` (only in `orchestrate.Snapshot`), background jobs (in-memory `exec.backgroundJob`; logs under `<ws>/.aforge/jobs`), cost of a running node | none |
+| running | `PresenceTask{Title, State, StartedAt, Phase}` per session, fresh 15s (`taskpresence.go:160`) | activity line (`TaskIndexEntry.Activity` is `json:"-"`), adaptive `done/total` (only in `orchestrate.Snapshot`), background jobs (in-memory `exec.backgroundJob`; logs under `<ws>/.codeaf/jobs`), cost of a running node | none |
 | since you left | standing `LastFired` + `LastLookLine`; memory `ChangedSince`; landed tasks with `EndedAt`, `Outcome` (first sentence of the report, `task_index.go:201`), `FilesChanged`, `Cost`; `artifacts.jsonl{Path, Session, Title, Kind, Created}`; look stamp `.last-look` | `StartedAt` on the index (audit-jobs row 2) | none. `Outcome` is written by the worker already |
 | where you were | `Meta.Title` (the `title` role, low tier); `Summary.LastUser` via `Peek`; `SessionRow.At`; this window's tab stack in-process | — | the existing `title` call only |
 | projects | `World.Project{Name, Dir, Sessions}`, `Running()`, `At()`; git status cached 5s (`homeband_repo.go`) | — | none |
@@ -277,6 +277,6 @@ Lanes E, G and K run as Claude Code instances on the Spark under fleet
 (`af-home-e`, `af-home-g`, `af-home-k`; worktrees `~/af-home-<lane>` on the
 Spark, branches `home/mc-<lane>`, briefs in `spark:~/af-home-briefs/`, logs
 `spark:~/af-home-<lane>.log`, reports `spark:~/af-home-<lane>.report.md`).
-The integrator merges each into `home/mission-control`, builds `bin/aforge`
+The integrator merges each into `home/mission-control`, builds `bin/codeaf`
 for the owner after every viewable step, and runs the full suites once, at
 the end, on the Spark.

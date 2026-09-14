@@ -12,7 +12,7 @@ compatibility obligation. v1/v2 surfaces, their parity gates, and their
 preservation shims may be deleted freely.
 
 **The tasker-edit exception, enumerated in full** (the only edits outside
-cmd/aforge + new packages that the design requires; each is justified at its
+cmd/codeaf + new packages that the design requires; each is justified at its
 decision): the three organizational-parent gate widenings of Decision 3
 (~15 lines: fold, distill, jobRootID), the two model-pin inheritances of
 Decision 8 (~4 lines: overrun, jit), and the optional plan-model rebind
@@ -35,8 +35,8 @@ layering, Bubble Tea v2).
 
 | ancestor | what v3 takes | what v3 leaves |
 |---|---|---|
-| **v1** (`internal/tui`, `cmd/aforge/chat.go`) | the UX concept and visual language: thread with living cards, DAG rail on the right, node drill-in with flight recorder, palettes, top bar | the 330-field god-model, Bubble Tea v1, render-mutates-model |
-| **v2** (`internal/tui2`, `cmd/aforge/chatv2.go`) | the wiring: narrow `Backend` interface (engine.go:36), `Commander` seam, shell/app/blocks/tokens layering, watermark polling (300ms), session switcher, stream-event bridge, parity-gate entry pattern | the card-grammar philosophy (1 thread : N detached jobs) |
+| **v1** (`internal/tui`, `cmd/codeaf/chat.go`) | the UX concept and visual language: thread with living cards, DAG rail on the right, node drill-in with flight recorder, palettes, top bar | the 330-field god-model, Bubble Tea v1, render-mutates-model |
+| **v2** (`internal/tui2`, `cmd/codeaf/chatv2.go`) | the wiring: narrow `Backend` interface (engine.go:36), `Commander` seam, shell/app/blocks/tokens layering, watermark polling (300ms), session switcher, stream-event bridge, parity-gate entry pattern | the card-grammar philosophy (1 thread : N detached jobs) |
 | **omp/pi** (local install; prompts at `packages/coding-agent/src/prompts/system/`) | the session model (open a project, work, resume), the exact normal-chat system prompt adapted, settings/model patterns (layered config, roles, `/settings`, model picker) | JSONL session files — our journal is the store's thread |
 | **head v1** (`internal/head`) | the seam positions: mail-loop shape (`Head.Serve`), `RequestCommand` commissioning (task.go), turn-cancel handle, receipt wakes | the orchestrator philosophy (no tools, commission everything) |
 
@@ -177,7 +177,7 @@ language:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ aforge · parser-lab · sonnet-4.5 · $0.42 today · ● resident     │ top bar
+│ codeaf · parser-lab · sonnet-4.5 · $0.42 today · ● resident     │ top bar
 ├──────────────────────────────────────────┬──────────────────────┤
 │ you: let's rebuild the tokenizer         │ ▶ this session       │
 │                                          │  ├─ ◐ rebuild parser │
@@ -286,7 +286,7 @@ model chip already *writes* task-scope bindings — but every planning call
 site snapshots one process-global `planClient`. v3 wires the read side: one
 ~20-line resolver (`planClientFor(graph, jobRoot)` → role ladder →
 per-model client pool, falling back to the process slot) threaded through the
-six planning call sites, all of which live in cmd/aforge (boot wiring v3
+six planning call sites, all of which live in cmd/codeaf (boot wiring v3
 rewrites anyway): planSubtree (chat.go:4090), replanRemainder (:4383),
 taskContract (:4265), the jit planner closure (jit.go:34), reviseOn (:3472),
 reviseForUser (:3518). No store schema change, no new command kind; a mid-run
@@ -614,22 +614,22 @@ short muted landing clause. A steer that finds the turn already sealing lifts
 to the follow-up queue. Interrupt (esc) still ends the turn; a drain must never
 auto-resume a turn the person just stopped.
 
-## Decision 6 — Settings and models follow omp's pattern on aforge's registry
+## Decision 6 — Settings and models follow omp's pattern on codeaf's registry
 
 **The panel is schema-driven, like omp's.** omp's `/settings` is a fullscreen
 overlay where every setting is declared once with a `ui: {tab, group, label,
 description, options?, condition?}` block and type mapped to a widget
 (boolean → inline toggle, enum → cycle or select submenu, string → text
-submenu masked when credential). v3 adopts the mechanism over aforge's config
+submenu masked when credential). v3 adopts the mechanism over codeaf's config
 registry: each registry key gains a UI metadata block; the panel renders
 tabs; type-to-search filters across tabs; changed-from-default rows are
-marked. Tabs for v3 (aforge-shaped, not omp's eleven): **Session** (model
+marked. Tabs for v3 (codeaf-shaped, not omp's eleven): **Session** (model
 roles, thinking, commit-gate seconds), **Context** (compaction.*, steering
 mode), **Workspace** (tool approvals, bash timeout), **Display** (theme,
 rail open/closed, nerd-font tier), **Providers** (base URL, timeouts,
 per-role models). Adding a setting = one registry row with a ui block.
 
-**Model roles and pickers.** aforge's slots + role ladder map onto omp's
+**Model roles and pickers.** codeaf's slots + role ladder map onto omp's
 roles: `default` (session talk), `work` (tasker workers), `plan` (tasker
 planner), `cheap`/`strong` rungs. Two pickers, omp-shaped: a compact
 bottom-anchored `alt+p` for session-only switches (role assignments
@@ -637,8 +637,8 @@ untouched), and a full `/model` hub with a roles sidebar (badges, cycle
 order, thinking suffix `model:high` in role values). Persistence through the
 existing registry + Prefs.
 
-**Layering**: built-in defaults ← `~/.aforge/config.json` (existing registry)
-← `<workspace>/.openaf/config.json` (new project-local layer, surface-side)
+**Layering**: built-in defaults ← `~/.codeaf/config.json` (existing registry)
+← `<workspace>/.codeaf/config.json` (new project-local layer, surface-side)
 ← flags/env.
 
 **Welcome/resume, omp-shaped**: on open, a two-column welcome — left logo +
@@ -654,7 +654,7 @@ so resume is exact.
 | **V3-0** skeleton | chatv3 gate; `internal/session` agent (bare-loop machinery, omp-adapted prompt, four tools + grep/glob/todo + task/change/stop + board/open/recall + ask/say); minimal tui3 (top bar, conversation, streaming, input); resident wiring + head skip clause | talk; agent reads/edits/runs in the workspace; finalize → task lands and runs; Esc interrupts; restart resumes the thread |
 | **V3-1** the workforce on screen | DAG rail scoped to session; cards + dock; node drill-in + steer; `@tag` steering; control palettes & slashes (pause/resume/cancel/redirect/restart/model); question UX | every Decision-5 row drivable by keyboard and mouse |
 | **V3-2** omp comfort | settings panel; model picker per role; project-local config; session switcher/welcome; compaction polish | settings/model flows match omp muscle memory; crash mid-session loses nothing journaled |
-| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `aforge chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
+| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `codeaf chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
 
 ## Decision 17 — One picker, a question per slot, and the two things a row says
 
@@ -803,7 +803,7 @@ proposal to) and no `watch` (no conversation for the news to arrive in).
 **Two nodes run at once**; a third runnable node queues on the frontier rather
 than erroring the tool, because queuing is what a graph does. Every node is
 bounded at 30 minutes, its spend folds into the session's auxiliary usage, its
-journal is a real session file under `~/.aforge/v3/tasks/<session>/`, and its
+journal is a real session file under `~/.codeaf/v3/tasks/<session>/`, and its
 completion reaches the model on the **steering lane** (Decision 12) while
 `EventTaskUpdate` reaches the surface — during a turn on the turn's stream,
 and always on `Agent.TaskUpdates()`, because a node's most important event
@@ -982,7 +982,7 @@ one page, three doors, no more:
   running, a running node whose worker is not up yet, and an empty line are four
   errors that each name which.
 - **`TaskJournal(id)` — the history**, the node's real session file under
-  `~/.aforge/v3/tasks/<session>/`, recorded on the node the moment its child is
+  `~/.codeaf/v3/tasks/<session>/`, recorded on the node the moment its child is
   built (the name carries a timestamp, so that is the only moment anybody can
   learn it).
 
@@ -1174,7 +1174,7 @@ its rate describes a conversation that has since gone to sleep.
 puts on disk lives in one directory:
 
 ```
-~/.aforge/v3/projects/<encoded-workspace>/<session-id>/
+~/.codeaf/v3/projects/<encoded-workspace>/<session-id>/
     transcript.jsonl      the journal (flock lives here)
     state.json            BPE working state (Decision 22)
     tasks.json            live graph checkpoint (Decision 19)
@@ -1190,7 +1190,7 @@ Deleting a session is `rm -rf` of one folder (after the worktree law below).
 Exporting one is zipping one folder. Inspecting one needs no filename
 arithmetic. The sidecar-derivation scheme (`<stem>.tasks.json` beside a flat
 transcript) dies with the flat layout, and with it the parallel orphan tree
-`~/.aforge/v3/tasks/<session>/` — a node's journal now lives beside the
+`~/.codeaf/v3/tasks/<session>/` — a node's journal now lives beside the
 conversation that commissioned it. The old objection to per-directory state
 files ("that directory holds every session this workspace ever had") dissolves:
 the directory now holds exactly one.
@@ -1203,7 +1203,7 @@ sessions ever needs ranked search, the answer is a DERIVED index rebuilt from
 the folders — an index, never the store of record.
 
 **The workspace is the git root, and the encoded dirname is a bucket, not an
-identity.** `aforge` launched from `repo/cmd/` and from `repo/` is the same
+identity.** `codeaf` launched from `repo/cmd/` and from `repo/` is the same
 project; the workspace resolves to the repository root (a folder outside any
 repo resolves to itself), the launch subdirectory is recorded in `meta.json`,
 and the true path lives there too — so a moved repository is re-linkable and
@@ -1226,11 +1226,11 @@ the conditional `workspace` tool persists that anchor, reloads project instructi
 makes future tasks branch from it. A task explicitly shaped with another `where` works
 there, and non-code work may explicitly run in the owned workspace in place.
 
-**Nothing of ours lives in the person's folder.** `<repo>/.aforge-v3/` dies
+**Nothing of ours lives in the person's folder.** `<repo>/.codeaf-v3/` dies
 entirely. Worktrees move to `trees/<node-id>/` in the session folder — git
 registers every worktree in `.git/worktrees/` whatever its path, so repo-local
 placement was never a constraint — and the git-surgery lock moves to
-`~/.aforge/v3/locks/<repo-hash>.lock`. Two laws pay for the move: session
+`~/.codeaf/v3/locks/<repo-hash>.lock`. Two laws pay for the move: session
 deletion and the sweep run `git worktree remove`/`prune` against the recorded
 repo path BEFORE removing the folder, and the task proposal card names the
 branch point ("from HEAD — unsaved edits not included"), spending the
@@ -1238,14 +1238,14 @@ two-trees surprise before the work runs instead of after the merge.
 
 **Deliverables are indexed; droppings expire.** A deliverable — a generated
 image, an export, a finished document — is recorded as one row in a global
-append-only `~/.aforge/v3/artifacts.jsonl` (`path, session, title, kind,
+append-only `~/.codeaf/v3/artifacts.jsonl` (`path, session, title, kind,
 created`), the same citation-not-archive pattern as `tasks.jsonl`. A `/files`
 picker reads it newest-first with three verbs: open, reveal, copy to. "The
 report from Tuesday" is found by title, from any directory, and getting a
 keeper OUT of an owned session is a deliberate promotion ("copy to
 ~/Documents"), never a surprising write the harness made on its own. Rejected:
-a visible `~/aforge/<title>/` folder per session (litter for every throwaway,
-and reaping becomes a user-facing event) and an `aforge://` URI scheme (plain
+a visible `~/codeaf/<title>/` folder per session (litter for every throwaway,
+and reaping becomes a user-facing event) and an `codeaf://` URI scheme (plain
 paths plus an index do everything a resolver would, without the resolver).
 Droppings — `logs/` — carry a 7-day TTL swept in the dreaming slot (Decision
 23's idle window). Transcripts are forever, and `work/` is a person's content:
@@ -1261,12 +1261,12 @@ workspace dirs on the author's own machine, which is this law's whole case.
 
 **One home, one seam, one late rename.** Every v3 path goes through
 `internal/home` — the three direct `os.UserHomeDir()` calls (`chatv3.go`,
-`task_run.go`) were the reason `AFORGE_HOME` half-worked. The product's final
-name is openaf, and the rename happens ONCE, at the end, as its own refactor:
-until then every name stays on the `aforge` scheme, which is why the
-project-config layer reads `<workspace>/.aforge-v3/config.json` and the
-`.openaf` path in Decision 6 is deferred to that rename. A test greps for
-hardcoded `.aforge` literals outside the seam so the rename stays a
+`task_run.go`) were the reason `CODEAF_HOME` half-worked. The product's final
+name is codeaf, and the rename happens ONCE, at the end, as its own refactor:
+until then every name stays on the `codeaf` scheme, which is why the
+project-config layer reads `<workspace>/.codeaf-v3/config.json` and the
+`.codeaf` path in Decision 6 is deferred to that rename. A test greps for
+hardcoded `.codeaf` literals outside the seam so the rename stays a
 constants-change plus a boot migration, not an excavation.
 
 **Migration is one boot pass, one-way, never fatal.** A flat-layout transcript
@@ -1274,7 +1274,7 @@ found under `v3/sessions/<ws>/` is folded into a session folder named by its
 header id; its sidecars and its `v3/tasks/<session>/` journals move with it. A
 file that will not parse stays where it is with one log line — a corrupt old
 session must not cost anyone their new one. The legacy
-`~/.aforge/v3/memory.md` is imported once into the routed store and renamed out
+`~/.codeaf/v3/memory.md` is imported once into the routed store and renamed out
 of the way; later inspection and control is through `/memory`.
 
 ## Milestones
@@ -1284,7 +1284,7 @@ of the way; later inspection and control is through `/memory`.
 | **V3-0** skeleton | chatv3 gate; `internal/session` agent (bare-loop machinery, omp-adapted prompt, working tools + todo); minimal tui3 (status line, conversation, streaming, input) | DONE (lite, tasker-free): talk, read/edit/run in the workspace, Esc interrupt, resume, steering, compaction |
 | **V3-1** the workforce on screen | session anchor splice; workforce tools → gate → RequestCommand; DAG rail scoped to session; cards + dock; node rooms + steer; `@tag`; control palettes (pause/resume/cancel/redirect/restart/model); question UX | every Decision-5 row drivable by keyboard and mouse |
 | **V3-2** omp comfort | settings panel; model picker per role; project-local config; session switcher/welcome; compaction polish | settings/model flows match omp muscle memory; crash mid-session loses nothing journaled |
-| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `aforge chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
+| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `codeaf chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
 
 ## What this is not
 
@@ -1292,5 +1292,5 @@ of the way; later inspection and control is through `/memory`.
   executors: untouched. The one edited v1-era line is the head's room-routing
   skip clause, chat-side by definition.
 - **Not a second brain.** The session agent is a surface-flavored loop over
-  the same journal; `aforge do`, `plan`, `run` observe the same graph.
+  the same journal; `codeaf do`, `plan`, `run` observe the same graph.
 - **Not a cleanup of v1/v2.** They ship until V3-3 proves parity.

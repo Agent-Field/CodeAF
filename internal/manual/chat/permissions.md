@@ -1,8 +1,8 @@
 # What runs without asking, and who can see your files
 
-## The question aforge asks before it runs a tool — which key allows a command, what `1`, `2` and `3` do
+## The question codeaf asks before it runs a tool — which key allows a command, what `1`, `2` and `3` do
 
-When the model asks to run a tool and the rules say "ask", aforge blocks that
+When the model asks to run a tool and the rules say "ask", codeaf blocks that
 one call and draws a question above the input box. The call does not run until
 you answer, and the conversation is paused on it.
 
@@ -30,7 +30,7 @@ when the countdown is off. Silence is never a no.
 **What happens if you just press `enter`?** The pointer is what `enter` takes,
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
-else. On a **grave one** — a call aforge will always stop you for, such as
+else. On a **grave one** — a call codeaf will always stop you for, such as
 `rm -rf *`, a force-push, or anything sent out in your name — the pointer opens
 on `3 deny` instead. So `enter` you have not aimed means "allow it once" when the
 call can be lived with and "no" when it cannot be taken back. On a grave call the
@@ -45,7 +45,7 @@ you are here to read.
 - `3` — refuse this one call. The row is annotated `denied`. The model is handed
   an error result, `denied by the person: <rule>`, and keeps going.
 - `2` — the widening yes. What it banks is a separate decision, and on a shell
-  command aforge asks you which shape to bank before it answers.
+  command codeaf asks you which shape to bank before it answers.
 - `c` — refuse or allow **in words**. It puts the cursor in the box (which was
   never taken away); type your sentence and press `enter`, and the words go to
   the model as the answer.
@@ -58,7 +58,7 @@ you are here to read.
   the block was a modal nobody could leave.
 
 `d`, `y`, `n` and `a` are not keys on this question. They were the block's keys
-before every question in aforge moved onto one renderer with one key grammar; a
+before every question in codeaf moved onto one renderer with one key grammar; a
 hand that remembers them is answering a question that no longer takes them, so
 they do nothing here (`y`, `n` and `a` type themselves into the box). `t` is not
 a key on a permission either — it types itself into the box like any other
@@ -153,7 +153,7 @@ never joins the frame**, and neither does an approval from another step.
 
 It allows them all, on the ordinary calls a frame is made of. The pointer opens
 exactly where those same calls asked one at a time would put it — the rule is in
-*The question aforge asks before it runs a tool — which key allows a command,
+*The question codeaf asks before it runs a tool — which key allows a command,
 what `1`, `2` and `3` do*, read over the whole frame rather than written a second
 time here — so four reads, being **ordinary calls**, open on `1 allow all 4`, and
 `enter` on a frame you have not moved allows all four once.
@@ -162,7 +162,7 @@ The frame opens on `3 deny all` instead when one of its approvals carries a
 **recommendation of its own** that is not the plain grant: the frame may not make
 `enter` mean yes where any single one of its questions, asked alone, would not.
 
-A **grave** call — one aforge always stops you for — never reaches a frame at
+A **grave** call — one codeaf always stops you for — never reaches a frame at
 all. It is asked on its own, every time, with the pointer on `deny`.
 
 ## I pressed ctrl+t while it was asking — where did the question go, and did my typing answer it
@@ -193,7 +193,7 @@ At about seventy columns and up it is drawn whole:
 
 ```
 ╭─ ? needs your ok to run bash ─────────────────────────────── bash ─╮
-│ bash · bash pattern "rm -rf *" · aforge                            │
+│ bash · bash pattern "rm -rf *" · codeaf                            │
 │                                                                    │
 │   1  allow once                                                    │
 │   2  always, this tool                                             │
@@ -221,7 +221,7 @@ is three cells for a thumb that covers ten:
 ```
 ─── ? bash ───────────────────────────────────────────
  needs your ok to run bash
- bash pattern "rm -rf *" · aforge
+ bash pattern "rm -rf *" · codeaf
 ──────────────────────────────────────────────────────
    1  allow once
    2  always, this tool
@@ -326,7 +326,7 @@ A question that is not answered stays a question. Silence is never a **no**.
 The reminder is **10 seconds** by default. The setting is
 `approval.timeout_seconds`, labelled "approval countdown" in `/settings`.
 
-At expiry aforge **pauses** and keeps waiting — it never denies the call, and
+At expiry codeaf **pauses** and keeps waiting — it never denies the call, and
 it never allows it. The offer tail reads `paused` (or `waiting` when the
 countdown is off) and the work stays blocked until you answer. The transcript
 row is not annotated `denied · no answer`; that wording was a previous build
@@ -377,12 +377,12 @@ on the screen.
 Two things tell you a window is waiting while you are elsewhere:
 
 - **A desktop notification**, sent the instant the question goes up. The banner
-  is headed `aforge` and reads `<conversation> · waiting on you`.
-- **Home**, and every other aforge window, where the session's row wears `?`,
+  is headed `codeaf` and reads `<conversation> · waiting on you`.
+- **Home**, and every other codeaf window, where the session's row wears `?`,
   reads `waiting on you`, and sorts to the top of its project. The status line
   says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 
-If your terminal does not report focus to the programs inside it, aforge
+If your terminal does not report focus to the programs inside it, codeaf
 assumes the window is focused — so the countdown runs, and at expiry it pauses
 rather than answering no, and no banner is sent. There is no setting for
 either; both are on.
@@ -404,7 +404,7 @@ nowhere, it is one of these:
 - **The turn finished.** A turn that ends on an unfocused window sends its own
   desktop banner, `<conversation> · turn done`.
 
-Nothing here is a pause you can resume: aforge has no key that suspends a
+Nothing here is a pause you can resume: codeaf has no key that suspends a
 session and none that wakes one.
 
 ## How long an answer lasts: once, this session, or written down — how to make it stop asking every time, stop asking me for this, remember this
@@ -412,7 +412,7 @@ session and none that wakes one.
 **On a permission, the lifetime is the answer you press, and there is no
 separate row for it.** `1 allow once` is once, `2 always…` is the widening yes,
 and what `2` banks is the whole of the decision — the sections below say exactly
-how wide each shape is. aforge draws no lifetimes row on a permission frame and
+how wide each shape is. codeaf draws no lifetimes row on a permission frame and
 `t` does nothing there, because the gate reads the answer key and nothing else:
 a row that let you pick `for this project` and then quietly granted one call
 would be this surface making a promise about safety that nothing behind it keeps.
@@ -435,7 +435,7 @@ than refusing.
   this agent's life. It is deliberately coarse: it answers for **the whole
   tool**, so a session memo about bash covers every bash command the rules would
   have asked about. It is written nowhere on disk.
-- **A written rule** — when always banks a real rule, aforge writes it into your
+- **A written rule** — when always banks a real rule, codeaf writes it into your
   settings *before* the answer is delivered. Because a real rule now exists, no
   session memo is written. The consequence is worth knowing: the next call goes
   back through the rules, and if the shape you picked is narrower than you
@@ -486,7 +486,7 @@ dropped before any answer is.
 
 ## The shapes offered for a shell command, exactly
 
-Given one command line, aforge offers up to three shapes, in this order:
+Given one command line, codeaf offers up to three shapes, in this order:
 
 1. **The verb run, plus `*`** — the leading run of plain command words, joined,
    with `*` appended. `git status --short` becomes `git status*`. Offered only
@@ -516,7 +516,7 @@ Four shapes are never offered:
 A tool always writes `<tool>:allow` into `tools.approval` in your own profile
 settings. A bash always appends `allow <shape>` to `tools.bashPatterns`.
 
-The write goes to your **profile only**. A repository's `.aforge-v3/config.json` is
+The write goes to your **profile only**. A repository's `.codeaf-v3/config.json` is
 never written from here. Because a repository that answers `tools.approval`
 replaces your whole row at launch, a preference banked here takes effect
 everywhere except inside that repository.
@@ -567,7 +567,7 @@ The row's own hint reads: "what happens when the model asks to run a tool:
 prompt asks you, allow runs it, deny refuses it. Dangerous shell commands are
 asked about whichever way this is set. A change lands on the next session."
 
-A persisted value aforge does not recognise reads as the default. A garbled
+A persisted value codeaf does not recognise reads as the default. A garbled
 setting must never be the one that opens the gate.
 
 **No gate row can be pinned by an environment variable.** This is deliberate: a
@@ -616,7 +616,7 @@ goes through the ordinary shell-command rules, including prompts and denials.
 
 ## `--yolo` — how do I let it run things without asking
 
-`aforge chat --yolo` and `aforge resume --yolo` stop the asking about ordinary
+`codeaf chat --yolo` and `codeaf resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
 default becomes allow".
 A session launched with the flag draws the `YOLO` badge on the status line for
@@ -646,7 +646,7 @@ transcript at all.
 in for you on a call that acts in your name. It does not run on the early-start
 path.
 
-**It is the one thing aforge asks that really does hold the work up**, and it says
+**It is the one thing codeaf asks that really does hold the work up**, and it says
 so while it does. Everything else a turn asks on your behalf — the memory lookup,
 the judges, the reader of a long answer — runs beside your answer and can never
 delay it (*Screen*). This one decides whether the command runs at all, so there is
@@ -709,7 +709,7 @@ lifts it.
 
 ## Neither floor can be swallowed by "stop asking me"
 
-Before any session memo is consulted, aforge asks whether the call is one of the
+Before any session memo is consulted, codeaf asks whether the call is one of the
 two floors. It returns true for anything acting in your name, and for a bash
 call matching the critical-command table.
 
@@ -721,10 +721,10 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## Who can see or view my files — privacy, file access and workspace visibility, what aforge can read without asking, does git status need approval
+## Who can see or view my files — privacy, file access and workspace visibility, what codeaf can read without asking, does git status need approval
 
 **Privacy: who can see my files.** In the default `prompt` mode, a look is not
-a question. aforge can read and open these files without asking — the policy
+a question. codeaf can read and open these files without asking — the policy
 itself allows these without a card, even before the seeded row below is applied:
 
 - **`read`, `ls`, `grep`, `find`** — they change no file.
@@ -750,9 +750,9 @@ underneath whatever you wrote:
 - **`jobs`**, whose list and output are reads of processes you already started.
   Its kill is **not** on the floor; that inherits the blanket mode, which asks.
 - **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
-  write to and read from the working state aforge keeps for itself.
+  write to and read from the working state codeaf keeps for itself.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
-  at all. Asking you to approve aforge looking up its own documentation would be
+  at all. Asking you to approve codeaf looking up its own documentation would be
   asking about the wrong thing.
 - **`settings`**, which reads your own settings rows back through the registry.
   It is `manual` one file over: "what is my daily budget" is a lookup, and the
@@ -776,9 +776,9 @@ nothing whatsoever about any other.
 Nothing on this list acts outside this machine, so it changes neither of the two
 floors above.
 
-## The settings aforge refuses to change for you
+## The settings codeaf refuses to change for you
 
-aforge can change your settings when you ask — `settings` reads the rows,
+codeaf can change your settings when you ask — `settings` reads the rows,
 `change_setting` writes one permanently into your profile. Some rows it will not
 write, however you ask, and the reason is the plainest one there is: **a model
 that can widen its own restraints has none.** It does not take bad intent, only
@@ -807,7 +807,7 @@ The whole list, by settings key:
   `task.min_free_mb`, `bash.background_after_seconds`. The last is labelled
   **background after** on `/settings`' Safety tab and arms both the engine's handoff
   clock and the countdown for the next session.
-- **Whether aforge's own work is checked** — `task.audit`. A session that can
+- **Whether codeaf's own work is checked** — `task.audit`. A session that can
   switch off the check can call anything done.
 - **How work that leaves this machine is signed** — `attribution`.
 - **Your credentials** — `search.exaKey`, `search.firecrawlKey`, `search.jinaKey`,
@@ -830,7 +830,7 @@ Two rows are refused for a different reason, and it is not safety. The
 conversation's own model (`model.talk`) is changed with `/model`, and the other
 role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — are
 bindings the running session holds rather than values in your profile, so
-neither `change_setting` nor the panel can write them. To send aforge's own
+neither `change_setting` nor the panel can write them. To send codeaf's own
 auxiliary calls somewhere, set one of the five crew classes
 (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`,
 `models.tiers.high`, `models.tiers.mastermind`), set all five at once with
@@ -839,7 +839,7 @@ auxiliary calls somewhere, set one of the five crew classes
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
 
-## Does aforge sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
+## Does codeaf sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
 
 Yes, unless you turn it off. There are three marks and no others, and this is
 exactly what each one looks like.
@@ -847,7 +847,7 @@ exactly what each one looks like.
 **A commit** ends with a blank line and one trailer:
 
 ```
-Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>
+Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>
 ```
 
 **A pull request or an issue** ends its body with a line holding an em dash, and
@@ -867,35 +867,35 @@ with one small muted line, no em dash above it:
 <sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
 ```
 
-`agentfield-bot` is aforge's own GitHub account and the address is the one GitHub
+`agentfield-bot` is codeaf's own GitHub account and the address is the one GitHub
 hands out for it. The marks are provenance — another pair of hands typed this —
 and they are the only trace left on your work.
 
 ## Will it sign every comment it leaves — how gentle the comment line is, and where none of the three ever appear
 
-**A comment thread gets the line once.** The first comment aforge leaves in a
+**A comment thread gets the line once.** The first comment codeaf leaves in a
 thread carries it; every later comment in that same thread carries nothing. It
 is also left off entirely on a one-line reply, on anything inside a code block or
 a suggestion block, and on a comment you dictated word for word — those are your
-words and aforge does not sign them.
+words and codeaf does not sign them.
 
 None of the three ever appear in a commit subject, in a code file, in a README,
-in anything aforge writes for you such as a report or a deck, or in what it says
+in anything codeaf writes for you such as a report or a deck, or in what it says
 back to you in this conversation. If you see one somewhere else, that is a fault
 worth reporting.
 
 **A repository that says no wins.** If a CONTRIBUTING file or a stated policy
-forbids AI trailers or generated-by lines, aforge leaves all three out and tells
+forbids AI trailers or generated-by lines, codeaf leaves all three out and tells
 you it did.
 
 **To turn it off**, open `/settings` and switch the **attribution** row off, or
-set `AFORGE_ATTRIBUTION=0` in your environment. It is on by default. aforge
+set `CODEAF_ATTRIBUTION=0` in your environment. It is on by default. codeaf
 cannot change this row for you — ask it to and it says so and points you at
 `/settings` — because a signature is yours to decide. A change lands on the next
-piece of work handed off, and on the next aforge you start.
+piece of work handed off, and on the next codeaf you start.
 
 The commit a task writes when its work lands carries the same trailer. Those
-commits are authored as `aforge <aforge@localhost>` and always have been: aforge
+commits are authored as `codeaf <codeaf@localhost>` and always have been: codeaf
 reads that name to tell its own commits from yours when it lands a branch. Your
 own commits are authored by you and are never touched.
 
@@ -913,7 +913,7 @@ does not produce either of those.
 
 ## When nobody is watching
 
-`aforge chat --once "…"` runs with no one to ask. A "prompt" decision then
+`codeaf chat --once "…"` runs with no one to ask. A "prompt" decision then
 **refuses** rather than hanging or silently allowing:
 
 ```
@@ -1013,8 +1013,8 @@ repository that answers `tools.approval` itself.
 ## Where the rules are stored on disk
 
 Your own answers live in `config.json` in your profile directory —
-`$AFORGE_PROFILE_DIR` when it is set, otherwise aforge's state root
-`$AFORGE_HOME`, otherwise `~/.aforge`.
+`$CODEAF_PROFILE_DIR` when it is set, otherwise codeaf's state root
+`$CODEAF_HOME`, otherwise `~/.codeaf`.
 
 The rows that matter here are:
 
@@ -1024,7 +1024,7 @@ The rows that matter here are:
   written.
 - `approval.timeout_seconds` — the countdown.
 
-A repository can answer `tools.approval` in `.aforge-v3/config.json` in the
+A repository can answer `tools.approval` in `.codeaf-v3/config.json` in the
 directory you opened. When it does, **its row replaces yours wholesale** — it
 does not merge. Nothing in the consent card or `/permissions` ever writes to a
 repository's file; both write to your profile only.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # marathon/cell.sh — ONE SWE-Marathon cell: one arm, one task, one container.
 #
-# Usage: marathon/cell.sh <arm> <task>          arms: aforge-crew | aforge-flash | pi | opencode
+# Usage: marathon/cell.sh <arm> <task>          arms: codeaf-crew | codeaf-flash | pi | opencode
 #
 # THE SHAPE IS swe/cell.sh's, AND FOR THE SAME REASONS.
 #
@@ -301,8 +301,8 @@ if [ "$SNAPSHOT_EVERY" -gt 0 ]; then
   say "$ARM/$TASK: snapshot loop pid $SNAP_PID (every ${SNAPSHOT_EVERY}s)"
 fi
 
-# ── the aforge arms: the real TUI, over tmux, into the container ────────────
-run_aforge() {
+# ── the codeaf arms: the real TUI, over tmux, into the container ────────────
+run_codeaf() {
   local all_flash="$1"
   ALL_FLASH="$all_flash" MODEL="$MODEL" PROFILE="$CELL/profile" python3 - <<'PY'
 import datetime, json, os
@@ -322,15 +322,15 @@ PY
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
     "docker exec -it -w $WORKDIR \
-       -e HOME=/chome -e AFORGE_HOME=/prof -e AFORGE_PROFILE_DIR=/prof \
+       -e HOME=/chome -e CODEAF_HOME=/prof -e CODEAF_PROFILE_DIR=/prof \
        $TOOLCHAIN_ENV \
        -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -e TERM=xterm-256color \
-       $CONTAINER aforge chat --yolo --model '$MODEL'; echo AFORGE-EXITED; sleep 60"
+       $CONTAINER codeaf chat --yolo --model '$MODEL'; echo codeaf-EXITED; sleep 60"
 
   local waited=0 drew=""
   while [ "$waited" -lt 120 ]; do
     sleep 3; waited=$((waited + 3))
-    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'AFORGE-EXITED' && break
+    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'codeaf-EXITED' && break
     if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -Eq '›|try "what is in this folder"'; then drew=yes; break; fi
   done
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-firstframe.txt"
@@ -366,7 +366,7 @@ PY
     fi
     # THE FINGERPRINT MUST NOT SEE THE HEARTBEATS, AND THIS COST s1 ITS ENDING.
     #
-    # aforge's standing-work ticker appends one line to /prof/v3/standing/wake.log
+    # codeaf's standing-work ticker appends one line to /prof/v3/standing/wake.log
     # every 300 seconds for as long as the profile is open. The line it writes
     # when there is nothing to do says so in its own words —
     # `examined=0 checked=0 fired=0 said=0` — but the file's size and mtime change
@@ -374,7 +374,7 @@ PY
     # minutes by a record of NOTHING HAPPENING. With SILENCE_SECONDS at 900 the
     # `stable` counter could never reach its threshold, and the 2700-second
     # escape hatch for a pane still showing `working` could never be reached
-    # either: the same heartbeat resets `quiet`. The aforge s1 cell therefore sat
+    # either: the same heartbeat resets `quiet`. The codeaf s1 cell therefore sat
     # idle from 12:14 with every task landed and would have run to the ten-hour
     # wall no matter what — its settle rule was arithmetically unreachable.
     #
@@ -457,8 +457,8 @@ run_peer() {
 cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
 date -Is > "$CELL/started-at"
 case "$ARM" in
-  aforge-crew)  run_aforge 0; CODE=$? ;;
-  aforge-flash) run_aforge 1; CODE=$? ;;
+  codeaf-crew)  run_codeaf 0; CODE=$? ;;
+  codeaf-flash) run_codeaf 1; CODE=$? ;;
   pi|opencode)  run_peer >"$CELL/harness.log" 2>&1; CODE=$?
                 if [ "$CODE" = "124" ]; then echo DNF > "$CELL/outcome"
                 elif [ "$CODE" -ge 128 ] 2>/dev/null; then echo KILLED > "$CELL/outcome"
@@ -479,8 +479,8 @@ say "$ARM/$TASK: harness done, exit $CODE, ${WALL}s — verifying"
 # cargo build would fight the verifier for the same target directory and the same
 # four CPUs. So anything the arms could have started is reaped by name first.
 docker exec "$CONTAINER" sh -c \
-  'pkill -f aforge; pkill -f "pi/dist/bundle"; pkill -f opencode; sleep 3;
-   pkill -9 -f aforge; pkill -9 -f "pi/dist/bundle"; pkill -9 -f opencode; sleep 1;
+  'pkill -f codeaf; pkill -f "pi/dist/bundle"; pkill -f opencode; sleep 3;
+   pkill -9 -f codeaf; pkill -9 -f "pi/dist/bundle"; pkill -9 -f opencode; sleep 1;
    pkill -9 cargo; pkill -9 rustc; true' >/dev/null 2>&1
 sleep 2
 
@@ -518,7 +518,7 @@ say "$ARM/$TASK: verifier exit $VCODE in ${VWALL}s"
 docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer 2>/dev/null
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
-AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+CODEAF_BUILD_COMMIT="${CODEAF_BUILD_COMMIT:-}" \
 IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
 AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="$CELL_SECONDS" \

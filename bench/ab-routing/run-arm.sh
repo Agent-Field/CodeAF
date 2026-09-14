@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one arm of the A/B routing experiment through the real aforge CLI.
+# Run one arm of the A/B routing experiment through the real codeaf CLI.
 #
 #   ARM=a bench/ab-routing/run-arm.sh                 # baseline, single model
 #   ARM=b bench/ab-routing/run-arm.sh                 # routed panel
@@ -35,7 +35,7 @@ JSONL="${JSONL:-$HERE/results-arm$ARM_UC.jsonl}"
 # what internal/config/config.go already defaults to. Arm B turns the router on
 # over the panel selected in panel.json. If the router lands under different
 # names than these, this block is the only edit the experiment needs.
-AFORGE_BIN="${AFORGE_BIN:-$ROOT/bin/codeaf}"
+CODEAF_BIN="${CODEAF_BIN:-$ROOT/bin/codeaf}"
 case "$ARM" in
   a)
     ARM_LABEL="single-model baseline"
@@ -47,16 +47,16 @@ case "$ARM" in
     ;;
   b)
     ARM_LABEL="routed panel"
-    # One variable, which is the whole interface: AFORGE_MODELS is either a
+    # One variable, which is the whole interface: CODEAF_MODELS is either a
     # comma-separated list of slugs or a path to a JSON panel
     # (internal/router/panel.go). panel.json is written in that schema and
     # carries its own justification in keys the router's decoder ignores.
     #
     # This corrects a guess. The harness was written before the router landed
-    # and assumed AFORGE_ROUTER=on plus AFORGE_PANEL; there is no AFORGE_ROUTER
+    # and assumed CODEAF_ROUTER=on plus CODEAF_PANEL; there is no CODEAF_ROUTER
     # and the panel variable is named differently. The design said this block
     # would be the only edit an arm-B run needed, and it was.
-    ARM_ENV=("AFORGE_MODELS=$HERE/panel.json")
+    ARM_ENV=("CODEAF_MODELS=$HERE/panel.json")
     # Shared, and the runs go in sequence. This is the learning check: the
     # ledger carries what the router learned in run 1 into run 3, and the diff
     # between the routing events of the two is the measurement.
@@ -105,8 +105,8 @@ TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT_BIN" ] || { echo "need timeout(1) — brew install coreutils" >&2; exit 1; }
 [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "OPENROUTER_API_KEY is required" >&2; exit 1; }
 
-if [ ! -x "$AFORGE_BIN" ]; then
-  echo "building $AFORGE_BIN"
+if [ ! -x "$CODEAF_BIN" ]; then
+  echo "building $CODEAF_BIN"
   (cd "$ROOT" && make build) || exit 1
 fi
 
@@ -177,8 +177,8 @@ run_cell() {
   local started plan_seconds run_seconds plan_code run_code
   started=$(date +%s)
 
-  env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$ledger" \
-    "$TIMEOUT_BIN" "$PLAN_TIMEOUT" "$AFORGE_BIN" plan "$goal" --brief \
+  env "${ARM_ENV[@]}" CODEAF_PROFILE_DIR="$ledger" \
+    "$TIMEOUT_BIN" "$PLAN_TIMEOUT" "$CODEAF_BIN" plan "$goal" --brief \
       -o "$cell/graph.json" >"$cell/plan.log" 2>&1
   plan_code=$?
   plan_seconds=$(( $(date +%s) - started ))
@@ -190,8 +190,8 @@ run_cell() {
   else
     local run_started
     run_started=$(date +%s)
-    env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$ledger" \
-      "$TIMEOUT_BIN" "$RUN_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" \
+    env "${ARM_ENV[@]}" CODEAF_PROFILE_DIR="$ledger" \
+      "$TIMEOUT_BIN" "$RUN_TIMEOUT" "$CODEAF_BIN" run "$cell/graph.json" \
         -w "$workspace" -o "$cell/done.json" \
         -j "$CONCURRENCY" -budget "$LEAF_TOKEN_BUDGET" \
         -run-budget "$RUN_TOKEN_BUDGET" >"$cell/run.log" 2>&1
@@ -204,12 +204,12 @@ run_cell() {
   # replicate really did start cold.
   cp -R "$ledger" "$cell/ledger-after" 2>/dev/null
 
-  # `aforge models` rendered against the ledger as it stands now. It reads the
+  # `codeaf models` rendered against the ledger as it stands now. It reads the
   # ledger and makes no API call, so it is free, and it is the only view of the
   # ratings that shows observation counts next to them -- a rating backed by
   # three observations and one backed by three hundred are different claims.
-  env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$ledger" \
-    "$AFORGE_BIN" models > "$cell/models-after.txt" 2>&1
+  env "${ARM_ENV[@]}" CODEAF_PROFILE_DIR="$ledger" \
+    "$CODEAF_BIN" models > "$cell/models-after.txt" 2>&1
 
   python3 "$HERE/collect.py" \
     --arm "$ARM" --task "$task" --rep "$rep" --cell "$cell" \
@@ -255,8 +255,8 @@ if [ -n "${FINAL:-}" ]; then
   rm -rf "$FINAL"
   mkdir -p "$FINAL"
   cp -R "$SHARED_LEDGER/." "$FINAL/" 2>/dev/null
-  env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$SHARED_LEDGER" \
-    "$AFORGE_BIN" models > "$FINAL/models.txt" 2>&1
+  env "${ARM_ENV[@]}" CODEAF_PROFILE_DIR="$SHARED_LEDGER" \
+    "$CODEAF_BIN" models > "$FINAL/models.txt" 2>&1
   echo "final ledger in $FINAL"
 fi
 

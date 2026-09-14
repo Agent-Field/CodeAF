@@ -9,9 +9,9 @@ place that knows the difference between them.
     pi-events        pi and omp stream JSON Lines events on stdout under
                      `--mode json`; assistant messages carry `model` and a
                      `usage` block with a `cost` breakdown.
-    aforge-home      aforge writes `v3/usage.jsonl` (one row per call, with the
+    codeaf-home      codeaf writes `v3/usage.jsonl` (one row per call, with the
                      role that made it) and `logs/calls.jsonl` (one row per
-                     wire call, with time-to-first-token) under AFORGE_HOME.
+                     wire call, with time-to-first-token) under CODEAF_HOME.
     opencode-events  opencode streams events under `--format json`; the
                      `step_finish` part carries tokens and cost — and no model.
 
@@ -358,8 +358,8 @@ def read_opencode_events(path, _stdout):
     return got
 
 
-def read_aforge_home(home, stdout_path):
-    """aforge: the home is the witness, not the screen.
+def read_codeaf_home(home, stdout_path):
+    """codeaf: the home is the witness, not the screen.
 
     `v3/usage.jsonl` has one row per call with the model, the token counts, the
     dollars and — for anything that was not the turn itself — the role that made
@@ -421,14 +421,14 @@ def read_aforge_home(home, stdout_path):
 READERS = {
     "pi-events": read_pi_events,
     "opencode-events": read_opencode_events,
-    "aforge-home": read_aforge_home,
+    "codeaf-home": read_codeaf_home,
 }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kind", required=True, choices=sorted(READERS))
-    parser.add_argument("--path", required=True, help="stdout log, or the cell's aforge home")
+    parser.add_argument("--path", required=True, help="stdout log, or the cell's codeaf home")
     parser.add_argument("--stdout", default="", help="stdout log, when --path is a home")
     parser.add_argument("--guard-usage", default="", help="the cell guard's usage log")
     parser.add_argument("--out", required=True, help="where to write receipt.json")

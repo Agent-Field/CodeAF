@@ -9,11 +9,11 @@
 # to know what it cost you.
 #
 # Read bench/e2e/README.md before trusting a row, in particular the model pin —
-# the aforge and peer arms name the same model two different ways, and the
+# the codeaf and peer arms name the same model two different ways, and the
 # runner refuses to compare them unless it can show they are the same model.
 #
 # Usage:
-#   bench/e2e/run.sh                        every cell, aforge arm
+#   bench/e2e/run.sh                        every cell, codeaf arm
 #   bench/e2e/run.sh --cells lookup         one cell
 #   bench/e2e/run.sh --arm pi               the same tasks through pi
 #   bench/e2e/run.sh --dry-run              compose every invocation, run none
@@ -28,14 +28,14 @@ REPO_ROOT="$(cd "$E2E_ROOT/../.." && pwd)"
 
 # The model pin, in two spellings of one model.
 #
-# E2E_MODEL is what aforge is given. The leading `~` is aforge's own alias
+# E2E_MODEL is what codeaf is given. The leading `~` is codeaf's own alias
 # syntax for a floating tag and is not an OpenRouter model id; it is also
-# aforge's shipped default (internal/config/config.go, DefaultModel), which is
+# codeaf's shipped default (internal/config/config.go, DefaultModel), which is
 # the point — the battery measures the tasker as configured, not as specially
 # tuned for a benchmark.
 #
 # E2E_PEER_MODEL is what pi and opencode are given, because neither understands
-# aforge's alias syntax: passing the `~` form to pi returns
+# codeaf's alias syntax: passing the `~` form to pi returns
 # `400 ... is not a valid model ID`. It is the concrete slug that alias serves,
 # recorded in bench/probelab/REPORT.md.
 #
@@ -48,13 +48,13 @@ E2E_PEER_MODEL="${E2E_PEER_MODEL:-deepseek/deepseek-v4-flash-0731}"
 
 # The binary under test. bin/ is gitignored, so a git worktree has no build of
 # its own and the checkout's binary is the one to use; falling back to PATH
-# covers an installed aforge. It is never built here — which build is being
+# covers an installed codeaf. It is never built here — which build is being
 # measured is the caller's decision, and `make check` is where building belongs.
-if [ -z "${AFORGE_BIN:-}" ]; then
+if [ -z "${CODEAF_BIN:-}" ]; then
   if [ -x "$REPO_ROOT/bin/codeaf" ]; then
-    AFORGE_BIN="$REPO_ROOT/bin/codeaf"
+    CODEAF_BIN="$REPO_ROOT/bin/codeaf"
   else
-    AFORGE_BIN="$(command -v aforge || echo "$REPO_ROOT/bin/codeaf")"
+    CODEAF_BIN="$(command -v codeaf || echo "$REPO_ROOT/bin/codeaf")"
   fi
 fi
 PI_BIN="${PI_BIN:-pi}"
@@ -66,7 +66,7 @@ RESULTS_DIR="${RESULTS_DIR:-$REPO_ROOT/bench-results}"
 CSV="${CSV:-$RESULTS_DIR/e2e.csv}"
 RUN_DIR="${RUN_DIR:-$RESULTS_DIR/e2e/$(date +%Y%m%d-%H%M%S)}"
 
-ARM="aforge"
+ARM="codeaf"
 CELLS="$ALL_CELLS"
 DRY_RUN=0
 
@@ -105,8 +105,8 @@ done
 # A missing binary must be said here, not discovered as exit 127 inside a cell:
 # that failure writes a row indistinguishable from a run that produced nothing,
 # and on the peer arms it would do so after the fixtures had been built.
-if [ "$ARM" = "aforge" ] && [ ! -x "$AFORGE_BIN" ]; then
-  echo "no aforge binary at $AFORGE_BIN — build one (make build) or set AFORGE_BIN" >&2
+if [ "$ARM" = "codeaf" ] && [ ! -x "$CODEAF_BIN" ]; then
+  echo "no codeaf binary at $CODEAF_BIN — build one (make build) or set CODEAF_BIN" >&2
   echo "note: bin/ is gitignored, so a fresh worktree has no build of its own" >&2
   exit 1
 fi
@@ -136,7 +136,7 @@ pi_knows_model() {
 }
 
 # require_peer_model is the guard against the quietest way this battery could
-# lie: running pi on a different model than aforge and putting both rows in one
+# lie: running pi on a different model than codeaf and putting both rows in one
 # CSV. If the peer arm cannot pin the exact slug, the arm is skipped with the
 # reason recorded, and no row is written that could be read as a comparison.
 SKIP_REASON=""
@@ -168,7 +168,7 @@ require_peer_model() {
 # CSV's model column.
 model_for_arm() {
   case "$ARM" in
-    aforge) echo "$E2E_MODEL" ;;
+    codeaf) echo "$E2E_MODEL" ;;
     *)      echo "$E2E_PEER_MODEL" ;;
   esac
 }
@@ -179,12 +179,12 @@ model_for_arm() {
 # can print exactly what the real run would launch rather than an approximation
 # that drifts the first time a flag moves. Same discipline as bench/run.sh.
 #
-# aforge's `do` takes --timeout in whole seconds, not a duration string.
+# codeaf's `do` takes --timeout in whole seconds, not a duration string.
 compose_argv() {
   local dir="$1" task="$2" budget="$3"
   case "$ARM" in
-    aforge)
-      ARGV=("$TIMEOUT_BIN" "$((budget + 120))" "$AFORGE_BIN" do "$task"
+    codeaf)
+      ARGV=("$TIMEOUT_BIN" "$((budget + 120))" "$CODEAF_BIN" do "$task"
             -w "$dir" -keep -yes-spend -model "$E2E_MODEL" -timeout "$budget")
       ;;
     pi)
@@ -234,7 +234,7 @@ echo "battery:  bench/e2e"
 echo "arm:      $ARM"
 echo "model:    $(model_for_arm)"
 echo "cells:    $CELLS"
-echo "binary:   $([ "$ARM" = "aforge" ] && echo "$AFORGE_BIN" || echo "$ARM")"
+echo "binary:   $([ "$ARM" = "codeaf" ] && echo "$CODEAF_BIN" || echo "$ARM")"
 echo "git:      $GIT_SHA"
 echo "results:  $CSV"
 [ "$DRY_RUN" = "1" ] && echo "dry run:  composing fixtures and invocations only — no model call, no spend"
@@ -303,13 +303,13 @@ for cell in $CELLS; do
     continue
   fi
 
-  # aforge is told where to work with -w and is launched from here. pi and
+  # codeaf is told where to work with -w and is launched from here. pi and
   # opencode have no such flag: they edit the directory they are started in, so
   # the peer arms are launched from inside the fixture. Getting this wrong is
   # the failure mode bench/README.md warns about — a zero exit, zero changed
   # files, and a row that looks exactly like a real DNF.
   started=$(date +%s)
-  if [ "$ARM" = "aforge" ]; then
+  if [ "$ARM" = "codeaf" ]; then
     "${ARGV[@]}" >"$cell_dir/stdout.log" 2>"$cell_dir/stderr.log"
     code=$?
   else
@@ -331,7 +331,7 @@ for cell in $CELLS; do
   nodes=""
   route="n/a"
   db=""
-  if [ "$ARM" = "aforge" ]; then
+  if [ "$ARM" = "codeaf" ]; then
     store_home="$(store_dir_of "$cell_dir/stderr.log")"
     if [ -n "$store_home" ] && [ -d "$store_home" ]; then
       rm -rf "$cell_dir/store"
@@ -349,7 +349,7 @@ for cell in $CELLS; do
   assert_begin
   check_lt "wall under the cell's ceiling" "$CELL_WALL_CEILING" "$wall"
   cell_check "$work" "$cell_dir/stdout.log" "$cell_dir/stderr.log" "$code"
-  if [ "$ARM" = "aforge" ]; then
+  if [ "$ARM" = "codeaf" ]; then
     if [ -f "$db" ]; then
       cell_shape "$db"
       note "model_billed=$(models_used "$db")"

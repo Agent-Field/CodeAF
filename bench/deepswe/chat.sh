@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The chat door for the DeepSWE rig: `aforge chat --yolo` in a real terminal,
+# The chat door for the DeepSWE rig: `codeaf chat --yolo` in a real terminal,
 # INSIDE the task's own container, driven the way a person meets it — the brief
 # pasted into the composer, enter, and then waiting.
 #
@@ -42,7 +42,7 @@
 CHAT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHAT_POLL="${CHAT_POLL:-5}"
 CHAT_QUIET="${CHAT_QUIET:-20}"
-# How far inside the rig's wall aforge's own wall sits (seconds), so the session
+# How far inside the rig's wall codeaf's own wall sits (seconds), so the session
 # ends on its own law ("hours ran out") and writes its ending before the rig
 # stops watching.
 CHAT_WALL_MARGIN="${CHAT_WALL_MARGIN:-60}"
@@ -99,7 +99,7 @@ deepswe_chat() {
   {
     echo '#!/usr/bin/env bash'
     printf 'exec docker exec -it -w /app'
-    printf ' -e AFORGE_HOME=/bench/home -e HOME=/root -e TERM=xterm-256color'
+    printf ' -e CODEAF_HOME=/bench/home -e HOME=/root -e TERM=xterm-256color'
     printf ' -e OPENROUTER_API_KEY=%q' "$KEY"
     local e; for e in "${EMU_ARGS[@]}"; do printf ' %q' "$e"; done
     printf ' %q /usr/local/bin/codeaf chat -yolo -one-model -model %q -max-cost %q -max-hours %q\n' \

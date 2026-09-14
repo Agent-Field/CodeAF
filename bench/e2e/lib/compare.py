@@ -75,7 +75,7 @@ def main():
     # the last one for a (cell, harness) and "previous" the one before it.
     history = defaultdict(list)
     for row in rows:
-        history[(row["cell"], row.get("harness", "aforge"))].append(row)
+        history[(row["cell"], row.get("harness", "codeaf"))].append(row)
 
     cells = []
     for cell, harness in history:
@@ -84,13 +84,13 @@ def main():
 
     print(f"e2e regression report — {path}")
     print()
-    print("aforge, latest run vs the one before it")
+    print("codeaf, latest run vs the one before it")
     print(f"  {'cell':<10} {'wall':>8} {'Δwall':>9} {'cost':>9} {'Δcost':>9} {'nodes':>6} {'route':>11}  quality")
     print("  " + "─" * 82)
 
     regressions = []
     for cell in cells:
-        runs = history.get((cell, "aforge"), [])
+        runs = history.get((cell, "codeaf"), [])
         if not runs:
             continue
         latest = runs[-1]
@@ -131,14 +131,14 @@ def main():
     # The peer comparison. Only rows that actually ran are shown; a skipped arm
     # is reported as skipped rather than omitted, because "pi has no row" and
     # "pi refused to run on a different model" are different facts.
-    peers = sorted({harness for _, harness in history if harness != "aforge"})
+    peers = sorted({harness for _, harness in history if harness != "codeaf"})
     for peer in peers:
         print()
-        print(f"aforge vs {peer}, latest of each")
-        print(f"  {'cell':<10} {'aforge wall':>12} {f'{peer} wall':>12} {'Δ':>9}  quality (aforge / {peer})")
+        print(f"codeaf vs {peer}, latest of each")
+        print(f"  {'cell':<10} {'codeaf wall':>12} {f'{peer} wall':>12} {'Δ':>9}  quality (codeaf / {peer})")
         print("  " + "─" * 78)
         for cell in cells:
-            ours = history.get((cell, "aforge"), [])
+            ours = history.get((cell, "codeaf"), [])
             theirs = history.get((cell, peer), [])
             if not theirs:
                 continue
@@ -168,7 +168,7 @@ def main():
     models = defaultdict(set)
     for row in rows:
         if row.get("model") and row.get("quality_pass") != "skipped":
-            models[row.get("harness", "aforge")].add(row["model"])
+            models[row.get("harness", "codeaf")].add(row["model"])
     print()
     print("model pins in this file")
     for harness in sorted(models):

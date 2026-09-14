@@ -1,7 +1,7 @@
 # audit — settings, memory, spend
 
 Audit lane, `ui/polish-v0`. Read-only: no source touched. Every row below was
-reproduced against `bin/aforge` on the demo home through `scripts/frame.sh`
+reproduced against `bin/codeaf` on the demo home through `scripts/frame.sh`
 (socket `polish-set`), at 160x50, 120x40, 80x24 and 60x30, walking all nine
 settings tabs and opening editable values with `enter`.
 
@@ -57,7 +57,7 @@ registry row the tab writes through.
 
 ## fixed
 
-Fix lane, `ui/polish-v0`. Frames re-captured against `bin/aforge` on the demo home
+Fix lane, `ui/polish-v0`. Frames re-captured against `bin/codeaf` on the demo home
 through a private tmux socket (`polish-fixset`), walking all nine settings tabs at
 160x50, 120x40, 80x24 and 60x30. Before frames are untouched; every after frame carries
 an `-after` suffix.

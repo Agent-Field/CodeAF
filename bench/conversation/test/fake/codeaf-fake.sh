@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# aforge-fake — a stand-in for `aforge chat --once`, so the other half of the
+# codeaf-fake — a stand-in for `codeaf chat --once`, so the other half of the
 # receipt reader is tested too.
 #
-# aforge does not stream its usage to stdout: the reply goes to stdout and the
+# codeaf does not stream its usage to stdout: the reply goes to stdout and the
 # accounting goes into the home. So this fake writes the two files the reader
 # actually opens — v3/usage.jsonl and a transcript with a non-aux `usage` seal —
 # and the modes are the same failures as pi-fake's:
@@ -23,7 +23,7 @@ MODEL="unset"
 PROMPT=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version)                     echo "aforge 0.0.0-fake built today"; exit 0 ;;
+    --version)                     echo "codeaf 0.0.0-fake built today"; exit 0 ;;
     --model)                       MODEL="${2:-}"; shift 2 ;;
     --once)                        PROMPT="${2:-}"; shift 2 ;;
     --reasoning|--max-cost|--max-hours|--session) shift 2 ;;
@@ -37,7 +37,7 @@ done
 
 if [ "$MODE" = "hang" ]; then sleep 3600; exit 0; fi
 
-home="${AFORGE_HOME:?aforge-fake needs AFORGE_HOME, exactly as the real one does}"
+home="${CODEAF_HOME:?codeaf-fake needs CODEAF_HOME, exactly as the real one does}"
 mkdir -p "$home/v3/projects/fake/session" "$home/logs"
 
 if [ "$MODE" = "badoutput" ]; then

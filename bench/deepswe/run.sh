@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Run the aforge harness over one DeepSWE task, through ONE of its two doors,
+# Run the codeaf harness over one DeepSWE task, through ONE of its two doors,
 # inside the task's own pinned container, and grade what it left on disk.
 #
 #   bench/deepswe/run.sh <task-id> <model-id> <seed-tag>
 #
 # Env:
 #   DOOR          do (default) or chat — "The two doors" below
-#   AFORGE_BIN    path to a linux/amd64 aforge binary (required)
+#   CODEAF_BIN    path to a linux/amd64 codeaf binary (required)
 #   API_KEY       provider key; falls back to $OPENROUTER_API_KEY, then to
 #                 ~/.config/openrouter/key, then to the api_key in
-#                 ~/.aforge/config.json (all read only — never written)
+#                 ~/.codeaf/config.json (all read only — never written)
 #   CORPUS        tasks directory (default ~/src/swe-pro/tools/deepswe-bench/tasks)
 #   RESULTS       output root (default bench/deepswe/results)
 #   AGENT_SECONDS override the task's own agent budget
@@ -88,13 +88,13 @@ DOOR="${DOOR:-do}"
 case "$DOOR" in do|chat) ;; *) echo "run.sh: DOOR must be do or chat, not $DOOR" >&2; exit 2 ;; esac
 CHAT_CAP="${CHAT_CAP:-3}"
 
-BIN="${AFORGE_BIN:-}"
-[ -n "$BIN" ] && [ -x "$BIN" ] || { echo "run.sh: set AFORGE_BIN to a linux/amd64 aforge binary" >&2; exit 2; }
+BIN="${CODEAF_BIN:-}"
+[ -n "$BIN" ] && [ -x "$BIN" ] || { echo "run.sh: set CODEAF_BIN to a linux/amd64 codeaf binary" >&2; exit 2; }
 
 KEY="${API_KEY:-${OPENROUTER_API_KEY:-}}"
 [ -n "$KEY" ] || [ ! -f "$HOME/.config/openrouter/key" ] || KEY="$(tr -d '[:space:]' < "$HOME/.config/openrouter/key")"
-if [ -z "$KEY" ] && [ -f "$HOME/.aforge/config.json" ]; then
-  KEY="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.aforge/config.json'))).get('api_key',''))" 2>/dev/null)"
+if [ -z "$KEY" ] && [ -f "$HOME/.codeaf/config.json" ]; then
+  KEY="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.codeaf/config.json'))).get('api_key',''))" 2>/dev/null)"
 fi
 [ -n "$KEY" ] || { echo "run.sh: no provider key (API_KEY / OPENROUTER_API_KEY)" >&2; exit 2; }
 
@@ -103,7 +103,7 @@ OUT="$RESULTS/$TASK-$SLUG-$SEED"
 mkdir -p "$OUT"   # the snapshot step above already cleared it
 NAME="deepswe-af-$TASK-$SEED"
 
-# An isolated home, so the run can never read or write the owner's ~/.aforge.
+# An isolated home, so the run can never read or write the owner's ~/.codeaf.
 # Every model knob is pinned to the one model: the point of the measurement is
 # a single model's behaviour, and any unpinned role silently escalates. The rows
 # are the canary's (bench/canary/lib/home.sh) — the talk model, every tier
@@ -213,7 +213,7 @@ if [ "$DOOR" = do ]; then
   # The brief is handed over on disk and fed in on STDIN. Two reasons, both
   # learned the hard way. Multi-line prose full of quotes and backticks routed
   # through two layers of shell quoting is how a rig silently truncates the task
-  # it thinks it asked for. And `aforge do` takes its goal as a positional
+  # it thinks it asked for. And `codeaf do` takes its goal as a positional
   # argument, so a brief whose first character is "-" — a bullet, which is how
   # several DeepSWE instructions open — is parsed as an unknown flag and the run
   # dies at argument parsing with a usage dump. `do` reads the goal from stdin
@@ -233,12 +233,12 @@ exec /usr/local/bin/codeaf do \
 INNER
   docker exec "$NAME" chmod +x /bench/drive.sh >> "$OUT/docker.log" 2>&1
 
-  log "$TASK: aforge do — model $MODEL, wall limit ${TASK_SECS}s"
+  log "$TASK: codeaf do — model $MODEL, wall limit ${TASK_SECS}s"
   meta "stage=agent"
   # stdout is the one JSON envelope (do.json); stderr is the stream (run.log).
   timeout "$((TASK_SECS + 300))" docker exec "${EMU_ARGS[@]}" \
     -e "OPENROUTER_API_KEY=$KEY" \
-    -e "AFORGE_HOME=/bench/home" \
+    -e "CODEAF_HOME=/bench/home" \
     -e "HOME=/root" \
     -e "BENCH_MODEL=$MODEL" \
     -e "BENCH_TIMEOUT=$TASK_SECS" \
@@ -248,7 +248,7 @@ INNER
   # 0 done · 1 could not run · 2 ran and did not finish · 3 a limit stopped it
   # · 4 needed an answer · 124 the rig's own wall fired first.
   case "$CODE" in 0) ENDED=self ;; 124) ENDED="wall (killed)" ;; 3) ENDED=limit ;; 4) ENDED=asked ;; *) ENDED=partial ;; esac
-  log "$TASK: aforge exited $CODE after ${WALL}s"
+  log "$TASK: codeaf exited $CODE after ${WALL}s"
   rm -rf "$OUT/home"; docker cp "$NAME:/bench/home" "$OUT/home" >> "$OUT/docker.log" 2>&1
   python3 - "$OUT/home/config.json" <<'PY' 2>/dev/null
 import json, sys
@@ -258,7 +258,7 @@ except Exception:
     pass
 PY
 else
-  log "$TASK: aforge chat — model $MODEL, wall limit ${TASK_SECS}s, cap \$$CHAT_CAP"
+  log "$TASK: codeaf chat — model $MODEL, wall limit ${TASK_SECS}s, cap \$$CHAT_CAP"
   meta "stage=agent"
   deepswe_chat "$NAME" "$OUT" "$OUT/prompt.md" "$MODEL" "$CHAT_CAP" "$TASK_SECS" "$OUT/rig/chat-launch.sh"
   WALL=$(( $(date +%s) - t0 ))

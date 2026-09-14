@@ -62,7 +62,7 @@ NOT_A_CLOSURE = re.compile(r"\b(skip|not\s+(?:fixed|done)|left|remain|still\s+op
 # what a frame could not fit does not belong here; only the handful below, which
 # a lane writes when and only when it is declining a row.
 NOT_DONE_LEAD = re.compile(
-    r"\b(not\s+(?:fixed|done|closed|ours|aforge|this\s+lane|for\s+this\s+lane)"
+    r"\b(not\s+(?:fixed|done|closed|ours|codeaf|this\s+lane|for\s+this\s+lane)"
     r"|left\s+open|still\s+open|skipped|deferred|declined|handed\s+back"
     r"|no\s+fix|out\s+of\s+scope)\b",
     re.I,

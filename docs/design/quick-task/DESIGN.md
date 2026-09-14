@@ -195,10 +195,10 @@ Every package suite runs on the Spark:
 
 ```sh
 ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a; \
-  git -C ~/src/aforge-v2 fetch -q origin <branch> && \
-  git -C ~/src/aforge-v2 worktree add -f --detach /tmp/af-<lane> origin/<branch> && \
+  git -C ~/src/codeaf fetch -q origin <branch> && \
+  git -C ~/src/codeaf worktree add -f --detach /tmp/af-<lane> origin/<branch> && \
   go -C /tmp/af-<lane> build ./... && go -C /tmp/af-<lane> test ./internal/session/ -count=1 -timeout 20m 2>&1 | tail -60; \
-  git -C ~/src/aforge-v2 worktree remove --force /tmp/af-<lane>'
+  git -C ~/src/codeaf worktree remove --force /tmp/af-<lane>'
 ```
 
 Push the branch first. tui3 gets `-timeout 20m`. Four tui3 tests are red on dev since #798

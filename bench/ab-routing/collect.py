@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn one finished cell into one JSONL row.
 
-Everything measurable about a run is already written down by aforge itself: the
+Everything measurable about a run is already written down by codeaf itself: the
 completed graph (`done.json`) carries per-node turns, tokens, stop reason and
 state, and `graph.usage` carries the run's calls, prompt/completion/cached
 tokens and cost, summed by the scheduler from the provider's own per-response

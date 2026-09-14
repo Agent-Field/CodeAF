@@ -107,7 +107,7 @@ guard_stop() {
 # arm_guard_wire points one arm at the guard, writing whatever provider config
 # that CLI reads. It appends to ARM_ENV, so it must run after arm_isolate.
 #
-#   aforge  AFORGE_BASE_URL (internal/config/config.go: firstNonEmpty of it and
+#   codeaf  CODEAF_BASE_URL (internal/config/config.go: firstNonEmpty of it and
 #           the default) — an env var this repository implements.
 #   pi      $PI_CODING_AGENT_DIR/models.json, the custom-provider file
 #           core/model-runtime.js loads from the agent dir.
@@ -124,10 +124,10 @@ arm_guard_wire() {
   [ -n "$GUARD_URL" ] || { ARM_GUARD_NOTE="no guard is running"; return 1; }
 
   case "$arm" in
-    aforge)
-      ARM_ENV+=("AFORGE_BASE_URL=$GUARD_URL" "OPENROUTER_API_KEY=$GUARD_SENTINEL")
+    codeaf)
+      ARM_ENV+=("CODEAF_BASE_URL=$GUARD_URL" "OPENROUTER_API_KEY=$GUARD_SENTINEL")
       ARM_GUARD="yes"
-      ARM_GUARD_NOTE="AFORGE_BASE_URL to the guard; the real key is not in this process"
+      ARM_GUARD_NOTE="CODEAF_BASE_URL to the guard; the real key is not in this process"
       return 0
       ;;
     pi)
@@ -202,7 +202,7 @@ sys.exit(1)
 }
 
 # arm_guard_model is the model string an arm is given once it is wired: the
-# guard is a provider of its own to the peers, and unchanged to aforge.
+# guard is a provider of its own to the peers, and unchanged to codeaf.
 arm_guard_model() {
   case "$1" in
     omp) printf 'guard/%s' "$CONV_MODEL" ;;
@@ -214,10 +214,10 @@ arm_guard_model() {
 # arm_host_stop ends whatever this cell's own conversation left running, using
 # the product's own door and the cell's own state root.
 #
-# aforge conversations are hosted by default, so a cell that just detaches from
+# codeaf conversations are hosted by default, so a cell that just detaches from
 # tmux leaves a session host behind — a benchmark must not litter the machine
-# with daemons, and it must not stop anybody else's either. `aforge engine
-# --stop` is scoped to one workspace, and the cell's AFORGE_HOME scopes it
+# with daemons, and it must not stop anybody else's either. `codeaf engine
+# --stop` is scoped to one workspace, and the cell's CODEAF_HOME scopes it
 # again, so this can only reach the host this cell started. Nothing is killed
 # by pattern and no global process is touched.
 #
@@ -225,10 +225,10 @@ arm_guard_model() {
 # is still finishing cannot outlive the thing that keeps it on the allowlist.
 arm_host_stop() {
   local arm="$1" cell="$2" work="$3"
-  [ "$arm" = "aforge" ] || return 0
-  local bin; bin="$(arm_bin aforge)"
+  [ "$arm" = "codeaf" ] || return 0
+  local bin; bin="$(arm_bin codeaf)"
   [ -n "$bin" ] || return 0
-  [ -d "$cell/state/aforge-home" ] || return 0
+  [ -d "$cell/state/codeaf-home" ] || return 0
   "${CHILD_ENV[@]}" "$bin" engine --workspace "$work" --stop \
     > "$cell/host-stop.log" 2>&1
   printf 'exit:%s\n' "$?" >> "$cell/host-stop.log"

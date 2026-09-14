@@ -1,7 +1,7 @@
 # Settlement: why eight runs declared victory over work they had not done
 
 *Written 2026-08-29 against `bench/deepswe/AUTOPSY.md` and the ten stores under
-`bench/deepswe/results/`. Ten headless `aforge do` runs, five DeepSWE tasks, two
+`bench/deepswe/results/`. Ten headless `codeaf do` runs, five DeepSWE tasks, two
 seeds, every model knob pinned to one model, each in its own graded container.
 Eight graded runs, eight exit 0, eight rewards of 0. The median run stopped at
 ten minutes of a ninety-minute wall having spent eight cents.*
@@ -135,7 +135,7 @@ was asking about characters rather than about promises.
 
 ## 2. A refused finding was settling the run whole
 
-`cmd/aforge/do.go:1483`, `deliveredWhole`, is where the exit code is decided:
+`cmd/codeaf/do.go:1483`, `deliveredWhole`, is where the exit code is decided:
 
 ```go
 !gate.Pass && !gate.PolishClosed &&
@@ -242,7 +242,7 @@ found the project's own build and test entrypoints from `package.json` scripts,
 `codeaf`'s baseline photographed them before the work and named the tests that
 had gone from green to red. Both lived inside the imported engine's own
 `internal/` tree, which by Go's own rule nothing outside it may import, so the
-worker `aforge do` uses on the plain path could not have it. That path never set
+worker `codeaf do` uses on the plain path could not have it. That path never set
 `Outcome.Baseline`, and an empty `Baseline` reads downstream as *no claim*, not
 as *nobody looked*.
 
@@ -290,9 +290,9 @@ the three defects below are why.*
 
 ## 5. The record the gate reads is the job's, not the node's
 
-`cmd/aforge/chat.go`, `gateEvidence`. The gate's `Evidence.Artifacts` was the
+`cmd/codeaf/chat.go`, `gateEvidence`. The gate's `Evidence.Artifacts` was the
 artifacts of THE ONE LEAF being judged — `outcome.Artifacts` joined onto the job
-directory. The settlement narrates something else: `cmd/aforge/do.go`,
+directory. The settlement narrates something else: `cmd/codeaf/do.go`,
 `w.produced.list()`, the errand's own registry, which every leaf in the job feeds
 as it lands and which is filtered against the disk when it is read.
 
@@ -330,7 +330,7 @@ spelling the deliverable happened to use.
 `internal/revision/judge.go`, `AdmitGapPresent`. It reads an ENUMERATION out of
 the citation — three or more items, by shape — and acquits the delivery when
 every one of those items appears somewhere in the delivered text, case-folded.
-`cmd/aforge/chat.go` then sets `store.DeliveryGate.Overturned`, whose own comment
+`cmd/codeaf/chat.go` then sets `store.DeliveryGate.Overturned`, whose own comment
 says the field means the refusal was CHECKED AGAINST THE WORLD.
 
 It was not. The citation is a span of the REQUEST; the text it is checked against
@@ -371,7 +371,7 @@ them separate at the other door.
 
 ## 7. One reading of "whole", and the person reads it
 
-`cmd/aforge/do.go`. `deliveredWhole` computed the settled verdict as
+`cmd/codeaf/do.go`. `deliveredWhole` computed the settled verdict as
 `Pass || PolishClosed || Overturned`; `gateWords`, forty lines away, computed the
 line the person watching reads from `Pass` and `Refused` alone. Two readers, two
 contracts, and on three of five s5 runs they disagreed out loud: ink and ofetch
@@ -704,7 +704,7 @@ that reading is about. The compiler extracts it; `head.keepStatedConstraints`
 then drops every constraint whose text it cannot quote out of the instruction,
 because THE GATE MAY ONLY HOLD PEOPLE TO THEIR OWN WORDS — a rule this system
 invented, enforced by arithmetic, would fail deliveries that did exactly what was
-asked. The same guard strips a kept rule out of `Assumptions`, since `aforge do`
+asked. The same guard strips a kept rule out of `Assumptions`, since `codeaf do`
 discards those and a rule living only there is a rule that surface drops.
 
 **It lands on every node, not on the one that delivers.** That is the one way
@@ -799,7 +799,7 @@ against a schema.
 else** — never per turn, never on the happy path — so its cost is bounded by the
 rounds it replaces. There are three seams:
 
-- `cmd/aforge/chat.go`, `requestSettled`, after both world-doors and before the
+- `cmd/codeaf/chat.go`, `requestSettled`, after both world-doors and before the
   repair round. A yes sets `gate.Pass`, clears the gap, stamps
   `revision.RequestMetWords` on the verdict, on `store.DeliveryGate.Receipt` and
   on the node's own record. Every reader downstream turns on `gate.Pass`, so no

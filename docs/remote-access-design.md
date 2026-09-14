@@ -1,6 +1,6 @@
 # Remote access — where v3 is, and where it should go
 
-This document grooms the product design for reaching an aforge that lives on another
+This document grooms the product design for reaching a codeaf that lives on another
 machine. It states where the `--host` lane is today (grounded in the code on
 `chat-v3-task`), names the person this is actually for, and then walks the design space
 from "what we have" to "no ssh at all", ranked by the experience a person gets and the
@@ -8,7 +8,7 @@ work each rung costs. It ends with a phased proposal.
 
 The one-sentence thesis:
 
-> **aforge on the remote machine should be a place you go back to, not a program you
+> **codeaf on the remote machine should be a place you go back to, not a program you
 > start.** Today `--host` gives us a faithful window onto a remote *launch*. The product
 > wants a faithful window onto a remote *residence* — a session that is always there,
 > reachable from wherever you happen to be sitting, with nothing to set up on the machine
@@ -18,10 +18,10 @@ The one-sentence thesis:
 
 ## 1. Where we are
 
-`aforge chat --host devbox[:path]` works, and its bones are good:
+`codeaf chat --host devbox[:path]` works, and its bones are good:
 
-- **The surface runs here, the engine runs there.** `cmd/aforge/chatv3_host.go` starts
-  `ssh <dest> aforge engine` and speaks `internal/remote`'s protocol over the pipes.
+- **The surface runs here, the engine runs there.** `cmd/codeaf/chatv3_host.go` starts
+  `ssh <dest> codeaf engine` and speaks `internal/remote`'s protocol over the pipes.
   It is the person's own ssh — their config, aliases, agent, jump hosts. If `ssh devbox`
   works, `--host devbox` works. No daemon, no port, no key handling of ours.
 - **The wire is an envelope, not a payload contract** (`internal/remote/wire.go`).
@@ -45,16 +45,16 @@ The one-sentence thesis:
 
 And two structural limits, which are the whole reason this document exists:
 
-1. **The engine dies with the pipe.** `aforge engine` reads frames on stdin; when ssh
+1. **The engine dies with the pipe.** `codeaf engine` reads frames on stdin; when ssh
    ends — closed lid, dropped wifi, killed terminal — the engine exits and the turn in
    flight is interrupted. The manual says it plainly: "Closing the terminal ends it;
-   nothing keeps running on the far machine afterwards." For a person who runs aforge
+   nothing keeps running on the far machine afterwards." For a person who runs codeaf
    *constantly* on that machine, this is the wrong lifetime: the conversation's home is
    the far machine, but its heartbeat is a laptop's wifi.
 2. **ssh is the only door.** Perfect when it is there; a wall when it is not — a machine
    behind NAT with no inbound port, a phone, a borrowed laptop, a browser. "Set up
    ssh to your home server" is a real onboarding cliff for exactly the person who most
-   wants a persistent aforge.
+   wants a persistent codeaf.
 
 There is also a known capability gap-list over `--host` (browser sign-ins, harness
 building, adaptive runs, the task rail, home) — each one currently refused honestly
@@ -109,7 +109,7 @@ Requirements, ranked (each subsumes the ones above it):
 | R3 | Disconnection is *invisible*: the surface redials and resumes by itself (mosh-feel) | ❌ |
 | R4 | Reachable without inbound network access to the machine (NAT, firewalls) | ❌ (ssh only) |
 | R5 | Reachable from a device with no ssh setup — pairing instead of key management | ❌ |
-| R6 | Reachable from a device with no aforge installed (browser) | ❌ |
+| R6 | Reachable from a device with no codeaf installed (browser) | ❌ |
 | R7 | Anything pasted or attached in chat lands on the engine machine | ✅ images; ❌ other files |
 | R8 | More than one surface attached at once (desk + phone), coherently | ❌ |
 
@@ -128,7 +128,7 @@ additive.
 
 ### Rung 1 — the persistent engine: sessions that outlive the pipe
 
-**DX:** identical command, different lifetime. `aforge chat --host devbox` attaches; the
+**DX:** identical command, different lifetime. `codeaf chat --host devbox` attaches; the
 turn keeps running when the connection drops; reattaching from anywhere shows the events
 you missed and the live tail. Ask for a long refactor from the café, close the laptop,
 open the desk machine, watch it still going.
@@ -136,9 +136,9 @@ open the desk machine, watch it still going.
 **Design:**
 
 - A per-machine **session host** process on the engine machine, listening on a unix
-  socket under `AFORGE_HOME` (no TCP, no new network surface). It holds one engine per
+  socket under `CODEAF_HOME` (no TCP, no new network surface). It holds one engine per
   open session, exactly today's engine, just not married to a pipe.
-- `aforge engine` (the thing ssh execs) becomes a thin **attach**: dial the socket, ask
+- `codeaf engine` (the thing ssh execs) becomes a thin **attach**: dial the socket, ask
   the host for the workspace's session, splice frames. If no host is running, spawn one
   (flock-guarded, the same discipline the standing tick lock already uses) — so there is
   still *nothing to set up*; the first attach is the daemon's birth. An idle host with no
@@ -178,28 +178,28 @@ today's engine still means an interrupted turn and a cold session).
 
 ### Rung 3 — the relay: no ssh, a pairing code instead
 
-This is the "hosted proxy on the aforge website" idea, done with the relay **blind**.
+This is the "hosted proxy on the codeaf website" idea, done with the relay **blind**.
 
 **DX:**
 
 ```
-big-machine$ aforge serve
+big-machine$ codeaf serve
   this machine is reachable as  otter-lamp-42
   pair a new device with code   715 302   (valid 10 minutes)
 
-laptop$ aforge chat --at otter-lamp-42
+laptop$ codeaf chat --at otter-lamp-42
   pairing with otter-lamp-42 — enter the code shown there: ______
   paired. this laptop is now a key to otter-lamp-42.   [chat opens]
 ```
 
-Thereafter `aforge chat --at otter-lamp-42` from that laptop just opens — over the
+Thereafter `codeaf chat --at otter-lamp-42` from that laptop just opens — over the
 internet, through NAT, no ssh, no port, no account. Un-pair from the engine side with
-`aforge devices` (list, revoke).
+`codeaf devices` (list, revoke).
 
 **Design:**
 
-- **The engine machine only ever dials out.** `aforge serve` (or the rung-1 session
-  host, given the flag) keeps an outbound websocket to `relay.aforge.dev`, registered
+- **The engine machine only ever dials out.** `codeaf serve` (or the rung-1 session
+  host, given the flag) keeps an outbound websocket to `relay.codeaf.dev`, registered
   under a name derived from its keypair. NAT and firewalls become irrelevant; there is
   nothing to open.
 - **The relay is a dumb, blind pipe.** It matches a surface's dial to an engine's
@@ -209,7 +209,7 @@ internet, through NAT, no ssh, no port, no account. Un-pair from the engine side
   brokered the introduction; the exchange pins long-term device keys on both ends
   (stored in the OS keychain where there is one — this is where "Mac fingerprint"
   belongs: the local keychain can demand Touch ID to release the device key, giving
-  biometric unlock *without aforge ever seeing a biometric*). Every later connection is
+  biometric unlock *without codeaf ever seeing a biometric*). Every later connection is
   a Noise handshake between pinned keys. The relay's total knowledge: name, timing,
   bytes.
 - **Same frames inside.** The tunnel presents as an `io.ReadWriteCloser`; `remote.Dial`
@@ -222,17 +222,17 @@ internet, through NAT, no ssh, no port, no account. Un-pair from the engine side
 **Cost:** large-ish, honestly priced: a hosted service (dumb enough to be cheap — chat
 is KB/s and the relay holds no plaintext and no state beyond registrations), the crypto
 lane, pairing UX, abuse controls (rate limits, name squatting), and an operational
-commitment. This is the rung where aforge grows a service dependency, so it must remain
+commitment. This is the rung where codeaf grows a service dependency, so it must remain
 *a* door, never *the* door — rungs 0–2 keep working with the relay down or shunned.
 
 **Interim honesty:** until this rung exists, the README answer for "no inbound ssh" is
 Tailscale/WireGuard — `--host` over a tailnet already gives R4 today for people willing
 to install one, and rung 1 makes that genuinely good. The relay is for making it
-*aforge's own* two-command story.
+*codeaf's own* two-command story.
 
 ### Rung 4 — the web surface, and (maybe) accounts
 
-**DX:** on any browser, `app.aforge.dev`, enter machine name + pair (or already-paired
+**DX:** on any browser, `app.codeaf.dev`, enter machine name + pair (or already-paired
 browser keys in local storage): a read-mostly surface — transcript live-tail, consent
 cards, small replies. Optionally, accounts so that paired machines are discoverable
 ("your machines") instead of remembered by name — accounts as a *directory*
@@ -282,12 +282,12 @@ before the product has earned it:
    via the same ssh command, seq/ack resume in protocol v2, held-not-expired cards,
    intentional-close vs torn-pipe. Ship with generic file attachments (§4) and the
    small `Hello` cleanups already stubbed in the code (`--model`/`--reasoning` belong in
-   the hello). *This alone delivers the "running actual aforge constantly" story for
+   the hello). *This alone delivers the "running actual codeaf constantly" story for
    everyone who has ssh.*
 2. **Phase B — roaming reconnect (rung 2).** Redial loop + quiet status. Cheap after A;
    the moment the product starts feeling like a place.
-3. **Phase C — the relay (rung 3).** `aforge serve`, blind relay, PAKE pairing codes,
-   keychain-held device keys, `aforge devices`. The two-command, no-ssh story — and the
+3. **Phase C — the relay (rung 3).** `codeaf serve`, blind relay, PAKE pairing codes,
+   keychain-held device keys, `codeaf devices`. The two-command, no-ssh story — and the
    first phase requiring hosted infrastructure, entered with rungs 0–2 as permanent
    fallbacks.
 4. **Phase D — glance surface on the web (rung 4),** scoped to live-tail + cards +

@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 arm="$1"; out="$2"; image="$3"; verifier="$4"; cap="$5"; mode="${6:-score}"
-[[ "$arm" == aforge || "$arm" == pi ]] || exit 2
+[[ "$arm" == codeaf || "$arm" == pi ]] || exit 2
 [[ ! -e "$out" ]] || { echo 'Refusing to overwrite evidence.' >&2; exit 2; }
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
@@ -33,7 +33,7 @@ trap cleanup EXIT
 docker run -d --name "$name" --platform linux/amd64 --network host \
   --cpus "$TASK_CPUS" --memory "${TASK_MEM}m" "${EMU_ARGS[@]}" \
   --entrypoint /bin/bash "$image" -c 'sleep 7200' > "$out/container-id.txt"
-docker exec "$name" mkdir -p /bench/state/aforge-home /bench/state/pi-home /bench/state/pi-sessions /bench/user
+docker exec "$name" mkdir -p /bench/state/codeaf-home /bench/state/pi-home /bench/state/pi-sessions /bench/user
 docker exec -w /app "$name" git config user.name Benchmark
 docker exec -w /app "$name" git config user.email benchmark@example.invalid
 docker exec -w /app "$name" git branch main "$TASK_BASE"
@@ -60,23 +60,23 @@ p = pathlib.Path(out)
 (p / 'config.json').write_text(json.dumps({'api_key': sentinel, 'tools.approvalMode': 'allow'}))
 PY
 docker cp "$out/models.json" "$name:/bench/state/pi-home/models.json" >/dev/null
-docker cp "$out/config.json" "$name:/bench/state/aforge-home/config.json" >/dev/null
+docker cp "$out/config.json" "$name:/bench/state/codeaf-home/config.json" >/dev/null
 # All arguments into the container are sentinel credentials or non-secret settings.
 # The existing adapter owns the product flags; this wrapper only crosses Docker.
-for bin in aforge pi; do
+for bin in codeaf pi; do
   {
     echo '#!/usr/bin/env bash'
     printf 'exec docker exec -it -w /app'
     for setting in "${EMU_ARGS[@]}"; do printf ' %q' "$setting"; done
-    for setting in HOME=/bench/user TERM=xterm-256color AFORGE_HOME=/bench/state/aforge-home \
-      PI_CODING_AGENT_DIR=/bench/state/pi-home "AFORGE_BASE_URL=$GUARD_URL" "OPENROUTER_API_KEY=$GUARD_SENTINEL"; do
+    for setting in HOME=/bench/user TERM=xterm-256color CODEAF_HOME=/bench/state/codeaf-home \
+      PI_CODING_AGENT_DIR=/bench/state/pi-home "CODEAF_BASE_URL=$GUARD_URL" "OPENROUTER_API_KEY=$GUARD_SENTINEL"; do
       printf ' -e %q' "$setting"
     done
     printf ' %q /usr/bin/env %s "$@"\n' "$name" "$bin"
   } > "$out/$bin-wrapper"
   chmod 700 "$out/$bin-wrapper"
 done
-AFORGE_BIN="$out/aforge-wrapper"; PI_BIN="$out/pi-wrapper"
+CODEAF_BIN="$out/codeaf-wrapper"; PI_BIN="$out/pi-wrapper"
 ARM_GUARD=yes; ARM_ENV=("OPENROUTER_API_KEY=$GUARD_SENTINEL")
 ARM_STATE_DIR=/bench/state
 arm_baseline "$arm"
@@ -118,8 +118,8 @@ door_code=$?
 set -e
 printf '%s\n' "$door_code" > "$out/driver-exit.txt"
 # Stop this container's host before extracting files; no worker can race grading.
-if [[ "$arm" == aforge ]]; then
-  docker exec -w /app -e AFORGE_HOME=/bench/state/aforge-home "${EMU_ARGS[@]}" "$name" \
+if [[ "$arm" == codeaf ]]; then
+  docker exec -w /app -e CODEAF_HOME=/bench/state/codeaf-home "${EMU_ARGS[@]}" "$name" \
     /usr/local/bin/codeaf engine --workspace /app --stop > "$out/host-stop.log" 2>&1 || true
 fi
 docker cp "$name:/bench/state" "$out/state" >/dev/null

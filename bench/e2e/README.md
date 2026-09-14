@@ -26,7 +26,7 @@ Each cell:
 2. **Runs one harness invocation** with the task text as the whole instruction.
    Every arm receives the same text; the only difference between cells is who
    executes it.
-3. **Autopsies the journal.** `aforge do --keep` leaves a SQLite store behind;
+3. **Autopsies the journal.** `codeaf do --keep` leaves a SQLite store behind;
    the store is moved next to the cell's logs and then read for node count,
    route, edge structure, leaf start times, growth events and summed cost.
 4. **Asserts.** Each cell emits `✓`/`✗` lines and one CSV row.
@@ -44,14 +44,14 @@ Two spellings of one model:
 
 | arm | slug | why |
 |---|---|---|
-| aforge | `~deepseek/deepseek-v4-flash-latest` | aforge's own alias syntax, and its shipped default (`internal/config/config.go`, `DefaultModel`) |
+| codeaf | `~deepseek/deepseek-v4-flash-latest` | codeaf's own alias syntax, and its shipped default (`internal/config/config.go`, `DefaultModel`) |
 | pi, opencode | `deepseek/deepseek-v4-flash-0731` | the concrete OpenRouter id that alias serves (`bench/probelab/REPORT.md`) |
 
-The aforge arm is given the alias rather than the concrete id on purpose: the
+The codeaf arm is given the alias rather than the concrete id on purpose: the
 battery measures the tasker **as configured**, not as specially tuned for a
 benchmark.
 
-The peer arms cannot be given the same string. The leading `~` is aforge's, not
+The peer arms cannot be given the same string. The leading `~` is codeaf's, not
 OpenRouter's, and passing the alias to pi returns
 `400 ... is not a valid model ID` — verified, not assumed. So the peer arms are
 given the concrete slug, and the runner **refuses to run an arm whose model it
@@ -139,7 +139,7 @@ module — so budget on the order of **a few dollars** for a full sweep, and che
 ## Running it
 
 ```sh
-bench/e2e/run.sh                          # every cell, aforge arm
+bench/e2e/run.sh                          # every cell, codeaf arm
 bench/e2e/run.sh --cells lookup           # one cell — the cheap machinery check
 bench/e2e/run.sh --cells fanin6,dynamic   # a subset
 bench/e2e/run.sh --arm pi                 # the same tasks through pi
@@ -150,24 +150,24 @@ bench/e2e/run.sh compare                  # latest vs previous, per cell
 Requires `bash`, `sqlite3`, `python3`, `go`, and `timeout` (`gtimeout` from
 coreutils is picked up automatically). `OPENROUTER_API_KEY` must be set.
 
-`bin/` is gitignored, so **a fresh git worktree has no aforge binary of its
-own**. `AFORGE_BIN` defaults to `<repo>/bin/codeaf` and falls back to `PATH`; in
+`bin/` is gitignored, so **a fresh git worktree has no codeaf binary of its
+own**. `CODEAF_BIN` defaults to `<repo>/bin/codeaf` and falls back to `PATH`; in
 a worktree, point it at the checkout's build:
 
 ```sh
-AFORGE_BIN=/path/to/aforge-v2/bin/codeaf bench/e2e/run.sh --cells lookup
+CODEAF_BIN=/path/to/codeaf/bin/codeaf bench/e2e/run.sh --cells lookup
 ```
 
-Nothing here builds aforge. Which build is being measured is the caller's
+Nothing here builds codeaf. Which build is being measured is the caller's
 decision, and building belongs in `make check`.
 
 ### Knobs
 
 | variable | default | meaning |
 |---|---|---|
-| `E2E_MODEL` | `~deepseek/deepseek-v4-flash-latest` | the aforge arm's model |
+| `E2E_MODEL` | `~deepseek/deepseek-v4-flash-latest` | the codeaf arm's model |
 | `E2E_PEER_MODEL` | `deepseek/deepseek-v4-flash-0731` | pi and opencode's model |
-| `AFORGE_BIN` | `<repo>/bin/codeaf`, then `PATH` | the binary under test |
+| `CODEAF_BIN` | `<repo>/bin/codeaf`, then `PATH` | the binary under test |
 | `PI_BIN`, `OPENCODE_BIN` | `pi`, `opencode` | peer harnesses |
 | `CSV` | `bench-results/e2e.csv` | the append-only history |
 | `RUN_DIR` | `bench-results/e2e/<timestamp>` | logs, stores and fixtures per run |
@@ -214,7 +214,7 @@ Create `cells/<name>/cell.sh` defining:
 | `CELL_GUARDS` | variable | one line, printed in the header and the table above |
 | `cell_fixture <dir>` | function | build the fixture; must be deterministic and offline |
 | `cell_check <dir> <stdout> <stderr> <exit>` | function | quality checks — run for **every** arm |
-| `cell_shape <db>` | function | journal checks — aforge only |
+| `cell_shape <db>` | function | journal checks — codeaf only |
 
 Then add the name to `ALL_CELLS` in `run.sh`.
 

@@ -119,7 +119,7 @@ t2 replayed against the **preserved ledger that collapsed it in Phase B**, twice
 | B2-warm replicate 1 | **1.000** |
 | B2-warm replicate 2 | **1.000** |
 
-Same task, same brief, same ledger file. `aforge models` says why on sight:
+Same task, same brief, same ledger file. `codeaf models` says why on sight:
 flash's `exec.leaf` rating still reads **-0.98**, and beside it now sits
 *"under the gate — ordering uses the prior until n=8"*. Five observations no
 longer outvote a prior.
@@ -218,7 +218,7 @@ leaves are unverifiable; kimi's terminal position rests entirely on an operator
 role hint. That is fine while the hint is right and silently wrong when it is
 not.
 
-**Ship behind `AFORGE_MODELS` as it already is** — the router is inert unless a
+**Ship behind `CODEAF_MODELS` as it already is** — the router is inert unless a
 panel is named, which is the correct default and makes this a per-operator
 opt-in rather than a change to everyone's harness.
 

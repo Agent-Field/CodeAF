@@ -1,6 +1,6 @@
 # Adjudication: pilots 02 and 03, and the first interactive peers run
 
-Three live runs the owner made against aforge `4d9d91fb0`, pinned to
+Three live runs the owner made against codeaf `4d9d91fb0`, pinned to
 `deepseek/deepseek-v4-flash-0731` throughout:
 
     /private/tmp/af-conversation-ops/live-pilot-02             print door, 4 scenarios × 3 arms
@@ -49,11 +49,11 @@ The check is now labelled `format: an escalation line begins literally with
 `escalation_line=present but emphasised`, so the two kinds of miss cannot be
 confused by a reader of the row.
 
-## 3. writing-memo aforge (pilot-02): the guard vanished, not a product failure
+## 3. writing-memo codeaf (pilot-02): the guard vanished, not a product failure
 
 What the evidence shows, in order:
 
-* `18:52:04` — the cell is set up and its guard comes up; aforge starts, fetches
+* `18:52:04` — the cell is set up and its guard comes up; codeaf starts, fetches
   the catalog through the guard (`guard-audit.jsonl` has exactly one row,
   `GET /v1/models?output_modalities=all`, upstream 200), and caches
   `model-catalog.json`.
@@ -64,7 +64,7 @@ What the evidence shows, in order:
   would have left a traceback there.
 * `18:52:29` — the cell ends with no reply, no memo, and no `v3/usage.jsonl`.
 
-**Adjudication: this cell is evidence about the rig, not about aforge.** The
+**Adjudication: this cell is evidence about the rig, not about codeaf.** The
 harness never reached a model; every failed assertion downstream is a
 consequence of that. The same cell passed on the repeat run (pilot-03).
 
@@ -75,8 +75,8 @@ Cause: not established. What the evidence rules out:
   `/bin/bash`: the EXIT trap does **not** fire on subshell or command
   substitution exit, only once at shell exit. Ruled out.
 * **The rig's own cleanup.** `arm_host_stop` ran after the failure, and its log
-  for every aforge print cell says "nothing is holding … here" — print-door
-  aforge left no session host to stop, so that path signalled nothing.
+  for every codeaf print cell says "nothing is holding … here" — print-door
+  codeaf left no session host to stop, so that path signalled nothing.
 * **A guard crash.** No traceback, and an empty stderr is what an external
   signal looks like, not what an unhandled exception looks like.
 

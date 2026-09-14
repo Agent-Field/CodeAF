@@ -1,6 +1,6 @@
 <div align="center">
 
-# aforge
+# codeaf
 
 **Talk through the work, change the files, and hand off tasks you can walk away from.**
 
@@ -8,23 +8,23 @@
 
 <img alt="Go 1.26.5" src="https://img.shields.io/badge/Go-1.26.5-0c0b09?style=flat&labelColor=8b7355"> <img alt="darwin, linux, windows" src="https://img.shields.io/badge/targets-darwin%20%7C%20linux%20%7C%20windows-0c0b09?style=flat&labelColor=8b7355">
 
-<p><a href="#install">Install</a> • <a href="#talk-to-aforge">Chat</a> • <a href="#tools-in-the-conversation">Tools</a> • <a href="#hand-work-to-tasks">Tasks</a> • <a href="#models-keys-and-spending">Models</a> • <a href="#the-manual-ships-with-the-binary">Manual</a> • <a href="#headless-work">Headless</a> • <a href="#work-on-another-machine">Remote</a> • <a href="#contributing">Contributing</a> • <a href="#documentation">Docs</a></p>
+<p><a href="#install">Install</a> • <a href="#talk-to-codeaf">Chat</a> • <a href="#tools-in-the-conversation">Tools</a> • <a href="#hand-work-to-tasks">Tasks</a> • <a href="#models-keys-and-spending">Models</a> • <a href="#the-manual-ships-with-the-binary">Manual</a> • <a href="#headless-work">Headless</a> • <a href="#work-on-another-machine">Remote</a> • <a href="#contributing">Contributing</a> • <a href="#documentation">Docs</a></p>
 
 </div>
 
-Run `aforge` inside a project. It opens the conversation that directory was last
+Run `codeaf` inside a project. It opens the conversation that directory was last
 having. Ask in ordinary language; the model can read and edit files, run commands,
 search the web, remember useful context, and bring separate tasks back when they land.
 
 This is the chat flow in a real terminal:
 
 ```text
- aforge                                                                 $0.0010 / $500 · sun 7:32pm
+ codeaf                                                                 $0.0010 / $500 · sun 7:32pm
    Home      [key lookup] ×   +
 ────────────────────────────────────────────────────────────────────────────────────────────────────
     · esc interrupts · ctrl+c twice quits · ? for help
 
-  › read ./apikey.go and tell me in two lines where aforge looks for an API key
+  › read ./apikey.go and tell me in two lines where codeaf looks for an API key
 
     ▾ worked 3.2s · thought 0.6s · 1 tool call · ctrl+e
     ▸ read apikey.go                                                                        1 call
@@ -35,7 +35,7 @@ This is the chat flow in a real terminal:
 
     · ⟲ 14.1k cached · saved $0.0005
                                                           · 19:31 · 3.2s · 1 tool call · $0.0008 · ❮
-─ where aforge finds its a… · ~deepseek/deepseek-v4-flash-latest ─── space space home · / commands ─
+─ where codeaf finds its a… · ~deepseek/deepseek-v4-flash-latest ─── space space home · / commands ─
  ›
  $0.0008 · ⟲ saved $0.0005 · 45% cached   15.6k/1.3M · 1%                                       idle
 ```
@@ -46,20 +46,20 @@ one question, one `read`, one answer, and what it cost on the last line.
 ### Which folder it works in
 
 "Inside a project" is decided at launch, in this order
-(`cmd/aforge/chatv3_layout.go:84`): `--workspace <path>` if you gave one, else the root
+(`cmd/codeaf/chatv3_layout.go:84`): `--workspace <path>` if you gave one, else the root
 of the git repository you are standing in, else the directory itself. The exception is
 a directory nobody chose — your home directory, or anything under a temporary directory
-— where aforge keeps a folder of its own and says so on the welcome screen:
+— where codeaf keeps a folder of its own and says so on the welcome screen:
 
 ```text
-in a folder aforge keeps for this conversation · /workspace picks another
+in a folder codeaf keeps for this conversation · /workspace picks another
 ```
 
 Your files are not in that folder, so asking it to read one gets you an empty
 directory. `/workspace <path>` anchors a conversation to a project at any point; the
-shorter road is to start aforge inside the project.
+shorter road is to start codeaf inside the project.
 
-Once this machine has conversations on it, bare `aforge` opens **home** rather than a
+Once this machine has conversations on it, bare `codeaf` opens **home** rather than a
 conversation — projects, running work, questions waiting on you, what you have spent.
 Type into the box to start one, or press enter on a row to reopen one. `space space`
 goes to home from a conversation and `esc` comes back untouched.
@@ -69,21 +69,21 @@ goes to home from a conversation and `esc` comes back untouched.
 ### Build from the repository
 
 The road that works today is a source checkout. The module needs Go 1.26.5, and
-`make build` is the one supported build command; it writes `bin/aforge`.
+`make build` is the one supported build command; it writes `bin/codeaf`.
 
 ```bash
-git clone https://github.com/Agent-Field/aforge-v2.git  # needs repository access while it is private
-cd aforge-v2
+git clone https://github.com/Agent-Field/codeaf.git  # needs repository access while it is private
+cd codeaf
 make build   # fetches the pinned Furrow artifact, so it needs the network;
              # FURROW_ARTIFACT=/path/to/furrow supplies it offline
-bin/aforge
+bin/codeaf
 ```
 
 ### The installer, and what it is waiting on
 
 ```bash
-curl -fsSL https://agentfield.ai/get/aforge | bash                                                    # the preferred form
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash     # the script under it
+curl -fsSL https://agentfield.ai/get/codeaf | bash                                                    # the preferred form
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash     # the script under it
 ```
 
 The first is the road that will be supported, and it is not serving yet — the route is
@@ -98,10 +98,10 @@ therefore stop with `no <channel> build has been published yet`. Recognizing a c
 does not mean a matching release exists.
 
 ```bash
-curl -fsSL https://agentfield.ai/get/aforge/dev | bash
-curl -fsSL https://agentfield.ai/get/aforge/staging | bash
-curl -fsSL https://agentfield.ai/get/aforge/rc | bash
-curl -fsSL https://agentfield.ai/get/aforge | VERSION=<tag> bash
+curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
+curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
+curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
+curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 ```
 
 | Installer input | Behaviour |
@@ -110,29 +110,29 @@ curl -fsSL https://agentfield.ai/get/aforge | VERSION=<tag> bash
 | `--dev` | Select the latest `dev-*` release. |
 | `--rc`, `--staging` | Select a matching channel build or stop if none has been published. |
 | `--version TAG` or `VERSION=<tag>` | Pin one release tag. |
-| `--dir PATH` | Install somewhere other than `~/.aforge/bin`. |
+| `--dir PATH` | Install somewhere other than `~/.codeaf/bin`. |
 | `--no-modify-path` | Print the PATH line without editing a shell file. |
 | `--verbose` | Print each GET. |
 | `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's anonymous API limit. |
 
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
-appends one `export PATH=… # aforge installer` line to the applicable shell file. Its
-last action is `aforge version`. Release builds cover darwin, linux, and windows on
+appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
+last action is `codeaf version`. Release builds cover darwin, linux, and windows on
 amd64 and arm64.
 
 </details>
 
-## Talk to aforge
+## Talk to codeaf
 
-Bare `aforge` and `aforge chat` open the same conversation surface. `aforge resume`
+Bare `codeaf` and `codeaf chat` open the same conversation surface. `codeaf resume`
 opens a picker for an earlier conversation.
 
 ```bash
-aforge
-aforge chat --model <slug>
-aforge chat --once "summarize the changes"  # print one reply and exit
-aforge resume
+codeaf
+codeaf chat --model <slug>
+codeaf chat --once "summarize the changes"  # print one reply and exit
+codeaf resume
 ```
 
 `enter` sends a message or steers a running answer. `ctrl+enter` makes a standing
@@ -194,10 +194,10 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/status` | `everything the status line knows, one fact per line` |
 | `/cost` | `what this conversation has spent · /spend is the whole machine` |
 | `/spend` | `what this machine has cost, by the day · alt+3` |
-| `/budget` | `what aforge may spend · every limit on one tab` |
+| `/budget` | `what codeaf may spend · every limit on one tab` |
 | `/compact` | `summarize the conversation now` |
 | `/rewind` | `go back to an earlier point · esc esc takes back the last` |
-| `/manual` | `aforge's own manual · every page, one per line` |
+| `/manual` | `codeaf's own manual · every page, one per line` |
 | `/help` | `this list` |
 | `/quit` | `close this conversation` |
 | `/drafts` | `cleared-but-kept drafts · enter restores one, d lets one go` |
@@ -277,7 +277,7 @@ after the conversation. Memory keeps person-, project-, or machine-scoped record
 Key resolution is `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, then `api_key` in the
 profile's `config.json`. With no key, an interactive local launch opens a two-page setup
 that offers to connect OpenRouter in a browser or take a pasted key. A non-interactive
-chat with no key stops instead, with `aforge chat needs a model to talk with.`
+chat with no key stops instead, with `codeaf chat needs a model to talk with.`
 
 <details>
 <summary>The two first-run screens, word for word</summary>
@@ -285,17 +285,17 @@ chat with no key stops instead, with `aforge chat needs a model to talk with.`
 Where a browser is reachable the first page is headed `connect openrouter`:
 
 ```text
-sign in once in your browser. openrouter makes the default service's key for this profile; aforge stores it on this machine. no prompt is sent and no model is called.
+sign in once in your browser. openrouter makes the default service's key for this profile; codeaf stores it on this machine. no prompt is sent and no model is called.
 ```
 
-Where it is not, the same page is headed `your openrouter key` and reads `aforge talks
+Where it is not, the same page is headed `your openrouter key` and reads `codeaf talks
 to models on its default service through openrouter, on your key and your card. nothing
 is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
 The second page is `Daily limit`, `Chat model` and `Work crew`.
 
 </details>
 
-The chat model resolves from `--model`, then saved `model.talk`, then `AFORGE_MODEL`,
+The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
 then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
 OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
 Qwen, Ollama, and a custom OpenAI-compatible service; a qualified slug such as
@@ -308,23 +308,23 @@ opt-in settings.
 The default daily rail is `$500`; setting that row to `0` removes it. First run asks for
 `Daily limit`, `Chat model`, and `Work crew`.
 
-State lives under `$AFORGE_HOME`, or `~/.aforge` when it is unset: settings and credentials
+State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset: settings and credentials
 in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/`.
 
 ## The manual ships with the binary
 
-The Markdown under `internal/manual/chat/` is compiled into aforge, and the conversation
+The Markdown under `internal/manual/chat/` is compiled into codeaf, and the conversation
 reads it with the `manual` tool to answer questions about its own behaviour. From a
-terminal `aforge manual` lists every page and `aforge manual "<question>"` returns the
+terminal `codeaf manual` lists every page and `codeaf manual "<question>"` returns the
 sections that answer it; inside the chat it is `/manual`. Build gates require every
 slash command and alias, every tool name, and more than a hundred questions in ordinary
 language to reach an answering page.
 
 ## Headless work
 
-- `aforge do "<task>"` does one task and exits: the same living agent as chat, with nobody watching.
-- `aforge exec ["<prompt>"]` runs one worker for one pass, with no planning.
-- `aforge run <program> --input <file.json|->` runs one saved typed program and writes typed output to stdout.
+- `codeaf do "<task>"` does one task and exits: the same living agent as chat, with nobody watching.
+- `codeaf exec ["<prompt>"]` runs one worker for one pass, with no planning.
+- `codeaf run <program> --input <file.json|->` runs one saved typed program and writes typed output to stdout.
 
 None takes `--yolo`, and all three end the same way — `--json` carries the reason
 in its `stop` field.
@@ -340,14 +340,14 @@ in its `stop` field.
 | `3` | A limit you set stopped it. |
 | `4` | Needed an answer and nobody was there. |
 
-These need no model key and spend nothing: `aforge why self`, `aforge why <task-id>`,
-`aforge logs [--tail 40] [--follow] [--json]`, `aforge doctor`,
-`aforge manual [page | "question"]`, and `aforge version`. `aforge help env` prints the
+These need no model key and spend nothing: `codeaf why self`, `codeaf why <task-id>`,
+`codeaf logs [--tail 40] [--follow] [--json]`, `codeaf doctor`,
+`codeaf manual [page | "question"]`, and `codeaf version`. `codeaf help env` prints the
 environment table.
 
-`aforge models [--refresh]` is the exception in that group: it spends nothing of yours,
+`codeaf models [--refresh]` is the exception in that group: it spends nothing of yours,
 but it reaches the network for the catalog and stops with
-`aforge needs a model to work with.` if no key is resolvable.
+`codeaf needs a model to work with.` if no key is resolvable.
 
 </details>
 
@@ -359,15 +359,15 @@ The conversation and its work stay on the machine that owns the workspace; the l
 surface attaches to it over a byte stream.
 
 ```bash
-aforge chat --host devbox            # also me@devbox, or devbox:code/app
+codeaf chat --host devbox            # also me@devbox, or devbox:code/app
 ```
 
-`--host` runs the far machine's `aforge engine` over `ssh -T`: it needs `ssh` here and
-aforge installed there, and it cannot be combined with `--one-model`. For a machine
-without ssh, `aforge serve [--workspace path] [--relay url]` holds an outbound relay
+`--host` runs the far machine's `codeaf engine` over `ssh -T`: it needs `ssh` here and
+codeaf installed there, and it cannot be combined with `--one-model`. For a machine
+without ssh, `codeaf serve [--workspace path] [--relay url]` holds an outbound relay
 connection and prints a pairing name such as `otter-lamp-42` — without a configured
-relay it stops — and `aforge chat --at <name>` connects to it. `aforge devices` lists
-paired devices; `aforge devices revoke <name> [--all]` revokes access.
+relay it stops — and `codeaf chat --at <name>` connects to it. `codeaf devices` lists
+paired devices; `codeaf devices revoke <name> [--all]` revokes access.
 
 Current boundary: spend, search and memory pages still read local files, and inside a
 remote task room steering, stopping and model changes are absent.
@@ -380,7 +380,7 @@ Branch from `dev` and open the pull request against `dev`; `main` is the release
 Every pull request carries a change entry under `docs/changes/unreleased/`.
 
 ```bash
-make build        # bin/aforge
+make build        # bin/codeaf
 make pr-ready     # the bar a pull request into dev has to clear
 make demo-home    # a throwaway home with something on every page
 make changelog-new PR=<n> KIND=<kind> SLUG=<slug>

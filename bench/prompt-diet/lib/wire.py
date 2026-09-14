@@ -6,21 +6,21 @@ TWO SOURCES, AND THEY MEASURE DIFFERENT THINGS.
 
   the guard   `bench/conversation/lib/guard.py` is a loopback forwarder every
               conversation cell already runs in front of OpenRouter, handed to
-              the harness as AFORGE_BASE_URL with a sentinel key. It writes
+              the harness as CODEAF_BASE_URL with a sentinel key. It writes
               `guard-usage.jsonl`: an `admitted` row carrying the request's
               SHAPE (bytes on the wire, message count, tool count) and a
               `settled` row carrying what the provider said it CHARGED
               (prompt_tokens, completion_tokens, prompt_tokens_details.
               cached_tokens, cost). It is arm-neutral — the same measurement for
-              aforge and for any peer — and it deliberately keeps no bodies.
+              codeaf and for any peer — and it deliberately keeps no bodies.
 
-  the call log `internal/calllog` is aforge's own always-on record, pinned to a
-              path with AFORGE_CALL_LOG. With AFORGE_CALL_LOG_BODIES=1 it keeps
+  the call log `internal/calllog` is codeaf's own always-on record, pinned to a
+              path with CODEAF_CALL_LOG. With CODEAF_CALL_LOG_BODIES=1 it keeps
               the whole request body, which is the only place the TOOL BLOCK's
               own bytes can be counted per request rather than inferred.
 
 So the guard answers "what did this turn cost" for every arm, and the call log
-answers "how much of it was the tool block" for the aforge arm. A row from
+answers "how much of it was the tool block" for the codeaf arm. A row from
 either carries `source` saying which, and the two are never added together.
 
 A call-log row also carries the PREFIX FINGERPRINTS — `system_bytes`,
@@ -150,7 +150,7 @@ def prefix_of(body):
     the same prefix travelled every time or a new one did.
 
     Everything is computed from the request body the call log already keeps
-    under AFORGE_CALL_LOG_BODIES; nothing here needs a second capture. Absent
+    under CODEAF_CALL_LOG_BODIES; nothing here needs a second capture. Absent
     fields mean the body was not kept, never that the prefix was empty."""
     out = {"tool_block_bytes": None, "tools_sha": None,
            "system_bytes": None, "system_sha": None, "prefix_sha": None}

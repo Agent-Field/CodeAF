@@ -1,4 +1,4 @@
-# Aforge navigation panel — September 7, 2026
+# codeaf navigation panel — September 7, 2026
 
 Design direction for the header refinement requested after trying revision
 `0e095a9b1`. This document states the interaction contract; test receipts and

@@ -1,11 +1,11 @@
 # Making pictures, audio and video
 
-aforge can produce media as well as read it: a picture from a description, a
+codeaf can produce media as well as read it: a picture from a description, a
 spoken audio file from text, a piece of music from a brief, a short video from a
 prompt. Each one is a tool on the list, each one costs money, and each one saves
 a file and tells you where it went.
 
-**These tools are only there when a model behind them is.** aforge resolves one
+**These tools are only there when a model behind them is.** codeaf resolves one
 model per kind of media — drawing, speaking, composing, filming — from your
 settings, and a kind with no model available simply has no tool, rather than a
 tool that refuses. So `generate_image`, `speak`, `generate_music` and
@@ -23,11 +23,11 @@ Yes, with `generate_image`, when a drawing model is available.
 Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
 `model`.
 
-The picture is written to a file, and the result aforge reads is one line naming
+The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
 
 ```
-/home/you/work/.aforge-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
+/home/you/work/.codeaf-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
 ```
 
 The path is whole because that line is what you are shown in place of the
@@ -35,7 +35,7 @@ picture on a terminal that cannot draw one, and a path relative to a directory
 you are not standing in is a path you cannot open.
 
 The image itself never enters the conversation, because a picture carried in the
-transcript is re-sent on every step of every turn afterwards. If aforge needs to
+transcript is re-sent on every step of every turn afterwards. If codeaf needs to
 look at what it made, it opens the file like any other picture. **You do not
 have to open the file yourself** — see the next section.
 
@@ -50,7 +50,7 @@ passed to the image model untouched. Leave them out for its own default.
 
 **You see it, in colour, in the terminal, without doing anything at all.**
 
-Over `--host`, aforge fetches the generated picture from the other machine into this
+Over `--host`, codeaf fetches the generated picture from the other machine into this
 machine's cache and paints that local copy in the terminal when the tool finishes. The
 line under it remains the far path, because that is where the conversation wrote it. The
 path is clickable: opening it hands the read-only local copy to your desktop. Home's `made for you` band
@@ -62,12 +62,12 @@ conversation that made them, and those paths open through the same file door.
 Over `--host`, the picture is written on the other machine and then its bytes are fetched
 back for the terminal preview. The row paints the fetched copy and names the far path
 under it. cmd+click that path on a Mac, ctrl+click it on Linux, or type `/files <path>`;
-aforge opens the read-only cached copy with the viewer on the machine you are sitting at.
+codeaf opens the read-only cached copy with the viewer on the machine you are sitting at.
 If the picture is over the connection's 16MB fetch limit, the far machine refuses the
 transfer by name and the path remains the honest answer. The refusal ends with the machine
 that still has it, exactly: ` · the picture remains on <machine>`.
 
-The line above is what aforge itself reads — a path is all that goes into the
+The line above is what codeaf itself reads — a path is all that goes into the
 conversation. The screen adds a compact **preview** / **open original** control after
 the call finishes. Images start collapsed in both chat and task pages; no mosaic is
 automatically drawn. Attached pictures use the same controls, preserving their
@@ -105,7 +105,7 @@ gif, up to 10MB each** — and anything else is refused by name, e.g.
 `could not read art/missing.png`, before a penny is spent.
 
 The useful part: **the path `generate_image` just returned is itself a valid
-reference**, so aforge can pass its own last render back in and iterate — a
+reference**, so codeaf can pass its own last render back in and iterate — a
 diagram redrawn until it is right, a character kept the same across pictures.
 
 ## Can you use a different model for one picture, sound or video?
@@ -130,7 +130,7 @@ one-call choice never changes any setting. The result line always names the
 model that actually generated the file, so you can tell which one made what.
 
 This is the same freedom you have yourself in `/settings` → Providers, handed
-to aforge per call: ask it to "draw this one with gemini" or "try the best
+to codeaf per call: ask it to "draw this one with gemini" or "try the best
 image model" and it can, just in time.
 
 ## Which image model was used, and how do I see the prompt you sent?
@@ -165,7 +165,7 @@ The prompt first, in quotes, exactly as it was sent — a very long one folds at
 twelve lines and `… N more lines` lifts the rest. Then one line for each other
 input you gave: the size or the aspect ratio, and the pictures it worked from.
 An input you left out has no line, because leaving `size` out means the image
-model's own default and aforge will not guess at what that is. The picture
+model's own default and codeaf will not guess at what that is. The picture
 itself, and the path under it, follow below.
 
 If the call asked for a model in its own words, the line keeps both halves —
@@ -191,7 +191,7 @@ Four causes, all fixable — none of them is "the model is bad at this".
 decide — the medium, the light, the palette, the mood, the era — the image or
 video model fills with its statistical average, and that average is exactly what
 generic AI output looks like: over-smooth, over-lit, style-less. The fix is
-specificity: aforge writes the decisions into the prompt rather than asking for
+specificity: codeaf writes the decisions into the prompt rather than asking for
 "a nice picture of X" and hoping. Ask it to redo a generic render "as a
 photograph, natural light" or "as a flat diagram, two colours" and the words go
 straight to the model.
@@ -208,7 +208,7 @@ setup, a drafting or filmmaking tradition. A real medium carries its own
 physics and its own, different average — a risograph poster or an editorial
 photograph simply is not drawn from the pool "digital AI art" comes from. This
 applies however the render is made: the same law covers a prompt sent through
-`generate_image` and one a script of aforge's own sends to an API.
+`generate_image` and one a script of codeaf's own sends to an API.
 
 ## Why is everything you make glowing on a dark background?
 
@@ -228,7 +228,7 @@ pulls toward glow. Two fixes, and they work together:
   Matte ink on cream paper *cannot* glow; a prompt that establishes it never
   needs the word "no".
 
-When a render comes back, aforge judges it against the genre as well as the
+When a render comes back, codeaf judges it against the genre as well as the
 brief — "could this be mistaken for every other image of its kind?" — and
 iterates when the answer is yes.
 
@@ -238,7 +238,7 @@ passed to the model untouched; left out, the model's own default decides, and a
 default can be modest. Ask for "1080p" or "a larger size" and it is passed
 through — a sharper render costs more and, for video, takes longer.
 
-**The first render was accepted as the last.** A first render is a draft. aforge
+**The first render was accepted as the last.** A first render is a draft. codeaf
 can look at what it made (`view_image`, or `read` on the file), judge it against
 the brief, and iterate — the path a render returned is a valid
 `reference_paths` entry, so "fix the hands, keep everything else" is one more
@@ -257,7 +257,7 @@ Arguments: `text` (required), `voice`, `path`, `model`. It writes an **mp3** and
 with the path, the file size and the model, e.g.
 
 ```
-.aforge-v3/audio/20260817-142433-good-morning-harbour-road.mp3 — 84.2KB of mp3 audio, spoken by <model>
+.codeaf-v3/audio/20260817-142433-good-morning-harbour-road.mp3 — 84.2KB of mp3 audio, spoken by <model>
 ```
 
 **Leave `voice` out and the provider's default voice speaks.** Name one only if
@@ -270,7 +270,7 @@ and then `openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A
 model you set yourself wins over all of them.
 
 There is no duration in the result: nothing here opens the mp3 to measure it, and
-a guessed length would be worse than none. Play the file to hear it — aforge
+a guessed length would be worse than none. Play the file to hear it — codeaf
 cannot listen to audio.
 
 ## Can you write me music, compose a song, or make a backing track?
@@ -287,13 +287,13 @@ to sing and not text to be read out.
 `generate_video` does, because a compose takes most of a minute:
 
 ```
-job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.aforge-v3/jobs/4.log
+job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.codeaf-v3/jobs/4.log
 ```
 
-aforge keeps working — on other clips, on a stitch, on the conversation —
-while the piece is written, and when it lands aforge is told in a note at the
+codeaf keeps working — on other clips, on a stitch, on the conversation —
+while the piece is written, and when it lands codeaf is told in a note at the
 next step:
-`job 4 finished: .aforge-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
+`job 4 finished: .codeaf-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
 A compose that fails says so the same way: `job 4 failed: music generation
 failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
 · a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
@@ -350,12 +350,12 @@ behaves differently from most tools, because a render takes **minutes**.
 `background: true`:
 
 ```
-job 3 started; filming on <model> — the finished video arrives as a note naming the file. Log at /path/to/.aforge-v3/jobs/3.log
+job 3 started; filming on <model> — the finished video arrives as a note naming the file. Log at /path/to/.codeaf-v3/jobs/3.log
 ```
 
-It keeps working while you and aforge carry on talking. When it lands, aforge is
+It keeps working while you and codeaf carry on talking. When it lands, codeaf is
 told in a note at the next step:
-`job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
+`job 3 finished: .codeaf-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
 The length and the sound answer are measured from the file itself — a clip that
 landed silent says `without sound` — and when the file cannot be measured the
 note simply omits both rather than guessing. A render that fails says so the
@@ -391,7 +391,7 @@ saved.
 
 Not in one render, and yes by joining several — a single render is a short
 clip, because the video providers top out around ten seconds; nothing in
-aforge extends one render. A longer video is several `generate_video` calls
+codeaf extends one render. A longer video is several `generate_video` calls
 joined with **`edit_video`**, whose `join` action lays clips end to end and
 carries every one of their audio streams. Whether the result hangs together is
 decided by three facts about the render tool:
@@ -470,7 +470,7 @@ command gets wrong:
 The answer is measured off the file that now exists, not claimed:
 
 ```
-.aforge-v3/video/20260901-181201-joined-cut-of-4-clips.mp4 — 34.0s with sound, 1280×720 at 24fps, 12.4MB of mp4 video, joined from 4 clips
+.codeaf-v3/video/20260901-181201-joined-cut-of-4-clips.mp4 — 34.0s with sound, 1280×720 at 24fps, 12.4MB of mp4 video, joined from 4 clips
 ```
 
 Limits, in its own words. At most **64 clips** in one call — `a join takes at
@@ -500,7 +500,7 @@ moment. `measure` answers the arithmetic a cut is planned from — how long the
 clips are, whether the join has any sound to carry — and costs nothing. Ask
 `measure` when the question has a number for an answer.
 
-A clip aforge rendered itself already states both facts in its landing note, so
+A clip codeaf rendered itself already states both facts in its landing note, so
 measuring one again is only worth it after something has been done to it.
 
 ## Can you save a frame, a still or a thumbnail out of a video?
@@ -524,7 +524,7 @@ frame is saved as a picture — .mp4 is not one of jpeg, jpg, png, webp`.
 
 **A moment past the end of the clip is refused, not saved empty.** An ffmpeg
 seeked past the last frame decodes nothing, writes nothing and reports success,
-so the refusal is aforge's own and it carries the clip's measured length: `Could
+so the refusal is codeaf's own and it carries the clip's measured length: `Could
 not save the frame: ferry.mp4 runs 4.2s and has no frame at 9s — ask for a
 moment inside it, or for the closing frame`. `closing` is a seek from the end and can
 never be past one.
@@ -533,7 +533,7 @@ The answer names the whole absolute path, the picture's measured shape, and whic
 frame of which clip it is:
 
 ```
-/home/you/work/.aforge-v3/images/20260901-181330-the-closing-frame.png — 1280×720 png, 812.4KB, the closing frame of ferry.mp4
+/home/you/work/.codeaf-v3/images/20260901-181330-the-closing-frame.png — 1280×720 png, 812.4KB, the closing frame of ferry.mp4
 ```
 
 ## Can you put music under a video, or add a soundtrack?
@@ -573,7 +573,7 @@ recording or a camera clip in the folder and all four actions apply to it.
 
 **What it does need is ffmpeg and ffprobe on the machine.** They are not
 downloaded on demand. Without them the verb is **absent** rather than present and
-refusing — aforge simply does not have it, the same way it does not have
+refusing — codeaf simply does not have it, the same way it does not have
 `generate_video` without a video model — so asking gets an honest "I do not have
 that here" rather than a failed attempt. Install ffmpeg (it carries ffprobe with
 it) and the verb appears on the next conversation.
@@ -592,12 +592,12 @@ under the same one condition, exactly as the making verbs do.
 
 In one of three places, decided by whose folder the workspace is:
 
-- If the session **owns** its workspace (aforge made it), files land straight in
+- If the session **owns** its workspace (codeaf made it), files land straight in
   it, like anything else the work produced.
 - If the workspace is **your repository**, they land in the session's own
-  `artifacts/` folder instead, so nothing of aforge's is dropped in your project.
+  `artifacts/` folder instead, so nothing of codeaf's is dropped in your project.
 - With no session folder at all, they land under
-  `<workspace>/.aforge-v3/images`, `/audio`, `/music` or `/video`.
+  `<workspace>/.codeaf-v3/images`, `/audio`, `/music` or `/video`.
 
 Either way every generated file gets a row in the deliverables index, so
 `/files` finds it again later by name and date, from any directory. Give the

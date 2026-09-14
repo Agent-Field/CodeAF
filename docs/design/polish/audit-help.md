@@ -1,9 +1,9 @@
 # audit-help — the discovery, empty and refusal side of the surface
 
 Audit lane. Read only; nothing here was changed. Frames are under
-`docs/design/polish/frames/`, every one prefixed `help-`, captured from `bin/aforge`
-on three homes: a **bare** home (only `.aforge/config.json`, no chats, no tasks, no
-memories, no spend, no orders), a **fresh** home (no `.aforge` at all — first run),
+`docs/design/polish/frames/`, every one prefixed `help-`, captured from `bin/codeaf`
+on three homes: a **bare** home (only `.codeaf/config.json`, no chats, no tasks, no
+memories, no spend, no orders), a **fresh** home (no `.codeaf` at all — first run),
 and the seeded demo home for the populated readings.
 
 Frame paths below are relative to `docs/design/polish/frames/` and each has a `.ans`
@@ -49,7 +49,7 @@ twin with the colour.
 
 19. Three more places' hint lines promise row verbs over a body that has no rows — `internal/tui3/place_tasks.go:1250`, `internal/tui3/place_standing.go:916`, `internal/tui3/place_memory.go:847` — on the bare home the tasks foot says `type to filter` with nothing to filter, standing says `enter open where it was asked` with nothing to open, memory says `enter open a shelf · alt+s walk the shelves` with no shelves. Each is smaller than rows 1 and 2 because the body above it does say what to do; the cost is that the foot of a teaching page names keys that do nothing. — fix: one arm at the head of each `hint` for the teaching state, returning the keys that are true there — on all three that is `tab next place · esc`. — sev: low — frames: help-empty-tasks.160x50.txt, help-empty-standing.160x50.txt, help-empty-memory.160x50.txt
 
-20. The entry note dumps the absolute transcript path over four wrapped lines — `internal/tui3/welcome.go:350` and `internal/tui3/app.go:2327` (`a.note("resumed " + a.hostedPath(a.file))`; `hostedPath` at `host.go:315` prefixes a host name and otherwise returns the path untouched) — on an 80-column terminal the first thing on screen when a conversation is reopened is four lines of `.aforge/v3/projects/<slugged-absolute-path>/<hex>/transcript.jsonl`, and at 60 columns it is seven of the thirty rows. `/help`'s closing `session · <path>` row does the same (`commands.go:939`). The conversation has a name; the path is machinery. — fix: say the conversation's name and tilde the home — `resumed <title>` with the path behind `/status`, which already prints one fact per line. — sev: low — frames: help-empty-home.80x24.txt, help-empty-home.60x30.txt, help-help-output.160x50.txt
+20. The entry note dumps the absolute transcript path over four wrapped lines — `internal/tui3/welcome.go:350` and `internal/tui3/app.go:2327` (`a.note("resumed " + a.hostedPath(a.file))`; `hostedPath` at `host.go:315` prefixes a host name and otherwise returns the path untouched) — on an 80-column terminal the first thing on screen when a conversation is reopened is four lines of `.codeaf/v3/projects/<slugged-absolute-path>/<hex>/transcript.jsonl`, and at 60 columns it is seven of the thirty rows. `/help`'s closing `session · <path>` row does the same (`commands.go:939`). The conversation has a name; the path is machinery. — fix: say the conversation's name and tilde the home — `resumed <title>` with the path behind `/status`, which already prints one fact per line. — sev: low — frames: help-empty-home.80x24.txt, help-empty-home.60x30.txt, help-help-output.160x50.txt
 
 21. `ctrl+r` appears twice on the key sheet with two different meanings — `internal/tui3/commands.go:901` (`spell it out · what the draft means`) and `internal/tui3/commands.go:937` (`ctrl+r ctrl+y  in /files: reveal the folder it is in`) — thirty-six rows apart, with nothing on either row saying the other exists. The second is scoped to `/files` and the first is not, so they do not collide in the code; on the sheet they read as a contradiction. — fix: name the scope on the first row too, or move the `/files` pair next to it. — sev: low — frames: help-help-output.160x50.txt (lines 20 and 41)
 
@@ -64,7 +64,7 @@ twin with the colour.
 - **The emptiness law holds on every empty place.** On the bare home the top line draws no
   allowance at all (`help-empty-tasks.160x50.txt` line 1 is the clock alone), the spend body
   draws no `$0.00` and no `0 tok`, and the greeting's status row is
-  `aforge · <model>   crew balanced · idle` with no money and no token count — exactly what
+  `codeaf · <model>   crew balanced · idle` with no money and no token count — exactly what
   `internal/manual/chat/empty-screen.md:29` says it should be. The one `$0.00` that appears
   is on the live status line of a conversation, which is the stated exception.
 - **No `lipgloss.Color("…")` literals anywhere in `internal/tui3`** — `grep` over the whole
@@ -75,8 +75,8 @@ twin with the colour.
   on the bare home; none refuses, none draws a blank body. `pages.go:261`'s law holds.
 - **The masked key box reveals only the last four characters** (`firstrun.go:888`) — standard,
   deliberate, not a defect.
-- **`openaf` is the product's own wordmark on purpose**, not a stale name — the manual states
-  it (`starting-aforge.md:22`, `commands.md:234`) and `styles.go:1648` is the one source.
+- **`codeaf` is the product's own wordmark on purpose**, not a stale name — the manual states
+  it (`starting-codeaf.md:22`, `commands.md:234`) and `styles.go:1648` is the one source.
 - **`tab` in a conversation means "the last conversation" and on a place means "the next
   place"**, and `/help`'s line for it is correct for where it is read — the manual says the
   same thing twice (`keys.md:493`, `keys.md:1273`). Not a disagreement.
@@ -88,7 +88,7 @@ twin with the colour.
 
 Bare home (config only, nothing in it): home, tasks, standing, memory, spend, search,
 settings at 160x50; home at 120x40, 80x24, 60x30; search at 120x40 and 80x24; memory and
-spend at 80x24. First run (no `.aforge` at all): 160x50, 120x40, 80x24, 60x30, plus the
+spend at 80x24. First run (no `.codeaf` at all): 160x50, 120x40, 80x24, 60x30, plus the
 bad-key refusal and the screen after `esc`. Help doors: `?`, `/`, `/ma`, `/help`, `/manual`,
 `/manual <page>`, `/manual <miss>`, `/manual <question>`, `/nosuchthing`, and the map over
 search. Demo home: search resting, with words, with no hit, and the spend place with a
@@ -353,7 +353,7 @@ reading of each is the frame the row it closes already names.
 
 **The row named the wrong glyph, and the defect is real.** Row 17 quotes
 `'f': {"┌─ ", "├─ ", "│  "}` and says the mark draws `┌─┐ … ┌─`, which is what it would
-draw if [product] were `openaf`. It is `aforge` (`styles.go`), so the last glyph is `e`
+draw if [product] were `codeaf`. It is `codeaf` (`styles.go`), so the last glyph is `e`
 and the rendered mark was:
 
 ```

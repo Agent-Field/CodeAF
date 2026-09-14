@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# frame.sh — capture text frames from the real aforge binary in a real terminal.
+# frame.sh — capture text frames from the real codeaf binary in a real terminal.
 #
 #   DEMO_HOME=… scripts/frame.sh <name> <cols> <rows> [key ...]
 #
@@ -24,7 +24,7 @@ mkdir -p "$OUT"
 
 "${T[@]}" kill-session -t "$sess" 2>/dev/null
 "${T[@]}" new-session -d -s "$sess" -x "$cols" -y "$rows" \
-  "cd '$HOME_DIR/${SUBDIR:-aforge-v2}' && HOME='$HOME_DIR' TERM=xterm-256color COLORTERM=truecolor '$BIN' ${AFORGE_ARGS:-}"
+  "cd '$HOME_DIR/${SUBDIR:-codeaf}' && HOME='$HOME_DIR' TERM=xterm-256color COLORTERM=truecolor '$BIN' ${CODEAF_ARGS:-}"
 "${T[@]}" set-option -t "$sess" -w window-size manual >/dev/null 2>&1
 "${T[@]}" resize-window -t "$sess" -x "$cols" -y "$rows" >/dev/null 2>&1
 sleep "$BOOT"

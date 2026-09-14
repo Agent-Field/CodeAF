@@ -14,6 +14,6 @@ timeout 900 docker exec "$name" npm install -g @earendil-works/pi-coding-agent@0
 docker exec "$name" bash -c 'node --version; npm --version; pi --version; npm ls -g --all --json' \
   > "$out/runtime-toolchain.txt" 2>&1
 docker commit "$name" > "$out/runtime-image.txt"
-sha256sum bin/codeaf > "$out/aforge-binary.sha256"
+sha256sum bin/codeaf > "$out/codeaf-binary.sha256"
 cp bench/deepswe/compare-cell.sh "$out/compare-cell.snapshot.sh"
 echo 'Container runtime ready.'

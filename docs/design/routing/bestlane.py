@@ -11,11 +11,11 @@ length, plus a second, or is that lane. Every lane is probed twice. The request 
 in the debug record are also checked for a `max_price` riding beside an order.
 
     OPENROUTER_API_KEY=... python3 docs/design/routing/bestlane.py \
-        --bin bin/aforge --models z-ai/glm-5.3-flash deepseek/deepseek-v4.1-flash --runs 3
+        --bin bin/codeaf --models z-ai/glm-5.3-flash deepseek/deepseek-v4.1-flash --runs 3
 """
 import argparse, collections, glob, json, os, subprocess, sys, time, urllib.request
 
-HOME = os.path.expanduser("~/.aforge")
+HOME = os.path.expanduser("~/.codeaf")
 URL = "https://openrouter.ai/api/v1/chat/completions"
 PROMPT = "Write 220 words explaining how a TCP congestion window grows and shrinks. Plain prose, no lists."
 READ_RATE = 18.0  # lane.ReadRate: tokens a person reads per second
@@ -103,7 +103,7 @@ def run_binary(binary, model, prompt):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bin", default="bin/aforge")
+    ap.add_argument("--bin", default="bin/codeaf")
     ap.add_argument("--models", nargs="+", default=["z-ai/glm-5.3-flash", "deepseek/deepseek-v4.1-flash"])
     ap.add_argument("--runs", type=int, default=3)
     args = ap.parse_args()

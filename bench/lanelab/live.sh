@@ -8,7 +8,7 @@
 # --go spends money.
 #
 # WHAT IT COSTS WHEN IT IS RUN. Two arms x $PROMPTS prompts x $REPS replicates,
-# through the real aforge CLI on the real model. At the default 40 prompts and
+# through the real codeaf CLI on the real model. At the default 40 prompts and
 # 3 replicates that is 240 sessions. bench/ab-routing measured this shape of
 # experiment at roughly $0.02-$0.06 a session on ds-v4-flash, so budget
 # $6-$15 and about two hours of wall clock at CONCURRENCY=6. Arm B additionally
@@ -36,7 +36,7 @@
 # experiment is broken and this script should refuse rather than paper over it.
 #
 # THE METRIC IS THE DIFF OF THE TWO LEDGERS, NEVER A COUNT OF WINS. Both arms
-# write ~/.aforge/v3/usage.jsonl. The comparison is the distribution of
+# write ~/.codeaf/v3/usage.jsonl. The comparison is the distribution of
 # `ttft_ms`, `tps`, and `usd` and the totals of `hedged` and `hedge_waste_usd`,
 # per arm, side by side. A count of which arm was faster on more prompts is not
 # evidence: it answers a different question from the one anybody has, which is
@@ -62,7 +62,7 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 ARM="${ARM:-a}"
 PROMPTS="${PROMPTS:-$HERE/prompts.txt}"
 REPS="${REPS:-3}"
-AFORGE_BIN="${AFORGE_BIN:-$ROOT/bin/codeaf}"
+CODEAF_BIN="${CODEAF_BIN:-$ROOT/bin/codeaf}"
 OUT="${OUT:-$HERE/live}"
 DRY=1
 MODE="run"
@@ -86,7 +86,7 @@ case "$ARM" in
   a) ARM_LABEL="shipped configuration, untouched"
      ARM_ENV=() ;;
   b) ARM_LABEL="lane router on"
-     ARM_ENV=("AFORGE_LANES=on") ;;
+     ARM_ENV=("CODEAF_LANES=on") ;;
   *) echo "ARM must be a or b" >&2; exit 2 ;;
 esac
 
@@ -105,19 +105,19 @@ plan() {
   cat <<EOF
 arm:          $ARM  ($ARM_LABEL)
 env:          ${ARM_ENV[*]:-<none: this is the shipped default and must stay empty>}
-binary:       $AFORGE_BIN
+binary:       $CODEAF_BIN
 prompts:      $PROMPTS  ($n prompts)$([ "$n" = "0" ] && echo "  <-- WRITE THIS FIRST: one prompt per line")
 replicates:   $REPS      (sequential; see the header on why not parallel)
 cells:        $(( n * REPS ))
 results:      $OUT/arm-$ARM.jsonl
-ledger:       \$HOME/.aforge/v3/usage.jsonl  (copied per cell, diffed at compare)
+ledger:       \$HOME/.codeaf/v3/usage.jsonl  (copied per cell, diffed at compare)
 timeouts:     $SESSION_TIMEOUT per session, $TOKEN_BUDGET tokens, \$$SPEND_CAP_USD cap
 EOF
 }
 
 run_arm() {
   need jq
-  [ -x "$AFORGE_BIN" ] || { echo "build it first: make build" >&2; exit 1; }
+  [ -x "$CODEAF_BIN" ] || { echo "build it first: make build" >&2; exit 1; }
   [ -f "$PROMPTS" ] || { echo "no prompt set at $PROMPTS" >&2; exit 1; }
   mkdir -p "$OUT"
   : > "$OUT/arm-$ARM.jsonl"
@@ -135,17 +135,17 @@ run_arm() {
       local ws ledger_before
       ws="$(mktemp -d)"
       ledger_before="$(mktemp)"
-      cp "$HOME/.aforge/v3/usage.jsonl" "$ledger_before" 2>/dev/null || : > "$ledger_before"
+      cp "$HOME/.codeaf/v3/usage.jsonl" "$ledger_before" 2>/dev/null || : > "$ledger_before"
 
       env "${ARM_ENV[@]}" \
-        AFORGE_TOKEN_BUDGET="$TOKEN_BUDGET" \
+        CODEAF_TOKEN_BUDGET="$TOKEN_BUDGET" \
         timeout "$SESSION_TIMEOUT" \
-        "$AFORGE_BIN" ask "$prompt" -w "$ws" >/dev/null 2>&1 || true
+        "$CODEAF_BIN" ask "$prompt" -w "$ws" >/dev/null 2>&1 || true
 
       # THE MEASUREMENT IS THE DIFF OF THE LEDGER, not anything the session
       # printed. The new lane fields -- lane, ttft_ms, tps, hedged,
       # hedge_waste_usd -- are written by internal/session/usage_ledger.go.
-      diff <(cat "$ledger_before") "$HOME/.aforge/v3/usage.jsonl" \
+      diff <(cat "$ledger_before") "$HOME/.codeaf/v3/usage.jsonl" \
         | sed -n 's/^> //p' \
         | jq -c --arg arm "$ARM" --argjson cell "$i" --argjson rep "$rep" \
               '{arm:$arm, cell:$cell, rep:$rep,

@@ -67,13 +67,13 @@ The unit is a **cell**: one issue, one door, one clone, one home, one grade.
    the entry's `version`, and a cell exports it as
    `SETUPTOOLS_SCM_PRETEND_VERSION` and `HATCH_VCS_PRETEND_VERSION` around its
    pip installs only, never for the door.
-3. **A home of its own.** `AFORGE_HOME` moves the whole state root, so every
+3. **A home of its own.** `CODEAF_HOME` moves the whole state root, so every
    cell has its own journal, call log, budget and first-run history. Only the
    api key is carried over from the person's profile; the talk model, all four
    tiers and the approval posture are written to the one model under test.
-4. **One door.** `do`: `aforge do "<issue>" -w <clone> -json -yes-spend -model M
+4. **One door.** `do`: `codeaf do "<issue>" -w <clone> -json -yes-spend -model M
    -plan-model M -timeout 900`. `chat`: the binary in a tmux window standing in
-   the clone, `aforge chat -yolo -one-model -model M -max-cost 1 -max-hours H` (H is the wall minus a 60 s margin, in hours, so aforge ends on its own law before the rig clock stops watching), the issue
+   the clone, `codeaf chat -yolo -one-model -model M -max-cost 1 -max-hours H` (H is the wall minus a 60 s margin, in hours, so codeaf ends on its own law before the rig clock stops watching), the issue
    pasted as a bracketed paste, enter. Nothing on the screen is trusted to say
    the turn is over: it is over when the journal holds a non-aux `usage` seal,
    the call log shows nothing in flight, the status line reads idle, and the

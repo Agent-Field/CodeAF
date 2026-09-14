@@ -172,8 +172,8 @@ cleanup() {
 HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
 trap cleanup EXIT INT TERM
 
-# ── the aforge arms: the real TUI, over tmux, into the container ────────────
-run_aforge() {
+# ── the codeaf arms: the real TUI, over tmux, into the container ────────────
+run_codeaf() {
   local all_flash="$1"
   ALL_FLASH="$all_flash" MODEL="$MODEL" PROFILE="$CELL/profile" python3 - <<'PY'
 import datetime, json, os
@@ -192,14 +192,14 @@ PY
   # surface drawing into this pane is the one running beside the repository.
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
     "docker exec -it -w /repo/$REPO_NAME \
-       -e HOME=/chome -e AFORGE_HOME=/prof -e AFORGE_PROFILE_DIR=/prof \
+       -e HOME=/chome -e CODEAF_HOME=/prof -e CODEAF_PROFILE_DIR=/prof \
        -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -e TERM=xterm-256color \
-       $CONTAINER aforge chat --yolo --model '$MODEL'; echo AFORGE-EXITED; sleep 60"
+       $CONTAINER codeaf chat --yolo --model '$MODEL'; echo codeaf-EXITED; sleep 60"
 
   local waited=0 drew=""
   while [ "$waited" -lt 90 ]; do
     sleep 3; waited=$((waited + 3))
-    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'AFORGE-EXITED' && break
+    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'codeaf-EXITED' && break
     if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -Eq '›|try "what is in this folder"'; then drew=yes; break; fi
   done
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-firstframe.txt"
@@ -304,8 +304,8 @@ run_peer() {
 STARTED=$(date +%s)
 cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
 case "$ARM" in
-  aforge-swe-flash) run_aforge 1; CODE=$? ;;
-  aforge-swe-crew)  run_aforge 0; CODE=$? ;;
+  codeaf-swe-flash) run_codeaf 1; CODE=$? ;;
+  codeaf-swe-crew)  run_codeaf 0; CODE=$? ;;
   pi|opencode)      run_peer >"$CELL/harness.log" 2>&1; CODE=$?
                     [ "$CODE" = "124" ] && echo DNF > "$CELL/outcome" || echo OK > "$CELL/outcome" ;;
   *) say "unknown arm $ARM"; cleanup; exit 2 ;;

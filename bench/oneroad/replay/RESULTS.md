@@ -36,34 +36,34 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 | cell | truth | A/deepse | A/kimi-k | B/deepse | B/kimi-k | C/deepse | C/kimi-k | D/deepse | D/kimi-k |
 |---|---|---|---|---|---|---|---|---|---|
-| aforge-pre-crew-20-s1 | CONTINUE | C1/X2 | C3 | S2/C1 | C2/A1 | S1/C1/X1 | S1/C2 | C3 | C3 |
-| aforge-pre-crew-21-s1 | CONTINUE | S1/A1/X1 | C2/X1 | X3 | C2/X1 | S2/C1 | S3 | C2/X1 | C1/X2 |
-| aforge-pre-crew-22-s1 | CONTINUE | C1/X2 | C3 | S1/C1/X1 | C3 | C2/X1 | S1/C2 | C1/X2 | C1/X2 |
-| aforge-pre-crew-23-s1 | CONTINUE | C1/A1/X1 | C3 | X3 | C3 | C3 | S3 | C1/X2 | C2/X1 |
-| aforge-pre-crew-batch-s1 | SPLIT | A2/X1 | S3 | S1/A1/X1 | C3 | S2/C1 | S3 | S1/A2 | X3 |
-| aforge-pre-flash-20-s1 | CONTINUE | C1/X2 | C3 | C1/X2 | C3 | C3 | C3 | C1/X2 | C3 |
-| aforge-pre-flash-21-s1 | CONTINUE | C1/X2 | C3 | S1/A1/X1 | C2/X1 | C2/X1 | C3 | S1/X2 | C2/X1 |
-| aforge-pre-flash-22-s1 | CONTINUE | S1/X2 | C3 | X3 | C3 | S1/C2 | S2/C1 | C1/X2 | C2/X1 |
-| aforge-pre-flash-23-s1 | CONTINUE | S1/A1/X1 | C3 | C1/X2 | C3 | C1/X2 | C3 | C2/X1 | C3 |
-| aforge-pre-flash-batch-s1 | SPLIT | S3 | S1/C1/X1 | C1/A2 | S1/C2 | S1/C2 | S3 | S2/A1 | S1/X2 |
+| codeaf-pre-crew-20-s1 | CONTINUE | C1/X2 | C3 | S2/C1 | C2/A1 | S1/C1/X1 | S1/C2 | C3 | C3 |
+| codeaf-pre-crew-21-s1 | CONTINUE | S1/A1/X1 | C2/X1 | X3 | C2/X1 | S2/C1 | S3 | C2/X1 | C1/X2 |
+| codeaf-pre-crew-22-s1 | CONTINUE | C1/X2 | C3 | S1/C1/X1 | C3 | C2/X1 | S1/C2 | C1/X2 | C1/X2 |
+| codeaf-pre-crew-23-s1 | CONTINUE | C1/A1/X1 | C3 | X3 | C3 | C3 | S3 | C1/X2 | C2/X1 |
+| codeaf-pre-crew-batch-s1 | SPLIT | A2/X1 | S3 | S1/A1/X1 | C3 | S2/C1 | S3 | S1/A2 | X3 |
+| codeaf-pre-flash-20-s1 | CONTINUE | C1/X2 | C3 | C1/X2 | C3 | C3 | C3 | C1/X2 | C3 |
+| codeaf-pre-flash-21-s1 | CONTINUE | C1/X2 | C3 | S1/A1/X1 | C2/X1 | C2/X1 | C3 | S1/X2 | C2/X1 |
+| codeaf-pre-flash-22-s1 | CONTINUE | S1/X2 | C3 | X3 | C3 | S1/C2 | S2/C1 | C1/X2 | C2/X1 |
+| codeaf-pre-flash-23-s1 | CONTINUE | S1/A1/X1 | C3 | C1/X2 | C3 | C1/X2 | C3 | C2/X1 | C3 |
+| codeaf-pre-flash-batch-s1 | SPLIT | S3 | S1/C1/X1 | C1/A2 | S1/C2 | S1/C2 | S3 | S2/A1 | S1/X2 |
 
 ## Instructive answers (verbatim, truncated to 500 chars)
 
 ### Variant A (current)
 
-**trap_hit** - aforge-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (one job)
+**trap_hit** - codeaf-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (one job)
 
-> One job left: verify the full existing workflow file (output was clipped), make any needed fix, and confirm tests pass. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml<|close|>argument<|sep|><|close|>call<|sep|><|close|>tools<|sep|><|close|>message<|sep|>
+> One job left: verify the full existing workflow file (output was clipped), make any needed fix, and confirm tests pass. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml<|close|>argument<|sep|><|close|>call<|sep|><|close|>tools<|sep|><|close|>message<|sep|>
 
-**trap_miss** - aforge-pre-flash-23-s1 / deepseek-v4-flash -> `SPLIT` (several parts / hand over)
+**trap_miss** - codeaf-pre-flash-23-s1 / deepseek-v4-flash -> `SPLIT` (several parts / hand over)
 
 > Handing this over — here's the brief for the worker who will finish the implementation.
 
-**width_hit** - aforge-pre-crew-batch-s1 / kimi-k3 -> `SPLIT` (several parts / hand over)
+**width_hit** - codeaf-pre-crew-batch-s1 / kimi-k3 -> `SPLIT` (several parts / hand over)
 
-> Several independent parts remain — handing them over now.<|open|>tools<|sep|><|open|>call tool="propose_task" index="1"<|sep|><|open|>argument key="brief" type="string"<|sep|>You are working in the repository at `<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization`. It is a Python package (`bambara-text-normalizer`) providing Bambara text normalization. Source lives under `src/bambara_normalizer/` with modules: `__init__.py`, `cli.py`, `config.
+> Several independent parts remain — handing them over now.<|open|>tools<|sep|><|open|>call tool="propose_task" index="1"<|sep|><|open|>argument key="brief" type="string"<|sep|>You are working in the repository at `<home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-batch-s1/work/bambara-text-normalization`. It is a Python package (`bambara-text-normalizer`) providing Bambara text normalization. Source lives under `src/bambara_normalizer/` with modules: `__init__.py`, `cli.py`, `config.
 
-**width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `AMBIG` (no clear marker)
+**width_miss** - codeaf-pre-crew-batch-s1 / deepseek-v4-flash -> `AMBIG` (no clear marker)
 
 > Here's what I've accomplished so far and what remains:
 > 
@@ -76,17 +76,17 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > 4. Create `currency.py` module and integrate it (Issue #22)
 > 5. Update spans, config, normalizer, __init__, and tests f
 
-**unclear** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
+**unclear** - codeaf-pre-crew-20-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_5dfe32a676f44b558fee6beb", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization/.github/workflows/code-check.yml\"}"}}]
+> [tool_call] [{"type": "function", "index": 0, "id": "call_5dfe32a676f44b558fee6beb", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-20-s1/work/bambara-text-normalization/.github/workflows/code-check.yml\"}"}}]
 
 ### Variant B (delegation test)
 
-**trap_hit** - aforge-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (carry on)
+**trap_hit** - codeaf-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (carry on)
 
-> What remains is small — verifying the full workflow file (my earlier read was clipped) and confirming the tests job is complete — faster to finish than to hand over. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml && echo "---" && git log --oneline -5 && git status --short<|close
+> What remains is small — verifying the full workflow file (my earlier read was clipped) and confirming the tests job is complete — faster to finish than to hand over. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml && echo "---" && git log --oneline -5 && git status --short<|close
 
-**trap_miss** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `SPLIT` (leading HAND OVER)
+**trap_miss** - codeaf-pre-crew-20-s1 / deepseek-v4-flash -> `SPLIT` (leading HAND OVER)
 
 > The issue is already fully implemented. No changes are needed. The workflow at `.github/workflows/code-check.yml`:
 > 
@@ -97,46 +97,46 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > 
 > The only remaining action is a repository setting: in GitHub → Settings → Branches → Branch protection rule
 
-**width_hit** - aforge-pre-flash-batch-s1 / kimi-k3 -> `SPLIT` (leading HAND OVER)
+**width_hit** - codeaf-pre-flash-batch-s1 / kimi-k3 -> `SPLIT` (leading HAND OVER)
 
 > HAND OVER
 > 
-> **Repo:** `bambara-text-normalizer` (Python, src layout, pytest). Work dir: `<home>/af-oneroad/bench/oneroad/results/aforge-pre-flash-batch-s1/work/bambara-text-normalization`. A `.venv` with pytest exists; run tests with `.venv/bin/python -m pytest tests/`.
+> **Repo:** `bambara-text-normalizer` (Python, src layout, pytest). Work dir: `<home>/af-oneroad/bench/oneroad/results/codeaf-pre-flash-batch-s1/work/bambara-text-normalization`. A `.venv` with pytest exists; run tests with `.venv/bin/python -m pytest tests/`.
 > 
 > **Task:** implement 4 issues, keep the existing suite green, don't weaken tests.
 > 
 > **Done so far:**
 > 1. **Issue #20 (CI)**: Created `.github/workflows/tests.yml` — runs on `pull_request` to `main` with `types: [opened, synch
 
-**width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
+**width_miss** - codeaf-pre-crew-batch-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_d95f2b5eeeb34668bf7d7574", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/pyproject.toml\"}"}}, {"type": "function", "index": 1, "id": "call_3db0475d79014f6093bce602", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/s
+> [tool_call] [{"type": "function", "index": 0, "id": "call_d95f2b5eeeb34668bf7d7574", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-batch-s1/work/bambara-text-normalization/pyproject.toml\"}"}}, {"type": "function", "index": 1, "id": "call_3db0475d79014f6093bce602", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/codeaf-pre-crew-batch-s1/work/bambara-text-normalization/s
 
-**unclear** - aforge-pre-crew-21-s1 / deepseek-v4-flash -> `IGNORED` (narrates the next action, states no decision)
+**unclear** - codeaf-pre-crew-21-s1 / deepseek-v4-flash -> `IGNORED` (narrates the next action, states no decision)
 
 > Let me check the existing domain modules to see the exact integration pattern.
 
 ### Variant C (dependency sketch)
 
-**trap_hit** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `CONTINUE` (single atom, no operator: (done))
+**trap_hit** - codeaf-pre-crew-20-s1 / deepseek-v4-flash -> `CONTINUE` (single atom, no operator: (done))
 
 > `(done)`
 > 
 > `done`: The validation workflow is already in place and tests pass — no remaining implementation.
 
-**trap_miss** - aforge-pre-crew-20-s1 / kimi-k3 -> `SPLIT` (pipe in shape: A > (B | C))
+**trap_miss** - codeaf-pre-crew-20-s1 / kimi-k3 -> `SPLIT` (pipe in shape: A > (B | C))
 
 > A > (B | C)
 > 
 > A is confirming the existing `code-check.yml` workflow already runs pytest on PRs to `main` with all 317 tests passing (done); B is optionally making the `pull_request` event types (`opened`, `synchronize`, `reopened`) explicit in the YAML for clarity; C is noting that marking the `tests` job as a required status check must be done in the repo's GitHub branch-protection settings, not in code.
 
-**width_hit** - aforge-pre-crew-batch-s1 / kimi-k3 -> `SPLIT` (pipe in shape: A > (B | C | D) > E)
+**width_hit** - codeaf-pre-crew-batch-s1 / kimi-k3 -> `SPLIT` (pipe in shape: A > (B | C | D) > E)
 
 > A > (B | C | D) > E
 > 
 > A: finish Issue #23 (make CLI imports degrade gracefully when typer/rich are absent); B: Issue #20 validation workflow file; C: Issue #21 arithmetic normalizer module plus wiring into spans/config/exports; D: Issue #22 currency normalizer module plus wiring; E: run the full test suite and fix any failures.
 
-**width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `CONTINUE` (pure chain: CLI > (ARITH + CURR) > WORKFLOW > TEST)
+**width_miss** - codeaf-pre-crew-batch-s1 / deepseek-v4-flash -> `CONTINUE` (pure chain: CLI > (ARITH + CURR) > WORKFLOW > TEST)
 
 > CLI > (ARITH + CURR) > WORKFLOW > TEST
 > 
@@ -146,13 +146,13 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > - WORKFLOW: Create .github/workflows/validation.yml
 > - TEST: Run the test suite to verify everything passes
 
-**unclear** - aforge-pre-flash-23-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
+**unclear** - codeaf-pre-flash-23-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_a89a9012cec14d29a8c0af8c", "function": {"name": "bash", "arguments": "{\"command\": \"cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-flash-23-s1/work/bambara-text-normalization && .venv/bin/pip install -e \\\".[dev]\\\" 2>&1 | tail -10\", \"timeout\": 60}"}}]
+> [tool_call] [{"type": "function", "index": 0, "id": "call_a89a9012cec14d29a8c0af8c", "function": {"name": "bash", "arguments": "{\"command\": \"cd <home>/af-oneroad/bench/oneroad/results/codeaf-pre-flash-23-s1/work/bambara-text-normalization && .venv/bin/pip install -e \\\".[dev]\\\" 2>&1 | tail -10\", \"timeout\": 60}"}}]
 
 ### Variant D (recruitment)
 
-**trap_hit** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `CONTINUE` (nothing separable)
+**trap_hit** - codeaf-pre-crew-20-s1 / deepseek-v4-flash -> `CONTINUE` (nothing separable)
 
 > NO, NOTHING SEPARABLE. The implementation is already complete as-is:
 > 
@@ -162,7 +162,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > 
 > No c
 
-**trap_miss** - aforge-pre-flash-21-s1 / deepseek-v4-flash -> `SPLIT` (names separable work)
+**trap_miss** - codeaf-pre-flash-21-s1 / deepseek-v4-flash -> `SPLIT` (names separable work)
 
 > Yes, two separable things:
 > 
@@ -173,7 +173,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > - `-` (subtraction)  
 > - `×
 
-**width_hit** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `SPLIT` (names separable work)
+**width_hit** - codeaf-pre-crew-batch-s1 / deepseek-v4-flash -> `SPLIT` (names separable work)
 
 > Yes, the validation workflow (Issue #20) is perfectly separable — it's a standalone YAML file in `.github/workflows/` with no code dependencies. I'll hand that off.
 > 
@@ -181,7 +181,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > 
 > Let me write a brief for the worker on Issue #20.
 
-**width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `AMBIG` (no clear marker)
+**width_miss** - codeaf-pre-crew-batch-s1 / deepseek-v4-flash -> `AMBIG` (no clear marker)
 
 > Great observations! The two extra workers can each take one fully independent piece that touches only a single file not yet modified.
 > 
@@ -190,7 +190,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 > 
 > I'll handle Issues #21 and #22 myself since both need coordinated edits to `spans.py`, `normali
 
-**unclear** - aforge-pre-crew-22-s1 / deepseek-v4-flash -> `IGNORED` (narrates the next action, states no decision)
+**unclear** - codeaf-pre-crew-22-s1 / deepseek-v4-flash -> `IGNORED` (narrates the next action, states no decision)
 
 > Let me read the actual source code content more carefully, since the previous reads got clipped by the license header:
 

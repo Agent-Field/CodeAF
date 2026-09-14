@@ -11,7 +11,7 @@ internal/furrowbin/cache/furrow-*.gz
 .claude/
 /codeaf
 bench-results/
-.aforge-v3/
+.codeaf-v3/
 __pycache__/
 *.pyc
 *.aux

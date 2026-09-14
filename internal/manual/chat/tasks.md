@@ -55,7 +55,7 @@ that must pass, the behaviour that must hold, the output that must appear. The o
 done-condition stay on the record. A correction from you can change the effective
 assignment through `revise_assignment`; the task keeps both your words and its revision.
 
-You can keep working while a task runs. aforge tells you not to wait for it: its report
+You can keep working while a task runs. codeaf tells you not to wait for it: its report
 arrives in the conversation when it lands.
 
 **One other thing on the roster is a task, and it is not work in a copy of its own.** A sub-harness
@@ -98,7 +98,7 @@ model. The word for what it is, on the row and on the card, is `quick`.
 Because it wrote in your own folder, its card carries no branch and no merge word — only
 the files, if it changed any.
 
-## How a quick task starts — there is no /quick command, aforge starts one itself
+## How a quick task starts — there is no /quick command, codeaf starts one itself
 
 **You cannot type a quick task into being.** There is no `/quick` command and `/task`
 never makes one: `/task` is the ordinary road, with its width read and its brief written
@@ -237,7 +237,7 @@ What each one does depends on where it had got to:
 
 - **Finished** — it comes back exactly as it landed. Nothing runs again.
 - **Running when the window closed** — it comes back `incomplete`, saying
-  `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
+  `the quick task did not finish before codeaf closed; whatever it wrote is in your folder`.
   It is **not** started again, and that is deliberate: it was writing in your own folder
   rather than a copy, so a second worker walking a half-done checklist over the top of the
   first one's edits would not be a resume. Under that sentence its card lists the checklist
@@ -247,7 +247,7 @@ What each one does depends on where it had got to:
   it never started, and it does not start now: the turn that asked for it is over, and work
   arriving on its own in a conversation that has moved on is not what anybody asked for.
   The row says so:
-  `the quick task never started before aforge closed, and it does not resume — ask for it again`.
+  `the quick task never started before codeaf closed, and it does not resume — ask for it again`.
   Asking again costs a sentence.
 
 The line you read on reopening counts them under their own clause —
@@ -261,7 +261,7 @@ back refused any row without one, which threw the whole conversation's work away
 finished rows, running tasks, families and all. The rule still holds for every ordinary
 task; a quick task is now allowed the blank it is supposed to have.
 
-## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how aforge decides which road your work takes
+## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how codeaf decides which road your work takes
 
 The rule is written once, in the words the model itself reads:
 
@@ -301,7 +301,7 @@ You can overrule it either way in words, and the model follows.
 
 **A few files and a few minutes.** A quick task is one worker with one context and no
 grooming, so the thing that ends it early is not a wall clock, it is running out of room:
-a worker that only reads is not making progress by aforge's own measure, and after a few
+a worker that only reads is not making progress by codeaf's own measure, and after a few
 such steps in a row it is stopped and its row lands saying `out of rounds`.
 
 That is a real failure and not a hypothetical. A quick task told to survey twenty files
@@ -316,7 +316,7 @@ tasks of its own cuts them smaller still, because its own room is already spent.
 ## Why several things started at once — three quick tasks in one message, why it did not do them one at a time
 
 **Because they did not need each other, and one after another is the slowest order.**
-When a turn has independent pieces in front of it, aforge starts them in the same breath
+When a turn has independent pieces in front of it, codeaf starts them in the same breath
 rather than in turn, keeps one piece for itself and gets on with it. You wait for the
 longest piece instead of the sum of them, and the rail shows every one of them running.
 That is the whole aim when work splits: the shortest wall time for the whole job, the way
@@ -399,12 +399,12 @@ plain done-condition `Complete the brief and report the result and checks run.`,
 nothing is printed about it. It is never a reason for your task to be refused, held up,
 or lost.
 
-The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
+The call is billed the way codeaf's other calls-you-did-not-type are: to the session, not to
 a turn. It runs on the `shaper` role, which follows the careful-work model.
 
 ## Why my task says brief kept as you wrote it — the line under a started task, my brief was not shaped
 
-**It does not any more.** `brief kept as you wrote it` was one dim line an older aforge
+**It does not any more.** `brief kept as you wrote it` was one dim line an older codeaf
 printed under `single task 12 started · …` when the shaping call, which then ran before the
 task, was cut. Nothing waits on that call now, so there is nothing for such a line to
 report at the moment the task starts.
@@ -415,7 +415,7 @@ The task's room shows which it has: the longer document, or your sentence alone.
 were relying on that pass to spell out the format or the done-condition, say it yourself —
 in the task's room, while it runs, or in the brief you start it with.
 
-## Does aforge change my task, or rewrite what I asked for?
+## Does codeaf change my task, or rewrite what I asked for?
 
 No. The shaping pass adds around your words; it never replaces them.
 
@@ -460,7 +460,7 @@ is not rerun.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool, and it is not
-renamed — a second call to disagree with a name aforge itself just wrote would be a bill
+renamed — a second call to disagree with a name codeaf itself just wrote would be a bill
 for nothing. The model that writes a `/task`'s brief does not name it: the task already has
 its name by then, a few seconds after it started. A title that is already two or three
 words with no file path in it is left alone for the same reason.
@@ -473,7 +473,7 @@ changes to it. If it never arrives — no model on the class, a timeout, an answ
 itself a path — the fallback stays, nothing is reported, and nothing about the work is
 affected.
 
-**Work aforge starts on its own is usually named before you hear about it.** When a turn is
+**Work codeaf starts on its own is usually named before you hear about it.** When a turn is
 judged to be work, or a running turn is handed over at its ceiling, the name is asked for at
 that moment — beside the brief being written, not after the task exists — so by the time the
 `this looked like work, so task N started:` line is drawn the name is normally in hand and
@@ -535,7 +535,7 @@ block settles as `cancelled · the proposal never arrived`. If the call is refus
 there is a proposal to ask about, it settles as `not started · the call was refused`.
 
 When the proposal is complete, that same block becomes the ASSIGNMENT, and the question
-about it is asked above the message box with every other question aforge puts to you. The
+about it is asked above the message box with every other question codeaf puts to you. The
 block in the conversation shows:
 
 - a head with the task's own identity mark and a two-or-three-word name;
@@ -552,7 +552,7 @@ no other decision on this screen is drawn. The question is above the box:
 
 ```
 ? wants to start a task: Fix the nil-map crash
-  The parser drops a key on an empty map. · aforge
+  The parser drops a key on an empty map. · codeaf
   ▸ 1  start it
     2  no
   enter take it · esc later · c change · start it in 9s
@@ -582,7 +582,7 @@ partial block disappears because that attempt's half-arrived call was discarded;
 proposal fragment starts a new block. If the call is refused before it ever becomes a
 question, it settles as `not started · the call was refused` instead of moving forever.
 
-## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
+## Why a task started on its own — codeaf started work I did not ask for, this looked like work, so task N started
 
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
@@ -652,7 +652,7 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
 
-## A message that reads like work makes aforge look sooner — nothing else happens
+## A message that reads like work makes codeaf look sooner — nothing else happens
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that
 answered in words alone, above. The other starts **the moment you press enter**: your
@@ -664,7 +664,7 @@ somewhere else while you watch it. So a no costs you nothing at all — which is
 messages, and it is why the read can afford to take its time.
 
 **If both models say yes, you see nothing.** No line, no task, no interruption. The one
-thing that changes is *when aforge says something about the work*: instead of waiting until
+thing that changes is *when codeaf says something about the work*: instead of waiting until
 the answer has run ten rounds of tool calls, the first note lands at the very next break
 between rounds — and then at the ordinary point after that. What that note says, and what it
 can and cannot do, is *An answer that runs long is told, and decides for itself* below.
@@ -724,9 +724,9 @@ the window to redirect it before it spends anything.
 
 ## An answer that runs long is told, and decides for itself — a reply that stops halfway to become a task, my answer was moved, this is running long, why did it not become a task
 
-**When one answer keeps going, aforge says so — and the model writing it decides what to do
+**When one answer keeps going, codeaf says so — and the model writing it decides what to do
 about that.** After ten finished rounds of tool calls, and again after twenty, a short note
-arrives inside the reply. It carries three facts aforge already has — how many rounds have
+arrives inside the reply. It carries three facts codeaf already has — how many rounds have
 gone, how many files have been opened, how many kilobytes of results are being held — and the
 three roads on: answer now from what is already there; carry the rest on in a room, with
 `quick_task` and `inherit` set, which opens on this conversation exactly as it stands; or
@@ -738,7 +738,7 @@ the next request the reply was going to make anyway. The count of finished round
 whole of the trigger, and **nothing about what you asked for is read** to decide when to say
 it. Rounds spent only watching work already handed out do not count towards it.
 
-**Why the model decides and aforge does not.** The question is not "are there parts" — it is
+**Why the model decides and codeaf does not.** The question is not "are there parts" — it is
 "is this worth carrying somewhere else", and only the model holding what has been read knows
 what re-reading it would cost. A second model used to be shown a summary of the work and
 decide for it: on a one-line design question it read ten files in 48 seconds, a reader said
@@ -752,14 +752,14 @@ below, and it is not a count.
 
 ## When a reply is taken out of your hands — this is running long, my answer was moved, the ceiling, why a reply stopped halfway
 
-**A reply is moved only when it can no longer work where it is.** aforge reads that three
+**A reply is moved only when it can no longer work where it is.** codeaf reads that three
 ways, and none of them is a number of rounds:
 
 - **Its own context is full.** The conversation has grown until this model's window no longer
   has room for one more tool result. A reply that cannot hold another result cannot take
   another step.
 - **It is going in circles.** The loop watch has said so twice, and a third note would be
-  aforge talking to itself — see *Why does it say carry on*.
+  codeaf talking to itself — see *Why does it say carry on*.
 - **It said it was finished and then carried on.** A reply claiming nothing is left is
   believed once per request, and ten more rounds of real tool work disprove it.
 
@@ -780,7 +780,7 @@ already done* for the reply that was finishing anyway.
 ## A quick task took over my answer · this is running long, carrying on here in this folder · this has parts, a quick task is taking them here · why was there no copy of the folder · the moved work carried on in my own folder
 
 **When the answer being moved has changed nothing on disk, a quick task takes it instead of a
-full one.** That is the whole of what aforge reads here — not what the work was about, but
+full one.** That is the whole of what codeaf reads here — not what the work was about, but
 whether the reply had written or edited anything under the folder you are in. A reply that
 only read files, ran searches and looked things up has nothing to isolate and nothing to
 merge, so it is not given a copy of the folder.
@@ -828,7 +828,7 @@ what was called and the end of what came back, newest first, cut, under the head
 
 ## It made a task out of work that was already done · why did it hand over when everything was written · the task redid what the answer had already written · it started again from my first message
 
-**When aforge stops to look at a long answer, it asks the model writing that answer whether
+**When codeaf stops to look at a long answer, it asks the model writing that answer whether
 anything is left.** If the answer is that nothing is — everything you asked for is already
 written — then **no task starts**, no line is added to your transcript, nothing is marked
 done and nothing is stopped. The reply you were already getting simply finishes.
@@ -853,7 +853,7 @@ comes back to this conversation as the note it always would have.
 ## It said it was done and then carried on · it started work after saying nothing was left · I typed something more and it made a task of it · I pressed escape and a task started anyway
 
 **A reply that says nothing is left is believed once per request.** If it then does ten more
-rounds of real tool work, aforge looks again, does not believe it a second time, and the work
+rounds of real tool work, codeaf looks again, does not believe it a second time, and the work
 moves on in the ordinary way. Rounds spent only watching pieces you already handed out do not
 count towards those ten — see *Watching the pieces you handed out does not move your answer*.
 
@@ -989,13 +989,13 @@ and the model that writes the brief out of it. One further call goes at the
 see the section below. An answer that called no tools costs none of this. The read at the
 front of your turn is one cheap call and now starts nothing by itself.
 
-**This applies to replies aforge started by itself, too.** When a task lands, the chat
+**This applies to replies codeaf started by itself, too.** When a task lands, the chat
 answers it without you typing anything (see *Why did the chat reply on its own* in *how tasks
 run*). That reply is priced exactly like one you asked for: same two notes, same ceiling,
 same handover. It used to be exempt, on the grounds that a reply about a task already had a
 budget somewhere — it does not, and a measured run had one such reply make 127 tool calls
 over 46 minutes with nobody watching, and then the session sat idle for seven and a half
-hours. A line aforge writes to itself that nobody owes an answer for is still left alone.
+hours. A line codeaf writes to itself that nobody owes an answer for is still left alone.
 
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.
@@ -1196,7 +1196,7 @@ many files, a rewrite you would sit and watch: those can still be handed over, p
 started with `/task`. Typing `/task commit everything` still starts a task, because you
 asked for one.
 
-## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
+## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, codeaf kept going without me
 
 **A reply ends when the model stops calling tools, and that happens for two different
 reasons.** One is that the work is done. The other is that it reached a comfortable place to
@@ -1222,7 +1222,7 @@ your message, the steps, what came back — and it answers either the single lin
   where it stopped rather than starting again.
 
 **A reply that ends by asking you something is never carried on.** If the last thing it said
-finishes with a question mark, it is waiting on you, and carrying it on would be aforge
+finishes with a question mark, it is waiting on you, and carrying it on would be codeaf
 answering a question that was addressed to you. That is the whole of the test — the mark
 itself, so it works whatever language you are talking in.
 
@@ -1271,7 +1271,7 @@ six compile errors that shipped, and three hours of the request went unspent.
 
 **Running anything after the save takes it back off that gate.** A build, a test, a re-read of
 the file it just wrote — anything at all after the last save is the reply having checked
-itself, and it is then priced like any other short reply. aforge does not try to tell a build
+itself, and it is then priced like any other short reply. codeaf does not try to tell a build
 from a test from a read; it only asks whether the reply stopped on the change or looked at it.
 
 **What bounds it is the same meter as everything else on this page, and two rules of its own.**
@@ -1291,14 +1291,14 @@ crews and what things cost* for what the error line says now.
 
 **With no second model set, nobody is asked at all.** The reader is a crew job, so an install
 with no thinking-tier model configured has none — and rather than call, fail in two
-milliseconds and write a failed reading into the session file on every round, aforge does not
+milliseconds and write a failed reading into the session file on every round, codeaf does not
 ask, and notes the absence once. A reader that faults or takes too long is different: the call
 was made and it came back with nothing. In a session you are watching, the reply still ends as
 it would have ended before any of this existed. On an unattended run, if the session made work
-inline and that missing answer is the only gap, aforge actually runs the declared checks over
+inline and that missing answer is the only gap, codeaf actually runs the declared checks over
 the tree; a green check can stand in for the reader, while a red one is carried on by command.
 Having no configured reader is an absence, not a failed call, and never runs checks on its
-own — see *Leaving it running on its own* in *starting aforge*.
+own — see *Leaving it running on its own* in *starting codeaf*.
 
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 
@@ -1308,7 +1308,7 @@ the reply is waiting on it exactly the way a reply that ends on a question is wa
 you, and pushing it on would only make it poll.
 
 **The ending comes back and starts a new reply by itself.** A background command exiting, a
-render landing, **a watch firing**: each of those wakes aforge and you get
+render landing, **a watch firing**: each of those wakes codeaf and you get
 the sentence about it without typing anything. So you can start something, close the laptop
 lid on the conversation, and come back to the answer rather than to a card and silence.
 On a headless `--once --yolo` run with a budget, the command stays alive for those replies
@@ -1488,7 +1488,7 @@ open that with `ctrl+,` or `/settings` — where it is the row labelled `task co
 is not on the `Spending` tab; it sits with the consent rows because it answers their
 question in the other currency.
 
-**This is one of the rows aforge will not change for you.** It decides how long you get
+**This is one of the rows codeaf will not change for you.** It decides how long you get
 before work starts on its own, so `change_setting` refuses it and points you back at
 `/settings`. Same for `task.parallel` below, and for the whole approval and spending
 family — the permissions page lists them.
@@ -1570,8 +1570,8 @@ Safety settings if every proposal on a watched session should wait until you ans
 
 ## Why it warned me another window is already in these files — two windows working on the same files
 
-Before a brief becomes a paid run, aforge compares the paths that brief **spells out**
-against what every other aforge window open on this directory has already written. Where
+Before a brief becomes a paid run, codeaf compares the paths that brief **spells out**
+against what every other codeaf window open on this directory has already written. Where
 they overlap, one dim line appears — on the proposal card, between the brief and the
 answers, and as a note when you start work yourself with `/task`:
 
@@ -1643,7 +1643,7 @@ holds the directory*.
 
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
-**aforge never tells you that a file is yours alone.** No line means nothing was found, not
+**codeaf never tells you that a file is yours alone.** No line means nothing was found, not
 that the files are clear: the brief may have named no paths, or the other window may simply
 not have written anything yet. Silence here is never an all-clear.
 
@@ -1689,7 +1689,7 @@ A run that is standing at its spend gate wears `=` in front of its tier glyph.
 
 **On a terminal with a patched font you get icons rather than shapes.** Every mark above
 is a slot in one vocabulary with three spellings — a Font Awesome icon, the geometric
-character shown here, and one ASCII letter for a screen reader — and aforge picks the tier
+character shown here, and one ASCII letter for a screen reader — and codeaf picks the tier
 for your terminal. `/settings` → **step icons** is where you choose `plain` if the icons
 draw badly in your font. The state a mark means never changes with the tier.
 
@@ -1767,7 +1767,7 @@ decides whether to renew the allowance or stop and preserve partial work. Waitin
 on the worker's own command counts toward that allowance; waiting for delegated
 parts keeps the existing pause rule. An unfinished check is never a passing check.
 
-**A cancel is an interruption, never a finding about the work.** When aforge quits, a
+**A cancel is an interruption, never a finding about the work.** When codeaf quits, a
 deadline on the whole session fires, or something outside the task ends it while the check
 is running, nobody has looked at the deliverable and nobody has said anything about it. So
 the task does **not** land as broken. It lands as **`your call`**, with the plain
@@ -1802,7 +1802,7 @@ the task's row on the roster.
 ```
 
 The head is what happened. The muted line under it is what came of it, in the task's own
-first sentence, quoted because they are its words and not aforge's.
+first sentence, quoted because they are its words and not codeaf's.
 
 **The quoted sentence is the first line of the report that says something**, not its
 literal first line. Work that ran a command, produced a diff or answered in JSON often
@@ -1835,7 +1835,7 @@ instant — the stamp is **absent** rather than invented.
   roster. The `?` is deliberately neither a tick nor a cross: it claims neither a finding
   nor a judgement nobody made. The card carries the reason it is asking on its own row and
   the answers under that — unless you have set `task.settle` to `auto`, in which case the
-  reason row says `aforge is deciding` and the answers are drawn beside it.
+  reason row says `codeaf is deciding` and the answers are drawn beside it.
 
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
@@ -1859,7 +1859,7 @@ if it wrote any, and its own last message as the answer.
 The branch row is labelled with **where the work was done**, in plain words rather than in
 git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
-*how tasks run*. A landing whose copy aforge has no record of falls back to `branch`.
+*how tasks run*. A landing whose copy codeaf has no record of falls back to `branch`.
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
@@ -2036,7 +2036,7 @@ word already say what it is doing.
 above the conversation, its room's header, the card that lands, the home card and the task
 page. Three words is also what the `taskname` call is asked for, so a named task fits the
 column whole rather than being cut to fit it. A row reading **`task 19`** means one thing
-only: nothing has told aforge what that task is called yet. It is a name you can still say
+only: nothing has told codeaf what that task is called yet. It is a name you can still say
 out loud, and the row takes the real one the moment the title arrives — including a room you
 already have open on it. Under the row, at
 most two more: what it is doing, what is holding it, what it waits on, or how its branch
@@ -2124,7 +2124,7 @@ that has started none looks as it did before jobs had a section.
 
 **`/new` and switching conversations drop the section.** A job belongs to the conversation
 that started it. Coming back, or reopening it, redraws the jobs it ran, settled: a job
-still going when aforge closed comes back `stopped`. Nothing is restarted. The log stays
+still going when codeaf closed comes back `stopped`. Nothing is restarted. The log stays
 under this conversation's folder, in `logs/jobs/` — never in your project.
 
 The `jobs` tool, `jobs output N`, `jobs kill N`, `ctrl+g` promotion and the
@@ -2196,18 +2196,18 @@ jobs section's own label is the count of *jobs*: `jobs · 2 running`.
 - no branch, no changed-files list and no price — a job runs in the workspace itself, and
   nothing measures what it costs, because it costs nothing but time
 - no agent inside it and no transcript — enter opens a **page**, not a chat
-- no `✕` on the row itself — stop it from the **page** (`x`), or ask aforge to run
+- no `✕` on the row itself — stop it from the **page** (`x`), or ask codeaf to run
   `jobs kill`
 
 **No card is written into the conversation** when a job ends, because a job has no report
-anybody wrote — what it left is its log. Aforge itself is still told, on its own side, at
+anybody wrote — what it left is its log. codeaf itself is still told, on its own side, at
 the next step boundary (`job 3 exited 1: make: *** [build] Error 1`).
 
 ## How do I stop a background job — stop a job from its page, can I stop a background job from the sidebar
 
 **Yes. Open the job's page and press `x`.** Kill a server you started the same
 way. A job used to have no stop on the surface, and the only way was to ask
-aforge to run `jobs kill`. The row itself still has no `✕` — walk into the jobs
+codeaf to run `jobs kill`. The row itself still has no `✕` — walk into the jobs
 section, enter on the job, then `x`. That is how you stop it from the sidebar:
 the section is the door onto the page, and the page is the door onto the stop.
 
@@ -2233,7 +2233,7 @@ The model is told `job 3 was stopped` so it does not keep reasoning about work t
 longer running. Pressing `x` on a job that has already ended does nothing: the settled
 page does not offer the key.
 
-**You can still ask aforge to run `jobs kill N`.** That is the model's tool and it still
+**You can still ask codeaf to run `jobs kill N`.** That is the model's tool and it still
 works. Every running job is also killed when the conversation closes. `esc` in the
 conversation interrupts the turn and does **not** stop background jobs.
 
@@ -2286,7 +2286,7 @@ you change it:
  · it may spend up to $100.00 before it asks                                    type a number
 ```
 
-**The default is $100.00**, which is the tank aforge applies to work nobody put a figure on.
+**The default is $100.00**, which is the tank codeaf applies to work nobody put a figure on.
 Type digits while the layer is up and the figure is whatever you typed.
 
 **It is a real limit and not a caption.** The figure becomes that errand's own spend rail:
@@ -2336,7 +2336,7 @@ around it.
   walks task rows and skips it. From the keyboard you type the command, which is what the
   row is teaching.
 
-Finish the sentence and send it and it is `/task <brief>` like any other: aforge sizes the
+Finish the sentence and send it and it is `/task <brief>` like any other: codeaf sizes the
 work, shapes the brief and starts it. The column's other section, `standing`, ends in a
 `+ /standing` row that works the same way.
 
@@ -2361,7 +2361,7 @@ extra question. There is no third form: `/task adaptive` is retired.
 **There is still no `/tasks` command**, though `tasks` is the name of the PLACE `/history`
 opens — `alt+2` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
-about tasks — go and look at the work, or give aforge some.
+about tasks — go and look at the work, or give codeaf some.
 
 ## Old tasks from previous sessions are not on the column — the `ctrl+. earlier` door
 
@@ -2397,14 +2397,14 @@ other side of the door, whole: every row, the filter, the cards, and `m` for the
 home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool — just ask.
 
-**Running work in another aforge window** is on no surface but the task page. An ordinary
+**Running work in another codeaf window** is on no surface but the task page. An ordinary
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
 ## The column comes back after a restart — tasks reappear on resume or a switch back
 
 **Reopening a conversation re-draws its own tasks, and the jobs it ran.** `/resume`,
-`aforge resume`, and switching back behind home all rebuild the column from the record:
+`codeaf resume`, and switching back behind home all rebuild the column from the record:
 every task admitted here comes back as a row in its family — finished work included, and
 work that was interrupted comes back saying so on its card — and the `jobs` section
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
@@ -2441,7 +2441,7 @@ chord to recover. See *The task bar disappeared* below.
 
 The choice is remembered. It is written to your profile the moment the column moves, as
 the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
-Display tab as **task column**. A change made in the panel lands the next time aforge
+Display tab as **task column**. A change made in the panel lands the next time codeaf
 starts; `ctrl+g` acts immediately and wins for this session.
 
 With the column closed, work is still visible:
@@ -2610,7 +2610,7 @@ the money: zero means "nobody published a price", never "free". **A frame too na
 the whole line drops the money clause** rather than cutting it, because half a figure is a
 wrong number.
 
-It used to be a paragraph — `work aforge ran on its own. 148 pieces of work since aug 11,
+It used to be a paragraph — `work codeaf ran on its own. 148 pieces of work since aug 11,
 $34.10 between them.` — which was the widest thing on the page, taught the machinery's own
 idea of itself before naming anything, and pushed the rows a person came for further down.
 The place's name, its count and its window are what the line is for.
@@ -2725,22 +2725,22 @@ tasks
 ```
 
 `/history` used to say one sentence **instead** of opening, with `ctrl+.` doing
-nothing at all rather than raising an empty page. On a machine aforge was installed on an
+nothing at all rather than raising an empty page. On a machine codeaf was installed on an
 hour ago that was every door onto the page, so the first thing anybody tried appeared not to
 work. The sentence stayed and moved onto the page it is about. A session that has run
 nothing itself still shows work another window on the same directory is running — that is
 the one fact it was opened to report.
 
-The list is as long as the record is — internal to aforge each project's record keeps the
+The list is as long as the record is — internal to codeaf each project's record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.
 
-## Work running in another aforge window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing, can I read another conversation's task over ssh
+## Work running in another codeaf window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing, can I read another conversation's task over ssh
 
-Two aforge windows open on one directory can see each other's running work, and `/history`
+Two codeaf windows open on one directory can see each other's running work, and `/history`
 is where they see it.
 
 **A conversation *this* terminal is holding is never one of them.** One terminal can have
-several conversations open at once with `aforge chat --no-host`, in this project or others,
+several conversations open at once with `codeaf chat --no-host`, in this project or others,
 and every one of them writes
 the same file the rows below are read from — so they are filtered out by name before the
 page is drawn. Telling you to go to a window that is two keystrokes away in the terminal
@@ -2843,8 +2843,8 @@ it had started.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
-Yes, and it is told rather than having to go and ask. When another aforge window on this
-same directory lands a task, or has one running, aforge puts a small block into the chat's
+Yes, and it is told rather than having to go and ask. When another codeaf window on this
+same directory lands a task, or has one running, codeaf puts a small block into the chat's
 own context — never on your screen — that reads:
 
 ```
@@ -2888,7 +2888,7 @@ record — which cannot answer, because an ordinary task writes no row there unt
 What it gets back looks like this:
 
 ```
-running in other aforge windows on this project:
+running in other codeaf windows on this project:
 another window · Sweep the call sites · running · running for 4m 12s
   in the window called "docs pass"
   files so far: internal/session/agent.go, internal/session/task.go
@@ -3057,7 +3057,7 @@ did not want.
 
 ```
 your call
-  ▾ Repair the parser                  aforge
+  ▾ Repair the parser                  codeaf
       ▾ Update the parser
         ├ Port the lexer
         └ Port the tests
@@ -3162,8 +3162,8 @@ What opens is a full-screen card over the same page, with the list still underne
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
- a branch of your repository · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
- transcript · ~/.aforge/v3/projects/-tmp-alpha/aaaa…/tasks/20260819-120133_7.jsonl
+ a branch of your repository · ~/.codeaf/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
+ transcript · ~/.codeaf/v3/projects/-tmp-alpha/aaaa…/tasks/20260819-120133_7.jsonl
 
  what it said at the end
  Added a nil check in parseRow before the map write, and a regression test that
@@ -3194,14 +3194,14 @@ which the outcome above is the first sentence.
   `done · landed 3h ago`, and `failed · stopped 8d ago` — `landed` is this program's word
   for work that arrived, and it was drawn over a run nothing came of.
 
-- **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
+- **Anything codeaf does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
   has no clock. That includes a run that plans itself: while it is running its card carries
   its state word and no `landed` clause at all; the clock appears when the run ends. Nothing
   here appears as a zero.
 - **The first address is labelled with what that directory was**, in plain words and never
   in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
-  or `where` when aforge's record does not say. *Does a task touch my working copy?* in
+  or `where` when codeaf's record does not say. *Does a task touch my working copy?* in
   *how tasks run* says what each one means.
 - **The two addresses are clickable where they still exist.** The transcript is a real file
   on this disk and opens in your editor on a click; a working copy that has since been
@@ -3262,7 +3262,7 @@ Pressing a row opens **that row's** task, and the owner is what decides which do
   talking to it;
 - a row another conversation ran opens its **card** — the record, and the last thing that
   task said;
-- a row another aforge **window** is running opens the card that says which window has it
+- a row another codeaf **window** is running opens the card that says which window has it
   (above).
 
 A row's title is not what identifies it. Two conversations that ran a task numbered 7 with
@@ -3341,7 +3341,7 @@ working. Both halves cross now, and answering a proposal card over `--host` work
 
 If you are on a build where it is still empty, the two halves are speaking different
 protocols. The engine refuses a mismatch at the door with a sentence naming both numbers;
-if you get that instead, run `aforge engine --stop` on the far machine so the older
+if you get that instead, run `codeaf engine --stop` on the far machine so the older
 process holding your session retires, and connect again.
 
 Opening a queued, running, or landed row is asynchronous. The room opens at once — with
@@ -3433,7 +3433,7 @@ fit. Every letter keeps working whether or not it is printed.
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
 on a standing item, bound here to the task whose page you are standing in; the keys page
 has the whole of it. A worker already running keeps the rung it started with, so the line
-aforge writes says `task 7 · thinking · high · its next call takes it`.
+codeaf writes says `task 7 · thinking · high · its next call takes it`.
 
 **The header has separate click targets.** Ancestor crumbs open their exact task;
 the root and the `esc/← main` end return to the conversation. The current crumb does
@@ -3650,7 +3650,7 @@ heading alongside that step’s calls; shortening a heading does not discard tex
 then a line you can click or press to see the rest.**
 
 The first block on a task's page is the instruction the task was given — the words you
-typed after `/task`, or the brief aforge shaped from them, or a spec you pasted in. On a
+typed after `/task`, or the brief codeaf shaped from them, or a spec you pasted in. On a
 long one that used to be the whole screen: you walked into a task to watch it work and
 were shown the assignment, with the first tool call somewhere below the fold.
 
@@ -3787,24 +3787,24 @@ beat resolves against what is already in memory, so it may stay the plain word y
 
 **Just ask, in the chat.** "Why did the auth task pin the clock?", "why did that task do
 that?", "what exactly did that task change?", "what did it try first?", "why did it make
-that decision?" — aforge answers all of these by going and reading, not by remembering. It
+that decision?" — codeaf answers all of these by going and reading, not by remembering. It
 was never in the room while the task worked, and neither were you.
 
 What happens is two steps and you do not have to ask for either.
 
-1. **It finds the task.** aforge searches the project's whole record — every task this
+1. **It finds the task.** codeaf searches the project's whole record — every task this
    project has ever run, this conversation's and every closed conversation's — against the
    words you used, matching titles, ids and outcomes. You need no id and no `@`.
 2. **It reads that task's own transcript** — what the task actually did, in its own words.
    Every task writes a journal as it works: a real file on this disk, one line per thing it
    said, called and got back, at a path like
-   `~/.aforge/v3/projects/<workspace>/<session id>/tasks/20260819-120133_7.jsonl`. The
+   `~/.codeaf/v3/projects/<workspace>/<session id>/tasks/20260819-120133_7.jsonl`. The
    answer comes out of that — the decision the task made and its reasoning for it, the
    commands it ran, the files it touched by full path — and not out of the one-line outcome
    the record keeps.
 
 Pointing at the task with `@its-name` is faster and never required: the pointer block
-already carries the transcript address, so aforge follows it instead of searching.
+already carries the transcript address, so codeaf follows it instead of searching.
 
 **When the transcript is gone, it says so.** A session folder you deleted, or work that
 happened on another machine, leaves the record's row with nothing behind it. Then you get
@@ -3900,7 +3900,7 @@ stays on the task's branch, and the card says what you said that it never took u
 
 **Most corrections change nothing about the contract, and that is the ordinary case.** "The
 config lives under etc/" is a fact the work needs. "Why did you do it that way?" is a
-question to answer. Neither moves the done-condition, and nothing in aforge guesses: the
+question to answer. Neither moves the done-condition, and nothing in codeaf guesses: the
 worker moves it only by making that one call, and only for a line **you** sent. What the
 model says into a task with `tasks id N say` is one piece of work talking to another and
 can never do it.
@@ -3940,7 +3940,7 @@ has usually *written* something by the time it decides the work is too wide — 
 failing test, scraped material, a half-drafted section. All of it is there for every part,
 without the parent having to describe it in a brief.
 
-That is not automatic; it is a commit. Before the first part is handed out, aforge stages
+That is not automatic; it is a commit. Before the first part is handed out, codeaf stages
 what the task has written so far and commits it to **the family's own branch**, worded
 `the work so far on <the task's title>, before its parts were handed out`. The parts branch
 from that commit. So does the second part, and the fifth: **the world is frozen once**, at
@@ -3954,11 +3954,11 @@ Three things follow, and they are the ones worth knowing:
   branch, so when the whole family lands it comes home inside **one merge** along with
   everything else the family did — and on a repository `git log` shows it there afterwards.
   On a plain folder it stays in the family's private copy and never reaches you.
-- **It is aforge committing, never the worker.** Tasks are told they never run `git add`,
+- **It is codeaf committing, never the worker.** Tasks are told they never run `git add`,
   and that is still true.
 - **Nothing is committed in your own folder.** A task working *in place* — in the directory
   you are sitting in — has no branch of its own, so there is nothing to commit to and
-  aforge does not make one. Its parts share the directory, which is what "here" means.
+  codeaf does not make one. Its parts share the directory, which is what "here" means.
 
 If the family's branch is there and **cannot take that commit** — a disk gone read-only, a
 repository somebody broke — **the split is refused** rather than taken on a world the parts
@@ -4009,23 +4009,23 @@ reading is the same counting described below and it is always on. So turning the
 did not make everything divide — it stopped a second reading of the same evidence refusing
 what the first reading had already invited.
 
-## Can I make it always split the work — turning the width floor back on, why did it split my task into parts, AFORGE_SPLITGATE
+## Can I make it always split the work — turning the width floor back on, why did it split my task into parts, CODEAF_SPLITGATE
 
 **Why did it split my task into parts?** Because the work was read as wide, a worker asked
 to hand its parts out, a lane was free, and — by default — nothing else stood in the way.
 The parts are listed in the task column under their parent and each one says what it owns.
 
-**The width floor is off by default. `AFORGE_SPLITGATE` in the environment turns it back
+**The width floor is off by default. `CODEAF_SPLITGATE` in the environment turns it back
 on**, and it is the only way to; there is no setting for it, because it picks how the
 machine decides rather than anything you have a preference about.
 
 - **unset** — off. Every division that is asked for is kept. This is what you have.
-- **`AFORGE_SPLITGATE=1`** — the floor as it worked before September 2026: the work has to
+- **`CODEAF_SPLITGATE=1`** — the floor as it worked before September 2026: the work has to
   name at least six separate things or the split is refused, free, on the spot.
-- **`AFORGE_SPLITGATE=judgment`** — asks the plan instead of your words. If every part is
+- **`CODEAF_SPLITGATE=judgment`** — asks the plan instead of your words. If every part is
   already the size of one sitting and none of them waits on another, the parts stand
   whatever your brief counted; where the plan has no opinion, the six-item count decides.
-- **`AFORGE_SPLITGATE=0`** — off, spelled out. The same as leaving it alone.
+- **`CODEAF_SPLITGATE=0`** — off, spelled out. The same as leaving it alone.
 - **anything else** — off, because off is what you get by default and a typo must not put a
   floor back under your work without your knowing.
 
@@ -4169,8 +4169,8 @@ that writes all four.
 
 **And the grade is not the last word — what has actually happened here is.** Every task
 that settles writes down what the check said about it, against the model it ran on and
-the name the work was given: `aforge models` is where those rows show up. When a part is
-about to be handed out as ordinary work, aforge looks that record up first. If work
+the name the work was given: `codeaf models` is where those rows show up. When a part is
+about to be handed out as ordinary work, codeaf looks that record up first. If work
 named like this one has been turned down by the check **twice or more** on the model the
 task is on, and the balance of those answers is against it, the part is minted on your
 **careful work** model instead — even though the worker called it ordinary. Two names
@@ -4225,8 +4225,8 @@ in; walk into a part and its breadcrumb trail names the parent.
 
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
-It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the environment
-turns the whole road off — no task splits at all — and `AFORGE_SPLITGATE` decides whether a
+It is on by default and there is no setting for it. `CODEAF_SWARM=0` in the environment
+turns the whole road off — no task splits at all — and `CODEAF_SPLITGATE` decides whether a
 width floor stands under the splits that do happen, which is off unless you set it
 (*Can I make it always split the work*). Both are environment pins rather than preferences,
 which is why neither is in the settings panel.
@@ -4266,7 +4266,7 @@ top-level tasks do.
 
 ## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
 
-**There is no limit by default.** aforge does not cap the number of tasks running at the
+**There is no limit by default.** codeaf does not cap the number of tasks running at the
 same time.
 
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
@@ -4328,7 +4328,7 @@ the model the work starts on. Only a member of the shortlist can win, and a shor
 one member draws no hole at all: there is nothing to ask.
 
 The digits are the question's answers and never the models — `1` is `start it`, `2` is
-`no`. That is the same grammar on every question aforge asks you, which is why the models
+`no`. That is the same grammar on every question codeaf asks you, which is why the models
 moved off the digits and onto the arrows.
 
 Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
@@ -4383,12 +4383,12 @@ What that does, exactly:
   own rescue chain starts that chain again from the model you named, so it never keeps
   walking away from your choice.
 
-- **And nothing quietly takes it back.** When a task's model stops answering, aforge moves
+- **And nothing quietly takes it back.** When a task's model stops answering, codeaf moves
   the work to another one rather than failing it — but if you have picked a model in this
-  room, that pick is where it moves to, not the next name in aforge's own fallback list,
+  room, that pick is where it moves to, not the next name in codeaf's own fallback list,
   and the run's log says `moving to <model>, which you chose`. That includes a step
   grinding on a machine that keeps saying `temporarily rate-limited upstream`, which used
-  to be the one failure that moved nothing at all: aforge stayed on the machine pacing it
+  to be the one failure that moved nothing at all: codeaf stayed on the machine pacing it
   and said `staying on`, for the whole four and a half minutes a task's call is given.
   Until 2026-09-11 the fallback list won, so a task could finish on a model nobody had
   chosen while the room showed the one you did.
@@ -4688,7 +4688,7 @@ subharness design's own page, and an adaptive run's spend gate. The row and the 
 the same six sentences whichever card is drawing them.
 
 Every chip is a key **and** a click, and they are drawn on the **question block** above the
-message box — the same block every other decision in aforge is put to you on — so they are
+message box — the same block every other decision in codeaf is put to you on — so they are
 in the same place whichever page you are standing on: the conversation, the task's own room,
 the `/tasks` page. The landing card in the transcript keeps the head and the sentence saying
 what is being asked; the answers are on the block. The letters work only over an **empty**
@@ -4702,7 +4702,7 @@ gives each answer a line so it can say what pressing it will do.
 for the width, the list of files is what gets cut — never the verb, and a chip that will not
 fit is dropped off the end with a dim count of what went (`· +1`) rather than squeezed.
 
-**A chip aforge cannot spend is absent, not broken.** Where there is no door behind an
+**A chip codeaf cannot spend is absent, not broken.** Where there is no door behind an
 answer — no working copy left to run a merge round in, for instance — that column is simply
 not drawn, and its letter does nothing rather than failing when you press it.
 
@@ -4728,10 +4728,10 @@ stopped being a question — the card draws them beside an answer or not at all.
 **Answered means the chips are gone, not greyed.** They are replaced by the one receipt
 line every question leaves, `✓ <the card's head> → accept · you · 14:02 · c change`:
 the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
-decided — `you`, `aforge, on your settings` when the model settled it, `another window`
+decided — `you`, `codeaf, on your settings` when the model settled it, `another window`
 when somebody else got there first — and when. The report under the second card then
 leads `you took this as done` or `incomplete — you said it is not finished`. After `[d]`
-nothing is decided yet: the answers stay drawn and the reason row reads `aforge is
+nothing is decided yet: the answers stay drawn and the reason row reads `codeaf is
 deciding`.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
@@ -4739,7 +4739,7 @@ branch and all. What follows is a **second** card, when the task re-settles into
 `incomplete`, saying what became of the work. The transcript then reads as what happened:
 this landed as your call → you took it as done → `task 7 done · merged`.
 
-**You can also just say so.** "accept task 7", "that one isn't finished" both work: aforge
+**You can also just say so.** "accept task 7", "that one isn't finished" both work: codeaf
 holds the same door through its `tasks` tool, and whichever of the two is used first wins.
 The other finds the question already gone and says `already answered` rather than raising
 an error.
@@ -4844,50 +4844,50 @@ never a silent accept. If you mean accept, press `[a]` or say "accept task 7".
 The card keeps its chips while a steer is in flight, because nothing about the question has
 changed yet.
 
-## Why does it say aforge is deciding — and how do I take a task back
+## Why does it say codeaf is deciding — and how do I take a task back
 
-When `task.settle` is `auto`, or after you press `d you decide` on one card, aforge is
+When `task.settle` is `auto`, or after you press `d you decide` on one card, codeaf is
 reading that work and will answer it. **The row says so rather than going quiet**, on the
 reason line:
 
 ```
 ? Port the parser
-  nobody could check it · aforge is deciding
+  nobody could check it · codeaf is deciding
   a accept · n not right · s tell it
 ```
 
 **The answers stay drawn, and answering is how you take it back.** Pressing `[a]` or `[n]`
-yourself settles it and ends aforge's turn at it; a card with a sentence on it and no handle
-is the one shape this surface must never draw. Anything aforge was about to say it may still
+yourself settles it and ends codeaf's turn at it; a card with a sentence on it and no handle
+is the one shape this surface must never draw. Anything codeaf was about to say it may still
 say; what it may no longer do is have the last word.
 
-**A task never stays unowned past the end of a turn.** If aforge's turn ends with a task it
+**A task never stays unowned past the end of a turn.** If codeaf's turn ends with a task it
 was handed still unanswered, the question comes back to you by itself and the card draws
 its chips — you do not have to notice it. And where the model's last message asked you
 about that task, the chips are the answer surface for that question: its words above, the
 chips under them, one ask rather than two.
 
-**And closing aforge ends the turn too.** If you quit, crash or come back to the
-conversation later, a task aforge was deciding is yours again the moment the conversation
-opens — the card draws its chips rather than the `aforge is deciding` row, because the turn
+**And closing codeaf ends the turn too.** If you quit, crash or come back to the
+conversation later, a task codeaf was deciding is yours again the moment the conversation
+opens — the card draws its chips rather than the `codeaf is deciding` row, because the turn
 it was going to be decided in is gone and nothing is going to finish that thought.
 
-## Can aforge decide on its own — can the chat decide on its own, stop asking me about tasks that need a look
+## Can codeaf decide on its own — can the chat decide on its own, stop asking me about tasks that need a look
 
 Yes. The setting is **`task.settle`**, in `/settings` under Session as
 `who settles work that needs a look`, and it takes two words:
 
 | Value | What happens when a task lands as `your call` |
 | --- | --- |
-| `ask` | **the default** — you decide. The card offers the chips above, and aforge says what it thinks and leaves the choice with you |
-| `auto` | aforge decides. It is told to read the report and the work itself — the transcript, the diff on the branch — and settle the task, and to come back to you only when it genuinely cannot tell |
+| `ask` | **the default** — you decide. The card offers the chips above, and codeaf says what it thinks and leaves the choice with you |
+| `auto` | codeaf decides. It is told to read the report and the work itself — the transcript, the diff on the branch — and settle the task, and to come back to you only when it genuinely cannot tell |
 
 Which of the two a card follows is fixed when it lands, so changing the row does not reach
 back and take the chips off a card that was already asking.
 
-**`d let aforge decide this one` is on the card and changes no setting.** It is drawn
+**`d let codeaf decide this one` is on the card and changes no setting.** It is drawn
 dimmer than the three columns, because it is not one of the answers: it hands **this one
-card** to aforge and leaves `task.settle` exactly where it was. It used to be spelled
+card** to codeaf and leaves `task.settle` exactly where it was. It used to be spelled
 `decide these for me` and it used to flip the setting for good — a persistent preference
 disguised as an answer, and the reason a card could end up with no choices on it and no
 explanation of why.
@@ -4901,13 +4901,13 @@ waiting on it waits.
 To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these
 again".
 
-**A run with nobody watching reads as `auto` whatever the row says.** `aforge --once` and
+**A run with nobody watching reads as `auto` whatever the row says.** `codeaf --once` and
 the other headless doors have no card to press, no `/settings` to open and nobody to read a
 landing that says it is waiting on somebody, so a task that needed a decision there would
 stop the run until the wall clock ran out — which was measured happening on a ten-hour run.
-In those sessions aforge takes the decision itself, with the same escape to say it cannot
+In those sessions codeaf takes the decision itself, with the same escape to say it cannot
 tell. This never applies to a session you are sitting in front of: there your row stands,
-and a blank row still means aforge asks you.
+and a blank row still means codeaf asks you.
 
 ## Why is there no check again — what the engine tries before anything is your call
 
@@ -5002,7 +5002,7 @@ onto the same decision. Use whichever is in front of you:
 
 | Where you are | What to do |
 | --- | --- |
-| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `n` says no to what the row is asking, `s` steers it, `d` hands this one card to aforge. The same chips are at the foot of the page |
+| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `n` says no to what the row is asking, `s` steers it, `d` hands this one card to codeaf. The same chips are at the foot of the page |
 | **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same keys — or click a chip on its answers row |
 | **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
 
@@ -5028,7 +5028,7 @@ It is there in the conversation, in the task's own room, and on the `/tasks` pag
 landing card in the transcript keeps the head and the sentence saying what is being asked,
 and the answers are on the block. The letters need an **empty** message box: they are held
 to the same rule `x` is, so a letter typed into a sentence stays a letter. If the reason row
-also reads `aforge is deciding`, that is `task.settle = auto` — the answers are still yours
+also reads `codeaf is deciding`, that is `task.settle = auto` — the answers are still yours
 to press, and "ask me about these again" changes the setting for good.
 
 ## Stopping an adaptive run
@@ -5389,7 +5389,7 @@ row merely because both tasks have the same number.
 
 ## Why another conversation could not open
 
-If the owner refuses the connection or answers for a different conversation, aforge
+If the owner refuses the connection or answers for a different conversation, codeaf
 opens the task's read-only card with the reason and the owning window's details.
 Return to the list to retry, or go to that window. Local design progress never
 updates a foreign task page with the same number. The next-running-task arrow
@@ -5429,7 +5429,7 @@ with their task when navigating within this process, subject to the reading cach
 The ordinary engine-backed chat, `--host` and `--at` all hold **one connection per
 conversation**. Opening another conversation dials another connection and closes nothing:
 the chat you came from keeps writing its reply, keeps running its tasks, and its output is
-all there when you go back to it. The same is true of `aforge chat --no-host`, which runs
+all there when you go back to it. The same is true of `codeaf chat --no-host`, which runs
 its conversations inside this process instead. The switcher lists them with `working`,
 `needs you` or nothing against each, from the same reading that draws the mark on that
 conversation's tab, and must not show a new chat under a previous chat's name.
@@ -5440,7 +5440,7 @@ shipped door says today. Merely browsing Ctrl+k does not select or close anythin
 
 **What ends a conversation is explicit.** `stop work` on the card that appears when you
 close a working tab ends the turn and the running nodes in that one conversation and
-nothing else. Over an engine-backed door, quitting aforge detaches instead: the work
+nothing else. Over an engine-backed door, quitting codeaf detaches instead: the work
 outlives the window and is still going when you come back to it. An in-process
 (`--no-host`) conversation does not keep working after its terminal exits.
 
@@ -5455,7 +5455,7 @@ or change what quitting the whole app means.
 
 ## Accepting a saved task after its Git registration was released
 
-If aforge released the task's Git registration while retaining its files, a later accept
+If codeaf released the task's Git registration while retaining its files, a later accept
 restores that registration before bringing the work home. This is not a folder that was
 never a repository. The actual branch name is retained even if the task renamed it.
 

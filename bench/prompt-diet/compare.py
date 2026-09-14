@@ -239,14 +239,14 @@ class Run:
 
         The guard's evidence directory is named `<scenario>-<arm>`, and that
         tail is what the tables are keyed by. Rolling the arm off is safe here
-        because this bench runs one arm — it is comparing two builds of aforge,
-        not aforge against a peer — and keeping it would put `-aforge` on the
+        because this bench runs one arm — it is comparing two builds of codeaf,
+        not codeaf against a peer — and keeping it would put `-codeaf` on the
         end of every row of every table for no information at all."""
         groups = {}
         for row in self.guard_rows():
             name = os.path.basename(row.get("cell") or "")
-            if name.endswith("-aforge"):
-                name = name[: -len("-aforge")]
+            if name.endswith("-codeaf"):
+                name = name[: -len("-codeaf")]
             groups.setdefault(name or "unnamed", []).append(row)
         return groups
 

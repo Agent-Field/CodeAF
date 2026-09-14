@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut an asciinema recording where the application gives the screen back.
 
-aforge draws on the alternate screen. Everything after it switches back — a
+codeaf draws on the alternate screen. Everything after it switches back — a
 shutdown log line, the shell prompt behind it — belongs to the terminal the
 recording was started from and not to the journey being shown, and a GIF whose
 last frame is somebody's shell is a GIF that ends on a mistake.

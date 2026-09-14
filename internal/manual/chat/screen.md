@@ -11,7 +11,7 @@ started row appears at once. No forming block is drawn when nothing is forming.
 
 ## What the frame draws, top to bottom
 
-aforge draws one screen in a fixed order every frame. From the top: the row of
+codeaf draws one screen in a fixed order every frame. From the top: the row of
 conversation tabs, the pinned room header (only while a task room is open), the task
 strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
@@ -61,11 +61,11 @@ and `esc` gives the frame back. **Only one is ever up:** opening any one closes 
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
 naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
-**composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
+**composer** with its scope chip (`here ~/codeaf`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
 On **home** that second rule is not a plain line: it is a legend reading
-`→ new conversation in ~/aforge-v2 · glm-5.3-flash` with `alt+w folder · alt+o model ·
+`→ new conversation in ~/codeaf · glm-5.3-flash` with `alt+w folder · alt+o model ·
 / commands` at its right, and home draws no scope chip at all — the rule says where the next
 conversation opens and what it will run on, which is the same fact said better. Home's own
 page has that whole gesture.
@@ -141,7 +141,7 @@ alive and where your draft goes.
 **Switching tabs stops nothing.** Every conversation this window holds keeps running
 while you are somewhere else — its turn finishes, its tasks go on, its output accumulates
 and is all there when you come back. That is true over the ordinary socket onto this
-machine's engine, over `--host`, over `--at` and with `aforge chat --no-host`: each tab
+machine's engine, over `--host`, over `--at` and with `codeaf chat --no-host`: each tab
 holds its own connection and its own conversation, so nothing you do to one reaches
 another. Going Home stops nothing either, and neither does opening a fourth chat.
 
@@ -236,7 +236,7 @@ last tab to Home leaves its connection in place.
 row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
 program, ask
 their own question about work in flight, and act on every conversation this window holds
-at once. Closing a tab never quits aforge, and quitting is not what any of the card's
+at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
 three answers does.
 
 On the switcher card, `ctrl+w` dismisses a selected background tab while keeping
@@ -542,8 +542,8 @@ Three ways up, and all three go through the same machinery:
 - **`↑` / `↓`** move one row — but only once the box is empty and there is no tool row
   left to select. With a sentence in the box, `↑` walks your own history instead. That
   is why `pgup` is the reliable one.
-- **The mouse wheel**, if the pointer is switched on for aforge (`ui.mouse`). With it
-  off, the wheel does nothing here — aforge runs on the alternate screen, so your
+- **The mouse wheel**, if the pointer is switched on for codeaf (`ui.mouse`). With it
+  off, the wheel does nothing here — codeaf runs on the alternate screen, so your
   terminal's own scrollback holds nothing to scroll.
 
 ## Reopening a conversation — only my question and the final answer
@@ -563,7 +563,7 @@ records that stored it as a user message.
 **A conversation you came back to can be scrolled all the way to its first message.**
 Reopening one draws its last **40** blocks so the first frame is fast rather than
 re-rendering an hour of work you may not want. That is a starting position, not a
-ceiling: when a scroll runs off the top of what is drawn, aforge reads the previous 40
+ceiling: when a scroll runs off the top of what is drawn, codeaf reads the previous 40
 out of the session file and puts them **above** what you are reading. The line under
 your eye does not move; you simply carry on scrolling into it. Repeat and you reach the
 first thing you ever said in that conversation.
@@ -575,7 +575,7 @@ back to you. It no longer does. The session file kept every original line, so ab
 boundary you are handed the conversation **in the words it was said in**, and one dim line
 is drawn where the two meet (below).
 
-This works on a session compacted by **this** version of aforge or later. A conversation
+This works on a session compacted by **this** version of codeaf or later. A conversation
 compacted by an older one is drawn from the shortened copy exactly as it always was, and
 picks the fuller history up the next time it compacts. Nothing is lost either way — the
 file has always held it all.
@@ -600,7 +600,7 @@ Scroll far enough up a long conversation and one dim line appears in the middle 
 · above here the model keeps a shortened record — you can still read it all
 ```
 
-That is the point where aforge shortened the conversation to keep it inside the model's
+That is the point where codeaf shortened the conversation to keep it inside the model's
 context. It stays where it happened, so you scroll past it and carry on reading upward.
 
 Both halves of the line are true and neither one covers for the other:
@@ -614,15 +614,15 @@ Both halves of the line are true and neither one covers for the other:
   something above the line, it may answer from something shorter than what you are looking
   at — ask it to `read` the file, or paste the part you mean back in.
 
-**The shortened copy is never drawn.** aforge holds the same conversation twice above that
+**The shortened copy is never drawn.** codeaf holds the same conversation twice above that
 line — the original, and the version the model kept — and it always shows you the original.
 So the seam is a statement about the model's memory, never about how much of your
 conversation is on the screen.
 
-The line is aforge talking, not part of the conversation: a rewind cannot cut it, an
+The line is codeaf talking, not part of the conversation: a rewind cannot cut it, an
 export does not carry it, and it is drawn fresh each time you scroll back into it. A
 conversation short enough never to have been shortened never shows one, and neither does
-one compacted by a version of aforge older than this line.
+one compacted by a version of codeaf older than this line.
 
 If a compaction happens **while** you are reading, you see its own row instead — the
 `compacted · …` line — and no second line beside it. The history above stays reachable.
@@ -638,7 +638,7 @@ No. A scroll away from the live edge is yours and it stays.
 - **Typing** into the message box does not move you. Nor does deleting, pasting, or
   attaching a picture.
 
-The one dim chip at the left of the breathing row, `↓ latest · ctrl+l`, is the whole of aforge's
+The one dim chip at the left of the breathing row, `↓ latest · ctrl+l`, is the whole of codeaf's
 answer to being scrolled away: it offers the way back rather than taking it. Pressing
 `ctrl+l`, clicking the chip, or scrolling down to the bottom yourself re-arms following,
 and from then on new output keeps you at the edge again.
@@ -730,7 +730,7 @@ while a list is open. A waiting message changes the final clause to
 `esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
 **A question that cannot remember its answer loses the `a always` clause**, on this line and
-on the offer above it: a stuck turn is asked about with a scope aforge cannot save, so the
+on the offer above it: a stuck turn is asked about with a scope codeaf cannot save, so the
 key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
@@ -742,7 +742,7 @@ terminals that can deliver it, but is not part of this one-line slot. See the ke
 answer".
 
 The running-turn clauses always have this order: send, `shift+enter`, background, stop.
-When the right side is tight, aforge removes whole clauses from the right until the line
+When the right side is tight, codeaf removes whole clauses from the right until the line
 fits. At 70 columns at least the first fitting clause remains; a running turn never loses
 the slot merely because every clause would not fit. The hint slot is never dropped to make
 room for the name: the name is cut first, because the keys are written nowhere else.
@@ -799,7 +799,7 @@ everywhere.
 
 ## Why is one word in a line brighter than the rest — highlighted model names, keys and figures
 
-Every line aforge writes about itself — a note in the conversation, the hint slot on the
+Every line codeaf writes about itself — a note in the conversation, the hint slot on the
 legend, `/help`, `/status`, `/cost` — is drawn in a quiet grey, because none of it is the
 conversation. **The facts inside those lines are not.** Each load-bearing word steps up
 into a soft cyan of its own — a hue no other kind of thing on the screen wears — so the
@@ -848,7 +848,7 @@ branch, not the folder. The workspace path lives in two places, and both say it 
   then ` · ` and the branch with its `*` if the tree is dirty. On a remote session the
   machine is in front of it: `devbox:/srv/code/app`.
 - **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
-  with the path abbreviated fish-style (`~/s/aforge-v2`) because a sheet row is one line.
+  with the path abbreviated fish-style (`~/s/codeaf`) because a sheet row is one line.
 
 The **branch** is on the legend after the model — `… · glm-5.3-flash · main*` — so a
 glance above the box tells you which branch you are working on without opening anything.
@@ -857,7 +857,7 @@ under 70 columns. There is no branch on a session running over `--host`: the git
 would read *this* machine's repository at the other one's path, so nothing is shown
 rather than something possibly wrong.
 
-If the answer is just the word `aforge`, this conversation has no project — it was
+If the answer is just the word `codeaf`, this conversation has no project — it was
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
 prints where that actually is.
 
@@ -884,7 +884,7 @@ works. When one is missing, it is one of these, and each is on purpose:
 - **Nothing has answered for ten minutes and nothing is being written.** `via` names the
   machine writing the answer as soon as it has named itself, then the one that answered
   last, for ten minutes.
-- **A note saying** `this conversation's engine is an older aforge, so the provider and
+- **A note saying** `this conversation's engine is an older codeaf, so the provider and
   tok/s are not shown — they come back once it picks up this build`. The session host
   holding the conversation predates these readings crossing to your window. It is said
   once, after an answer. A host on an older build retires as soon as it is holding
@@ -1006,7 +1006,7 @@ empty box goes to the last one — see the keys page, and home's *Switch between
 without leaving*.
 
 **Six facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset
-the five models aforge uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
+the five models codeaf uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
 added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
 this turn's whole wall time, waits and tool calls included — which is why it is not the
 figure at the right edge of the row), the compaction sparkline's readings, `open` and
@@ -1015,7 +1015,7 @@ all on the row until 2026-09-09; none of them is something you act on from the l
 
 ## How fast is the connection — host latency and round-trip time in the status line
 
-For `aforge chat --host devbox`, the connection segment begins empty. Every few seconds
+For `codeaf chat --host devbox`, the connection segment begins empty. Every few seconds
 the surface sends one empty call, off the drawing path, and folds the reply into a rolling
 estimate. After the first answer it reads like `devbox · 3ms`. A sub-millisecond reply is
 shown as `1ms`, never `0ms`; no answer means no segment.
@@ -1067,7 +1067,7 @@ Four things about it:
   when it is the very last row before the fold. Neither is a row under the mouse.
 - **Nothing you are reading fades.** The conversation and copy mode are untouched: a
   transcript is read line by line and every line of it is the content, not context.
-- **Rows never alternate light and dark.** aforge draws no striped lists anywhere. Rows
+- **Rows never alternate light and dark.** codeaf draws no striped lists anywhere. Rows
   are told apart by spacing, and groups inside a list by a blank line — never by a rule,
   and never by a background that flips row to row.
 
@@ -1107,9 +1107,9 @@ zero, and `/cost` only adds it when the cost is above zero — so the two comman
 landed task card also refuses to print `$0.00`.
 
 **A resumed conversation is not a $0.00 conversation.** Reopening a transcript with
-`--session`, `aforge resume` or `/resume` puts what that conversation has already spent on
+`--session`, `codeaf resume` or `/resume` puts what that conversation has already spent on
 the spend segment on its first frame — the sum of every cost line in its file, the
-errands aforge ran beside your turns included — and the work it started is on the same
+errands codeaf ran beside your turns included — and the work it started is on the same
 first frame, read off the spending ledger on the way in rather than waiting for the task
 column to come up. New turns add to it. If you resume a
 session that spent real money and the row still says `$0.00`, the file has no cost lines
@@ -1144,7 +1144,7 @@ words:
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `starting task` | a task proposal has a countdown and will start automatically | accent |
 | `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
-| `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before aforge detaches | dim |
+| `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
@@ -1174,7 +1174,7 @@ need to be: `esc` again is the rewind's door (see the sessions and rewind page) 
 `ctrl+c` is the quit arm, so neither is free, and a stop you have to ask for twice is a
 stop that did not work the first time. So the window is bounded at 10 seconds from the
 key you already pressed. The status line counts it down — `stopping · detaching in 7s` —
-and at the bound aforge detaches: the waits inside the tool are ended, whatever request
+and at the bound codeaf detaches: the waits inside the tool are ended, whatever request
 was still in flight is aborted, the conversation reads `detached — the turn was let go of
 and nothing is waiting for it`, and the turn is written to the journal as abandoned with
 what it had spent. You get the next prompt straight away.
@@ -1286,7 +1286,7 @@ Home's top line is the program's name on the left and the machine's vital signs 
 right:
 
 ```
- aforge          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
+ codeaf          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
 ```
 
 When there is not room for all of it, the segments give way **one at a time, in a fixed
@@ -1312,7 +1312,7 @@ goes entirely there is **no `$` left on the line at all**: a narrow top line nev
 segments do not jump sideways as the first money arrives. It is a different line.)
 
 **The name never gives way.** A window too narrow even for `2 want you` beside it draws
-` aforge` alone. This used to be all-or-nothing — everything, or the name by itself — so a
+` codeaf` alone. This used to be all-or-nothing — everything, or the name by itself — so a
 sixty-column window spent twelve cells on `thu 12:01am` and then, one segment later, said
 nothing about the machine whatsoever.
 
@@ -1400,7 +1400,7 @@ list — closes the sheet. The wheel moves the cursor.
 The sheet closes itself the moment the frame grows back out of phone width. A sheet
 standing in for a row that is back on screen is a sheet nobody asked for.
 
-## Which aforge build is running — version, commit, dirty build and restart notice
+## Which codeaf build is running — version, commit, dirty build and restart notice
 
 Type `/status` and read the one `build` line. It names the source revision, says `(dirty)`
 when the build included uncommitted files, and gives the local build time:
@@ -1409,29 +1409,29 @@ when the build included uncommitted files, and gives the local build time:
 build  1265feda (dirty) built 2026-08-27 13:28
 ```
 
-`aforge --version`, `aforge version` and `aforge -v` print the same identity without
+`codeaf --version`, `codeaf version` and `codeaf -v` print the same identity without
 opening a conversation, on one line, with the Go toolchain and the platform after it —
-`aforge 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
+`codeaf 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
 defect report needs. A binary built with a bare `go build` rather than `make build` carries
-no revision at all, and says so: `aforge dev (no revision stamped — built without `make
+no revision at all, and says so: `codeaf dev (no revision stamped — built without `make
 build`) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
 the machine holding the conversation, not the surface machine's build.
 
-If the `aforge` file is rebuilt while this process is still open, aforge writes one quiet
+If the `codeaf` file is rebuilt while this process is still open, codeaf writes one quiet
 line after the current turn:
 
 ```
-a newer aforge was built at 13:28 — restart to use it
+a newer codeaf was built at 13:28 — restart to use it
 ```
 
 It says this once for that newer file, not after every turn. Rebuilding again produces
 one new line. The running conversation is not silently changed underneath you; restart
-aforge to use what was built.
+codeaf to use what was built.
 
-## Markdown: what aforge renders
+## Markdown: what codeaf renders
 
 The model's reply is rendered as markdown, parsed with goldmark and painted through
-aforge's own token layer — there is no HTML renderer involved. **Every place on this
+codeaf's own token layer — there is no HTML renderer involved. **Every place on this
 surface that draws an answer draws it through this one renderer**, including the `ask here`
 pane on home, so the same words never read as prose in one place and as `**source**` in
 another. What is supported:
@@ -1466,7 +1466,7 @@ another. What is supported:
   Autolinks get the same treatment.
 - **Tables** — see the table sections.
 
-## What markdown aforge does not render
+## What markdown codeaf does not render
 
 Most of GFM is rendered in a reply, but two things are deliberately not.
 
@@ -1483,7 +1483,7 @@ rather than being dropped, so nothing vanishes silently.
 plus the address.
 
 There is no HTML renderer and no glamour involved anywhere — the parser is goldmark's,
-and the painting is aforge's own token layer.
+and the painting is codeaf's own token layer.
 
 Every byte of a reply is sanitised and any surviving escape sequence is stripped, so a
 reply cannot paint itself a heading.
@@ -1574,7 +1574,7 @@ look like a reply that opened in bold, which is a different thing.
 
 ## Why is part of the reply grey, and where is the actual answer
 
-Because that part was never the answer. It was aforge saying what it was about to do.
+Because that part was never the answer. It was codeaf saying what it was about to do.
 
 A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
 work start under it in the same turn is narration** — "let me check the config first" —
@@ -1595,7 +1595,7 @@ Nothing here reads what the model wrote. It is decided entirely by the shape of 
 what came after what — so it is the same on a conversation you resume as it was live, and
 the same on a task's own page.
 
-One thing that is **not** work, and so never greys the paragraph above it: a line aforge
+One thing that is **not** work, and so never greys the paragraph above it: a line codeaf
 writes about the turn itself. What the turn changed, what it cost, a notice that a request
 had to be reshaped — those land under the reply they are about, and a reply that had one
 written through the middle of it stays one answer rather than breaking into a grey half and
@@ -1615,12 +1615,12 @@ be added to say it. Asking something else afterwards does not promote it later.
 
 The turn also collapses to a chip that says who stopped it —
 `▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
-`ctrl+e` over an empty message box, or a click on the chip, opens it again. aforge's own
+`ctrl+e` over an empty message box, or a click on the chip, opens it again. codeaf's own
 lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
 the chip.
 
 One limit worth knowing: the session file keeps the words a stopped turn managed to say
-and keeps no mark saying it was stopped. So if you close aforge and **resume** that
+and keeps no mark saying it was stopped. So if you close codeaf and **resume** that
 conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
 as an answer again.
 
@@ -1680,7 +1680,7 @@ What happens to it:
 - The box is cleared the moment you press `cmd+enter`, so you can keep typing. Attachments
   in the tray go with the held message and come back on the tray if you take it back.
 - If the conversation is replaced under it — `/new`, opening a session from the welcome
-  box — the waiting messages are dropped and aforge says so: `1 waiting message dropped`
+  box — the waiting messages are dropped and codeaf says so: `1 waiting message dropped`
   or `N waiting messages dropped`.
 
 While something is waiting, the hint slot in the legend ends with
@@ -1754,27 +1754,27 @@ hyperlink.** Click it and the file opens the way your desktop would open it. In 
 terminals that is **cmd+click** on a Mac and **ctrl+click** on Linux; a few open on a
 plain click, and most will offer it on the right-click menu as well.
 
-This works everywhere a path appears in aforge's own text:
+This works everywhere a path appears in codeaf's own text:
 
 - **anywhere in a reply** — in a sentence, inside `` `backticks` ``, inside a fenced
   code block, in a list, in a table cell.
 - **in your own message**, including the `[shot.png]` markers under a message you
   attached a picture to, and the `Transcript: file:///…` line an `@task` mention
   leaves behind.
-- **in aforge's dim `·` notes** — `/status`'s `file` row, `/help`'s `session · …`,
+- **in codeaf's dim `·` notes** — `/status`'s `file` row, `/help`'s `session · …`,
   `exported · …`, `resumed …`, `new session · …`.
 - **on a tool row** — the target of a `read`, an `edit` or a `write`, and the file name
   above an edit's diff, even when the row was too narrow to show the whole path.
 - **the dim line under a picture**, which is the picture's whole absolute path.
 - **on the home screen** — the dim `project · path` line under a conversation's name,
   which opens that folder. (There used to be an `elsewhere · …` line beside it, naming the
-  folder you had to go and start aforge in to open another project's conversation. It is
+  folder you had to go and start codeaf in to open another project's conversation. It is
   gone: `enter` on home opens any project's row now.)
 
 **It survives wrapping.** A path too long for the pane goes down across several rows,
 and every row of it opens the same file — the terminal is told the target
 separately from the text, so there is no fragment to grab by mistake. This is the whole
-reason aforge writes the links itself rather than leaving your terminal to guess where a
+reason codeaf writes the links itself rather than leaving your terminal to guess where a
 word starts and stops.
 
 **A line and column come along.** `internal/tui3/app.go:412:9` — the sort of thing a
@@ -1791,7 +1791,7 @@ because the key is already there.
 
 The underline is how you can tell there is something to click. Terminals differ wildly
 about whether they show a hyperlink at all until you are already holding the modifier
-down, so aforge draws the affordance itself: a path that is a working link is
+down, so codeaf draws the affordance itself: a path that is a working link is
 underlined, and a path that is not is plain.
 
 When a working path is written as inline code, the underline is its one visible mark;
@@ -1817,12 +1817,12 @@ wrapped path, and is why this exists everywhere else.
 
 Nothing breaks in a terminal that cannot open them: the link is written in a form an
 unknowing terminal ignores, and the path reads and copies as the plain path it always
-was. If `TERM` is unset or `dumb` — a pipe, a file, a cron job — aforge writes no path
+was. If `TERM` is unset or `dumb` — a pipe, a file, a cron job — codeaf writes no path
 links at all.
 
 ## What is not a link: a path that does not open
 
-A path only becomes a link **after aforge has gone and looked for the file**. Everything
+A path only becomes a link **after codeaf has gone and looked for the file**. Everything
 below is drawn as plain text on purpose:
 
 - **A file that is not there.** A name the model invented, a file deleted since, a path
@@ -1836,9 +1836,9 @@ below is drawn as plain text on purpose:
   relative name means "in the workspace", and one that leaves it has stopped meaning
   that.
 - **Anything a command printed.** A `bash` call's output, a `grep` or `find` result, the
-  body of a `read` — those are another program's words and aforge draws them exactly as
+  body of a `read` — those are another program's words and codeaf draws them exactly as
   they arrived. Sweeping them for pathish words would underline half a test log. What
-  **is** linked on a tool card is the part aforge wrote itself: the call's own target.
+  **is** linked on a tool card is the part codeaf wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
   page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
   on one of those rows means THAT tree's copy and not this one's, and a link built
@@ -1866,12 +1866,12 @@ stream of text could use to make your terminal do something on its own — set t
 title, write your clipboard. So a reply that writes out a hyperlink to somewhere else
 gets no link, only its visible text.
 
-Every link on this screen was therefore made by aforge, points at a file, and points at
+Every link on this screen was therefore made by codeaf, points at a file, and points at
 a file that was there when the row was drawn.
 
 ## Why my table is cut off, and how to open it
 
-A wide table is fitted by truncating its cells. When that happens, aforge grows one dim
+A wide table is fitted by truncating its cells. When that happens, codeaf grows one dim
 row under the table offering to open it. The exact wording:
 
 ```
@@ -1913,7 +1913,7 @@ content on the clipboard. A closed one offers the ellipses you can already see.
 
 ## What opening a table actually does
 
-Opening is a layout decision, not a setting. You asked to see the cells, so aforge picks
+Opening is a layout decision, not a setting. You asked to see the cells, so codeaf picks
 the honest layout for the width it has, in this order:
 
 1. If the cells cannot be recovered at all → **stacked records**.
@@ -1940,7 +1940,7 @@ a one-column table at a width nothing can overflow, so `**opus**`, a link or a c
 shows the same words the closed table showed.
 
 The header is painted secondary, the hairline tertiary and the body primary — the prose
-renderer's own ramp. The foot is aforge's own chrome and wears its dim.
+renderer's own ramp. The foot is codeaf's own chrome and wears its dim.
 
 ## The three live steps under my question — compact progress, opening the work
 
@@ -2091,7 +2091,7 @@ task's own live work — never the conversation's figures.
   arriving on the page since.
 
 **A task running through this machine's engine** — the ordinary case, a plain
-`aforge` in a project — has no live lane to its page, so the page reads both
+`codeaf` in a project — has no live lane to its page, so the page reads both
 figures off the task's own record, which it re-reads several times a second:
 `↑` is the newest request as it was sent, and `↓` adds each request's output as
 it lands. The page reads the end of that record, so on a task that has run a
@@ -2115,7 +2115,7 @@ request added together, which on a long turn is several times `↑`.
 
 **`↓` is the provider's own count** of the turn's output as each step reports it,
 **plus** an estimate of what has arrived on your screen since — about four bytes
-to the token, the same estimate aforge uses everywhere it has to guess. So it
+to the token, the same estimate codeaf uses everywhere it has to guess. So it
 keeps moving after a count lands instead of standing still until the page
 catches up, and the next count takes over when it arrives.
 
@@ -2196,7 +2196,7 @@ together, in the same repaint, so the two are never out of step. If the narrator
 says nothing, says a word that is not on the list, or the answer arrives after
 the step has finished, the tool-derived mark stands and nothing is retried.
 
-A tool that came from a **connected account** has a name aforge has never seen,
+A tool that came from a **connected account** has a name codeaf has never seen,
 so its steps draw the generic gear (`▪` in plain mode) rather than a guess.
 
 **A reopened conversation retains saved descriptions and categories.** Older
@@ -2229,8 +2229,8 @@ two minutes later, with nothing running anywhere. **If a title is in the
 present, something in that step is genuinely still open.**
 
 **A title the model wrote itself is left alone.** When the model narrates a step
-in its own words, those are its words: aforge draws them as written and does not
-re-tense them. Only the titles aforge composes from the calls themselves — the
+in its own words, those are its words: codeaf draws them as written and does not
+re-tense them. Only the titles codeaf composes from the calls themselves — the
 ones built out of the tool names and the files they were pointed at — change.
 
 ## The live work collapses when the answer finishes
@@ -2392,7 +2392,7 @@ overwrote its own beginning. An escape sequence is worse than either: drawn into
 frame, it repaints rows that belong to this surface. A reply is sanitised for the same
 reason.
 
-The syntax colouring you see on a `read`, a `write` or a `bash` command is **aforge's
+The syntax colouring you see on a `read`, a `write` or a `bash` command is **codeaf's
 own**, applied after the cleaning — so source still reads as source.
 
 ## What the numbers on the right of a tool row mean
@@ -2746,19 +2746,19 @@ selected to copy. A row that is none of those has no background at all.
 
 If a colour on this surface could be described as "bright", it is wrong.
 
-## The font aforge is drawn for — JetBrains Mono, and how to set it in your terminal
+## The font codeaf is drawn for — JetBrains Mono, and how to set it in your terminal
 
-**aforge is drawn for JetBrains Mono, regular and bold. Any monospace font with the block
+**codeaf is drawn for JetBrains Mono, regular and bold. Any monospace font with the block
 and box-drawing ranges works.** A terminal program cannot set your font — it draws
 characters and your terminal chooses the shapes — so this is a recommendation and never a
 requirement, and nothing here breaks on another face.
 
 What the design actually assumes is two weights and no more: **regular for everything, bold
 for one tier.** There is no third weight and no second size, because a terminal has
-neither. Where something needs to stand out past bold, aforge uses brightness, case, indent
+neither. Where something needs to stand out past bold, codeaf uses brightness, case, indent
 or a blank line instead.
 
-Every character aforge draws on home and the places is from a standard Unicode range —
+Every character codeaf draws on home and the places is from a standard Unicode range —
 `?` `◐` `○` `✓` `✕` `▸` `›` `·`, the box-drawing rail, the block characters in a bar chart.
 **Nothing is from a nerd-font private-use area**, so no patched font is needed anywhere.
 
@@ -2774,12 +2774,12 @@ Where the font setting lives, per terminal:
 | WezTerm | `font = wezterm.font("JetBrains Mono")` in `~/.wezterm.lua` |
 
 If characters come out as boxes or as `?`, the font is missing those ranges — pick another
-monospace, or start aforge with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
+monospace, or start codeaf with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
 back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 
 ## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
 
-**It is one key and two spellings, and aforge picks the spelling from the platform it is
+**It is one key and two spellings, and codeaf picks the spelling from the platform it is
 running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
 `⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
 else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
@@ -2791,7 +2791,7 @@ for both platforms. If a page here says `alt+` and your screen says `⌥`, they 
 chord.
 
 **On Windows and on Linux, Alt is already meta and there is nothing to set.** Windows
-Terminal, conhost, the WSL consoles and every Linux terminal send `alt`+key the way aforge
+Terminal, conhost, the WSL consoles and every Linux terminal send `alt`+key the way codeaf
 expects. There is no `option` key and no setting; the chords simply work.
 
 ## Why my option key types ¡ ™ £ instead of jumping — "use option as meta" on macOS
@@ -2800,7 +2800,7 @@ expects. There is no `option` key and no setting; the chords simply work.
 you turn that on.** Until you do, `⌥1` types `¡`, `⌥2` types `™`, `⌥.` types `≥` and
 `⌥enter` opens a line in the box instead of sending a task off.
 
-aforge notices. The first time one of those characters arrives on a place, one dim line
+codeaf notices. The first time one of those characters arrives on a place, one dim line
 appears under the list:
 
     your terminal sends ⌥ as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+
@@ -2829,7 +2829,7 @@ Where the setting lives:
 | WezTerm | `send_composed_key_when_left_alt_is_pressed = false` in `~/.wezterm.lua` |
 
 **What "on" looks like:** `⌥1` arrives as the escape character followed by `1` — which is how
-meta has been sent for forty years, and is why aforge puts the place numbers on Option rather
+meta has been sent for forty years, and is why codeaf puts the place numbers on Option rather
 than on Control.
 
 **What "off" looks like:** the chord either does nothing or types a symbol. Nothing is broken
@@ -2838,7 +2838,7 @@ order, and the composer's own foot line names what `enter` does. But the map and
 are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
-terminals run the kitty keyboard protocol and report it, and where that report arrives aforge
+terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
 binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
 the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
@@ -2847,7 +2847,7 @@ nothing is never promised it.
 
 ## What each colour means
 
-Every colour aforge draws is a role, and each role has one job.
+Every colour codeaf draws is a role, and each role has one job.
 
 The roles: ink for the reply's body and every tool's target; accent for your own `› `
 glyph, the tool rail, and the one live or chosen thing on the screen; muted — a soft
@@ -2867,12 +2867,12 @@ fill: no row of a question is painted in the question's colour.
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
 cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
-Headings and section labels do not: the `aforge` wordmark in the welcome box, the name on
+Headings and section labels do not: the `codeaf` wordmark in the welcome box, the name on
 home's top line, and every band heading on a card are **structure**, and
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
 
-Violet is spent on the moment aforge is waiting for you **inside this conversation** and
+Violet is spent on the moment codeaf is waiting for you **inside this conversation** and
 on nothing else: the consent question, its glyph, its choices, the status word, and the
 legend while one is up. Its whole value is that seeing it anywhere means one thing.
 
@@ -2900,7 +2900,7 @@ this new bg looks weird."* So there is one palette again.
 **The background is your terminal's, on a place exactly as in a conversation.** Nothing
 paints a page. The only rows lifted off your own background are the row your pointer is
 over, the row your cursor is on, and a span you have selected to copy — the same three
-steps, the same shades, everywhere in aforge.
+steps, the same shades, everywhere in codeaf.
 
 **A place spends colour on two meanings and no more: amber means a person is being waited
 on, the accent means something is moving.** Green is a unit rather than a signal. Every
@@ -3143,7 +3143,7 @@ rather than dimmed, because a question has to lead on a page too. No two roles r
 to the same 256 index.
 
 **Which of the two you get is detected, not configured. There is no theme setting to
-change.** The best answer comes from the terminal itself: on the first frame aforge asks
+change.** The best answer comes from the terminal itself: on the first frame codeaf asks
 what colour its background is, and a terminal that answers picks the ladder outright —
 a light background gets the light palette, whatever anything else says. See *How the
 colors tune themselves to your terminal's background*.
@@ -3159,7 +3159,7 @@ lands, will outrank the terminal's own answer.
 
 ## How the colors tune themselves to your terminal's background
 
-**aforge asks your terminal what colour its background is, and tunes the palette to the
+**codeaf asks your terminal what colour its background is, and tunes the palette to the
 answer.** The question goes out on the first frame and nothing waits for it. If your
 terminal answers — and many do — the reply arrives like any other event and the screen
 repaints in colours measured against your real background rather than an assumed one.
@@ -3239,7 +3239,7 @@ streaming, while any tool call is spinning, and while a sub-harness run has a st
 row under it (see *Saved shapes of work*) — two answers to "is this alive?" is one too
 many.
 
-Beside it, aforge says as much about the wait as it honestly can, and **the most specific
+Beside it, codeaf says as much about the wait as it honestly can, and **the most specific
 of three answers wins**:
 
 ```
@@ -3273,7 +3273,7 @@ layer holding the wire, never guessed by the screen:
 | `first word` | the request was accepted and nothing has been written back: a queue, a cold model, or the router still walking its own endpoints |
 | `thinking` | the model **is** writing, and none of it is answer — it is reasoning, which is billed and streamed and shows nothing |
 | `writing` | the answer itself is arriving |
-| `paced` | the provider asked aforge to slow down, and it is waiting |
+| `paced` | the provider asked codeaf to slow down, and it is waiting |
 | `trying again` | the same question is being asked again with one field dropped from it |
 | `switching` | a second machine is being asked the same question while the first is still live |
 
@@ -3333,7 +3333,7 @@ context full, the loop watch spent, the wall run out, or a claim that it had fin
 disproved by ten more rounds of real work (*Tasks*, under *When a reply is taken out of your
 hands*).
 
-**`[taking stock]` at the head of a line is aforge talking to the model writing your
+**`[taking stock]` at the head of a line is codeaf talking to the model writing your
 answer**, and nobody is asked anything at all. After ten finished rounds of tool calls, and
 again after twenty, a note rides into the next request the answer was going to make anyway,
 carrying what this answer has run up and the roads on:
@@ -3358,7 +3358,7 @@ That is a rule this build holds itself to, and it is measured: the request leave
 within milliseconds of your message, and the next request of a multi-step answer
 leaves within milliseconds of the tool result before it.
 
-Everything else aforge asks on your behalf during a turn runs **beside** the
+Everything else codeaf asks on your behalf during a turn runs **beside** the
 answer, never in front of it:
 
 - the **memory lookup**, picking which remembered lines belong in this message
@@ -3402,7 +3402,7 @@ That fifteen seconds is the one thing that can take a line off the screen early,
 deliberate: it is what stops a clock running forever when the layer behind it was killed
 without saying so. If a phase disappears and the work has **not** finished, what you are
 looking at is a layer that stopped reporting, and `still working` — the vaguest true
-sentence aforge has — is what takes its place.
+sentence codeaf has — is what takes its place.
 
 This was not always true. Long stages used to be drawn for fifteen seconds and then vanish
 while they carried on, and one of them worked around it by announcing itself twice. Neither
@@ -3417,11 +3417,11 @@ Nothing is wrong. The clock beside the word counts up, so a number that is movin
 program that is alive and painting; a clock that has **stopped** is the thing to worry
 about. `esc` interrupts at any point.
 
-`first word` is the other slow one, and it means something different: aforge's request was
+`first word` is the other slow one, and it means something different: codeaf's request was
 accepted and the endpoint has written nothing at all — a queue, a cold model loading, or a
 router still choosing between its own machines.
 
-**`still working` is not the normal state.** It is the vaguest true sentence aforge has,
+**`still working` is not the normal state.** It is the vaguest true sentence codeaf has,
 and it appears only when the two more specific lines know nothing: a phase that stopped
 being refreshed, a request that has already returned, a build with nothing reporting. If
 you are reading it, the layers that would say more have nothing to say.
@@ -3438,20 +3438,20 @@ Sometimes the waiting line carries an arrow:
 ```
 
 Read it as: **this request has been waiting 3.1 seconds, and if it has not started
-answering by 4.4 seconds, aforge asks parasail the same question as well.** Both figures
+answering by 4.4 seconds, codeaf asks parasail the same question as well.** Both figures
 are seconds since the phase began, on one ruler, so the gap is readable without
-arithmetic. The moment is not a round number somebody picked: it is the deadline aforge
+arithmetic. The moment is not a round number somebody picked: it is the deadline codeaf
 already worked out from what it believes about the machine answering you, and it lands
 between **0.7 and 8 seconds**.
 
 `paced · retry in 6s` is the same shape of promise for a rate limit, and those six seconds
-are the provider's own `Retry-After` rather than anything aforge chose.
+are the provider's own `Retry-After` rather than anything codeaf chose.
 
 **No arrow is drawn unless both halves are real** — a moment, and something that really
 happens at it. So there is no countdown when there is no other provider to go to: a home
 whose provider row pins one provider, `routing` set to `off` or `simple`, a base that is not a router,
 or a model with only one provider behind it. You still get the phase and the count-up,
-which are true, and no promise, which is the point — aforge would rather show you nothing
+which are true, and no promise, which is the point — codeaf would rather show you nothing
 than a countdown that expires and does nothing.
 
 Turning the **speed guard** off stops the second request being bought at all; see *Models,
@@ -3503,7 +3503,7 @@ line spells it:
 ```
 
 One model id is served by many machines. When the one answering goes quiet — before the
-first word, or in the middle of its thinking, or mid-answer — aforge sends the same
+first word, or in the middle of its thinking, or mid-answer — codeaf sends the same
 question to another one of them and lets the two race. Whichever writes first owns the
 reply and the other is cancelled, which is what stops the bill. Anything the loser wrote
 while the race was undecided is thrown away, so its text, its thought and its half-formed
@@ -3523,7 +3523,7 @@ what the machine answering is believed to do, and it sits between **0.7 and 8 se
 see "how long until it gives up on this one" above for the countdown the status line draws
 while it is waiting.
 
-**There is no second request that asks the SAME machine again in parallel.** aforge used to
+**There is no second request that asks the SAME machine again in parallel.** codeaf used to
 do that on a flat eight-second wait, with no machine named and no budget, and it is gone:
 one silence now has one answer. What is left, and is a different thing, is *retrying* —
 asking again after a request has been cut or refused, one at a time. See the next section.
@@ -3561,7 +3561,7 @@ it stays there — the wait line is gone by the next redraw, and the row is not:
 Three parts, in that order: what went wrong, that the same model is being asked again, and
 which try this is out of how many that model gets. The count is the budget the request is
 actually walking rather than a number the screen holds, so it moves with your settings and
-with the kind of failure; a link to an older aforge that does not send it draws the reason
+with the kind of failure; a link to an older codeaf that does not send it draws the reason
 and `asking again` with no count after it.
 
 One more row reads the same way and is not a cut request: `the reply stopped when this
@@ -3576,7 +3576,7 @@ no grace on this one either — the plain wait hides its clock for four seconds,
 appears at once, because you have just watched something disappear and are owed the reason.
 
 **The one dim row that does name a model** is the last of them: when asking again has run
-out, aforge finishes the reply on a different model, and that is said before it happens.
+out, codeaf finishes the reply on a different model, and that is said before it happens.
 
 ```
   nothing kept coming back from the model · moving to gpt-5-mini
@@ -3623,7 +3623,7 @@ where the withdrawn text was:
 If the rescue wins before the first word, there is nothing to take away and no line is
 drawn.
 
-This is the one place aforge takes something off the page that you watched arrive, and the
+This is the one place codeaf takes something off the page that you watched arrive, and the
 difference from an interrupt is exactly that. When **you** press `esc`, the half-written
 reply is kept — it is real work you watched happen, and it stays in the conversation. When
 the session cuts a request, nothing of that attempt exists anywhere, so leaving it on
@@ -3633,10 +3633,10 @@ screen would show you an answer the model never gave and will never read.
 above the message box exactly as before (see *Keys, typing, and the mouse*); the retry has
 no opinion about it.
 
-## aforge's own lines, and why the same answer is not repeated when you ask twice
+## codeaf's own lines, and why the same answer is not repeated when you ask twice
 
 Some lines in the conversation are not the model's. They lead with a dim `· ` and are
-aforge answering you directly: the tables `/status`, `/cost` and `/help` print, an
+codeaf answering you directly: the tables `/status`, `/cost` and `/help` print, an
 `exported · …` receipt, a refusal, and the one-line answers a command gives when there is
 nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
@@ -3650,7 +3650,7 @@ page states the law).
 press looked like it did nothing, and you get one copy of its answer rather than four
 stacked identical lines; the conversation scrolls back down to the line that is already
 there. If anything at all lands in between — a reply, a tool call, a different line of
-aforge's own — the answer is written again, in its new place.
+codeaf's own — the answer is written again, in its new place.
 
 ## I typed something while it was working and it disappeared — the `└` correction stays where I said it
 
@@ -3665,7 +3665,7 @@ and the work that follows:
   ╰─▶ read parse.go
 ```
 
-The `└` is furniture, drawn dim like every other mark aforge uses about its own
+The `└` is furniture, drawn dim like every other mark codeaf uses about its own
 structure. The words after it are yours, painted in your `narr` ink tier. The row is
 flush left in your column, while tool rows stay padded two columns in. The dim `└` says
 this continues the same question rather than opening a new one. Reloading the
@@ -3690,7 +3690,7 @@ row on this surface turns:
 └ use the staging bucket, not production · ⠹ stopped the reply here
 ```
 
-The clause is aforge's own account of what it did to make the next boundary for your
+The clause is codeaf's own account of what it did to make the next boundary for your
 words, and it is one of:
 
 | Clause | What it means |
@@ -3711,7 +3711,7 @@ transcript's own record of the correction says which of the two actually happene
 
 `stopped the running command` can appear at any age. A plain stop is never held for the
 three seconds; it reaches the command as soon as you send it.
-| `steering` | the plain working word, used when aforge sent no account at all |
+| `steering` | the plain working word, used when codeaf sent no account at all |
 
 On a narrow frame the clause goes on a row of its own under the sentence rather than
 being cut.
@@ -3754,7 +3754,7 @@ A turn whose last request has already gone out has no next step left, so a corre
 sent in the last seconds of one can miss it. It is never dropped and it is never
 pretended about. It **leaves the transcript at that point** — it was not part of that
 turn, and a row left standing in the middle of it would say the model had read something
-it never saw, and would say it twice once the words come back as a question — and aforge
+it never saw, and would say it twice once the words come back as a question — and codeaf
 says so in the dim line it uses for everything it says on its own account:
 
 ```
@@ -3767,7 +3767,7 @@ message of yours with the usual `›`. Nothing is retyped and nothing is lost.
 The one exception is a turn **you stopped**. Pressing stop stops everything you had said
 to that turn, corrections included, so a correction that had not reached the model when
 you pressed it goes with the turn. Its row leaves the page the moment the turn ends, and
-nothing new is drawn after the stop — which is what stop means everywhere in aforge.
+nothing new is drawn after the stop — which is what stop means everywhere in codeaf.
 
 ## The dim line under a finished turn
 
@@ -3863,27 +3863,27 @@ There is no hover at all in the screen-reader tier. Terminals below ANSI256 get 
 background either, because there is no weight that means "under the pointer" — the ink
 steps above still show there.
 
-The mouse is aforge's by default for the whole session, which is what makes the click
+The mouse is codeaf's by default for the whole session, which is what makes the click
 targets on this screen work. `ctrl+s` hands the pointer back to the terminal so you can
 drag-to-select with it, and takes those targets away until you take the mouse back.
 
 ## What the terminal tab says — why my terminal title changes, and why the tab shows a path
 
-aforge sets the terminal's own title: the words on your terminal app's tab and in its
+codeaf sets the terminal's own title: the words on your terminal app's tab and in its
 sidebar, in the cmd-tab switcher, and in a tmux or screen window name. It says where you
-are inside aforge, and it changes as you move:
+are inside codeaf, and it changes as you move:
 
-- home, with nothing waiting: `aforge`
-- home, with things waiting on you: `3 want you · aforge` — the same count and words as
+- home, with nothing waiting: `codeaf`
+- home, with things waiting on you: `3 want you · codeaf` — the same count and words as
   home's top line
-- a conversation: `Token counter · aforge` — the short name its tab on the tab strip shows
-- a conversation that has not named itself yet: `new conversation · aforge`, which becomes
+- a conversation: `Token counter · codeaf` — the short name its tab on the tab strip shows
+- a conversation that has not named itself yet: `new conversation · codeaf`, which becomes
   the name the moment the conversation has one
-- a task page: `Fix the nil-map crash · task · aforge`
+- a task page: `Fix the nil-map crash · task · codeaf`
 - the tasks, standing, memory, spend, search or settings place: its own word, as in
-  `memory · aforge`
-- over `--host`, the machine comes before the product: `Token counter @ devbox · aforge`
-  (home at rest there is `aforge @ devbox`)
+  `memory · codeaf`
+- over `--host`, the machine comes before the product: `Token counter @ devbox · codeaf`
+  (home at rest there is `codeaf @ devbox`)
 
 The title changes only when where you are changes — a place entered, a name arriving, a
 question coming up — never on a clock, so an idle window's tab never flickers. There is
@@ -3891,25 +3891,25 @@ no spinner, model, cost or time in it.
 
 It is sent both as the window title and as the tab's own name, because Terminal.app and
 iTerm2 label a tab from the second. A tab still showing the path of the program instead
-of one of the sentences above is running an older aforge.
+of one of the sentences above is running an older codeaf.
 
-## The ? on the terminal tab — which aforge tab is waiting on me, and the title after quitting
+## The ? on the terminal tab — which codeaf tab is waiting on me, and the title after quitting
 
-A `?` in front of a conversation's title — `? Token counter · aforge` — means that
+A `?` in front of a conversation's title — `? Token counter · codeaf` — means that
 conversation is waiting on you: a permission question, a sign-in, an offer, or a task
 proposal waiting for your answer. It is the same fact the `?` on its tab in the tab strip
 says, and it goes the moment you answer. On home the same news is the count, `3 want
-you · aforge`, over every conversation at once.
+you · codeaf`, over every conversation at once.
 
 The title is plain text in every tier: the `?` is always the ASCII question mark and never
 an icon, because your terminal app draws the title in the system's own font. A long name is
-cut with `…` so the whole title stays under sixty characters; the ` · aforge` at the end is
+cut with `…` so the whole title stays under sixty characters; the ` · codeaf` at the end is
 never the part that is cut.
 
-When aforge exits it sets the title back to empty, so the terminal shows its own default
+When codeaf exits it sets the title back to empty, so the terminal shows its own default
 again, or whatever your shell's next prompt sets. There is no setting to turn the title
 off. If your tmux windows keep their own names, that is tmux's `allow-rename` setting
-refusing outside renames, and aforge respects the refusal by simply being refused.
+refusing outside renames, and codeaf respects the refusal by simply being refused.
 
 ## The dim thought row above a reply — and models that think between their words
 
@@ -3936,7 +3936,7 @@ there after a restart, and that is deliberate.
 It should not happen any more, and if you saw it before, this is what it was.
 
 Some endpoints put the whole reply on the **working** channel and send no answer at all.
-aforge used to draw that as a model that thought for a while and said nothing: a dim
+codeaf used to draw that as a model that thought for a while and said nothing: a dim
 `thought for 9s` row, no answer under it, and — because a reply with no words in it looks
 exactly like a call that failed — the same question asked again at your expense.
 
@@ -3948,7 +3948,7 @@ nothing is untouched — that is a model behaving, not a lost reply.
 
 **A turn that ends with no answer at all is a different thing, and it says so.** That is a
 reply taken away rather than a reply misfiled — you stopped it, or the conversation was
-opened in another window, closed, or left under the turn — and aforge names which, in one
+opened in another window, closed, or left under the turn — and codeaf names which, in one
 sentence, unless it was your own stop. *Models and cost* has the list under "My reply just
 stopped and nothing was said".
 
@@ -3959,9 +3959,9 @@ again`, and then the answer under the question you already asked.
 
 ## `<think>` showed up in my answer
 
-It does not any more. Some endpoints — anything reached through `AFORGE_BASE_URL`, and any
+It does not any more. Some endpoints — anything reached through `CODEAF_BASE_URL`, and any
 gateway in front of a raw open model — do not separate the model's working from its reply
-and instead fence it inside the answer as `<think>…</think>`. aforge used to type the tag
+and instead fence it inside the answer as `<think>…</think>`. codeaf used to type the tag
 and everything in it straight into your answer, and keep it in the conversation's record
 as words the model had said out loud.
 

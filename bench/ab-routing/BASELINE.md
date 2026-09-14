@@ -1,6 +1,6 @@
 # Arm A — the single-model baseline
 
-What today's aforge does on three complex tasks, run end to end through the real
+What today's codeaf does on three complex tasks, run end to end through the real
 CLI. The design that produced these numbers is in [`DESIGN.md`](DESIGN.md); the
 panel the routed arm will use, and the measurements behind it, are in
 [`panel.json`](panel.json).
@@ -58,11 +58,11 @@ thing the reference exists to establish.
 
 ### t2-synthesis, round 1 → round 2
 
-Arm A scored a perfect 8/8, and *how* is the interesting part. aforge planned
+Arm A scored a perfect 8/8, and *how* is the interesting part. codeaf planned
 t2 as an **ensemble**: three independent audits of the whole corpus, then a
 synthesis node. The three members individually made mistakes — one invented two
 contradictions — and the synthesis produced an answer with none of them. Round 1
-measured that aforge's ensemble strategy works on a judgment-shaped goal. That
+measured that codeaf's ensemble strategy works on a judgment-shaped goal. That
 is worth knowing and it is not what this experiment is for.
 
 Round 2 adds two hardenings chosen to punish the merge step specifically:
@@ -121,7 +121,7 @@ turns / $0.039, 5 nodes / 47 turns / $0.070, 11 nodes / 143 turns / $0.134.
 
 **t1 collapsing to one node is a finding, not a configuration mistake.** The
 planner marked it `oversized` — it knew the leaf was too big — and still shipped
-it as one leaf under the default `AFORGE_MAX_DEPTH=2`. Arm A was not tuned to
+it as one leaf under the default `CODEAF_MAX_DEPTH=2`. Arm A was not tuned to
 avoid this, and arm B must not be either; if the router improves t1, it will be
 improving a single leaf's model choice rather than a decomposition.
 
@@ -192,7 +192,7 @@ including both hardenings:
 **This is a task that arm A has saturated and I could not un-saturate in one
 hardening round.** It should be read as a finding rather than as a failed task:
 
-- aforge's **ensemble strategy is very strong on judgment-shaped work.** Round 1
+- codeaf's **ensemble strategy is very strong on judgment-shaped work.** Round 1
   showed individual ensemble members inventing contradictions that the synthesis
   node then removed. Round 2 added two traps aimed specifically at the merge and
   the merge caught both.
@@ -355,8 +355,8 @@ python3 bench/ab-routing/learning-diff.py bench/ab-routing/results-armB.jsonl \
   --control bench/ab-routing/results-armB-fresh.jsonl
 ```
 
-**Config contract.** `run-arm.sh` sets `AFORGE_ROUTER=on` and
-`AFORGE_PANEL=bench/ab-routing/panel.json` for arm B. If the router lands under
+**Config contract.** `run-arm.sh` sets `CODEAF_ROUTER=on` and
+`CODEAF_PANEL=bench/ab-routing/panel.json` for arm B. If the router lands under
 different names, the `case "$ARM"` block at the top of `run-arm.sh` is the only
 edit required — nothing else in the harness knows which arm it is running.
 
@@ -368,7 +368,7 @@ declining order of usefulness, and any one of these is enough:
 2. a routing-events file under the profile directory whose name contains
    `rout`, holding either a list of `{node, model}` records or a
    `{"decisions": {node: model}}` object;
-3. nothing extra at all — aforge already writes one profile file per
+3. nothing extra at all — codeaf already writes one profile file per
    `(model, skill)`, so the *set* of files under the ledger is direct evidence
    of which panel members were exercised and the record count in each says how
    much work they were given. `learning-diff.py` reports this regardless.

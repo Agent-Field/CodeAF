@@ -25,7 +25,7 @@
 
 SCENARIO_WORKLOAD="coding"
 SCENARIO_DOOR="print"
-SCENARIO_ARMS="aforge omp pi opencode"
+SCENARIO_ARMS="codeaf omp pi opencode"
 # The runtime cap: how long the harness may run before the cell is recorded as a
 # timeout. It bounds time, not money — what a run costs depends on what it asked
 # the provider for, and the guard's ledger is what says so.

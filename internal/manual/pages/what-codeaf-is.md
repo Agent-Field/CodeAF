@@ -1,6 +1,6 @@
-# What aforge is
+# What codeaf is
 
-Aforge is a resident employee, not a chat window. You give it work in plain
+codeaf is a resident employee, not a chat window. You give it work in plain
 language, it keeps working while you do something else, and it is still there —
 with everything it was doing and everything it learned — after you close the
 terminal and open it again tomorrow.
@@ -17,7 +17,7 @@ doing right now, so "what's everyone up to" is a question it can always answer.
 
 ## The graph: jobs, tasks, and the thread
 
-Everything aforge has ever done lives in one durable graph.
+Everything codeaf has ever done lives in one durable graph.
 
 - A **job** is one thing you asked for. It is what you see on the board.
 - A job compiles into **tasks** — the steps that actually get worked. A task can
@@ -27,7 +27,7 @@ Everything aforge has ever done lives in one durable graph.
   produced it.
 
 You never have to name a node id. You refer to work the way you would with a
-person — "the finance one", "that report", "the queued ones" — and aforge
+person — "the finance one", "that report", "the queued ones" — and codeaf
 resolves it against what is actually live.
 
 ## Nothing is lost on restart
@@ -37,7 +37,7 @@ terminal mid-job and the work keeps going; the workforce is not the terminal.
 Restart and you get the same thread, the same board, the same notebook, and the
 same standing goals.
 
-If aforge crashes after you wrote a message but before it replied, it replays
+If codeaf crashes after you wrote a message but before it replied, it replays
 that message on the next start. It will not silently swallow what you asked for.
 
 ## What it does when you are not there
@@ -47,15 +47,15 @@ standing goals on their own watches, it practices in idle time, it revises what
 it believes, and it folds all of it into one card waiting for you when you come
 back. That is its own page — ask about the daily rhythm.
 
-## Learning aforge by asking aforge
+## Learning codeaf by asking codeaf
 
 You do not have to read documentation to learn this. Ask it directly — what it
 can do, how one of its mechanisms behaves, why it did the particular thing it
 just did — in the same plain sentences you use for everything else.
 
-Answers to questions about aforge itself come out of an internal manual that
+Answers to questions about codeaf itself come out of an internal manual that
 ships inside the binary — the same pages you are reading now. They are not
-improvised, and when the manual does not cover something, aforge says it does
+improvised, and when the manual does not cover something, codeaf says it does
 not know rather than inventing machinery it does not have.
 
 ## What it will not do

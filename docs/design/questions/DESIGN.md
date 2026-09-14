@@ -210,7 +210,7 @@ conversation with the same answers row.
 - **THE FRAME (owner ruling 2026-09-11, frame pick A).** What was true: "no box drawing except the room's rule lines and blocks the asker drew". What is true now: a question hangs above the box as one framed object — the ONE frame primitive (`internal/tui3/frame.go`): rounded, dim edge, the question's `? head` in the top edge with a right-aligned aside (who asks, the clock), the primary keys in the bottom edge, and on an ASCII-only terminal two plain rules with no sides. The owner's reason: a question should hang above the input as one object, and borderless it read as more transcript. Blocks the asker drew keep their own rules inside it.
 - **ALIGNMENT.** Head at the gutter; option rows indented one key-cell; answers row indented like the options; the room's foot is pinned above the box exactly where every other question sits.
 - **SCREEN-READER AND NARROW.** Every form has a linear shape; compare stacks under 80 cols; the reader tier never draws a dial (a number input instead) and never paces a reveal.
-- **HEADLESS.** `--once`, `aforge engine`, a task lane: the policy applies and is printed (`asked: <head> → 1 (default · nobody to ask)`); a kind with no pick lands `your call` and pauses; nothing hangs.
+- **HEADLESS.** `--once`, `codeaf engine`, a task lane: the policy applies and is printed (`asked: <head> → 1 (default · nobody to ask)`); a kind with no pick lands `your call` and pauses; nothing hangs.
 - **NO MACHINERY VOCABULARY.** Never "prompt", "modal", "dialog", "approval gate" on screen.
 
 ## The model's door — `ask` (D5 = A)
@@ -302,7 +302,7 @@ while a call waited), and the ask arm that dropped an answer with nobody parked.
 
 A setting that changes what the program does on its own is never reachable only by a
 slash command. `/autonomy`, the settings row and this offer are three doors onto ONE
-store — `.aforge/autonomy.json`, written only through `Agent.SetAutonomy`.
+store — `.codeaf/autonomy.json`, written only through `Agent.SetAutonomy`.
 
 WHEN the offer appears is derived from the record this session already keeps, and from
 nothing else: the newest decision is the third of its shape answered the same way, by

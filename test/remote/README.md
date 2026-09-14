@@ -1,6 +1,6 @@
 # The two-machine harness
 
-`internal/e2e/remote_test.go` drives `aforge chat --host` across **three containers on one
+`internal/e2e/remote_test.go` drives `codeaf chat --host` across **three containers on one
 bridge network** — a surface machine, an engine machine, and a scripted model endpoint —
 so the remote lane is proved against two genuinely different filesystems.
 
@@ -22,7 +22,7 @@ pass by coincidence**. This harness makes the coincidence impossible:
 | | engine machine | surface machine |
 |---|---|---|
 | home directory | `/root` | `/opt/surface-home` (moved in `/etc/passwd`, not just `$HOME`) |
-| aforge home | `/var/lib/aforge-engine` | `/opt/surface-home/.aforge` |
+| codeaf home | `/var/lib/codeaf-engine` | `/opt/surface-home/.codeaf` |
 | workspace | `/srv/engine-work/project` | *absent* |
 | a directory of its own | *absent* | `/opt/surface-home/laptop-work` |
 | API key | yes | **none** |
@@ -81,7 +81,7 @@ go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -v -timeout 20m ./i
 About 65 seconds end to end on a warm image cache. The build tag keeps it out of
 `go test ./...` entirely, and the test **skips, never fails**, when docker is missing, the
 daemon will not answer, or the image will not pull. Containers and the network are named
-`aforge-e2e-*` and removed in `t.Cleanup`, so an interrupted run leaves nothing behind.
+`codeaf-e2e-*` and removed in `t.Cleanup`, so an interrupted run leaves nothing behind.
 
 Both binaries are built **on the host** with `CGO_ENABLED=0` and copied in with
 `docker cp`. That is why the base image can be `alpine:3.20`: a cgo build would link
@@ -115,7 +115,7 @@ machine, not a broken harness.
 - **`pkill -f 'ssh -T'` matches the shell running it.** The kill took its own caller down
   before it reached ssh. Match the process *name*: `pkill -x ssh`.
 - **Cancelling a `docker exec` does not end the process inside the container.** A
-  scenario that gave up on a slow turn left an aforge still attached, and the *next*
+  scenario that gave up on a slow turn left a codeaf still attached, and the *next*
   scenario's surfaces joined that conversation and were handed its reply. Every background
   launch sweeps the surface container when its subtest ends.
 - **A relative `--session` lands in the workspace, not the home** (the engine has already

@@ -27,7 +27,7 @@ run_one() {
   local dir="$ROOT/$label"
   mkdir -p "$dir"
   (cd "$HERE" && TIER="$TIER" JOBS="$JOBS" TASKS="$TASKS" BENCH_CLEAN=1 \
-    RESULTS="$dir" AFORGE_MODEL="$MODEL" AFORGE_BIN="$bin" \
+    RESULTS="$dir" CODEAF_MODEL="$MODEL" CODEAF_BIN="$bin" \
     bash run.sh > "$dir/run.log" 2>&1)
 }
 

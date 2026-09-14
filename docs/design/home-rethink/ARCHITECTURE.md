@@ -7,7 +7,7 @@ The owner's standing order: **modular, clean, efficient — no band-aids.**
 ## The three layers, and what each may know
 
 ```
-seams        internal/session, internal/store, internal/standing, cmd/aforge/chatv3.go
+seams        internal/session, internal/store, internal/standing, cmd/codeaf/chatv3.go
              — every fact a place reads, behind Options; cached on home's 3-second clock,
              never read on a draw or a keystroke.
 

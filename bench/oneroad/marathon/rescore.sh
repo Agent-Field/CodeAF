@@ -2,7 +2,7 @@
 # marathon/rescore.sh — an honest, out-of-band score of a LIVE cell's workspace.
 #
 # Usage: rescore.sh <seed> <n>            e.g.  rescore.sh s6 3
-#        ARM=aforge-crew TASK=rust-java-lsp rescore.sh s6 3
+#        ARM=codeaf-crew TASK=rust-java-lsp rescore.sh s6 3
 #
 # WHAT IT IS FOR. The hourly curve is written by snapshot.sh from inside the
 # cell's own loop. When a cell is already running — or when its curve was taken
@@ -15,7 +15,7 @@
 #
 # 1. THE DROPPINGS ARE STRIPPED. The workspace is copied WITHOUT target/ (build
 #    output the verifier rebuilds anyway, and gigabytes of it), .git, and
-#    .aforge-v3 — the harness's own store, which the agent happens to have
+#    .codeaf-v3 — the harness's own store, which the agent happens to have
 #    written inside the working directory and which is no part of the work being
 #    judged. Everything else travels, including the corpus and any symlink the
 #    agent arranged: the scorer addresses test points as
@@ -34,7 +34,7 @@ set -uo pipefail
 
 SEED="${1:?usage: rescore.sh <seed> <n>}"
 N="${2:?usage: rescore.sh <seed> <n>}"
-ARM="${ARM:-aforge-crew}"
+ARM="${ARM:-codeaf-crew}"
 TASK="${TASK:-rust-java-lsp}"
 IMAGE="${IMAGE:-swe-marathon/$TASK:v1.1}"
 CAP="${RESCORE_TIMEOUT:-1800}"
@@ -80,10 +80,10 @@ fi
 
 say() { printf '[%s] rescore %s/%s: %s\n' "$(date +%H:%M:%S)" "$SEED" "$N" "$*"; }
 
-say "copying $PARENT out of $CONTAINER (no target/, .git, .aforge-v3)"
+say "copying $PARENT out of $CONTAINER (no target/, .git, .codeaf-v3)"
 if ! docker exec "$CONTAINER" tar czf - -C "$(dirname "$PARENT")" \
       --exclude="$BASE/*/target" --exclude="$BASE/*/.git" \
-      --exclude="$BASE/*/.aforge-v3" --exclude="$BASE/*/node_modules" \
+      --exclude="$BASE/*/.codeaf-v3" --exclude="$BASE/*/node_modules" \
       --exclude="$BASE/*/__pycache__" --exclude="$BASE/*/.venv" \
       "$BASE" > "$OUT/workspace.tgz" 2>"$OUT/copy.err"; then
   say "workspace copy FAILED"; sed 's/^/  /' "$OUT/copy.err"; exit 1

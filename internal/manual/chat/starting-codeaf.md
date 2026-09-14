@@ -1,8 +1,8 @@
-# What aforge is, and how you start it
+# What codeaf is, and how you start it
 
-## What aforge is
+## What codeaf is
 
-Aforge is a working colleague in a terminal. You talk to it in ordinary language,
+codeaf is a working colleague in a terminal. You talk to it in ordinary language,
 and it works in the directory you started it in — reading, writing, running
 commands, searching, and handing longer jobs off to run on their own while you
 keep talking. The window is where you sat down, and it stays there; the
@@ -19,25 +19,25 @@ started, which have their own rules.
 
 ## What it is called
 
-The command you type is `aforge`, and `aforge` is what the surface calls itself
+The command you type is `codeaf`, and `codeaf` is what the surface calls itself
 everywhere it speaks: the wordmark on the first screen and in the welcome box, the
 name on home's top line, the first line of `/help`, the card that asks to connect
 an account, the desktop notification's title, and the speaker heading in an
 exported conversation.
 
-It used to say `openaf` in some of those places and `aforge` in the others, which
+It used to say `codeaf` in some of those places and `codeaf` in the others, which
 meant a fresh install met one name in the wordmark and a different one in the
-prose three rows under it. There is one name now, and `openaf` is on no screen.
+prose three rows under it. There is one name now, and `codeaf` is on no screen.
 
 ## Starting it
 
 | What you type | What you get |
 | --- | --- |
-| `aforge` | the home screen, over this directory's most recent conversation |
-| `aforge chat` | the same thing |
-| `aforge chat --session <path>` | that conversation, straight in, no home screen |
-| `aforge resume` | the chat, opened on the picker of earlier conversations |
-| `aforge chat --host devbox` | the chat here, the work on another machine |
+| `codeaf` | the home screen, over this directory's most recent conversation |
+| `codeaf chat` | the same thing |
+| `codeaf chat --session <path>` | that conversation, straight in, no home screen |
+| `codeaf resume` | the chat, opened on the picker of earlier conversations |
+| `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** opens on a short setup
 instead — connect OpenRouter in your browser, choose the crew, set the spending rails —
@@ -49,10 +49,10 @@ direct service's model sends without an OpenRouter key and does not open that st
 getting-started page has the whole flow.
 
 A `--once` or piped run cannot open a browser. When its model uses the keyless default
-service it stops at the door with `aforge chat needs a model to talk with.` Its next line
-says to run bare `aforge` in a terminal to connect OpenRouter, or to export
+service it stops at the door with `codeaf chat needs a model to talk with.` Its next line
+says to run bare `codeaf` in a terminal to connect OpenRouter, or to export
 `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A connected direct service can carry that run
-instead. A custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
+instead. A custom `CODEAF_BASE_URL` is never offered the OpenRouter connection.
 That variable still changes only the default service. To add a supported second place
 models come from, connect a service through `/connect`; the [services page](services.md)
 explains the checked connection and picker names.
@@ -75,14 +75,14 @@ there.
 
 ## /status says an older build is holding this conversation
 
-On every launch aforge performs one sweep: it reads every presence file under
-`~/.aforge/v3/projects`, and if a live session there is running from an older
+On every launch codeaf performs one sweep: it reads every presence file under
+`~/.codeaf/v3/projects`, and if a live session there is running from an older
 rev than this binary's own, one line in the conversation names the pids. That
 is all `on an older build` means — the sweep warns. It never blocks, never
 locks, never kills.
 
 The `/status` build line shows the serving process's build: for a chat that is
-the process typed `aforge` with; for a conversation hosted by the resident
+the process typed `codeaf` with; for a conversation hosted by the resident
 engine (`engine --daemon`) it is still whatever binary the engine launched
 from. In both cases the fix is a close: close the older session or the older
 engine, and its next open runs this build. No line at launch means nothing
@@ -103,7 +103,7 @@ stale is running.
 | `--max-cost <n>` | with `--yolo`: dollar limit; interactive chat checks before new turns |
 | `--one-model` | every text call this session makes runs on the session model |
 
-`--yolo` does not make aforge unstoppable: a small set of destructive commands
+`--yolo` does not make codeaf unstoppable: a small set of destructive commands
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
 
@@ -116,8 +116,8 @@ reply. Tasks retain their own assignments until you revise them.
 
 For a fixed unattended goal, use the one-message door with a budget:
 
-    aforge chat --once "finish the import fix" --yolo --max-hours 6
-    aforge chat --once "finish the import fix" --yolo --max-cost 20
+    codeaf chat --once "finish the import fix" --yolo --max-hours 6
+    codeaf chat --once "finish the import fix" --yolo --max-cost 20
 
 ## Does a run with no screen carry its own work on · headless --once checkpoints
 
@@ -132,7 +132,7 @@ in flight, or when its limit ends the run. A plain `--once` run, and `--once
 --yolo` with no budget, remain one message, one reply and one exit.
 
 Either limit alone is enough; both means whichever runs out first. The defaults can
-come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
+come from `CODEAF_MAX_HOURS` and `CODEAF_MAX_COST`; explicit flags take precedence.
 A headless `--yolo` launch without a budget stops when the model stops.
 
 ## Interactive chat limits · --max-hours · --max-cost
@@ -295,7 +295,7 @@ and carried on over a finished tree until its wall ran out.
 
 ## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
-**Work aforge did itself counts as finished work with a second opinion.** A session that
+**Work codeaf did itself counts as finished work with a second opinion.** A session that
 made the change and wrote the tests **inline**, with no task at all, has finished something
 when the second reader agrees nothing is left. That includes one edit to an existing file;
 older runs counted only new files and could stop themselves over a green fix while saying
@@ -303,7 +303,7 @@ older runs counted only new files and could stop themselves over a green fix whi
 whatever the checks say.
 
 **If the second reader could not be reached, silence is not treated as a gap.** On an
-unattended run aforge actually runs your declared checks over the tree and lets a green
+unattended run codeaf actually runs your declared checks over the tree and lets a green
 reading stand in, saying `the reader could not be reached, so the checks stood in for it`.
 A red check carries the run on with that command named. At least one declared check must
 start and finish: with no check declared, or none that ran, nothing can stand in and the run
@@ -325,7 +325,7 @@ counted, and neither is the one a landing takes to set your uncommitted work asi
 **A file the run created counts as its work only while there is something in it.** A
 rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
 step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
-finished work. It is still your file: nothing inside the folder aforge is working in is
+finished work. It is still your file: nothing inside the folder codeaf is working in is
 ever deleted, whatever is in it.
 
 ## The git an unattended run left on its own will not run · why it refused to stash, checkout, pull or reset --hard
@@ -357,7 +357,7 @@ the work is done then, and your git is your own.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
-**A check is yours only if your run introduced new red.** On a run with a budget, aforge runs
+**A check is yours only if your run introduced new red.** On a run with a budget, codeaf runs
 the checks its acceptance names once at the start — before it has touched anything — and
 writes down which were already failing. Only the acceptance it wrote for the work and each
 task's own brief supply checks; a command pasted into your ask (the steps you took to see a
@@ -370,7 +370,7 @@ also counts; unparsed red stays uncertain.
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
 two things are deliberately not read — a check that **changed the tree** (a build, a
-formatter, a migration: that would be aforge making the first edit, not looking) and a
+formatter, a migration: that would be codeaf making the first edit, not looking) and a
 check the shell **could not run at all**. Writing a cache or a coverage file is not
 changing the tree: in a git repository the question is asked against what the project
 itself keeps, so anything your `.gitignore` covers is invisible here and a test runner's
@@ -420,7 +420,7 @@ counts as work left to do.
 
 A declared check runs once for one state of the tree. When a later reader looks at the same
 unchanged tree, it gets the answer already taken instead of starting the command again. A cancelled check or one that never started supplies no reusable answer. If
-the tree has moved underneath that answer, aforge runs the check again, because the old
+the tree has moved underneath that answer, codeaf runs the check again, because the old
 answer describes a tree that no longer exists.
 
 With a budget that names hours, one check is given the smaller of five minutes and what is
@@ -526,13 +526,13 @@ nothing.
 and covers what you asked for, with every check that ran passing, is finished — a
 reader's opinion about the transcript cannot carry the run on over the top of it.
 
-## Which folder does aforge work in, and where do my files go
+## Which folder does codeaf work in, and where do my files go
 
 It depends on where you started it, and there are two cases. (Where the conversation
 **stands** is one thing; the folders it turns out to be **about** are another, and *Choosing
 a folder* has that half. This section is about where you are standing.)
 
-**You started it inside a project.** Aforge borrows that directory. Its tools read
+**You started it inside a project.** codeaf borrows that directory. Its tools read
 and write your repository, exactly where you are standing — and that stays true of it
 however many other folders the conversation turns out to be about, because a folder you
 chose with `/folder` is written through a copy and landed with `/land` instead, and the status line
@@ -548,11 +548,11 @@ of scattered across wherever you happened to be. In that case the place reads
 simply:
 
 ```
-aforge
+codeaf
 ```
 
 That word means "no project — this conversation has its own space". The real
-path exists and is not a secret; it is just aforge's own bookkeeping, and
+path exists and is not a secret; it is just codeaf's own bookkeeping, and
 showing it where you look to answer "which project am I in" told you nothing.
 Type `/status` and the `place` line gives you the full path to copy.
 
@@ -570,7 +570,7 @@ project owns a scratch workspace, and that workspace is a `work/` directory in t
 folder:
 
 ```
-~/.aforge/v3/projects/<project folder>/<conversation folder>/work
+~/.codeaf/v3/projects/<project folder>/<conversation folder>/work
 ```
 
 `/status` prints that full path on its `place` line. Read it there rather than assembling
@@ -583,7 +583,7 @@ the work.** See *I deleted my chat and lost the files the task made* below.
 
 **A task is never refused for want of a project.** That scratch workspace is quietly made a
 git repository when the conversation opens, so a code task branches from it and merges home
-exactly as a task in a real project does. An older aforge stopped such a task with `this
+exactly as a task in a real project does. An older codeaf stopped such a task with `this
 task needs a project; use /workspace <path> or name where it should work`; nothing says that
 any more.
 
@@ -596,12 +596,12 @@ it.
 
 If the conversation owned its workspace, they are gone and there is no second copy. The
 files were in `work/` inside the session folder (above), so removing that folder under
-`~/.aforge/v3/projects/` removed the transcript and everything made in that workspace in
+`~/.codeaf/v3/projects/` removed the transcript and everything made in that workspace in
 one move. Nothing is copied out first and nothing is mirrored anywhere else.
 
-Aforge removes a conversation of its own accord in exactly one case: one you **started in a
+codeaf removes a conversation of its own accord in exactly one case: one you **started in a
 temp directory**, seven days after you last said anything to it. Every other conversation
-under `~/.aforge/v3/projects/` stays whatever its age. See *What gets cleaned up, and when*
+under `~/.codeaf/v3/projects/` stays whatever its age. See *What gets cleaned up, and when*
 on the keeping-an-eye page.
 
 **Three ways to keep the work instead**, all of them before the fact rather than after:
@@ -619,7 +619,7 @@ were made. It is not a way to rescue the work.
 
 ## Anchor a conversation to a repository or folder — /workspace and the workspace tool
 
-When a conversation says `aforge` because it opened with no project, type `/workspace
+When a conversation says `codeaf` because it opened with no project, type `/workspace
 <path>` to make the repository or folder at that path its project. The path may begin with
 `~`; a path inside a Git repository resolves to the repository root. The place line changes,
 the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
@@ -652,31 +652,31 @@ approval rules, crew and ceiling. *Choosing a folder* has the distinction in ful
 ## Where your conversations are kept
 
 Every conversation is written to disk as it happens, under your home directory in
-`.aforge/v3/projects/`, in a folder named after the project you were working in
+`.codeaf/v3/projects/`, in a folder named after the project you were working in
 and a folder of its own inside that. The conversation's own folder holds the
 transcript and everything else the conversation kept. That transcript is what
-`aforge` reopens when you come back, and what the picker lists. Closing the
+`codeaf` reopens when you come back, and what the picker lists. Closing the
 window, or losing the connection, does not lose what was said.
 
-Opened inside a project, aforge works in the project and leaves nothing of its
+Opened inside a project, codeaf works in the project and leaves nothing of its
 own in it. Opened where there is no project at all — your home directory, a
 temporary directory, a launcher — it works in a folder of its own instead, so
 scratch files and downloads land somewhere they can be thrown away with the
 conversation.
 
-## Where aforge writes its log — chat.log, the crash log, and why nothing appears on screen
+## Where codeaf writes its log — chat.log, the crash log, and why nothing appears on screen
 
-Aforge keeps one log file for the running program: `chat.log`, beside the rest of what it
-keeps. With nothing moved that is `~/.aforge/chat.log`; `AFORGE_HOME` moves it with the
-rest of aforge's state, and `AFORGE_PROFILE_DIR` puts it inside that profile folder
-instead. Read it with `cat ~/.aforge/chat.log`, or `tail -f ~/.aforge/chat.log` in a
-second terminal while aforge is running.
+codeaf keeps one log file for the running program: `chat.log`, beside the rest of what it
+keeps. With nothing moved that is `~/.codeaf/chat.log`; `CODEAF_HOME` moves it with the
+rest of codeaf's state, and `CODEAF_PROFILE_DIR` puts it inside that profile folder
+instead. Read it with `cat ~/.codeaf/chat.log`, or `tail -f ~/.codeaf/chat.log` in a
+second terminal while codeaf is running.
 
 **Everything the program logs while the conversation is on screen goes there and never on
-the screen.** That is on purpose: aforge takes over the whole terminal, so a warning
+the screen.** That is on purpose: codeaf takes over the whole terminal, so a warning
 printed to it would land spliced into the middle of what you are typing and be gone with
 the next redraw. It holds internal warnings, recovered internal faults with their stacks,
-and notes about things aforge fell back from — the kind of thing to send along if you are
+and notes about things codeaf fell back from — the kind of thing to send along if you are
 reporting something odd. The redirect lasts exactly as long as the conversation is up, and
 ordinary output goes back to the terminal when you quit.
 
@@ -685,25 +685,25 @@ ordinary output goes back to the terminal when you quit.
 background — all four write to `chat.log` in this machine's profile, the machine you are
 sitting at.
 
-If aforge stops with `aforge hit an internal fault and had to stop`, the details it points
+If codeaf stops with `codeaf hit an internal fault and had to stop`, the details it points
 you at are appended to that same file, so there is one place to look either way. In the
-rare case aforge cannot write there at all — a profile folder it has no permission for —
+rare case codeaf cannot write there at all — a profile folder it has no permission for —
 it leaves the log on the terminal rather than dropping it, on the grounds that a torn
 frame is better than a lost warning.
 
-This is not the record of what aforge sent the model: that is a separate file, read with
-`aforge logs`, and `aforge logs --path` prints where it is.
+This is not the record of what codeaf sent the model: that is a separate file, read with
+`codeaf logs`, and `codeaf logs --path` prints where it is.
 
-## Asking aforge about itself
+## Asking codeaf about itself
 
-Aforge ships with this manual compiled into it, and it reads it with a tool
+codeaf ships with this manual compiled into it, and it reads it with a tool
 called `manual` rather than answering about itself from memory. So "what can you
 do?", "what does ctrl+b do?", "can you read a PDF?" and "why did you just ask me
 that?" are all fair questions to type straight into the conversation. If the
-manual has nothing on something, that usually means aforge does not do it, and it
+manual has nothing on something, that usually means codeaf does not do it, and it
 will tell you so instead of inventing an answer.
 
 ## /drafts and the ↑ walk — cleared drafts come back too
 
-`ctrl+u`, a conversation switch, any clear that empties the whole box — aforge pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
+`ctrl+u`, a conversation switch, any clear that empties the whole box — codeaf pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
 

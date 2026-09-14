@@ -39,7 +39,7 @@ permissions:
 
 env:
   # The repository publishing this release, which is right before and after the
-  # GitHub rename from aforge-v2 to codeaf, and right in a fork.
+  # GitHub rename this repository is about to take, and right in a fork.
   RELEASE_REPOSITORY: ${{ github.repository }}
 
 concurrency:
@@ -235,10 +235,10 @@ jobs:
               -tags=codeaf_packed_manual \
               -trimpath \
               -ldflags="-s -w -X ${buildinfo_package}.rev=${TAG} -X ${buildinfo_package}.dirty=false -X ${buildinfo_package}.builtAt=${built_at}" \
-              -o "dist/aforge-${goos}-${goarch}${extension}" \
+              -o "dist/codeaf-${goos}-${goarch}${extension}" \
               ./cmd/codeaf
           done
-          (cd dist && sha256sum aforge-* > checksums.txt)
+          (cd dist && sha256sum codeaf-* > checksums.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: codeaf-release
@@ -320,7 +320,7 @@ jobs:
 
           if [ "$REPUBLISH" = "true" ]; then
             gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
-            gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+            gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "codeaf $TAG" "${marks[@]}"
           else
             if [ "$GENERATED_NOTES" = "true" ]; then
               notes=(--generate-notes --notes-file install.md)
@@ -341,12 +341,12 @@ jobs:
                 exit 1
               fi
               gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
-              gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+              gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "codeaf $TAG" "${marks[@]}"
             else
               gh release create "$TAG" dist/* \
                 --repo "$RELEASE_REPOSITORY" \
                 --target "$RELEASE_SHA" \
-                --title "AForge $TAG" \
+                --title "codeaf $TAG" \
                 "${notes[@]}" \
                 "${marks[@]}"
             fi

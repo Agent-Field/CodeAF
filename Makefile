@@ -41,12 +41,12 @@ manual-pack-law:
 	fi
 
 embed: manual-pack-law
-	# Generators execute on the build host, even when aforge targets another OS.
+	# Generators execute on the build host, even when codeaf targets another OS.
 	env -u GOOS -u GOARCH go generate $(PACKED_PKGS)
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# EVERY AFORGE IS AN AFORGE WITH FURROW, so the build fetches furrow before it
+# EVERY codeaf IS A codeaf WITH FURROW, so the build fetches furrow before it
 # can produce one. This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
@@ -57,7 +57,7 @@ embed: manual-pack-law
 # It is a prerequisite of `build` and not a thing anybody remembers to run. A
 # fetch that cannot happen STOPS THE BUILD, loudly, with the command to run: the
 # failure mode this ordering exists to make impossible is a quietly successful
-# build that produced an aforge without furrow inside it.
+# build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
 # sha256 is checked either way, so this is an offline road and not a looser one:
@@ -65,7 +65,7 @@ embed: manual-pack-law
 #   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
 #
 # THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
-# GOARCH for aforge, and the fetcher has to know them — but it must not be built
+# GOARCH for codeaf, and the fetcher has to know them — but it must not be built
 # FOR them, or the build machine tries to run a Linux tool and reports an exec
 # format error where it meant to report a download. So the two are captured as
 # the platform to fetch and taken out of the environment the tool is built in.
@@ -268,23 +268,23 @@ test-e2e: build
 # ── the demo home ───────────────────────────────────────────────────────────
 #
 # A HOME WITH SOMETHING ON EVERY PLACE, FOR LOOKING AT. On a machine that has
-# just started using aforge the standing store, the memory store and the
+# just started using codeaf the standing store, the memory store and the
 # spending ledger are empty, and every one of those pages correctly draws
 # nothing — which is the emptiness law working and is also indistinguishable
 # from a page that is broken. This builds a THROWAWAY home somewhere else and
 # opens the real binary against it, so all of it can be seen full without a
-# single invented row landing in ~/.aforge.
+# single invented row landing in ~/.codeaf.
 #
 # It prints the directory it built and the command to open it again, so the same
 # home can be returned to:
 #
 #   make demo-home                              a fresh one in a temp directory
-#   make demo-home DEMO_HOME=/tmp/aforge-demo    build it somewhere you can name
-#   make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1
+#   make demo-home DEMO_HOME=/tmp/codeaf-demo    build it somewhere you can name
+#   make demo-home DEMO_HOME=/tmp/codeaf-demo KEEP=1
 #                                               open the one already there,
 #                                               with whatever the last look left
 #
-# The seeder is its own binary and NOT a hidden verb on aforge, because the
+# The seeder is its own binary and NOT a hidden verb on codeaf, because the
 # shipped binary is on a checked-in byte budget (SIZE-BUDGET) and a developer
 # target must not spend the product's weight. bin/codeaf-demo-home is not a
 # second copy of the product and cannot shadow it — it is a different program

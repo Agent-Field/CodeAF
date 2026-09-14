@@ -1,14 +1,14 @@
-# What aforge can do for you
+# What codeaf can do for you
 
-This page is the honest inventory: what aforge can reach, what it refuses, and
+This page is the honest inventory: what codeaf can reach, what it refuses, and
 what is simply not there in this build.
 
-## Is this only for programming — is aforge only for code, or for any kind of work?
+## Is this only for programming — is codeaf only for code, or for any kind of work?
 
 Not only programming. Nothing else on this page is about code in particular:
 files, shell commands, the web, pictures, audio and video, your connected
 accounts, your own settings. A folder of contracts, a pile of recordings to
-transcribe and a repository are the same material to aforge — whatever is in the
+transcribe and a repository are the same material to codeaf — whatever is in the
 folder it was pointed at. Where there is a repository a task works on a branch and merges
 into an ordinary checked-out branch; on a protected, moved or detached checkout the task
 branch is kept for you instead. Where there is no repository it works in the folder itself and says so:
@@ -17,7 +17,7 @@ branch is kept for you instead. Where there is no repository it works in the fol
 ## Can you read, write, create, delete, rename or move files?
 
 Yes. Three tools do this, and a path with nothing in front of it is read against the folder
-aforge is standing in — the one you started it in. A path that names somewhere else, written
+codeaf is standing in — the one you started it in. A path that names somewhere else, written
 out in full or beginning with `~`, is read there. A write in the folder you are standing in
 changes the file straight away; a write aimed at a folder you chose with `/folder` is kept
 for this conversation until you run `/land`. Work handed to a task is bounded much more
@@ -65,7 +65,7 @@ disk?" below for what comes back and what it costs.
 
 Over `--host`, `read`, `write`, `edit` and `ls` run on the other machine, inside the
 workspace shown for the session. A path in a task brief is read there too. A path the
-model names in its reply can be opened here: aforge confirms it on the far disk and
+model names in its reply can be opened here: codeaf confirms it on the far disk and
 fetches it through a short-lived local file door. Copy mode, `ctrl+s`, mouse drag-copy
 and `m puts it in your message` only copy or compose words on this screen, so they work
 the same way over a connection and do not move a file.
@@ -163,7 +163,7 @@ background jobs instead of killing them, and reports a non-zero exit as
 ## Run a command or build the project — background after and timeout
 
 Yes. The `bash` tool runs a command through `/bin/bash -c` in your workspace,
-with the environment aforge itself was started with.
+with the environment codeaf itself was started with.
 
 - stdout and stderr arrive interleaved in one buffer, in the order they were
   written.
@@ -173,7 +173,7 @@ with the environment aforge itself was started with.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
 
-**aforge waits up to the `background after` setting — 30 seconds unless you
+**codeaf waits up to the `background after` setting — 30 seconds unless you
 change it.** If the foreground command is still running then, the same process
 is kept as a background job; the call returns its output so far and a job id, and
 the chat moves on. Nothing is killed or restarted.
@@ -194,7 +194,7 @@ when the conversation moves on, while 0 preserves the timeout-only behaviour.
 **A long command's output arrives while it runs, not all at once at the end.**
 Programs writing to a pipe normally hold their output back in 4KB blocks —
 Python especially — which used to leave a long job's log at zero bytes until the
-moment it finished, so a job that was working perfectly looked dead. aforge runs
+moment it finished, so a job that was working perfectly looked dead. codeaf runs
 commands line-buffered (`stdbuf` where the machine has it, plus
 `PYTHONUNBUFFERED=1` for Python, which does its own buffering), so the log fills
 as the work happens. If you had already exported `PYTHONUNBUFFERED` yourself,
@@ -221,7 +221,7 @@ killed. The call answers with one line and then whatever the command had already
 printed:
 
 ```
-still running as job 3; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
+still running as job 3; log at ~/.codeaf/v3/projects/-you-work/<session>/logs/jobs/3.log
 
 collecting 120 cases
 scored case 1
@@ -258,16 +258,16 @@ Two things it does **not** do:
 
 The log opens with the output you had already watched scroll past, and continues
 with everything the command printed afterwards. For a command that had printed
-truly enormous amounts before it was kept as a job, the log begins where aforge's own
+truly enormous amounts before it was kept as a job, the log begins where codeaf's own
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
 
-## Does aforge poll a background job, or does it get told — how does it know a job finished?
+## Does codeaf poll a background job, or does it get told — how does it know a job finished?
 
 **It gets told, and it never has to poll.** Two things arrive without anybody
 asking for them.
 
-**While a job runs**, the tool results aforge reads carry one line per
+**While a job runs**, the tool results codeaf reads carry one line per
 outstanding job at the bottom of them, the way a shell prints its background
 jobs under the prompt:
 
@@ -281,7 +281,7 @@ killed job drops off the list immediately.
 
 **The line is repeated only when it changes.** Within one turn, a result whose
 job line would say exactly what the last one said leaves it off: the same three
-facts are already in front of aforge, further up the same turn. The moment
+facts are already in front of codeaf, further up the same turn. The moment
 anything moves — a second more elapsed, a new last line, a job starting or
 ending — the line is back. Every turn starts fresh, so the first result of a
 turn with work out always carries it. A turn that made twenty tool calls with
@@ -302,7 +302,7 @@ BUILD OK
 [job 3 · last 50 lines · full log: <path>]
 ```
 
-If aforge is mid-turn the note lands at the next step; if the turn had already
+If codeaf is mid-turn the note lands at the next step; if the turn had already
 ended, the note starts a new one, exactly as a finished task does. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
@@ -311,7 +311,7 @@ The note carries the last 50 lines. The whole log stays on disk and the note
 names its path, so an older line is one `jobs output` call away and the ending
 itself never is.
 
-So you should never see aforge running `sleep 30 && tail …` to wait for
+So you should never see codeaf running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
 wall clock, waiting on a log that was empty because of buffering — and the two
 mechanisms above are what replaced it. `jobs output` is still there for an
@@ -372,12 +372,12 @@ Yes. `bash` with `background: true` registers the command as a **job**, runs it
 in its own process group, and returns immediately:
 
 ```
-job 3 started; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
+job 3 started; log at ~/.codeaf/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
 Everything it writes goes to that log file; the last **64KB** is also held in
-memory for quick reads. When the job exits, aforge is told at the next step in
+memory for quick reads. When the job exits, codeaf is told at the next step in
 one boundary batch. Its headline, e.g.
 `job 3 exited 1: make: *** [build] Error 1`, quotes the last non-empty log line,
 clipped to 120 characters. Under it the note carries the last 50 lines and the
@@ -401,12 +401,12 @@ Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).
 **Jobs do not outlive the conversation.** When the session closes, every running
 job is sent SIGTERM, given a shared 2-second grace, then killed. The log files
 stay on disk for you to read afterwards, in **this conversation's own folder**
-under `logs/jobs/` — never in your project. That is true of every job aforge
+under `logs/jobs/` — never in your project. That is true of every job codeaf
 runs, including one a task's worker started in its own checkout: a job log is
 the harness's own droppings, not your work, so it is kept beside the transcript
 that explains what it was for and goes when you delete the conversation. Only a
 conversation with no folder at all still keeps them at
-`<workspace>/.aforge-v3/jobs/`.
+`<workspace>/.codeaf-v3/jobs/`.
 
 **You can see a job without asking.** Every job this conversation starts is a row in the
 `jobs` section on the column — a third section under `tasks` and `standing`, collapsed by
@@ -488,7 +488,7 @@ for:
 - the output went quiet for as long as you asked (`on=quiet`),
 - the command failed three ticks in a row and the watch gave up.
 
-When one of those happens, aforge starts a reply by itself carrying that final
+When one of those happens, codeaf starts a reply by itself carrying that final
 note, so you get the sentence about it rather than a job row that quietly went
 grey. Start a watch over `gh pr checks`, walk away, and you come back to "the
 checks are green on both pull requests" — not to a conversation that learned it
@@ -584,7 +584,7 @@ xlsx, pptx) goes to your own model and the parsers, as before.
 
 Yes — with `read`. A file is a file, so the same tool that opens a source file
 opens a screenshot, a voice memo or a screen recording. There is no separate
-"look at this" or "transcribe this" tool for a file on disk, and aforge never
+"look at this" or "transcribe this" tool for a file on disk, and codeaf never
 needs to write a script or install a library to decode one.
 
 What comes back is a **description**, not the bytes, and it always says who
@@ -648,7 +648,7 @@ about a smaller picture` — rather than a row that keeps spinning.
 
 **The answer is paged, not cut short.** It comes back through the same 2000
 lines or 50KB cap every read is paged to, with `Use offset=… to continue.` for
-the rest. aforge deliberately does **not** ask the looking model for a shorter
+the rest. codeaf deliberately does **not** ask the looking model for a shorter
 answer: the ceiling it could name is far above anything these answers run to,
 and naming one would rule out every machine that publishes a smaller output
 limit — making the look slower, to shorten a paragraph nobody was reading.
@@ -711,7 +711,7 @@ image and **20MB** for all the images on one message.
   `session: shot.tiff is not an image this surface can send — png, jpeg, webp and gif are`
 - Unreadable: `session: could not read <path>`
 
-When the model you are on **cannot** see, aforge does not simply refuse. It
+When the model you are on **cannot** see, codeaf does not simply refuse. It
 sends the picture and your words to a vision model in one shot and that answer
 becomes the reply, prefixed so you always know who spoke:
 
@@ -754,7 +754,7 @@ kind is a separate answer, so drawing may be there while filming is not.
   away with a background job**, like `generate_video`.
 - `generate_video` renders a short video. It **returns straight away with a
   background job** because a render takes minutes; the finished file arrives as a
-  note naming it, and `jobs kill` stops it. Both keep working while aforge
+  note naming it, and `jobs kill` stops it. Both keep working while codeaf
   carries on with other things.
 
 Each saves a file and names its path — in the call's own answer for a picture or a
@@ -773,14 +773,14 @@ fails.
 **One model does all the looking.** The looking slot in the settings sheet is
 the single answer to "what can see here": the fallback above, `read_document`'s
 image rung, and the `view_image` tool below all use that one model. Change it
-once and all three change. Leave it alone and aforge picks the best model that
+once and all three change. Leave it alone and codeaf picks the best model that
 publishes vision, so looking works on a machine that has never opened settings.
 
 ## Can you join videos, cut a longer video together, or add music to a video?
 
 Yes, with `edit_video`, and it is the media verb that costs nothing: it is
 ffmpeg on this machine, so it needs no model, no key and no money. It works on
-video files that already exist — ones aforge rendered, and equally a screen
+video files that already exist — ones codeaf rendered, and equally a screen
 recording or a camera clip you dropped in the folder.
 
 Four actions:
@@ -815,7 +815,7 @@ wording of the answers and the refusals, and where the files land.
 
 Both work. `view_image` opens a picture on disk on its own — a screenshot
 somebody left in the folder, a chart or page rendered to a file, a photograph, or
-an image aforge generated a moment ago and wants to check.
+an image codeaf generated a moment ago and wants to check.
 
 It takes `path` (required, relative to the conversation's directory or absolute)
 and an optional `question` — "what does the error dialog say?", "is the legend
@@ -849,7 +849,7 @@ Press esc and the look stops on the same beat everything else does.
 
 **When no looking model can be reached, the tool is not there at all** — it is
 left off the toolbelt rather than offered and made to refuse. Ask for a picture
-to be looked at then and the answer is that aforge has no way to look, not a
+to be looked at then and the answer is that codeaf has no way to look, not a
 failed attempt.
 
 ## Can you search the web?
@@ -876,7 +876,7 @@ which is Firecrawl: keyless, with a free monthly allowance and no key needed.
 DuckDuckGo remains available as an explicit pin. So keys change *which* engine
 answers or raise its ceiling, never *whether* the web is reachable.
 
-This matters more generally: aforge leaves a tool **off the list entirely** when
+This matters more generally: codeaf leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a
 capability is missing, it is missing — you will not get a tool that pretends.
 
@@ -983,17 +983,17 @@ see while it works.
 
 ## How do you decide how to go about a piece of work?
 
-Three working habits are in aforge's own instructions, and **the chat reads the same
+Three working habits are in codeaf's own instructions, and **the chat reads the same
 three as a task does** — the same words, from one page both are given. They are written
-as principles rather than examples, because aforge is handed prose, research, data,
+as principles rather than examples, because codeaf is handed prose, research, data,
 operations and code through the same door.
 
 - **When the work comes with its own measure, that measure is the loop, not the report.**
-  A check to run, a count to reach, a reading somebody will take: aforge works *between*
+  A check to run, a count to reach, a reading somebody will take: codeaf works *between*
   readings rather than saving the reading for the end, and takes them **more often when
   the reading is zero**, changing less in between.
 - **Nothing on every count is one shared fault, not many separate ones.** When everything
-  reads zero, aforge looks for what they have in common — how they are reached, the step
+  reads zero, codeaf looks for what they have in common — how they are reached, the step
   before any of them runs — and proves that shared path carries one case end to end
   before touching any single part. Uneven readings mean the opposite.
 - **Before making a thing itself, it spends one step asking whether it already exists** in
@@ -1016,21 +1016,21 @@ field, marks the required ones nobody has answered with `▲`, lets you fill the
 in with `enter`, and the last row is `run it`. A run is a task from there on.
 
 What it cannot do yet is stated on the *Subharnesses* page, and it is worth
-knowing before you go looking: aforge does not offer one by itself yet, nothing
+knowing before you go looking: codeaf does not offer one by itself yet, nothing
 fills the card in from the conversation yet, and on a build with none wired the
 command answers `no subharnesses here yet — a subharness is a saved program for
 work that comes round again.` and opens nothing.
 
 A harness is a subharness. One system, and `/harness` is the other door onto the
 same programs — a picker and a typed request instead of a list and a card. A
-harness you asked aforge to design for you is on `/subharness` from the moment
+harness you asked codeaf to design for you is on `/subharness` from the moment
 you approve its card. See *Saved shapes of work* for designing one.
 
 ## Can you tell me how you work?
 
-Yes, and it does not answer from memory. aforge has a `manual` tool that reads
+Yes, and it does not answer from memory. codeaf has a `manual` tool that reads
 these pages, which are compiled into the binary from the same code they describe.
-Ask it anything about aforge — what a tool does, what a command does, why it just
+Ask it anything about codeaf — what a tool does, what a command does, why it just
 behaved a certain way — and it looks the answer up and tells you it looked it up.
 
 `manual` takes either a `query`, in your own words, which returns the most
@@ -1045,7 +1045,7 @@ still get the same four — so a page your words reach is a page the answer
 reaches, even when the question was looked up in different words.
 
 When the manual has nothing on a topic, the answer is:
-`The manual has nothing on that, which usually means aforge does not do it.`
+`The manual has nothing on that, which usually means codeaf does not do it.`
 
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
@@ -1076,11 +1076,11 @@ were the one asked for.
 So no part of the manual is out of reach, and no single lookup can fill the
 conversation with one page.
 
-## Can you change my aforge settings for me — set my daily budget, change a preference, or tell me what one is set to?
+## Can you change my codeaf settings for me — set my daily budget, change a preference, or tell me what one is set to?
 
 Yes to both, and a change is permanent. Ask in your own words — "use
 `deepseek/deepseek-v4-pro` for planning", "set my daily budget to 5", "stop
-drawing timestamps" — and aforge does it rather than telling you where the panel
+drawing timestamps" — and codeaf does it rather than telling you where the panel
 is.
 
 Two tools, because reading your configuration and rewriting it are different
@@ -1091,7 +1091,7 @@ acts and you get to answer them separately.
 `spending`, `safety`, `tasks`, `memory & practice`, `interface` — one line each,
 as `key · label · what it reads now`. Give it a `key` and it reads that one row
 in full: what the row takes, what it governs, its current value, and whether
-aforge may change it. Give it a `search` word and it lists only the rows whose
+codeaf may change it. Give it a `search` word and it lists only the rows whose
 key, label or description mention it. **Reading never asks your permission**, the
 way `manual` and `grep` do not: credential rows read masked — eight bullets and
 the last four characters — through the registry itself, so there is nothing here
@@ -1101,7 +1101,7 @@ a question would be protecting.
 `value` as text; an empty value clears the row back to its default. A row holding
 a **list** — `models.roles`, `tools.approval`, `models.fallbacks` — is replaced
 whole and never appended to, exactly as typing into that row in the panel is, so
-aforge reads it first and writes the complete list back. The write
+codeaf reads it first and writes the complete list back. The write
 goes through the registry's own validation into your profile's `config.json` —
 the same file, the same validation and the same wording as the panel — so the
 change survives a restart and is there in `/settings` next time you open it.
@@ -1117,7 +1117,7 @@ settings · daily budget · $500 → $50
 A key the registry does not have is never written. It comes back as
 `No setting is called "…". Did you mean daily_budget_usd, plan_consent_usd?`,
 naming the near misses. And there is no way around the tool: a value typed into
-`config.json` with `write` or `edit` skips the validation, and aforge is told not
+`config.json` with `write` or `edit` skips the validation, and codeaf is told not
 to do it.
 
 **Some rows are refused on purpose** — the tool gate and the shell rules, the
@@ -1136,7 +1136,7 @@ pieces and nothing else.
 
 Chat keeps everyday tools directly available and loads additional tool descriptions
 when needed. `load_capability` adds one group to the tool list. The full descriptions
-and arguments arrive on the next model request **within the same turn**; aforge
+and arguments arrive on the next model request **within the same turn**; codeaf
 continues without waiting for another message from you.
 
 There are up to four groups. The catalog lists only tools available on this machine:
@@ -1168,9 +1168,9 @@ to you.
 **How long it lasts.** Loaded tools remain available while the engine runs. A group
 cannot be unloaded, and loading it again changes nothing. Reopening restores groups
 from the `load_capability` calls in the saved transcript. If those calls have been
-compacted away, aforge loads the group again when needed.
+compacted away, codeaf loads the group again when needed.
 
-## What aforge cannot do
+## What codeaf cannot do
 
 Plainly, so you do not have to find out the hard way.
 
@@ -1187,7 +1187,7 @@ Plainly, so you do not have to find out the hard way.
 - **It cannot make media without a model for it.** `generate_image`, `speak`,
   `generate_music` and `generate_video` are each on the list only when this
   machine has a model for that kind of media; when there is none, the tool is
-  absent rather than present and refusing, and aforge simply does not have that
+  absent rather than present and refusing, and codeaf simply does not have that
   verb. The same rule applies inside a task, an adaptive run and a saved harness.
 - **`generate_music` cannot be asked for a length.** The endpoint takes no
   duration, so the model writes a piece of its own choosing and the call costs

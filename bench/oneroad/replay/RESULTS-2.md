@@ -8,7 +8,7 @@ Answers are parsed exactly as `internal/session/checkpoint.go` parses them: firs
 
 Ground truth: `batch` -> SPLIT at rounds 10 and 20 (four independent issues). `20`/`21`/`22`/`23` -> CONTINUE at every cut. The batch cell at round 40 is **recorded, not scored** - by then a short chain is an honest answer.
 
-Skipped cut points (transcript never reaches them): `aforge-final-crew-20-s1` @10, `aforge-final-crew-20-s1` @20, `aforge-final-crew-20-s1` @40, `aforge-final-crew-22-s1` @40, `aforge-final-crew-23-s1` @40, `aforge-final-flash-20-s1` @10, `aforge-final-flash-20-s1` @20, `aforge-final-flash-20-s1` @40, `aforge-final-flash-22-s1` @40, `aforge-final-flash-23-s1` @40.
+Skipped cut points (transcript never reaches them): `codeaf-final-crew-20-s1` @10, `codeaf-final-crew-20-s1` @20, `codeaf-final-crew-20-s1` @40, `codeaf-final-crew-22-s1` @40, `codeaf-final-crew-23-s1` @40, `codeaf-final-flash-20-s1` @10, `codeaf-final-flash-20-s1` @20, `codeaf-final-flash-20-s1` @40, `codeaf-final-flash-22-s1` @40, `codeaf-final-flash-23-s1` @40.
 
 ## Score table
 
@@ -32,28 +32,28 @@ Skipped cut points (transcript never reaches them): `aforge-final-crew-20-s1` @1
 
 | cell | cut | truth | kimi-k3 | deepseek-v4-flash |
 |---|---|---|---|---|
-| aforge-final-crew-21-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-21-s1 | 20 | CONTINUE | CONTINUEx3 | AMBIGx1/CONTINUEx2 |
-| aforge-final-crew-21-s1 | 40 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-22-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-22-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-23-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-23-s1 | 20 | CONTINUE | CONTINUEx3 | AMBIGx1/CONTINUEx2 |
-| aforge-final-crew-batch-s1 | 10 | SPLIT | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-batch-s1 | 20 | SPLIT | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-crew-batch-s1 | 40 | (either) | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-21-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-21-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-21-s1 | 40 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-22-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-22-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-23-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-23-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-batch-s1 | 10 | SPLIT | CONTINUEx1/SPLITx2 | CONTINUEx3 |
-| aforge-final-flash-batch-s1 | 20 | SPLIT | CONTINUEx3 | CONTINUEx3 |
-| aforge-final-flash-batch-s1 | 40 | (either) | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-21-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-21-s1 | 20 | CONTINUE | CONTINUEx3 | AMBIGx1/CONTINUEx2 |
+| codeaf-final-crew-21-s1 | 40 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-22-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-22-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-23-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-23-s1 | 20 | CONTINUE | CONTINUEx3 | AMBIGx1/CONTINUEx2 |
+| codeaf-final-crew-batch-s1 | 10 | SPLIT | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-batch-s1 | 20 | SPLIT | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-crew-batch-s1 | 40 | (either) | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-21-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-21-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-21-s1 | 40 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-22-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-22-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-23-s1 | 10 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-23-s1 | 20 | CONTINUE | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-batch-s1 | 10 | SPLIT | CONTINUEx1/SPLITx2 | CONTINUEx3 |
+| codeaf-final-flash-batch-s1 | 20 | SPLIT | CONTINUEx3 | CONTINUEx3 |
+| codeaf-final-flash-batch-s1 | 40 | (either) | CONTINUEx3 | CONTINUEx3 |
 
-## The digest the reader sees: `aforge-final-crew-batch-s1` at round 10 (1655 est. tokens, 6,620 chars)
+## The digest the reader sees: `codeaf-final-crew-batch-s1` at round 10 (1655 est. tokens, 6,620 chars)
 
 ````
 WHAT WAS ASKED
@@ -212,30 +212,30 @@ FILES WRITTEN OR EDITED
 
 ## Verbatim answers
 
-**batch @10, kimi** - `aforge-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
+**batch @10, kimi** - `codeaf-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
 
 > (A | B | C) > D
 > 
 > A: finish arithmetic normalization — wire `arithmetic.py` into the span-detection/normalizer pipeline (and package exports) so expressions like `2+2` are rewritten; B: implement currency normalization (new module plus the same pipeline integration) for amounts like `5 000 FCFA`, `$20`, `€15.50`; C: make CLI dependencies optional in `pyproject.toml` by moving `typer`/`rich` into a `cli` extra and adding an `all` extra; D: run the full test suite (and the CLI import behavior) and fix any failures without weakening tests.
 
-**batch @10, flash** - `aforge-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
+**batch @10, flash** - `codeaf-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
 
 > (R | C | L) > T  
 > R: integrate arithmetic normalization into the normalizer and add tests; C: implement currency normalization (module, integration, tests); L: make CLI dependencies optional via extras; T: run the full test suite and fix any failures.
 
-**batch @20, kimi** - `aforge-final-flash-batch-s1` -> `CONTINUE` (1 top-level parts)
+**batch @20, kimi** - `codeaf-final-flash-batch-s1` -> `CONTINUE` (1 top-level parts)
 
 > A > (B | C | D) > E
 > 
 > A is finishing the in-progress `cli.py` edit (indenting the remaining code under the `else:` block so typer/rich imports are optional, completing Issue #23 alongside the pyproject.toml extras); B is adding the GitHub Actions workflow that runs unit tests on pull requests to `main` (Issue #20); C is implementing arithmetic-expression normalization in the normalizer (Issue #21); D is implementing currency-amount normalization (Issue #22); E is running the full test suite to confirm everything passes without weakening tests.
 
-**trap @20, kimi** - `aforge-final-crew-21-s1` -> `CONTINUE` (1 top-level parts)
+**trap @20, kimi** - `codeaf-final-crew-21-s1` -> `CONTINUE` (1 top-level parts)
 
 > A > (B | C) > D
 > 
 > A is running the full existing test suite to see whether the edits broke anything; B is fixing any regressions in the touched files (spans/config/numeric/normalizer/__init__) if failures appear; C is smoke-testing the new arithmetic normalizer directly (e.g. `2+2`, `5×3`, `10/2`, `8-5`, plus fail-open cases) since no tests cover it yet; D is a final full-suite pass confirming everything is green.
 
-**batch @40, kimi** - `aforge-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
+**batch @40, kimi** - `codeaf-final-crew-batch-s1` -> `CONTINUE` (1 top-level parts)
 
 > A > B
 > 
@@ -260,10 +260,10 @@ Every trap read where the two rules disagree - the strict rule says CONTINUE (ri
 
 | cell | cut | model | sample | shape |
 |---|---|---|---|---|
-| aforge-final-crew-21-s1 | 40 | deepseek-v4-flash | 0 | `(A \| B) > C` |
-| aforge-final-crew-23-s1 | 10 | kimi-k3 | 0 | `(A \| B) > C > D` |
-| aforge-final-flash-22-s1 | 10 | kimi-k3 | 0 | `(A \| B) > C` |
-| aforge-final-flash-23-s1 | 10 | kimi-k3 | 2 | `(A \| B) > C > D` |
+| codeaf-final-crew-21-s1 | 40 | deepseek-v4-flash | 0 | `(A \| B) > C` |
+| codeaf-final-crew-23-s1 | 10 | kimi-k3 | 0 | `(A \| B) > C > D` |
+| codeaf-final-flash-22-s1 | 10 | kimi-k3 | 0 | `(A \| B) > C` |
+| codeaf-final-flash-23-s1 | 10 | kimi-k3 | 2 | `(A \| B) > C > D` |
 
 ## Every batch shape line
 
@@ -310,7 +310,7 @@ Every trap read where the two rules disagree - the strict rule says CONTINUE (ri
 
 On the batch cell the low-tier reader does not draw a narrow shape - it writes `(done)`, on a digest whose FILES list shows two of the four issues barely started. This is not a parser problem and no rule change recovers it.
 
-`aforge-final-crew-batch-s1` @20 sample 0:
+`codeaf-final-crew-batch-s1` @20 sample 0:
 
 > (done)
 
