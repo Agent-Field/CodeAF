@@ -140,7 +140,7 @@ func callHorizonFrom(ctx context.Context) int {
 //
 // THE ROW A PERSON WROTE AND THE DEFAULT DERIVED FROM WHO IS WAITING ARE NOT
 // THE SAME FACT, and reading them through one value silently made λ a dead
-// letter for every background call. [Client.routingFor] answers `price` for an
+// letter for every background call. The default used to answer `price` for an
 // unattended call because nobody said otherwise; taking that as "a person said
 // speed is worthless" then discarded the call site's own λ, so a task node that
 // declared its wait was worth something was routed as though it had declared
@@ -502,9 +502,54 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
 	}
-	strategy := c.routingFor(knobs.intent)
+	strategy := c.routing()
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
+	}
+	// SIMPLE ROUTING ASKS THE ROW AND NOTHING ELSE. A pin — strict or
+	// borrowable, the difference is a rescue this mode does not run — is the
+	// one instruction that reaches the wire: the demand for the machine it
+	// names, with the frontier still drawn so a stall has somewhere to offer
+	// to go. Every other reading of the world (the routing gate, the belief's
+	// own ranking, the account's exclusions) stays computed by the packages
+	// below and is simply never asked, because under this row the person is
+	// the algorithm. No pin — or one the wire has retired for this model —
+	// means no choice at all: the request goes out with no provider object
+	// and the router's own default answers, and with no choice on the context
+	// nothing downstream hedges either ([Client.raceFor] reads the same
+	// absence).
+	if strategy == RoutingSimple {
+		named := pin.pinned()
+		// AND THE ROW GOVERNS THE CALLS IT IS NAMED FOR. The row is `lane.talk`
+		// (internal/config's LaneSlotTalk) and the slot is the whole scope: the
+		// person's own turn is the talk, and the errands that run beside one —
+		// the title, the memory reflex, the route question, a hand asking about
+		// a document, a subharness node — are not.
+		//
+		// THE MEASURED COST OF NOT SAYING SO (2026-09-13). One turn under
+		// `simple`, pinned to a machine the account excludes, demanded that
+		// machine on all three of its calls and paid three separate 404s: the
+		// turn on the chat model, the title on the reflex tier's own model, and
+		// the memory reflex on a third model the pinned machine does not serve
+		// at all. The retirement is written per PAIRING, so each new model is a
+		// fresh round trip — and two of the three were errands nobody asked for
+		// on machines nobody pinned.
+		//
+		// THE SCOPE IS READ FROM THE ROLE THE CALLER ALREADY STAMPED
+		// (internal/lane's roles.go) through lanepin.go's readByAPerson, the
+		// same reading that decides whether a person is told when the wire
+		// refuses the pin (tellRetiredPins). One predicate, so the machine a
+		// person is asked for and the sentence they get when it is refused can
+		// never belong to two different sets of calls. Inside a command a
+		// person typed every call is theirs — the planning pass of `aforge do`
+		// runs in a role nobody reads and is still the thing they are waiting
+		// on — and the same predicate says so.
+		if named == "" || retired || !readByAPerson(knobs.role) {
+			return lanes.Choice{}, false
+		}
+		ask := c.laneRequest(model, knobs, request, c.laneValueOfTime(knobs))
+		choice := lanes.Default().Chooser().Choose(ask)
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier, Pinned: true}, true
 	}
 	// `auto` IS OPENROUTER'S ROAD UNTIL THE ROUTER LETS GO OF IT (routefirst.go).
 	// A gate per model counts the refusals and the answers that came back

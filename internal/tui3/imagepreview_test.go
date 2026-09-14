@@ -326,9 +326,11 @@ func wideTestPicture() image.Image {
 	return img
 }
 
-// Opening a generated picture shows the picture and the file, and nothing else:
-// the result's one line said where the file was and how big it was, which is
-// exactly what the line under the picture says.
+// Opening a generated picture shows the picture and the file, and never the
+// result's own line over the top of them: that line said where the file was and
+// how big it was, which is exactly what the line under the picture says. (What
+// went IN — the prompt, the model that drew — leads the block above it, and
+// imagemodel_test.go is where those words are pinned.)
 func TestOpeningAGeneratedPictureDrawsThePicture(t *testing.T) {
 	a, path := pictureApp(t, call("generate_image",
 		`{"prompt":"a harbour at dawn"}`,

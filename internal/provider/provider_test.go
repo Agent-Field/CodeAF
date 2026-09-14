@@ -84,8 +84,26 @@ func (c *capture) body(index int) map[string]any {
 	return c.bodies[index]
 }
 
+// rankedRoad is the routing row a fixture about the RANKED ROAD wants, written
+// in one place for every fixture that builds a client out of a bare [Config].
+//
+// The shipped row sends no preference of ours at all ([DefaultRouting]), so a
+// client handed nothing puts no `provider` object on the wire — which is what
+// TestAClientNobodyHasRoutedSendsNoProviderObject exists to hold. Everything
+// else in this package's suites is about the sort word, the ledger's order, the
+// price ceiling, the hedge and the cache pin, and all of those are `latency` and
+// `price` machinery. So a fixture that says nothing gets the road it is about,
+// and a test that means the shipped row says so itself.
+func rankedRoad(config Config) Config {
+	if config.Routing == nil {
+		config.Routing = StaticRouting(RoutingLatency)
+	}
+	return config
+}
+
 func newTestClient(t *testing.T, config Config) (*Client, *capture) {
 	t.Helper()
+	config = rankedRoad(config)
 	forgetLanes(t)
 	recorded := &capture{}
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
