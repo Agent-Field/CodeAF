@@ -1,6 +1,6 @@
 //go:build e2e
 
-// Package e2e drives the real `bin/aforge` binary inside a real terminal.
+// Package e2e drives the real `bin/codeaf` binary inside a real terminal.
 //
 // THE ONLY THING UNDER TEST IS THE PRODUCT AS A PERSON MEETS IT. Every other
 // suite in this repository reaches inside — it builds an app struct, hands it a
@@ -20,7 +20,7 @@
 // (internal/home) — and its own git-initialised workspace. A workspace under
 // /tmp that is NOT a repository is treated by the door as "somewhere the person
 // stood by accident" and gets an owned session in a private work directory
-// (cmd/aforge's chatv3_layout.go), which is not the shape any of these
+// (cmd/codeaf's chatv3_layout.go), which is not the shape any of these
 // scenarios are about, so the workspace is always a repository.
 package e2e
 

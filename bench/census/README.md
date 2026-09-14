@@ -1,6 +1,6 @@
 # The call census, nightly
 
-`cmd/aforge-census` reads the model-call log this build always writes
+`cmd/codeaf-census` reads the model-call log this build always writes
 (`~/.aforge/logs/calls.jsonl`, `internal/calllog`) and prints
 [docs/design/recovery/DESIGN.md](../../docs/design/recovery/DESIGN.md) §1 as
 markdown: finishes by status, cause families, the top error signatures under a

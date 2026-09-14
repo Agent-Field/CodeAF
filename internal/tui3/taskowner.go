@@ -12,7 +12,7 @@ package tui3
 //
 // THE LANE INTO THOSE ROWS ALREADY EXISTS, AND `aforge chat` IS ALREADY ON IT.
 // The ordinary local launch is a SURFACE talking to this workspace's engine over
-// a unix socket (cmd/aforge's chatv3_local.go: `remote.Roam("", …)` with an
+// a unix socket (cmd/codeaf's chatv3_local.go: `remote.Roam("", …)` with an
 // empty machine label, dialling [enginehost.Attach]). The engine keys its
 // conversations by [remote.Hello.Session], and a second hello carrying the same
 // key is handed THE SAME LIVE SESSION rather than a new one — that is the whole

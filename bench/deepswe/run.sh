@@ -199,8 +199,8 @@ if ! docker run -d --platform "$PLATFORM" --name "$NAME" \
   meta "stage=start-failed"; log "$TASK: docker run failed"; exit 1
 fi
 
-docker cp "$BIN" "$NAME:/usr/local/bin/aforge" >> "$OUT/docker.log" 2>&1
-docker exec "$NAME" chmod +x /usr/local/bin/aforge >> "$OUT/docker.log" 2>&1
+docker cp "$BIN" "$NAME:/usr/local/bin/codeaf" >> "$OUT/docker.log" 2>&1
+docker exec "$NAME" chmod +x /usr/local/bin/codeaf >> "$OUT/docker.log" 2>&1
 docker exec "$NAME" mkdir -p /bench/home >> "$OUT/docker.log" 2>&1
 docker cp "$PROFILE/config.json" "$NAME:/bench/home/config.json" >> "$OUT/docker.log" 2>&1
 docker cp "$TASK_DIR/instruction.md" "$NAME:/bench/instruction.md" >> "$OUT/docker.log" 2>&1
@@ -221,7 +221,7 @@ if [ "$DOOR" = do ]; then
   docker exec -i "$NAME" tee /bench/drive.sh > /dev/null <<'INNER'
 #!/bin/sh
 set -u
-exec /usr/local/bin/aforge do \
+exec /usr/local/bin/codeaf do \
   -w /app \
   -model "$BENCH_MODEL" \
   -plan-model "$BENCH_MODEL" \

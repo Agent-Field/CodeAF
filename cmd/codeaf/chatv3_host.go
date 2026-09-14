@@ -714,7 +714,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 			// instant" — a run is in flight inside whichever process holds the
 			// tick lock — so there is no question to put on the wire and no
 			// answer a frame could carry. Nil answers no for everything, and a
-			// home where no row ever wears `●` is the truth (cmd/aforge's
+			// home where no row ever wears `●` is the truth (cmd/codeaf's
 			// [v3StandingSeam] declines it for the same reason on this machine's
 			// own store).
 			//

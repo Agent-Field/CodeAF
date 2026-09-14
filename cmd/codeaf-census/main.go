@@ -1,4 +1,4 @@
-// aforge-census is the instrument the recovery design asks for: it reads the
+// codeaf-census is the instrument the recovery design asks for: it reads the
 // model-call log this build always writes (`~/.aforge/logs/calls.jsonl`,
 // internal/calllog) and prints, as markdown, the table
 // docs/design/recovery/DESIGN.md §1 argues from.
@@ -10,7 +10,7 @@
 // fixture, and runnable nightly by a cron on the Spark (`make census`).
 //
 // It is a developer's binary and never a verb on aforge, for the reason
-// cmd/aforge-changes and cmd/aforge-demo-home are: the shipped binary is on a
+// cmd/codeaf-changes and cmd/codeaf-demo-home are: the shipped binary is on a
 // checked-in byte budget (SIZE-BUDGET) and a measuring tool must not spend the
 // product's weight.
 //
@@ -21,7 +21,7 @@
 //
 // Usage:
 //
-//	aforge-census [flags] [path]
+//	codeaf-census [flags] [path]
 //
 //	  -top N        how many error signatures to print (default 25)
 //	  -days N       the window lane health is measured over (default 3)
@@ -55,12 +55,12 @@ func main() {
 		path = calllog.PathFor("")
 	}
 	if strings.TrimSpace(path) == "" {
-		fmt.Fprintln(os.Stderr, "aforge-census: no call log to read (the log is switched off; name a file to read instead)")
+		fmt.Fprintln(os.Stderr, "codeaf-census: no call log to read (the log is switched off; name a file to read instead)")
 		os.Exit(2)
 	}
 	rows, err := readLog(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aforge-census: %v\n", err)
+		fmt.Fprintf(os.Stderr, "codeaf-census: %v\n", err)
 		os.Exit(1)
 	}
 	out := bufio.NewWriter(os.Stdout)
@@ -69,7 +69,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: aforge-census [flags] [path to calls.jsonl]
+	fmt.Fprint(os.Stderr, `usage: codeaf-census [flags] [path to calls.jsonl]
 
 Prints the recovery census (docs/design/recovery/DESIGN.md §1) as markdown.
 With no path it reads this machine's own model-call log.

@@ -56,7 +56,7 @@ TASKDIR="$MARATHON_REPO/tasks/$TASK"
 IMAGE="${IMAGE:-swe-marathon/$TASK:v1.1}"
 
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
 # PI IS A NODE BUNDLE, NOT A BINARY, and mounting just the entry point is how
 # seven pi cells once died in 0 seconds with ERR_MODULE_NOT_FOUND: cli.js imports
 # sibling files from dist/bundle/chunks/. The whole package travels, and it is
@@ -214,7 +214,7 @@ docker run -d --name "$CONTAINER" --cpus "$CPUS" --memory "${MEM_MB}m" \
   -v "$CELL/peer:/peer" \
   -v "$MAR/verify.sh:/oneroad-verify.sh:ro" \
   -v "$ONEROAD/lib:/oneroad-lib:ro" \
-  -v "$NEW_BIN:/usr/local/bin/aforge:ro" \
+  -v "$NEW_BIN:/usr/local/bin/codeaf:ro" \
   ${PI_PKG:+-v "$PI_PKG:/opt/pi:ro"} \
   ${HOST_NODE:+-v "$HOST_NODE:/opt/node:ro"} \
   ${OPENCODE_BIN:+-v "$OPENCODE_BIN:/usr/local/bin/opencode:ro"} \

@@ -57,7 +57,7 @@ type ExecResult struct {
 	Model string
 	// SpendBanked says this run banked its own calls as they were billed — one
 	// usage row per response, written at the moment the provider answered
-	// (cmd/aforge's leafBanker, provider.WithBilling) — so the three totals
+	// (cmd/codeaf's leafBanker, provider.WithBilling) — so the three totals
 	// above are the REMAINDER and not the whole. On an ordinary banked run they
 	// are zero and nothing more is written; they are non-zero when part of the
 	// leaf ran on a worker whose calls the adapter never saw, and that part is
@@ -590,7 +590,7 @@ func (r *Runner) reapSilentClaims() bool {
 // deadline has just been decided, and never lowers it.
 //
 // It exists because the window is a CONSTANT and the deadline is not. A leaf's
-// deadline scales with the budget it was granted (cmd/aforge's leafDeadline: a
+// deadline scales with the budget it was granted (cmd/codeaf's leafDeadline: a
 // minute per fifty thousand tokens above the floor), so a well-fed leaf is
 // entitled to run for longer than the reaper's default window — and the reaper
 // would then take a node away from a worker that was still working, which is the
@@ -1362,7 +1362,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 		// one-shot scheduler both ask, so the two surfaces cannot answer
 		// differently about what a spent clock means. What is local here is only
 		// what the record IS: this side reads the transcript bank, and the next
-		// claim resumes from the same bank (cmd/aforge reads it at claim time
+		// claim resumes from the same bank (cmd/codeaf reads it at claim time
 		// through resident.Bank when node.Attempt is above zero).
 		if allowed, recorded, requeue := executor.Requeued(err, func() int {
 			_, turns := BankedRun(r.graph, node.ID)
@@ -1781,7 +1781,7 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 // the worker was given, and how much of its work survived — because "the node
 // goes back on the queue" is only worth reading if the next claim is going to
 // pick up where this one stopped, and the turn count is the evidence that it
-// can. The headless stream prints it beside the node (see cmd/aforge's
+// can. The headless stream prints it beside the node (see cmd/codeaf's
 // narrateOne on store.EventNodeReleased), which says the count in its own words
 // and reads the rest of this sentence through [ReleaseWhy] — so the clause about
 // what survived is [recordedTail]'s, spelled in one place for both of the

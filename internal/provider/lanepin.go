@@ -83,7 +83,7 @@ func SetLanePin(pin LanePin) {
 	// whole reason it can afford that rule. It is called by every place that
 	// READS the row and hands the answer down — the door at launch, and the
 	// standing ticker, which rebuilds a whole posture every five minutes for as
-	// long as the window lives (cmd/aforge's v3StandingTicker). An experiment
+	// long as the window lives (cmd/codeaf's v3StandingTicker). An experiment
 	// build that forgot here unconditionally therefore forgot what the wire had
 	// said every five minutes and paid the identical 404 again: one at launch,
 	// one at 16:30:02, one at 16:35:00, in one process, in one measured run,
@@ -151,7 +151,7 @@ func CurrentLanePin() LanePin {
 // typed and is waiting on — `aforge do`, `aforge exec`, `aforge plan new` — as
 // distinct from a conversation they opened. Its whole content is that EVERY
 // call of such a process is the person's own work: there is no errand beside a
-// typed command, because the command is the errand. cmd/aforge's
+// typed command, because the command is the errand. cmd/codeaf's
 // typedDoorContext is the one door that sets it.
 var personAtTheDoor atomic.Bool
 

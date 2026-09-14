@@ -42,7 +42,7 @@ docker exec -w /app "$name" git rev-parse HEAD > "$out/base-head.txt"
 [[ "$(cat "$out/base-head.txt")" == "$TASK_BASE" && ! -s "$out/base-status.txt" ]]
 docker exec -w /app "$name" git show-ref > "$out/base-refs.txt"
 docker exec "$name" bash -c 'test ! -e /tests && test ! -e /solution && test ! -e /var/run/docker.sock'
-docker cp "$ROOT/bin/aforge" "$name:/usr/local/bin/aforge" >/dev/null
+docker cp "$ROOT/bin/codeaf" "$name:/usr/local/bin/codeaf" >/dev/null
 if [[ "$mode" == preflight ]]; then
   printf '%s\n' 'Read the first line of README.md and report it. Do not modify any file.' > "$out/prompt.txt"
 else
@@ -108,7 +108,7 @@ import pathlib, sys
 text = pathlib.Path(sys.argv[1]).read_text()
 pathlib.Path(sys.argv[2]).write_text('ready\t' + ' '.join(text.split()) + '\n')
 PY
-sha256sum "$ROOT/bin/aforge" "$out/prompt.txt" "$out/plan.tsv" > "$out/inputs.sha256"
+sha256sum "$ROOT/bin/codeaf" "$out/prompt.txt" "$out/plan.tsv" > "$out/inputs.sha256"
 printf '%s\n' "$image" > "$out/runtime-image.txt"
 printf '%s\n' "$verifier" > "$out/verifier-image.txt"
 docker exec "$name" bash -c 'node --version; npm --version; pi --version' > "$out/toolchain.txt" 2>&1
@@ -120,7 +120,7 @@ printf '%s\n' "$door_code" > "$out/driver-exit.txt"
 # Stop this container's host before extracting files; no worker can race grading.
 if [[ "$arm" == aforge ]]; then
   docker exec -w /app -e AFORGE_HOME=/bench/state/aforge-home "${EMU_ARGS[@]}" "$name" \
-    /usr/local/bin/aforge engine --workspace /app --stop > "$out/host-stop.log" 2>&1 || true
+    /usr/local/bin/codeaf engine --workspace /app --stop > "$out/host-stop.log" 2>&1 || true
 fi
 docker cp "$name:/bench/state" "$out/state" >/dev/null
 docker exec -w /app "$name" git add -N -- .

@@ -6,7 +6,7 @@ mkdir -p "$ROOT"
 for i in 20 21 22 23; do
   (
     AFORGE_MODE=do \
-    AFORGE_BIN="${AFORGE_BIN:-$(pwd)/bin/aforge}" \
+    AFORGE_BIN="${AFORGE_BIN:-$(pwd)/bin/codeaf}" \
     HARNESSES=aforge \
     ISSUES="$i" \
     BASE_COMMIT=6c978ffa1c49ba600c85eb893958409e37dbedd2 \

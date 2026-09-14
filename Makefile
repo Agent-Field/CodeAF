@@ -1,6 +1,6 @@
 # The one binary. Every build lands here — never at the repo root, never
 # anywhere else — so a stale copy can't shadow a fresh one.
-BINARY := bin/aforge
+BINARY := bin/codeaf
 
 .PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
@@ -18,7 +18,7 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
-MANUAL_TAG := aforge_packed_manual
+MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
 # the archive beside it is an IGNORED build product (internal/packed says why),
@@ -90,10 +90,10 @@ furrow:
 # anyway, so any such lookup has to fall through to the copy beside the cwd and
 # then to PATH — which is what it does here.
 build: furrow embed
-	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
 
 debug: furrow embed
-	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
 
 # ── the known-red ledger, read once ─────────────────────────────────────────
 #
@@ -255,7 +255,7 @@ test-remote:
 # THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
 # full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
 # the roomfeed twins run first and eat the budget). This is the door for the
-# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/aforge.
+# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
 test-e2e-tui: build
 	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
 
@@ -286,13 +286,13 @@ test-e2e: build
 #
 # The seeder is its own binary and NOT a hidden verb on aforge, because the
 # shipped binary is on a checked-in byte budget (SIZE-BUDGET) and a developer
-# target must not spend the product's weight. bin/aforge-demo-home is not a
+# target must not spend the product's weight. bin/codeaf-demo-home is not a
 # second copy of the product and cannot shadow it — it is a different program
 # with a different name.
-DEMO_BINARY := bin/aforge-demo-home
+DEMO_BINARY := bin/codeaf-demo-home
 
 demo-home: build
-	go build -o $(DEMO_BINARY) ./cmd/aforge-demo-home
+	go build -o $(DEMO_BINARY) ./cmd/codeaf-demo-home
 	@$(DEMO_BINARY) $(if $(DEMO_HOME),--into "$(DEMO_HOME)") $(if $(KEEP),--keep) --launch "$(CURDIR)/$(BINARY)"
 
 vet:
@@ -353,7 +353,7 @@ check: vet fmt-check test test-packed-manual size
 # WRONGLY: the branch that stopped existing, the default that moved, the refusal
 # that became a capability. docs/rules/changelog.md says why that is the field
 # the format is built around and why it cannot be generated.
-CHANGES := ./cmd/aforge-changes
+CHANGES := ./cmd/codeaf-changes
 
 changelog-new:
 	@test -n "$(PR)"   || { echo 'usage: make changelog-new PR=82 KIND=changed SLUG=branch-rules'; exit 1; }
@@ -392,7 +392,7 @@ changelog:
 # runs `make census LOG=… OUT=…`; bench/README.md has the recipe and the one
 # thing the cron owns that this target does not.
 census:
-	@go run ./cmd/aforge-census \
+	@go run ./cmd/codeaf-census \
 	  $(if $(TOP),-top $(TOP)) $(if $(DAYS),-days $(DAYS)) \
 	  $(if $(MIN),-min $(MIN)) $(if $(CHAINS),-chains $(CHAINS)) \
 	  $(LOG) $(if $(OUT),> $(OUT))
@@ -415,7 +415,7 @@ census:
 #
 # It reads only; it never writes a belief file and never opens a connection.
 replay:
-	@go run ./cmd/aforge-replay \
+	@go run ./cmd/codeaf-replay \
 	  $(if $(LOG),-log $(LOG)) $(if $(SIGHTINGS),-sightings $(SIGHTINGS)) \
 	  $(if $(SINCE),-since $(SINCE)) $(if $(WINDOW),-window $(WINDOW)) \
 	  $(if $(MIN),-min $(MIN)) $(if $(INCIDENTS),-incidents $(INCIDENTS)) \

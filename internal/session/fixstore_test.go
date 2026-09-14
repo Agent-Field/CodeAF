@@ -37,7 +37,7 @@ func TestTheSignatureStripsWhatVariesAndKeepsWhatDiscriminates(t *testing.T) {
 		want: "<path>:n: undefined: notetooloutcome",
 	}, {
 		name: "a killed binary",
-		line: "./bin/aforge: Killed: 9",
+		line: "./bin/codeaf: Killed: 9",
 		want: "<path>: killed: n",
 	}, {
 		name: "a bare slash-word is not a path",

@@ -113,7 +113,7 @@ The chat library is bash-only. When driving a cell by hand, set `CANARY_LIB` to
 the lib directory.
 
 ```sh
-bench/canary/run.sh --bin ~/af-dev/bin/aforge                     # anchors, both doors
+bench/canary/run.sh --bin ~/af-dev/bin/codeaf                     # anchors, both doors
 bench/canary/run.sh --bin BIN --fresh 2                           # plus two fresh picks
 bench/canary/run.sh --bin BIN --baseline RUN/rows.csv --post 407  # compare and post
 bench/canary/run.sh --dry-run                                     # list cells, spend nothing

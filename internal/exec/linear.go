@@ -459,7 +459,7 @@ type Completer interface {
 //	Answer remaining offenders     14   268,971   211,852
 //
 // (A grant above this constant is this constant plus the dependency term
-// gatheringGrant adds — it is cmd/aforge's, in subharness.go, which this package
+// gatheringGrant adds — it is cmd/codeaf's, in subharness.go, which this package
 // cannot link to; the overshoot past each is the landing reserve doing its job
 // at landingTokenShare of the grant.) The run then re-planned around every
 // landing — five rounds and seven nodes for one issue, 43 minutes, $2.11, and a

@@ -24,7 +24,7 @@ package main
 //     possibly mid-turn, and closing the lid does not end it. If no host is
 //     running, one is started and this connection waits a moment for it.
 //  1a. AND THE HOST IS ASKED WHICH BUILD IT IS FIRST. A host outlives the
-//     binary that started it, so `rm bin/aforge && make build` on this machine
+//     binary that started it, so `rm bin/codeaf && make build` on this machine
 //     leaves the NEW aforge answering `aforge version` while the OLD one is
 //     still holding the socket — and a splice that copied bytes handed the new
 //     surface straight to it. What came back was the old host's own refusal
@@ -855,7 +855,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 //
 // A NIL SHAPE IS THE ENGINE'S DEFAULTS, which is what every remote surface
 // sends: --yolo and its neighbours are settings of the machine the session runs
-// on, and cmd/aforge refuses them over --host and --at by name. The local dial
+// on, and cmd/codeaf refuses them over --host and --at by name. The local dial
 // is the one caller that fills it (chatv3_local.go).
 func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Options {
 	opts := v3Options{

@@ -127,7 +127,7 @@ var settingReaders = map[string]string{
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
 	// The prompt-profile row names the session field the word lands in, which
-	// is what the far side actually reads: cmd/aforge's applyV3Governance puts
+	// is what the far side actually reads: cmd/codeaf's applyV3Governance puts
 	// PromptProfileAt's answer there and internal/session's promptprofile.go
 	// resolves it against the pin and the window.
 	KeyPromptProfile: "PromptProfile",
@@ -236,13 +236,13 @@ var settingReaders = map[string]string{
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
 	// The worker row names its tier for the mastermind row's reason: a third
-	// TierKey would let the low row prove this one. cmd/aforge's crew source,
+	// TierKey would let the low row prove this one. cmd/codeaf's crew source,
 	// internal/session's task ladder and internal/tui3's settings skin all
 	// reach it by this name.
 	KeyTierWorkerModel: "TierWorker",
 	// The mastermind row names the TIER rather than the shared spelling, for the
 	// reason the reflex row below does: naming TierKey a third time would let the
-	// low row prove this one. cmd/aforge's crew source and internal/tui3's
+	// low row prove this one. cmd/codeaf's crew source and internal/tui3's
 	// settings skin both reach it by this name.
 	KeyTierMastermindModel: "TierMastermind",
 	// The crew row is the four tier rows answered as one word, and what reads it
@@ -265,7 +265,7 @@ var settingReaders = map[string]string{
 	KeyFirecrawlKey:   "SearchOptionsAt",
 	KeyJinaKey:        "SearchOptionsAt",
 	// The Google pair is read by the v3 door, which turns it into the manager
-	// hung off session.Config.Connect (cmd/aforge/chatv3.go's v3Connect). Both
+	// hung off session.Config.Connect (cmd/codeaf/chatv3.go's v3Connect). Both
 	// rows name the same reader because the reader answers both halves at once:
 	// an id without its secret connects nothing, so nothing in this tree ever
 	// reads one of them alone.

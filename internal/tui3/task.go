@@ -715,7 +715,7 @@ type taskAgent interface {
 //
 // IT IS EXPORTED FOR ONE REASON. internal/remote implements this surface's agent
 // over a wire and cannot import this package to check that it kept up, so the
-// door that wires the two together asserts it instead (cmd/aforge). The seam is
+// door that wires the two together asserts it instead (cmd/codeaf). The seam is
 // ALL-OR-NOTHING — [app.tasker] is one type assertion — so a single method
 // missing on the far half is not a feature that degrades, it is a rail that is
 // never subscribed and never draws a row. That is exactly what happened: the

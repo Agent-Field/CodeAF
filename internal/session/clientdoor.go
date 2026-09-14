@@ -506,7 +506,7 @@ const (
 	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
 	// already gathered, run on every check of every item forever. It is the ONE
 	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
-	// tag is `standing-check`, because cmd/aforge already writes `sentinel` for
+	// tag is `standing-check`, because cmd/codeaf already writes `sentinel` for
 	// the resident's quorum errand and two different calls under one tag is one
 	// reading of neither. THE RENAME IS A HOLDING ACTION: it moves the collision
 	// rather than fixing it, and it is fixed by carrying [lane.Role] on the

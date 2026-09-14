@@ -1,6 +1,6 @@
 package main
 
-// aforge-demo-home builds a DEMO HOME: a throwaway state directory with
+// codeaf-demo-home builds a DEMO HOME: a throwaway state directory with
 // something on every one of v3's places, so the surface can be looked at full
 // rather than empty.
 //
@@ -15,11 +15,11 @@ package main
 // the one it was given, and the launcher hands that directory to the binary as
 // HOME.
 //
-// WHY IT IS A SEPARATE BINARY. cmd/aforge has a clean place for a hidden verb —
+// WHY IT IS A SEPARATE BINARY. cmd/codeaf has a clean place for a hidden verb —
 // `engine` and `tick` both live there — but the seeding below is several hundred
 // lines and the shipped binary is on a checked-in byte budget (SIZE-BUDGET,
 // PERF.md). A developer target must not spend the product's weight, so this is
-// its own main package and `bin/aforge` does not change by a byte.
+// its own main package and `bin/codeaf` does not change by a byte.
 //
 // EVERYTHING IS WRITTEN THROUGH THE ENGINE'S OWN WRITERS — session.SaveMeta,
 // session.RecordUsage, session.RecordArtifact, standing.Store, store.Store — so
@@ -43,13 +43,13 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "aforge-demo-home:", err)
+		fmt.Fprintln(os.Stderr, "codeaf-demo-home:", err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
-	flags := flag.NewFlagSet("aforge-demo-home", flag.ContinueOnError)
+	flags := flag.NewFlagSet("codeaf-demo-home", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	flags.Usage = func() { fmt.Fprint(flags.Output(), usageText) }
 	into := flags.String("into", "", "the directory to build the demo home in; empty makes a fresh temporary one")
@@ -98,18 +98,18 @@ func run(args []string) error {
 func surfaceBeside() string {
 	self, err := os.Executable()
 	if err != nil {
-		return "bin/aforge"
+		return "bin/codeaf"
 	}
 	beside := filepath.Join(filepath.Dir(self), "aforge")
 	if info, err := os.Stat(beside); err != nil || info.IsDir() {
-		return "bin/aforge"
+		return "bin/codeaf"
 	}
 	return beside
 }
 
-const usageText = `aforge-demo-home — build a home with something on every place, for looking at
+const usageText = `codeaf-demo-home — build a home with something on every place, for looking at
 
-  aforge-demo-home [--into dir] [--keep] [--launch path/to/aforge]
+  codeaf-demo-home [--into dir] [--keep] [--launch path/to/aforge]
 
   --into    where to build it; a fresh temporary directory when not given
   --keep    reuse a directory that already holds a demo home rather than refusing
@@ -130,7 +130,7 @@ never opened.
 // caller says --keep and the directory looks like something this program wrote.
 func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 	if into == "" {
-		made, err := os.MkdirTemp("", "aforge-demo-home-")
+		made, err := os.MkdirTemp("", "codeaf-demo-home-")
 		if err != nil {
 			return "", false, fmt.Errorf("make a directory to build in: %w", err)
 		}

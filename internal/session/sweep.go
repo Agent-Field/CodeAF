@@ -73,7 +73,7 @@ const (
 
 	// placesDirName is where the session folders live under the state root:
 	// v3/projects/<encoded-workspace>/<session-id>/ — the same word
-	// cmd/aforge's layout spells when it creates a bucket (chatv3_layout.go).
+	// cmd/codeaf's layout spells when it creates a bucket (chatv3_layout.go).
 	// The sweep needs only the root and never the encoder.
 	placesDirName = "projects"
 )

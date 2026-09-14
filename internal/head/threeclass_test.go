@@ -63,7 +63,7 @@ func TestAWholeCycleSaysOnlyCommitmentDeliveryAndQuestion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. Planning narrates itself. This is the shape cmd/aforge's plan-progress
+	// 3. Planning narrates itself. This is the shape cmd/codeaf's plan-progress
 	//    poster writes — that package cannot be imported from here, and its own
 	//    test pins the poster; what is pinned HERE is that the shape lands on
 	//    the record and never in the room's conversation.

@@ -284,7 +284,7 @@ func TestALevelOnATierRowResolvesAsAnEffortAndNotAsAnId(t *testing.T) {
 }
 
 // Every persisted write bumps the generation, which is the signal a live crew
-// source invalidates its snapshot on (cmd/aforge's v3RolesSource).
+// source invalidates its snapshot on (cmd/codeaf's v3RolesSource).
 func TestEverySettingsWriteBumpsTheGeneration(t *testing.T) {
 	dir := t.TempDir()
 	before := SettingsGeneration()

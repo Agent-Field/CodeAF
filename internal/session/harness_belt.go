@@ -5,7 +5,7 @@ package session
 // It had two, and they were a drift pair. The designer was told what it could
 // whitelist by [Agent.harnessMachinery], the lint checked the whitelist it wrote
 // against [Agent.harnessToolNames], and the RUN resolved those same names
-// against a third list assembled in cmd/aforge's chatv3_harness.go — three
+// against a third list assembled in cmd/codeaf's chatv3_harness.go — three
 // independent calls to bare.AllTools that nothing held together. A verb added to
 // one of them and not the others is a harness the designer may write and the
 // runner cannot execute, or worse, a verb the runner would happily execute that
@@ -49,7 +49,7 @@ import (
 // HarnessBeltSeams is everything the media half of the belt needs from the door
 // that builds it: what it may generate with, what it may look with, and where
 // what it makes lands. It is a struct rather than a handful of arguments because
-// the run door (cmd/aforge's chatv3_harness.go) fills it from a config it
+// the run door (cmd/codeaf's chatv3_harness.go) fills it from a config it
 // already holds, and a positional list of two interfaces, two functions, a
 // folder and a path is a call nobody can read at the call site.
 //

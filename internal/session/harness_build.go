@@ -1197,7 +1197,7 @@ func (a *Agent) harnessBriefs() (designer, reviewer string, err error) {
 //
 // The belt is [HarnessBelt] — the wire tools plus whichever media verbs this
 // machine has models for — and it is the SAME CALL the run resolves its nodes
-// against (cmd/aforge's chatv3_harness.go). harness_belt.go states what is
+// against (cmd/codeaf's chatv3_harness.go). harness_belt.go states what is
 // excluded and why, and why the three lists that used to answer this
 // independently are now one.
 func (a *Agent) harnessMachinery() map[string]string {

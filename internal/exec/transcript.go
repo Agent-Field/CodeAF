@@ -22,7 +22,7 @@ import (
 //
 // WHY A CONTEXT VALUE AND NOT A FIELD ON THE EXECUTOR. The sink has to reach
 // every worker on both surfaces — the chat's leaves and `aforge do`'s — and
-// those two reach their workers through different doors: cmd/aforge's
+// those two reach their workers through different doors: cmd/codeaf's
 // executorFor on one side and an exec.Registry built once per run on the other.
 // A constructor field would have to be threaded through both, through
 // leafBuild, and through every executor that does not want one; and it would be

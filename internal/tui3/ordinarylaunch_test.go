@@ -63,7 +63,7 @@ func ordinaryLaunch(t *testing.T, opts Options, seed func()) *app {
 
 // ordinaryConnect is the default provider's browser door as the real launch
 // hands it over: a local interactive session on the built-in OpenRouter
-// endpoint gets one (cmd/aforge's v3OpenRouterConnection). Nothing here calls
+// endpoint gets one (cmd/codeaf's v3OpenRouterConnection). Nothing here calls
 // it — its presence is the whole fact the key step reads.
 func ordinaryConnect(context.Context) (OpenRouterFlow, error) { return nil, nil }
 
@@ -180,7 +180,7 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 // THIS ONE IS TESTED SEPARATELY BECAUSE IT IS NOT A STATUS SEGMENT, IT IS A
 // SAFETY CLAIM. The segment is drawn only when the gate is open (render.go's
 // NEGATIVE-SPACE SAFETY), so its ABSENCE is the claim that every tool call will
-// be asked about — and the gate it is claiming about is the one cmd/aforge
+// be asked about — and the gate it is claiming about is the one cmd/codeaf
 // builds from [config.ToolApprovalModeAt] on the same profile directory
 // (chatv3.go's v3Policy). Before #322 the surface's reading answered "" on an
 // empty profile directory while the policy's reading resolved it to the state

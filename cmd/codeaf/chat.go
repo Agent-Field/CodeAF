@@ -2026,7 +2026,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}, "chat-runner", chatWorkerCeiling).
 		WithDailyBudgetUSD(settings.DailyBudgetUSD)
 	// The depth loop, asked at the claim instead of at the build. See
-	// cmd/aforge/jit.go; a nil hook here is the whole rollback. The probe is
+	// cmd/codeaf/jit.go; a nil hook here is the whole rollback. The probe is
 	// the runner's own idle-slot count, so a division that would only queue
 	// behind held slots is refused.
 	runner = runner.WithExpand(jitExpander(graph, plans, settings, planClient, planContextTokens, runner).Expand)

@@ -2021,7 +2021,7 @@ func toolWords(tool, hint string) (string, string) {
 
 // ToolGloss is how a tool's activity is said in ONE plain sentence, with the
 // verb said once. It is exported because the non-interactive door in
-// cmd/aforge prints the same fact without a terminal, and one rule for one
+// cmd/codeaf prints the same fact without a terminal, and one rule for one
 // sentence is the point.
 func ToolGloss(tool, hint string) string {
 	name, gloss := toolWords(tool, hint)

@@ -191,7 +191,7 @@ func errorKey(updates map[string]any) string {
 
 // ── the generation counter ──────────────────────────────────────────────────
 //
-// A live reader — the v3 door's crew source (cmd/aforge's v3RolesSource) — needs
+// A live reader — the v3 door's crew source (cmd/codeaf's v3RolesSource) — needs
 // to know when what it read has changed, and it needs to know cheaply: an
 // auxiliary model is resolved on the path of a turn, and a file read there would
 // be a syscall per call for a file that changes once a week.

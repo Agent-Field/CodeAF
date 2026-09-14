@@ -254,7 +254,7 @@ func TestManualHelpPrintsTheCommandsUsageAboveThePageList(t *testing.T) {
 			}
 			printed := out.String()
 			usage := strings.Index(printed, "aforge manual <page>")
-			listing := strings.Index(printed, "starting-aforge")
+			listing := strings.Index(printed, "starting-codeaf")
 			if usage < 0 {
 				t.Fatalf("aforge manual %s printed no usage line:\n%s", spelling, printed)
 			}

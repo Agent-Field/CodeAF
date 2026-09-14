@@ -50,7 +50,7 @@ import (
 //
 // internal/pair's ThisMachineLabel reads the same fact for the pairing lane and
 // is deliberately NOT called here: the two packages are siblings glued together
-// by the door in cmd/aforge, neither imports the other, and pairing's label is a
+// by the door in cmd/codeaf, neither imports the other, and pairing's label is a
 // device's durable name where this is one connection's passing one.
 func MachineName() string {
 	name, err := os.Hostname()

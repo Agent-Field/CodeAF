@@ -16,7 +16,7 @@
 //
 // Nearly every scenario below launches `aforge chat --no-host`, which keeps the
 // conversation IN THIS PROCESS. The ordinary road since #736 is a session host
-// over a unix socket (cmd/aforge's chatv3_local.go), and a scenario about a
+// over a unix socket (cmd/codeaf's chatv3_local.go), and a scenario about a
 // compare table or a dial has nothing to say about a wire: opening the host road
 // for all of them would put a second process, a socket and a redial loop between
 // a keystroke and the row it is about, and every flake in either would be
@@ -55,7 +55,7 @@
 //	go test -tags e2e -run 'TestQuestionsE2E/ALine' -count=1 -timeout 15m -v ./internal/e2e/
 //	go test -tags e2e -run TestQuestionsE2E -count=1 -timeout 90m -v ./internal/e2e/
 //
-// It SKIPS rather than fails with no provider key, no tmux or no bin/aforge,
+// It SKIPS rather than fails with no provider key, no tmux or no bin/codeaf,
 // exactly as the suite beside it does — and the key is resolved by the product's
 // own three roads, through [liveKey].
 package e2e
@@ -1123,7 +1123,7 @@ func questionsHeadless(t *testing.T) {
 // this file that is not about a form.
 //
 // Bare `aforge` has not run the conversation in this process since #736: it
-// attaches this workspace's session host over a unix socket (cmd/aforge's
+// attaches this workspace's session host over a unix socket (cmd/codeaf's
 // chatv3_local.go), so the question object has to cross internal/remote's wire
 // in both directions — the raise on the way out and the answer on the way back —
 // and the block deliberately draws NOTHING where it cannot resolve what it
@@ -1144,7 +1144,7 @@ func questionsDefaultDoor(t *testing.T) {
 	})
 	// AND IT PROVES WHICH ROAD IT IS ON BEFORE IT MEASURES ANYTHING. The rule
 	// falls back to the in-process door whenever it cannot reach a host
-	// (cmd/aforge's v3TakeHostRoad), which is right for the product and fatal
+	// (cmd/codeaf's v3TakeHostRoad), which is right for the product and fatal
 	// for a scenario about the wire: it would pass by testing the door every
 	// other scenario here already tests. A socket answering for this workspace
 	// is the whole of the evidence.
@@ -1278,7 +1278,7 @@ func shrinkPNG(path string) error {
 // directory after the test, this package's test names are sentences, and a unix
 // socket path has about a hundred bytes to spend (internal/enginehost's
 // socketLimit). Under `/tmp/TestQuestionsE2ETheOrdinaryRoadCarries…/001/home` the
-// socket does not fit, [enginehost.Attach] cannot reach a host, and cmd/aforge's
+// socket does not fit, [enginehost.Attach] cannot reach a host, and cmd/codeaf's
 // rule falls back to the in-process door — silently, and correctly, because a
 // road it cannot take is no road. The effect is that EVERY rig in this package
 // has been running the in-process door while looking exactly like a launch of

@@ -75,7 +75,7 @@ func (n *gradeNest) settleWith(t *testing.T, title, model string, verdict provid
 }
 
 // entries is the ratings store as `aforge models` reads it: the very same call
-// cmd/aforge's runModels makes, out of the very same directory.
+// cmd/codeaf's runModels makes, out of the very same directory.
 func (n *gradeNest) entries(t *testing.T) []router.Entry {
 	t.Helper()
 	ledger, err := router.LoadLedger(n.profile)

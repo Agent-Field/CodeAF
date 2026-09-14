@@ -1418,7 +1418,7 @@ func TestTheEnginesStandingStoreAnswersOverTheWire(t *testing.T) {
 }
 
 // AN ENGINE WITH NO AMBIENT SIDE HAS NO DOOR, not an empty one. A store that
-// could not be opened leaves both closures nil (cmd/aforge's engine.go), and the
+// could not be opened leaves both closures nil (cmd/codeaf's engine.go), and the
 // surface keeps the difference between "nothing is set up here" and "this
 // machine cannot answer that at all".
 func TestServeSaysWhenTheStandingDoorIsMissing(t *testing.T) {

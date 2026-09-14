@@ -128,7 +128,7 @@ type WrappedAgent interface {
 }
 
 // Engine is one opened conversation and the doors that replace it. The door
-// that builds it (cmd/aforge) owns config resolution, session-file resolution
+// that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
@@ -1800,7 +1800,7 @@ func (s *server) handshake(line []byte) error {
 //
 // IT IS TYPED BECAUSE THE SENTENCE HAS ALREADY BEEN DELIVERED. Over ssh the
 // engine's stderr is the person's stderr — that is how a passphrase prompt
-// reaches them (cmd/aforge/chatv3_host.go) — so a door that also prints this
+// reaches them (cmd/codeaf/chatv3_host.go) — so a door that also prints this
 // error writes the same line onto the same terminal the wire is about to draw
 // it on. [Refusal] is how the engine door knows to exit quietly instead.
 func (s *server) refuse(reason string) error {
@@ -1820,7 +1820,7 @@ func (r *Refusal) Error() string { return r.Reason }
 //
 // IT EXISTS FOR THE ONE REFUSAL THAT COMES BEFORE THERE IS A SERVER. `aforge
 // engine` decides whether it may splice this connection onto a host before it
-// reads a byte of stdin (cmd/aforge's engine.go), and a reason found there has
+// reads a byte of stdin (cmd/codeaf's engine.go), and a reason found there has
 // the same audience and travels the same road as any other: the surface is
 // holding the terminal, it is waiting for a welcome, and a fatal frame is the
 // sentence it prints unchanged.

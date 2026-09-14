@@ -43,7 +43,7 @@ import (
 // a deliverable answers the ask; nothing can be wrong about whether a file is
 // on disk. Refusing this gap declines to buy a repair round and settles
 // nothing about whether the work landed — see deliveredWhole in
-// cmd/aforge/do.go, which is where the difference is spent.
+// cmd/codeaf/do.go, which is where the difference is spent.
 //
 // ok is false — and the caller judges exactly as it did before this existed —
 // when the criterion named no files, or when every named file is present and

@@ -46,7 +46,7 @@ func TestTheConversationRungIsWrittenDownAndReadBack(t *testing.T) {
 
 	// AND THE WAY BACK IS THE WHOLE POINT. A second session opened on the same
 	// folder reads the rung the first one left, which is what the door does at
-	// launch (cmd/aforge's v3SavedEffort).
+	// launch (cmd/codeaf's v3SavedEffort).
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

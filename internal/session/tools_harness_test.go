@@ -235,7 +235,7 @@ func TestListHarnessesReadsTheRegistryThisConversationCanReach(t *testing.T) {
 //
 // THE RUNNER IS STILL WIRED IN EVERY CASE HERE, which is the whole point. The
 // engine is untouched and the seam is filled the way the shipping door fills it
-// (cmd/aforge's chatv3_orchestrate.go); what is gone is any way for a turn to
+// (cmd/codeaf's chatv3_orchestrate.go); what is gone is any way for a turn to
 // reach it.
 func TestNoConversationCarriesTheAdaptiveVerb(t *testing.T) {
 	for _, c := range []struct {

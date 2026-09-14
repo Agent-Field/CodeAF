@@ -167,7 +167,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
-	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/aforge's v3 door),
+	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/codeaf's v3 door),
 	// so this is the moment the memo behind the picker's second rung stopped
 	// being true. Dropping it here is what makes ctrl+r a fresh list on every
 	// road onto it rather than only on the one the fetch came back through

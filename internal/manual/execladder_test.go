@@ -13,7 +13,7 @@ import (
 //
 // There were THREE exit tables in this product and two of them meant opposite
 // things by the same number. They were pulled onto one ladder in
-// `cmd/aforge/envelope.go`, `docs/HEADLESS.md` was rewritten, and the terminal
+// `cmd/codeaf/envelope.go`, `docs/HEADLESS.md` was rewritten, and the terminal
 // page in this corpus was written against the new one — and a FOURTH copy was
 // left standing here, on `adaptive-runs`, still telling a person that `aforge
 // exec` has "a six-rung ladder" and that "`5` is the one to watch for".
@@ -32,7 +32,7 @@ import (
 func TestNoChatPageStillTeachesExecsRetiredExitCodes(t *testing.T) {
 	rungs := exitRungsFromSource(t)
 	if len(rungs) != 5 {
-		t.Fatalf("cmd/aforge/envelope.go publishes %d rungs; the reader has stopped working", len(rungs))
+		t.Fatalf("cmd/codeaf/envelope.go publishes %d rungs; the reader has stopped working", len(rungs))
 	}
 	pages := flatChatPages(t)
 
@@ -79,7 +79,7 @@ func TestNoChatPageStillTeachesExecsRetiredExitCodes(t *testing.T) {
 	}
 }
 
-// exitRungsFromSource is `exitLadder` read out of cmd/aforge/envelope.go: the
+// exitRungsFromSource is `exitLadder` read out of cmd/codeaf/envelope.go: the
 // number each rung publishes, against the clause that table spells it with.
 //
 // It reads the code names out of the const block first, because the ladder
@@ -88,7 +88,7 @@ func TestNoChatPageStillTeachesExecsRetiredExitCodes(t *testing.T) {
 func exitRungsFromSource(t *testing.T) map[int]string {
 	t.Helper()
 
-	const path = "../../cmd/aforge/envelope.go"
+	const path = "../../cmd/codeaf/envelope.go"
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
 		t.Fatalf("cannot read %s: %v", path, err)

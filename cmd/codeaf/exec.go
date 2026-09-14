@@ -461,7 +461,7 @@ const execNodeKey = "task-1"
 // [lane.RoleUnknown] — a hidden background errand — so a pinned `aforge exec`
 // went out with no machine named while the row still said one. `aforge do` and
 // `aforge plan new` are the same shape: one command, one person waiting on it,
-// and cmd/aforge's lanepin_doors_test names all three as the doors whose first
+// and cmd/codeaf's lanepin_doors_test names all three as the doors whose first
 // request must carry the pin.
 //
 // IT IS A LEAF AND NOT THE TALK, because each of these is one leaf's work and

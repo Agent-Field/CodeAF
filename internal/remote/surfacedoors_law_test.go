@@ -25,7 +25,7 @@ import (
 //
 // AND THE DEFAULT ROAD IS THE REMOTE ONE. A bare `aforge` holds a
 // `*remote.Agent` talking to a detached engine — `v3TakeHostRoad` in
-// cmd/aforge/chatv3_local.go is true for every launch but `--no-host`,
+// cmd/codeaf/chatv3_local.go is true for every launch but `--no-host`,
 // `--debug`, first-run setup and a hostless `--once`. So a door that
 // `*session.Agent` has and `*remote.Agent` does not is a feature that works in
 // every test and in nobody's terminal. [MethodTyping] was one: the probe that

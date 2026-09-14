@@ -4,7 +4,7 @@ package exec
 // taken at all?
 //
 // Both surfaces — the task node (internal/session) and the headless command
-// (cmd/aforge) — reach [Deopt], so the decision is taken here and neither can
+// (cmd/codeaf) — reach [Deopt], so the decision is taken here and neither can
 // skip it. What they assert is the sentence a person reads; what these assert is
 // that the ceiling holds.
 

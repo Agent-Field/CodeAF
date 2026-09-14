@@ -151,11 +151,11 @@ Requires `bash`, `sqlite3`, `python3`, `go`, and `timeout` (`gtimeout` from
 coreutils is picked up automatically). `OPENROUTER_API_KEY` must be set.
 
 `bin/` is gitignored, so **a fresh git worktree has no aforge binary of its
-own**. `AFORGE_BIN` defaults to `<repo>/bin/aforge` and falls back to `PATH`; in
+own**. `AFORGE_BIN` defaults to `<repo>/bin/codeaf` and falls back to `PATH`; in
 a worktree, point it at the checkout's build:
 
 ```sh
-AFORGE_BIN=/path/to/aforge-v2/bin/aforge bench/e2e/run.sh --cells lookup
+AFORGE_BIN=/path/to/aforge-v2/bin/codeaf bench/e2e/run.sh --cells lookup
 ```
 
 Nothing here builds aforge. Which build is being measured is the caller's
@@ -167,7 +167,7 @@ decision, and building belongs in `make check`.
 |---|---|---|
 | `E2E_MODEL` | `~deepseek/deepseek-v4-flash-latest` | the aforge arm's model |
 | `E2E_PEER_MODEL` | `deepseek/deepseek-v4-flash-0731` | pi and opencode's model |
-| `AFORGE_BIN` | `<repo>/bin/aforge`, then `PATH` | the binary under test |
+| `AFORGE_BIN` | `<repo>/bin/codeaf`, then `PATH` | the binary under test |
 | `PI_BIN`, `OPENCODE_BIN` | `pi`, `opencode` | peer harnesses |
 | `CSV` | `bench-results/e2e.csv` | the append-only history |
 | `RUN_DIR` | `bench-results/e2e/<timestamp>` | logs, stores and fixtures per run |

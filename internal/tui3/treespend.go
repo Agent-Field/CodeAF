@@ -94,7 +94,7 @@ func (a *app) readTreeSpend() {
 // about the DAY with the word for the conversation. The seam is asked for the
 // spend place's own fortnight instead, because a floor under what it holds makes
 // the link fetch the far machine's whole ledger again on every beat
-// (cmd/aforge's hostLedger). What that costs is stated rather than hidden: over
+// (cmd/codeaf's hostLedger). What that costs is stated rather than hidden: over
 // a connection, a conversation's rows older than [spendWindowDays] are not in
 // the tree, and [app.spendShown]'s maximum leaves such a conversation on its
 // own books.

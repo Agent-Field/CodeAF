@@ -241,7 +241,7 @@ func TestTheSentenceIsSpelledInExactlyOnePlace(t *testing.T) {
 	opening := keptNothingOpening(t)
 	entries, err := filepath.Glob("*.go")
 	if err != nil {
-		t.Fatalf("list cmd/aforge sources: %v", err)
+		t.Fatalf("list cmd/codeaf sources: %v", err)
 	}
 	var places []string
 	fileSet := token.NewFileSet()

@@ -12,7 +12,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$ROOT/bin/aforge"
+BIN="$ROOT/bin/codeaf"
 OUT="${QV_OUT:-$HOME/af-qv-reports/P/screens}"
 SESSION="af-qv-P-drive"
 HOMEDIR="${QV_HOME:-/tmp/af-qv-P-drive-home}"

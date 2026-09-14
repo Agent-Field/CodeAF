@@ -716,7 +716,7 @@ func Open(path string) (*Store, error) {
 	// dozen places that name a path: `aforge`, `aforge run`, `doctor`, `recall`
 	// and the rest all had the same first run and would all have needed the
 	// same line. 0o700 is what the state root is made with everywhere else
-	// (cmd/aforge's v3Dir) — a person's conversations are their own.
+	// (cmd/codeaf's v3Dir) — a person's conversations are their own.
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
 		return nil, fmt.Errorf("could not open %s: %w", storePathForPerson(absolute), pathReason(err))
 	}

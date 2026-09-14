@@ -1,4 +1,4 @@
-// aforge-changes is the changelog's gate, its scaffold and its typesetter.
+// codeaf-changes is the changelog's gate, its scaffold and its typesetter.
 //
 // THE CHANGELOG IN THIS REPOSITORY IS WRITTEN FOR A MODEL AND NOT FOR A
 // RELEASE PAGE. Its job is not to say what shipped — `git log` says that, and
@@ -8,16 +8,16 @@
 // thing a session opening this repository with a fortnight-old memory of it
 // most needs, so it is the field the format is built around.
 //
-// It is not shipped. Like cmd/aforge-demo-home this is a developer's binary and
+// It is not shipped. Like cmd/codeaf-demo-home this is a developer's binary and
 // never a verb on aforge, so it costs the product nothing on the SIZE-BUDGET.
 //
 // Usage:
 //
-//	aforge-changes check [dir]                validate every entry
-//	aforge-changes render <version> [date]    print one version's section
-//	aforge-changes roll   <version> [date]    render into CHANGELOG.md, then
+//	codeaf-changes check [dir]                validate every entry
+//	codeaf-changes render <version> [date]    print one version's section
+//	codeaf-changes roll   <version> [date]    render into CHANGELOG.md, then
 //	                                          remove the entries it consumed
-//	aforge-changes new <kind> <pr> <slug>     scaffold an entry to fill in
+//	codeaf-changes new <kind> <pr> <slug>     scaffold an entry to fill in
 package main
 
 import (
@@ -60,7 +60,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `aforge-changes — the changelog entries in docs/changes/unreleased
+	fmt.Fprint(os.Stderr, `codeaf-changes — the changelog entries in docs/changes/unreleased
 
   check [dir]                 validate every entry and say everything wrong at once
   render <version> [date]     print one version's section to stdout
@@ -169,7 +169,7 @@ func roll(args []string) error {
 
 func scaffold(args []string) error {
 	if len(args) < 3 {
-		return fmt.Errorf("usage: aforge-changes new <kind> <pr> <slug>\n  kinds: %s", strings.Join(kindKeys(), " "))
+		return fmt.Errorf("usage: codeaf-changes new <kind> <pr> <slug>\n  kinds: %s", strings.Join(kindKeys(), " "))
 	}
 	kind, prText, slug := args[0], args[1], args[2]
 

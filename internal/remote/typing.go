@@ -23,7 +23,7 @@ import (
 // THE SURFACE COULD NOT SEND IT. internal/tui3 reaches for the capability
 // through an optional interface ([typingAgent]), which a `*session.Agent`
 // satisfies and a `*remote.Agent` did not — and the default road holds a
-// `*remote.Agent` talking to a detached engine (cmd/aforge/chatv3_local.go's
+// `*remote.Agent` talking to a detached engine (cmd/codeaf/chatv3_local.go's
 // v3TakeHostRoad is true for every launch but `--no-host`, `--debug`, first-run
 // setup and a hostless `--once`). So the assertion failed silently, on the road
 // every person is on. [TestEverySurfaceDoorTheEngineHasCrossesTheWire] is what

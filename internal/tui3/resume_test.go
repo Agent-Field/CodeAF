@@ -7,7 +7,7 @@ import (
 )
 
 // rosterApp is a surface with a directory of past conversations behind it and a
-// door back into one of them — the two seams cmd/aforge wires (chatv3.go).
+// door back into one of them — the two seams cmd/codeaf wires (chatv3.go).
 func rosterApp(t *testing.T, agent *fakeAgent, list []Session) (*app, *[]string) {
 	t.Helper()
 	t.Setenv("AFORGE_HOME", t.TempDir())

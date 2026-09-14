@@ -75,7 +75,7 @@ var prefixShapes = []prefixShape{{
 	},
 }}
 
-// conversationDoor wires what cmd/aforge's interactive door wires, including the
+// conversationDoor wires what cmd/codeaf's interactive door wires, including the
 // two seams that decide whole sections of the page: somebody watching who can
 // answer a card, and a store for `stand` to leave something in.
 func conversationDoor(t *testing.T, config *Config) {

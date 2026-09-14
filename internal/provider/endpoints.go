@@ -268,7 +268,7 @@ func routerErrorEnvelope(payload []byte) (upstream string, ok bool) {
 // A BUILD WIRED WITH NO ModelPrice AT ALL KNOWS NOTHING, and that is the safe
 // reading rather than a gap: with no way to tell a real model from a typo, the
 // refusal is surfaced as the error it is and the ladder is not entered. Every
-// door that reaches a person wires it (cmd/aforge, internal/config,
+// door that reaches a person wires it (cmd/codeaf, internal/config,
 // internal/session), so the class is live where the outage happened.
 func (c *Client) catalogKnowsModel(model string) bool {
 	if c.config.ModelPrice == nil {

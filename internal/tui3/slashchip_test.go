@@ -98,7 +98,7 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	for _, line := range []string{
 		"/Users/santosh/notes.md",
 		"read /tmp/task and say what it does",
-		"look at cmd/aforge/main.go",
+		"look at cmd/codeaf/main.go",
 		"https://example.com/help",
 	} {
 		a.input.reset()

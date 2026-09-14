@@ -124,7 +124,7 @@ import (
 //	                  remote workspace — see [app.pathRoot].
 //	standing items    ON, and on at both ends. The `stand` tool is on the belt
 //	                  over a connection because the engine keeps its ambient
-//	                  side (cmd/aforge's engine.go), the proposal card crosses as
+//	                  side (cmd/codeaf's engine.go), the proposal card crosses as
 //	                  an ordinary event and the answer crosses back as its own
 //	                  frame (internal/remote's ResolveStanding), so a person
 //	                  sitting here can set something up on the far machine and it
@@ -139,7 +139,7 @@ import (
 //	                  which asks about THIS window's workspace — and over --host
 //	                  that path is the engine's own, so the count is about the
 //	                  right machine. The rows answer from a cache that refreshes
-//	                  behind itself (cmd/aforge's [hostStanding]), because this
+//	                  behind itself (cmd/codeaf's [hostStanding]), because this
 //	                  seam is asked on the frame and a wire call is not.
 //	`keeping watch`   WORKS. Standing.Watch crosses the wire and reads the far
 //	                  machine's scheduler, so /status says installed, absent, or

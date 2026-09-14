@@ -146,7 +146,7 @@ func TestInsertNeedsItsMarker(t *testing.T) {
 	}
 }
 
-// THE GATE POINTED AT THE REAL TREE. CI runs `aforge-changes check`, but a
+// THE GATE POINTED AT THE REAL TREE. CI runs `codeaf-changes check`, but a
 // developer running `go test ./...` finds a malformed entry too — the same law
 // enforced from both directions, which is how the manual corpus is guarded.
 func TestTheEntriesInThisRepositoryAreWellFormed(t *testing.T) {
@@ -165,6 +165,6 @@ func TestTheChangelogStillCarriesItsInsertionMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), insertMarker) {
-		t.Fatalf("CHANGELOG.md lost the %q line, so `aforge-changes roll` has nowhere to insert", insertMarker)
+		t.Fatalf("CHANGELOG.md lost the %q line, so `codeaf-changes roll` has nowhere to insert", insertMarker)
 	}
 }

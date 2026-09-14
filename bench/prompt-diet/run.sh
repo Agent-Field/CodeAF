@@ -12,7 +12,7 @@
 #
 # THE RIG IS THIS CHECKOUT; THE SUBJECT IS THE BRANCH. The bench scripts, the
 # scenario texts and the assertions all come from the checkout this file lives
-# in, and only `bin/aforge` and the Go sources under test come from <branch>.
+# in, and only `bin/codeaf` and the Go sources under test come from <branch>.
 # That is deliberate and it is the only arrangement that can compare two
 # branches at all: `dev` at 6aa6a946e has never heard of bench/prompt-diet, so a
 # run that used the subject's own rig would have nothing to run on the baseline
@@ -223,7 +223,7 @@ cleanup_worktree() {
 }
 trap cleanup_worktree EXIT
 
-AFORGE_BIN="$WORKTREE/bin/aforge"
+AFORGE_BIN="$WORKTREE/bin/codeaf"
 
 rule "prompt diet · $LABEL"
 say "branch:     $BRANCH"

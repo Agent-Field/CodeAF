@@ -1,16 +1,16 @@
-// aforge-release resolves release tags and channel retention for the release
+// codeaf-release resolves release tags and channel retention for the release
 // workflow.
 //
-// It is not shipped. Like cmd/aforge-changes this is a developer's binary and
+// It is not shipped. Like cmd/codeaf-changes this is a developer's binary and
 // never a verb on aforge, so release policy can be checked without adding to
 // the product's SIZE-BUDGET.
 //
 // Usage:
 //
-//	aforge-release next --channel stable|rc [--component patch|minor|major]
-//	aforge-release next --channel dev|staging --sha <commit> --date YYYYMMDD
-//	aforge-release kind <tag>
-//	aforge-release prune --channel dev|staging
+//	codeaf-release next --channel stable|rc [--component patch|minor|major]
+//	codeaf-release next --channel dev|staging --sha <commit> --date YYYYMMDD
+//	codeaf-release kind <tag>
+//	codeaf-release prune --channel dev|staging
 package main
 
 import (
@@ -64,7 +64,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `aforge-release — resolve release tags and channel retention
+	fmt.Fprint(w, `codeaf-release — resolve release tags and channel retention
 
   next --channel stable|rc [--component patch|minor|major]
       Read existing tags from stdin and print the next semver tag.

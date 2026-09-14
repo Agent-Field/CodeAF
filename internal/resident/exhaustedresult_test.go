@@ -33,7 +33,7 @@ func TestAnExhaustedResultWithRecordedTurnsRequeues(t *testing.T) {
 		mu.Unlock()
 		starts <- struct{}{}
 		if mine == 1 {
-			// Exactly what cmd/aforge hands back when the executor was told to
+			// Exactly what cmd/codeaf hands back when the executor was told to
 			// land: no error, the bound that fired, and the meter that named it.
 			return ExecResult{
 				Summary: "All 722 tests pass. Let me verify the dry-run tests specifically:",

@@ -84,7 +84,7 @@ func TestDarwinPlistGoldenAndLifecycleUsesRunner(t *testing.T) {
 func TestDarwinFallsBackForOlderHosts(t *testing.T) {
 	runner := &fakeRunner{errors: map[int]error{0: errors.New("unsupported")}}
 	manager, err := New(Options{
-		Platform: "darwin", HomeDir: t.TempDir(), Executable: "/usr/local/bin/aforge",
+		Platform: "darwin", HomeDir: t.TempDir(), Executable: "/usr/local/bin/codeaf",
 		UID: 502, Runner: runner,
 	})
 	if err != nil {
@@ -177,7 +177,7 @@ func TestFailedLinuxStartLeavesRepairableStatus(t *testing.T) {
 	home := t.TempDir()
 	runner := &fakeRunner{errors: map[int]error{1: errors.New("not ready")}}
 	manager, err := New(Options{
-		Platform: "linux", HomeDir: home, Executable: "/usr/bin/aforge", UID: 1000, Runner: runner,
+		Platform: "linux", HomeDir: home, Executable: "/usr/bin/codeaf", UID: 1000, Runner: runner,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestStatusUsesJournalWakeAndTimerCadenceWithoutShellingOut(t *testing.T) {
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
 	last := now.Add(-2 * time.Minute)
 	manager, err := New(Options{
-		Platform: "linux", HomeDir: home, Executable: "/usr/bin/aforge", Runner: runner,
+		Platform: "linux", HomeDir: home, Executable: "/usr/bin/codeaf", Runner: runner,
 		LastWake: func() (time.Time, bool, error) { return last, true, nil },
 		Now:      func() time.Time { return now }, UID: 1000,
 	})
@@ -217,7 +217,7 @@ func TestStatusUsesJournalWakeAndTimerCadenceWithoutShellingOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	definitions := map[string]string{
-		linuxTimerName: linuxTimer(), linuxServiceName: linuxService("/usr/bin/aforge"),
+		linuxTimerName: linuxTimer(), linuxServiceName: linuxService("/usr/bin/codeaf"),
 	}
 	for name, definition := range definitions {
 		if err := os.WriteFile(filepath.Join(unitDir, name), []byte(definition), 0o644); err != nil {

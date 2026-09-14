@@ -80,9 +80,9 @@ package tui3
 //     the value is on the graph, and a value method that grew a syscall would
 //     have to be handed a path by one of those.
 //   - ANOTHER PACKAGE'S BODY. The walk parses THIS directory, so a call into
-//     internal/config, internal/home or cmd/aforge is a leaf. That is how a real
+//     internal/config, internal/home or cmd/codeaf is a leaf. That is how a real
 //     per-frame read hid for a while: the door installs [Options.ModelsForService]
-//     from cmd/aforge, whose own last line read the model cache off disk, and
+//     from cmd/codeaf, whose own last line read the model cache off disk, and
 //     nothing here could see it. The seam is followed to the FIELD (below); what
 //     is on the other side of it is the other package's law to keep.
 //   - A METHOD VALUE PASSED AS AN ARGUMENT — `watch(a.load)` — because only a

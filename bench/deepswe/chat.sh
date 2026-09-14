@@ -102,7 +102,7 @@ deepswe_chat() {
     printf ' -e AFORGE_HOME=/bench/home -e HOME=/root -e TERM=xterm-256color'
     printf ' -e OPENROUTER_API_KEY=%q' "$KEY"
     local e; for e in "${EMU_ARGS[@]}"; do printf ' %q' "$e"; done
-    printf ' %q /usr/local/bin/aforge chat -yolo -one-model -model %q -max-cost %q -max-hours %q\n' \
+    printf ' %q /usr/local/bin/codeaf chat -yolo -one-model -model %q -max-cost %q -max-hours %q\n' \
       "$cname" "$model" "$cap" "$hours"
   } > "$launch"
   chmod 700 "$launch"

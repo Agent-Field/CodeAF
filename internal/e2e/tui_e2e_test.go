@@ -799,7 +799,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
 	// line is asked on the frame, so over a connection it is answered from a
 	// cache that refreshes behind itself — the seam's stated law rather than an
-	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
+	// optimization (cmd/codeaf's hostStanding) — and an item that stood a second
 	// ago reaches it on the next beat.
 	//
 	// AND THERE ARE THREE BEATS BETWEEN THE DISK AND THAT SEGMENT, not one, so

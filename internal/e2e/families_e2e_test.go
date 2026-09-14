@@ -88,7 +88,7 @@ const (
 // tiers; this adds the two profile-only tiers, the task row, the role pins and
 // the fallback chain.
 //
-// THE FOUR MEDIA ROLES ARE LEFT ALONE, deliberately, and it is cmd/aforge's own
+// THE FOUR MEDIA ROLES ARE LEFT ALONE, deliberately, and it is cmd/codeaf's own
 // reasoning under `--one-model`: vision, image generation, speech and video are
 // capability-qualified, so pinning them at a text model would not make the run
 // single-model, it would make it broken. Nothing in this file makes media.
@@ -129,7 +129,7 @@ var textRoles = []roles.Role{
 }
 
 // familyConfig is what the v3 door wires for work, applied to a conversation
-// this lane drives directly. Everything here is a row cmd/aforge reads
+// this lane drives directly. Everything here is a row cmd/codeaf reads
 // (chatv3.go's applyV3Governance); the two departures from a person's own
 // launch are named where they are made.
 func familyConfig(w *world) func(*session.Config) {
@@ -513,7 +513,7 @@ func (r *familyRun) journals() string {
 func TestFamilies(t *testing.T) {
 	w := newWorld(t)
 	pinEveryTextModel(t)
-	// THE WIDTH FLOOR IS OFF FOR THIS LANE, and it is the switch cmd/aforge's own
+	// THE WIDTH FLOOR IS OFF FOR THIS LANE, and it is the switch cmd/codeaf's own
 	// tests use (partsroute_test.go, method_test.go). internal/splitgate refuses a
 	// division whose evidence names fewer than six separate items, which is a
 	// finding about whether handing work out PAYS — a question this lane is not

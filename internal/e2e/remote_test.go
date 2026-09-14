@@ -76,7 +76,7 @@ const (
 // those are assertions below rather than hopes.
 const (
 	// The engine machine. Its ssh login lands in /root, so a RELATIVE workspace
-	// is relative to that (cmd/aforge's engineWorkspace states the law), and
+	// is relative to that (cmd/codeaf's engineWorkspace states the law), and
 	// its aforge home is somewhere no laptop would ever put one.
 	engineLoginHome = "/root"
 	engineAforge    = "/var/lib/aforge-engine"
@@ -195,7 +195,7 @@ func (w *remoteWorld) handshakeAndOneTurn(t *testing.T) {
 	// same decision, and it is worth asserting because it is the one that would
 	// pass silently on a single host: the harness deliberately writes the key
 	// only on the engine, and a turn that ran proves the far machine paid for
-	// it (cmd/aforge's hostOptions states that a missing key is not an error on
+	// it (cmd/codeaf's hostOptions states that a missing key is not an error on
 	// this path, for exactly this reason).
 	if found := w.exec(t, surfaceName, nil, 20*time.Second,
 		"sh", "-c", "grep -l "+stubKey+" -r "+surfaceHome+" 2>/dev/null | head -1"); strings.TrimSpace(found.out) != "" {
@@ -226,7 +226,7 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 		t.Fatalf("the tool turn produced no quoted shell output.\nstdout:\n%s\nstderr:\n%s", said.out, said.errOut)
 	}
 	// The shell's own cwd is the ENGINE's workspace, spelled absolutely.
-	// cmd/aforge's bootEngine chdirs into it before it assembles anything —
+	// cmd/codeaf's bootEngine chdirs into it before it assembles anything —
 	// "the process's own idea of where it is has to agree with" the session
 	// config — so this is that chdir observed from the other machine.
 	if !strings.Contains(said.out, engineWorkspace) {
@@ -264,7 +264,7 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 	//
 	// The directory is real on the machine the person is sitting at and absent
 	// on the machine that would have to open it. The engine refuses at the door
-	// (cmd/aforge's engineWorkspace: "a directory that is not there is refused
+	// (cmd/codeaf's engineWorkspace: "a directory that is not there is refused
 	// at the door"), and the refusal names the path — which is how a person
 	// learns that the word they typed was read on the other machine.
 	if !w.pathExists(t, surfaceName, surfaceOnlyDir) {
@@ -475,7 +475,7 @@ func (w *remoteWorld) twoSurfacesAtOnce(t *testing.T) {
 
 	// ONE NAMED CONVERSATION, TWO WINDOWS. Naming it is what makes this a room
 	// rather than a coincidence: both hellos ask for the same session, and
-	// cmd/aforge's engine.go hands both the same one — "which is the whole of
+	// cmd/codeaf's engine.go hands both the same one — "which is the whole of
 	// 'sit down somewhere else and be in it'".
 	shared := engineTalks + "/fanout.jsonl"
 
@@ -554,7 +554,7 @@ func newRemoteWorld(t *testing.T) *remoteWorld {
 	w.teardownQuietly()
 
 	w.buildStatic(t, "modelstub", "./test/remote/stub")
-	w.buildStatic(t, "aforge", "./cmd/aforge")
+	w.buildStatic(t, "aforge", "./cmd/codeaf")
 
 	mustRun(t, 60*time.Second, "docker", "network", "create", netName)
 	w.startModel(t)
@@ -665,7 +665,7 @@ func (w *remoteWorld) startEngine(t *testing.T) {
 	t.Helper()
 	w.run(t, engineName)
 	w.installSSH(t, engineName, "openssh")
-	w.copyIn(t, engineName, "aforge", "/usr/local/bin/aforge.bin")
+	w.copyIn(t, engineName, "aforge", "/usr/local/bin/codeaf.bin")
 
 	// THE WRAPPER EXISTS BECAUSE SSH DOES NOT CARRY AN ENVIRONMENT. `ssh host
 	// aforge engine` is a non-login, non-interactive command: no profile is
@@ -675,13 +675,13 @@ func (w *remoteWorld) startEngine(t *testing.T) {
 	// into a file with worse failure modes. Everything the far machine needs to
 	// know about itself is therefore stated here, on the far machine, which is
 	// also exactly what Decision 6 says about where these belong.
-	w.write(t, engineName, "/usr/local/bin/aforge", 0o755, strings.Join([]string{
+	w.write(t, engineName, "/usr/local/bin/codeaf", 0o755, strings.Join([]string{
 		"#!/bin/sh",
 		"export AFORGE_HOME=" + engineAforge,
 		"export AFORGE_PROFILE_DIR=",
 		"export AFORGE_BASE_URL=" + stubBase,
 		"export OPENROUTER_API_KEY=" + stubKey,
-		"exec /usr/local/bin/aforge.bin \"$@\"",
+		"exec /usr/local/bin/codeaf.bin \"$@\"",
 		"",
 	}, "\n"))
 
@@ -737,7 +737,7 @@ func (w *remoteWorld) startSurface(t *testing.T) {
 	t.Helper()
 	w.run(t, surfaceName)
 	w.installSSH(t, surfaceName, "openssh-client")
-	w.copyIn(t, surfaceName, "aforge", "/usr/local/bin/aforge")
+	w.copyIn(t, surfaceName, "aforge", "/usr/local/bin/codeaf")
 
 	w.exec(t, surfaceName, nil, 30*time.Second, "sh", "-c", strings.Join([]string{
 		"mkdir -p " + surfaceHome + "/.ssh " + surfaceAforge + " " + surfaceOnlyDir,
@@ -876,7 +876,7 @@ func (w *remoteWorld) chatOnceBackground(t *testing.T, workspace, text string) *
 //
 // THE SCENARIOS THAT NAME ONE DO IT TO STAY OUT OF EACH OTHER'S ROOM, and that
 // is a fact about the engine rather than about tidiness: a hello naming no
-// session joins "this workspace's latest-or-new" (cmd/aforge's engine.go Key),
+// session joins "this workspace's latest-or-new" (cmd/codeaf's engine.go Key),
 // so with a persistent host a later scenario's surfaces walk into the
 // conversation an earlier one left a turn running in and are handed ITS reply.
 // That happened here, and it read exactly like a broken harness rather than the

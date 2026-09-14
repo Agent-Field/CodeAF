@@ -14,7 +14,7 @@ import (
 // The tree already had two drifting things called Env: internal/subharness's
 // (exec_model.go, an interface over the five DAG node kinds) and the session's
 // implementation of the same interface over its own belt. The seam between them
-// is written up at cmd/aforge/chatv3_harness.go as a known wound, in the two
+// is written up at cmd/codeaf/chatv3_harness.go as a known wound, in the two
 // absences it produced — a gate with nobody to ask, and a model the conversation
 // could not move. PRD §5 says plainly: do not mint a third. So this is the one,
 // and it is the one for both consumers at once.

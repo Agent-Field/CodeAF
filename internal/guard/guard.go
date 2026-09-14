@@ -43,7 +43,7 @@ func Note(scope string, recovered any) error {
 func note(scope string, recovered any, stack []byte) error {
 	fault := &Fault{Scope: scope, Recovered: recovered, Stack: stack}
 	// One structured line, then the stack. Every door that opens the v3 surface
-	// runs it through cmd/aforge's runSurface, which parks the standard logger
+	// runs it through cmd/codeaf's runSurface, which parks the standard logger
 	// in the profile's chat.log — `~/.aforge/chat.log` unless AFORGE_PROFILE_DIR
 	// or AFORGE_HOME moves it — for as long as the surface owns the terminal, so
 	// this lands in a file a person can read afterwards rather than tearing

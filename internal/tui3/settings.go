@@ -1658,7 +1658,7 @@ func roleMatches(row *roleRow, query string) bool {
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
 // the four class rows and the pins in "pinned roles".
 //
-// The door builds one of these at boot (cmd/aforge's v3RolesSource) and that is
+// The door builds one of these at boot (cmd/codeaf's v3RolesSource) and that is
 // the one a running session's calls go through. This one exists because they
 // answer different questions: the session's is what is running now, and a
 // settings panel showing that while somebody edits the row above it would be

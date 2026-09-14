@@ -23,7 +23,7 @@ package session
 //
 // Everything below is about drawing a run for somebody. The run itself is
 // [exec.Runner.Run] and knows nothing about any of it — which is what lets the
-// headless command (cmd/aforge) run the same program through the same runner
+// headless command (cmd/codeaf) run the same program through the same runner
 // with no task system in the process at all. If this file ever became necessary
 // to running a subharness, the contract would have quietly acquired a dependency
 // on a terminal.

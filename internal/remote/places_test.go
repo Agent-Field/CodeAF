@@ -138,7 +138,7 @@ func TestTheWorldCrossesTheWire(t *testing.T) {
 // answered here would reach the surface as a machine with no projects on it, and
 // home would greet somebody with `nothing here yet — say something and this fills
 // up` over a server full of work. The error is what lets the surface draw nothing
-// instead (cmd/aforge's [hostWorld] keeps `known` false on it).
+// instead (cmd/codeaf's [hostWorld] keeps `known` false on it).
 func TestAnEngineWithNoWorldDoorRefusesRatherThanAnsweringEmpty(t *testing.T) {
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
 		return &Engine{Agent: &fakeAgent{model: "m"}, Workspace: "/srv/code/api"}, nil

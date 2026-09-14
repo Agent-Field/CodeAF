@@ -144,7 +144,7 @@ func railColumn(screen string) string {
 // fresh host that resumes the conversation from its checkpoint.
 //
 // THE PATH IS RESOLVED FIRST. The host is spawned with the workspace as the
-// LAUNCH resolved it (cmd/aforge's localLink.dial), and on macOS /tmp is a
+// LAUNCH resolved it (cmd/codeaf's localLink.dial), and on macOS /tmp is a
 // symlink to /private/tmp — so a pattern built from the path this test handed
 // out matches nothing at all and the whole scenario passes by never happening.
 func killHost(t *testing.T, ws string) {

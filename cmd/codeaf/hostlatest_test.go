@@ -186,7 +186,7 @@ func TestNoDoorHandsTheHeldSentenceAWorkspaceField(t *testing.T) {
 	set := token.NewFileSet()
 	pkgs, err := parser.ParseDir(set, ".", nil, 0)
 	if err != nil {
-		t.Fatalf("read cmd/aforge: %v", err)
+		t.Fatalf("read cmd/codeaf: %v", err)
 	}
 	for _, pkg := range pkgs {
 		for name, file := range pkg.Files {

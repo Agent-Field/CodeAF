@@ -18,7 +18,7 @@ import (
 )
 
 // homeLab builds a projects root on disk — the same shape the launch door
-// writes (cmd/aforge's chatv3_layout.go) — so that these tests exercise the
+// writes (cmd/codeaf's chatv3_layout.go) — so that these tests exercise the
 // real reader rather than a fixture handed to it.
 type homeLab struct {
 	t    *testing.T

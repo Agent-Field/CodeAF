@@ -209,7 +209,7 @@ func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRoutin
 // [RoutingSource] is how a caller HANDS an answer down, and every client that
 // is handed one keeps it. The problem is the clients nobody hands one to, and
 // there are several: the harness and the subharness build their own adapters
-// (cmd/aforge), `read_document` and `view_image` build theirs
+// (cmd/codeaf), `read_document` and `view_image` build theirs
 // (internal/config), and a panel builds one per member (internal/router). Each
 // of those was assembled through [config.Config.ClientConfig], which has never
 // carried a routing answer at all — so whatever a person wrote in the routing

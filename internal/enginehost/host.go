@@ -7,7 +7,7 @@ package enginehost
 // internal/remote and internal/session, and everything about how one is
 // ASSEMBLED belongs to the door that calls [Run]. A host that knew how to build
 // an agent would be the second assembly this tree has already refused twice
-// (cmd/aforge's shared assembly states why).
+// (cmd/codeaf's shared assembly states why).
 
 import (
 	"errors"
@@ -50,7 +50,7 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // worth stating. Standing items are not held by this process: a firing runs
 // inside whichever process holds the store's tick lock — any live window, or
 // the operating system's timer running `aforge tick` with nobody sitting
-// anywhere (cmd/aforge's chatv3_standing.go states that law). A host that exits
+// anywhere (cmd/codeaf's chatv3_standing.go states that law). A host that exits
 // hands the tick back to that timer exactly as a closed terminal does. So the
 // two lifetimes are deliberately NOT married: standing work already keeps a
 // machine warm on its own terms, and a host that stayed up forever to guard it
@@ -82,7 +82,7 @@ const (
 // two things every version of this has needed: how to open a conversation, and
 // which conversation a hello is asking for.
 type Options struct {
-	// Boot opens one conversation for a hello — cmd/aforge's bootEngine, the
+	// Boot opens one conversation for a hello — cmd/codeaf's bootEngine, the
 	// same closure the pipe engine hands to [remote.Serve].
 	//
 	// It is called with the host's own lock held, so ONE CONVERSATION IS OPENED
@@ -98,7 +98,7 @@ type Options struct {
 	// IT ANSWERS A TRANSCRIPT PATH, INCLUDING FOR A HELLO THAT NAMED NOTHING.
 	// "The workspace's latest" is a question about this machine's disk, and the
 	// door that starts the host is the half of this pair that can read it
-	// (cmd/aforge's [engineHelloKey]) — resolving it here, at the door, is what
+	// (cmd/codeaf's [engineHelloKey]) — resolving it here, at the door, is what
 	// lets the lookups below find a conversation this host is ALREADY holding
 	// rather than booting a second agent onto its journal.
 	//
@@ -314,7 +314,7 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	//
 	// "Nothing" is not a name: a hello that names no session is asking for this
 	// workspace's LATEST, and the door resolves that to a transcript path before
-	// it ever reaches here (cmd/aforge's [engineHelloKey]). What is left for the
+	// it ever reaches here (cmd/codeaf's [engineHelloKey]). What is left for the
 	// host is the one case a door cannot resolve — a workspace with no
 	// conversation in it yet, and a host with no door at all — and there the
 	// empty string is resolved through the transcript the last such hello landed

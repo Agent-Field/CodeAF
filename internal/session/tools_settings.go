@@ -37,7 +37,7 @@ package session
 // single `settings` tool carrying both verbs would offer the person exactly one
 // answer for two different acts — "settings:allow" to stop being asked about
 // reading their own configuration would silently hand over the right to rewrite
-// it. Split, the read can sit on the builtin floor (cmd/aforge's
+// it. Split, the read can sit on the builtin floor (cmd/codeaf's
 // v3BuiltinApprovals) where manual and jobs already sit, and every write goes to
 // the person like any other acting tool. One tool would have made that
 // impossible to express.

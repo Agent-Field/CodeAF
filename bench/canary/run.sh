@@ -8,7 +8,7 @@
 # money and is ON DEMAND; nothing in `make check` reaches it.
 #
 # Usage:
-#   bench/canary/run.sh --bin ~/af-dev/bin/aforge                 anchors, both doors
+#   bench/canary/run.sh --bin ~/af-dev/bin/codeaf                 anchors, both doors
 #   bench/canary/run.sh --bin BIN --fresh 2                       plus two fresh picks
 #   bench/canary/run.sh --bin BIN --doors do                      one door
 #   bench/canary/run.sh --bin BIN --baseline RUN/rows.csv --post 380
@@ -18,7 +18,7 @@ set -uo pipefail
 CANARY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$CANARY_ROOT/../.." && pwd)"
 
-BIN="${AFORGE_BIN:-$REPO_ROOT/bin/aforge}"
+BIN="${AFORGE_BIN:-$REPO_ROOT/bin/codeaf}"
 POOL="$CANARY_ROOT/pool.json"
 DOORS="do,chat"
 FRESH=0

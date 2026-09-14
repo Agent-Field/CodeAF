@@ -385,7 +385,7 @@ func TestUnderOneModelACrewOnlyErrandRidesTheConversationsModel(t *testing.T) {
 	agent := checkpointAgent(t, asked, func(config *Config) {
 		config.Model = "the-one/model"
 		// NO LADDER AT ALL, which is exactly what the door leaves behind under
-		// `--one-model` (cmd/aforge's applyV3Governance).
+		// `--one-model` (cmd/codeaf's applyV3Governance).
 		config.RolesSource = nil
 		config.OneModel = true
 	})

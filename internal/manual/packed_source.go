@@ -1,4 +1,4 @@
-//go:build aforge_packed_manual
+//go:build codeaf_packed_manual
 
 package manual
 

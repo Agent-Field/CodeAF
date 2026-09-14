@@ -66,7 +66,7 @@ func outOfRoomFailure(result ExecResult, recorded int) string {
 // that the next claim starts from it. The headless stream then cuts that clause
 // back off, because the line it writes says the count in its own words and a
 // line that said it twice would read as two different numbers (see
-// [ReleaseWhy], and cmd/aforge's narrateOne on store.EventNodeReleased). A join
+// [ReleaseWhy], and cmd/codeaf's narrateOne on store.EventNodeReleased). A join
 // and a cut that each carried their own copy of the wording would drift apart on
 // the first edit, so there is one copy and the cut is derived from it.
 const (

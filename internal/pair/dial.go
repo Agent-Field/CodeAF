@@ -8,7 +8,7 @@ package pair
 // want to use, and pairing is a question that comes up on the way, once.
 //
 // EVERYTHING THAT MIGHT ASK A QUESTION HAPPENS BEFORE THE SURFACE TAKES THE
-// SCREEN. That is the ssh door's own law (cmd/aforge's chatv3_host.go) and it
+// SCREEN. That is the ssh door's own law (cmd/codeaf's chatv3_host.go) and it
 // applies here for the same reason: a code typed into a full-screen surface
 // would be a code typed at a frame drawn over the top of it.
 

@@ -16,7 +16,7 @@ import (
 //
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
-// (cmd/aforge's chatv3.go) and this screen asks for what a first day needs, in
+// (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
 // TWO steps: the key every model call rides, and then one screen of controls —
 // the day's spending limit, the model you talk to, and the crew aforge works
 // with. Under a minute; every control opens on the value already in force; the

@@ -5,7 +5,7 @@ package enginehost
 // ── WHY A PROCESS WATCHES ITS OWN BINARY ────────────────────────────────────
 //
 // A host outlives the connection that started it, and that is the feature. It
-// also outlives the BUILD that started it, and that is a trap: `rm bin/aforge
+// also outlives the BUILD that started it, and that is a trap: `rm bin/codeaf
 // && make build` on a machine leaves the new binary answering `aforge version`
 // while the old process is still holding the socket, so every surface that
 // dials in is spliced onto a build nobody has been running for an hour. When
@@ -66,7 +66,7 @@ func (b hostBinary) replaced() bool {
 	if err != nil {
 		// The path no longer resolves to a file at all, which on Linux is also
 		// what a running process whose binary was deleted reads as: os.Executable
-		// answered `/…/bin/aforge (deleted)` and nothing stats that.
+		// answered `/…/bin/codeaf (deleted)` and nothing stats that.
 		return true
 	}
 	return !os.SameFile(b.was, now) ||

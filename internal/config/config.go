@@ -339,7 +339,7 @@ func Load() (Config, error) { return load(true) }
 // resolves it, and APIKey is simply empty until the person hands one over.
 //
 // AND FOR A PASS THAT WILL PROBABLY DO NOTHING, which is the second legitimate
-// caller and the one nobody expects: the standing tick (cmd/aforge's
+// caller and the one nobody expects: the standing tick (cmd/codeaf's
 // v3StandingTicker), run every five minutes by whichever of a window or the
 // operating system's timer gets there first. Most passes decline the lock or
 // find every item asleep, and a pass that will do nothing costs nothing and

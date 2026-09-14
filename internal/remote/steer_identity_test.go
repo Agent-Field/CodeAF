@@ -134,7 +134,7 @@ func TestAnEngineWithNoNamesSaysSoAtTheDoorAndStillSteers(t *testing.T) {
 //
 // This is the bug the conversation name exists for, staged over a real wire with
 // no pointer swapped anywhere: ONE client, ONE agent handle held across
-// `Session.Open` and `Session.New`, exactly as cmd/aforge's chatv3_host.go holds
+// `Session.Open` and `Session.New`, exactly as cmd/codeaf's chatv3_host.go holds
 // it (its Resume calls OpenSession and hands back the same agent). A correction
 // typed at task 7 of the first conversation must never be delivered to task 7 of
 // whatever replaced it.

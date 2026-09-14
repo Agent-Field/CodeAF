@@ -435,7 +435,7 @@ func TestARenameNoticeNeverReachesTheJSONOnStdout(t *testing.T) {
 func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 	declared := printedFlags(t)
 	if len(declared) < 30 {
-		t.Fatalf("only %d flag declarations were read out of cmd/aforge; the reader has stopped working", len(declared))
+		t.Fatalf("only %d flag declarations were read out of cmd/codeaf; the reader has stopped working", len(declared))
 	}
 
 	// THE RETIRED SPELLINGS, and the one spelling each of them means. A door
@@ -541,7 +541,7 @@ func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 // sentence `--help` prints under it.
 type declaredFlag struct{ door, name, usage string }
 
-// printedFlags reads every flag cmd/aforge declares AND PRINTS.
+// printedFlags reads every flag cmd/codeaf declares AND PRINTS.
 //
 // A hidden alias is skipped, and it is recognised by the mark carried in its own
 // usage string (rename.go): `renamedFlag`, `shorthandFlag` and the one inverted
@@ -552,7 +552,7 @@ func printedFlags(t *testing.T) []declaredFlag {
 	var found []declaredFlag
 	entries, err := os.ReadDir("./")
 	if err != nil {
-		t.Fatalf("read cmd/aforge: %v", err)
+		t.Fatalf("read cmd/codeaf: %v", err)
 	}
 	for _, entry := range entries {
 		name := entry.Name()

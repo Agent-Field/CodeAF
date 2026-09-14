@@ -145,7 +145,7 @@ type questionResolver interface {
 // IT IS EXPORTED FOR [DrawsTasks]'S REASON, AND FOR THE SAME DEFECT. internal/remote
 // implements this surface's agent over a wire and cannot import this package to
 // check that it kept up, so the door that wires the two together asserts it
-// instead (cmd/aforge). The seam is ALL-OR-NOTHING — [app.questionDoors] is one
+// instead (cmd/codeaf). The seam is ALL-OR-NOTHING — [app.questionDoors] is one
 // type assertion — so a single method missing on the far half is not a question
 // drawn smaller, it is a question that never reaches a screen at all. That is
 // exactly what happened: the wire carried ResolveQuestion and neither

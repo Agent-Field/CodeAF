@@ -270,7 +270,7 @@ func TestARefusalOfAMachineNobodyPinnedRetiresNothing(t *testing.T) {
 // THE MEASURED FAILURE: [SetLanePin] is not only the picker. It is every place
 // that resolves the row, and one of them is the standing ticker, which rebuilds
 // a whole posture every five minutes for as long as a window lives
-// (cmd/aforge's v3StandingTicker). An experiment build that forgot every
+// (cmd/codeaf's v3StandingTicker). An experiment build that forgot every
 // retirement here therefore paid the identical 404 again at 16:30:02 and again
 // at 16:35:00, in one process, in one measured run, with nobody having touched
 // the row. A person pinning is a person CHANGING their answer.

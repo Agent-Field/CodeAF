@@ -191,7 +191,7 @@ def build_parser():
     p = sub.add_parser("plan")
     p.add_argument("manifest")
     p.add_argument("--id", required=True)
-    p.add_argument("--aforge", default=str(ROOT.parents[1] / "bin/aforge"))
+    p.add_argument("--aforge", default=str(ROOT.parents[1] / "bin/codeaf"))
     p.add_argument("--arms", default="aforge,pi,omp")
     p.add_argument("--scenarios", default=",".join(sorted(CALIBRATION_SCENARIOS)))
     p.add_argument("--repeats", type=int, default=2)

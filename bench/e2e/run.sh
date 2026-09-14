@@ -51,10 +51,10 @@ E2E_PEER_MODEL="${E2E_PEER_MODEL:-deepseek/deepseek-v4-flash-0731}"
 # covers an installed aforge. It is never built here — which build is being
 # measured is the caller's decision, and `make check` is where building belongs.
 if [ -z "${AFORGE_BIN:-}" ]; then
-  if [ -x "$REPO_ROOT/bin/aforge" ]; then
-    AFORGE_BIN="$REPO_ROOT/bin/aforge"
+  if [ -x "$REPO_ROOT/bin/codeaf" ]; then
+    AFORGE_BIN="$REPO_ROOT/bin/codeaf"
   else
-    AFORGE_BIN="$(command -v aforge || echo "$REPO_ROOT/bin/aforge")"
+    AFORGE_BIN="$(command -v aforge || echo "$REPO_ROOT/bin/codeaf")"
   fi
 fi
 PI_BIN="${PI_BIN:-pi}"

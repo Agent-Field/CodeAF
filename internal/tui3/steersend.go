@@ -110,7 +110,7 @@ import (
 //   - AND THE CONVERSATION'S NAME CROSSES WITH THE SEND
 //     ([session.SteerSource.Conversation]), because holding the door is not
 //     enough over a wire: `/resume` and `/new` swap the conversation behind the
-//     SAME remote handle (cmd/aforge's chatv3_host.go returns the same agent),
+//     SAME remote handle (cmd/codeaf's chatv3_host.go returns the same agent),
 //     so a captured pointer would still deliver to the replacement. The engine
 //     compares the name against the conversation actually open, under the lock
 //     the swap happens beneath, and refuses rather than re-aiming

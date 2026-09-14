@@ -169,7 +169,7 @@ var demoProjects = []demoProject{
 		git:  true,
 		files: map[string]string{
 			"README.md":       "# aforge-v2\n\nThe surface, the engine, and the manual that keeps them honest.\n",
-			"Makefile":        "build:\n\tgo build -o bin/aforge ./cmd/aforge\n",
+			"Makefile":        "build:\n\tgo build -o bin/codeaf ./cmd/codeaf\n",
 			"docs/HOME.md":    "# Home\n\nOne list, ordered by what wants you first.\n",
 			"internal/why.go": "package internal\n\n// Why the frame jumps: the card is measured before the list is folded.\n",
 		},
@@ -268,7 +268,7 @@ func initRepository(dir string, now time.Time) error {
 // separators turned into dashes.
 //
 // IT IS A COPY, DELIBERATELY, AND IT IS THE THIRD ONE. The encoder lives in
-// cmd/aforge's chatv3_layout.go and is unexported there, and internal/standing's
+// cmd/codeaf's chatv3_layout.go and is unexported there, and internal/standing's
 // inbox.go and internal/e2e's tmux test already spell it for themselves. What
 // makes a copy safe here is that the encoding is ONE-WAY and nothing reads it
 // back: the world layer takes a project's real path out of each session's

@@ -540,7 +540,7 @@ func TestAskingWhetherAHostIsThereLeavesNothingBehind(t *testing.T) {
 // conversation with "this conversation is open in another window".
 //
 // The door answers "which conversation does a hello that named nothing want"
-// with the workspace's latest, spelled as a transcript path (cmd/aforge's
+// with the workspace's latest, spelled as a transcript path (cmd/codeaf's
 // [engineHelloKey]), and `newest` below is that reading — moved by hand exactly
 // as the disk would move it.
 func TestAPlainHelloJoinsTheConversationThisHostStillHolds(t *testing.T) {

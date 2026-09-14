@@ -11,7 +11,7 @@ package remote
 // and the sentence says so.
 //
 // A session host broke that reading, and broke it silently. The host outlives
-// the connection by design (internal/enginehost), so after `rm bin/aforge &&
+// the connection by design (internal/enginehost), so after `rm bin/codeaf &&
 // make build` on the far machine the NEW binary answers `aforge version` while
 // the OLD one is still holding the socket — and `aforge engine` spliced the new
 // surface straight onto it. What came back was the old host's own refusal,

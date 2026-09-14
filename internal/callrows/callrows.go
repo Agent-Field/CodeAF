@@ -2,7 +2,7 @@
 // (`~/.aforge/logs/calls.jsonl`, internal/calllog) back into rows.
 //
 // IT IS ONE READER BECAUSE THERE IS ONE FILE. Two instruments now read it —
-// cmd/aforge-census, which prints what went wrong, and cmd/aforge-replay, which
+// cmd/codeaf-census, which prints what went wrong, and cmd/codeaf-replay, which
 // asks what a different chooser would have done — and a second reader is a
 // second answer to "was this attempt a failure", "which of these two rows is
 // the same call" and "what does a torn last line mean". The census had all

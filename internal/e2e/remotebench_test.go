@@ -13,7 +13,7 @@
 // `aforge chat --host` against `scp` wants, so they are measured here, over
 // ssh, against a machine in another room.
 //
-// THE LOCAL HALF RUNS IN THIS PROCESS. [benchLink.spawn] is cmd/aforge's
+// THE LOCAL HALF RUNS IN THIS PROCESS. [benchLink.spawn] is cmd/codeaf's
 // engineLink.spawn with the same shape — `ssh -T <dest> "aforge engine …
 // --workspace '<ws>'"`, stdin and stdout as one [io.ReadWriteCloser] — handed
 // to [remote.Roam] as its dialer. So what is being timed is the wire the
@@ -141,7 +141,7 @@ const reproduce = "AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run Tes
 
 // ── the link ────────────────────────────────────────────────────────────────
 
-// benchLink is one ssh child and the pipes it carries, which is cmd/aforge's
+// benchLink is one ssh child and the pipes it carries, which is cmd/codeaf's
 // engineLink with everything a surface needs taken out and one thing a
 // benchmark needs put in: the current process is held so that [benchLink.kill]
 // can end THIS harness's own child by its handle. Killing by handle rather than
@@ -164,7 +164,7 @@ type benchLink struct {
 
 // spawn starts one `ssh -T <dest> aforge engine --workspace '<ws>'` and hands
 // back its pipes. It is [remote.Dialer], and it is deliberately the same shape
-// as cmd/aforge/chatv3_host.go's engineLink.spawn: -T because there is nothing
+// as cmd/codeaf/chatv3_host.go's engineLink.spawn: -T because there is nothing
 // interactive on the far end and a pseudo-terminal would turn a frame into
 // nonsense, and the workspace quoted because a path with a space in it is a
 // path.
@@ -246,7 +246,7 @@ func (p benchPipe) Close() error {
 }
 
 // shellWord quotes a word for the far machine's login shell. It is the same
-// quoting cmd/aforge's shellQuote does, written again because that one lives in
+// quoting cmd/codeaf's shellQuote does, written again because that one lives in
 // package main and a test cannot reach it.
 func shellWord(word string) string {
 	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"

@@ -219,7 +219,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// so both are answerable to the line the command's own help prints them
 		// from.
 		fact: "how many turns one worker gets", owner: "`aforge exec`'s --max-turns default",
-		value:  strconv.Itoa(flagNumber(t, "../../cmd/aforge/exec.go", "max-turns")),
+		value:  strconv.Itoa(flagNumber(t, "../../cmd/codeaf/exec.go", "max-turns")),
 		quotes: []quotedIn{{"adaptive-runs", "it stops itself after %s turns"}},
 	}, {
 		// Spelled in threes on the page for the reason the answer room above is.
@@ -227,7 +227,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// money everywhere else in this product, so a token count wearing it
 		// read as dollars.
 		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --token-budget default",
-		value:  grouped(flagNumber(t, "../../cmd/aforge/exec.go", "token-budget")),
+		value:  grouped(flagNumber(t, "../../cmd/codeaf/exec.go", "token-budget")),
 		quotes: []quotedIn{{"adaptive-runs", "when the run has spent %s tokens"}},
 	}, {
 		// THE SPENDING TABLE IS SIX ROWS OF SHIPPED FIGURES, and four of them
@@ -610,7 +610,7 @@ func sourceNumber(t *testing.T, path, name string) int {
 //
 // IT READS EVERY SHAPE A NUMERIC FLAG IS DECLARED IN, and that is the whole
 // reason this comment is longer than the function. A flag that moves to
-// cmd/aforge's [newCountFlag] — the value that refuses a bad count with a
+// cmd/codeaf's [newCountFlag] — the value that refuses a bad count with a
 // sentence about the flag instead of [strconv]'s `parse error` — keeps exactly
 // the same default and stops being `flags.Int` while it does it. A reader that
 // knew only the one shape went RED with a message about a flag that had not

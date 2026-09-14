@@ -1137,7 +1137,7 @@ func (a *app) readWorldKnown() (session.World, bool) {
 // the surface reads the places root itself and the reading is always an answer.
 // Over --host the door hands a function that reads a cache the connection keeps
 // warm behind itself, and that cache says false until the far machine has
-// replied once (cmd/aforge's [hostWorld], tui3.go's [Options.World]).
+// replied once (cmd/codeaf's [hostWorld], tui3.go's [Options.World]).
 func (a *app) worldOf() (session.World, bool) { return worldSeam(a.world, a.placesRoot(), a.hosted()) }
 
 // worldSeam is that same seam with its three inputs handed in, so a COMMAND can
@@ -1156,7 +1156,7 @@ func worldSeam(door func() (session.World, bool), root string, hosted bool) (ses
 		// as the machine the conversation is on, and is exactly the fault the
 		// whole lane exists to end. An engine too old to answer Places.World
 		// arrives here the same way, through a cache that never becomes known
-		// (cmd/aforge's [hostWorld]), and the places draw nothing rather than
+		// (cmd/codeaf's [hostWorld]), and the places draw nothing rather than
 		// somebody else's disk.
 		return session.World{}, false
 	}

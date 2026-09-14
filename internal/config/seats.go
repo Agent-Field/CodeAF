@@ -199,7 +199,7 @@ func crewRow(profileDir, tier string) (model, from string, source SeatSource, cl
 }
 
 // TierSeatAt is ONE TIER ROW READ AS A SEAT, for the surfaces that seat roles
-// rather than run a door: the conversation's role map (cmd/aforge's v3Crew), the
+// rather than run a door: the conversation's role map (cmd/codeaf's v3Crew), the
 // five rows of the settings sheet, and the crew word derived from them.
 //
 // IT IS [resolveSeat] WITHOUT THE TWO RUNGS THAT BELONG TO AN INVOCATION. A flag

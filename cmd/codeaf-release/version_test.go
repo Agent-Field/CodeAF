@@ -110,7 +110,7 @@ func TestUsageErrorsUseExitTwoAndKeepStdoutEmpty(t *testing.T) {
 		{"prune", "--keep", "2"},
 	} {
 		code, stdout, stderr := invoke(args, "")
-		if code != 2 || stdout != "" || !strings.Contains(stderr, "aforge-release") || len(strings.Split(stderr, "\n")) > 18 {
+		if code != 2 || stdout != "" || !strings.Contains(stderr, "codeaf-release") || len(strings.Split(stderr, "\n")) > 18 {
 			t.Fatalf("%v: code %d stdout %q stderr %q", args, code, stdout, stderr)
 		}
 	}

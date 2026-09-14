@@ -291,8 +291,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// it: where the running program writes its own warnings and recovered
 		// faults, on every door rather than only the one that starts a session
 		// here (#404).
-		{"where does aforge write its log file", "starting-aforge"},
-		{"what is chat.log", "starting-aforge"},
+		{"where does aforge write its log file", "starting-codeaf"},
+		{"what is chat.log", "starting-codeaf"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.
@@ -837,46 +837,46 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"enter does not connect the account any more", "accounts"},
 		{"where do I paste the key it is asking for", "accounts"},
 		{"how do I say not now to a key it wants", "accounts"},
-		{"how do I start aforge", "starting-aforge"},
-		{"why did it refuse to run git stash", "starting-aforge"},
-		{"it would not stash my changes on an unattended run", "starting-aforge"},
-		{"what git will it not run when left on its own", "starting-aforge"},
+		{"how do I start aforge", "starting-codeaf"},
+		{"why did it refuse to run git stash", "starting-codeaf"},
+		{"it would not stash my changes on an unattended run", "starting-codeaf"},
+		{"what git will it not run when left on its own", "starting-codeaf"},
 		// The unattended run that would not finish, asked the four ways somebody
 		// meets it: the line it stopped on, the loop they watched, the note at
 		// the cap, and the check it kept failing over a file they never wrote a
 		// check for (#468).
-		{"it stopped and said the same thing was still left", "starting-aforge"},
-		{"it kept repeating the same thing", "starting-aforge"},
+		{"it stopped and said the same thing was still left", "starting-codeaf"},
+		{"it kept repeating the same thing", "starting-codeaf"},
 		{"why does it say carry on", "tasks"},
 		// AND THE SAME LOOP OVER WORK OF ITS OWN: one of two quick tasks landed,
 		// the reply that answered the landing was pushed on three times over the
 		// other, and the person met it as a reply that would not leave a running
 		// task alone.
 		{"it keeps asking about a task that is still running", "tasks"},
-		{"it said a file does not pass", "starting-aforge"},
-		{"a task waiting on one that did not finish", "starting-aforge"},
+		{"it said a file does not pass", "starting-codeaf"},
+		{"a task waiting on one that did not finish", "starting-codeaf"},
 		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody
 		// meets them: the turn that ended instead of starting more work, the
 		// landing nobody could check under the posture that decided it, and the
 		// work that never came home.
-		{"why did it stop at a task that was finished", "starting-aforge"},
-		{"it ended without starting more work", "starting-aforge"},
-		{"it said nothing was left but the work was not finished", "starting-aforge"},
-		{"it kept working after everything was finished", "starting-aforge"},
-		{"a task died on the wire and the run would not stop", "starting-aforge"},
-		{"it keeps saying the tests fail but they were already failing", "starting-aforge"},
-		{"why did it run the tests again at the end", "starting-aforge"},
-		{"it said unchecked when it finished", "starting-aforge"},
-		{"it ran out of time running the test suite", "starting-aforge"},
-		{"why did it move my work to a task after five minutes", "starting-aforge"},
-		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
-		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
-		{"the reader timed out and then it did the whole fix twice", "starting-aforge"},
+		{"why did it stop at a task that was finished", "starting-codeaf"},
+		{"it ended without starting more work", "starting-codeaf"},
+		{"it said nothing was left but the work was not finished", "starting-codeaf"},
+		{"it kept working after everything was finished", "starting-codeaf"},
+		{"a task died on the wire and the run would not stop", "starting-codeaf"},
+		{"it keeps saying the tests fail but they were already failing", "starting-codeaf"},
+		{"why did it run the tests again at the end", "starting-codeaf"},
+		{"it said unchecked when it finished", "starting-codeaf"},
+		{"it ran out of time running the test suite", "starting-codeaf"},
+		{"why did it move my work to a task after five minutes", "starting-codeaf"},
+		{"it kept running tests for ten minutes and then handed the work over", "starting-codeaf"},
+		{"it says nothing has been finished yet but it did the work itself", "starting-codeaf"},
+		{"the reader timed out and then it did the whole fix twice", "starting-codeaf"},
 		// The headless door of the same unattended posture (#535), asked as the
 		// budget, the missing start and the screenless carry-on somebody meets.
-		{"can I leave a headless run going with a budget", "starting-aforge"},
-		{"my --once yolo run never started a task", "starting-aforge"},
-		{"does a run with no screen carry its own work on", "starting-aforge"},
+		{"can I leave a headless run going with a budget", "starting-codeaf"},
+		{"my --once yolo run never started a task", "starting-codeaf"},
+		{"does a run with no screen carry its own work on", "starting-codeaf"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
@@ -912,8 +912,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The owned workspace, asked the two ways it actually gets discovered:
 		// before, wondering where the work will land, and after, when the folder
 		// went and took the work with it.
-		{"where do task files go when I did not open a project", "starting-aforge"},
-		{"deleted my chat and lost the files the task made", "starting-aforge"},
+		{"where do task files go when I did not open a project", "starting-codeaf"},
+		{"deleted my chat and lost the files the task made", "starting-codeaf"},
 		// The first-run setup, asked the four ways somebody meets it: arriving,
 		// wanting the key in, seeing the screen, and wanting to undo an answer.
 		{"first time setup", "getting-started"},
@@ -1100,7 +1100,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does image #1 in my message mean", "keys"},
 		{"why did the path I pasted turn into a token", "keys"},
 		{"where do I change settings", "commands"},
-		{"what is openaf", "starting-aforge"},
+		{"what is openaf", "starting-codeaf"},
 		{"can you access my email", "accounts"},
 
 		// The eighth wave: the chat knowing about the person's OTHER terminals.

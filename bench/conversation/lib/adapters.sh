@@ -34,10 +34,10 @@ CONV_ADAPTERS_LIB="${CONV_ADAPTERS_LIB:-$(cd "$(dirname "${BASH_SOURCE[0]}")" &&
 
 AFORGE_BIN="${AFORGE_BIN:-}"
 if [ -z "$AFORGE_BIN" ]; then
-  if [ -x "$CONV_REPO_ROOT/bin/aforge" ]; then
-    AFORGE_BIN="$CONV_REPO_ROOT/bin/aforge"
+  if [ -x "$CONV_REPO_ROOT/bin/codeaf" ]; then
+    AFORGE_BIN="$CONV_REPO_ROOT/bin/codeaf"
   else
-    AFORGE_BIN="$(command -v aforge || echo "$CONV_REPO_ROOT/bin/aforge")"
+    AFORGE_BIN="$(command -v aforge || echo "$CONV_REPO_ROOT/bin/codeaf")"
   fi
 fi
 OMP_BIN="${OMP_BIN:-omp}"

@@ -27,22 +27,22 @@ source "$ONEROAD/lib/corpus.sh"
 
 ISSUES="${ISSUES:-20 21 22 23}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
-OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
+OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/codeaf}"
 # WAVE 1B'S BINARY, AND IT IS A SNAPSHOT RATHER THAN THE LIVE PATH ON PURPOSE.
-# bin/aforge is rebuilt in place by whoever is working the tree, and wave 1's
+# bin/codeaf is rebuilt in place by whoever is working the tree, and wave 1's
 # batch cells landed two minutes before one such rebuild — which is luck, not a
-# protocol. A wave measured against "whatever bin/aforge was at the moment each
+# protocol. A wave measured against "whatever bin/codeaf was at the moment each
 # cell happened to launch" is a wave whose arm has no single identity, so the
 # bytes are copied once, sha'd into results/BINARIES, and every cell of the arm
 # runs that copy.
-ESC_BIN="${ESC_BIN:-$ONEROAD/bin/aforge-esc-b70de31c}"
+ESC_BIN="${ESC_BIN:-$ONEROAD/bin/codeaf-esc-b70de31c}"
 # Wave 1c's binary, snapshotted for the same reason ESC_BIN is.
-PRE_BIN="${PRE_BIN:-$ONEROAD/bin/aforge-pre-9b9a4c92}"
+PRE_BIN="${PRE_BIN:-$ONEROAD/bin/codeaf-pre-9b9a4c92}"
 # Wave 1d: the raced screen, the ski-rental checkpoints and the ceiling, together.
-CKPT_BIN="${CKPT_BIN:-$ONEROAD/bin/aforge-ckpt-6b9809e9}"
+CKPT_BIN="${CKPT_BIN:-$ONEROAD/bin/codeaf-ckpt-6b9809e9}"
 # Wave 1e: the finalist. Everything at once.
-FINAL_BIN="${FINAL_BIN:-$ONEROAD/bin/aforge-final-c0e4f5a7}"
+FINAL_BIN="${FINAL_BIN:-$ONEROAD/bin/codeaf-final-c0e4f5a7}"
 PI_BIN="${PI_BIN:-pi}"
 OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 
@@ -337,12 +337,12 @@ case "$ARM" in
   # would measure the pin instead of the default. The profile writer below has
   # never written that key; this comment is here so nobody adds it.
   aforge-final-crew)  run_aforge "$FINAL_BIN" 0; CODE=$? ;;
-  aforge-1f-crew)     run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 0; CODE=$? ;;
-  aforge-1g-crew)     run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 0; CODE=$? ;;
-  aforge-1h-crew)     run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 0; CODE=$? ;;
-  aforge-1h-flash)    run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 1; CODE=$? ;;
-  aforge-1g-flash)    run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 1; CODE=$? ;;
-  aforge-1f-flash)    run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 1; CODE=$? ;;
+  aforge-1f-crew)     run_aforge "$ONEROAD/bin/codeaf-1f-0fabf058" 0; CODE=$? ;;
+  aforge-1g-crew)     run_aforge "$ONEROAD/bin/codeaf-1g-ec52e7ae" 0; CODE=$? ;;
+  aforge-1h-crew)     run_aforge "$ONEROAD/bin/codeaf-1h-f831c2e6" 0; CODE=$? ;;
+  aforge-1h-flash)    run_aforge "$ONEROAD/bin/codeaf-1h-f831c2e6" 1; CODE=$? ;;
+  aforge-1g-flash)    run_aforge "$ONEROAD/bin/codeaf-1g-ec52e7ae" 1; CODE=$? ;;
+  aforge-1f-flash)    run_aforge "$ONEROAD/bin/codeaf-1f-0fabf058" 1; CODE=$? ;;
   aforge-final-flash) run_aforge "$FINAL_BIN" 1; CODE=$? ;;
   pi|opencode)      run_peer >"$CELL/harness.log" 2>&1; CODE=$?
                     [ "$CODE" = "124" ] && echo DNF > "$CELL/outcome" || echo OK > "$CELL/outcome" ;;

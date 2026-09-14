@@ -182,7 +182,7 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 // IT GOES THROUGH THE AUXILIARY DOOR AND THE TURN SEAL STAYS ZERO-TOKEN. The
 // figures did not come from this conversation's own transcript — a run has its
 // own provider client, its own messages, its own belt and often its own model
-// (cmd/aforge's chatv3_harness.go) — so folding them into the turn would
+// (cmd/codeaf's chatv3_harness.go) — so folding them into the turn would
 // attribute a context this session never held to the context it is about to
 // send, which is the number compaction is decided on. What a person is actually
 // owed is the money and the request count, and that is exactly what

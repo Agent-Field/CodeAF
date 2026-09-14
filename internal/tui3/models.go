@@ -21,7 +21,7 @@ import (
 // resolved from what is already known, in this order:
 //
 //  1. the catalog, when it can answer without a fetch — the door passes it in
-//     as [Options.Models] (see cmd/aforge/chatv3.go);
+//     as [Options.Models] (see cmd/codeaf/chatv3.go);
 //  2. this package's own cache, ~/.aforge/v3/models.json, written whenever a
 //     catalog fetch elsewhere succeeded;
 //  3. [BuiltinModels], five names this build remembers.
@@ -411,7 +411,7 @@ func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
 
 // ChatModels is that same law for the DOOR, which since Decision 6 hands this
 // package the whole catalog and has its own list to narrow: the models a task
-// may be handed to (cmd/aforge's v3TaskModels).
+// may be handed to (cmd/codeaf's v3TaskModels).
 //
 // It is exported rather than copied because a second spelling of "a model you
 // can talk to" is a second spelling that drifts — the picker would offer a row
@@ -429,7 +429,7 @@ func chatModel(model Model) bool { return answersText(model) && readsText(model)
 // of it): can this model look at a picture.
 //
 // SILENCE IS NO, and it is the SAME no the door's vision gate gives it
-// (cmd/aforge's v3ReadsImages) — THE ONE SILENCE LAW, docs/MULTIMODAL.md
+// (cmd/codeaf's v3ReadsImages) — THE ONE SILENCE LAW, docs/MULTIMODAL.md
 // Decision 6: an unpublished modality list means text-in/text-out and nothing
 // more, so a media capability is never assumed, only published.
 //
@@ -817,7 +817,7 @@ func modelFields(model Model, pin, routing string) []rowField {
 // reads better forwards than backwards.
 //
 // It is exported for `aforge models`, which draws the same tail beside the same
-// facts (cmd/aforge's models.go). One spelling of "draws", in one place.
+// facts (cmd/codeaf's models.go). One spelling of "draws", in one place.
 func ModalityWord(input, output []string) string {
 	words := make([]string, 0, 5)
 	if hasModality(input, "image") {

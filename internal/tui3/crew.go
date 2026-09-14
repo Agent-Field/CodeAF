@@ -66,7 +66,7 @@ func (a *app) applyCrew(preset string) {
 	}
 	// The panel may be holding rows read before this write, so it is rebuilt if
 	// it is open. Everything else is live: the crew source the session resolves
-	// through re-reads on its next call (cmd/aforge's v3RolesSource).
+	// through re-reads on its next call (cmd/codeaf's v3RolesSource).
 	a.refreshSettings()
 	// AND THE CONFIRMATION NAMES WHAT IT DID NOT CHANGE, BY ITS ID. The status
 	// line's model readout is the CONVERSATION's model and the crew never touches
@@ -224,7 +224,7 @@ type crewReading struct {
 // `change_setting` tool all move it and none of them needs to know this cache
 // exists; what the counter does not see — a config file edited by another
 // process — lands on the next launch, exactly as it does for the role source
-// the tasks resolve through (cmd/aforge's v3Crew).
+// the tasks resolve through (cmd/codeaf's v3Crew).
 func (a *app) crewReading() (crewReading, bool) {
 	if a.hosted() {
 		return crewReading{}, false
@@ -232,7 +232,7 @@ func (a *app) crewReading() (crewReading, bool) {
 	// THE STATUS LINE NAMES WHAT SEATS THE CALL. Under `--one-model` the door
 	// hands the session no roles source and no task model, so every text call
 	// this run makes rides the conversation's own model and the four rows on
-	// disk seat nothing (cmd/aforge's applyV3Governance). Reading the profile
+	// disk seat nothing (cmd/codeaf's applyV3Governance). Reading the profile
 	// here drew `crew custom` — a true statement about the file and a false one
 	// about the run — over a crew that was not in force (#444). So the flag is
 	// answered before the rows are, and the reading names the flag.
@@ -321,7 +321,7 @@ func (a *app) crewHint() string { return a.crewSegment() }
 // that seat, and on the /crew sheet, which is where somebody goes to check.
 
 // workSeat is this conversation's work seat, resolved the way the role map that
-// runs its tasks resolves it (cmd/aforge's v3Crew).
+// runs its tasks resolves it (cmd/codeaf's v3Crew).
 //
 // AN EMPTY profileDir IS THE ORDINARY PROFILE AND NOT THE ABSENCE OF ONE.
 // [config.ProfileDir] is AFORGE_PROFILE_DIR, which almost nobody sets, and every

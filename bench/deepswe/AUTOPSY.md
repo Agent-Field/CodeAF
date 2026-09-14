@@ -438,7 +438,7 @@ wrong for a different reason.
 
 ## (c) Why exit 0 after a fail
 
-`cmd/aforge/do.go:1552` — `deliveredWhole` returns false only when the last gate
+`cmd/codeaf/do.go:1552` — `deliveredWhole` returns false only when the last gate
 is `!Pass && !PolishClosed && !Overturned`. The four last-gate records:
 
 | run | pass | polish_closed | refused | overturned | unclosed | mechanical | ⇒ exit |

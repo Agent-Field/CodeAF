@@ -13,7 +13,7 @@
 //
 // A host holds one engine per open session, but every session it holds is about
 // the SAME directory, and that is not an arbitrary carving. `aforge engine`
-// moves the process into the workspace before it assembles anything (cmd/aforge
+// moves the process into the workspace before it assembles anything (cmd/codeaf
 // engine.go), and that chdir is the only chdir in the tree — the process's own
 // idea of where it is has to agree with the session config's. A host holding
 // two workspaces would have to break that or lie about it. So the socket lives
@@ -114,7 +114,7 @@ func Dir(workspace string) (string, error) {
 // where is the same answer WITHOUT making the directory, and the split is not a
 // tidy-up: ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. Every
 // plain `aforge chat` now puts one question to [Dial] before it opens anything
-// (cmd/aforge's v3HostRoad), and a Dial that created a directory would leave one
+// (cmd/codeaf's v3HostRoad), and a Dial that created a directory would leave one
 // behind under every workspace anybody ever ran aforge in — litter proving only
 // that a question was asked. The doors that are about to WRITE something — the
 // host's own listener, the spawn lock, the wait for a host to go — call [Dir]

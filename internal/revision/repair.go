@@ -205,7 +205,7 @@ func readingIsGreen(evidence Evidence) bool {
 // It is a function rather than an expression at the wiring seam because it had
 // been an expression at the wiring seam, and the rule it now states was not
 // visible there to be got wrong. Every reader of "did the repair close it" reads
-// this and there is no second copy — see cmd/aforge/chat.go, its only caller,
+// this and there is no second copy — see cmd/codeaf/chat.go, its only caller,
 // and docs/design/gate/SETTLEMENT.md §8.
 func RepairClosed(rejudged, finding Judgment, evidence Evidence, unmoved bool) bool {
 	if !rejudged.Checked || !rejudged.Pass {

@@ -35,7 +35,7 @@ JSONL="${JSONL:-$HERE/results-arm$ARM_UC.jsonl}"
 # what internal/config/config.go already defaults to. Arm B turns the router on
 # over the panel selected in panel.json. If the router lands under different
 # names than these, this block is the only edit the experiment needs.
-AFORGE_BIN="${AFORGE_BIN:-$ROOT/bin/aforge}"
+AFORGE_BIN="${AFORGE_BIN:-$ROOT/bin/codeaf}"
 case "$ARM" in
   a)
     ARM_LABEL="single-model baseline"

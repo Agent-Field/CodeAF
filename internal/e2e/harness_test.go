@@ -2,7 +2,7 @@
 
 // Package e2e drives the ambient side — internal/session's `stand` tool and
 // internal/standing's store, ticker, sentinel and runner — against a REAL
-// model, assembled the way cmd/aforge assembles it.
+// model, assembled the way cmd/codeaf assembles it.
 //
 // WHY IT IS A PACKAGE OF ITS OWN AND NOT ANOTHER FILE IN internal/session.
 // Everything below drives the engine through the doors a surface has: New,
@@ -121,7 +121,7 @@ func newWorld(t *testing.T) *world {
 	}
 
 	// The model, chosen the way a person chooses one: the model.talk row, which
-	// is what cmd/aforge's v3TalkModel reads before it falls back to the
+	// is what cmd/codeaf's v3TalkModel reads before it falls back to the
 	// environment. The LOW tier is pinned to the same model so the sentinel —
 	// registered at roles.TierLow in standing_run.go — rides the model this run
 	// is about rather than whatever the person happens to have there.
@@ -185,7 +185,7 @@ func (w *world) bill(what string, usd float64) {
 	w.t.Logf("SPEND %s $%.6f (run total $%.6f)", what, usd, total)
 }
 
-// rolesSource mirrors cmd/aforge's v3Crew.snapshot: the two project-layer tiers,
+// rolesSource mirrors cmd/codeaf's v3Crew.snapshot: the two project-layer tiers,
 // the two profile-only ones, and the pins on top.
 func (w *world) rolesSource(workspace string) roles.Source {
 	t := w.t
@@ -225,7 +225,7 @@ func (w *world) rolesSource(workspace string) roles.Source {
 	}
 }
 
-// policy mirrors cmd/aforge's v3Policy: the blanket mode, the built-in floor,
+// policy mirrors cmd/codeaf's v3Policy: the blanket mode, the built-in floor,
 // and whatever the person's own rows say on top of it.
 func (w *world) policy(workspace string) *approval.Policy {
 	t := w.t
@@ -248,7 +248,7 @@ func (w *world) policy(workspace string) *approval.Policy {
 }
 
 // place mints one session folder under the throwaway home, meta.json first, the
-// way cmd/aforge's v3MintSession does.
+// way cmd/codeaf's v3MintSession does.
 func (w *world) place(bucket, workspace string) session.Place {
 	t := w.t
 	id := session.NewSessionID()
@@ -266,7 +266,7 @@ func (w *world) place(bucket, workspace string) session.Place {
 }
 
 // projectBucket is where an ordinary conversation of one workspace lives. The
-// exact spelling of the bucket name is cmd/aforge's business and nothing here
+// exact spelling of the bucket name is cmd/codeaf's business and nothing here
 // reads it back, so a stable one-way key is enough.
 func (w *world) projectBucket(workspace string) string {
 	bucket := filepath.Join(home.Join("v3", "projects"), standing.ProjectKey(workspace))
@@ -340,7 +340,7 @@ func (w *world) openAt(workspace string, place session.Place, mutate func(*sessi
 
 // ── the ticker, as the door builds one ──────────────────────────────────────
 
-// posture mirrors cmd/aforge's v3StandingPosture: the person's models, keys and
+// posture mirrors cmd/codeaf's v3StandingPosture: the person's models, keys and
 // banked rules, resolved against their HOME rather than any project, with
 // AskConsent false and Standing nil — nobody is watching a firing and nothing
 // that fires may arm anything else.
@@ -359,7 +359,7 @@ func (w *world) posture() session.Config {
 	}
 }
 
-// ticker mirrors cmd/aforge's v3StandingTicker: one store, one sentinel, one
+// ticker mirrors cmd/codeaf's v3StandingTicker: one store, one sentinel, one
 // runner, one idle reader. now is the clock a test holds still or pushes past a
 // due moment.
 func (w *world) ticker(now func() time.Time) *standing.Ticker {

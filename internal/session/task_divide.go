@@ -459,7 +459,7 @@ const (
 //     what stops "this is a broad multi-source sweep" from being a reflex that
 //     reaches past this road entirely.
 //   - THE WORK'S OWN TEXT ENUMERATES ENOUGH ITEMS. This is
-//     cmd/aforge/cooperative.go's plan-time gate asked of a task instead of a
+//     cmd/codeaf/cooperative.go's plan-time gate asked of a task instead of a
 //     plan: a brief that already names eleven adapter FILES is a brief that may
 //     divide. It is what arms the road for work nobody ran the judge over — a
 //     proposal the chat model groomed, `/task solo`, a person whose standing

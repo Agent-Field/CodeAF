@@ -13,7 +13,7 @@ import (
 // and the four facts every instrument needs from a line — was it the end of an
 // attempt, did it fail, was it a hedge's losing arm, what ceiling applied. What
 // is here is the census's own argument about those rows: which of six classes a
-// finish belongs to and whose fault it was, which is a judgement cmd/aforge-replay
+// finish belongs to and whose fault it was, which is a judgement cmd/codeaf-replay
 // makes differently about the same bytes and must not inherit by accident.
 type row struct{ callrows.Row }
 

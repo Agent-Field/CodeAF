@@ -25,7 +25,7 @@ import (
 // somebody forgot to fill.
 //
 // So this is the test that fails when one of the surviving hands is not there.
-// The config below is the SHAPE the v3 door assembles (cmd/aforge's chatv3.go):
+// The config below is the SHAPE the v3 door assembles (cmd/codeaf's chatv3.go):
 // a registry to design into, a runner to run what is designed, an adaptive
 // runner, and a surface that answers questions.
 

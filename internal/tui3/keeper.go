@@ -64,7 +64,7 @@ import (
 // home and home already prints that path on the row the person pressed.
 //
 // IT IS EXPORTED SO THERE IS ONE OF IT. The surface says it on the keystroke —
-// one os.Stat, before an agent is built — and cmd/aforge says it again when a
+// one os.Stat, before an agent is built — and cmd/codeaf says it again when a
 // directory disappears between that stat and the open. Two spellings of one
 // refusal would drift, and this is the sentence the manual quotes.
 const WorkspaceGoneWord = "that folder is gone"
@@ -617,7 +617,7 @@ func (a *app) stow(conv Conversation, side *aside) {
 	// WHAT WOULD HAPPEN OTHERWISE is not a missing feature, it is a lie on the
 	// screen. Over an engine door [Options.Resume] hands back the SAME agent it
 	// was given, now pointing at the session the engine has just swapped to
-	// (cmd/aforge's chatv3_host.go). Putting that pointer in the map records the
+	// (cmd/codeaf's chatv3_host.go). Putting that pointer in the map records the
 	// conversation now IN FRONT under the key of the one being left: the switcher
 	// then draws it twice, one of them under the old name, and pressing the held
 	// row opens the body of the conversation already on screen. It would also arm

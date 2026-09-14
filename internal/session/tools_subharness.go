@@ -123,7 +123,7 @@ func (a *Agent) subharnessTools() []bare.Tool {
 // that lane reaches nobody would raise a card into an empty room, hold the turn
 // for a quarter of an hour, and end with nothing having run. [Config.HarnessCards]
 // is the door's own statement that somebody is on the other end of it, and it is
-// exactly how the design card is switched off over a connection (cmd/aforge's
+// exactly how the design card is switched off over a connection (cmd/codeaf's
 // engine.go).
 // It is [Config.mayProposeSubharness] asked of a live agent — the same three
 // questions of the same three fields, the registry counted by the same reader —

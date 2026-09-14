@@ -43,7 +43,7 @@ import (
 // settings page anywhere in this gesture.
 //
 // Each of them is also a REAL FIELD of the session the door builds, carried on
-// [ErrandOrders] and honoured in cmd/aforge's v3Errand: the workspace it works
+// [ErrandOrders] and honoured in cmd/codeaf's v3Errand: the workspace it works
 // in, the model its work runs on (config's execution slot), and the spend rail
 // it stops at. A figure a person set and nothing read would be worse than a
 // figure they were never offered.

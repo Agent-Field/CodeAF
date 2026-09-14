@@ -15,7 +15,7 @@ import (
 
 func TestFolderBreadcrumbBudgetsEveryPaintedCell(t *testing.T) {
 	paths := []string{
-		"/tmp/aforge-ci/TestTheBrowserFitsANarrowFrame2140938909/001/here",
+		"/tmp/codeaf-ci/TestTheBrowserFitsANarrowFrame2140938909/001/here",
 		"/one/two/" + strings.Repeat("oversized-leaf", 12),
 		"/projects/日本語/設計資料/会話表示",
 		"/projects/cafe\u0301/👩‍💻 work/東京",

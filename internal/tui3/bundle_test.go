@@ -4250,7 +4250,7 @@ func roomApp(t *testing.T) (*app, *roomFake, func(time.Duration)) {
 	agent := &roomFake{taskFake: fake, lanes: map[uint64]chan session.Event{}}
 	base.agent = agent
 	// AND IT NAMES THE CONVERSATION AND ITS DRAFT FILE, which every production
-	// door does in one breath (cmd/aforge). A correction is only sent from a
+	// door does in one breath (cmd/codeaf). A correction is only sent from a
 	// conversation this surface could write the send down for first, so a room
 	// fixture with neither has no ear at all (steersend.go's [app.steerDurable]).
 	base.file = filepath.Join(t.TempDir(), "conversation.jsonl")

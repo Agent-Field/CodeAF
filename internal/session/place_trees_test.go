@@ -160,7 +160,7 @@ func TestAWorkerInTheConversationsOwnSpaceIsToldThereIsNoProject(t *testing.T) {
 
 // newOwnedPlace is the layout a conversation opened outside any project gets:
 // a session folder whose work/ the door has made into a repository with a first
-// commit (cmd/aforge's prepareOwnedWorkspace).
+// commit (cmd/codeaf's prepareOwnedWorkspace).
 func newOwnedPlace(t *testing.T) (Place, string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

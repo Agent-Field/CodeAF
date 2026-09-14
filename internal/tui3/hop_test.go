@@ -339,7 +339,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 			},
 		}}}, true
 	}
-	// The door the card opens a closed row through, standing in for cmd/aforge's.
+	// The door the card opens a closed row through, standing in for cmd/codeaf's.
 	opened := ""
 	a.open = func(workspace, transcript string) (Conversation, error) {
 		opened = transcript

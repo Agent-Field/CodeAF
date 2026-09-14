@@ -29,9 +29,9 @@ import (
 // also opened the manual.
 //
 // IT LIVES HERE, in the package that owns the corpus, because it is the one
-// place that can see BOTH halves: chat/ is beside it, and cmd/aforge is read as
+// place that can see BOTH halves: chat/ is beside it, and cmd/codeaf is read as
 // source the way truth_test.go already reads it for the figures the pages quote.
-// A test in cmd/aforge could see the dispatch more directly and could not be run
+// A test in cmd/codeaf could see the dispatch more directly and could not be run
 // at all while another lane has that package mid-edit.
 //
 // THE VERBS ARE READ OUT OF THE TREE WITH go/parser rather than off a list,
@@ -75,8 +75,8 @@ func chatManualNamesTheCommand(t *testing.T, verb string) bool {
 }
 
 // dispatchedVerbs is every word `aforge <word>` answers to, read from the two
-// places that decide it: the switch in run() (cmd/aforge/main.go), which is the
-// dispatch itself, and `knownCommands` (cmd/aforge/usage.go), which is what the
+// places that decide it: the switch in run() (cmd/codeaf/main.go), which is the
+// dispatch itself, and `knownCommands` (cmd/codeaf/usage.go), which is what the
 // typo suggester offers.  A word in either is a word a person can type.
 //
 // The flag spellings of a verb — `--version`, `-v`, `-h`, `--help` — are
@@ -104,9 +104,9 @@ func dispatchedVerbs(t *testing.T) []string {
 // its place in the typo suggester — is a decision made after this one.
 func runSwitchCases(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/aforge/main.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/codeaf/main.go", nil, 0)
 	if err != nil {
-		t.Fatalf("read cmd/aforge/main.go: %v", err)
+		t.Fatalf("read cmd/codeaf/main.go: %v", err)
 	}
 	var cases []string
 	for _, decl := range file.Decls {
@@ -128,7 +128,7 @@ func runSwitchCases(t *testing.T) []string {
 		})
 	}
 	if len(cases) == 0 {
-		t.Fatal("no case labels were read out of run()'s dispatch switch in cmd/aforge/main.go")
+		t.Fatal("no case labels were read out of run()'s dispatch switch in cmd/codeaf/main.go")
 	}
 	return cases
 }
@@ -138,9 +138,9 @@ func runSwitchCases(t *testing.T) []string {
 // checked — the suggester will still offer it, and a person will still type it.
 func knownCommandsLiteral(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/aforge/usage.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/codeaf/usage.go", nil, 0)
 	if err != nil {
-		t.Fatalf("read cmd/aforge/usage.go: %v", err)
+		t.Fatalf("read cmd/codeaf/usage.go: %v", err)
 	}
 	var words []string
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -162,7 +162,7 @@ func knownCommandsLiteral(t *testing.T) []string {
 		return false
 	})
 	if len(words) == 0 {
-		t.Fatal("knownCommands was not found in cmd/aforge/usage.go")
+		t.Fatal("knownCommands was not found in cmd/codeaf/usage.go")
 	}
 	return words
 }

@@ -128,7 +128,7 @@ func TestAJoinThatNamesNoConversationIsRefused(t *testing.T) {
 // AND THE ORDINARY JOIN STILL ARRIVES, which is the whole capability this guard
 // must not take away: the conversation named is the conversation open, and the
 // welcome says so in the field the surface checks before it draws a row
-// (cmd/aforge's chatv3_taskowner.go hands [Welcome.SessionFile] back for exactly
+// (cmd/codeaf's chatv3_taskowner.go hands [Welcome.SessionFile] back for exactly
 // that).
 func TestAJoinOntoTheConversationItNamedStillArrives(t *testing.T) {
 	agent := &fakeAgent{model: "a/b", title: "the one being read"}

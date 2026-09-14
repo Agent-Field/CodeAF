@@ -75,13 +75,13 @@ func (d *driftedTimer) Install(context.Context) error {
 // standing log.
 func TestTheLaunchPutsABackgroundCheckBackWhenItsProgramMoved(t *testing.T) {
 	timer := &driftedTimer{drift: standing.WatchDrift{
-		Present: true, Stale: true, Gone: true, Executable: "/old/bin/aforge",
+		Present: true, Stale: true, Gone: true, Executable: "/old/bin/codeaf",
 	}}
 	line := repairBackgroundChecks(timer, true)
 	if timer.installs != 1 {
 		t.Fatalf("a drifted timer was installed %d times", timer.installs)
 	}
-	if !strings.Contains(line, "/old/bin/aforge") || !strings.Contains(line, "installed it again") {
+	if !strings.Contains(line, "/old/bin/codeaf") || !strings.Contains(line, "installed it again") {
 		t.Fatalf("the log line does not say what happened: %q", line)
 	}
 }

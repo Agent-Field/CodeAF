@@ -14,7 +14,7 @@ import (
 
 // THE STANDING GATE ON COMMAND ENTRY POINTS THAT NOTHING DISPATCHES.
 //
-// `runChat` sat at the top of `cmd/aforge/chat.go` for weeks with no caller:
+// `runChat` sat at the top of `cmd/codeaf/chat.go` for weeks with no caller:
 // `main` sent `aforge chat` to `runChatV3` in every arm, and the six thousand
 // lines under the dead entry still read as though a chat window ran the
 // resident scheduler. Nothing in the compiler notices that — an unexported
@@ -70,7 +70,7 @@ func TestEveryCommandEntryIsReachableFromMain(t *testing.T) {
 	}
 }
 
-// parsePackageMain reads every non-test source file of cmd/aforge and returns
+// parsePackageMain reads every non-test source file of cmd/codeaf and returns
 // the parsed files beside an index of the top-level functions in them.
 //
 // A name maps to EVERY declaration that bears it. Methods are indexed by their

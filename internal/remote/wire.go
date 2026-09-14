@@ -181,7 +181,7 @@ import (
 //     ONE interface — the lane, the pending reading, and this — so a wire holding
 //     three of the four left a hosted rail unsubscribed rather than partly
 //     working, with nothing on any screen saying why. internal/tui3's DrawsTasks
-//     is that assertion made checkable, and cmd/aforge makes it.
+//     is that assertion made checkable, and cmd/codeaf makes it.
 //
 // The number moves rather than riding version 7 for [MethodTaskStart]'s reason:
 // an engine that does not know Task.Watch would answer the surface's one
@@ -202,7 +202,7 @@ import (
 // VERSION 11 CARRIES THE HARNESS LANE. A design card and a subharness intake
 // card are raised on a subscription that outlives the turn (internal/session's
 // emitHarness), and only a running turn's stream crossed this wire — so
-// cmd/aforge built every hosted session with the designer nilled and the cards
+// cmd/codeaf built every hosted session with the designer nilled and the cards
 // off, and said so in prose. The delta is one subscription up
 // ([MethodDesignWatch]), its frames down ("design"), and the intake card's
 // answer ([MethodSubharnessResolve]); the design card's own answer has been
@@ -751,7 +751,7 @@ type Hello struct {
 	// BUILDS the session rather than applied to it a millisecond later.
 	//
 	// They retire a stub. Version 1 had no room for them, so the door set them
-	// immediately after the handshake (cmd/aforge's applyHostChoices), which
+	// immediately after the handshake (cmd/codeaf's applyHostChoices), which
 	// worked for every turn the person could type but left the session file's
 	// first line naming the model the session was BORN on rather than the one
 	// they asked for. Nobody on the screen could see the difference; the
@@ -762,7 +762,7 @@ type Hello struct {
 	// Launch is how the conversation should be BUILT, when this hello is the
 	// one that opens it. Nil asks for the engine's own defaults, which is what
 	// every remote surface sends: these are settings of the machine the session
-	// runs on, and cmd/aforge refuses them over --host and --at by name.
+	// runs on, and cmd/codeaf refuses them over --host and --at by name.
 	Launch *LaunchShape `json:"launch,omitempty"`
 
 	// Encodings are the optional frame payload encodings this surface can read.
@@ -1088,7 +1088,7 @@ type Welcome struct {
 	// line must not turn a live conversation away), which left a surface
 	// attached to an engine from before them drawing no rate and no machine and
 	// no way to say why — and a busy older engine on the same version is
-	// attached to rather than retired (cmd/aforge's clearStaleEngineHost). A
+	// attached to rather than retired (cmd/codeaf's clearStaleEngineHost). A
 	// surface reads this, or a news frame arriving, as the engine having the
 	// news; neither after a whole answer is an older engine, and the surface
 	// says so once ([Client.NewsSilent]).

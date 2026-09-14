@@ -1152,7 +1152,7 @@ var OperatorEnvPins = []string{
 	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
 	// AFORGE_SPLITGATE names which reading of the split gate the binary runs
-	// (internal/splitgate, read by cmd/aforge/cooperative.go and by
+	// (internal/splitgate, read by cmd/codeaf/cooperative.go and by
 	// internal/session's task_divide.go). UNSET IS OFF: every division the
 	// planner or a worker drew is kept, and nothing here counts anything. `1`
 	// arms the gate as it shipped until 2026-09-02, weighing a division against
@@ -1185,7 +1185,7 @@ var OperatorEnvPins = []string{
 	// pass is the final word. Same lifetime as AFORGE_SWARM.
 	"AFORGE_QUORUM",
 	// AFORGE_EXIT_CODES is the migration hatch for the ONE EXIT LADDER
-	// (cmd/aforge/envelope.go). It takes exactly one word, `legacy`, and unset
+	// (cmd/codeaf/envelope.go). It takes exactly one word, `legacy`, and unset
 	// — which is every ordinary run — means the ladder every headless verb now
 	// leaves on: 0 done, 1 it could not be run at all, 2 it ran and did not
 	// finish, 3 a limit you set stopped it, 4 it needed an answer and nobody
@@ -2473,7 +2473,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
 			// THE ROW GOVERNS BOTH SURFACES NOW, so the hint says both. The chat
-			// resolves it once when it starts (cmd/aforge's applyV3Governance) and a
+			// resolves it once when it starts (cmd/codeaf's applyV3Governance) and a
 			// job resolves it when the job begins, which is why a change lands at two
 			// different moments and the person is told which.
 			Hint: "signs the commits, pull requests, issues and comments aforge writes for " +
@@ -2726,7 +2726,7 @@ func (s *Settings) mediaModelRow(slot ModelSlot) Setting {
 //
 // Nothing is the honest last answer rather than a curated name. This function
 // answers "what did a person choose", and the ladder that turns no choice into
-// a working model is the resolver's business (cmd/aforge's chatv3_media.go, and
+// a working model is the resolver's business (cmd/codeaf's chatv3_media.go, and
 // [CandidateMediaModel] behind it) — a default invented here would be a rung
 // the resolver could not tell from a deliberate pin.
 //
@@ -3654,7 +3654,7 @@ func BackgroundChecksAt(profileDir string) string {
 
 // BackgroundChecksWantedAt is [BackgroundChecksAt] as the bool the launch reads
 // before it repairs a timer that has drifted off a program that moved
-// (cmd/aforge's chatv3_process.go). A person who turned the row off is a person
+// (cmd/codeaf's chatv3_process.go). A person who turned the row off is a person
 // whose machine must stay as they left it.
 func BackgroundChecksWantedAt(profileDir string) bool {
 	return BackgroundChecksAt(profileDir) == BackgroundOn
@@ -3710,7 +3710,7 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // the read climbs [TierSeatAt], where an unheld key asks the row it was split
 // out of first ([tierLineage]) and only a profile with nothing above it reaches
 // the build's choice. Every caller of this function therefore reads the model a
-// conversation ACTUALLY runs that class of work on: the role map cmd/aforge
+// conversation ACTUALLY runs that class of work on: the role map cmd/codeaf
 // builds, the settings sheet's five rows, and [CrewAt], which is why the crew
 // word and the work cannot disagree. A caller that also needs to say WHERE the
 // answer came from asks [TierSeatAt] for the seat instead of this for the model.

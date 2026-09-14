@@ -354,7 +354,7 @@ type ExercisedPoint struct {
 // its words, a gap nothing could fund, a promised file the disk does not hold.
 //
 // It lives here, on the event, because two readers spent this differently and
-// disagreed out loud. deliveredWhole in cmd/aforge/do.go combined all three
+// disagreed out loud. deliveredWhole in cmd/codeaf/do.go combined all three
 // fields to decide the exit code; gateWords, in the same file, built the line a
 // person watching reads from Pass and Refused alone — so ink s5 and ofetch s5
 // printed "gate: fail — The deliverable is a listing of files, not the answer
@@ -479,7 +479,7 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	//
 	// Demanding a gap of the second rejected it on every real run. The harness
 	// stops spending on a job once nothing is changing, journals the unasked
-	// gate as `{Refused: …, Unclosed: true}` (cmd/aforge/chat.go), and got back
+	// gate as `{Refused: …, Unclosed: true}` (cmd/codeaf/chat.go), and got back
 	// `record delivery gate: invalid graph mutation: a failed gate must name the
 	// gap` — so the row a battery reads to tell an unjudged delivery from a
 	// checked one never landed, and the only trace was a note in the log.

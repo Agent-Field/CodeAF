@@ -1235,7 +1235,7 @@ type Config struct {
 	// over a connection it does exactly when that wire carries the lane AND the
 	// answer the card asks for (internal/remote's standinglane.go, version 11 —
 	// before it, neither crossed and a card raised over a wire expired unseen).
-	// The one place that decides it for every door is cmd/aforge's
+	// The one place that decides it for every door is cmd/codeaf's
 	// chatv3_lanes.go, which fills this field and HarnessStore together for the
 	// lane's two cards ([Agent.canProposeSubharness] and harness_build.go).
 	//
@@ -1566,7 +1566,7 @@ type Config struct {
 	// NIL MEANS THE CHOICE DOES NOT EXIST: the making verbs advertise no
 	// `model` argument at all, by the same absence law as the verbs themselves
 	// — a knob with nothing behind it is left off the schema rather than
-	// present and refused. The surface that wires it (cmd/aforge's
+	// present and refused. The surface that wires it (cmd/codeaf's
 	// chatv3_media.go) answers from the same catalog the defaults ladder
 	// reads, so a picked model is capability-checked exactly as a default is.
 	MediaPick func(modality, word string) (string, error)
@@ -1776,7 +1776,7 @@ type Config struct {
 	// (task_pressure.go's ONE ACCOUNT FOR THE WHOLE PROCESS, #907).
 	//
 	// The process's own door sets it once and hands the same pointer to every
-	// conversation (cmd/aforge). Left nil, a graph is ALONE IN ITS PROCESS and
+	// conversation (cmd/codeaf). Left nil, a graph is ALONE IN ITS PROCESS and
 	// keeps an account of its own — which is the truth for an embedder with one
 	// conversation, and for every scripted graph in the tests.
 	TaskLanes *TaskLanes
@@ -1811,7 +1811,7 @@ type Config struct {
 	crewRole roles.Role
 
 	// Errand marks this agent as the short exchange behind home's `ask here`
-	// (cmd/aforge's chatv3_exchange.go) rather than a conversation somebody
+	// (cmd/codeaf's chatv3_exchange.go) rather than a conversation somebody
 	// sits in. It is a conversation in every other way — a real model, a real
 	// transcript, a card it can answer — so InTask would be a lie about it.
 	//
@@ -1931,7 +1931,7 @@ type Config struct {
 	taskDepth int
 
 	// Divide arms the division road for the tasks this session admits
-	// (task_divide.go). ON is what the v3 door wires (cmd/aforge's chatv3.go,
+	// (task_divide.go). ON is what the v3 door wires (cmd/codeaf's chatv3.go,
 	// from internal/config's Swarm, default true); the zero value is off, which
 	// is what keeps every scripted agent in this package's tests exactly as it
 	// was.

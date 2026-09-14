@@ -327,7 +327,7 @@ func TestWhatTheMachineKnowsAboutAFolder(t *testing.T) {
 // The @ list offers directories as well as files, marked, and choosing one
 // writes the path into the sentence exactly as a file does.
 func TestTheAtListOffersFoldersAndSaysWhichRowsThoseAre(t *testing.T) {
-	a := completionApp(t, "internal/tui3/app.go", "cmd/aforge/main.go", ".git/config")
+	a := completionApp(t, "internal/tui3/app.go", "cmd/codeaf/main.go", ".git/config")
 	typeInto(t, a, "look at @internal")
 	if !a.comp.loaded {
 		t.Fatal("the walk did not land")

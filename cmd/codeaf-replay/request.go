@@ -252,7 +252,7 @@ func roleOf(tag string) lane.Role {
 // build can write is reachable from source: the [session.callPurpose] values
 // handed to internal/session's one door (clientdoor.go, which is the only file
 // in that package that spells `provider.WithCallTag`), the errand names
-// `cmd/aforge`'s errandContext passes, and — because auxiliary.go hands the door
+// `cmd/codeaf`'s errandContext passes, and — because auxiliary.go hands the door
 // `callPurpose(role)` — every [roles.Role] constant there is. A word missing
 // from here reads as a background
 // errand, which is quiet, plausible and moves every number in the table, so the
@@ -310,7 +310,7 @@ var callSiteRoles = map[string]lane.Role{
 	"satisfied": lane.RoleJudge,
 	"delivery":  lane.RoleJudge,
 
-	// cmd/aforge's errandContext names each of the resident's side errands with
+	// cmd/codeaf's errandContext names each of the resident's side errands with
 	// its own word and declares the role beside it in the same call. The role
 	// here is the one that call site passes, read off the argument.
 	"quorum":       lane.RoleJudge,

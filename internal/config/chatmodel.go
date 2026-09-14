@@ -14,7 +14,7 @@ import "strings"
 // left.
 //
 // So the choice lands here, and the v3 door reads it back before it opens
-// (cmd/aforge's chatv3.go). The whole rule is three lines below and the
+// (cmd/codeaf's chatv3.go). The whole rule is three lines below and the
 // interesting one is that a SAVED CHOICE BEATS AFORGE_MODEL — which is the
 // registry's own law for this row rather than a new one. The talk slot carries
 // AFORGE_MODEL as an [Setting.EnvDefault] and not an [Setting.Env]: the

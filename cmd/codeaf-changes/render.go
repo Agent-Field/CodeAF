@@ -8,7 +8,7 @@ import (
 
 // The line CHANGELOG.md carries so that rolling a version up is an insertion at
 // a known place rather than a guess about which heading came first.
-const insertMarker = "<!-- aforge-changes inserts new versions directly below this line -->"
+const insertMarker = "<!-- codeaf-changes inserts new versions directly below this line -->"
 
 const repoURL = "https://github.com/Agent-Field/codeaf"
 

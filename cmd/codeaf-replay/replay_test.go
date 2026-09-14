@@ -249,7 +249,7 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 		yield("tool", "internal/session/toolask.go, a call with no tool named")
 		yield("tool:a_tool_nobody_has_added_yet", "internal/session/toolask.go, qualified by the tool")
 	},
-	// cmd/aforge/chat.go's errandContext passes the errand's own name straight
+	// cmd/codeaf/chat.go's errandContext passes the errand's own name straight
 	// through; its call sites are walked for the literals they hand it.
 	"task": func(yield func(tag, where string)) {},
 	// internal/session/clientdoor.go is the ONE place that package writes a tag

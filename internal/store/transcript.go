@@ -26,7 +26,7 @@ import (
 //
 // The messages table is the CONVERSATION, and a message anchored to a node is
 // read by half a dozen callers who each mean "what was said about this work":
-// a running leaf's steering mailbox (cmd/aforge/chat.go), the pickup bank that
+// a running leaf's steering mailbox (cmd/codeaf/chat.go), the pickup bank that
 // reconstructs a re-claimed leaf's progress from its own record
 // (internal/resident/bank.go, which pages the first 400 rows), the narrator,
 // the missed-direction sweep (internal/resident/redirect.go), the node lens

@@ -29,7 +29,7 @@ const smokeAnswer = "the smoke test answer"
 
 // buildAforgeStamped compiles the binary under test with a revision stamped in,
 // which also exercises the -ldflags path the release workflow depends on. An
-// empty stamp builds it exactly as `go build ./cmd/aforge` would.
+// empty stamp builds it exactly as `go build ./cmd/codeaf` would.
 func buildAforgeStamped(t *testing.T, stamp string) string {
 	t.Helper()
 	if testing.Short() {

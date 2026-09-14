@@ -155,7 +155,7 @@ var leafGrantWatched = []struct {
 	dir       string
 	doorsOnly bool
 }{
-	{dir: "cmd/aforge"},
+	{dir: "cmd/codeaf"},
 	{dir: "internal/session"},
 	{dir: "internal/exec", doorsOnly: true},
 }

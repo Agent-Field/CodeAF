@@ -15,7 +15,7 @@ bash bench/parallel/bench-par-chat.sh "$(pwd)/bench-results/chat-$(date +%s)"   
 python3 bench/parallel/bench-rank.py  # merge the CSVs, rank, audit the models
 ```
 
-`AFORGE_BIN` defaults to `./bin/aforge`; export it to measure another build.
+`AFORGE_BIN` defaults to `./bin/codeaf`; export it to measure another build.
 
 **Wall clock from a parallel grid is not comparable to a recorded sequential
 row.** Four cells contend for the machine during `pip install` and `pytest`.

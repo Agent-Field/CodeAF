@@ -1130,7 +1130,7 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 	return out.String()
 }
 
-// standingVerdict reads the answer. It is v1's parse (cmd/aforge/chat.go's
+// standingVerdict reads the answer. It is v1's parse (cmd/codeaf/chat.go's
 // checkSentinel) and keeps its law: the first word is the whole verdict, and a
 // reply that says neither is NOT a yes.
 //

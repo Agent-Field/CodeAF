@@ -267,7 +267,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	// default (prompt) mode when the pattern list is empty. The moment the
 	// list has an author, that list is the whole answer: a project row that
 	// replaced the person's patterns must not quietly re-allow git status
-	// underneath (cmd/aforge's TestAProjectBashRowReplacesTheRememberedOne).
+	// underneath (cmd/codeaf's TestAProjectBashRowReplacesTheRememberedOne).
 	if !matched && len(p.BashPatterns) == 0 && p.liftsReadOnly(ToolBash) && decision.Action == ActionPrompt && readOnlyBash(command) {
 		return Decision{Action: ActionAllow, Rule: "read-only"}
 	}

@@ -93,7 +93,7 @@ var draftOrdinals = struct {
 // IT IS NOT A PURE FUNCTION AND MUST NOT BE CALLED TWICE FOR ONE CONVERSATION:
 // each call takes the next ordinal for that workspace, which is what stops two
 // conversations of this process colliding. The door calls it exactly once, in
-// the same breath as it builds the agent (cmd/aforge's chatv3_process.go).
+// the same breath as it builds the agent (cmd/codeaf's chatv3_process.go).
 //
 // THE PID STAYS THE LAST TOKEN, which is not a style choice:
 // [draftWindowAlive] parses it out of the name to decide whether the window

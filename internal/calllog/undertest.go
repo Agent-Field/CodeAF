@@ -27,7 +27,7 @@ import (
 // directory of its own, or the AFORGE_CALL_LOG pin — and gets one.
 //
 // THE GATE IS HERE RATHER THAN IN THE HELPERS THAT BUILD CLIENTS because a
-// helper can be forgotten. `internal/provider` and `cmd/aforge` each pin the
+// helper can be forgotten. `internal/provider` and `cmd/codeaf` each pin the
 // log off in their own TestMain, and every other package that reaches a client
 // through them did not, which is the whole defect: the fix that lives in a test
 // helper protects the packages somebody remembered and no others, and a package

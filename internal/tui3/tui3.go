@@ -12,7 +12,7 @@
 // The seam is [Agent] — the handful of methods this surface calls on a session.
 // *session.Agent satisfies it; so does a scripted fake, which is how the
 // surface is tested without a provider. The surface never constructs an agent
-// (cmd/aforge owns config resolution and session files); it is handed one, and
+// (cmd/codeaf owns config resolution and session files); it is handed one, and
 // handed a way to ask for a fresh one when the person types /new.
 //
 // What lives where:
@@ -66,7 +66,7 @@ type Agent interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
 	// SubmitImage is Submit with pictures: one user message carrying the text
 	// and the images, and then a normal turn. A model that cannot see
-	// (session.Config.SupportsImages, wired in cmd/aforge) does not end the
+	// (session.Config.SupportsImages, wired in cmd/codeaf) does not end the
 	// message — the pictures and the words go to the looking model instead, and
 	// its answer streams back as the turn's reply, prefixed "[vision: <model>]".
 	// It refuses — with an error and no stream — only when nothing can look at
@@ -195,7 +195,7 @@ type Agent interface {
 // how this surface tells the two apart without guessing.
 //
 // The distinction cannot be read off a machine name: a conversation hosted by
-// the daemon on this laptop has no machine in front of it (cmd/aforge's
+// the daemon on this laptop has no machine in front of it (cmd/codeaf's
 // chatv3_local.go dials with an empty host on purpose), and it is exactly the
 // one whose work must survive the window. Only the agent knows what it is
 // attached to, so it is asked ([remote.Agent.Detach]).
@@ -224,7 +224,7 @@ type detachable interface {
 // IT EXISTS BECAUSE THE CLOSURES ARE PER AGENT, and holding that as eleven
 // separate fields on Options was a bug rather than a style. The consent card's
 // "always" is written to disk and then handed to the gate the session is
-// running behind (cmd/aforge's chatv3_approval.go); when the trio was built once
+// running behind (cmd/codeaf's chatv3_approval.go); when the trio was built once
 // at boot, an always answered after a /new or a resume was saved correctly, said
 // "saved" correctly, and pushed the rebuilt gate into the agent that had just
 // been closed — so it did not answer the very next call, as the manual says it
@@ -419,7 +419,7 @@ type Options struct {
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
 	// session, wrapped so that the two READING methods are spelled the way this
-	// surface asks for them (cmd/aforge's v3MemorySeam).
+	// surface asks for them (cmd/codeaf's v3MemorySeam).
 	Memory MemoryStore
 
 	// Search is the conversation index the search place reads: one full-text
@@ -482,7 +482,7 @@ type Options struct {
 	// AND IT MAY NOT BLOCK. It is asked on the open and on the three-second beat,
 	// which are the two moments a place may read anything — but over a wire those
 	// are still moments a person is waiting through. The door answers from a
-	// cache that refreshes behind itself (cmd/aforge's [hostWorld]), which is the
+	// cache that refreshes behind itself (cmd/codeaf's [hostWorld]), which is the
 	// same bargain and the same law [StandingSeam.Items] already keeps.
 	World func() (session.World, bool)
 
@@ -562,7 +562,7 @@ type Options struct {
 	//
 	// IT MUST BE CHEAP AND IT MUST BUILD NOTHING. It is asked on the keystroke
 	// that opens a row, and internal/enginehost states the law it answers under:
-	// ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. cmd/aforge's
+	// ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. cmd/codeaf's
 	// v3HostAnswers is the shape — one connect to a socket that may not be
 	// there, and closed again.
 	//
@@ -584,7 +584,7 @@ type Options struct {
 	// every piece of work this project has run, and the rows a person most wants
 	// are the ones happening right now — in the conversation next door, which
 	// this window has no lane into. The lane exists: `aforge chat` is a SURFACE
-	// talking to this workspace's engine over a socket (cmd/aforge's
+	// talking to this workspace's engine over a socket (cmd/codeaf's
 	// chatv3_local.go), and that engine holds every conversation open. So the door
 	// dials the engine it is already talking to, names the conversation with
 	// [remote.Hello.Join] — take the one that is already open, never start one —
@@ -716,7 +716,7 @@ type Options struct {
 	// Notice is one sentence the door wants on the entry notice line — the
 	// place a resumed session is announced. It is how "the session you asked
 	// for is open somewhere else, so this is a new one" reaches the person who
-	// needs to know it, without cmd/aforge printing to a screen the surface is
+	// needs to know it, without cmd/codeaf printing to a screen the surface is
 	// about to take over.
 	Notice string
 
@@ -794,14 +794,14 @@ type Options struct {
 	// THE FLAG AND NOT THE PROFILE IT OVERRIDES. Under it the door hands the
 	// session no roles source and no task model, so every text call rides the
 	// conversation's own model and the four crew rows in [Options.ProfileDir]
-	// seat nothing (cmd/aforge's applyV3Governance, internal/session's Config.OneModel).
+	// seat nothing (cmd/codeaf's applyV3Governance, internal/session's Config.OneModel).
 	// A surface that did not know the flag existed read those rows anyway and
 	// drew `crew custom` over a crew that was not in force (#444).
 	//
 	// It is a bit and not a derivation because the profile cannot be asked: the
 	// rows are still on disk, unchanged, and the flag is the only thing that
 	// knows they are not seating this run. The --host door refuses the flag at
-	// the door (cmd/aforge's chatv3.go), so a hosted surface never sets it.
+	// the door (cmd/codeaf's chatv3.go), so a hosted surface never sets it.
 	OneModel bool
 
 	// SaveApproval and SaveBashApproval are how the consent card's "always"
@@ -917,7 +917,7 @@ type Options struct {
 	// doors — `--host`, `--at`, and the ordinary `aforge chat` that talks to this
 	// machine's own engine over a socket — all hand back the SAME [remote.Agent]
 	// from both seams, because that agent holds no state: it is a handle on
-	// whichever conversation the engine currently has open (cmd/aforge's
+	// whichever conversation the engine currently has open (cmd/codeaf's
 	// chatv3_host.go, internal/remote's Agent). The local in-process door builds a
 	// real second agent and leaves this false. One of those three engine doors
 	// names no host at all, so `Host == ""` is not the question.
@@ -961,7 +961,7 @@ type Options struct {
 	// anything over `--host` — leaves it false and gets no home by saying
 	// nothing, rather than by each of them remembering to switch one off. The
 	// one door that sets it is `aforge` and `aforge chat` with no --session and
-	// no --once (cmd/aforge's chatv3.go).
+	// no --once (cmd/codeaf's chatv3.go).
 	//
 	// A person who NAMED a conversation is not landing: `--session <path>` and
 	// `aforge resume` both mean "that one", and a menu over the thing somebody
@@ -995,7 +995,7 @@ type Options struct {
 	// a full terminal with no particular conversation in mind is asked, and
 	// every other door — --once, --host, the picker, a named session, a test,
 	// a pipe — leaves it false by saying nothing. The one door that sets it is
-	// `aforge` and `aforge chat` bare on a TTY (cmd/aforge's chatv3.go). The
+	// `aforge` and `aforge chat` bare on a TTY (cmd/codeaf's chatv3.go). The
 	// returning OpenRouter connection is governed separately by
 	// [Options.ConnectOpenRouter], because a missing prerequisite is not a
 	// first-run greeting and may stand over a resumed conversation too.
@@ -1032,7 +1032,7 @@ type Options struct {
 	// characters a reader can announce, and nothing on the screen changes unless
 	// something actually happened.
 	//
-	// THE SEAM: there is no cmd flag for this yet. The door (cmd/aforge) owns
+	// THE SEAM: there is no cmd flag for this yet. The door (cmd/codeaf) owns
 	// flags and this package owns rendering, so the field lands first and the
 	// `--linear` that sets it lands with the door's next wave — one line there,
 	// nothing here. A settings row is the other candidate and is the wrong one:
@@ -1064,7 +1064,7 @@ type Options struct {
 	//
 	// The zero value is a surface with no link to report, which is every LOCAL
 	// session: no segment on the status line, no notice looked for, no question
-	// asked about. Only the --host door fills it (cmd/aforge's chatv3_host.go).
+	// asked about. Only the --host door fills it (cmd/codeaf's chatv3_host.go).
 	Link LinkSeam
 
 	// Width and Height are the size a headless driver is pretending to be.
@@ -1221,7 +1221,7 @@ type StandingSeam struct {
 
 	// Ticking reports that THIS PROCESS is running the standing pass itself —
 	// the every-five-minutes walk any open window takes when it gets the store's
-	// lock (cmd/aforge's startStandingTicks).
+	// lock (cmd/codeaf's startStandingTicks).
 	//
 	// IT IS WHAT LETS /status SAY THE AMBIENT SIDE IS NOT BEING CHECKED. Without
 	// it the line could only say `installed` or assert `while a window is open`

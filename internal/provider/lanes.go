@@ -1003,7 +1003,7 @@ func LaneSheetCertain(base string) bool {
 // should carry. It is the one door through which internal/lane is handed a
 // transport, and it is exported because two callers need it and a second
 // spelling of it would drift: [NewClient] wires the base its client talks to,
-// and the process's own beat (cmd/aforge's lanebeat.go) wires the base the
+// and the process's own beat (cmd/codeaf's lanebeat.go) wires the base the
 // settings name, because on three headless doors the beat starts before any
 // client exists and a beat over an unwired sheet fetches nothing at all.
 //

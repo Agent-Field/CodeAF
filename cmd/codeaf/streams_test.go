@@ -90,7 +90,7 @@ func TestNoDoorPrintsItsCommentaryToStdout(t *testing.T) {
 	// package stops spelling its stdout writes the way this reads them, the
 	// test must say so rather than go quiet.
 	if found < 40 {
-		t.Fatalf("the scan found only %d writes to stdout in cmd/aforge, which is too few to be reading the package — "+
+		t.Fatalf("the scan found only %d writes to stdout in cmd/codeaf, which is too few to be reading the package — "+
 			"stdoutLiteral has stopped recognising how these doors write", found)
 	}
 }

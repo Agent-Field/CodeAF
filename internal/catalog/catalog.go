@@ -450,7 +450,7 @@ func (c *Catalog) rows() *rows {
 // the only honest way to test it is to count the blocking questions a launch
 // asks and pin the total: a wall-clock assertion would pass or fail on whether
 // the warming goroutine happened to land first, which is a fact about the
-// network and not about the change under review. cmd/aforge's launch pins read
+// network and not about the change under review. cmd/codeaf's launch pins read
 // this; nothing inside this package does.
 func (c *Catalog) BlockingReads() int64 {
 	if c == nil {

@@ -190,7 +190,7 @@ func TestPickingACrewWritesTheRowThatWasInherited(t *testing.T) {
 // THE SEAT THE CONVERSATION READS IS THE SEAT ITS TASKS RUN ON. The role map the
 // door builds resolves the worker row through the same call this surface asks
 // for its line, so the sentence and the work cannot be about two models
-// (cmd/aforge's v3Crew, and internal/config's TestEveryReadOfATierRowGoesThroughTheLadder).
+// (cmd/codeaf's v3Crew, and internal/config's TestEveryReadOfATierRowGoesThroughTheLadder).
 func TestTheWorkSeatTheSheetNamesIsTheModelTheWorkerRowResolvesTo(t *testing.T) {
 	a := crewSeatLab(t, preSeatCrew)
 	seat := a.workSeat()

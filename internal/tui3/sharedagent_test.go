@@ -15,7 +15,7 @@ import (
 // opens onto this machine's own engine — all answer [Options.Resume] with the
 // AGENT THEY WERE GIVEN, because that agent holds no state: it is a handle on
 // whichever conversation the engine currently has open, and the engine has just
-// swapped which one that is (cmd/aforge's chatv3_host.go, internal/remote's
+// swapped which one that is (cmd/codeaf's chatv3_host.go, internal/remote's
 // Agent, and chatv3_host_shared_test.go proves both against the real server).
 //
 // This file is the SURFACE's half of that contract. The fake below is faithful

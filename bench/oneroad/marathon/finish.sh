@@ -38,7 +38,7 @@ CELL="$MAR_OUT/$ARM-$TASK-$SEED"
 CONTAINER="oneroad-mar-$ARM-$TASK-$SEED"
 SESSION_NAME="$CONTAINER"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
 HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
 
 say() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CELL/cell.log"; }

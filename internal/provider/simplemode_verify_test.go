@@ -320,7 +320,7 @@ func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
 
 	// EVERY ROLE A PERSON IS READING CARRIES THE DEMAND: the conversation's own
 	// turn, a task room somebody is sitting in front of, and the headless
-	// commands they type (cmd/aforge's typedDoorContext, which names the second
+	// commands they type (cmd/codeaf's typedDoorContext, which names the second
 	// of these).
 	for _, watched := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafAttached} {
 		knobs := callKnobs{role: watched}
@@ -408,7 +408,7 @@ func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) 
 
 // AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `aforge do`'s first
 // request is its planning pass, in a role nobody reads, and it is still the
-// thing the person at the terminal is waiting on — cmd/aforge's
+// thing the person at the terminal is waiting on — cmd/codeaf's
 // lanepin_doors_test holds that door to the pin on its first request.
 func TestInsideATypedCommandEveryRoleCarriesTheTalkPin(t *testing.T) {
 	client, _, model := stubbedRouter(t)

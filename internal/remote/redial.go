@@ -71,7 +71,7 @@ const (
 )
 
 // Dialer opens ONE fresh transport to the engine. It is the seam the redial
-// loop turns on: the spawning of ssh belongs to the door (cmd/aforge, which
+// loop turns on: the spawning of ssh belongs to the door (cmd/codeaf, which
 // owns processes and flags) and this package must be able to ask for it again
 // without knowing what it is.
 type Dialer func() (io.ReadWriteCloser, error)
@@ -97,7 +97,7 @@ func (r *Roaming) window() time.Duration {
 // roamed: a machine that cannot be reached at all, an aforge that is not
 // installed there, a version that does not match — those are things the door
 // has to be able to say plainly on a terminal that is still the person's (the
-// prompt law in cmd/aforge's chatv3_host.go), and quietly retrying them for
+// prompt law in cmd/codeaf's chatv3_host.go), and quietly retrying them for
 // five minutes would replace an answerable sentence with a hang.
 func Roam(host string, hello Hello, roam Roaming) (*Client, error) {
 	if roam.Dial == nil {

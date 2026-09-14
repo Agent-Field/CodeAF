@@ -14,7 +14,7 @@
 // (internal/session's enumeratesWidth).
 //
 // IT IS ONE ANSWER, ASKED IN THREE PLACES. The gate was written for the
-// resident's planner and its leaves (cmd/aforge/cooperative.go) and measured
+// resident's planner and its leaves (cmd/codeaf/cooperative.go) and measured
 // against the swarm bench corpus, where it reproduced the empirically best
 // arm's decision on every task in the table: twelve image files and eight
 // endpoints divided, four modules and three bugs did not. The v3 session engine

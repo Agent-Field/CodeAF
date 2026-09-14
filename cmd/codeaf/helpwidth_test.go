@@ -140,7 +140,7 @@ func helpPages(t *testing.T) []helpPage {
 // so the failure above is something an author can open rather than something
 // they have to grep for.
 //
-// It reads cmd/aforge with go/parser because the two big pages are RAW STRING
+// It reads cmd/codeaf with go/parser because the two big pages are RAW STRING
 // LITERALS spanning a hundred lines each: the position of the literal plus the
 // number of newlines before the offending text inside it is the line in the
 // file. That import is also what puts this law on the pull-request gate —

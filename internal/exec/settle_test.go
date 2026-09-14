@@ -19,7 +19,7 @@ import (
 // plan.Node.Checked is the marker because it is a string an ending replaces;
 // nothing accumulates into it, so a door copying a leaf's ending writes a plain
 // assignment and this walk catches it. The tree's other Checked is an unrelated
-// counter on resident.WatchPass in cmd/aforge/wake.go and is reached only by +=;
+// counter on resident.WatchPass in cmd/codeaf/wake.go and is reached only by +=;
 // naming it here keeps the law from being widened until ordinary watchkeeping
 // makes it red and somebody deletes it. Reading the plain assignments across
 // the checkout makes a second copy of the ending fail in the file that
@@ -90,7 +90,7 @@ func TestBothDoorsSettleThroughTheSeam(t *testing.T) {
 		call     string
 		door     string
 	}{
-		{"cmd/aforge/chat.go", "recordOutcome", "exec.Settle", "chat recordOutcome"},
+		{"cmd/codeaf/chat.go", "recordOutcome", "exec.Settle", "chat recordOutcome"},
 		{"internal/exec/schedule.go", "apply", "Settle", "headless scheduler apply"},
 	}
 	for _, test := range tests {

@@ -7228,7 +7228,7 @@ func (a *app) openConversation(file string) (Conversation, bool, error) {
 // at boot, around the agent the door opened before the surface existed, and it
 // stayed wired to that agent through every /new and every resume. So an "always"
 // answered in a conversation opened later was written to the profile correctly
-// and pushed into a closed session (cmd/aforge's chatv3_approval.go says what the
+// and pushed into a closed session (cmd/codeaf's chatv3_approval.go says what the
 // push is for), which the person had no way to see: the card said saved, it was
 // saved, and the very next call asked again. Rebinding here means the closure a
 // keystroke reaches is always the one minted around the agent that keystroke is
@@ -8415,7 +8415,7 @@ func (a *app) measureContext() {
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog
 		// resolves in the background AFTER this surface is already up, and it
-		// tells the agent directly (cmd/aforge's warmV3Models) where there is
+		// tells the agent directly (cmd/codeaf's warmV3Models) where there is
 		// no seam back to here. Asking the model list again is that seam, and
 		// it cannot block — [app.modelList] falls through to the disk cache and
 		// then to the built-ins. Once it answers, it is never asked again.
@@ -8982,7 +8982,7 @@ func gitHead(dir string) (string, bool, bool) {
 // THIS IS A SAFETY CLAIM AND IT MUST MATCH THE POSTURE IN FORCE. The segment is
 // drawn only when the gate is open (render.go's NEGATIVE-SPACE SAFETY), so its
 // ABSENCE is the claim that every tool call will be asked about — and the gate
-// it is claiming about is the one cmd/aforge built from
+// it is claiming about is the one cmd/codeaf built from
 // [config.ToolApprovalModeAt] on the very same profile directory (chatv3.go's
 // v3Policy). The two must be one reading, because a segment that is quiet over
 // an open gate is the surface telling somebody they will be asked before their
@@ -9001,7 +9001,7 @@ func gitHead(dir string) (string, bool, bool) {
 //
 // THE PROFILE ROW IS NOT THE ONLY THING THAT OPENS THIS GATE. `aforge chat
 // --yolo` replaces the gate's default for the session and writes nothing down
-// (cmd/aforge's v3Policy), so a surface that read only the profile drew nothing
+// (cmd/codeaf's v3Policy), so a surface that read only the profile drew nothing
 // over a gate that was open for the whole run (#325). The launch hands that
 // posture down instead, and a launch that hands nothing down is read from the
 // profile, live, as before. Locally the handed-down answer can ONLY ever be

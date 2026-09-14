@@ -1,4 +1,4 @@
-// aforge-replay judges a chooser by REGRET ON TEN DAYS OF LOG rather than by a
+// codeaf-replay judges a chooser by REGRET ON TEN DAYS OF LOG rather than by a
 // screenshot.
 //
 // IT EXISTS BECAUSE WE WERE TUNING A BANDIT BY ANECDOTE. Every change to the
@@ -21,13 +21,13 @@
 // unattended errand are not the same second.
 //
 // IT IS A DEVELOPER'S BINARY AND NEVER A VERB ON aforge, for the reason
-// cmd/aforge-census and cmd/aforge-changes are: the shipped binary is on a
+// cmd/codeaf-census and cmd/codeaf-changes are: the shipped binary is on a
 // checked-in byte budget (SIZE-BUDGET) and a measuring tool must not spend the
 // product's weight.
 //
 // Usage:
 //
-//	aforge-replay [flags]
+//	codeaf-replay [flags]
 //
 //	  -log PATH         the model-call log (default: this machine's own)
 //	  -sightings PATH   the lane observation journal (default: beside the belief file)
@@ -69,12 +69,12 @@ func main() {
 		path = calllog.PathFor("")
 	}
 	if path == "" {
-		fmt.Fprintln(os.Stderr, "aforge-replay: no call log to read (the log is switched off; name one with -log)")
+		fmt.Fprintln(os.Stderr, "codeaf-replay: no call log to read (the log is switched off; name one with -log)")
 		os.Exit(2)
 	}
 	rows, err := callrows.Read(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aforge-replay: %v\n", err)
+		fmt.Fprintf(os.Stderr, "codeaf-replay: %v\n", err)
 		os.Exit(1)
 	}
 	rows = from(rows, *since)
@@ -89,7 +89,7 @@ func main() {
 	if strings.TrimSpace(*out) != "" {
 		file, err := os.Create(*out)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "aforge-replay: %v\n", err)
+			fmt.Fprintf(os.Stderr, "codeaf-replay: %v\n", err)
 			os.Exit(1)
 		}
 		defer file.Close()
@@ -106,7 +106,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: aforge-replay [flags]
+	fmt.Fprint(os.Stderr, `usage: codeaf-replay [flags]
 
 Replays the model-call log through every candidate chooser and prints, as
 markdown, the regret each one would have paid (docs/design/recovery/DESIGN.md §8).

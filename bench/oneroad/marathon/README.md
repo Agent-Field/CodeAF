@@ -48,7 +48,7 @@ is the default, so nothing is pinned:
 ```bash
 cd ~/af-oneroad/bench/oneroad/marathon
 AFORGE_BUILD_COMMIT=<commit the binary was built from> \
-NEW_BIN=~/af-oneroad/bin/aforge \
+NEW_BIN=~/af-oneroad/bin/codeaf \
 nohup bash cell.sh aforge-crew rust-java-lsp > ~/af-bench/marathon/.aforge.out 2>&1 &
 # watch it:  tmux attach -t oneroad-mar-aforge-crew-rust-java-lsp-s1
 ```
@@ -63,8 +63,8 @@ commit the binary was built from and check the sha it prints:
 
 ```bash
 cd ~/af-oneroad/bench/oneroad/marathon
-sha256sum ~/af-oneroad/bin/aforge            # confirm it is the new build
-SEED=s2 AFORGE_BUILD_COMMIT=<new build commit> NEW_BIN=~/af-oneroad/bin/aforge \
+sha256sum ~/af-oneroad/bin/codeaf            # confirm it is the new build
+SEED=s2 AFORGE_BUILD_COMMIT=<new build commit> NEW_BIN=~/af-oneroad/bin/codeaf \
   nohup bash cell.sh aforge-crew rust-java-lsp \
   > ~/af-bench/marathon/.aforge-s2.out 2>&1 &
 # watch:  tmux attach -t oneroad-mar-aforge-crew-rust-java-lsp-s2

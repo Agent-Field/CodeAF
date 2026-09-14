@@ -7403,7 +7403,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		taskDepth:                  depth,
 		// AND THE ROAD ITSELF, WITHOUT WHICH IT IS OPEN ON PAPER ONLY. Divide is
 		// the person's own setting for whether wide work may hand its parts out
-		// (cmd/aforge's chatv3.go, config's Swarm), and it is set on the
+		// (cmd/codeaf's chatv3.go, config's Swarm), and it is set on the
 		// CONVERSATION — which can never divide, because [Config.mayDivide] also
 		// wants mayFanOut and a conversation is not in a task. Every agent that
 		// CAN divide is built right here, so a constructor that did not carry the
@@ -7759,7 +7759,7 @@ func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session stri
 	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
 	// for it. A conversation opened outside any project has a workspace of its
 	// own — work/, which the door makes into a repository with a first commit
-	// precisely so that tasks get worktrees (cmd/aforge's prepareOwnedWorkspace)
+	// precisely so that tasks get worktrees (cmd/codeaf's prepareOwnedWorkspace)
 	// — so it HAS somewhere to stand and needs nothing said about projects. This
 	// once refused every such task with "this task needs a project", which was a
 	// person being turned away from work that needed no repository at all: file

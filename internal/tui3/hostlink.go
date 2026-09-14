@@ -62,7 +62,7 @@ type LinkSeam struct {
 	// is laid out twice per frame and the frame turns thirty times a second, so
 	// a Note that reached for the wire would be a terminal that stopped
 	// repainting for as long as the far machine took to answer — on a link that
-	// had just died, ten seconds per frame ([hostStanding] in cmd/aforge states
+	// had just died, ten seconds per frame ([hostStanding] in cmd/codeaf states
 	// the whole of that law about its own seam, and keeps a cache to obey it).
 	//
 	// This one needs no cache, and that is a fact about the client rather than
@@ -327,7 +327,7 @@ func (a *app) takeLinkNotice() {
 
 // newsSilenceNote is the one sentence a window says when the engine it is on is
 // from before the status line's news crossed a connection. It is in the
-// engine-host sentences' own voice (cmd/aforge's busyEngineHostSentence): the
+// engine-host sentences' own voice (cmd/codeaf's busyEngineHostSentence): the
 // machine is older, nothing is wrong, and it says when that changes.
 const newsSilenceNote = "this conversation's engine is an older aforge, so the provider and tok/s are not shown — they come back once it picks up this build"
 

@@ -131,7 +131,7 @@ echo "%s"
 }
 
 // jobParkConfig is what the v3 door wires for work, with this scenario's one
-// row moved: everything here is read the way cmd/aforge reads it
+// row moved: everything here is read the way cmd/codeaf reads it
 // (chatv3.go's applyV3Governance).
 func jobParkConfig(w *world) func(*session.Config) {
 	profile := w.settings.ProfileDir

@@ -292,7 +292,7 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 }
 
 // runHarnessTool calls one tool off a harness belt by name — the same hand the
-// run's bridge reaches for it with (cmd/aforge's chatv3_harness.go).
+// run's bridge reaches for it with (cmd/codeaf's chatv3_harness.go).
 func runHarnessTool(t *testing.T, belt []bare.Tool, name, arguments string) (string, bool, error) {
 	t.Helper()
 	for _, tool := range belt {

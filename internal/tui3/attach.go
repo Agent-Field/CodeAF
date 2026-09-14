@@ -69,7 +69,7 @@ import (
 //	what /image does      [app.attachPath]
 //	what /attach does     [app.attachFilePath]
 //	what the completion does when the file is an image  [app.completeFile]
-//	the gate              session.Config.SupportsImages, wired in cmd/aforge
+//	the gate              session.Config.SupportsImages, wired in cmd/codeaf
 
 // maxAttachBytes is the per-picture ceiling this surface enforces, and it is
 // deliberately the SAME number internal/session's own guard uses

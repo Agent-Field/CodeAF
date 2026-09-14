@@ -30,7 +30,7 @@ func (*seamHistory) Recent(int) []history.Entry            { return nil }
 //
 // THE BUG IT REPRODUCES. The consent card's "always" does two things: it writes
 // the rule into the person's profile, and it hands the gate the running session
-// is behind a rebuilt policy (cmd/aforge's chatv3_approval.go). The second half
+// is behind a rebuilt policy (cmd/codeaf's chatv3_approval.go). The second half
 // was wired once, at boot, around the agent the door opened before this surface
 // existed — so after a /new the write still landed and the push went into the
 // session that /new had just closed. The card said `saved`, it was saved, and

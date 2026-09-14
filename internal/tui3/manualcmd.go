@@ -16,7 +16,7 @@ package tui3
 // it. It makes no model call and spends nothing: the pages are inside the binary
 // and reading them is a lookup, not a turn.
 //
-// THE COMMAND LINE HAS THE SAME DOOR (cmd/aforge's manual.go) and it is not a
+// THE COMMAND LINE HAS THE SAME DOOR (cmd/codeaf's manual.go) and it is not a
 // duplicate of this one — it is the door for the questions people ask BEFORE
 // there is a key to open a conversation with.
 

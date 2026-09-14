@@ -288,7 +288,7 @@ func (s *Store) LoadRun(path string) (Trace, error) {
 //
 // IT IS THE PAGE STORE'S ANSWER TO "WHEN DID THIS LAST RUN", and it is the whole
 // answer for a page: every run of one goes through the surface's single run door
-// (cmd/aforge's v3RunHarness), whichever list started it, and that door saves a
+// (cmd/codeaf's v3RunHarness), whichever list started it, and that door saves a
 // trace here. So a page run from `/harness` and a page run from `/subharness`
 // both land in this directory, which is what lets the two doors agree.
 //

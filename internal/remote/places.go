@@ -150,7 +150,7 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 // a scripted engine in a test and any shape of agent that keeps no places
 // honestly lack it, and a method on the interface would make each of them a
 // compile error for a capability they have no answer to. *session.Agent
-// satisfies it, which is the case that matters — cmd/aforge's engine.go pins
+// satisfies it, which is the case that matters — cmd/codeaf's engine.go pins
 // that by construction.
 type placeKeeper interface {
 	ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error)
