@@ -210,7 +210,7 @@ func TestPlanContractsRideTheRunCacheKey(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "", false)(context.Background(), resident.Compiled{
 		Goal:  "review the pull request and deliver REVIEW.md",
 		Scale: head.ScaleProject,
 	})
