@@ -94,7 +94,7 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 		// BELIEFS. That is right about ranking and wrong about waiting: a
 		// later turn on a model this process has barely measured still has
 		// a sheet of other machines, and leaving them off is how a stall
-		// sat at "all lanes slow" for 129s with arms:None (F33). Routing
+		// sat at "all providers slow" for 129s with arms:None (F33). Routing
 		// and waiting are two questions; an empty Choice is not an empty
 		// frontier.
 		plan.Alts = sheetAlts(model, plan.Lane)

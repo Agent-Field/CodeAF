@@ -274,12 +274,12 @@ asked about at the moment they matter rather than before you have started.
 ## The first prompt hung — still waiting, /model switches
 
 A first run opens on this build's default unless you picked something else on the setup
-screen's **Chat model** row, and `/model` is the door that moves it afterwards. If that first prompt's lane
+screen's **Chat model** row, and `/model` is the door that moves it afterwards. If that first prompt's provider
 goes quiet before a word arrives, aforge does not sit silent until the ninety-second
-cut: it tries another lane and says so, naming the door —
+cut: it tries another provider and says so, naming the door —
 
 ```
-still no answer — trying another lane · /model switches
+still no answer — trying another provider · /model switches
 ```
 
 The line is a rescue of this answer, not a choice you made. Your model is untouched

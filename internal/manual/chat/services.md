@@ -1,8 +1,8 @@
 # Services — the places models come from
 
-## Add a key — connect a service, add a provider, use a different model service
+## Add a key — connect a service, add an api key for another provider, use a different model service
 
-Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
+An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
 connected. Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
@@ -171,7 +171,7 @@ the ids it returned, with no reconnect.
 An empty catalog also means aforge cannot know which picture-making, speech or video
 models that service offers. Those tools are off the belt for that service—absent rather
 than present and broken. Text models can still be named and used. A direct service has
-one lane, so there is nothing to choose between; that is not a fault.
+one provider, so there is nothing to choose between; that is not a fault.
 
 ## Remove a key — disconnect a service, delete a key, stop using a service
 
@@ -196,9 +196,9 @@ heading for each service, default first, in the order shown in the Providers tab
 The status line uses the same spelling: an unqualified default-service id, and
 `<service>/<model id>` for every other service. It does not shorten
 `ollama/llama3.2:latest` to `llama3.2:latest`, because two services may publish the
-same model name. `via <machine>` belongs only to a default-service model with router
-lanes. A direct-service row and status line draw no `via` at all and open no lane
-sheet; that service has one road, not a choice of serving machines.
+same model name. `via <provider>` belongs only to a default-service model with router
+providers. A direct-service row and status line draw no `via` at all and open no provider
+sheet; that service has one road, not a choice of providers.
 
 ## Why does my plan show no cost instead of unbilled or could not be priced?
 
@@ -212,8 +212,8 @@ rather than saying a subscription call was charged but could not be priced. Dire
 whose usage block does arrive still record their model call and token counts without an
 invented price.
 
-A direct service has one lane, so there is no serving-machine picker and nothing to
-choose between. That is not a fault. Price caps, privacy negotiation and lane routing
+A direct service has one provider, so there is no provider picker and nothing to
+choose between. That is not a fault. Price caps, privacy negotiation and provider routing
 belong to the default routed service and are not applied to a direct call.
 
 ## A local runner — Ollama, LM Studio, vLLM, llama.cpp
@@ -226,7 +226,7 @@ requires.
 The connection check asks the local runner for its model list first. When it answers,
 its models appear under the service's heading in `/model`; when that address is absent,
 the runner can still connect and its group asks for a model id. A local
-service has one lane, so there is nothing to choose between and that is not a fault.
+service has one provider, so there is nothing to choose between and that is not a fault.
 
 ## Something else — a proxy, a gateway, or your own endpoint
 
@@ -242,4 +242,4 @@ neither switches back to `custom`.
 In Phase 1 a **Something else** service must provide the compatible chat path. Aforge
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
 When that address is absent, aforge connects the service without inventing rows and the
-picker asks you to type a model id. Direct calls record no cost in Phase 1 and have one lane.
+picker asks you to type a model id. Direct calls record no cost in Phase 1 and have one provider.

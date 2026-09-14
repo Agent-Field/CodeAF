@@ -619,7 +619,7 @@ func isAttachment(part ai.ContentPart) bool {
 // not a deletion because the message around it usually refers to the thing —
 // "what is wrong with this screenshot" answered against no screenshot is a
 // confident answer about nothing, which is worse than a refusal.
-const attachmentNote = "[an attachment was removed: no endpoint serving this model could accept it]"
+const attachmentNote = "[an attachment was removed: no provider serving this model could accept it]"
 
 // dropAttachments rewrites messages so nothing but text travels. It is a pure
 // function and returns the input untouched when there was nothing to drop, so a
@@ -953,7 +953,7 @@ func (e *RefusalError) Error() string {
 		return ""
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "no endpoint can serve %s — refused after %s", e.Model, countedAttempts(e.Attempts))
+	fmt.Fprintf(&out, "no provider can serve %s — refused after %s", e.Model, countedAttempts(e.Attempts))
 	if len(e.Params) > 0 {
 		out.WriteString(". sent: " + strings.Join(e.Params, ", "))
 	}

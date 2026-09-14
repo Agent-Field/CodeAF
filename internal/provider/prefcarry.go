@@ -215,11 +215,11 @@ var (
 
 // uncarriedPinLine is the whole sentence, spelled ONCE, here.
 //
-// It names the two things a person needs to go and look at — the machine they
+// It names the two things a person needs to go and look at — the provider they
 // pinned and the address this session is talking to — and it says what happened
 // to their request rather than what happened to the field: the work went out.
 func uncarriedPinLine(lane, base string) string {
-	return baseHost(base) + " does not take a lane choice; " + lane +
+	return baseHost(base) + " does not take a provider choice; " + lane +
 		" is not being asked for, and your requests still go out"
 }
 
