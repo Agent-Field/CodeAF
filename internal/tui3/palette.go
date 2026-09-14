@@ -311,16 +311,8 @@ func (p *picker) rank() {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(id, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := queryScore(id, tokens)
+		if !hit {
 			continue
 		}
 		p.score[i] = total
@@ -386,16 +378,10 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 		return false
 	}
 	views := laneViews(model, now)
-	matched := make([]struct {
-		view  laneView
-		score int
-	}, 0, len(views))
+	matched := make([]scoredLane, 0, len(views))
 	for _, view := range views {
 		if total, hit := queryScore(strings.ToLower(view.Name), tokens); hit {
-			matched = append(matched, struct {
-				view  laneView
-				score int
-			}{view, total})
+			matched = append(matched, scoredLane{view: view, score: total})
 		}
 	}
 	if len(matched) == 0 {
@@ -432,6 +418,13 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	}
 	p.follow(pickerRows)
 	return true
+}
+
+// scoredLane is one machine of an open fold beside how well the filter box
+// matched its name, so the two can be sorted together.
+type scoredLane struct {
+	view  laneView
+	score int
 }
 
 // queryScore is [tokenScore] over a whole query: every token has to match and
