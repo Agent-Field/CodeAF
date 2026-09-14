@@ -34,23 +34,89 @@ package session
 // is.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
 // the belt the shipping conversation door assembles (belt_wiring_test.go's
-// [v3ShapedAgent] is that shape). It is the post-diet measurement with about a
-// tenth of headroom on top, which is room for a genuinely new law and not room
-// for a paragraph of prose about one that is already stated.
+// [shippedShapeAgent] is that shape).
+//
+// ── IT WEIGHED THE WRONG BELT FOR MONTHS, AND THIS IS THAT REPAIR ───────────
+//
+// The sentence above has always said "the shipping conversation". The fixture
+// under it was [v3ShapedAgent]: a conversation with NO memory store, NO accounts
+// hub, NO standing items and NO saved programs — eighteen tools, 39,073 bytes,
+// comfortably green. A machine somebody has finished setting up carries five
+// more (`stand`, `search_conversations`, `remember`, and the subharness pair)
+// and weighs 53,025. So the gate reported eight kilobytes of headroom on a
+// prefix that was five kilobytes OVER the cap it was enforcing, and it reported
+// it every day. That is #576's shape exactly: a gate pointed at something nobody
+// runs passes without having tested anything.
+//
+// ── SO THE FIGURE IS A RATCHET NOW, AND NOT A BUDGET WITH ROOM IN IT ────────
+//
+// It used to be "the post-diet measurement plus about a tenth", which was right
+// when the number came out of a diet that had just been paid for: the headroom
+// was room for a genuinely new law. It is wrong here, because this measurement
+// is not the end of a diet — it is the first honest weighing of a prefix that
+// has never been weighed, and it is already past what the last diet aimed at. A
+// tenth of headroom on top of that would be five more kilobytes nobody chose.
+//
+// So it is the measurement and nothing else. Anything that grows the shipped
+// prefix fails the build and has to be paid for out of what is already here,
+// which is what a ratchet is for and what the old figure could not do.
+//
+// ── AND IT IS THE WIDEST MACHINE'S MEASUREMENT, NOT THIS ONE'S ──────────────
+//
+// The first spelling of this ratchet was 53,100 — the laptop it was written on
+// weighing 53,025 — and it failed on the runner that proved it, at 53,132. The
+// prefix is not the same size everywhere: `grep` says a longer sentence about
+// itself where ripgrep is absent (134 bytes, and [widestBelt] now weighs that
+// spelling wherever it runs), and `load_capability` lists the tool groups THIS
+// BUILD has, which is 27 more bytes on a machine that can edit video than on one
+// that cannot. A gate whose number depends on who runs it is a gate that passes
+// where it is written and fails where it is proved, so the figure is the widest
+// machine's and the swap that makes the biggest term machine-independent lives
+// in [widestBelt].
+//
+// The residual is the shelf, and it is owed rather than done: `load_capability`
+// would have to name what this build COULD have rather than what it has, which
+// is a change to what the model is told and belongs to whoever owns the shelf.
+// It is bounded — one short clause per group — and it is why this number was
+// measured on the machine that carries every group. It is filed as issue #1010,
+// which is also where the `grep` sentence and [widestBelt] itself are deleted:
+// removing the variance at its source is the only thing that makes this number
+// one number for everybody.
+//
+// ── WHAT IS OWED, AND WHERE IT HAS TO COME FROM ─────────────────────────────
+//
+// THE TARGET IS STILL [fixedPrefixTarget] and the shipped prefix is over it by the
+// difference between the two constants below. The bill
+// is not spread thin — one tool is more than a quarter of the whole tool block:
+//
+//	stand                  9,607   the standing-item verb's schema
+//	propose_task           4,363
+//	tasks                  2,272
+//	search_conversations   1,613
+//	watch                  1,396
+//
+// `stand` alone is nearly twice the next heaviest and more than the whole overage.
+// It is not this file's to cut: what a tool's schema says is its contract with
+// the model, and trimming it is a change to what the model is told rather than
+// to a byte count. It belongs to whoever owns internal/session's standing belt,
+// with the same discipline the 2026-09-10 diet used on `propose_task` — one
+// clause per field, no rule stated twice, no em dashes — and it is filed here
+// rather than done here because a gate is not the place to decide what a verb
+// means.
 //
 // It is a byte count and not a token count deliberately: bytes are what this
 // process can measure exactly, and every tokenizer this build talks to is within
@@ -318,7 +384,53 @@ import (
 // `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
 // TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
 // change to that test's mind and not only to the bytes.
-const fixedPrefixBudget = 48_000
+// THE MEASUREMENT, AND NOTHING ON TOP OF IT. 53,141 bytes on 2026-09-12: the
+// widest page at 19,114 and the fully-wired belt's tool block at 34,027 over
+// twenty-three tools, weighed as the widest machine pays for it ([widestBelt]).
+// There is no rounding in it and no headroom on it.
+const fixedPrefixBudget = fixedPrefixTarget + fixedPrefixWaiver
+
+// fixedPrefixTarget is what the shipped prefix is SUPPOSED to be: the figure the
+// last diet aimed at and the one [fixedPrefixBudget] held until the right belt
+// was weighed.
+//
+// THE CAP IS THIS PLUS A WAIVER, AND THE WAIVER ONLY SHRINKS. See
+// [prefixWaivers] for what each arm owes today and why a number that is only
+// printed is a number nobody ever pays.
+const fixedPrefixTarget = 48_000
+
+// prefixWaivers is what each arm is over its target by, dated, in ONE PLACE.
+//
+// ── THE RULE, WHICH IS `.github/known-red.txt`'S RULE ────────────────────────
+//
+// A waiver only ever SHRINKS. A lane that takes bytes out lowers the figure in
+// the same commit; a lane that needs more takes it out of something that is
+// already being said twice. Raising one is a decision with somebody's name on it
+// in a diff, which is the entire difference between a debt and a floor.
+//
+// 2026-09-12, #996. The lean figure shrank from 13,489 to 13,420 in its own
+// first commit, which is the discipline working rather than an edit: fixing the
+// page's working directory and giving the lean arm its OWN shelf sentence took
+// sixty-nine bytes off a number that had been measured on a hybrid. Both arms
+// were weighing a conversation nobody has — no
+// memory store, no accounts hub, no standing items, no saved programs — so both
+// waivers are the first honest measurement of a prefix that had never been
+// weighed, and neither is a wave's overspend. The bill is not spread thin:
+// `stand` is 9,607 bytes, more than a quarter of the full tool block and, on a
+// sixteen-thousand-token window, roughly one token in six of everything that
+// person has before they have said anything.
+//
+// 2026-09-12, the merge with #1015. The prompt diet's read-dedupe wave added
+// one sentence to the shared BELT_FACTS — the pointer that answers
+// `[already read]` from the conversation rather than fetching the file again —
+// and paid exactly 150 bytes on both arms doing it. Both waivers rise by that
+// figure here, in this diff, on purpose: the rule says a raise is a decision
+// with a name on it, and the alternative was cutting the sentence the merge
+// just bought.
+const (
+	fixedPrefixWaiver = 5_291
+	leanPrefixWaiver  = 13_566
+)
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
 // G). promptprofile.go added a second shape of prefix for a model with a small
@@ -388,10 +500,49 @@ const fixedPrefixBudget = 48_000
 // still move. A wave that needs more than this is a wave that takes something
 // out first.
 //
+// THE HELD-RANGES WAVE PAID FOR THE ROUND-TRIP PRICE IT TEACHES (2026-09-12).
+// The read tool's description says a call costs one round trip and a range
+// already in the conversation answers as a pointer (bare/tools.go's
+// [readDescription], the ledger in heldreads.go). The sentence was priced
+// into the lean arm's headroom — 87 bytes came in, 9 came back out of the
+// description's redundant "the rest", and the lean prefix sits 5 under its
+// budget.
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
 // budget above is kept under: a lane that takes bytes out lowers it in the same
 // commit, and nothing ever raises it again.
-const leanPrefixBudget = 31_500
+//
+// ── AND THEN IT TURNED OUT TO BE WEIGHING A CONVERSATION NOBODY HAS ─────────
+//
+// Every figure above is real and every one of them was measured against
+// [leanShapedAgent], which built a conversation with NO memory store, NO
+// accounts hub, NO standing items and NO saved programs — sixteen tools. A
+// person on a small window who has finished setting aforge up carries `stand`
+// (9,607 bytes by itself), `remember` and `search_conversations`, none of which
+// [Config.leanCapabilityGroups] shelves, and their prefix is 44,989 bytes.
+//
+// So the arm that exists to protect the person with the LEAST room to spare was
+// out by 13,489 bytes, which is more than the whole budget it was enforcing.
+// That is #576's shape and it is the same hole the full arm above had, found in
+// the same review: a gate pointed at something nobody runs passes without having
+// tested anything, every day, in both directions.
+//
+// THE FIGURE IS THE MEASUREMENT NOW, with no headroom — the argument for slack
+// was written when this number came off a diet that had just been paid for, and
+// a number that has never been honestly weighed has not earned any. What the
+// slack bought (a shared page that can still move by a couple of hundred bytes)
+// is now bought by the full arm's 53,141, which both arms read the page through.
+//
+// WHAT IS OWED IS THE SAME BILL THE FULL ARM OWES, and it falls harder here:
+// `stand` alone is 9,607 bytes on a sixteen-thousand-token window, which is
+// roughly one token in six of everything that person has, spent before they have
+// said anything. [leanPrefixTarget] is what this has to come back to and the
+// test prints the shortfall on every green run.
+const leanPrefixBudget = leanPrefixTarget + leanPrefixWaiver
+
+// leanPrefixTarget is what the lean prefix is SUPPOSED to be: the figure
+// [leanPrefixBudget] held until the right belt was weighed. The cap is this plus
+// [leanPrefixWaiver], which only ever shrinks.
+const leanPrefixTarget = 31_500
 
 // leanWindow is the window the lean budget is weighed at. Sixteen thousand
 // tokens is the shape the profile was written for — a local open-weight model —
@@ -433,35 +584,187 @@ func widestPage() string {
 	return page
 }
 
-// TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
-// anybody has said anything.
-func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
-	agent := v3ShapedAgent(t)
+// atAFixedPlace is a config whose WORKING DIRECTORY is a constant.
+//
+// THE PAGE INTERPOLATES WHERE YOU ARE (prompt.go's `- Working directory: %s`),
+// and a fixture's workspace is a temp directory named after the test and the
+// platform's temp root: `/tmp/TestX123/001` on Linux and
+// `/var/folders/9k/…/T/TestX456/001` on macOS. So this arm's number moved by
+// forty-five bytes between two machines and failed on the second — the same
+// class of defect as `grep`'s two sentences and the capability shelf, found the
+// same way, in the gate whose entire purpose is to be one number for everyone.
+//
+// The page also carries `- Workstation: %s/%s` from runtime.GOOS/GOARCH, which
+// is a byte of difference between darwin and linux and is left alone: it is a
+// FACT ABOUT THE MACHINE the model is told on purpose, it cannot be made
+// constant without lying to the fixture, and a byte is inside nobody's decision.
+// The working directory is not that — it is a fixture artefact, and it is tens
+// of bytes.
+// The full arm does not need it: [widestPage] weighs `systemPrompt` with its
+// belt-fact tokens substituted and never renders the machine lines at all, so
+// that number is already the same everywhere — and it is an UNDER-count of the
+// shipped page by those few lines, which is recorded here rather than fixed
+// because moving it would move a ratchet for a reason that is not growth.
+func pageAsWeighed(config Config, now time.Time) int {
+	config.Workspace = "/w"
+	page := renderSystemAt(config, now)
+	// AND THE WORKSTATION LINE IS NORMALISED. `- Workstation: %s/%s` is
+	// runtime.GOOS/GOARCH, which is `darwin/arm64` on one machine and
+	// `linux/arm64` on another — ONE BYTE, and a ratchet with no headroom fails
+	// on one byte. It is a fact about the machine the model is told on purpose
+	// and cannot be made constant in the product, so it is made constant HERE,
+	// at the only place that needs it to be.
+	return len(strings.Replace(page, runtime.GOOS+"/"+runtime.GOARCH, "os/arch", 1))
+}
 
-	definitions := agent.beltDefinitions()
+// widestBelt is the shipped belt weighed as the WIDEST MACHINE pays for it.
+//
+// A TOOL WHOSE DESCRIPTION DEPENDS ON WHAT IS INSTALLED still sends those bytes
+// on every request, and this gate runs on machines of both kinds: `grep` says
+// one sentence where ripgrep is present and a longer one where it is not
+// (bare's [bare.WidestGrepDescription]), and the difference measured 107 bytes
+// of prefix — enough that the same commit passed on the laptop it was written on
+// and failed on the runner that proved it. So the number below is one number
+// everywhere, and it is the larger one.
+func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
+	t.Helper()
+	definitions := append([]ai.ToolDefinition(nil), agent.beltDefinitions()...)
 	if len(definitions) == 0 {
 		t.Fatal("the belt is empty, so this test would pass on nothing")
 	}
-	block, err := json.Marshal(definitions)
+	widest := map[string]string{
+		// `grep` says a longer sentence about itself where ripgrep is absent.
+		"grep": bare.WidestGrepDescription(agent.resultCaps()),
+		// `load_capability` NAMES THE GROUPS THIS BUILD HAS, and a group whose
+		// every member was gated off is not named at all — `edit_video` is built
+		// only where ffmpeg is on PATH, so a machine that can edit video pays for
+		// one more clause than one that cannot (tools_capabilities.go).
+		//
+		// IT IS THIS SHAPE'S OWN SHELF AND NOT THE FULL ONE. A lean belt pre-arms
+		// `questions` instead of shelving it (promptprofile.go), so pasting the
+		// full shape's sentence into the lean arm would have made that number a
+		// hybrid of two belts — a figure neither of them pays.
+		"load_capability": widestLoadCapability(agent.config),
+	}
+	swapped := 0
+	for index := range definitions {
+		longest, varies := widest[definitions[index].Function.Name]
+		if !varies {
+			continue
+		}
+		swapped++
+		// ASSIGNED, NOT COMPARED. A swap that only fired when it made the number
+		// bigger would be a swap that silently stopped firing the day the other
+		// spelling grew — which is the same defeat, one level up. `widest` is
+		// widest by construction and this takes it at its word.
+		definitions[index].Function.Description = longest
+	}
+	// AND THE SWAP CANNOT SILENTLY STOP APPLYING. A tool that leaves the belt, or
+	// is renamed, would take its machine-variance off this number without anybody
+	// noticing the budget had quietly got easier.
+	if swapped != len(widest) {
+		t.Fatalf("%d of the %d tools that vary by machine are on the belt", swapped, len(widest))
+	}
+	return definitions
+}
+
+// widestLoadCapability is the loader's sentence for ONE SHAPE at the widest
+// machine: every group that shape shelves rather than carries, each with every
+// member the table declares — which is what it says where all the programs its
+// tools shell out to are installed.
+//
+// It is built through the product's own [loadCapabilityDescription], so the
+// three sentences after the group list are stated once and cannot drift out of
+// this number.
+//
+// THE ONLY THING TAKEN OUT IS WHAT THIS SHAPE PRE-ARMS, because that is the one
+// difference between the two belts' shelves that is a property of the SHAPE
+// rather than of the machine. A group gated off by config would be
+// over-counted here; that is the safe direction for a budget and it is the same
+// answer everywhere, which is the whole point.
+func widestLoadCapability(config Config) string {
+	prearmed := map[string]bool{}
+	for _, group := range config.prearmedGroups() {
+		prearmed[group] = true
+	}
+	order := make([]string, 0, len(capabilityGroups))
+	members := make(map[string][]string, len(capabilityGroups))
+	for _, group := range capabilityGroups {
+		if prearmed[group.name] {
+			continue
+		}
+		order = append(order, group.name)
+		members[group.name] = group.members
+	}
+	return loadCapabilityDescription(func(group string) []string { return members[group] }, order)
+}
+
+// TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
+// anybody has said anything.
+func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
+	reportPrefix(t, prefixArm{
+		what:        "the fixed prefix",
+		definitions: widestBelt(t, shippedShapeAgent(t)),
+		page:        len(widestPage()),
+		budget:      fixedPrefixBudget,
+		target:      fixedPrefixTarget,
+		owed:        "see this file's head for the bill and who owes it",
+		howToPay: "every byte here is sent again on every request of every turn, so take the " +
+			"addition back out of something that already says it rather than raising the budget",
+	})
+}
+
+// prefixArm is one weighing: what to call it, what it carries, and the two
+// figures it is judged against.
+type prefixArm struct {
+	what        string
+	definitions []ai.ToolDefinition
+	page        int
+	budget      int
+	target      int
+	owed        string
+	howToPay    string
+}
+
+// reportPrefix weighs one arm, says what is still owed on a green run, and names
+// the bill biggest-first when the ratchet is broken.
+//
+// IT IS ONE FUNCTION BECAUSE THE TWO ARMS ARE ONE TEST with two sets of
+// constants. They were forty lines each, written twice, and the copies had
+// already drifted: only one of them printed its shortfall against the target,
+// so the arm carrying the larger debt was the arm that never mentioned it.
+func reportPrefix(t *testing.T, arm prefixArm) {
+	t.Helper()
+	block, err := json.Marshal(arm.definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, prompt := len(block), len(widestPage())
-	total := tools + prompt
-	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d", total, total/4, prompt, tools)
-
-	if total <= fixedPrefixBudget {
+	tools := len(block)
+	total := tools + arm.page
+	t.Logf("%s is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
+		arm.what, total, total/4, arm.page, tools, len(arm.definitions))
+	// AND THE DEBT IS ENFORCED, NOT LOGGED. It was a t.Logf, which is invisible:
+	// nothing in the Makefile passes -v, so the one line saying this prefix is
+	// thousands of bytes over what it is supposed to be was printed where no
+	// human and no CI log would ever show it. A debt nobody is reminded of is a
+	// debt that has quietly become the floor.
+	//
+	// So the TARGET is the cap, and the overage is a WAIVER: one dated figure per
+	// arm, in one place, which may only ever shrink ([prefixWaivers]). That is
+	// the known-red discipline — `.github/known-red.txt` and its ratchet — applied
+	// to bytes. A wave that grows the prefix has to raise a waiver, in a diff, with
+	// its name on it; nothing can drift.
+	if total <= arm.budget {
 		return
 	}
-
 	// THE FAILURE NAMES THE BILL, BIGGEST FIRST. A lane reading this has just
 	// grown one of these lines and has no other way to see which.
 	type weighed struct {
 		name  string
 		bytes int
 	}
-	heaviest := make([]weighed, 0, len(definitions))
-	for _, definition := range definitions {
+	heaviest := make([]weighed, 0, len(arm.definitions))
+	for _, definition := range arm.definitions {
 		encoded, err := json.Marshal(definition)
 		if err != nil {
 			t.Fatal(err)
@@ -469,42 +772,46 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 		heaviest = append(heaviest, weighed{definition.Function.Name, len(encoded)})
 	}
 	sort.Slice(heaviest, func(i, j int) bool { return heaviest[i].bytes > heaviest[j].bytes })
-
-	report := fmt.Sprintf("the fixed prefix is %d bytes (~%d tokens), over its %d budget by %d\n"+
-		"  prompts/system.md   %6d\n"+
+	report := fmt.Sprintf("%s is %d bytes (~%d tokens), over its %d budget by %d\n"+
+		"  the page            %6d\n"+
 		"  the tool block      %6d over %d tools\n"+
 		"the heaviest tools:\n",
-		total, total/4, fixedPrefixBudget, total-fixedPrefixBudget, prompt, tools, len(definitions))
+		arm.what, total, total/4, arm.budget, total-arm.budget, arm.page, tools, len(arm.definitions))
 	for index, tool := range heaviest {
 		if index == 8 {
 			break
 		}
 		report += fmt.Sprintf("  %-20s%6d\n", tool.name, tool.bytes)
 	}
-	t.Fatalf("%severy byte here is sent again on every request of every turn, so take the "+
-		"addition back out of something that already says it rather than raising the budget", report)
+	t.Fatalf("%sthe cap is the %d target plus a waiver of %d, and a waiver only ever shrinks "+
+		"([prefixWaivers]). %s", report, arm.target, arm.budget-arm.target, arm.howToPay)
 }
 
 // ── the lean arm ────────────────────────────────────────────────────────────
 
-// leanShapedAgent is the shipping conversation door on a small window: the same
-// config [v3ShapedAgent] builds, with the window a local open-weight model
-// actually has. Everything else about the shape is deliberately identical, so
-// the difference between the two numbers below is the profile and nothing else.
+// leanShapedAgent is the SHIPPING CONVERSATION on a small window: the shape
+// [shippedShapeAgent] builds, with the one thing that differs — the window a
+// local open-weight model actually has — changed and nothing else. The
+// difference between the two numbers below is therefore the profile, and only
+// the profile.
+//
+// ── IT WEIGHED A THINNER AGENT THAN ANYBODY RUNS, AND THIS IS THAT REPAIR ───
+//
+// It used to build its own config: no memory store, no accounts hub, no standing
+// items, no saved programs. That is #576's shape again and the same one the full
+// arm was repaired for in this PR — a gate pointed at something nobody runs
+// passes without having tested anything. A real lean conversation carries
+// `stand` (9.6 KB on its own), `remember` and `search_conversations`, and
+// [Config.leanCapabilityGroups] shelves none of the three, so every one of those
+// bytes is bought on every request of every turn by exactly the person whose
+// window has the least room for them.
 func leanShapedAgent(t *testing.T) *Agent {
 	t.Helper()
+	shape := beltShapeNamed(t, shippedBeltShape)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
+		shape.build(t, config)
 		config.ContextWindow = leanWindow
-		config.AskConsent = true
-		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
-		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
-			return "", subharness.Usage{}, nil
-		}
-		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
-			return "", nil
-		}
 	})
 	return agent
 }
@@ -522,59 +829,23 @@ func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
 	if !agent.config.promptProfile().lean() {
 		t.Fatalf("a %d-token window did not resolve to the lean profile, so this test is weighing the wrong arm", leanWindow)
 	}
-
-	definitions := agent.beltDefinitions()
-	if len(definitions) == 0 {
-		t.Fatal("the belt is empty, so this test would pass on nothing")
-	}
-	block, err := json.Marshal(definitions)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// AND `ask` IS IN THE BLOCK, because it is pre-armed rather than shelved
-	// (promptprofile.go's [Config.prearmedGroups]). A lean belt that had to load
-	// its way to a question would be measured lighter here and be unable to ask
-	// one, which is the one regression this number could hide.
+	// ([Config.prearmedGroups]). A lean belt that had to load its way to a
+	// question would be measured lighter here and be unable to ask one, which is
+	// the one regression this number could hide.
 	if !agent.hasTool("ask") {
 		t.Fatal("`ask` is not carried on a lean belt: a one-call-per-message model cannot load-then-ask")
 	}
-	prompt := len(renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)))
-	tools := len(block)
-	total := tools + prompt
-	t.Logf("the lean prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
-		total, total/4, prompt, tools, len(definitions))
-
-	if total <= leanPrefixBudget {
-		return
-	}
-	heaviest := make([]struct {
-		name  string
-		bytes int
-	}, 0, len(definitions))
-	for _, definition := range definitions {
-		encoded, err := json.Marshal(definition)
-		if err != nil {
-			t.Fatal(err)
-		}
-		heaviest = append(heaviest, struct {
-			name  string
-			bytes int
-		}{definition.Function.Name, len(encoded)})
-	}
-	sort.Slice(heaviest, func(i, j int) bool { return heaviest[i].bytes > heaviest[j].bytes })
-	report := fmt.Sprintf("the lean prefix is %d bytes (~%d tokens), over its %d budget by %d\n"+
-		"  the page            %6d\n"+
-		"  the tool block      %6d over %d tools\n"+
-		"the heaviest tools:\n",
-		total, total/4, leanPrefixBudget, total-leanPrefixBudget, prompt, tools, len(definitions))
-	for index, tool := range heaviest {
-		if index == 8 {
-			break
-		}
-		report += fmt.Sprintf("  %-20s%6d\n", tool.name, tool.bytes)
-	}
-	t.Fatalf("%sthis arm's number only ever comes down: shelve the verb, cut the law that is stated twice, "+
-		"or leave it — never raise the budget", report)
+	reportPrefix(t, prefixArm{
+		what:        "the lean prefix",
+		definitions: widestBelt(t, agent),
+		page:        pageAsWeighed(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)),
+		budget:      leanPrefixBudget,
+		target:      leanPrefixTarget,
+		owed:        "see [leanPrefixBudget] for the bill and who owes it",
+		howToPay: "this arm's number only ever comes down: shelve the verb, cut the law that is " +
+			"stated twice, or leave it — never raise the budget",
+	})
 }
 
 // TestAFrontierShapeIsUntouchedByTheProfile is the other half of the deal.

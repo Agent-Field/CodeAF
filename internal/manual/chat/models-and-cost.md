@@ -316,7 +316,7 @@ class, then the conversation model when that worker class is blank.
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
-the summary a compaction keeps, the safety gate, the check on finished task work, the second
+the brief a task opens on, the safety gate, the check on finished task work, the second
 look before a task starts itself, the reading of a task's parts before they are handed out,
 the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
 looking at an image. Each of those is a
@@ -327,7 +327,7 @@ looking at an image. Each of those is a
 - **small work** — cheap · the small calls — names, digests, the safety gate.
 - **worker** — does the work · every task you hand off, the parts it divides into, every
   node of an adaptive run. Most of what a task costs is spent here.
-- **careful work** — careful · checks what must not be wrong — audits, compaction, vision.
+- **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
 **All five arrive with a model already in them**, and the five together are the `balanced`
@@ -417,7 +417,6 @@ under the class answering it, saying which model comes out. As shipped:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
@@ -435,9 +434,9 @@ this build rather than a table someone kept up to date. Stop on a row and the li
 list is that role's own description followed by which class it follows.
 
 **What the mastermind's roles have in common is that one answer decides what all the other
-calls do.** `planner` and `designer` used to sit on careful work beside the compaction
-summary, which made one model id answer two unrelated bills: the careful calls are many and
-short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
+calls do.** `planner` and `designer` used to sit on careful work beside the check on
+finished work, which made one model id answer two unrelated bills: the careful calls are
+many and short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
 a designer that writes badly puts a wrong answer on the menu with a name on it;
 `routerconfirm` stands between a cheap model's "that should have been work" and a task
 starting itself, and it is asked on nothing else, so it costs a call only where something was
@@ -477,7 +476,7 @@ only thing that moves it is `/model`, the model row in `/settings`, or naming on
 
 The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
-the work inside every task, checks on finished work, compaction summaries, adaptive-run
+the work inside every task, checks on finished work, the brief a task is shaped into, adaptive-run
 planners and their nodes, harness pages, and looking at an image. Setting it writes all
 five class rows in one write, and **it is live from that moment**: the next call aforge
 makes on its own uses the new crew, with no relaunch and no new session. A task already
@@ -638,7 +637,7 @@ for calls you did not type:
 | 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
 | 3 | small work | digests, task names, the safety gate's yes-or-no — cheap |
 | 4 | worker | every task you hand off, its parts, every run node — most of the bill |
-| 5 | careful work | checks on finished work, compaction summaries, vision |
+| 5 | careful work | checks on finished work, the brief a task is shaped into, vision |
 | 6 | mastermind | plans adaptive runs and designs harnesses — thinks |
 
 `/crew` shows all six and sets seats two to six in one word — `frugal`, `balanced` or
@@ -1194,10 +1193,10 @@ number of tries (see *How long aforge keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
-which endpoint served it, or you have set `routing` to `off` on the **Providers** tab, then
+which endpoint served it, or you have set `routing` to `off` or `simple` on the **Providers** tab, then
 nothing is being routed around and the next attempt lands in exactly the same place — so
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
-switches off **endpoint** steering; it does not switch off moving to another model.
+or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
@@ -1733,7 +1732,7 @@ or `off`, and the default is **on**. Off means you see whatever arrives, and kee
 you stop. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
+reading. Setting `routing` to `off` or `simple` on the same tab stops aforge steering between endpoints
 at all, and with it stops any of this being recorded.
 
 ## I stopped a reply and the text is gone — where the reply went after I hit esc, and why pressing escape on a broken reply deletes it
@@ -2205,7 +2204,7 @@ When nothing can say — a model the catalog has never carried, a machine that h
 reached the catalog yet — the answer is still the 128,000-token default, which is the
 smallest window this surface routes to and the safe direction for a guess to be wrong in.
 
-## What happens before the conversation is summarized
+## What happens before the conversation is compacted
 
 aforge does not jump straight to summarizing. There are rungs before it.
 
@@ -2223,6 +2222,12 @@ cold from that point; one deeper pass is cheaper than another rewrite every roun
 runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. The full
 result bytes remain in `logs/stubs/`, the model can `read` the path in each stub, and the
 session journal keeps the original result bytes.
+
+One shape of result needs no copy filed. When the turn has read the **same file several
+times**, the older slices point at the file itself — the stub names the path with the
+`offset` and `limit` that bring that slice back — and the newest slice is kept whole,
+because those bytes were never anywhere else to begin with. The journal keeps them too,
+as it keeps everything.
 
 **Rung 0 — what an old result looks like in the request.** Before any of the rungs below
 fire, the copy of the conversation that goes to the model already carries the tool results
@@ -2291,36 +2296,43 @@ call, nothing paraphrased. This rung is chosen only when you gave `/compact` no 
 is a workspace, there is page budget, and the model in use can read images. Pages are 120
 columns by 64 lines, greyscale, deterministic, footed `<title> | context page 1 of 4`, and
 saved under `<workspace>/.aforge-v3/frames/`. The ceiling is **8 pages**; anything past it is
-summarized and appended after the pages.
+folded to a marker after the pages.
 
-**Rung 3 — the summary.** One call on the session's own model, with no tools, that must
-produce six sections — `## Goal`, `## Constraints & Preferences`, `## Progress`,
-`## Key Decisions`, `## Next Steps`, `## Critical Context` — and must reproduce any
-unanswered question verbatim and preserve exact paths, symbols, commands and error text.
+**Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
+**assistant** work is replaced by one marker line. It is not a summary: nothing is described
+and nothing is decided.
+
+```
+[folded 43 messages · grep or read ~/.aforge/v3/projects/-you-work/<session>/journal.jsonl, lines 12..40]
+```
+
+**Your own words are never folded.** A person's messages are the one thing in a transcript
+nothing else can reconstruct, so the fold walks past them and takes only the assistant's.
 
 ## What a compaction pass keeps
 
-The transcript is cut at a message boundary, walking back from the tail until the keep-recent
-budget is spent. The system message is never cut.
+**A compaction asks no model, costs nothing, and takes no time you can feel.** There is no
+summarizer behind it — there was one, and it was deleted. It paid a model to write prose
+about the text it was about to throw away, at the worst possible moment, and the loss was
+unrecoverable because the transcript the prose came from went with it.
 
-What is rebuilt, in order: the system message, then the page images if there are any, then
-the summary note if there is one, then **the state block verbatim**, then the kept tail. The
-state block — what `track` and `commit` recorded — is injected directly and is **never routed
-through the summarizer**, so working state cannot be paraphrased away.
+What replaces it is two mechanical passes over messages this session already has: tool
+results become pointers to their own bytes, and then the oldest assistant work becomes one
+marker line naming where the whole of it can still be read.
 
-The note the model reads above a summary begins:
+What the model is handed instead of a summary is the **state card** — what `track` and
+`commit` recorded — which rides in the system prompt on every turn and is kept up to date
+after each one. So what the conversation is about is never paraphrased, because it was never
+written as prose in the first place.
 
-```
-[context compacted] Everything before this point was summarized to fit the context window. This note is the record of that conversation — it is not something either of us said, and any question inside it is still open.
-```
-
-A pass can decline: `session: nothing to compact` (everything already fits in the tail),
-`session: a compaction pass is already running`, or `session: summarizer returned nothing`.
+A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
+`session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 
 When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
-part of it is summarized away and the recent tail is kept, which is what compaction is.
+part of it is stubbed and folded down to a marker and the recent tail is kept, which is what
+compaction is.
 
 **Nothing is lost is meant literally, and you can go and look.** The session file keeps
 every original line, and scrolling up above the boundary is given those rather than the
@@ -2351,16 +2363,14 @@ While a pass runs you see `compacting ~84k tokens` (`~842` under a thousand). On
 
 ## /compact — compacting now
 
-`/compact` summarizes the conversation on demand. It notes `compacting…` immediately and runs
+`/compact` compacts the conversation on demand. It notes `compacting…` immediately and runs
 the pass off the loop, so the surface stays alive.
 
 **Success is silent.** There is no "done" message — a compaction that worked simply leaves the
 conversation shorter. A failure comes back as `compact failed: ` followed by the error.
 
-A `/compact` given a focus always goes to the summary rung rather than page images, because a
-renderer cannot be careful about anything. The focus is *appended* to the summarizer's
-instructions and never replaces them, so one careless phrase cannot cost the next session its
-file paths. It travels on that one request and no further.
+**It costs nothing and asks no model**, so there is no reason not to run it, and no `compaction`
+role in settings to point at a model for it.
 
 ## Turning automatic compaction off
 
@@ -2598,15 +2608,26 @@ colour.
 
 One model id is served by many endpoints, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no endpoint is obliged to match it, and the fastest one often does not.
 
-So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
+**Left alone, aforge asks for nothing.** The **routing** row on the Providers tab ships as `simple`, and `simple` means the request carries no preference of aforge's own: with no lane pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the endpoint. Pin a lane and that pin is the whole request — that machine, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
 
-Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
+It has not always been this way: until this build the shipped row was `latency`, and aforge asked for the fastest endpoint on your own turns and the cheapest on work you were not waiting on. That choosing was invisible — the one decision in a turn you could not see being made — so it is now something you turn on rather than something you turn off.
 
-**One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+Setting **routing** yourself is how you turn it on, and it applies everywhere:
 
-Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
+- **`latency`** asks for the fastest endpoint on every call, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. It also times every answer and demotes an endpoint that keeps being slow.
+- **`price`** asks for the cheapest endpoint on every call, including your own turns.
+- **`simple`** is the shipped row described above.
+- **`off`** sends no preference and stops timing endpoints altogether.
 
-**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above.
+A change here takes effect on your **next message** — the row goes straight to the layer
+that sends requests, so nothing waits for a relaunch. The `lane` row under it re-reads what
+`auto` means in the new word on the same frame.
+
+Under `latency` or `price`, where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
+
+**Under `price`, one thing is not quite "speed is worth nothing".** Work you are not watching asks the router for the cheapest endpoint — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+
+**You can also name the endpoint yourself, under any row.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above. A pin is the one instruction `simple` sends.
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
@@ -2653,15 +2674,20 @@ that order** — **lane**, **speed guard**, **routing** — because the machine 
 your model is part of the same decision as the model:
 
 ```
- your model    deepseek/deepseek-v4-flash · auto (cloudflare now)
+ your model    deepseek/deepseek-v4-flash
  lane          auto
  speed guard   on
- routing       latency
+ routing       simple
 ```
 
-The tail on the model row is the machine: `auto (cloudflare now)` when the choosing is
-left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have asked for
-no endpoint at all. A session that has measured nothing shows the model id alone.
+The tail on the model row is the machine **requests are actually going to**:
+`pinned: cloudflare` once you have pinned one and the wire is still carrying it,
+`auto (cloudflare cannot serve this model)` once that machine has refused the pairing —
+your `lane` row is untouched, but nothing is asking for it any more —
+`openrouter` when you have asked for no endpoint at all, and `auto (cloudflare now)` — a
+prediction of where the next turn would land — only under `latency` or `price`, where
+aforge is the one choosing. Under the shipped `simple` row nobody here is predicting, so
+there is no tail, and a session that has measured nothing shows the model id alone too.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
 `tab` on a row and the model's lanes open underneath it, with the cursor already on the
@@ -2669,12 +2695,16 @@ lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        weighs speed against price each answer — cloudflare now · recommended
+   ● auto        openrouter's own routing; aforge stays out
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
    ○ openrouter  let the router balance on price
 ```
+
+That is the `auto` row under the shipped `simple` row. Set **routing** to `latency` or
+`price` and it reads `router routes; aforge takes over if answers turn bad — cloudflare
+now · recommended` instead, because there it does.
 
 Each lane row reads, in order: its name, the wait before the first word, how fast it
 writes, what a million output tokens cost there, one short note about what is wrong with
@@ -2701,6 +2731,17 @@ the measured numbers and pressing enter, never guessing at a word. When nothing 
 measured it opens all the same, onto the only two honest answers: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
+
+**Under `routing: simple` — the row aforge ships with — the `auto` row says something
+else, because it does something else.** It reads `openrouter's own routing; aforge stays
+out`, and it names no machine beside it: under that row nothing on aforge's side chooses,
+so there is no machine it could honestly say the next turn will land on, and no `no
+rescue` note either, because there is no rescue running under any setting of the speed
+guard. The fold still opens and `enter` still pins: a pin is the one instruction that row
+sends. The **lane** row in `/settings` is explained the same way, and the `auto (cloudflare
+now)` tail on the **your model** row is gone with it — it was a prediction, and under
+`simple` nobody here is predicting. Choose `latency` or `price` and the takeover sentence,
+the named machine and the `no rescue` note all come back.
 
 **A model nobody has measured opens onto its two answers and no machines.** `→` shows
 `auto` and `openrouter`, and in the machines' place one line —
@@ -2852,6 +2893,11 @@ It hedges **at most one extra call** per answer and stays under **a tenth** of w
 session spends. It does nothing under `routing: price` — nobody is buying seconds there —
 and nothing while an answer is already flowing normally.
 
+**Under the shipped `routing` row it buys no measurement.** `simple` sends what you asked
+for and nothing else, so the one-token measurement in the next section is not bought at
+all — nothing on aforge's side is choosing a machine for it to inform. Set **routing** to
+`latency` or `price` and it is bought again.
+
 Turn it off if you are paying for every token and never mind waiting. With it off, the
 `auto` row in the model picker says `no rescue`, so you can see the promise it is making
 — and the measurement described in the next section stops being bought as well. The two
@@ -2871,7 +2917,9 @@ answer's first word is not also paying for a handshake.
 token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
-type — so a long message buys one, not one per keystroke. None at all when the **speed
+type — so a long message buys one, not one per keystroke. **None at all under the shipped
+`routing` row**: `simple` buys no measurements, because nothing on aforge's side is
+choosing a machine for them to inform. Also none when the **speed
 guard** is off, when `routing` is `off`, when the lane row says `openrouter`, when the
 pool is already backing off a rate limit, when aforge is still recovering a dropped
 connection, or when **nobody is waiting on that model** — a task working on its own and
@@ -2909,16 +2957,19 @@ run in the background, and a task working on its own buys none.
 `~/.aforge/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
 probes. That file is the record of what was sent.
 
-**How to make it zero.** Settings → Providers → **speed guard**, off. The same row governs
-asking a second machine when an answer is slow to start, so turning it off stops both.
-`routing off` and a lane row set to `openrouter` also stop it.
+**How to make it zero.** It is already zero on a home where nobody has touched
+**routing**: the shipped row is `simple` and it buys none of these. If you have set
+`latency` or `price` and want it back to zero: Settings → Providers → **speed guard**,
+off. The same row governs asking a second machine when an answer is slow to start, so
+turning it off stops both. `routing simple`, `routing off`, and a lane row set to
+`openrouter`, also stop it.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 
 Settings → Providers has two rows under **routing**:
 
 ```
- your model     deepseek-v4-flash · auto (cloudflare now)
+ your model     deepseek-v4-flash
  lane           auto
  speed guard    on
 ```
@@ -2927,25 +2978,36 @@ Settings → Providers has two rows under **routing**:
 
 | Value | What it does |
 |---|---|
-| `auto` | aforge weighs speed against price on each answer and picks the lane that wins |
+| `auto` | the router routes, and aforge takes over choosing the machine if its answers start coming back refused or unusable — handing it back once it has been well for a while |
 | `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
-| `openrouter` | no lane is asked for; the router balances on price |
+| `openrouter` | no lane is asked for; the router balances on price, and aforge never takes over |
 
 The pinned rungs are missing until aforge has measured something — there is no honest
 lane to name yet, so the walk is `auto` ↔ `openrouter`.
 
-The **your model** row says which lane is answering it beside the model id — `auto
-(cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
+The **your model** row says which lane is answering it beside the model id — `pinned:
+cloudflare` once the choice is yours, and `auto (cloudflare now)` while it is aforge's,
+which under the shipped `simple` row it never is.
 `lane` and `routing` are different questions: routing is what every request **prefers**
 (fastest, cheapest, or nothing at all), and lane is which endpoint requests from your home
-actually land on.
+actually land on. Under `simple` routing — the shipped row — the borrow rung is moot: the pin goes out
+strictly — that one machine, `only`, fallbacks off, nothing else on the request — because
+simple runs no choosing of its own for a slow answer to borrow. The `switch to auto?`
+question a slow pinned lane raises still has somewhere to send you — it asks whether to
+let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
+the table above is the other rung that reads differently there: under `simple` nothing
+takes over, so the row says `openrouter's own routing; aforge stays out` in the fold and
+the **your model** row drops its `auto (cloudflare now)` tail rather than name a machine
+nobody chose.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 
 Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the endpoint that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one machine**. An endpoint that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold endpoint than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
 
-So aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
+**This is something aforge does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of aforge's own at all, and asking for last time's endpoint is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Providers → **routing**.
+
+Under those two rows, aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 
 It moves off that endpoint when the endpoint stops earning it:
 
@@ -2958,7 +3020,7 @@ The same stable identity also travels in OpenRouter's session header so a succes
 
 **Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, your standing orders, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a standing order agreed.
 
-Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
+Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request asks by whatever the row asks for, and after that it comes back to whichever one answered. `routing` at `simple` — the shipped row — or at `off` sends none of it.
 
 ## A model that cannot stop thinking — what turning thinking off does on it, and why some models think at "max" by default
 

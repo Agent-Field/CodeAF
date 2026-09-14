@@ -5,7 +5,7 @@ A model id is an address; the LANE is the machine behind it. OpenRouter
 publishes, per model, one row per endpoint with that endpoint's own tariff,
 its own capability facts, and a thirty-minute distribution of first-token
 wait and throughput. That sheet is the prior the whole lane design starts
-from -- see ideation/provider-routing.md section 1 -- and this script is the
+from -- see docs/design/routing/provider-routing.md section 1 -- and this script is the
 only thing in the lab that touches the network.
 
 TWO RULES, AND THEY ARE THE WHOLE FILE.

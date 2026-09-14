@@ -83,9 +83,9 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 	if err != nil || model != "pinned/model" {
 		t.Fatalf("the title role resolved to %q (%v), want the pin", model, err)
 	}
-	model, err = roles.Resolve(cfg.RolesSource, roles.RoleCompaction, "session/model")
+	model, err = roles.Resolve(cfg.RolesSource, roles.RoleAuditor, "session/model")
 	if err != nil || model != "capable/model" {
-		t.Fatalf("compaction resolved to %q (%v), want the high tier", model, err)
+		t.Fatalf("the auditor resolved to %q (%v), want the high tier", model, err)
 	}
 	if got, ok := roles.TierModel(cfg.RolesSource, roles.TierLow); !ok || got != "cheap/model" {
 		t.Fatalf("the low tier is %q (ok=%v)", got, ok)

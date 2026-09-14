@@ -160,19 +160,6 @@ func splitLinesForCounting(content string) []string {
 	return lines
 }
 
-// truncateHead keeps the first whole lines that fit both the line and byte
-// caps. It is the read/grep/find/ls rule. When the first line alone exceeds
-// the byte cap, it returns empty content with firstLineExceedsLimit set so
-// the caller can emit the sed fallback hint.
-//
-// The byte accounting adds +1 for the newline that separates each line from
-// the previous one (i>0), exactly as pi does — the newline is real output
-// the model sees and counts against the budget.
-func truncateHead(content string, caps Caps) truncateHeadResult {
-	caps = caps.resolve()
-	return truncateHeadAt(content, caps.MaxLines, caps.MaxBytes)
-}
-
 // truncateHeadAt is truncateHead with a caller-owned byte budget. The ordinary
 // tools always use pi's defaults; a composed belt may reserve room for the
 // continuation footer while keeping the same line and offset semantics.

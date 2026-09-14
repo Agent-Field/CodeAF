@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Four routing policies over one real lane sheet, ten thousand requests each.
 
-WHY A SIMULATOR AT ALL. The lane design in ideation/provider-routing.md
+WHY A SIMULATOR AT ALL. The lane design in docs/design/routing/provider-routing.md
 proposes to retire a shipped mechanism -- the fixed-threshold strike ledger in
 internal/provider/velocity.go -- and replace it with a belief, a Pareto prune,
 a per-request scalar and a hedge. That is a lot of machinery to put on the send

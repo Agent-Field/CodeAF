@@ -9,9 +9,10 @@ import (
 	"testing"
 )
 
-// The wire shape is internal/voice's, and this pins it: JSON to
+// The wire shape came from v1's microphone client, and this pins it: JSON to
 // /audio/transcriptions, the bytes base64 inside input_audio, and a BARE format
-// word beside them.
+// word beside them. That client is gone, so this test is the only thing holding
+// the shape.
 func TestTranscribeUsesTheVerifiedAudioWireShape(t *testing.T) {
 	var seen string
 	client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

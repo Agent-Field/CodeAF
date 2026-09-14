@@ -315,3 +315,237 @@ func TestTheSenseSaysWhichSenseItIsUsing(t *testing.T) {
 		}
 	}
 }
+
+// ── AND EVERY REQUEST SAYS WHAT IT IS FOR ───────────────────────────────────
+//
+// THE STRUCTURAL HALF OF clientdoor.go's [callPurpose]. The type already makes
+// an anonymous call fail to compile; what the type cannot see is a caller that
+// satisfies it by passing the empty string, which is the same anonymous request
+// wearing the argument. Nine of the eleven callers of this door reached the
+// wire with no tag before the purpose was an argument — the guardian, vision,
+// the shaper, the spell-out, the intake, the planner, the designer, the handoff
+// draft and a saved program's step — and 2,309 of 2,839 untagged finishes in
+// ten days were this package's.
+//
+// SO THE LAW IS: A PURPOSE IS A WORD, NOT A BLANK. One caller is exempt and it
+// is named rather than inferred — [modelRoutingCompleter], which is the view of
+// a live agent that LEAVES this package, whose callers each name their own call
+// and whose tag this door must not overwrite.
+//
+// AND THE TAG IS SPELLED IN ONE PLACE. [provider.WithCallTag] may be called by
+// the door and by nothing else in this package: three callers used to stamp
+// their own, which is three spellings of one fact and the reason the other nine
+// could forget it existed.
+//
+// IT READS THE TREE ITSELF, so it runs on the laws gate of every pull request
+// (scripts/laws.sh finds it by this import).
+func TestEveryRequestThroughTheDoorSaysWhatItIsFor(t *testing.T) {
+	files := sessionSources(t)
+	// theDoors are the two spellings of the one door. There is no exemption for a
+	// blank purpose any more and no apparatus to grant one: the single caller that
+	// keeps whatever the context already carries passes [purposeInherited], which
+	// says so in the place a reader is already looking.
+	theDoors := map[string]bool{"completeWithModel": true, "completeWithNamedModel": true}
+	purposes, tags := 0, 0
+	// AND THE OTHER HALF OF THE SAME LAW. Three roads in this package build a
+	// [provider.Client] of their own — the memory tidy-up, a standing item's
+	// check, the document reader — because each needs a client shape the door
+	// does not make. They are allowed to; what they are not allowed to do is
+	// reach the wire anonymously, which all three did until #996.
+	//
+	// THE PURPOSE IS REQUIRED PER CALL AND NOT PER FILE. A file-level pairing is
+	// satisfied by one road naming itself while the road beside it stays
+	// anonymous, which is the shape of the failure this law exists for: the
+	// forgettable one is always the second one.
+	ownClients := map[string]bool{}
+	for name, file := range files {
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			switch selector.Sel.Name {
+			case "WithCallTag":
+				tags++
+				if name != "clientdoor.go" {
+					t.Errorf("%s:%d calls provider.WithCallTag. The tag is spelled by withPurpose "+
+						"and nowhere else — pass a callPurpose to completeWithModel instead "+
+						"(clientdoor.go)", name, sessionLine(call))
+				}
+			case "NewClient":
+				if name != "clientdoor.go" {
+					ownClients[name] = true
+				}
+			}
+			if !theDoors[selector.Sel.Name] || len(call.Args) < 2 {
+				return true
+			}
+			purposes++
+			if blankPurpose(call.Args[1]) {
+				t.Errorf("%s:%d reaches the wire with a purpose spelled as a bare blank. Every "+
+					"request this package makes says what it is FOR, and the one call that keeps "+
+					"the caller's own word says THAT, by name: pass purposeInherited "+
+					"(clientdoor.go's [callPurpose])", name, sessionLine(call))
+			}
+			return true
+		})
+	}
+	// THE TAG IS SPELLED EXACTLY ONCE. Not "only in this file" — once, full stop,
+	// because [withPurpose] is now the single road to it and a second spelling
+	// beside it inside clientdoor.go would be the same drift starting over in the
+	// one place the law was not looking.
+	if tags != 1 {
+		t.Errorf("provider.WithCallTag is written %d times in this package; it is written once, "+
+			"by withPurpose, and every other road says what it is for by handing that function "+
+			"a callPurpose (clientdoor.go)", tags)
+	}
+	// SECOND PASS, over the files that build their own client. It is a second
+	// pass because a file has to be known to be one of those roads before its
+	// completions can be judged, and `provider.NewClient` may be written below
+	// the call it serves. It reads the SAME parse, not a new one.
+	ownCalls := 0
+	for name := range ownClients {
+		carries := contextsCarryingAPurpose(files[name])
+		ast.Inspect(files[name], func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || !ownClientCompletions[selector.Sel.Name] || len(call.Args) == 0 {
+				return true
+			}
+			ownCalls++
+			if !purposeReaches(call.Args[0], carries) {
+				t.Errorf("%s:%d calls %s on a client this package built itself, with a context "+
+					"that carries no purpose. A road that needs a client the one door does not "+
+					"make is allowed one; a road that reaches the wire anonymously is not, "+
+					"because the call log then cannot say what this build spent its night on. "+
+					"Wrap the context in withPurpose (clientdoor.go)",
+					name, sessionLine(call), selector.Sel.Name)
+			}
+			return true
+		})
+	}
+	// AND THE LAW IS READING THE TREE IT THINKS IT IS. A walk that matched
+	// nothing would pass for ever, which is how a structural law rots.
+	if purposes < 8 {
+		t.Fatalf("only %d calls through the one door were found; the law is reading the wrong tree", purposes)
+	}
+	if ownCalls < 3 {
+		t.Fatalf("only %d completions were found in the %d files that build their own client; "+
+			"the law is reading the wrong tree", ownCalls, len(ownClients))
+	}
+}
+
+// ownClientCompletions are the verbs that reach the wire on a client this
+// package built itself. They are [provider.Client]'s own methods, so the list is
+// that type's surface and not a guess: a road that completes by some other verb
+// tomorrow joins it, and the count check above is what makes a missing one show
+// up as a law that suddenly reads less than it did.
+var ownClientCompletions = map[string]bool{
+	"CompleteWithMessages": true,
+	"ParseDocument":        true,
+}
+
+// contextsCarryingAPurpose names the local variables in a file that were built
+// from a [withPurpose] call.
+//
+// A PURPOSE FOLDED INTO A CONTEXT STAYS IN IT. standing_run.go writes
+// `callCtx := provider.WithRole(provider.WithRoutingIntent(provider.WithoutStream(
+// withPurpose(ctx, …)), …), …)` and then completes on `callCtx` several lines
+// later, which is the ordinary shape — the purpose is one of several facts
+// wrapped onto the same context — and a reader that looked only at the argument
+// of the completion would call that road anonymous.
+func contextsCarryingAPurpose(file *ast.File) map[string]bool {
+	carries := map[string]bool{}
+	// To a fixed point, because one context is often built from another.
+	for again := true; again; {
+		again = false
+		ast.Inspect(file, func(node ast.Node) bool {
+			var names []ast.Expr
+			var values []ast.Expr
+			switch shape := node.(type) {
+			case *ast.AssignStmt:
+				names, values = shape.Lhs, shape.Rhs
+			case *ast.ValueSpec:
+				values = shape.Values
+				for _, name := range shape.Names {
+					names = append(names, name)
+				}
+			default:
+				return true
+			}
+			if len(names) != len(values) {
+				return true
+			}
+			for index, value := range values {
+				named, isIdent := names[index].(*ast.Ident)
+				if !isIdent || carries[named.Name] {
+					continue
+				}
+				if purposeReaches(value, carries) {
+					carries[named.Name] = true
+					again = true
+				}
+			}
+			return true
+		})
+	}
+	return carries
+}
+
+// purposeReaches reports whether a purpose is anywhere inside an expression —
+// written there, or carried in by one of the contexts `carries` names.
+func purposeReaches(expr ast.Expr, carries map[string]bool) bool {
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		switch shape := node.(type) {
+		case *ast.CallExpr:
+			if named, isIdent := shape.Fun.(*ast.Ident); isIdent && named.Name == "withPurpose" {
+				found = true
+			}
+		case *ast.Ident:
+			if carries[shape.Name] {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// blankPurpose reports an argument that names no purpose: the empty literal, or
+// a conversion of one.
+func blankPurpose(arg ast.Expr) bool {
+	switch node := arg.(type) {
+	case *ast.BasicLit:
+		return node.Kind == token.STRING && (node.Value == `""` || node.Value == "``")
+	case *ast.CallExpr:
+		// callPurpose("") is the same blank wearing its type.
+		return len(node.Args) == 1 && blankPurpose(node.Args[0])
+	}
+	return false
+}
+
+// receiverTypeName is the bare type a method hangs off, and "" for a function.
+func receiverTypeName(decl *ast.FuncDecl) string {
+	if decl.Recv == nil || len(decl.Recv.List) == 0 {
+		return ""
+	}
+	expr := decl.Recv.List[0].Type
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
+}

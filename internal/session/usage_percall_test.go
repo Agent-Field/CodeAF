@@ -16,6 +16,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -159,6 +160,94 @@ func TestAHedgeLoserWritesItsReceiptAsWaste(t *testing.T) {
 	if got := agent.Usage().CostUSD; got != 0.19 {
 		t.Fatalf("the hedge receipt moved the money total to %v, want 0.19 once", got)
 	}
+}
+
+// TestAReconciledCallLeavesItsOwnLineInTheJournal is the journal half of the
+// measured defect: the session's call lines summed to barely half its bill
+// because every request whose usage block never arrived — the hedge arms and
+// the cut retries, which is to say the expensive ones — wrote no line at all.
+// The receipt now leaves one, marked with what it was and carrying what the
+// receipt carried; the money moves through [Agent.bank] alone, so the meter
+// still counts each receipt exactly once and the ledger grows no second row.
+func TestAReconciledCallLeavesItsOwnLineInTheJournal(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = journal
+	})
+	agent.reconciled(provider.Reconciled{
+		Billed: provider.Billed{Model: "rescue/model", PromptTokens: 500, CompletionTokens: 40, CachedTokens: 300, Cost: 0.42},
+		Ref:    "hedge-arm", Reason: "torn", Hedged: true, Found: true,
+	})
+	agent.reconciled(provider.Reconciled{
+		Billed: provider.Billed{Model: "first/model", PromptTokens: 700, CompletionTokens: 90, Cost: 0.11},
+		Ref:    "cut-retry", Reason: "stalled", Found: true,
+	})
+
+	calls := journalCallLines(t, journal)
+	if len(calls) != 2 {
+		t.Fatalf("the journal holds %d call lines, want one per reconciled request: %+v", len(calls), calls)
+	}
+	hedge, cut := calls[0], calls[1]
+	if hedge.Arm != journalArmHedge || hedge.Model != "rescue/model" ||
+		hedge.Input != 500 || hedge.CacheRead != 300 || hedge.Output != 40 || hedge.CostUSD != 0.42 {
+		t.Fatalf("the rescue arm's line = %+v, want the receipt's own figures marked %q", hedge, journalArmHedge)
+	}
+	if cut.Arm != journalArmReconciled || cut.Model != "first/model" ||
+		cut.Input != 700 || cut.Output != 90 || cut.CostUSD != 0.11 {
+		t.Fatalf("the cut retry's line = %+v, want the receipt's own figures marked %q", cut, journalArmReconciled)
+	}
+	// A receipt knows no endpoint — it is the provider's account of the call,
+	// not the router's — so the field is absent rather than guessed.
+	if hedge.Endpoint != "" || cut.Endpoint != "" {
+		t.Fatalf("a receipt invented an endpoint: %+v / %+v", hedge, cut)
+	}
+	// AND THE MONEY MOVED ONCE. The lines above are evidence: the meter holds
+	// the two receipts' sum and the ledger holds two rows, not four.
+	if got := agent.Usage().CostUSD; got != 0.53 {
+		t.Fatalf("the meter holds %v, want the two receipts counted once (0.53)", got)
+	}
+	if _, rows := ledgerUSD(t, ledger); rows != 2 {
+		t.Fatalf("the ledger holds %d rows, want the two receipts and nothing doubled", rows)
+	}
+}
+
+// A receipt that could not be had writes the unbilled marker and NO call line:
+// the emptiness law, because a receipt with no figures is a row of zeroes that
+// would read as a fact.
+func TestAMissingReceiptLeavesNoCallLine(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	agent.reconciled(provider.Reconciled{Ref: "gone", Reason: "torn"})
+	if calls := journalCallLines(t, journal); len(calls) != 0 {
+		t.Fatalf("a missing receipt left %d call lines, want none: %+v", len(calls), calls)
+	}
+	if got := agent.Usage(); got.Calls != 0 || got.CostUSD != 0 {
+		t.Fatalf("a missing receipt moved the meter: %+v", got)
+	}
+}
+
+// journalCallLines is every call line in one journal, in file order — the
+// reader half of [sessionFile.appendCall], for tests about what was WRITTEN
+// rather than what a replay chose to do with it (the replay drops these lines
+// on purpose, so only the file itself can answer).
+func journalCallLines(t *testing.T, path string) []journalCall {
+	t.Helper()
+	var calls []journalCall
+	for _, line := range readLines(t, path) {
+		var entry sessionEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Type != "call" || entry.Call == nil {
+			continue
+		}
+		calls = append(calls, *entry.Call)
+	}
+	return calls
 }
 
 // TestATurnArmsCutCallReconciliation pins the session wiring rather than a

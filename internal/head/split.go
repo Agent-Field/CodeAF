@@ -8,7 +8,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
-// Split-on-divergence (chat-simplify J1) and the one cross-seam contract (5.4).
+// Split-on-divergence (the August 2026 chat-simplification audit, no longer in
+// the tree, J1) and the one cross-seam contract (5.4).
 //
 // A working conversation drifts. Somewhere in the middle of the pricing thread
 // the person says "unrelated, but can you look at the deploy failures" — and

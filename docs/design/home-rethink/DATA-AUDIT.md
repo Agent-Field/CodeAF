@@ -1,6 +1,6 @@
 <!-- Data and vocabulary audit of the 18 home-rethink mockups against the tree on
      branch home/rethink-v0. Every claim below was checked by opening the file
-     named; nothing is taken from RECON.md or the concept inventory on trust.
+     named; nothing was taken from the discarded recon dump or concept inventory on trust.
      Where the two disagree with the code, the code wins and the disagreement is
      stated. Written 2026-08-25. No Go file was modified. -->
 
@@ -473,8 +473,8 @@ Nothing on this surface has ever held a multi-day series.
 
 ## 13. The search page
 
-**RECON.md is wrong on this point, and it matters.** RECON §5 says *"There is no
-cross-conversation full-text index"*. There is one:
+**The discarded recon dump was wrong on this point, and it matters:** it said
+*"There is no cross-conversation full-text index"*. There is one:
 
 - `internal/store/thread_search.go` keeps an **FTS5 index over every message** — `messages_fts` declared `fts5(session_id UNINDEXED, role UNINDEXED, body)` (:29-35), migrated and backfilled by `migrateMessagesFTS` (:44), kept in step inside the write transaction by `refreshMessageFTS` (:73). `Store.SearchMessages(terms, sessionID, limit)` (:129) is **one `MATCH` plus a rowid join**, `ORDER BY bm25(messages_fts, 0.0, 0.0, 1.0), m.seq DESC LIMIT ?` (:152), each hit bounded to `messageSearchBytes = 400` (:120) and stamped with `AgeLabel`.
 - It is **populated by the v3 chat**: `internal/session/chatlog.go` posts every user message, reply and tool result into the store as it lands (`j.store.PostMessage(posted)`, `chatlog.go:270`).

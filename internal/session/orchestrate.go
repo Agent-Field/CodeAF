@@ -710,6 +710,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		// The plan a run is steered by: nobody reads it arriving, and it has to
 		// be right rather than soon (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
+		callPurpose(roles.RolePlanner),
 		messages,
 		p.call.model)
 	if err != nil {

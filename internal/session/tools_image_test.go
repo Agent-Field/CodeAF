@@ -723,3 +723,57 @@ func TestGenerateImageRefusesAReferenceItCannotRead(t *testing.T) {
 		t.Fatalf("a refused reference still cost %d generations", len(painter.seen))
 	}
 }
+
+// ── the model the surface reads back ────────────────────────────────────────
+
+// THE RESULT LINE IS THE SURFACE'S ONE ROAD TO THE IMAGE MODEL, and the shape
+// of the sentence is the contract.
+//
+// internal/tui3 draws "which model drew this" on the step row by reading the
+// tail of this line (its imagepreview.go's [generatedPictureModel]) — there is
+// no second field on the wire carrying it, because the model is CHOSEN inside
+// this tool, after the call's own word has been resolved against the catalog,
+// and a name resolved in one place and re-derived in another is a name that
+// will one day disagree with itself.
+//
+// So this test asserts the parse rather than the prose: the model that rode the
+// request is what stands after the marker, at the end of the line, whether it
+// came from the slot default or from the call's own word. Reword the sentence
+// and this fails here, where the fix is cheap — rather than in a terminal,
+// where the row simply stops saying anything and nobody is told why.
+func TestTheImageResultNamesTheModelWhereASurfaceCanReadIt(t *testing.T) {
+	// The same marker internal/tui3 looks for. It is written down twice on
+	// purpose: this copy is the test's own, so a change to either side of the
+	// contract has to be made deliberately on both.
+	const marker = ", generated on "
+
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 8, 8))}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = painter
+		config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/default"})
+		config.MediaPick = pickTable(map[string]string{"image/crayon": "paint/crayon-2"})
+	})
+
+	for index, testCase := range []struct{ args, want string }{
+		{`{"prompt":"a lighthouse"}`, "paint/default"},
+		{`{"prompt":"a lighthouse","model":"crayon"}`, "paint/crayon-2"},
+	} {
+		result, isError := runTool(t, agent, "generate_image", testCase.args)
+		if isError {
+			t.Fatalf("%s failed: %s", testCase.args, result)
+		}
+		line, _, _ := strings.Cut(strings.TrimSpace(result), "\n")
+		at := strings.LastIndex(line, marker)
+		if at < 0 {
+			t.Fatalf("the result carries no %q marker for a surface to read: %q", marker, line)
+		}
+		if got := strings.TrimSpace(line[at+len(marker):]); got != testCase.want {
+			t.Fatalf("the line ends on %q, want the model %q", got, testCase.want)
+		}
+		// And it is the model the REQUEST carried, which is the whole point of
+		// reading it here rather than guessing it there.
+		if got := painter.request(index).Model; got != testCase.want {
+			t.Fatalf("the request rode %q while the line said %q", got, testCase.want)
+		}
+	}
+}

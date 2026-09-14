@@ -465,6 +465,19 @@ type relaxStep struct {
 	label string
 	// name is the same fact in the terminal error's list of what was stripped.
 	name string
+	// took is what this rung really took off ONE body, for the rung that takes
+	// off more than one field. Nil is a rung whose `name` is the whole answer.
+	//
+	// IT EXISTS BECAUSE ONE WORD WAS A LIE ON HALF THE ROWS. The first rung
+	// drops every membership restriction at once, and the table could hold only
+	// one name for it — so a widened retry always claimed to have dropped
+	// `provider.require_parameters`, including the retry of a request whose
+	// whole problem was `provider.only`, and including a `simple` request that
+	// had never sent `require_parameters` at all. The measured row (2026-09-13,
+	// a retired pin's bare retry): `"relaxed":["provider.require_parameters"]`
+	// over a body carrying no `provider` key, under a `provider` object that had
+	// been `{"only":["DeepSeek"],"allow_fallbacks":false}` and nothing else.
+	took func(*providerPrefs) []string
 }
 
 // relaxRungs is every rung there is, in the order they are climbed, and it is
@@ -474,13 +487,63 @@ type relaxStep struct {
 // (calllog.go's relaxNames). A rung named separately in each would have been
 // two names for one thing the first time either was reworded.
 var relaxRungs = []relaxStep{
-	{bit: relaxEndpointFilter, label: "relaxed the endpoint filter", name: "provider.require_parameters"},
+	{bit: relaxEndpointFilter, label: "relaxed the endpoint filter", name: "provider.require_parameters", took: widenedOff},
 	{bit: relaxPriceCeiling, label: "dropped the price ceiling", name: "provider.max_price"},
 	{bit: relaxReasoning, label: "removed reasoning", name: "reasoning"},
 	{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"},
 	{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"},
 	{bit: relaxImages, label: "removed images", name: "images"},
 	{bit: relaxTools, label: "removed tools", name: "tools"},
+}
+
+// widenedOff is what the first rung really takes off ONE preference object:
+// every membership restriction it was carrying, in the order
+// [relaxedPreferences] removes them and spelled the way the wire spells them.
+//
+// A FIELD THE OBJECT WAS NOT CARRYING IS NOT NAMED, which is the whole point —
+// the row says what changed about THIS request rather than what the rung is
+// capable of changing. An object that had nothing to widen names nothing, and
+// the caller falls back on the rung's own word so a row is never left silent
+// about a rung it climbed.
+func widenedOff(prefs *providerPrefs) []string {
+	if prefs == nil {
+		return nil
+	}
+	var names []string
+	// THE DEMAND IS NAMED FIRST BECAUSE IT IS THE ONE THAT MATTERED. `only`
+	// plus `allow_fallbacks: false` is the narrowest filter this process sends,
+	// and a refusal earned under it is the router saying the set is empty
+	// (velocity.go's [relaxedPreferences] says the same thing from the other
+	// side).
+	if len(prefs.Only) > 0 {
+		names = append(names, "provider.only")
+	}
+	if prefs.RequireParameters != nil {
+		names = append(names, "provider.require_parameters")
+	}
+	if len(prefs.Ignore) > 0 {
+		names = append(names, "provider.ignore")
+	}
+	return names
+}
+
+// widenedNames is [widenedOff] asked about the object THIS CALL would have sent
+// before the ladder touched it, which is the two halves the rung strips —
+// what the ledger and the row composed, plus a rescue's own demand — and
+// deliberately not [Client.wirePreferences], whose job includes teaching the
+// ledger ([velocityLedger.keepTheSetServable]) and which no log line may run.
+//
+// WHAT IS LEFT IS IDEMPOTENT, which is the whole reason a row may ask it. The
+// one thing [Client.providerPreferences] changes is an affinity pin whose
+// endpoint the veto list now covers (affinity.go's [Client.heldEndpoint]), and
+// the encode of this same attempt asked the same question of the same veto list
+// before the body went out — so the pin is already released and asking again
+// answers rather than acts.
+func (c *Client) widenedNames(model string, knobs callKnobs) []string {
+	unwidened := knobs
+	unwidened.relaxed &^= relaxEndpointFilter
+	unwidened.noProvider = false
+	return widenedOff(hedgePreference(c.providerPreferences(model, unwidened), unwidened))
 }
 
 // rung is one row of the table above. A bit with no row is a programming error

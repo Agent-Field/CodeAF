@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -30,8 +31,17 @@ func rowfitPicker(t *testing.T) *app {
 	laneLab(t, threeLanes())
 	a := pickerApp(t, &fakeAgent{model: flash}, rowfitCatalog)
 	a.profileDir = t.TempDir()
+	// ON THE RANKED ROAD, and before the picker is armed, because the row is
+	// copied onto the list when it opens (lanes.go's [app.armLanes]). The fold
+	// these widths are measured against is the one where aforge names the
+	// machine it would send you to, and the shipped row names none
+	// (palette.go's [laneAutoSaid]).
+	a.routing = config.RoutingLatency
 	typeLine(t, a, "/model")
-	a.pick.pin = "CoreWeave"
+	// THE ROW AND WHAT THE WIRE WOULD DEMAND ARE BOTH SET, because they are two
+	// different fields on the list and the row a machine's NAME is drawn from is
+	// the second ([picker.force]).
+	a.pick.pin, a.pick.force = "CoreWeave", "CoreWeave"
 	return a
 }
 
@@ -195,7 +205,7 @@ func TestAnUnknownFactDrawsNothingAndFreesItsSpace(t *testing.T) {
 	if got := rowTail(fields, 60); got != "coreweave · 1M · elo 1290" {
 		t.Fatalf("the unknown fields left a hole: %q", got)
 	}
-	if got := rowAll(modelFields(Model{ID: "vendor/quiet"}, "")); got != "" {
+	if got := rowAll(modelFields(Model{ID: "vendor/quiet"}, "", config.RoutingLatency)); got != "" {
 		t.Fatalf("a model nobody published anything about says %q", got)
 	}
 	if got := rowAll([]rowField{rowField{}, rowField{}}); got != "" {

@@ -6,6 +6,8 @@ third_party/
 internal/furrowbin/cache/furrow-*.gz
 .obs/
 *.log
+# macOS Finder leaves this litter behind, and one copy was committed once.
+.DS_Store
 .claude/
 /aforge
 bench-results/

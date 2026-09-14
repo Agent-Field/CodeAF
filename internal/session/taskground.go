@@ -8,8 +8,8 @@ package session
 // check passed, the branch merged, and the person finds out days later.
 //
 // Nothing tracks what a task READ, and nothing ever will cheaply — reads are
-// numerous and mostly uninteresting (docs/coordination-design.md says so out
-// loud). So the earlier warning, the one a preflight could give before the money
+// numerous and mostly uninteresting. So the earlier warning, the one a preflight
+// could give before the money
 // is spent, cannot see this case at all. LAND TIME IS WHERE IT IS CAUGHT, and
 // this file is the catching: at the instant a node would merge, the paths it
 // wrote are held up against the two places other work leaves marks —

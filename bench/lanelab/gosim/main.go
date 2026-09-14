@@ -5,13 +5,13 @@
 //
 // `bench/lanelab/sim.py` is a reference model: it re-implements the design in
 // Python, it is quick to change, and it found five of the seven corrections in
-// ideation/provider-routing.md Part III. But a second implementation agreeing
+// docs/design/routing/provider-routing.md Part III. But a second implementation agreeing
 // with the first is not evidence about the build. So this program drives the
 // REAL registry — `lane.Default()`'s real ledger primed from the same sheet
 // fixture, the real chooser, the real watch, the real budget — against
 // `internal/lane/lanestub`, over the same three scenarios, the same eight
 // seeds, and the same objective. THE SHIP DECISION IS TAKEN HERE
-// (ideation/provider-routing.md, Part III, C6); the Python table is the bug
+// (docs/design/routing/provider-routing.md, Part III, C6); the Python table is the bug
 // report when the two disagree.
 //
 // It is a main package under bench/, so none of it is in the shipped binary.
@@ -43,7 +43,7 @@ import (
 
 // ── THE SHIP GATE ───────────────────────────────────────────────────────────
 //
-// The gate of ideation/provider-routing.md Part III, C3, in the design's own
+// The gate of docs/design/routing/provider-routing.md Part III, C3, in the design's own
 // economics and not in a percentage from nowhere.
 //
 // THE SPEED HALF IS THE P90 OF WHAT THE SCENARIO ACTUALLY BUYS. For `work` and
@@ -554,7 +554,7 @@ func run(w *world, s scenario, policy string, seed, n, speedup int, trace bool) 
 	// and `lane.StorePath` resolves under AFORGE_HOME on every call, so a run
 	// that did not move the state root would fold this program's lanes into the
 	// belief file of whoever ran it and read them back on the next run. That is
-	// the bug ideation/provider-routing.md Part III records at the end.
+	// the bug docs/design/routing/provider-routing.md Part III records at the end.
 	dir, err := os.MkdirTemp("", "gosim-home-")
 	if err != nil {
 		log.Fatal(err)

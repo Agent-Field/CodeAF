@@ -83,6 +83,7 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	{name: "drafts", desc: "cleared-but-kept drafts · enter restores one, d lets one go"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
 	{name: "autonomy", desc: "how questions are handled while you are away"},
 	{name: "autonomy", args: "<kind> <ask|recommend DURATION|decide>", desc: "change one project's question rule"},
@@ -668,9 +669,9 @@ type menu struct {
 // three are here rather than spread around the surface:
 //
 //   - A '/' with a non-space in front of it opens nothing. That is the token
-//     rule, and it is what makes "/Users/santosh" one candidate rather than two.
+//     rule, and it is what makes "/Users/example" one candidate rather than two.
 //   - A filter that matches NOTHING closes the list. The word being matched is
-//     the whole run to the next space — "Users/santosh", "tmp/aforge" — so a
+//     the whole run to the next space — "Users/example", "tmp/aforge" — so a
 //     path drops out within a couple of keystrokes and stays out; a backspace
 //     back into a word that does match brings it straight back.
 //   - A space closes it, because the word the caret is in stops being the slash

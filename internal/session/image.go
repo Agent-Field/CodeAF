@@ -506,7 +506,8 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	// is reading, delta by delta, above. So it is talk, and it owns the clock
 	// for as long as it is writing (internal/lane's roles.go).
 	response, err := a.completeWithModel(
-		provider.WithRole(ctx, lane.RoleTalk), []ai.Message{live}, seer)
+		provider.WithRole(ctx, lane.RoleTalk), callPurpose(roles.RoleVision),
+		[]ai.Message{live}, seer)
 	if err == nil && response != nil {
 		a.addAuxiliaryUsage(response, seer, 1)
 	}

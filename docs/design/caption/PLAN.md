@@ -1,8 +1,7 @@
 # The caption — implementation plan
 
-Status: plan, nothing built. The UX argument and the alternatives it beat are in
-[`ideation/live-narration.md`](../../../ideation/live-narration.md); this file is
-the build.
+Status: plan, nothing built. This file retains the UX argument, settled
+interaction, and proposed build.
 
 Settled by the owner on 2026-09-03:
 

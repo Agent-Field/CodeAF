@@ -23,7 +23,7 @@ a person can act on.**
 `bench/worker-trial/captures/510-run1-stream.log` on branch
 `trial/aforge-as-worker` @`25cb52250` (worktree `~/af-trial`), with the two leaf
 records beside it and the analysis in that directory's `README.md`. The live
-store is `/home/santosh/.aforge/runs/aforge-do-1923110067`. The sentence, as a
+store is `~/.aforge/runs/aforge-do-1923110067`. The sentence, as a
 person saw it:
 
 ```

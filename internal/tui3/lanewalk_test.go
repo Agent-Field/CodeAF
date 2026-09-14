@@ -218,6 +218,62 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	}
 }
 
+// AND UNDER ROUTING `simple` THE FOLD OPENS AND THE `auto` ROW STOPS PROMISING
+// A TAKEOVER. That row sends no preference of aforge's own: with nothing pinned
+// the request goes out bare and OpenRouter's own routing answers, so nothing on
+// this side chooses a machine, predicts which one the next turn lands on, or
+// rescues an answer that turns slow — and the sentence a person reads on the row
+// where they decide whether to leave the choosing alone has to say so.
+func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
+	laneLab(t, threeLanes())
+	dir := t.TempDir()
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyRouting)
+	if !ok || row.Apply(config.RoutingSimple) != nil {
+		t.Fatal("could not write the routing row")
+	}
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
+	a.models = func() []Model { return laneCatalog }
+	a.width, a.height = 120, 24
+
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"))
+	if a.pick.unfold != flash {
+		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)
+	}
+	screen := plain(frame(a))
+	if !strings.Contains(screen, "openrouter's own routing; aforge stays out") {
+		t.Fatalf("the auto row does not say who is choosing under simple:\n%s", screen)
+	}
+	// THE TWO CLAIMS THAT ONLY A CHOOSER CAN MAKE ARE GONE WITH IT: the machine
+	// the next turn would go to, which under this row nobody on this side picks,
+	// and the takeover the sentence used to promise.
+	for _, gone := range []string{"aforge takes over", "cloudflare now"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("under routing simple the fold still says %q:\n%s", gone, screen)
+		}
+	}
+	// AND THE SETTINGS PANEL EXPLAINS THE SAME ROW THE SAME WAY, because both
+	// read the one door (palette.go's [laneAutoSaid]).
+	drive(t, a, key("esc"))
+	a.openSettings()
+	meta, found := a.sheet.metaFor(mustRow(t, a, config.LaneSettingKey(talkSlot)))
+	if !found || !strings.Contains(meta.about, "openrouter's own routing answers") {
+		t.Fatalf("the lane row is explained as %q", meta.about)
+	}
+}
+
+// mustRow is one registry row by key, for a test that is about what the panel
+// SAYS about it rather than about finding it.
+func mustRow(t *testing.T, a *app, key string) config.Setting {
+	t.Helper()
+	row, ok := a.sheet.registry.Row(key)
+	if !ok {
+		t.Fatalf("the registry has no row %q", key)
+	}
+	return row
+}
+
 // DEFECT 5. A BELIEF WHOSE CONFIDENCE HAS DECAYED HAS NO TAIL. A day without a
 // sighting doubles the spread a hundred and forty-four times, and the p99 of
 // that is +Inf — which a row once printed as `tail 9223372036854775807s`.
@@ -266,5 +322,36 @@ func TestClearingTheFilterReturnsToTheModelInUse(t *testing.T) {
 	drive(t, a, key("ctrl+u"))
 	if chosen, _ := a.pick.choice(); chosen.ID != "gpt-5-classic" {
 		t.Fatalf("ctrl+u left the cursor on %q, want the model in use", chosen.ID)
+	}
+}
+
+// THE MODEL ROW PREDICTS NO MACHINE WHERE NOTHING CHOOSES. The `via` on a
+// picker row is a claim about the next request, and under `simple` the next
+// request names nobody: a row that still said `via modal` while the status
+// line and the record said Sail Research was the surface predicting a choice
+// nobody was making (the 2026-09-13 acceptance drive). The ranked road keeps
+// its prediction, because there the chooser really is about to make one.
+func TestUnderSimpleRoutingTheModelRowPredictsNoMachine(t *testing.T) {
+	views := []laneView{{Name: "modal", Known: true, TTFT: 0.8, Rate: 90}}
+	now := time.Now()
+	if got := laneAuto(config.RoutingSimple, "vendor/quiet", views, now); got != "" {
+		t.Fatalf("under simple the model row would say via %q, want no machine", got)
+	}
+	if got := laneAuto(config.RoutingLatency, "vendor/quiet", views, now); got != "modal" {
+		t.Fatalf("under latency the model row names %q, want the machine the belief holds", got)
+	}
+	if note := rowAll(modelFields(Model{ID: "vendor/quiet", ContextLength: 128_000}, "", config.RoutingSimple)); strings.Contains(note, "via ") {
+		t.Fatalf("the simple model row still carries a prediction: %q", note)
+	}
+	// AND NOT THE PREDICTED MACHINE'S NUMBERS EITHER: with no name and no
+	// chooser the row speaks for no lane, so it draws no wait and no rate.
+	if shown, ok := laneShown(config.RoutingSimple, views, ""); ok {
+		t.Fatalf("under simple the model row speaks for %q, want no lane", shown.Name)
+	}
+	if shown, ok := laneShown(config.RoutingSimple, views, "modal"); !ok || shown.Name != "modal" {
+		t.Fatal("a machine the row names still speaks for itself under simple")
+	}
+	if shown, ok := laneShown(config.RoutingLatency, views, ""); !ok || shown.Name != "modal" {
+		t.Fatal("under latency the best-known lane still speaks for the row")
 	}
 }

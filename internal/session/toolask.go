@@ -118,7 +118,6 @@ func (a *Agent) askModel(ctx context.Context, question toolAsk) (string, error) 
 	// the client bounded in total rather than on the stream client, which by
 	// design carries no total deadline at all (internal/provider's transport.go).
 	asked := provider.WithRole(provider.WithoutStream(ctx), lane.RoleTool)
-	asked = provider.WithCallTag(asked, toolCallTag(question.tool))
 	if a.config.taskID != 0 {
 		asked = provider.WithCallNode(asked, strconv.FormatUint(a.config.taskID, 10))
 	}
@@ -126,7 +125,9 @@ func (a *Agent) askModel(ctx context.Context, question toolAsk) (string, error) 
 	defer stop()
 
 	// NO OUTPUT CEILING TRAVELS WITH IT ([toolAskSendsNoOutputCeiling]).
-	response, err := a.completeWithModel(asked, []ai.Message{{
+	// THE TOOL IS THE PURPOSE, carried to the door rather than stamped here, so
+	// that this package has one place that spells a tag (clientdoor.go).
+	response, err := a.completeWithModel(asked, callPurpose(toolCallTag(question.tool)), []ai.Message{{
 		Role:    "user",
 		Content: []ai.ContentPart{{Type: "text", Text: question.prompt}, question.part},
 	}}, question.model)

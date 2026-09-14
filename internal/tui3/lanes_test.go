@@ -99,10 +99,20 @@ var laneCatalog = []Model{
 	{ID: "moonshotai/kimi-k3"},
 }
 
+// laneApp is a picker over this lab's ledger, ON THE RANKED ROAD.
+//
+// The shipped routing row is `simple` ([config.DefaultRouting]) and under it
+// nothing on aforge's side chooses a machine — no takeover sentence, no
+// `recommended`, no name beside `auto` (palette.go's [laneAutoSaid]). The folds
+// these tests read are about the road where aforge does choose, so the row is
+// written here once rather than at each of them; the test that is about the
+// shipped row writes `simple` into a profile of its own
+// (TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover).
 func laneApp(t *testing.T) *app {
 	t.Helper()
 	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
 	a.profileDir = t.TempDir()
+	a.routing = config.RoutingLatency
 	return a
 }
 
@@ -123,7 +133,7 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	}
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"● auto", "weighs speed against price each answer", "recommended",
+		"● auto", "router routes; aforge takes over if answers turn bad", "recommended",
 		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
@@ -482,6 +492,8 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 func laneSheet(t *testing.T) (*app, string) {
 	t.Helper()
 	a, dir := sheetApp(t)
+	// On the ranked road, for [laneApp]'s reason.
+	a.routing = config.RoutingLatency
 	a.width = 120
 	a.model = flash
 	a.sheet.sessionModel = flash
@@ -553,7 +565,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	}
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
-		"auto", "weighs speed against price each answer",
+		"auto", "router routes; aforge takes over if answers turn bad",
 		"cloudflare", "0.8s", "58 t/s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
 		"openrouter", "let the router balance on price",
@@ -761,6 +773,9 @@ func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
 func TestTheModelRowInSettingsNamesTheLane(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, _ := sheetApp(t)
+	// The tail is a PREDICTION, so it is drawn only where aforge is the one
+	// choosing — the ranked road, for [laneApp]'s reason.
+	a.routing = config.RoutingLatency
 	a.model = flash
 	a.sheet.sessionModel = flash
 	a.openSettings()
@@ -896,7 +911,7 @@ func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
 	}
 	head, tail := laneRowText(views[0], 80)
 	for what, text := range map[string]string{
-		"the model row": laneSpeedWord(views, ""),
+		"the model row": laneSpeedWord(config.RoutingLatency, views, ""),
 		"the lane row":  head + " " + tail,
 		"the why line":  laneWhy(views[0]),
 	} {

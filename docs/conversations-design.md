@@ -47,8 +47,7 @@ gate. Home stops being a map of a machine you have to go to a different terminal
 to act on, and becomes the switcher. Work that fans out — three tasks in one repo,
 a long build in another — carries on while you are looking somewhere else, and
 says `waiting on you` on home when it needs a person. That is the calm-parallelism
-thesis (`docs/coordination-design.md`, "the fear caps the product") applied one
-level up: fan out across projects, not only across tasks.
+thesis applied one level up: fan out across projects, not only across tasks.
 
 The three alternatives, each rejected in one line.
 
@@ -67,7 +66,7 @@ The three alternatives, each rejected in one line.
 - **Another terminal** — what people do today. It works, and it is why this is a
   convenience rather than a capability: the cost is that the machine's state is
   spread across N terminals with no one place that shows it, which is the same
-  complaint `docs/coordination-design.md` opens with.
+  machine-wide visibility complaint this document opens with.
 
 ### The seam lesson — why Revision 2 was heavy, and where the unit really is
 

@@ -92,9 +92,9 @@ func TestTheProjectFileBeatsTheProfileAtTheSessionConfig(t *testing.T) {
 	if err != nil || model != "project/title" {
 		t.Fatalf("the title role resolved to %q (%v), want the project's pin", model, err)
 	}
-	model, err = roles.Resolve(cfg.RolesSource, roles.RoleCompaction, "session/model")
+	model, err = roles.Resolve(cfg.RolesSource, roles.RoleAuditor, "session/model")
 	if err != nil || model != "project/capable" {
-		t.Fatalf("compaction resolved to %q (%v), want the project's high tier", model, err)
+		t.Fatalf("the auditor resolved to %q (%v), want the project's high tier", model, err)
 	}
 	if got, ok := roles.TierModel(cfg.RolesSource, roles.TierLow); !ok || got != "project/cheap" {
 		t.Fatalf("the low tier is %q (ok=%v)", got, ok)

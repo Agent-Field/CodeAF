@@ -105,7 +105,7 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 		// The worker is the seat that does the work, and sits apart from the
 		// small calls beside it.
 		{roles.RoleWorker, "worker", "test/worker-model"},
-		{roles.RoleCompaction, "careful work", "test/careful-model"},
+		{roles.RoleAuditor, "careful work", "test/careful-model"},
 		{roles.RoleTitle, "small work", "test/cheap-model"},
 	} {
 		row := roleItem(t, a, c.role)
@@ -198,7 +198,7 @@ func TestARoleFollowsItsShippedClassAndThenTheConversation(t *testing.T) {
 		{roles.RolePlanner, config.DefaultMastermindModel},
 		{roles.RoleWorker, config.DefaultWorkerModel},
 		{roles.RoleTitle, config.DefaultLowModel},
-		{roles.RoleCompaction, config.DefaultHighModel},
+		{roles.RoleAuditor, config.DefaultHighModel},
 		{roles.RoleReflex, config.DefaultReflexModel},
 	} {
 		if got := roleItem(t, a, c.role).model; got != c.want {

@@ -230,11 +230,12 @@ to model behavior.
 
 **Module shape.** `internal/session` (the agent: Serve loop, pi-exact turn
 machinery from `exec/bare`, embedded prompt templates as data, one file per
-tool family), `internal/gate` (the one seam), `internal/tui3` (the surface:
-app/shell/panes plus independent rail, room, gate, palette widgets over the
-v2-style `Backend`/`Commander`/`Streams` interfaces). The agent never imports
-the surface; the surface never imports the agent; both meet at the store.
-Every seam is an interface narrow enough to fake in a test.
+tool family), and `internal/tui3` (the surface: app/shell/panes plus independent
+rail, room, gate, palette widgets over the v2-style
+`Backend`/`Commander`/`Streams` interfaces). An earlier package served as the
+one seam. The agent never imports the surface; the surface never imports the
+agent; both meet at the store. Every seam is an interface narrow enough to fake
+in a test.
 
 ## Decision 9 — Compaction follows omp, minus the rasterizer
 
@@ -1136,9 +1137,11 @@ true, require_parameters: true}` — the router picks the currently-fastest
 endpoint, fallbacks keep every preference advisory (a slow answer beats no
 answer), and `require_parameters` stops a request carrying the reasoning knob
 from landing on an endpoint that would silently drop it. The `routing` settings
-row is the only dial: `latency` (default) · `price` · `off`, and `off` is total
-— no preference object, and no measurement either, because a session that asked
-for no routing asked for no ledger.
+row is the only dial: `simple` (default) · `latency` · `price` · `off`. The
+object above is what `latency` and `price` send; `simple` sends no preference of
+ours at all — the router's own default routing answers, and a lane you pinned is
+the whole request — and `off` is total, no preference object and no measurement
+either, because a session that asked for no routing asked for no ledger.
 
 **The check is a ledger, and it names no vendor.** Every completion is timed —
 TTFT from the send to the first token (reasoning counts; it is the endpoint

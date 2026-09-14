@@ -191,8 +191,8 @@ const (
 	// chosen for THINKING rather than for a price. Two roles ride it — the
 	// planner that amends an adaptive run's plan after every node, and the
 	// designer that writes a harness page everybody afterwards runs — and both
-	// were on the careful-work tier beside the compaction summary, which made one
-	// figure answer two unrelated bills: the careful calls are many and short,
+	// were on the careful-work tier beside the check on finished work, which made
+	// one figure answer two unrelated bills: the careful calls are many and short,
 	// these are few and decide what all the other calls do.
 	//
 	// It is the one row whose value may carry a LEVEL as well as a model
@@ -711,7 +711,7 @@ var BackgroundModes = []string{BackgroundOn, BackgroundOff}
 // DefaultBackground is on.
 const DefaultBackground = BackgroundOn
 
-// The routing row's three answers. They are spelled here rather than imported
+// The routing row's four answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
 // vocabulary is a string on disk, and it must not change because a package
 // renamed a constant.
@@ -720,17 +720,33 @@ const (
 	RoutingLatency = "latency"
 	// RoutingPrice asks for the cheapest one that can serve the request.
 	RoutingPrice = "price"
+	// RoutingSimple sends no preference of ours at all: when no lane is
+	// pinned the router's own default answers, and a pinned lane is the
+	// whole request.
+	RoutingSimple = "simple"
 	// RoutingOff sends no preference at all, and stops measuring with it.
 	RoutingOff = "off"
 )
 
-// RoutingModes lists them, latency first — which is also the default: a chat
-// session is a person waiting, and the endpoint that answers soonest is the one
-// they are asking for.
-var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingOff}
+// RoutingModes lists them, simple first — which is also the default, and the
+// order the row cycles in.
+var RoutingModes = []string{RoutingSimple, RoutingLatency, RoutingPrice, RoutingOff}
 
-// DefaultRouting is latency.
-const DefaultRouting = RoutingLatency
+// DefaultRouting is simple: what a person asked for is what goes on the wire,
+// and nothing else does.
+//
+// IT WAS `latency` UNTIL THIS BUILD, and the reason it moved is that the
+// choosing was not visible. Sorting by speed brings a whole apparatus with it —
+// a ranking this process keeps, a price ceiling, refusals learned from earlier
+// answers, a pin retired against a belief saved from an earlier run — and each
+// of those is a decision nobody watched being made. What the picker showed, what
+// was chosen, and what the record said were three answers to one question. Under
+// this row they are one answer: with no lane pinned the request carries no
+// preference at all and the router's own default routing answers it, and with a
+// lane pinned that pin is the whole request. `latency` and `price` are both
+// still here for somebody who wants the apparatus, one word away
+// (internal/provider's velocity.go).
+const DefaultRouting = RoutingSimple
 
 // ── WHICH MACHINE, NOT WHICH MODEL ──────────────────────────────────────────
 //
@@ -816,13 +832,50 @@ func LanePinAt(profileDir, slot string) provider.LanePin {
 	return provider.LanePin{}
 }
 
-// InstallLaneRows hands this profile's lane rows to the process-wide knobs the
-// transport reads them from. It uses the RESOLVER'S entrance so loading a row
-// already in force never forgets a retirement the wire earned; only a person's
-// own act belongs at [provider.RepinLane].
+// InstallLaneRows hands this profile's routing posture to the process-wide
+// knobs the transport reads it from. It uses the RESOLVER'S entrance so loading
+// a row already in force never forgets a retirement the wire earned; only a
+// person's own act belongs at [provider.RepinLane].
+//
+// THE ROUTING ROW IS ONE OF THEM, and it is here rather than only on the
+// session's own config because of the clients nobody hands one to. The harness,
+// the subharness, `read_document`, `view_image` and a panel's members are all
+// assembled through [Config.ClientConfig], which carries no routing answer —
+// so before this line they ran on the default whatever a person had written,
+// and one of them could retire a person's own pin, process-wide, before any
+// wire was asked (internal/provider's velocity.go says what that cost). It is
+// the CHOICE and not the resolved default, so an unwritten row installs nothing
+// and every client falls to the shipped row together
+// ([provider.DefaultRouting]).
 func InstallLaneRows(profileDir string) {
+	InstallRoutingRow(profileDir)
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+}
+
+// InstallRoutingRow hands the routing row ALONE to the transport, and it is the
+// half of [InstallLaneRows] the settings panel calls by itself: somebody cycles
+// `routing`, the row is written, and the very next request has to go out under
+// it. The lane rows beside it are untouched because nothing about them changed —
+// re-stating a pin here would be a resolver's write nobody asked for.
+func InstallRoutingRow(profileDir string) {
+	provider.InstallRouting(installedRoutingFor(profileDir))
+}
+
+// installedRoutingFor is the routing row as the transport's own vocabulary, and
+// the EMPTY strategy when a person has written nothing readable. The parse is
+// total, so a word this build does not know installs nothing rather than taking
+// a person's routing somewhere they did not ask for.
+func installedRoutingFor(profileDir string) provider.RoutingStrategy {
+	word := RoutingChoiceAt(profileDir)
+	if word == "" {
+		return ""
+	}
+	strategy, known := provider.ParseRoutingStrategy(word)
+	if !known {
+		return ""
+	}
+	return strategy
 }
 
 // SetLane writes one slot's lane. An empty word clears the row back to auto,
@@ -1924,15 +1977,16 @@ func (s *Settings) build() []Setting {
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +
-				"different speeds AND very different prices. Left alone, aforge asks for the " +
-				"fastest endpoint for your own turns — capped at a quarter over the model's " +
-				"list price, because no endpoint is worth four times that — and asks for the " +
-				"cheapest for work you are not waiting on: task workers, judges, titles, the " +
-				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
-				"fastest one for everything and times every answer, demoting an endpoint that " +
-				"keeps being slow; price asks for the cheapest for everything; off asks for " +
-				"nothing and measures nothing — and with nothing measured there is no lane " +
-				"to choose, no sheet of them to open and no speed guard. A change lands on " +
+				"different speeds AND very different prices. Left alone — simple — aforge " +
+				"sends no preference of its own at all: with no lane pinned the router's own " +
+				"default routing answers, and a lane you pinned is the whole request, that " +
+				"machine and no fallbacks. Choosing another word here changes that " +
+				"everywhere: latency asks " +
+				"for the fastest endpoint for every call, capped at a quarter over the " +
+				"model's list price, and times every answer, demoting one that keeps being " +
+				"slow; price asks for the cheapest for every call; off asks for nothing and " +
+				"measures nothing — and with nothing measured there is no lane to choose, " +
+				"no sheet of them to open and no speed guard. A change lands on " +
 				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
@@ -1963,11 +2017,13 @@ func (s *Settings) build() []Setting {
 			Label: "lane", EmptyLabel: LaneAuto,
 			Hint: "which machine behind your model answers requests from this home. One model id is served by " +
 				"a dozen endpoints that differ by seven times on the wait before the first " +
-				"word, so this is often a bigger change than switching model. auto lets aforge " +
-				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
-				"else is asked; `pinned: cloudflare, borrow when slow` keeps the pin but lets " +
+				"word, so this is often a bigger change than switching model. auto lets the router " +
+				"route — and aforge takes over choosing the machine when its answers start coming " +
+				"back refused or unusable, handing it back once it has been well for a while; " +
+				"a name — `cloudflare` — pins it and nothing else is asked; " +
+				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
 				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
-				"lets the router balance on price. enter on this row opens them with what " +
+				"lets the router balance on price, with no takeover. enter on this row opens them with what " +
 				"has been measured of each, and so does → on a model row in the picker — " +
 				"under /model and under `your model` in the settings panel alike.",
 			read:  func() string { return LaneRowWord(dir, LaneSlotTalk) },
@@ -2179,8 +2235,8 @@ func (s *Settings) build() []Setting {
 		},
 		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
 		// actually configures for the calls aforge makes on its own — the name it
-		// gives a session, the summary a compaction writes, the plan an adaptive
-		// run steers by (internal/roles). Four rows, not one per feature: a new
+		// gives a session, the check on work a task says is finished, the plan an
+		// adaptive run steers by (internal/roles). Four rows, not one per feature: a new
 		// call joins a class and needs no row of its own.
 		//
 		// The crew row comes FIRST because it is the only one most people will
@@ -2231,7 +2287,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
 			Label: "careful work", EmptyLabel: "follows the conversation",
 			Hint: "the capable model for the things that must not be wrong — the check on " +
-				"finished task work, the summary a compaction keeps, reading an image.",
+				"finished task work, the brief a task is shaped into, reading an image.",
 			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
 			write: func(raw string) error { return writeTierModel(dir, ModelTierHigh, raw) },
 		},
@@ -2252,7 +2308,7 @@ func (s *Settings) build() []Setting {
 			Label: "pinned roles", EmptyLabel: "none",
 			Hint: "exceptions to the five rows above, one per role: `title:openai/gpt-5-mini`. " +
 				"A role not named here follows its class.",
-			read:  func() string { return ModelRolesAt(dir) },
+			read:  func() string { return LivePinsAt(dir) },
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
 		},
 		Setting{
@@ -3419,19 +3475,41 @@ func IconsAt(profileDir string) string {
 	return IconsAuto
 }
 
-// RoutingAt resolves the routing row to its word, default latency. An
-// unreadable or unknown word falls back to the default rather than to off: a
-// garbled row must not quietly stop a session chasing the fastest endpoint.
-func RoutingAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyRouting); ok {
-		value = strings.TrimSpace(strings.ToLower(value))
-		for _, mode := range RoutingModes {
-			if value == mode {
-				return value
-			}
+// routingWritten is the routing word in raw when this build knows it, and empty
+// for anything else — unwritten, blank, garbled, or a word a later build
+// spelled. It is the one place the row's vocabulary is checked, so that "what
+// did they write?" and "what is in force?" cannot come apart.
+func routingWritten(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	for _, mode := range RoutingModes {
+		if raw == mode {
+			return raw
 		}
 	}
+	return ""
+}
+
+// RoutingWord is what an already-read routing row is IN FORCE as: the word when
+// somebody wrote one this build knows, and [DefaultRouting] otherwise.
+//
+// A surface that holds the row in hand asks this rather than deciding for
+// itself what an unknown word means, so the shipped row is stated once
+// (internal/tui3's palette.go reads it for the sentence on the `auto` row).
+func RoutingWord(raw string) string {
+	if written := routingWritten(raw); written != "" {
+		return written
+	}
 	return DefaultRouting
+}
+
+// RoutingAt resolves the routing row to the word in force, [DefaultRouting]
+// when nobody wrote one. An unreadable or unknown word falls back to the
+// default rather than to off: a garbled row must not quietly stop a session
+// sending what it would otherwise send, and off is a real answer somebody
+// chooses rather than one they arrive at by accident.
+func RoutingAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyRouting)
+	return RoutingWord(value)
 }
 
 // RoutingChoiceAt is the routing row A PERSON ACTUALLY WROTE, empty when they
@@ -3439,21 +3517,14 @@ func RoutingAt(profileDir string) string {
 //
 // It is the same read as [RoutingAt] without the fallback, and the two are both
 // needed because they answer different questions. A settings sheet asks "what
-// is in force?" and must be told latency, which is what an unset row does. The
-// adapter asks "did somebody CHOOSE?", and it must be able to hear no — that is
-// the whole of what lets it route a person's own turn by speed and an errand
-// nobody is waiting on by price, while an explicit word still wins over both
+// is in force?" and must be told the shipped row, which is what an unset row
+// does. The adapter asks "did somebody CHOOSE?", and it must be able to hear no
+// — which is what lets a client that was handed nothing fall to the row this
+// process installed, while an explicit word still wins over both
 // (internal/provider's velocity.go).
 func RoutingChoiceAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyRouting); ok {
-		value = strings.TrimSpace(strings.ToLower(value))
-		for _, mode := range RoutingModes {
-			if value == mode {
-				return value
-			}
-		}
-	}
-	return ""
+	value, _ := persistedString(profileDir, KeyRouting)
+	return routingWritten(value)
 }
 
 // TaskAuditAt resolves the audit row to its word, default on.
@@ -3696,11 +3767,95 @@ func ModelRolesAt(profileDir string) string {
 	return ""
 }
 
+// LivePinsAt is the pinned-roles row AS IT IS ACTED ON: the person's own text
+// with the pins this build will never consult taken out.
+//
+// THE ROW DRAWS WHAT IS TRUE. [ModelRolesAt] is the raw stored string and stays
+// that, because the writer needs the text to rewrite; but a row that DISPLAYED
+// it would draw `compaction: some/model` as a live pin while the role list under
+// it had no such line, and the person would be reading a setting that does
+// nothing. What they are told instead is [RetiredPinNote], next to the row.
+func LivePinsAt(profileDir string) string {
+	pins, dropped, err := parseModelRoles(ModelRolesAt(profileDir))
+	if err != nil || len(dropped) == 0 {
+		return ModelRolesAt(profileDir)
+	}
+	names := make([]string, 0, len(pins))
+	for name := range pins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	kept := make([]string, 0, len(names))
+	for _, name := range names {
+		kept = append(kept, name+":"+pins[name])
+	}
+	return strings.Join(kept, ", ")
+}
+
 // ParseModelRoles reads `title:openai/gpt-5-mini` into role → model. The value
 // is split at the FIRST colon only, because a model slug can carry one of its
 // own (`…/model:free`).
+//
+// A PIN FOR A WORD THAT IS NOT A ROLE IS DROPPED, NOT REFUSED — see
+// [parseModelRoles], which is this and the names it dropped.
 func ParseModelRoles(raw string) (map[string]string, error) {
-	return parsePairs(raw, "role")
+	pins, _, err := parseModelRoles(raw)
+	return pins, err
+}
+
+// parseModelRoles is [ParseModelRoles] and also SAYS WHAT IT DROPPED.
+//
+// A PIN FOR A WORD THAT IS NOT A ROLE IS DROPPED, NOT REFUSED, and the read does
+// not care WHY it is not a role. A name this build retired and a name somebody
+// mistyped are the same thing here by design: both are a pin no call will ever
+// consult, and the row around them is a person's own text that outlives any
+// particular build. Refusing the whole row over one dead word is what made every
+// OTHER pin on that machine unchangeable when `compaction` was deleted, because
+// the panel re-serialises the whole string on any change.
+//
+// THE DROP IS RETURNED AND NOT LOGGED. This is a pure parser on the settings
+// panel's draw path, and a log line here would print on stderr in every headless
+// and `--json` door, over the top of a machine-readable answer. Who should hear
+// about a dead pin depends on who is asking: the panel says it to the person in
+// front of it ([RetiredPinNote]), and the writer just stops writing it back.
+func parseModelRoles(raw string) (pins map[string]string, dropped []string, err error) {
+	pins, err = parsePairs(raw, "role")
+	if err != nil {
+		return nil, nil, err
+	}
+	for name := range pins {
+		if !knownRole(name) {
+			dropped = append(dropped, name)
+			delete(pins, name)
+		}
+	}
+	sort.Strings(dropped)
+	return pins, dropped, nil
+}
+
+// knownRole reports a name this build has a role for.
+//
+// IT ASKS THE VOCABULARY AND NOT THE REGISTRY, which are two different
+// questions. The registry is the TIER TABLE: a role gets into it by registering,
+// and a role with no tier never does. `imagegen` is exactly that — a painter is
+// chosen by a pin or not at all, since a chat model in tiers.high is not a
+// statement about painting — so reading the registry here threw away a person's
+// `imagegen:` pin, which is a real setting doing real work.
+func knownRole(name string) bool { return roles.Known(name) }
+
+// RetiredPinNote is what a surface with a person in front of it says about pins
+// this build will not act on, and "" when there are none. It is a sentence and
+// not a log line, because the only reader who wants it is the one looking at the
+// row it is about.
+func RetiredPinNote(raw string) string {
+	_, dropped, err := parseModelRoles(raw)
+	if err != nil || len(dropped) == 0 {
+		return ""
+	}
+	if len(dropped) == 1 {
+		return fmt.Sprintf("%s is no longer a role — that pin is ignored", dropped[0])
+	}
+	return fmt.Sprintf("%s are no longer roles — those pins are ignored", strings.Join(dropped, " and "))
 }
 
 // ModelFallbacksAt resolves the fallback chain as the person wrote it.
@@ -3971,13 +4126,7 @@ func knownToolApprovalMode(mode string) bool {
 // obeyed.
 func parsePairs(raw, subject string) (map[string]string, error) {
 	pairs := map[string]string{}
-	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n'
-	}) {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
+	for _, item := range pairItems(raw) {
 		name, value, found := strings.Cut(item, ":")
 		name = strings.TrimSpace(name)
 		value = strings.TrimSpace(value)
@@ -3990,6 +4139,26 @@ func parsePairs(raw, subject string) (map[string]string, error) {
 		pairs[name] = value
 	}
 	return pairs, nil
+}
+
+// pairItems splits a pair row into its entries, blanks dropped and each one
+// trimmed. It is where the separators a person may use are decided — comma,
+// semicolon, newline — and it is one function because [parsePairs] and the
+// rewriter that takes a dead role back out of a stored row
+// ([withoutRetiredRoles]) have to cut the string the same way. A rewriter that
+// split it differently would drop an entry the parser kept, or keep one it had
+// already refused.
+func pairItems(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	})
+	items := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if item := strings.TrimSpace(field); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // writeToolApprovals validates the pairs, then keeps the person's own text.
@@ -4019,28 +4188,71 @@ func writeToolApprovals(profileDir, raw string) error {
 // writing the row is guessing the name — and it guessed `harness_designer` the
 // first time it was asked.
 func writeModelRoles(profileDir, raw string) error {
-	pins, err := ParseModelRoles(raw)
+	pins, dropped, err := parseModelRoles(raw)
 	if err != nil {
 		return err
 	}
-	known := map[string]bool{}
-	for _, role := range roles.Registered() {
-		known[string(role)] = true
-	}
-	for name := range pins {
-		if known[strings.ToLower(strings.TrimSpace(name))] {
-			continue
+	// ONLY THE PIN BEING ADDED IS REFUSED. A name already in the stored row has
+	// been there for a while and may have been a role when it was typed — the
+	// person is not adding it now and cannot act on being told about it now, and
+	// refusing it would take the whole row with it. What a person CAN act on is
+	// the word they just wrote, which is where the refusal has always earned its
+	// keep: the settings pair guessed `harness_designer` the first time it was
+	// asked.
+	//
+	// AND "ALREADY STORED" IS A QUESTION ABOUT THE PERSON'S TEXT, NOT ABOUT THE
+	// PARSE. Asking [parseModelRoles] was the wrong reader to ask: it drops every
+	// retired word by design, so the stored row it reports back can never contain
+	// the one word this check is looking for, and a name that had sat in the file
+	// for months read as a name being typed for the first time.
+	before := storedRoleWords(profileDir)
+	for _, name := range dropped {
+		if !before[roles.RoleKey(name)] {
+			return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
 		}
-		return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
 	}
-	return writeText(profileDir, KeyModelRoles, raw)
+	// AND A WORD THIS BUILD DOES NOT ANSWER TO IS NEVER WRITTEN BACK. The parse
+	// took it out of the map; this takes it out of the TEXT, which is what is
+	// actually stored. Without it a person who changes any pin keeps re-saving a
+	// word nothing will ever read, forever.
+	//
+	// THE ROW IS REBUILT ONLY WHEN IT HAS TO BE. It is stored verbatim so it reads
+	// back the way it was typed, and normalising a person's separators on every
+	// save would edit their sentence for no reason.
+	if len(dropped) == 0 {
+		return writeText(profileDir, KeyModelRoles, raw)
+	}
+	kept := make([]string, 0, len(pins))
+	for _, item := range pairItems(raw) {
+		if name, _, _ := strings.Cut(item, ":"); knownRole(name) {
+			kept = append(kept, item)
+		}
+	}
+	return writeText(profileDir, KeyModelRoles, strings.Join(kept, ", "))
+}
+
+// storedRoleWords is every role word the stored row NAMES, whether or not this
+// build still answers to it — which is the set [writeModelRoles] compares a new
+// row against to tell a word being added from a word that was already there.
+//
+// It reads the text rather than the pins on purpose. Every reader above this
+// line drops what it does not recognise, and the word this set exists to hold is
+// exactly the word they drop.
+func storedRoleWords(profileDir string) map[string]bool {
+	words := map[string]bool{}
+	for _, item := range pairItems(ModelRolesAt(profileDir)) {
+		if name, _, ok := strings.Cut(item, ":"); ok {
+			words[roles.RoleKey(name)] = true
+		}
+	}
+	return words
 }
 
 // roleNames is the registered roles as a sorted list of plain words, for the
 // refusal above to name them all rather than make somebody go looking.
 func roleNames() []string {
-	names := make([]string, 0, len(roles.Registered()))
-	for _, role := range roles.Registered() {
+	names := make([]string, 0, len(roles.Vocabulary()))
+	for _, role := range roles.Vocabulary() {
 		names = append(names, string(role))
 	}
 	sort.Strings(names)
@@ -4064,14 +4276,6 @@ func writeDuration(profileDir, key, raw string) error {
 		return err
 	}
 	return writeProfileValue(profileDir, key, formatDuration(value))
-}
-
-func writePercent(profileDir, key, raw string, low, high int) error {
-	value, err := parsePercent(raw, low, high)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, key, value)
 }
 
 func writeBool(profileDir, key, raw string) error {

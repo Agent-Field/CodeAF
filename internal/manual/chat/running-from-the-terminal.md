@@ -2,25 +2,29 @@
 
 ## How do I install or update aforge to the latest version — the curl line, dev, staging, rc and stable
 
-The installer puts aforge at `~/.aforge/bin/aforge`. Choose the newest build on
-one channel:
+Today, clone the repository and run `make build`. It writes `bin/aforge`; run that
+binary from the checkout.
+
+The curl installer exists at `scripts/install.sh` and installs into
+`~/.aforge/bin/aforge`, but the repository is private today, so the published URL
+answers 404 to anyone who is not signed in. When the repository is public, the
+line to use is:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --stable
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --rc
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --dev
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --staging
+curl -fsSL https://agentfield.ai/get/aforge | bash
 ```
 
-Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
+Add `/dev`, `/staging` or `/rc` to that URL for another channel, and pin one
+complete tag by putting `VERSION=<tag>` before `bash`. That address is a proxy
+for the script kept here, and it is not serving yet either. The script itself is:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash
 ```
 
-The last installer line is `aforge version`; it shows the tag installed, when it
+The installer's last line is `aforge version`; it shows the tag installed, when it
 was built, and the Go and operating-system target. Nothing self-updates: run the
-curl command again when you want a newer build.
+installer again when you want a newer build.
 
 ## Running aforge from the terminal — can I run this without the chat
 

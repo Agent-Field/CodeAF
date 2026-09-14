@@ -30,7 +30,7 @@
   d              in /permissions: drop the line under the cursor · press it twice         │
   p s n          in /standing: pause one · stop it · not here                             │
   ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere                │
-  session · ~/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-    │ ctrl+. earlier
+  session · ~/.aforge/v3/projects/-tmp-claude-1001--home-example-af-dev-2418657d-8173-    │ ctrl+. earlier
   4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/b531a33df5787095/transcript.jsonl  │ ❯ ctrl+g hide
 
 ─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─

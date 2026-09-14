@@ -1013,10 +1013,10 @@ func TestAProfileStillHoldingTheRetiredWordReadsAsSized(t *testing.T) {
 }
 
 // THE ROW HAS TO BE ABLE TO SAY "NOBODY ANSWERED". The settings sheet asks what
-// is in force and is owed the default; the adapter asks whether a person CHOSE,
-// and the difference is the whole of what lets it route a person's own turn on
-// speed and a task node or an errand on price while a written word still wins
-// (internal/provider's velocity.go).
+// is in force and is owed the shipped row; the adapter asks whether a person
+// CHOSE, and the difference is what lets a client handed nothing fall to the row
+// this process installed while a written word still wins (internal/provider's
+// velocity.go).
 func TestTheRoutingRowReadsAsAChoiceAndAsAnAnswer(t *testing.T) {
 	dir := t.TempDir()
 	if got := RoutingAt(dir); got != DefaultRouting {

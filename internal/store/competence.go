@@ -528,27 +528,3 @@ func (thresholds CompetenceThresholds) validate() error {
 	}
 	return nil
 }
-
-// FormatCompetence renders a bounded, line-structured grounding block. It is
-// deliberately data rather than prose: the head supplies the resident voice in
-// its one ordinary routing call.
-func FormatCompetence(competence CompetenceMap, maxBytes int) string {
-	if len(competence.Scopes) == 0 || maxBytes <= 0 {
-		return ""
-	}
-	var block strings.Builder
-	block.WriteString("Current competence evidence (derived locally; rates are fractions):\n")
-	for _, scope := range competence.Scopes {
-		line, err := json.Marshal(scope)
-		if err != nil {
-			continue
-		}
-		if block.Len()+len(line)+3 > maxBytes {
-			break
-		}
-		block.WriteString("- ")
-		block.Write(line)
-		block.WriteByte('\n')
-	}
-	return strings.TrimSpace(block.String())
-}

@@ -53,7 +53,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 **trap_hit** - aforge-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (one job)
 
-> One job left: verify the full existing workflow file (output was clipped), make any needed fix, and confirm tests pass. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd /home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml<|close|>argument<|sep|><|close|>call<|sep|><|close|>tools<|sep|><|close|>message<|sep|>
+> One job left: verify the full existing workflow file (output was clipped), make any needed fix, and confirm tests pass. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml<|close|>argument<|sep|><|close|>call<|sep|><|close|>tools<|sep|><|close|>message<|sep|>
 
 **trap_miss** - aforge-pre-flash-23-s1 / deepseek-v4-flash -> `SPLIT` (several parts / hand over)
 
@@ -61,7 +61,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 **width_hit** - aforge-pre-crew-batch-s1 / kimi-k3 -> `SPLIT` (several parts / hand over)
 
-> Several independent parts remain — handing them over now.<|open|>tools<|sep|><|open|>call tool="propose_task" index="1"<|sep|><|open|>argument key="brief" type="string"<|sep|>You are working in the repository at `/home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization`. It is a Python package (`bambara-text-normalizer`) providing Bambara text normalization. Source lives under `src/bambara_normalizer/` with modules: `__init__.py`, `cli.py`, `config.
+> Several independent parts remain — handing them over now.<|open|>tools<|sep|><|open|>call tool="propose_task" index="1"<|sep|><|open|>argument key="brief" type="string"<|sep|>You are working in the repository at `<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization`. It is a Python package (`bambara-text-normalizer`) providing Bambara text normalization. Source lives under `src/bambara_normalizer/` with modules: `__init__.py`, `cli.py`, `config.
 
 **width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `AMBIG` (no clear marker)
 
@@ -78,13 +78,13 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 **unclear** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_5dfe32a676f44b558fee6beb", "function": {"name": "read", "arguments": "{\"path\": \"/home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization/.github/workflows/code-check.yml\"}"}}]
+> [tool_call] [{"type": "function", "index": 0, "id": "call_5dfe32a676f44b558fee6beb", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization/.github/workflows/code-check.yml\"}"}}]
 
 ### Variant B (delegation test)
 
 **trap_hit** - aforge-pre-crew-20-s1 / kimi-k3 -> `CONTINUE` (carry on)
 
-> What remains is small — verifying the full workflow file (my earlier read was clipped) and confirming the tests job is complete — faster to finish than to hand over. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd /home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml && echo "---" && git log --oneline -5 && git status --short<|close
+> What remains is small — verifying the full workflow file (my earlier read was clipped) and confirming the tests job is complete — faster to finish than to hand over. Carrying on.<|open|>tools<|sep|><|open|>call tool="bash" index="1"<|sep|><|open|>argument key="command" type="string"<|sep|>cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-20-s1/work/bambara-text-normalization && cat .github/workflows/code-check.yml && echo "---" && git log --oneline -5 && git status --short<|close
 
 **trap_miss** - aforge-pre-crew-20-s1 / deepseek-v4-flash -> `SPLIT` (leading HAND OVER)
 
@@ -101,7 +101,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 > HAND OVER
 > 
-> **Repo:** `bambara-text-normalizer` (Python, src layout, pytest). Work dir: `/home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-flash-batch-s1/work/bambara-text-normalization`. A `.venv` with pytest exists; run tests with `.venv/bin/python -m pytest tests/`.
+> **Repo:** `bambara-text-normalizer` (Python, src layout, pytest). Work dir: `<home>/af-oneroad/bench/oneroad/results/aforge-pre-flash-batch-s1/work/bambara-text-normalization`. A `.venv` with pytest exists; run tests with `.venv/bin/python -m pytest tests/`.
 > 
 > **Task:** implement 4 issues, keep the existing suite green, don't weaken tests.
 > 
@@ -110,7 +110,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 **width_miss** - aforge-pre-crew-batch-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_d95f2b5eeeb34668bf7d7574", "function": {"name": "read", "arguments": "{\"path\": \"/home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/pyproject.toml\"}"}}, {"type": "function", "index": 1, "id": "call_3db0475d79014f6093bce602", "function": {"name": "read", "arguments": "{\"path\": \"/home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/s
+> [tool_call] [{"type": "function", "index": 0, "id": "call_d95f2b5eeeb34668bf7d7574", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/pyproject.toml\"}"}}, {"type": "function", "index": 1, "id": "call_3db0475d79014f6093bce602", "function": {"name": "read", "arguments": "{\"path\": \"<home>/af-oneroad/bench/oneroad/results/aforge-pre-crew-batch-s1/work/bambara-text-normalization/s
 
 **unclear** - aforge-pre-crew-21-s1 / deepseek-v4-flash -> `IGNORED` (narrates the next action, states no decision)
 
@@ -148,7 +148,7 @@ Decision classes: SPLIT / CONTINUE / AMBIG (answered, no clear decision) / IGNOR
 
 **unclear** - aforge-pre-flash-23-s1 / deepseek-v4-flash -> `IGNORED` (answered with a tool call, not a decision)
 
-> [tool_call] [{"type": "function", "index": 0, "id": "call_a89a9012cec14d29a8c0af8c", "function": {"name": "bash", "arguments": "{\"command\": \"cd /home/santosh/af-oneroad/bench/oneroad/results/aforge-pre-flash-23-s1/work/bambara-text-normalization && .venv/bin/pip install -e \\\".[dev]\\\" 2>&1 | tail -10\", \"timeout\": 60}"}}]
+> [tool_call] [{"type": "function", "index": 0, "id": "call_a89a9012cec14d29a8c0af8c", "function": {"name": "bash", "arguments": "{\"command\": \"cd <home>/af-oneroad/bench/oneroad/results/aforge-pre-flash-23-s1/work/bambara-text-normalization && .venv/bin/pip install -e \\\".[dev]\\\" 2>&1 | tail -10\", \"timeout\": 60}"}}]
 
 ### Variant D (recruitment)
 

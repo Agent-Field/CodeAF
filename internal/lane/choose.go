@@ -104,7 +104,7 @@ const (
 	// and a draw from THAT is exactly the question Thompson sampling exists to
 	// ask. So a measured belief is drawn at its own full width, which is what
 	// lets a lane this process gave up on earn its way back once its spread has
-	// grown (`ideation/provider-routing.md` §5: there is no penalty box). The
+	// grown (`docs/design/routing/provider-routing.md` §5: there is no penalty box). The
 	// same file says the same thing from the other side — [predictive] floors
 	// this variance back UP for the hedge, because there the per-request
 	// question is the right one and P has stopped answering it.
@@ -119,7 +119,7 @@ const (
 	// design's own discount for a public number ([SheetWeight] = 4) squared,
 	// which is what turns a weight in the filter's units into a count.
 	//
-	// It was found by the case in `ideation/provider-routing.md`, Part III: with
+	// It was found by the case in `docs/design/routing/provider-routing.md`, Part III: with
 	// two thousand hidden tokens and somebody waiting, Baidu is both quicker and
 	// four times cheaper than Cloudflare, and the chooser sent a quarter of
 	// those requests to Cloudflare anyway.
@@ -280,16 +280,6 @@ func cachedTokens(id ID, req Request) int {
 var lowQuantAllowed struct {
 	mu      sync.RWMutex
 	allowed bool
-}
-
-// AllowLowQuantization says whether lanes serving four-bit weights may be
-// chosen. It is off by default: four-bit weights are a different model wearing
-// the same name, and a router that took them unasked would be trading the
-// answer's quality for a price nobody agreed to.
-func AllowLowQuantization(allow bool) {
-	lowQuantAllowed.mu.Lock()
-	defer lowQuantAllowed.mu.Unlock()
-	lowQuantAllowed.allowed = allow
 }
 
 func lowQuantizationAllowed() bool {

@@ -18,7 +18,7 @@ https://openrouter.ai/api/v1/chat/completions?model=deepseek
 for the shape.
 
 The file lives at
-/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3e
+/tmp/claude-1001/-home-example-af-dev/2418657d-8173-4e64-b3e
 c-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/aforg
                                            ↓ latest · ctrl+l
 ────────────────────────────────────── ctrl+r spell it out ─

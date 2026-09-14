@@ -5,10 +5,10 @@
 
 They do not share a reading.
   · 3 standing orders here — /standing
-  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-
+  · resumed /tmp/claude-1001/-home-example-af-dev/2418657d-
   8173-4e64-b3ec-
   73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-
-  claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-
+  claude-1001--home-example-af-dev-2418657d-8173-4e64-b3ec-
   73decce3d3d5-scratchpad-demohome-aforge-
   v2/ffff0000longmsg1/transcript.jsonl
   · esc interrupts · ctrl+c twice quits

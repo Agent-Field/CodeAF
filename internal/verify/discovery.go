@@ -855,10 +855,6 @@ func isPythonProject(workspace string) bool {
 	return hasPythonTests(workspace)
 }
 
-func leadingSpaces(line string) int {
-	return len(line) - len(strings.TrimLeft(line, " \t"))
-}
-
 func hasSuffixFile(workspace, suffix string) bool {
 	entries, err := os.ReadDir(workspace)
 	if err != nil {

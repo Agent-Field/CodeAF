@@ -295,7 +295,10 @@ func TestARacedArmIsFiledUnderTheOneNameTheLedgerKeys(t *testing.T) {
 		return model
 	})
 
-	client, err := NewClient(Config{APIKey: "test-key", BaseURL: rig.server.URL(), Model: alias})
+	// THIS IS A TEST ABOUT THE RANKED ROAD — a stall is raced only where the
+	// routing row runs a chooser — so the client says which road it is on
+	// rather than inheriting the row this build ships ([rankedRoad]).
+	client, err := NewClient(rankedRoad(Config{APIKey: "test-key", BaseURL: rig.server.URL(), Model: alias}))
 	if err != nil {
 		t.Fatal(err)
 	}

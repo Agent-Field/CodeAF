@@ -44,10 +44,13 @@ func RoleFrom(ctx context.Context) lanes.Role {
 // roleIntent is the old two-valued knob, derived from the role rather than set
 // beside it.
 //
-// [RoutingIntent] is kept because it is what `provider.sort` is built from and
-// what a dozen call sites still say, but it is now a READING of the role rather
-// than a second opinion about the same fact. Where both are present the role
-// wins: it is the more specific claim, and it is the one the table can explain.
+// [RoutingIntent] is kept because a dozen call sites still say it and because
+// what it answers is still asked — what a wait is worth (lanes.go) and how much
+// of an answer anybody is reading (workload.go). It no longer picks a road:
+// that is the routing row's and nobody else's (velocity.go's [DefaultRouting]).
+// It is now a READING of the role rather than a second opinion about the same
+// fact, and where both are present the role wins: it is the more specific
+// claim, and it is the one the table can explain.
 func roleIntent(ctx context.Context) (RoutingIntent, bool) {
 	role := RoleFrom(ctx)
 	if !role.Known() {

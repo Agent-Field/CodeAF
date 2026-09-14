@@ -43,23 +43,46 @@ the router publishes for it, and the older build's record stays where it is inst
 being spent on a model nobody has measured. That is the same rule as everywhere else here:
 a measured thing is about the thing that was measured.
 
-## Auto, and which lanes it is choosing between — how it picks a provider on the very first message, and whether aforge do routes too
+## Auto, and who is actually choosing — the router first, and when aforge takes over
 
-Left alone, aforge is on **auto**. Before each request it drops every endpoint
-that cannot do the job at all — too small an answer for what you asked for, not
-enough room for the conversation, weights served at a coarser precision than the
-model is meant to run at, a share of usable answers below what this kind of work
-needs — and then ranks what is left by the only thing you actually feel: how long
-you will be sitting there, plus what it costs, with the money converted into
-seconds by how much your waiting is worth.
+Left alone, aforge is on **auto**, and `auto` means the router routes. OpenRouter
+balances the machines behind your model on its own queues and prices, and aforge
+watches: every answer names the machine that served it, so the speed and the
+quality of what the router hands you are learned exactly as if aforge had asked
+for them. You see the machine in the status line — `via cloudflare · 0.6s · 61 t/s`
+— and the picker's `auto` row tells you what aforge would choose if it were
+choosing.
 
-**The machines that survive all that are asked for by name, and the provider may
-not go outside them.** It is not a ranking the provider is free to put aside; it
-is a closed set with the ranking applied inside it. The section below says what
-that costs when every machine in the set is busy at once.
+**Why did it pick that provider on the very first message?** Because on the first
+message nobody has chosen anything: no pin, no takeover earned yet, so the pick
+is the router's own — whichever machine its balance landed on. The machine is
+named in the status line so the choice is never invisible, and from that first
+answer on it is being learned like any other.
 
-Nothing is waiting on this when nobody is waiting on you. A background errand is
-ranked on price, because a second saved for a machine is a second nobody spends.
+**aforge takes over when the router lets go.** If a model's answers start coming
+back refused (a 429, a machine that cannot serve the shape) or unusable (the
+thread lost, tool markup, a stream that had to be cut) — twice in a short while —
+aforge stops lending the router the choice and picks the machine itself, from the
+lanes it has been watching all along. Only a refusal the ROUTER earned counts:
+once aforge is the one choosing a machine — during a takeover, or under your
+pin — a refusal of that pick is about the pick, not another strike against
+the router, so a takeover's own demands cannot keep it alive. The conversation
+says so once, in one sentence, and after about half an hour of good answers the
+choice is the router's again. Pinning a machine yourself in `/model` ends it
+there and then: your word outranks either of them.
+
+**`openrouter` is `auto` without the safety.** It is the same router routing, and
+aforge never takes over no matter what comes back. Choose it when you would
+rather have the router's price balance than be rescued from its bad minute.
+
+The rest of this page — the closed set, the refusal walk, the probe — describes
+what happens while aforge is choosing: during a takeover, and whenever you have
+pinned a lane yourself. All of it is written about `routing` at `latency` or
+`price`. With the row at `simple` — which is what it ships as — none of it runs:
+no takeover, no ranking, no measuring, because that row sends exactly what you
+asked for and nothing else; *How do I stop aforge choosing the provider itself* below has it. With
+the row at `off` the choosing stops too, and the last section says what that
+leaves standing.
 
 **A run started from a terminal is routed on the same terms.** `aforge do`, `aforge run`
 and `aforge plan run` open no conversation and draw no status line, and they used to
@@ -207,6 +230,27 @@ The hint slot says which: `→ lanes · enter switch · esc` on a model,
 `enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
 
+## Going back to auto — unpinning with the same key that pinned, and filtering inside an open fold
+
+**`enter` on the machine you are already pinned to takes the pin off.** It is a toggle on
+the one key that put it there, and the hint slot says so while the cursor is on that row:
+`enter unpin · ← back · esc`. The row goes back to `auto`, the `@machine` comes off the
+model's name, and the next request carries no machine at all. The `auto` row at the top of
+the fold still does the same thing and is still the explicit way to say it — the toggle
+exists because reaching that row meant walking `↑` past every machine in the list, and one
+press too far lands on another model's row, where `enter` switches the model instead.
+
+One case is deliberately not a toggle: after the machine you pinned has refused the model
+(below), nothing is asking for it any more, so `enter` there **pins it again** rather than
+unpinning — which is the "pinning again puts it straight back" the refusal promises.
+
+**Typing in the box while a fold is open filters the machines, not the models.** With
+`morph`'s fold open, typing `mor` narrows it to the machines whose names carry those
+letters and leaves the fold standing. The matching is the same as for a model id — every
+word you type has to match, prefix first — and a query that matches none of that model's
+machines falls through to filtering the model list as it always has, closing the fold with
+it.
+
 **A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
 line where the machines would be:
 `no machine has been measured for this model yet — machines show up after its first answer`.
@@ -247,7 +291,14 @@ What that means, exactly:
   demanded at all — routed the way `auto` routes;
 - **the request that collected the refusal is widened and sent again**, once, so
   your answer still arrives. If that is refused too the turn ends, and says so;
-- **your settings row is not touched.** It still reads `pinned: coreweave`;
+- **the line stays in the conversation.** It is not one of the dim retry notes
+  the work chip collapses when an answer lands, so it is still on the screen
+  after the turn finishes;
+- **your settings row is not touched.** The `lane` row on the Providers tab still reads
+  `pinned: coreweave`, exactly as you wrote it. What changes is everything that names the
+  machine **requests are going to**: the `@coreweave` comes off the model's name, the tail
+  on the `your model` row reads `auto (coreweave cannot serve this model)`, and the fold's
+  mark moves to `auto`;
 - **every other model still goes to that machine.** The refusal was about one
   pairing;
 - **pinning again puts it straight back**, on the very next request — and that
@@ -782,6 +833,14 @@ costs one refused round trip, once. A strict pin on it is stood down on every
 model with the usual `cannot serve this model` line. Nothing about its speed is
 written; an answer from it, or pinning it again, takes it back at once.
 
+**Under `routing: simple` that memory never stands your pin down by itself.**
+The row promises that what you wrote is what goes on the wire, so the pin is
+sent — once — and OpenRouter is left to be the one that says no. You pay the
+refused round trip again on the first turn of a new window, and you get the
+`cannot serve this model` line in the conversation, in the same breath as the
+`@machine` coming off the model on the status line. That is the trade: a
+sentence you can act on instead of a request that quietly went somewhere else.
+
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
@@ -825,6 +884,84 @@ A directly connected service is simpler: it has one lane, so there is nothing to
 between and no lane sheet to open. That is not a fault. The service name carried by the
 model id is already the whole route.
 
+## How do I stop aforge choosing the provider itself — the simple routing mode, OpenRouter's default routing, and what my pinned lane still sends
+
+The `routing` row (`/settings` → **Providers**) has a fourth answer, **`simple`**,
+for exactly this. Under it aforge keeps no opinion of its own about the machines
+behind your model, and sends none:
+
+- **No lane pinned** — the request carries no routing preference at all: no sort
+  word, no price ceiling, no machines named or excluded. OpenRouter's own default
+  routing picks the endpoint, exactly as it would for a request aforge had never
+  touched. There is no measuring, no second request hedged alongside yours, not
+  even the one-token measurement sent while you type, and no takeover when
+  answers come back refused.
+- **A lane pinned** (`/model @deepseek`, or enter on the **lane** row) — your
+  turn demands exactly that one machine: `only`, fallbacks off, and nothing else
+  rides along. Your word is the whole request. A pin written `borrow when slow`
+  changes nothing here — there is no rescue running for it to borrow. The row is
+  named `lane.talk` and that is its scope: the errands that run beside a turn go
+  out bare (the next section).
+
+What does not change: the machine that answered is still named on the status
+line, and the `switch to auto?` question a slow pinned lane asks still has
+somewhere to send you. A pin the router itself refuses — the machine saying it
+cannot serve that model at all — is still retired for that model, with the same
+one-sentence note, and pinning again puts it straight back on the very next
+request.
+
+`simple` is not `off`. `off` stops the measuring, and with nothing measured
+there is no lane to choose, no sheet of machines to open and no speed guard.
+`simple` leaves the pin standing: the one instruction you gave is the only one
+sent. **`simple` is also what the row ships as**, so this is what a home nobody
+has changed does; everything else this page describes — the ranking, the
+takeover, the rescue, the measuring — is what `latency` and `price` do, one word
+away on the same row.
+
+## Does simple routing cover everything, or only my own messages — harness runs, reading a document, looking at an image
+
+The **row** does. It is about **this session**, not one request road, so every
+part of a conversation that opens its own connection answers the same word: your
+turns, a task node's work, a **subharness** run, the model that reads a document
+for you, the one that looks at an image, each member of a `/model` panel. None
+of them measures, ranks or hedges under `simple`. The **pin** is narrower — the
+next section says how.
+
+That was not always true. Until 2026-09-13 those extra roads were built without
+the row and ran `latency` whatever you had written — which was quiet and wrong
+in one specific way. A road on `latency` is allowed to stand a pin down on
+aforge's own saved belief that your account cannot reach the machine, and that
+stand-down covers the whole window: your very next message, on `simple`, doing
+nothing wrong, went out with no machine demanded while the status line still
+read `@deepseek`. The row reaching every road is what closes it.
+
+If you want to check: pin a machine, set `routing` to `simple`, and send a
+message. Either the answer comes from the machine you named, or you get the
+`cannot serve this model` sentence and the `@machine` disappears from the model
+word. There is no third outcome — a bare request under a pin that is still
+being drawn is the bug above, and it is worth reporting.
+
+## Does my pinned machine apply to the title, the memory reflex and a subharness too, or only to what I type
+
+**Only to the calls you are reading.** Under `routing: simple` the pinned
+machine is demanded on your own turn, on a task room you are sitting in front
+of, and on a headless `aforge exec` you typed — all three are you, waiting. The
+errands that run beside a turn send no machine name at all: a conversation's
+two-word title, the memory reflex, the question that routes your message, a
+hand asking a model about a document, a subharness node. The row is spelled
+`lane.talk` and the slot is its whole scope.
+
+That is what one refusal costs. A pin the router refuses is retired **per
+machine and model** — one refused round trip, once — but an errand runs on a
+model of its own, and before 2026-09-13 a single turn bought three of them:
+yours, the title's and the reflex's, on three different models, each with its
+own 404 and none of them a machine you had asked for. One turn, one refusal,
+one sentence.
+
+Under `latency` and `price` nothing changes: there is no demand to scope,
+because a pin on those roads is drawn against everything the belief knows about
+the machines behind each model.
+
 ## Turning lane routing off
 
 Set routing off (`/settings`, or the `routing` row) and aforge sends every
@@ -833,15 +970,18 @@ ceiling on how long a silence runs before *something* is said about it is not
 steering, it is the promise this surface makes — but it stops choosing endpoints
 for you, stops sending second requests, and stops spending anything on speed.
 
-**The row has three answers, not two, and the third is not off.** Left alone, aforge asks
-for the fastest machine on the turns you are waiting through, and on the work you are not
-watching it still weighs speed, at a quarter of that weight — a task ends when its slowest
-call ends, and a machine that refuses four requests in five costs five sends for one answer,
-so its seconds are never free. That is the split the rest of this page describes. Writing a word in the row
-overrides that everywhere: `latency` asks for the fastest one on every call, background
+**The row has four answers, and the two quiet ones are not the same nothing.** Left alone
+it reads `simple`, and aforge does not pick a machine for you at all — it asks for no
+fastest endpoint and no cheapest one, sends no preference of its own, and your pin, if you
+made one, is the whole request (the section above). Writing another word in the row turns
+the choosing on everywhere: `latency` picks the fastest endpoint on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
-`price` still measures machines and still chooses between them. `off` stops the choosing.
+Under `latency` and `price` the work you are not watching still weighs speed, at a quarter
+of the weight your own turns give it — a task ends when its slowest call ends, and a
+machine that refuses four requests in five costs five sends for one answer, so its seconds
+are never free. That is the split the rest of this page describes.
+`price` still measures machines and still chooses between them. `simple` and `off` stop the choosing.
 
 **`off` does not stop the remembering, and that is deliberate.** aforge still writes down
 which machine answered and which one refused, because that is what lets a request that
