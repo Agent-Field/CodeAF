@@ -401,7 +401,7 @@ var settingUI = map[string]settingMeta{
 	// is most of what makes this row worth having.
 	config.KeyModelFallbacks: {
 		tab: tabSession, label: "fallback models", widget: widgetText,
-		about: "where a conversation goes when no endpoint will take the request: " +
+		about: "where a conversation goes when no provider will take the request: " +
 			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
 	},
 	// It sits with the model rows and not with the approval ones because the
@@ -681,12 +681,12 @@ var settingUI = map[string]settingMeta{
 	// differences the session pays attention to.
 	config.KeyRouting: {
 		tab: tabProviders, label: "routing", widget: widgetCycle,
-		about: "one model is served by many endpoints. simple is the one it ships with and " +
-			"sends no preference of ours — no pinned lane means the router's own default " +
-			"answers, and a pinned lane is the whole request; latency asks for the fastest " +
+		about: "one model is served by many providers. simple is the one it ships with and " +
+			"sends no preference of ours — no pinned provider means the router's own default " +
+			"answers, and a pinned provider is the whole request; latency asks for the fastest " +
 			"and demotes one that keeps being slow; price asks for the cheapest; off asks " +
 			"for nothing, measures nothing, and leaves the two rows above it with no " +
-			"machine to name. a change here takes effect on your next message.",
+			"provider to name. a change here takes effect on your next message.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
@@ -696,11 +696,11 @@ var settingUI = map[string]settingMeta{
 	// picker's own `auto` row reads. A sentence spelled here as well would be
 	// this panel promising a takeover on a routing that runs none.
 	config.LaneSettingKey(talkSlot): {
-		tab: tabProviders, label: "lane", widget: widgetLane,
+		tab: tabProviders, label: "provider", widget: widgetLane,
 	},
 	config.KeyLaneGuard: {
 		tab: tabProviders, label: "speed guard", widget: widgetToggle,
-		about: "an answer that is slow to start is asked of the next-best machine as well, " +
+		about: "an answer that is slow to start is asked of the next-best provider as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
 	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
@@ -711,7 +711,7 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "prompt profile", widget: widgetCycle,
 		about: "how much aforge tells the model before you type. auto reads the model's " +
 			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
-			"for an endpoint that reports a window its model does not really have.",
+			"for a provider that reports a window its model does not really have.",
 	},
 }
 
@@ -2114,7 +2114,7 @@ func (a *app) openLaneList() bool {
 		return false
 	}
 	sel := &sheetSelect{
-		key: config.ModelSettingKey(talkSlot), label: "lane · " + a.model,
+		key: config.ModelSettingKey(talkSlot), label: "provider · " + a.model,
 		keep: filterFor(config.ModelSettingKey(talkSlot)),
 	}
 	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
@@ -2984,7 +2984,7 @@ func (s *sheet) laneForce() laneForce {
 // refusal has gone out on auto, and a tail reading `pinned: morph` over three
 // such turns is this row claiming a machine nothing asked for. So it says where
 // the requests really go and names whose pin came off, in the sentence's own
-// spelling ([provider.RetiredPinTail]) — while the `lane` row itself is left
+// spelling ([provider.RetiredPinTail]) — while the `provider` row itself is left
 // exactly as the person wrote it, because pinning again puts it straight back.
 func laneRowTail(row string, force laneForce) string {
 	word := strings.ToLower(strings.TrimSpace(row))
@@ -3070,8 +3070,8 @@ func (s *sheet) keysLine() string {
 	case s.edit != nil:
 		return "enter save · empty clears · esc cancel"
 	case s.sel != nil:
-		// THE LEGEND SAYS `→ lanes` ONLY WHERE `→` OPENS THEM — on a row that
-		// has a lane row behind it. Offering the key on the drawing slot would
+		// THE LEGEND SAYS `→ providers` ONLY WHERE `→` OPENS THEM — on a row that
+		// has a provider row behind it. Offering the key on the drawing slot would
 		// be the foot of the screen promising a gesture that does nothing.
 		// And INSIDE the fold it says the way back out, for the reason /model's
 		// hint slot does ([picker.keysHint]): the keys are the row's.
@@ -3081,7 +3081,7 @@ func (s *sheet) keysLine() string {
 		if _, inside := s.sel.pick.laneUnder(); inside {
 			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+		return "↑↓ move · → or tab providers · enter choose · esc cancel · type to filter"
 	case s.conn.entry != nil:
 		return s.connKeysLine()
 	case s.onConnections():

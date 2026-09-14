@@ -1653,30 +1653,30 @@ func laneAutoSaid(routing string) laneAutoSay {
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
 			note: "openrouter's own routing; aforge stays out",
-			about: "which machine behind your model answers you. routing is simple, so auto " +
-				"sends no choice of ours at all and openrouter's own routing answers; a lane " +
+			about: "which provider answers your model. routing is simple, so auto " +
+				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
 				"you pin is the whole request. enter opens them all with what has been " +
 				"measured of each.",
 		}
 	}
 	return laneAutoSay{
 		note: "router routes; aforge takes over if answers turn bad",
-		about: "which machine behind your model answers you. auto picks the fastest one " +
+		about: "which provider answers your model. auto picks the fastest one " +
 			"each answer; enter opens them all with what has been measured of each.",
 		chooses: true,
 	}
 }
 
-// laneUnmeasured is the one line a fold draws in the machines' place when
+// laneUnmeasured is the one line a fold draws in the providers' place when
 // nothing behind the model has been measured. It is a sentence a person would
 // say, it draws no number, and it says when that changes — which is the whole
 // of what somebody who pressed `→` on the model needs to know about the gap.
-const laneUnmeasured = "no machine has been measured for this model yet — machines show up after its first answer"
+const laneUnmeasured = "no provider has been measured for this model yet — providers show up after its first answer"
 
 // lineUnder is the dim line drawn under one row, and empty under nearly all of
 // them: the why of the lane the cursor is on ([picker.whyAt]), or — under the
-// `auto` row of a fold with no machines in it — [laneUnmeasured], standing
-// exactly where the machines would.
+// `auto` row of a fold with no providers in it — [laneUnmeasured], standing
+// exactly where the providers would.
 func (p *picker) lineUnder(at int) string {
 	if at < 0 || at >= len(p.list) {
 		return ""
@@ -1825,14 +1825,14 @@ func (a *app) cycleReasoning() {
 // is WHOLE where the door offers no refresh and gives up exactly `enter · esc`
 // where it does — the refresh key earned its fourteen cells from the two verbs
 // nobody has to be taught, the way the fold earned its seven.
-const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
+const pickerHint = "filter · ↑↓ · → providers · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
 // spellings one (the one-source-of-truth law: a constant read by a person and a
 // list read by the fitter would otherwise drift).
 var pickerHintFields = []rowField{
-	rowSay("filter"), rowSay("↑↓"), rowSay("→ lanes"),
+	rowSay("filter"), rowSay("↑↓"), rowSay("→ providers"),
 	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
 }
 
@@ -1860,13 +1860,13 @@ func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRef
 // manual and the tests quote what the frame draws.
 const (
 	// pickerKeysModel is a model's row on a list that folds: `→` opens the
-	// machines behind it and walks in, enter switches.
-	pickerKeysModel = "→ lanes · enter switch · esc"
+	// providers behind it and walks in, enter switches.
+	pickerKeysModel = "→ providers · enter switch · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab lanes · enter switch · esc"
-	// pickerKeysFold is a row inside an open fold: enter chooses that machine,
+	pickerKeysModelTab = "tab providers · enter switch · esc"
+	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
 	pickerKeysFold = "enter choose · ← back · esc"
 	// pickerKeysFoldTab is the same with characters before the caret, where

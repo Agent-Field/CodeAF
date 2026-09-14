@@ -113,9 +113,9 @@ ways, and a turn that waited ninety seconds with nothing saying why is the folde
 exists to prevent.
 
 The **model-call log** is still there and still always on: `aforge logs` prints the last
-calls with the status each came back with, the endpoint's own first sentence on a
+calls with the status each came back with, the provider's own first sentence on a
 failure, how long it took and what it cost. What the log holds is the **shape** of a
-call — how many messages, how many tools, which ceiling, which lane — and not what you
+call — how many messages, how many tools, which ceiling, which provider — and not what you
 wrote. The old `AFORGE_CALL_LOG_BODIES` pin still adds the whole request and reply to each
 line of `calls.jsonl` as well as turning the debug record on. With that pin on, the live
 file is allowed 256 MB (32 MB without it). The bodies also live in the run's folder now,

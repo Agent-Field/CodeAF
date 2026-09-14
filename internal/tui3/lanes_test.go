@@ -585,7 +585,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 		t.Fatal("← left the lanes open")
 	}
 	// Back on the model's row, the foot offers the fold again.
-	if !strings.Contains(a.sheet.keysLine(), "→ or tab lanes") {
+	if !strings.Contains(a.sheet.keysLine(), "→ or tab providers") {
 		t.Fatalf("the foot on the model row reads %q", a.sheet.keysLine())
 	}
 }
@@ -763,7 +763,7 @@ func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
 	if a.sheet.sel.pick.laneSlot != "" {
 		t.Fatalf("the looking row's picker is armed for lane slot %q", a.sheet.sel.pick.laneSlot)
 	}
-	if strings.Contains(a.sheet.keysLine(), "tab lanes") {
+	if strings.Contains(a.sheet.keysLine(), "tab providers") {
 		t.Fatalf("the hint offers a fold the looking row does not have: %q", a.sheet.keysLine())
 	}
 }

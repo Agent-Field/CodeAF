@@ -872,8 +872,8 @@ reasoning effort of the model under the cursor through
 `auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
 thinking control takes. enter switches.
 
-**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
-lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+**→ or tab on a model opens its providers and walks the cursor into them**, onto the pinned
+provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
@@ -885,12 +885,12 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
+filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
-and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its lanes — and `enter unpin · ← back · esc`
-on the machine you are already pinned to, where the same key takes the pin off again.
+and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
+on the provider you are already pinned to, where the same key takes the pin off again.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -1692,18 +1692,18 @@ is the `--linear` flag at launch rather than a persisted setting.
 order:
 
 1. **your model** — the model you are talking to. It is the conversation slot, and picking
-   here is the same road `/model` takes — the same picker, lanes and all. Its value carries
-   the machine serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
-2. **lane** — which endpoint behind that model answers you. enter opens the machines with
+   here is the same road `/model` takes — the same picker, providers and all. Its value carries
+   the provider serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
+2. **provider** — which provider answers your model. enter opens them with
    what has been measured of each, and enter on one pins it.
-3. **speed guard** — whether an answer slow to start is asked of the next-best machine as
+3. **speed guard** — whether an answer slow to start is asked of the next-best provider as
    well.
-4. **routing** — what every request prefers among the endpoints, and it cycles
+4. **routing** — what every request prefers among the providers, and it cycles
    `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: aforge sends no
-   preference of its own, a lane you pinned goes out as the whole request, and with no pin
-   the router's own default routing answers. `latency` asks for the fastest endpoint and
+   preference of its own, a provider you pinned goes out as the whole request, and with no pin
+   the router's own default routing answers. `latency` asks for the fastest provider and
    `price` for the cheapest, on every call. With `off` nothing is measured, so the two rows
-   above it have no machine to name.
+   above it have no provider to name.
 5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).
@@ -1771,13 +1771,13 @@ hear, and everything else follows the general chat rule. Its legend is
 `↑↓ move · enter choose · esc cancel · type to filter`.
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
-and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
-them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
+and its ctrl+t effort knob is true here too — **including the providers** on the row that has
+them. On **your model**, `→` or `tab` unfolds the providers serving the model under the
 cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
-`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+`/model`. The legend says `↑↓ move · → or tab providers · enter choose · esc cancel · type to filter`
 on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
-inside its lanes. The media slots
-have no lane row behind them, so nothing unfolds there and the legend does not offer the
+inside its providers. The media slots
+have no provider row behind them, so nothing unfolds there and the legend does not offer the
 key.
 
 While any of those layers is up — the value box, the model picker, the key box on the

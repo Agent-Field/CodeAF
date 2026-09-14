@@ -65,7 +65,7 @@ func TestTheRefreshKeyIsNamedInThePlaceholderAndTheEmptyList(t *testing.T) {
 	a := refreshApp(t, &fakeRefresh{})
 	typeLine(t, a, "/model")
 
-	want := "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint
+	want := "filter · ↑↓ · → providers · ctrl+t effort · " + refreshModelsHint
 	if got := boxLine(t, a); got != want {
 		t.Fatalf("on sixty cells the box reads %q, want %q", got, want)
 	}

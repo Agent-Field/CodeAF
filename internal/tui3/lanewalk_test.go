@@ -213,7 +213,7 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	if a.pick.unfold != "" {
 		t.Fatalf("under routing off → opened the fold at %q", a.pick.unfold)
 	}
-	if got := a.hintWord(); strings.Contains(got, "lanes") {
+	if got := a.hintWord(); strings.Contains(got, "providers") {
 		t.Fatalf("under routing off the slot offers the fold: %q", got)
 	}
 }

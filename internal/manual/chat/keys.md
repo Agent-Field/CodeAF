@@ -1472,23 +1472,23 @@ Providers tab (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
-rows) · `tab` and `→` open the lanes under the model the cursor is on and move the
+rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
 
-`→` and `←` only open and close the lanes from the **end** and the **start** of what you
+`→` and `←` only open and close the providers from the **end** and the **start** of what you
 have typed — with anything to step over, they move the caret through the filter text
-instead. `tab` always opens and closes. With the lanes open, `enter` on one of them pins
+instead. `tab` always opens and closes. With the providers open, `enter` on one of them pins
 it instead of switching model.
 
-Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`;
+Its placeholder reads exactly `filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc`;
 on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
-cursor: `→ lanes · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
-lanes, and `enter unpin · ← back · esc` on the machine already pinned, where `enter` takes
-the pin off — with `tab lanes` and `tab back` in place of the arrows while there is typed
-text the arrow would step over. Typing while a fold is open filters that model's machines;
+cursor: `→ providers · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
+providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
+the pin off — with `tab providers` and `tab back` in place of the arrows while there is typed
+text the arrow would step over. Typing while a fold is open filters that model's providers;
 only a query none of them match falls through to filtering the model list.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
@@ -1527,7 +1527,7 @@ correction and does NOT decline, because the answers are on the row with their
 keys. Any key the question reads also stops the countdown, and deleting the draft
 does not restart it.
 
-**A slow lane's offer**, raised on the status line when a machine you pinned has gone
+**A slow provider's offer**, raised on the status line when a provider you pinned has gone
 quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
 box only**, fetches this answer from somewhere else. There is no key to decline — the
 question takes itself down when an answer starts arriving — and with anything typed in the

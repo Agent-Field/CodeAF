@@ -1139,7 +1139,7 @@ answer), and `require_parameters` stops a request carrying the reasoning knob
 from landing on an endpoint that would silently drop it. The `routing` settings
 row is the only dial: `simple` (default) · `latency` · `price` · `off`. The
 object above is what `latency` and `price` send; `simple` sends no preference of
-ours at all — the router's own default routing answers, and a lane you pinned is
+ours at all — the router's own default routing answers, and a provider you pinned is
 the whole request — and `off` is total, no preference object and no measurement
 either, because a session that asked for no routing asked for no ledger.
 
