@@ -13,7 +13,7 @@ import (
 
 // ── NO MACHINERY VOCABULARY IN THE TERMINAL READER ─────────────────────────
 //
-// `aforge why <id>` and `aforge rebuild` are the two commands whose whole job is
+// `codeaf why <id>` and `codeaf rebuild` are the two commands whose whole job is
 // to hand a person a record, and both handed them a word out of the code
 // instead. The record's own notes were signed `the harness` — which names
 // neither who wrote the line nor what happened, and spends on the machinery a
@@ -22,7 +22,7 @@ import (
 // envelope, on the task page, and everywhere else a person is shown a count of
 // the same things.
 
-// A NOTE IN THE RECORD IS SIGNED `aforge`, THROUGH THE REAL DOOR.
+// A NOTE IN THE RECORD IS SIGNED `codeaf`, THROUGH THE REAL DOOR.
 //
 // The store is written and then read back by runWhyTo, rather than the headline
 // function being called directly, because the defect is what a person sees after
@@ -50,16 +50,16 @@ func TestTheTurnRecordSignsItsOwnNotesWithTheProductsName(t *testing.T) {
 
 	var printed bytes.Buffer
 	if err := runWhyTo([]string{"task-1", "--db", path}, &printed, time.Now()); err != nil {
-		t.Fatalf("aforge why task-1: %v", err)
+		t.Fatalf("codeaf why task-1: %v", err)
 	}
 	record := printed.String()
 	if strings.Contains(record, "harness") {
-		t.Fatalf("`aforge why` signs a note with machinery vocabulary:\n%s\n"+
-			"  a note is aforge writing about the run; it is signed %q", record, "turn 4 · aforge")
+		t.Fatalf("`codeaf why` signs a note with machinery vocabulary:\n%s\n"+
+			"  a note is codeaf writing about the run; it is signed %q", record, "turn 4 · codeaf")
 	}
-	if !strings.Contains(record, "turn 4 · aforge") {
-		t.Fatalf("`aforge why` does not say who wrote the note:\n%s\n  want a headline reading %q",
-			record, "turn 4 · aforge")
+	if !strings.Contains(record, "turn 4 · codeaf") {
+		t.Fatalf("`codeaf why` does not say who wrote the note:\n%s\n  want a headline reading %q",
+			record, "turn 4 · codeaf")
 	}
 	// AND THE NOTE'S OWN WORDS ARE STILL UNDER IT. A headline nobody can read a
 	// body under is a signature on an empty page.
@@ -86,22 +86,22 @@ func TestTheRebuildReceiptCountsStepsAndNotNodes(t *testing.T) {
 
 	var printed bytes.Buffer
 	if err := runRebuildWith([]string{"--db", path, "--yes"}, strings.NewReader(""), &printed); err != nil {
-		t.Fatalf("aforge rebuild: %v", err)
+		t.Fatalf("codeaf rebuild: %v", err)
 	}
 	receipt := strings.TrimSpace(printed.String())
 	if strings.Contains(receipt, "nodes") {
-		t.Fatalf("`aforge rebuild` counts its work in machinery vocabulary: %q\n"+
+		t.Fatalf("`codeaf rebuild` counts its work in machinery vocabulary: %q\n"+
 			"  the same pieces of work are `steps` in the --json envelope and on the task page", receipt)
 	}
 	if !strings.Contains(receipt, "steps") {
-		t.Fatalf("`aforge rebuild` says nothing about what it rebuilt: %q\n"+
+		t.Fatalf("`codeaf rebuild` says nothing about what it rebuilt: %q\n"+
 			"  want a receipt reading `rebuilt N steps from M journaled events`", receipt)
 	}
 }
 
 // ── THE EMPTINESS LAW REACHES THE WAKE RECEIPT ─────────────────────────────
 //
-// `aforge wake` printed all eight of its figures every time, so an ordinary
+// `codeaf wake` printed all eight of its figures every time, so an ordinary
 // quiet pass read `examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0,
 // practice 0, learning 2` — four numbers asserting a measurement where nothing
 // had happened. Unknown or zero draws NOTHING; the one sanctioned exception is

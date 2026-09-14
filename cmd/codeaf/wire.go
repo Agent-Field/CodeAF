@@ -10,7 +10,7 @@ import (
 // v3Wire is the door's half of the byte meter: the writer the v3 surface should
 // paint through, and the close that finishes its log.
 //
-// Off — which is every launch that has not set AFORGE_WIRE_LOG — it answers a
+// Off — which is every launch that has not set CODEAF_WIRE_LOG — it answers a
 // nil writer and a close that does nothing, and tui3.Run leaves the output
 // option unset, so Bubble Tea paints into os.Stdout with nothing in between.
 // There is no wrapper on the frame path, not even an empty one; the whole cost

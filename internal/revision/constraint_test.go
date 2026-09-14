@@ -24,7 +24,7 @@ func constraintWorkspace(t *testing.T, written ...string) (root string, record [
 	root = t.TempDir()
 	// The harness's own bookkeeping, which is not a deliverable and is not a
 	// change anybody forbade. verify.SkipTree is the one list that says so.
-	written = append(written, ".aforge/jobs/leaf.log")
+	written = append(written, ".codeaf/jobs/leaf.log")
 	for _, name := range written {
 		path := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -59,14 +59,14 @@ func TestNoWritesIsBrokenByAFileTheRunLeftBehind(t *testing.T) {
 	}
 	// The machinery is not a change the person forbade, and naming it would fail
 	// every run of this shape whether it wrote anything or not.
-	if strings.Contains(broken[0], ".aforge") {
+	if strings.Contains(broken[0], ".codeaf") {
 		t.Fatalf("the harness's own bookkeeping was held against the run: %q", broken[0])
 	}
 
 	// AND A RUN THAT KEPT ITS WORD IS CLEAN. This is the half that matters most:
 	// the first leaf of #427 did exactly what it was asked and must pass.
 	clean := Evidence{Workspace: root, Constraints: noWrites,
-		Artifacts: []string{filepath.Join(root, ".aforge/jobs/leaf.log")}}
+		Artifacts: []string{filepath.Join(root, ".codeaf/jobs/leaf.log")}}
 	if held := HoldConstraints(clean); len(held) != 0 {
 		t.Fatalf("a run that changed nothing was failed: %+v", held)
 	}

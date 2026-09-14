@@ -241,7 +241,7 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
-	// AND WHAT AFORGE WORKS WITH, beside what it knows about you. The five models
+	// AND WHAT codeaf WORKS WITH, beside what it knows about you. The five models
 	// it uses on your behalf, answered as one word (crew.go). FIVE, because
 	// [config.CrewModels] sets five seats in every preset — reflex, low, worker,
 	// high and mastermind — and the one these rows used to leave out was the
@@ -255,7 +255,7 @@ var commands = []command{
 	// know" and this is "what does it think WITH", and because position in this
 	// table is a claim about frequency: a person sets their crew once and then
 	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the five models aforge uses on its own behalf, beside the one you talk to"},
+	{name: "crew", desc: "the five models codeaf uses on its own behalf, beside the one you talk to"},
 	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
 	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
 	// models it thinks with, because that is the order the two questions arrive
@@ -290,7 +290,7 @@ var commands = []command{
 	// did.
 	//
 	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The two rows
-	// above both mean GIVE AFORGE WORK, and a plural sitting among them shared four
+	// above both mean GIVE codeaf WORK, and a plural sitting among them shared four
 	// characters with every one of them: typing "/task" narrowed the list to both
 	// errands at once, so the muscle memory for starting work kept landing on a
 	// page that starts none. What a person calls this thing is the record of
@@ -331,7 +331,7 @@ var commands = []command{
 	// Three rows for one command, /export's reason exactly: bare is the shape
 	// nearly everybody wants, and the two that WRITE ride under it wearing the
 	// "…".
-	{name: "budget", desc: "what aforge may spend · every limit on one tab", alias: []string{"limits"}},
+	{name: "budget", desc: "what codeaf may spend · every limit on one tab", alias: []string{"limits"}},
 	{name: "budget", args: "<amount>", desc: "…set the day's limit · none removes it"},
 	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan, practice"},
 	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
@@ -416,8 +416,8 @@ var commands = []command{
 	// both errands at once is the near-miss /history was named to avoid.
 	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE
-	// LOST. /help is what you can TYPE; this is what aforge DOES, in the writing
-	// aforge is built from (manualcmd.go). They sit together because a person who
+	// LOST. /help is what you can TYPE; this is what codeaf DOES, in the writing
+	// codeaf is built from (manualcmd.go). They sit together because a person who
 	// has just read a list of commands and still does not know what one of them
 	// means is one row away from the page that says.
 	//
@@ -426,7 +426,7 @@ var commands = []command{
 	// this list, since [app.runMenu] puts a row that TAKES something into the
 	// draft instead of running it. The two that take something ride under it
 	// wearing the "…".
-	{name: "manual", desc: "aforge's own manual · every page, one per line"},
+	{name: "manual", desc: "codeaf's own manual · every page, one per line"},
 	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
 	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
 	// AND THE ROW FOR THE DAY SOMETHING GOES WRONG, directly above /help for the
@@ -671,7 +671,7 @@ type menu struct {
 //   - A '/' with a non-space in front of it opens nothing. That is the token
 //     rule, and it is what makes "/Users/example" one candidate rather than two.
 //   - A filter that matches NOTHING closes the list. The word being matched is
-//     the whole run to the next space — "Users/example", "tmp/aforge" — so a
+//     the whole run to the next space — "Users/example", "tmp/codeaf" — so a
 //     path drops out within a couple of keystrokes and stays out; a backspace
 //     back into a word that does match brings it straight back.
 //   - A space closes it, because the word the caret is in stops being the slash
@@ -1170,7 +1170,7 @@ func modelArg(rest string) (modelIntent, string) {
 // something has already gone wrong, and a switch that could be turned off again
 // would only ever produce half a record — the half after the thing they were
 // trying to catch. The other two doors mean the same thing (--debug on the
-// command line, AFORGE_DEBUG in a shell), and this one exists for the case
+// command line, CODEAF_DEBUG in a shell), and this one exists for the case
 // neither of them can serve: the conversation is already open, and the turn
 // worth recording is the next one.
 //
@@ -1184,7 +1184,7 @@ func modelArg(rest string) (modelIntent, string) {
 // a command that recorded something and did not say where would leave a person
 // hunting a folder; typing it twice says it is already on and where; and where
 // the whole process is already recording it says that instead, because "it is
-// on for everything this aforge is doing" is a different fact from "it is on
+// on for everything this codeaf is doing" is a different fact from "it is on
 // for you", and a person reading a folder later needs to know which.
 func (a *app) runDebugCommand() {
 	folder := trace.Dir(trace.RunFrom(a.ctx))
@@ -1195,7 +1195,7 @@ func (a *app) runDebugCommand() {
 		return
 	}
 	if trace.Enabled() {
-		a.note("the record is already on for every conversation this aforge holds · this one goes to " + folder)
+		a.note("the record is already on for every conversation this codeaf holds · this one goes to " + folder)
 		return
 	}
 	if trace.EnabledRun(a.ctx) {

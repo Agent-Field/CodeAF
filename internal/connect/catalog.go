@@ -1,6 +1,6 @@
 package connect
 
-// The catalog: a few hundred services aforge can reach the moment a person
+// The catalog: a few hundred services codeaf can reach the moment a person
 // pastes a key, taken from Ampersand's connectors project.
 //
 // ── THIS FILE IS THE ONLY PLACE THAT NAME APPEARS ──

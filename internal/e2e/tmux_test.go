@@ -15,7 +15,7 @@
 // not talking to a model is a suite lying about the only thing it was written
 // to check. The key is resolved through [liveKey], not by reading one variable.
 //
-// EVERY RUN IS ITS OWN MACHINE. Each rig gets its own AFORGE_HOME under
+// EVERY RUN IS ITS OWN MACHINE. Each rig gets its own CODEAF_HOME under
 // t.TempDir() — the whole state root moves with that one variable
 // (internal/home) — and its own git-initialised workspace. A workspace under
 // /tmp that is NOT a repository is treated by the door as "somewhere the person
@@ -43,7 +43,7 @@ import (
 // for minutes.
 const pollEvery = 250 * time.Millisecond
 
-// rig is one running aforge in one tmux session.
+// rig is one running codeaf in one tmux session.
 type rig struct {
 	t    *testing.T
 	name string
@@ -90,7 +90,7 @@ func repoRoot(t *testing.T) string {
 // door, and a suite that rebuilt would be testing a binary nobody ran.
 func binary(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(repoRoot(t), "bin", "aforge")
+	path := filepath.Join(repoRoot(t), "bin", "codeaf")
 	if _, err := os.Stat(path); err != nil {
 		t.Skipf("no built binary at %s — run `make build` first", path)
 	}
@@ -111,7 +111,7 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	rows := map[string]any{}
 	userHome, err := os.UserHomeDir()
 	if err == nil {
-		if raw, err := os.ReadFile(filepath.Join(userHome, ".aforge", "config.json")); err == nil {
+		if raw, err := os.ReadFile(filepath.Join(userHome, ".codeaf", "config.json")); err == nil {
 			if err := json.Unmarshal(raw, &rows); err != nil {
 				t.Fatalf("the profile config would not parse: %v", err)
 			}
@@ -153,7 +153,7 @@ func newHome(t *testing.T, overrides map[string]any) string {
 // on the way out: the person's own rows, the suite's model, an approval posture.
 // That file is what makes those runs about the surface rather than about setup,
 // and it is exactly what a fresh-install run must not have. A machine that has
-// never run aforge has no profile file, no key, no crew and no marker, and the
+// never run codeaf has no profile file, no key, no crew and no marker, and the
 // first thing that writes into this directory is the product.
 func emptyHome(t *testing.T) string {
 	t.Helper()
@@ -231,7 +231,7 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 // no foot rule, and a task brief typed into a daily-limit field.
 //
 // [startFresh] deliberately does NOT go through this door: a machine that has
-// never run aforge is the subject of its own subtest, and skipping the screen it
+// never run codeaf is the subject of its own subtest, and skipping the screen it
 // exists to read would be skipping the test.
 func (r *rig) skipSetup(t *testing.T) {
 	t.Helper()
@@ -291,10 +291,10 @@ const (
 var keylessEnv = []string{
 	"OPENROUTER_API_KEY", "OPENAI_API_KEY",
 	"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY",
-	"AFORGE_PROFILE_DIR", "AFORGE_DAILY_BUDGET",
+	"CODEAF_PROFILE_DIR", "CODEAF_DAILY_BUDGET",
 }
 
-// startFresh is [start] for A MACHINE THAT HAS NEVER RUN AFORGE: the same rig,
+// startFresh is [start] for A MACHINE THAT HAS NEVER RUN codeaf: the same rig,
 // with every provider key and the profile override taken out of the environment
 // rather than passed through it.
 //
@@ -325,7 +325,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	command := []string{"env"}
 	command = append(command, env...)
 	command = append(command,
-		"AFORGE_HOME="+home,
+		"CODEAF_HOME="+home,
 		"TERM=xterm-256color",
 		binary(t),
 	)
@@ -600,7 +600,7 @@ func (r *rig) dump() {
 		}
 		return nil
 	})
-	r.t.Logf("── AFORGE_HOME %s ──\n%s", r.home, b.String())
+	r.t.Logf("── CODEAF_HOME %s ──\n%s", r.home, b.String())
 }
 
 func clip(s string, n int) string {
@@ -615,10 +615,10 @@ func clip(s string, n int) string {
 func tick(t *testing.T, home string) string {
 	t.Helper()
 	command := exec.Command(binary(t), "tick")
-	command.Env = append(os.Environ(), "AFORGE_HOME="+home)
+	command.Env = append(os.Environ(), "CODEAF_HOME="+home)
 	out, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("aforge tick: %v\n%s", err, out)
+		t.Fatalf("codeaf tick: %v\n%s", err, out)
 	}
 	return string(out)
 }
@@ -632,7 +632,7 @@ func tick(t *testing.T, home string) string {
 // about the conversation, which these scenarios are not about.
 func seedProject(t *testing.T, home, name string, id int, ago time.Duration) string {
 	t.Helper()
-	ws := "/tmp/aforge-e2e-seed/" + name
+	ws := "/tmp/codeaf-e2e-seed/" + name
 	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
 	sid := fmt.Sprintf("%016x", 0x1000000000000000+id)
 	dir := filepath.Join(home, "v3", "projects", bucket, sid)

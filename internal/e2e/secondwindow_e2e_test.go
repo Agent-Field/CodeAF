@@ -196,7 +196,7 @@ func shortHome(t *testing.T, root string) string {
 	}
 	rows := map[string]any{}
 	if userHome, err := os.UserHomeDir(); err == nil {
-		if raw, err := os.ReadFile(filepath.Join(userHome, ".aforge", "config.json")); err == nil {
+		if raw, err := os.ReadFile(filepath.Join(userHome, ".codeaf", "config.json")); err == nil {
 			if err := json.Unmarshal(raw, &rows); err != nil {
 				t.Fatalf("the profile config would not parse: %v", err)
 			}

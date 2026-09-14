@@ -93,7 +93,7 @@ func TestOnlyTheAsksOwnWordsAdmitAGap(t *testing.T) {
 
 // The same grounding, one layer earlier: what a failed gate may buy with a
 // paid revision round. The measured failure this closes is a gate that held a
-// worker to a working decision aforge wrote for itself after reading its own
+// worker to a working decision codeaf wrote for itself after reading its own
 // output, bought a re-run against it, and got back a worse deliverable. The
 // working method is admitted beside the ask because it is the one other
 // standard that was fixed before the work started and cannot move in response

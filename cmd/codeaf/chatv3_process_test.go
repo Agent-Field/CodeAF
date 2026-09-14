@@ -26,8 +26,8 @@ import (
 func v3TestProcess(t *testing.T) *v3Process {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("AFORGE_HOME", t.TempDir())
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	proc, err := openV3Process("chat")
 	if err != nil {

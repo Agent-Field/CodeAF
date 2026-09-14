@@ -1,7 +1,7 @@
 package session
 
 // WHO OWNS THE DECISION THAT A REQUEST IS FINISHED (calibration handoff-before
-// cell 004-revision-midwork-aforge, and handoff-after cell 001 after it).
+// cell 004-revision-midwork-codeaf, and handoff-after cell 001 after it).
 //
 // Both cells are the same conversation: a person asked for a one-minute command
 // AND a report, changed the report from Markdown to CSV while the command ran,

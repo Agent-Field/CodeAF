@@ -8,7 +8,7 @@
 // the planner with the gate OFF on the front and left every armed reading
 // behind it (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary keeps
 // every division the planner drew, and the counting below decides only where
-// somebody has pinned `AFORGE_SPLITGATE=1` or `judgment`. modes.go holds the
+// somebody has pinned `CODEAF_SPLITGATE=1` or `judgment`. modes.go holds the
 // pin and the reasoning; everything else in this file is the counting itself,
 // which the experiment did not change and which arming still reads
 // (internal/session's enumeratesWidth).

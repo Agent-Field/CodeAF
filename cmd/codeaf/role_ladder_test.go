@@ -58,7 +58,7 @@ func TestRoleLadderWithoutAPlanKnobWritesNothing(t *testing.T) {
 func TestPlanKnobSeedsTheGlobalPlanBindingOnce(t *testing.T) {
 	graph := openLadderStore(t)
 	for launch := 0; launch < 3; launch++ {
-		installRoleLadder(graph, "talk/model", "planning/model", "work/model", "planning/model", "AFORGE_PLAN_MODEL")
+		installRoleLadder(graph, "talk/model", "planning/model", "work/model", "planning/model", "CODEAF_PLAN_MODEL")
 	}
 	binding, found, err := graph.RoleBindingAt(store.RolePlan, store.ScopeGlobal)
 	if err != nil || !found {
@@ -67,7 +67,7 @@ func TestPlanKnobSeedsTheGlobalPlanBindingOnce(t *testing.T) {
 	if binding.Value != "planning/model" {
 		t.Fatalf("plan binding = %+v, want the environment's model", binding)
 	}
-	if binding.Origin != store.RoleSeedOriginPrefix+"AFORGE_PLAN_MODEL" {
+	if binding.Origin != store.RoleSeedOriginPrefix+"CODEAF_PLAN_MODEL" {
 		t.Fatalf("origin = %q, want the environment named as an initializer", binding.Origin)
 	}
 	journal, err := graph.Events(0, 0)

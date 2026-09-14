@@ -34,8 +34,8 @@ import (
 //
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, so a bare
 // [newTestApp] — which names no profile, exactly like an ordinary launch — reads
-// and writes aforge's state root, and on a developer's machine that is their own
-// ~/.aforge. Before #315 the surface's empty-profile guards hid that: the crew
+// and writes codeaf's state root, and on a developer's machine that is their own
+// ~/.codeaf. Before #315 the surface's empty-profile guards hid that: the crew
 // was not read and the notices' ledger was not written, so the suite touched
 // nothing. Now that both resolve the way every other persisted setting always
 // has, a suite left alone with the machine's own root would answer to the
@@ -43,7 +43,7 @@ import (
 // passes here and fails there, and a test run with a side effect on the person
 // running it.
 //
-// AFORGE_HOME is the one seam that moves every path (internal/home), and HOME
+// CODEAF_HOME is the one seam that moves every path (internal/home), and HOME
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
@@ -103,7 +103,7 @@ func waitOut(cmd tea.Cmd) tea.Msg {
 // temporary root is still removed on the way out — os.Exit runs no deferred
 // call.
 func runTests(m *testing.M) int {
-	root, err := os.MkdirTemp("", "aforge-tui3-test-home-")
+	root, err := os.MkdirTemp("", "codeaf-tui3-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)
 		return 1
@@ -671,7 +671,7 @@ func returnsOneCmd(fn *ast.FuncDecl) bool {
 // binary under the OS temp dir. The door hands the surface a path and an empty
 // path means "this machine's" (usage_ledger.go's [session.UsageCache] falls back
 // to [session.UsageLedgerPath]), so a test app that left it empty had the spend
-// place reading the developer's real ~/.aforge — and went red the first time
+// place reading the developer's real ~/.codeaf — and went red the first time
 // anything on the machine cost a cent, which on a box running several lanes is
 // always. It is one file rather than one per test because [newTestApp] has no
 // *testing.T to ask for a TempDir, and nothing here reads what another test
@@ -683,7 +683,7 @@ var (
 
 func labLedger() string {
 	labLedgerOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "aforge-tui3-lab-")
+		dir, err := os.MkdirTemp("", "codeaf-tui3-lab-")
 		if err != nil {
 			panic(err)
 		}
@@ -788,7 +788,7 @@ func newTestApp(agent Agent) *app {
 	a.settleIcons()
 	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
 	// [newApp] reads the profile to decide whether the column stands (task.go's
-	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
+	// ui.task_column), so a developer who pressed ctrl+g in their own codeaf would
 	// run a suite with no rail in it — and every rail test would fail on their
 	// machine and nowhere else. The posture has tests of its own that set the
 	// profile directory they read from.
@@ -803,7 +803,7 @@ func newTestApp(agent Agent) *app {
 	// AND IT PINS QUICK SWITCHING OFF, for the sixth time for the same reason.
 	// [newApp] reads the profile to decide whether the switcher's chord switches
 	// on the press or opens a card that waits (hop.go's ui.quick_switch), so a
-	// developer who turned it off in their own aforge would run a different
+	// developer who turned it off in their own codeaf would run a different
 	// suite. The quick behaviour has tests of its own that turn it on outright.
 	a.hopQuick = false
 	// AND IT PINS THE WORK SEAT'S QUESTION AS ALREADY ASKED, for the seventh

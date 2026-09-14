@@ -63,7 +63,7 @@ import (
 // are their own: a person who asked for twenty takes of a theme wants them in
 // one place they can listen through, not interleaved with the voiceovers the
 // same session recorded.
-const musicDirectory = ".aforge-v3/music"
+const musicDirectory = ".codeaf-v3/music"
 
 // musicExtension is what the file is called when the provider does not say what
 // it sent. It is mp3 because mp3 is what the lane returns; a named format is

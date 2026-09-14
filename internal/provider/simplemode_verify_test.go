@@ -406,7 +406,7 @@ func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) 
 	}
 }
 
-// AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `aforge do`'s first
+// AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `codeaf do`'s first
 // request is its planning pass, in a role nobody reads, and it is still the
 // thing the person at the terminal is waiting on — cmd/codeaf's
 // lanepin_doors_test holds that door to the pin on its first request.

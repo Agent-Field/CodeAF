@@ -47,7 +47,7 @@ type SentinelVerdict struct {
 // SentinelFunc makes exactly one cheap model call for a reserved wake.
 type SentinelFunc func(ctx context.Context, prompt SentinelPrompt) (SentinelVerdict, error)
 
-// WatchPass reports what one reconciler or `aforge wake` pass decided.
+// WatchPass reports what one reconciler or `codeaf wake` pass decided.
 type WatchPass struct {
 	Examined  int
 	Woken     int
@@ -555,7 +555,7 @@ func firingPrefix(charterID string, wakeSeq int64) string {
 
 func tenureAfter() int {
 	const fallback = 3
-	raw := strings.TrimSpace(os.Getenv("AFORGE_TENURE_AFTER"))
+	raw := strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER"))
 	if raw == "" {
 		return fallback
 	}

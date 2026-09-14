@@ -33,7 +33,7 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge rebuild [--db path] [--yes]")
+		return fmt.Errorf("usage: codeaf rebuild [--db path] [--yes]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -60,7 +60,7 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	}
 	if !*yes {
 		// THE QUESTION IS AN ASIDE AND THE ANSWER IS NOT. This went to the
-		// command's `output` — os.Stdout in the shipped binary — so `aforge
+		// command's `output` — os.Stdout in the shipped binary — so `codeaf
 		// rebuild | tee log` handed the person a blank terminal waiting for a
 		// word they could not see, and put the question in the data file
 		// (streams.go). The result line below is the answer and stays where it
@@ -69,9 +69,9 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 		// AND IT IS SAID IN THE PRODUCT'S OWN WORDS. `materialized view` is how
 		// the storage engine thinks about itself, and nobody typing this
 		// command has to know the term to decide whether they want it: what is
-		// thrown away is everything aforge worked out from the journal, and the
+		// thrown away is everything codeaf worked out from the journal, and the
 		// journal is what is kept.
-		fmt.Fprintf(aside, "Rebuild everything aforge worked out from the journal in %s?\n", path)
+		fmt.Fprintf(aside, "Rebuild everything codeaf worked out from the journal in %s?\n", path)
 		fmt.Fprint(aside, "The journal itself is untouched; everything worked out from it is discarded and replayed. [y/N] ")
 		reader := bufio.NewReader(input)
 		answer, readErr := reader.ReadString('\n')

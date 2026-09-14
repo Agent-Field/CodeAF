@@ -18,7 +18,7 @@ import (
 // this session runs in gets to answer these rows, and what it says beats what
 // the machine says.
 
-// v3Project writes one <workspace>/.aforge-v3/config.json and answers with the
+// v3Project writes one <workspace>/.codeaf-v3/config.json and answers with the
 // workspace directory.
 func v3Project(t *testing.T, rows map[string]any) string {
 	t.Helper()
@@ -105,7 +105,7 @@ func TestTheProjectFileBeatsTheProfileAtTheSessionConfig(t *testing.T) {
 }
 
 // A workspace with no settings changes nothing at all: the person's profile is
-// still the answer, and a directory that has never heard of aforge costs a
+// still the answer, and a directory that has never heard of codeaf costs a
 // stat and no error.
 func TestAWorkspaceWithNoProjectFileLeavesTheProfileInCharge(t *testing.T) {
 	profile := v3Profile(t, map[string]any{

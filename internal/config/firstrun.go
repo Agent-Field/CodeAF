@@ -75,7 +75,7 @@ func CrewConfigured(profileDir string) bool {
 // DailyBudgetConfigured is whether a person has answered the daily ceiling: the
 // environment pins it, or the profile file holds it.
 func DailyBudgetConfigured(profileDir string) bool {
-	if strings.TrimSpace(os.Getenv("AFORGE_DAILY_BUDGET")) != "" {
+	if strings.TrimSpace(os.Getenv("CODEAF_DAILY_BUDGET")) != "" {
 		return true
 	}
 	_, ok := persistedValue(profileDir, KeyDailyBudget)

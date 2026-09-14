@@ -124,7 +124,7 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 	}
 	// The journal is the OTHER lane, and it is answerable while the work runs.
 	// The claim is that it lands in the STATE ROOT's task tree, and the state
-	// root is asked for rather than spelled: a literal "/.aforge/v3/tasks/" here
+	// root is asked for rather than spelled: a literal "/.codeaf/v3/tasks/" here
 	// passed only because the journal really was being written into the
 	// developer's own home, which is the thing this suite may not do.
 	journal := agent.TaskJournal(1)

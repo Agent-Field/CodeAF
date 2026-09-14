@@ -51,7 +51,7 @@ func modelServiceTestAppWithAgent(t *testing.T, dir string, model string, source
 	for _, env := range []string{"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY"} {
 		t.Setenv(env, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	options := Options{
 		Agent: agent, ProfileDir: dir, Sources: sources,
 		Models:    func() []Model { return models },
@@ -953,7 +953,7 @@ func TestATurnOnAConnectedServiceSendsWithNoDefaultProviderKey(t *testing.T) {
 }
 
 func TestAConnectedServiceKeepsSetupSilentAboutTheDefaultProvider(t *testing.T) {
-	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET"} {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET"} {
 		t.Setenv(pin, "")
 	}
 	dir := t.TempDir()
@@ -1184,7 +1184,7 @@ func TestThePlanDoorSaysItsPositionAndDefaultsToWait(t *testing.T) {
 	rows := modelServiceRows(dir, sources)
 	if len(rows) != 2 || rows[0].name != "z-ai" ||
 		!strings.Contains(rows[0].value, "coding plan") ||
-		!strings.Contains(rows[0].value, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.") ||
+		!strings.Contains(rows[0].value, "Zhipu lists the tools its plan covers; codeaf is not listed, and its request has been drafted but not sent.") ||
 		rows[1].name != "when the plan is paused" || rows[1].value != config.PlanPausedWait {
 		t.Fatalf("the plan rows do not say their billing position: count=%d", len(rows))
 	}

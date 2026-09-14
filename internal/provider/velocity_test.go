@@ -439,7 +439,7 @@ func TestVelocityAttributesNothingToAnUnnamedEndpoint(t *testing.T) {
 }
 
 // The ledger is keyed on the model itself and not on how it was written: the
-// "~" routing marker is aforge's own, and it must not split one model in two.
+// "~" routing marker is codeaf's own, and it must not split one model in two.
 func TestVelocityKeysOnTheModelNotItsSpelling(t *testing.T) {
 	ledger, _ := testLedger()
 	ledger.laggy("Vendor/Fast-Model", "molasses")

@@ -30,9 +30,9 @@ package tui3
 //
 //	 since you left
 //	   ◆ the deploy went green
-//	     12m · aforge-v2
+//	     12m · codeaf
 //
-//	 aforge-v2
+//	 codeaf
 //	   ○ tidy the roster
 //	     3 tasks · 2h
 //	 ▸ wisp                      6 · 2d

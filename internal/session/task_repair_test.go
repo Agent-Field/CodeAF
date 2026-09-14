@@ -236,7 +236,7 @@ func TestRefutedWorkIsRepairedInPlaceAndLandsWhenItHolds(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d nodes in the graph, want 1: a repair round is the same node", count)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".aforge-v3", "tasks", "2")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf-v3", "tasks", "2")); !os.IsNotExist(err) {
 		t.Fatal("a repair round opened a second working copy")
 	}
 

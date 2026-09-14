@@ -7,13 +7,13 @@
 // progress, the warning, the question, the path a record was kept at.
 //
 // It matters because the most common thing anybody does with a headless verb is
-// put a pipe after it. `aforge plan new "x" --json | jq` breaks the moment a
-// `goal:` line is in the stream, `aforge logs | grep -c .` is off by one while a
-// path header is the first line, and `aforge cache clean | tee log` used to hand
+// put a pipe after it. `codeaf plan new "x" --json | jq` breaks the moment a
+// `goal:` line is in the stream, `codeaf logs | grep -c .` is off by one while a
+// path header is the first line, and `codeaf cache clean | tee log` used to hand
 // the person a blank terminal waiting for a word they could not see — because
 // the question had gone into the file with the data.
 //
-// `aforge do` already kept this exactly (do.go) and it is the standard the rest
+// `codeaf do` already kept this exactly (do.go) and it is the standard the rest
 // of the binary is held to. [TestNoDoorPrintsItsCommentaryToStdout] reads the
 // package with go/ast and names any door that stops keeping it.
 package main

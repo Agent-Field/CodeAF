@@ -38,7 +38,7 @@ import (
 //     not written that way.
 //
 // THE BRACKETED CHOICE WAS THE HOLE ROW 28 FELL THROUGH, and it is worth saying
-// exactly how, because the report guessed a different mechanism. `aforge
+// exactly how, because the report guessed a different mechanism. `codeaf
 // rebuild` asked its question through a writer that arrives as a PARAMETER —
 // and that was never the problem: the parameter is named `output`, which is one
 // of [answerWriters], so the call WAS scanned. What the scan could not see was
@@ -263,7 +263,7 @@ func captureAside(t *testing.T) *bytes.Buffer {
 	return &buffer
 }
 
-// Row 27. `aforge logs | grep -c .` counted one line too many for as long as
+// Row 27. `codeaf logs | grep -c .` counted one line too many for as long as
 // the path was the first thing on stdout, and the flag that suppressed it under
 // --json showed the author already knew: commentary does not belong in a stream
 // another program reads. The path is still printed — it is genuinely useful —

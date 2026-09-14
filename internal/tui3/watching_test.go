@@ -56,7 +56,7 @@ func TestAWatcherDrawsOneLineWhereItsComposerWas(t *testing.T) {
 }
 
 // A SECOND WINDOW ON THIS SAME MACHINE IS `another window`, which is the word
-// aforge already uses at home for a conversation open somewhere else.
+// codeaf already uses at home for a conversation open somewhere else.
 func TestAWindowOnThisMachineIsCalledAnotherWindow(t *testing.T) {
 	for _, driving := range []Driving{
 		{Machine: "macbook", Here: true},

@@ -43,7 +43,7 @@ func writeV3Session(t *testing.T, bucket, id, said string, spoke time.Time) stri
 // session with the newest last-spoken stamp even when another folder was
 // modified a moment ago (docs/CHAT-V3.md, Decision 26).
 func TestResumeOpensTheConversationThePersonSpokeInLast(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestResumeOpensTheConversationThePersonSpokeInLast(t *testing.T) {
 // empties are reaped on the way past: the flat layout left nineteen dead
 // session directories on the author's own machine, which is this law's case.
 func TestALaunchReusesOneEmptySessionAndReapsTheRest(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestALaunchReusesOneEmptySessionAndReapsTheRest(t *testing.T) {
 // A conversation somebody spoke in is never reaped, whatever else the groom
 // finds beside it.
 func TestTheGroomLeavesEveryConversationAlone(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestTheGroomLeavesEveryConversationAlone(t *testing.T) {
 // own id with meta.json already in it — so a second window sees the session
 // before anybody has spoken in it.
 func TestAFirstLaunchMintsAFolderThatNamesItself(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 
 	found, err := v3ResolveSession("", workspace, filepath.Join(workspace, "cmd"), false)
@@ -181,7 +181,7 @@ func TestOnlyThePlacelessDirectoriesOwnTheirWorkspace(t *testing.T) {
 	if !v3NoProjectPlace(os.TempDir()) {
 		t.Fatal("a temporary directory is a project")
 	}
-	if !v3NoProjectPlace(filepath.Join(os.TempDir(), "aforge-run-1")) {
+	if !v3NoProjectPlace(filepath.Join(os.TempDir(), "codeaf-run-1")) {
 		t.Fatal("a directory under the temporary root is a project")
 	}
 	// And the workspace a launch resolves from one: the directory itself, with
@@ -199,7 +199,7 @@ func TestOnlyThePlacelessDirectoriesOwnTheirWorkspace(t *testing.T) {
 // An owned session's tools root is its own work/ directory, and it is ready to
 // work in before the launch hands it over.
 func TestAnOwnedSessionWorksInItsOwnFolder(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	nowhere := t.TempDir()
 
 	found, err := v3ResolveSession("", nowhere, nowhere, true)
@@ -235,7 +235,7 @@ func TestAResumedAnchorOverridesTheLaunchWorkspace(t *testing.T) {
 // A path a person named is a path they mean, and an old flat transcript opens
 // as what it is: no folder, and every sidecar derived the way it always was.
 func TestANamedFlatTranscriptKeepsTheLegacyLayout(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	flat := filepath.Join(t.TempDir(), "20260815-090102_b7c1.jsonl")
 	if err := os.WriteFile(flat, []byte("{\"type\":\"session\",\"version\":1,\"id\":\"s-1\"}\n"), 0o600); err != nil {
@@ -260,7 +260,7 @@ func TestANamedFlatTranscriptKeepsTheLegacyLayout(t *testing.T) {
 // A session folder's own journal, named on the command line, opens AS its
 // folder: the sidecars and the node journals belong to it either way.
 func TestANamedFolderTranscriptOpensAsItsFolder(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -282,13 +282,13 @@ func TestANamedFolderTranscriptOpensAsItsFolder(t *testing.T) {
 
 // THE SURFACE'S OWN LOG FILE IS STATE AND NOT WORK. `filepath.Join(profileDir,
 // "chat.log")` with an empty profile — which is every launch that sets no
-// AFORGE_PROFILE_DIR, meaning nearly all of them — names the file RELATIVE, so
+// CODEAF_PROFILE_DIR, meaning nearly all of them — names the file RELATIVE, so
 // every repository a person opened a chat in grew an untracked chat.log and the
 // surface's own repository band then counted that workspace dirty because of a
 // file the surface itself had written.
 func TestTheChatLogIsWrittenUnderTheStateRootAndNeverIntoTheWorkspace(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 
 	path := chatLogPath("")
 	if !filepath.IsAbs(path) {
@@ -318,7 +318,7 @@ func TestTheChatLogIsWrittenUnderTheStateRootAndNeverIntoTheWorkspace(t *testing
 // counted as silence, because the only question anybody asked the file was
 // whether a parser found a turn in it.
 func TestTheReaperKeepsAConversationItCouldNotRead(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {

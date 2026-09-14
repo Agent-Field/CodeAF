@@ -66,7 +66,7 @@ const (
 // never the work's.
 func groundManifest(dir string) string {
 	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
-		"--", ".", ":(exclude)"+aforgeDroppings)
+		"--", ".", ":(exclude)"+codeafDroppings)
 	if err != nil {
 		return ""
 	}

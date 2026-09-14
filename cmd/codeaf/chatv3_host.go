@@ -27,10 +27,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
-// ── `aforge chat --host devbox` ─────────────────────────────────────────────
+// ── `codeaf chat --host devbox` ─────────────────────────────────────────────
 //
 // The surface runs here and the session runs there. This file is the door: it
-// parses the destination, starts `ssh <dest> aforge engine`, completes the
+// parses the destination, starts `ssh <dest> codeaf engine`, completes the
 // handshake, and hands the connection to the same surface a local launch opens.
 //
 // THE PROMPT LAW, and it is the reason this whole path is shaped the way it is:
@@ -69,7 +69,7 @@ type hostLaunch struct {
 	level string
 	// once is --once: one message, printed, no terminal ownership.
 	once string
-	// pick is `aforge resume`: the same surface, opened on the session picker.
+	// pick is `codeaf resume`: the same surface, opened on the session picker.
 	pick bool
 	// noCompact and yolo are refused rather than ignored — see [hostLaunch.check].
 	noCompact bool
@@ -85,7 +85,7 @@ type hostLaunch struct {
 //
 // A FLAG THAT COULD NOT TRAVEL IS A REFUSAL AND NEVER A SHRUG. --no-compact and
 // --yolo are properties of the SESSION, the session is built on the far machine
-// by `aforge engine`, and the wire's hello carries neither. Accepting them and
+// by `codeaf engine`, and the wire's hello carries neither. Accepting them and
 // doing nothing would be the worst outcome available: a person types --yolo,
 // watches the gate ask about every tool, and has no way to tell whether the flag
 // or the gate is broken. So the door says which machine the setting lives on.
@@ -104,7 +104,7 @@ func (l hostLaunch) check() error {
 		return nil
 	}
 	dest, _, _ := parseHostTarget(l.target)
-	return fmt.Errorf("%s cannot travel over --host: the session is built on %s, so set it there — `ssh %s aforge chat %s` — or open the settings panel on that machine",
+	return fmt.Errorf("%s cannot travel over --host: the session is built on %s, so set it there — `ssh %s codeaf chat %s` — or open the settings panel on that machine",
 		strings.Join(named, " and "), dest, dest, strings.Join(named, " "))
 }
 
@@ -166,14 +166,14 @@ type engineLink struct {
 	err    error
 }
 
-// spawn starts one `ssh <dest> aforge engine` and hands back its pipes. It is
+// spawn starts one `ssh <dest> codeaf engine` and hands back its pipes. It is
 // [remote.Dialer]: the door owns processes, the wire owns frames, and this is
 // the one function the redial loop reaches back through when a link dies.
 func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// The remote command, as the far machine's login shell will read it. The
 	// workspace is quoted because a path with a space in it is a path, and an
-	// unquoted one would arrive at `aforge engine` as two arguments.
-	remoteCommand := "aforge engine"
+	// unquoted one would arrive at `codeaf engine` as two arguments.
+	remoteCommand := "codeaf engine"
 	if l.workspace != "" {
 		remoteCommand += " --workspace " + shellQuote(l.workspace)
 	}
@@ -214,7 +214,7 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 // different policy has a supported override rather than a private environment
 // variable hidden from the settings sheet.
 func sshTransportArgs(dest, remoteCommand string) []string {
-	settings := config.SSHTransportAt(os.Getenv("AFORGE_PROFILE_DIR"))
+	settings := config.SSHTransportAt(os.Getenv("CODEAF_PROFILE_DIR"))
 	args := []string{
 		"-T",
 		"-o", fmt.Sprintf("ServerAliveInterval=%d", settings.ServerAliveSeconds),
@@ -318,7 +318,7 @@ func besideHello(ask engineAsk, model, level string) remote.Hello {
 // diagnose turns a failed handshake into the truest sentence available.
 //
 // IT SNIFFS AND IT DOES NOT GUESS. A shell that could not find the command says
-// so on stderr and exits 127; that is a fact, and "aforge is not installed on
+// so on stderr and exits 127; that is a fact, and "codeaf is not installed on
 // devbox" is what it means. ssh's own failures exit 255 and have already printed
 // their own reason, which is better than anything this function could invent, so
 // they are not paraphrased. Everything else falls back to what the handshake
@@ -329,7 +329,7 @@ func (l *engineLink) diagnose(dest string, cause error) error {
 	said := l.said()
 	switch {
 	case code == 127 || mentionsMissingCommand(said):
-		return fmt.Errorf("aforge is not installed on %s — install it there, or put it on the PATH that a non-login ssh command sees", dest)
+		return fmt.Errorf("codeaf is not installed on %s — install it there, or put it on the PATH that a non-login ssh command sees", dest)
 	case code == 255:
 		// ssh has already said why, in its own words, above this line.
 		return fmt.Errorf("ssh could not open a session on %s", dest)
@@ -344,8 +344,8 @@ func (l *engineLink) diagnose(dest string, cause error) error {
 func mentionsMissingCommand(said string) bool {
 	said = strings.ToLower(said)
 	return strings.Contains(said, "command not found") ||
-		strings.Contains(said, "not found") && strings.Contains(said, "aforge") ||
-		strings.Contains(said, "no such file or directory") && strings.Contains(said, "aforge")
+		strings.Contains(said, "not found") && strings.Contains(said, "codeaf") ||
+		strings.Contains(said, "no such file or directory") && strings.Contains(said, "codeaf")
 }
 
 // close shuts the connection and reaps the process. Closing the client also
@@ -480,7 +480,7 @@ func openChatV3Host(launch hostLaunch) error {
 		return err
 	}
 	if launch.pick && launch.once != "" {
-		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --host %s --once "text"`, dest)
+		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --host %s --once "text"`, dest)
 	}
 	link, err := dialEngine(dest, workspace, launchHello(launch.session, launch.model, launch.level))
 	if err != nil {
@@ -581,14 +581,14 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// THE PICKER'S LIST IS RESOLVED WITHOUT CREDENTIALS. The catalog is opened
 	// with whatever this machine happens to have — usually nothing, because the
 	// key lives on the engine's machine — and that is fine: a catalog with no key
-	// answers nil, the picker falls back to ~/.aforge/v3/models.json and then to
+	// answers nil, the picker falls back to ~/.codeaf/v3/models.json and then to
 	// its built-ins, and the list is a list of NAMES rather than a claim about
 	// what this machine can reach. What the model actually costs and whether the
 	// switch took is the session's answer, and the session is over there.
 	//
 	// AND A MISSING KEY IS NOT AN ERROR ON THIS PATH, which is the one place this
 	// door differs from the local one in a way a person would notice. The local
-	// door stops with "aforge chat needs a model to talk with" because it is about
+	// door stops with "codeaf chat needs a model to talk with" because it is about
 	// to build a session; this one is not — the session, and the key that pays for
 	// it, are on the other machine. Refusing to open a remote conversation because
 	// THIS laptop has no OPENROUTER_API_KEY would be asking for a credential
@@ -597,7 +597,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	profileDir := settings.ProfileDir
 	if err != nil {
 		settings = config.Config{BaseURL: config.DefaultBaseURL}
-		profileDir = os.Getenv("AFORGE_PROFILE_DIR")
+		profileDir = os.Getenv("CODEAF_PROFILE_DIR")
 	}
 	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
 	models := catalog.LoadLazy(context.Background(), discovery)
@@ -658,7 +658,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		//
 		// The seven places are a listing of one machine's disk, and until this
 		// pair existed the surface listed its OWN: over --host the tasks place
-		// walked this laptop's `~/.aforge/v3` and drew eight rows and $22.54 of
+		// walked this laptop's `~/.codeaf/v3` and drew eight rows and $22.54 of
 		// work under a conversation on a server that had run none of it. The
 		// world crosses the wire now (internal/remote's Places.World), and the
 		// root it was walked under travels with it so that the conversation this
@@ -855,7 +855,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 //
 // WHO ELSE IS HERE IS NOT A DETAIL. A session with another surface attached is a
 // conversation somebody else can type into, and a screen that kept that quiet
-// would be the one place aforge hid something about the room. The count is the
+// would be the one place codeaf hid something about the room. The count is the
 // engine's ([remote.Welcome]'s Attached), because only the machine holding the
 // session can know it. Zero says nothing at all, by the emptiness law.
 func hostEntryNotice(welcome remote.Welcome) string {

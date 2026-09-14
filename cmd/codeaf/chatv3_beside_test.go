@@ -4,7 +4,7 @@ package main
 //
 // These drive a REAL session host on a REAL unix socket, speaking the REAL
 // protocol, because the claim under test is a claim about the transport: that
-// `aforge` and `aforge chat` — the doors that reach this machine's own engine —
+// `codeaf` and `codeaf chat` — the doors that reach this machine's own engine —
 // can hold several conversations whose turns overlap, rather than swapping one
 // connection between them and ending whatever it was holding.
 //
@@ -161,7 +161,7 @@ func farHost(t *testing.T, far *farMachine) {
 	} else {
 		t.Cleanup(func() { _ = os.RemoveAll(root) })
 	}
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	t.Setenv("HOME", root)
 
 	stopped := make(chan error, 1)

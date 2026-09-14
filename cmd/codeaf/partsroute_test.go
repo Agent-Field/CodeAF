@@ -33,7 +33,7 @@ func TestTwoUnrelatedRequestsBecomeOnePlannedJobWithNoMachineryTitle(t *testing.
 	// which would leave nothing here to assert about titles and routing — so
 	// the gate is stood down and its own corpus test holds its law
 	// (internal/splitgate).
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 	const haiku = "Write me a haiku about the first cold morning of autumn."
 	const research = "Find out which three vendors ship the parser we are on and what each charges."
 
@@ -152,7 +152,7 @@ func TestTwoUnrelatedRequestsBecomeOnePlannedJobWithNoMachineryTitle(t *testing.
 func TestAPlannedGatheringRequestCannotBeClaimedWhileAnInputRuns(t *testing.T) {
 	// The gate is stood down for the reason the first test on this file states:
 	// the claim ordering under test needs the planned parts to exist.
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 	requests := []string{
 		"How does France measure road distance?",
 		"How does the UK measure road distance?",

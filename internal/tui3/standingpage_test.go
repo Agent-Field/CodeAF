@@ -580,7 +580,7 @@ func TestTheRatificationCardNamesWhereItReaches(t *testing.T) {
 // THE PAGE SAYS `holds` AND THE MARK STAYS THE ORDINARY ONE.
 //
 // A rule is not a fourth state — it is active, and `◦` is what active looks like
-// on every aforge screen. What changes is the tail: where a watch says what it
+// on every codeaf screen. What changes is the tail: where a watch says what it
 // last found and a routine says its cadence, a rule says the one thing that is
 // true of it. The clause is [standRollup]'s, exactly as every other row's is.
 func TestTheStandingPageSaysARuleHolds(t *testing.T) {

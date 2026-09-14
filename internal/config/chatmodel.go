@@ -8,16 +8,16 @@ import "strings"
 // can read again — an environment variable, a row in this file — and the talk
 // slot did not. It was a LIVE SEAM and only that: the picker swapped the model
 // on the running agent, the sheet's row read it back off the same agent, and
-// the next launch opened on AFORGE_MODEL or the built-in default as though
+// the next launch opened on CODEAF_MODEL or the built-in default as though
 // nobody had chosen anything. A person who picked a model, worked in it for an
 // hour and restarted found themselves back on a model they had deliberately
 // left.
 //
 // So the choice lands here, and the v3 door reads it back before it opens
 // (cmd/codeaf's chatv3.go). The whole rule is three lines below and the
-// interesting one is that a SAVED CHOICE BEATS AFORGE_MODEL — which is the
+// interesting one is that a SAVED CHOICE BEATS CODEAF_MODEL — which is the
 // registry's own law for this row rather than a new one. The talk slot carries
-// AFORGE_MODEL as an [Setting.EnvDefault] and not an [Setting.Env]: the
+// CODEAF_MODEL as an [Setting.EnvDefault] and not an [Setting.Env]: the
 // variable seeds a value nobody has chosen and never freezes the row, so the
 // sheet lets you change it while the variable is set. A launch that let the
 // variable win would make that edit revert on the next start, silently, which

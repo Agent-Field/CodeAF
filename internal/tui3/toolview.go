@@ -1493,7 +1493,7 @@ func (a *app) paintTarget(e *entry, target string) string {
 
 	case "read", "edit", "write", "generate_image", "view_image":
 		// AND THE TARGET IS THE DOOR ITSELF (pathlink.go). This is the one path
-		// on the row that aforge resolved rather than found — it came out of the
+		// on the row that codeaf resolved rather than found — it came out of the
 		// call's own arguments — so it is exactly the kind of path that may be
 		// linked, and the shown text may be an ellipsis or a bare basename
 		// without the click losing the file.

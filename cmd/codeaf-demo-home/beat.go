@@ -71,7 +71,7 @@ type livePresence struct {
 // them fresh again. The shape read is the engine's own struct, so a field that
 // moves moves here too.
 func livePresenceRows(dir string) []livePresence {
-	root := filepath.Join(dir, ".aforge", "v3", "projects")
+	root := filepath.Join(dir, ".codeaf", "v3", "projects")
 	buckets, err := os.ReadDir(root)
 	if err != nil {
 		return nil

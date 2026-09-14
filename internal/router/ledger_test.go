@@ -118,7 +118,7 @@ func TestColdStartUsesTheRoleHintAndNeverThePrice(t *testing.T) {
 }
 
 // TestConcurrentWritesDoNotCorruptTheLedger covers the case that actually
-// happens: several aforge processes running at once, all doing read-modify-write
+// happens: several codeaf processes running at once, all doing read-modify-write
 // on one small file. Without the lock the last writer out wins and everyone
 // else's evidence disappears; without the atomic rename a reader finds half a
 // file.
@@ -173,7 +173,7 @@ func TestConcurrentWritesDoNotCorruptTheLedger(t *testing.T) {
 func TestPanelParsesBothForms(t *testing.T) {
 	empty, err := LoadPanel("  ")
 	if err != nil || len(empty.Models) != 0 {
-		t.Fatalf("an unset AFORGE_MODELS must be the kill switch, got %+v %v", empty, err)
+		t.Fatalf("an unset CODEAF_MODELS must be the kill switch, got %+v %v", empty, err)
 	}
 
 	list, err := LoadPanel(" a/one , b/two ,, c/three ")
@@ -213,7 +213,7 @@ func TestPanelParsesBothForms(t *testing.T) {
 	if len(alias.Models) != 1 || alias.Models[0].Slug != "~deepseek/deepseek-v4-flash-latest" {
 		t.Fatalf("alias panel = %+v", alias.Models)
 	}
-	if !looksLikePath("~/.aforge/models.json") {
+	if !looksLikePath("~/.codeaf/models.json") {
 		t.Fatal("a home-directory path was read as a slug")
 	}
 }
@@ -314,7 +314,7 @@ func TestBudgetStopsStillCountTowardsTheGate(t *testing.T) {
 	}
 }
 
-// holdLock takes the ledger's lock file the way another aforge process would,
+// holdLock takes the ledger's lock file the way another codeaf process would,
 // so a flush has to wait out its retries.
 func holdLock(t *testing.T, dir string) string {
 	t.Helper()

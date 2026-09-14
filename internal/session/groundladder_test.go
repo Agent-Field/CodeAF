@@ -448,8 +448,8 @@ func TestAUniverseIsNeverForkedFromALinkedWorktree(t *testing.T) {
 // thing a fake cannot — that furrow itself forks a repository the way the rung
 // assumes it does.
 //
-//	AFORGE_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
-const realFurrowEnvVar = "AFORGE_FURROW_REAL"
+//	CODEAF_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
+const realFurrowEnvVar = "CODEAF_FURROW_REAL"
 
 // THE WHOLE ROAD, AGAINST THE PROGRAM ITSELF: fork a real repository holding
 // everything git can and cannot see, work in it, and come home to a merge.

@@ -3,7 +3,7 @@ package session
 // Memory is what one conversation knows and the next one would otherwise have
 // to be told again.
 //
-// It used to be a file of lines — ~/.aforge/v3/memory.md, appended to by a
+// It used to be a file of lines — ~/.codeaf/v3/memory.md, appended to by a
 // `note` tool, filtered by a `forget` tool, and rendered whole into the system
 // prompt of every turn. That shape had one virtue (a person could read it) and
 // one fatal property: it only ever grew, and everything in it was paid for on
@@ -1094,7 +1094,7 @@ func (a *Agent) Remembers() bool { return a.remembers() }
 // errand asked by two different mouths.
 //
 // It goes through the same decide-and-apply path the post-turn pass does, so
-// telling aforge twice in two sessions that you prefer tabs refines one memory
+// telling codeaf twice in two sessions that you prefer tabs refines one memory
 // instead of making two.
 func (a *Agent) Remember(text string) (string, error) {
 	return a.RememberScoped(text, store.MemoryScopeUser)

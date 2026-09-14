@@ -22,9 +22,9 @@ import (
 )
 
 // firstProjectName is the project a launch opens in, so home's foot says `here
-// ~/aforge-v2` rather than naming whatever directory the make target was run
+// ~/codeaf` rather than naming whatever directory the make target was run
 // from. It is the first row of [demoProjects] and is spelled once.
-const firstProjectName = "aforge-v2"
+const firstProjectName = "codeaf"
 
 // builtHome is what one seeding came to — the counts, so the program can say
 // what it made and the test can insist none of them is zero.
@@ -58,14 +58,14 @@ func (b builtHome) line() string {
 // seedDemoHome writes a whole v3 state into dir and answers what it wrote.
 //
 // dir is treated as a HOME: the projects are folders directly under it, exactly
-// as a person's are, and the state root is dir/.aforge. THAT IS NOT A STYLE
+// as a person's are, and the state root is dir/.codeaf. THAT IS NOT A STYLE
 // CHOICE. A project under /tmp is litter to the launch sweep (internal/session's
 // sweep.go marks a temp-rooted session reapable after a week), so a fixture that
 // put its projects in a temporary directory would watch its own oldest
 // conversations disappear on the first launch.
 func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	built := builtHome{Dir: dir}
-	root := filepath.Join(dir, ".aforge")
+	root := filepath.Join(dir, ".codeaf")
 
 	projects, err := writeProjects(dir, now)
 	if err != nil {
@@ -168,13 +168,13 @@ var demoProjects = []demoProject{
 		name: firstProjectName,
 		git:  true,
 		files: map[string]string{
-			"README.md":       "# aforge-v2\n\nThe surface, the engine, and the manual that keeps them honest.\n",
+			"README.md":       "# codeaf\n\nThe surface, the engine, and the manual that keeps them honest.\n",
 			"Makefile":        "build:\n\tgo build -o bin/codeaf ./cmd/codeaf\n",
 			"docs/HOME.md":    "# Home\n\nOne list, ordered by what wants you first.\n",
 			"internal/why.go": "package internal\n\n// Why the frame jumps: the card is measured before the list is folded.\n",
 		},
 		dirty: map[string]string{
-			"README.md":  "# aforge-v2\n\nThe surface, the engine, and the manual that keeps them honest.\n\nThe tab bar's counts are drawn from one reading.\n",
+			"README.md":  "# codeaf\n\nThe surface, the engine, and the manual that keeps them honest.\n\nThe tab bar's counts are drawn from one reading.\n",
 			"scratch.md": "counting the tabs — the bar reads the world once and every place shares it\n",
 		},
 	},
@@ -203,7 +203,7 @@ func writeProjects(dir string, now time.Time) (map[string]*demoProject, error) {
 	for index := range demoProjects {
 		project := demoProjects[index]
 		project.dir = filepath.Join(dir, project.name)
-		project.bucket = filepath.Join(dir, ".aforge", "v3", "projects", encodeWorkspace(project.dir))
+		project.bucket = filepath.Join(dir, ".codeaf", "v3", "projects", encodeWorkspace(project.dir))
 		if err := os.MkdirAll(project.bucket, 0o700); err != nil {
 			return nil, fmt.Errorf("make %s: %w", project.bucket, err)
 		}

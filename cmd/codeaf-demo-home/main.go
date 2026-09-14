@@ -9,7 +9,7 @@ package main
 // own machine and saw nothing, because on their machine those stores are new
 // and empty — which is the emptiness law working exactly as designed. The
 // answer is not to write invented standing orders, invented memories and
-// invented spending into ~/.aforge, which would make a person's own record a
+// invented spending into ~/.codeaf, which would make a person's own record a
 // lie; it is a SECOND home, somewhere else, that the surface can be pointed at.
 // So this program never touches the real state root: it writes one directory,
 // the one it was given, and the launcher hands that directory to the binary as
@@ -53,7 +53,7 @@ func run(args []string) error {
 	flags.SetOutput(os.Stderr)
 	flags.Usage = func() { fmt.Fprint(flags.Output(), usageText) }
 	into := flags.String("into", "", "the directory to build the demo home in; empty makes a fresh temporary one")
-	launch := flags.String("launch", "", "an aforge binary to run against the demo home once it is built")
+	launch := flags.String("launch", "", "a codeaf binary to run against the demo home once it is built")
 	reuse := flags.Bool("keep", false, "reuse a directory that already holds a demo home instead of refusing it")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -91,7 +91,7 @@ func run(args []string) error {
 	return launchAgainst(dir, *launch)
 }
 
-// surfaceBeside is the aforge binary sitting next to this one, for the sentence
+// surfaceBeside is the codeaf binary sitting next to this one, for the sentence
 // that tells somebody how to open the home by hand. It answers the ordinary
 // spelling when there is nothing beside us — a path that is not there is worse
 // than a path somebody has to fill in.
@@ -100,7 +100,7 @@ func surfaceBeside() string {
 	if err != nil {
 		return "bin/codeaf"
 	}
-	beside := filepath.Join(filepath.Dir(self), "aforge")
+	beside := filepath.Join(filepath.Dir(self), "codeaf")
 	if info, err := os.Stat(beside); err != nil || info.IsDir() {
 		return "bin/codeaf"
 	}
@@ -109,7 +109,7 @@ func surfaceBeside() string {
 
 const usageText = `codeaf-demo-home — build a home with something on every place, for looking at
 
-  codeaf-demo-home [--into dir] [--keep] [--launch path/to/aforge]
+  codeaf-demo-home [--into dir] [--keep] [--launch path/to/codeaf]
 
   --into    where to build it; a fresh temporary directory when not given
   --keep    reuse a directory that already holds a demo home rather than refusing
@@ -117,7 +117,7 @@ const usageText = `codeaf-demo-home — build a home with something on every pla
   --launch  run that binary against the demo home, with HOME pointed at it and a
             presence heartbeat running beside it, and return when it exits
 
-It writes inside --into and nowhere else. The real state root (~/.aforge) is
+It writes inside --into and nowhere else. The real state root (~/.codeaf) is
 never opened.
 `
 
@@ -156,7 +156,7 @@ func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 	if !reuse {
 		return "", false, fmt.Errorf("%s is not empty; pass --keep to reuse a demo home that is already there", dir)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".aforge", "v3", "projects")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, ".codeaf", "v3", "projects")); err != nil {
 		return "", false, fmt.Errorf("%s is not empty and does not hold a demo home", dir)
 	}
 	return dir, false, nil
@@ -165,7 +165,7 @@ func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 // launchAgainst runs the surface against the demo home and keeps the live
 // conversations alive underneath it.
 //
-// THE HEARTBEAT IS WHY THIS IS NOT JUST `HOME=dir aforge`. A presence file is
+// THE HEARTBEAT IS WHY THIS IS NOT JUST `HOME=dir codeaf`. A presence file is
 // believed for three heartbeats and no longer (internal/session's
 // taskpresence.go), which is what stops a killed window from haunting a surface
 // forever — and it means a presence file written once by a seeder is stale
@@ -182,7 +182,7 @@ func launchAgainst(dir, binary string) error {
 	defer stop()
 
 	// The surface opens on the project the owner is most likely to want, so the
-	// foot of home says `here ~/aforge-v2` rather than naming this repository.
+	// foot of home says `here ~/codeaf` rather than naming this repository.
 	cwd := filepath.Join(dir, firstProjectName)
 	surface := exec.Command(binary)
 	surface.Dir = cwd
@@ -201,9 +201,9 @@ func launchAgainst(dir, binary string) error {
 	return err
 }
 
-// demoEnviron is this process's environment with the aforge pins that would
+// demoEnviron is this process's environment with the codeaf pins that would
 // point the surface back at the real machine removed. HOME is set by the
-// caller; AFORGE_HOME would override it outright, which is the one variable
+// caller; CODEAF_HOME would override it outright, which is the one variable
 // that could silently send a demo launch at the owner's own state root.
 func demoEnviron() []string {
 	var kept []string

@@ -271,19 +271,19 @@ func TestTheHomeDirectoryIsAPathOnTheProjectsPanel(t *testing.T) {
 }
 
 // A PROJECT ROW NEVER WRAPS: a long path is cut from the left, at a folder,
-// so its count and its repository stay on the row — `…/code/aforge-v2`.
+// so its count and its repository stay on the row — `…/code/codeaf`.
 func TestALongProjectPathIsCutFromTheLeftAndKeepsItsFacts(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
-		title: "~/Documents/agentfield/code/aforge-v2", note: "61 chats", right: "master, 3 files dirty"}
+		title: "~/Documents/agentfield/code/codeaf", note: "61 chats", right: "master, 3 files dirty"}
 	for _, width := range []int{56, 48} {
 		row := plain(homeCellBody(cell, width, a.pal, false))
-		if len([]rune(row)) > width || !strings.Contains(row, glyphMore+"/") || !strings.Contains(row, "/aforge-v2") ||
+		if len([]rune(row)) > width || !strings.Contains(row, glyphMore+"/") || !strings.Contains(row, "/codeaf") ||
 			!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty") {
 			t.Fatalf("at %d cells the project row reads %q", width, row)
 		}
 	}
-	if got := homeFitPathLeft("~/Documents/agentfield/code/aforge-v2", 20); got != glyphMore+"/code/aforge-v2" {
+	if got := homeFitPathLeft("~/Documents/agentfield/code/codeaf", 20); got != glyphMore+"/code/codeaf" {
 		t.Fatalf("the path is cut to %q, want it to start at a folder", got)
 	}
 }
@@ -315,7 +315,7 @@ func TestAChatRowWearsNoTagForHomeOrAScratchFolder(t *testing.T) {
 func TestProjectsDrawsTheLaunchFolderOverAnEmptyWorld(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
-	a.workspace, a.tilde = lab.workspace("aforge-v2"), lab.work
+	a.workspace, a.tilde = lab.workspace("codeaf"), lab.work
 	a.width, a.height = 120, 45
 	a.openHome()
 	frame := homeText(a)
@@ -325,7 +325,7 @@ func TestProjectsDrawsTheLaunchFolderOverAnEmptyWorld(t *testing.T) {
 		t.Fatalf("projects is not drawn over an empty world:\n%s", frame)
 	}
 	row := lines[head+1]
-	if !strings.Contains(row, "~/aforge-v2") || strings.Contains(row, "chat") {
+	if !strings.Contains(row, "~/codeaf") || strings.Contains(row, "chat") {
 		t.Fatalf("the launch folder is not the first project, bare of counts:\n%s", frame)
 	}
 	if got := len(panelRows(a, panelProjects)); got != 1 {

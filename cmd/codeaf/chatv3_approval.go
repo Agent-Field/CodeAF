@@ -33,7 +33,7 @@ type v3Gate interface {
 // from the window's assembly, and keeping them apart means a wave editing one
 // does not collide with a wave editing the other.
 //
-// THE PROFILE IS THE PLACE. A repository's .aforge-v3/config.json is never written
+// THE PROFILE IS THE PLACE. A repository's .codeaf-v3/config.json is never written
 // from here — it is a file a team commits, and a keystroke on a consent card
 // must not commit to somebody's repository. internal/config's approvalmemory.go
 // states the honest consequence: while a repository answers one of these rows,

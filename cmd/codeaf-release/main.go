@@ -2,7 +2,7 @@
 // workflow.
 //
 // It is not shipped. Like cmd/codeaf-changes this is a developer's binary and
-// never a verb on aforge, so release policy can be checked without adding to
+// never a verb on codeaf, so release policy can be checked without adding to
 // the product's SIZE-BUDGET.
 //
 // Usage:

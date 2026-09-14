@@ -29,7 +29,7 @@ func TestDarwinPlistGoldenAndLifecycleUsesRunner(t *testing.T) {
 	home := t.TempDir()
 	runner := &fakeRunner{}
 	manager, err := New(Options{
-		Platform: "darwin", HomeDir: home, Executable: "/opt/Aforge & Co/aforge",
+		Platform: "darwin", HomeDir: home, Executable: "/opt/codeaf & Co/codeaf",
 		UID: 501, Runner: runner,
 	})
 	if err != nil {
@@ -38,7 +38,7 @@ func TestDarwinPlistGoldenAndLifecycleUsesRunner(t *testing.T) {
 	if err := manager.Install(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, "Library", "LaunchAgents", "ai.agentfield.aforge.wake.plist")
+	path := filepath.Join(home, "Library", "LaunchAgents", "ai.agentfield.codeaf.wake.plist")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -48,10 +48,10 @@ func TestDarwinPlistGoldenAndLifecycleUsesRunner(t *testing.T) {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.agentfield.aforge.wake</string>
+  <string>ai.agentfield.codeaf.wake</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/Aforge &amp; Co/aforge</string>
+    <string>/opt/codeaf &amp; Co/codeaf</string>
     <string>wake</string>
   </array>
   <key>StartInterval</key>
@@ -102,7 +102,7 @@ func TestLinuxUnitsGoldenAndLifecycleUsesRunner(t *testing.T) {
 	home := t.TempDir()
 	runner := &fakeRunner{}
 	manager, err := New(Options{
-		Platform: "linux", HomeDir: home, Executable: "/opt/Aforge Tools/aforge%bin",
+		Platform: "linux", HomeDir: home, Executable: "/opt/codeaf Tools/codeaf%bin",
 		UID: 1000, Runner: runner,
 	})
 	if err != nil {
@@ -112,8 +112,8 @@ func TestLinuxUnitsGoldenAndLifecycleUsesRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	unitDir := filepath.Join(home, ".config", "systemd", "user")
-	servicePath := filepath.Join(unitDir, "aforge-wake.service")
-	timerPath := filepath.Join(unitDir, "aforge-wake.timer")
+	servicePath := filepath.Join(unitDir, "codeaf-wake.service")
+	timerPath := filepath.Join(unitDir, "codeaf-wake.timer")
 	service, err := os.ReadFile(servicePath)
 	if err != nil {
 		t.Fatal(err)
@@ -123,19 +123,19 @@ func TestLinuxUnitsGoldenAndLifecycleUsesRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantService := `[Unit]
-Description=Keep aforge standing watches current
+Description=Keep codeaf standing watches current
 
 [Service]
 Type=oneshot
-ExecStart="/opt/Aforge Tools/aforge%%bin" wake
+ExecStart="/opt/codeaf Tools/codeaf%%bin" wake
 `
 	wantTimer := `[Unit]
-Description=Keep aforge standing watches current
+Description=Keep codeaf standing watches current
 
 [Timer]
 OnActiveSec=5min
 OnUnitActiveSec=5min
-Unit=aforge-wake.service
+Unit=codeaf-wake.service
 
 [Install]
 WantedBy=timers.target
@@ -148,7 +148,7 @@ WantedBy=timers.target
 	}
 	wantInstall := []runnerCall{
 		{name: "systemctl", args: []string{"--user", "daemon-reload"}},
-		{name: "systemctl", args: []string{"--user", "enable", "--now", "aforge-wake.timer"}},
+		{name: "systemctl", args: []string{"--user", "enable", "--now", "codeaf-wake.timer"}},
 	}
 	if !reflect.DeepEqual(runner.calls, wantInstall) {
 		t.Fatalf("install calls = %#v, want %#v", runner.calls, wantInstall)
@@ -165,7 +165,7 @@ WantedBy=timers.target
 		}
 	}
 	wantRemove := []runnerCall{
-		{name: "systemctl", args: []string{"--user", "disable", "--now", "aforge-wake.timer"}},
+		{name: "systemctl", args: []string{"--user", "disable", "--now", "codeaf-wake.timer"}},
 		{name: "systemctl", args: []string{"--user", "daemon-reload"}},
 	}
 	if !reflect.DeepEqual(remove.calls, wantRemove) {

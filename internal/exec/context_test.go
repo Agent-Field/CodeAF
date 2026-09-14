@@ -409,7 +409,7 @@ func TestTheObservationWindowConvergesOnlyOnTheNamedWorkingSet(t *testing.T) {
 	// And it is a dial rather than a belief. The operator who has evidence of
 	// their own moves the ceiling and the window moves with it, which is exactly
 	// what the deleted 64KB could not do.
-	t.Setenv("AFORGE_WORKING_SET", "400000")
+	t.Setenv("CODEAF_WORKING_SET", "400000")
 	if wider := observationWindow(1 << 20); wider <= ceiling {
 		t.Fatalf("with the working set raised to 400k the window is %d bytes, no more than the %d it was; "+
 			"the ceiling is a buried literal again", wider, ceiling)

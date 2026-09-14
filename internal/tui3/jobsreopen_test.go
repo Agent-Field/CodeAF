@@ -32,7 +32,7 @@ func restoredJob(id int, name, command string, state session.JobState) session.J
 		Command: command,
 		Kind:    session.JobKindCommand,
 		State:   state,
-		LogPath: "/tmp/aforge/jobs/" + name + ".log",
+		LogPath: "/tmp/codeaf/jobs/" + name + ".log",
 		Started: started,
 		Elapsed: 9 * time.Minute,
 	}

@@ -2,7 +2,7 @@ package main
 
 // THE WHEN-TO-TAKE RULE, asked every way a launch can meet it.
 //
-// The rule decides which door a person's `aforge chat` goes through. The host
+// The rule decides which door a person's `codeaf chat` goes through. The host
 // road is the ordinary one — it is what makes the work outlive the terminal —
 // and the launches that keep the in-process door keep it because something real
 // about them lives in this process: onboarding, --once, --debug, --no-host.
@@ -93,7 +93,7 @@ func drainConsentRoad(t *testing.T, events <-chan session.Event, answer func(ses
 // It is NOT t.TempDir, for internal/enginehost's own stated reason: Go names a
 // temp directory after the test, this tree's test names are sentences, and a
 // socket path has about a hundred bytes to spend. A test that ran out of them
-// would be measuring the honest refusal a deep AFORGE_HOME gets rather than the
+// would be measuring the honest refusal a deep CODEAF_HOME gets rather than the
 // rule.
 func shortStateRoot(t *testing.T) string {
 	t.Helper()
@@ -102,7 +102,7 @@ func shortStateRoot(t *testing.T) string {
 		t.Fatalf("make a state root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	return root
 }
 
@@ -147,8 +147,8 @@ func TestAnOrdinaryLaunchTakesTheHostRoad(t *testing.T) {
 func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T) {
 	engineProfile := t.TempDir()
 	surfaceProfile := t.TempDir()
-	t.Setenv("AFORGE_HOME", surfaceProfile)
-	t.Setenv("AFORGE_PROFILE_DIR", surfaceProfile)
+	t.Setenv("CODEAF_HOME", surfaceProfile)
+	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
 	if err := config.WriteSources(engineProfile, []config.PersistedSource{{
@@ -416,7 +416,7 @@ func TestAnUnconfiguredMachineKeepsTheInProcessDoor(t *testing.T) {
 // And that answer is read off the machine rather than assumed: with no key
 // anywhere the setup gate is on, and with one it is off.
 func TestTheSetupGateReadsWhetherThisMachineCanTalkToAModel(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -517,7 +517,7 @@ func TestTheShapeRefusalNamesWhatIsRunningAndWhatWasAsked(t *testing.T) {
 // rewritten on the way to the screen.
 func TestALongStatePathIsSaidInWordsAndNotInTheEnginesOwn(t *testing.T) {
 	tooLong := hostFallbackReason(enginehost.ErrSocketPathTooLong)
-	if !strings.Contains(tooLong, "AFORGE_HOME moves it somewhere shorter") {
+	if !strings.Contains(tooLong, "CODEAF_HOME moves it somewhere shorter") {
 		t.Fatalf("the path refusal offers no way out: %q", tooLong)
 	}
 	if !strings.Contains(tooLong, strconv.Itoa(enginehost.SocketLimit)) {
@@ -559,7 +559,7 @@ func TestChatAndResumeBothOfferNoHostInTheirUsage(t *testing.T) {
 	for _, name := range []string{"chat", "resume"} {
 		err := openChatV3(name, []string{"a-word-no-flag-takes"}, name == "resume")
 		if err == nil || !strings.Contains(err.Error(), "--no-host") {
-			t.Fatalf("aforge %s's usage line reads %v", name, err)
+			t.Fatalf("codeaf %s's usage line reads %v", name, err)
 		}
 	}
 }

@@ -105,7 +105,7 @@ func testStatesCheckRanOut(t *testing.T) {
 	// session with none at all, and nothing behind this endpoint checks it.
 	r := startWithEnv(t, []string{
 		config.APIKeyEnv + "=stub-key",
-		"AFORGE_BASE_URL=" + brain.server.URL + "/api/v1",
+		"CODEAF_BASE_URL=" + brain.server.URL + "/api/v1",
 	}, "afe2e_states_checkran", home, ws, tuiWide, 40)
 	statesPastTheDoor(t, r)
 

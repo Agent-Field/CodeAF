@@ -422,7 +422,7 @@ const (
 	// relaxEndpointFilter drops every membership restriction — the hard
 	// parameter filter, this process's own refusals, and the demand for one
 	// machine that a pin or a rescue put there. FIRST because it changes neither
-	// what the model is asked nor the most aforge will pay: it widens which
+	// what the model is asked nor the most codeaf will pay: it widens which
 	// endpoints may answer under the same ceiling.
 	//
 	// `provider.only` was not on this rung for a long time, and that is half of

@@ -39,7 +39,7 @@ type Question struct{ Ask, Want string }
 var Plain = []Question{
 	{"how do I share a file with it", "attaching-files"},
 	{"how do I check on it later", "keeping-an-eye"},
-	{"what is aforge", "starting-codeaf,what-i-can-do"},
+	{"what is codeaf", "starting-codeaf,what-i-can-do"},
 	{"how do I get started", "getting-started"},
 	{"what does it remember", "what-i-remember"},
 	{"how do I set a spending limit", "models-and-cost,commands"},

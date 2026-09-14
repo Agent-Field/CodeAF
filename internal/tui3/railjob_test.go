@@ -34,7 +34,7 @@ func runningJob(id int, name, command string) session.JobNotice {
 		Command: command,
 		Kind:    session.JobKindCommand,
 		State:   session.JobRunning,
-		LogPath: "/tmp/aforge/jobs/3.log",
+		LogPath: "/tmp/codeaf/jobs/3.log",
 		Started: time.Now().Add(-90 * time.Second),
 	}
 }

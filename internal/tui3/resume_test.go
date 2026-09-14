@@ -10,7 +10,7 @@ import (
 // door back into one of them — the two seams cmd/codeaf wires (chatv3.go).
 func rosterApp(t *testing.T, agent *fakeAgent, list []Session) (*app, *[]string) {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(agent)
 	// Wide enough for a name AND the sentence beside it: the row gives the
 	// description up before it gives up the age (see [sessionNote]), and a
@@ -179,9 +179,9 @@ func TestResumeWithoutADoorSaysSo(t *testing.T) {
 	}
 }
 
-// PickSession is `aforge resume`: the list is up on the first frame.
+// PickSession is `codeaf resume`: the list is up on the first frame.
 func TestPickSessionOpensTheListOverTheFirstFrame(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	list := rosterSessions()
 	a := newApp(t.Context(), Options{
 		Agent:          &fakeAgent{model: "m"},
@@ -192,7 +192,7 @@ func TestPickSessionOpensTheListOverTheFirstFrame(t *testing.T) {
 	})
 	a.width, a.height = 60, 20
 	if !a.roster.open {
-		t.Fatal("aforge resume has to open on the list")
+		t.Fatal("codeaf resume has to open on the list")
 	}
 	if a.welcome.open {
 		t.Fatal("the welcome box and the list say the same thing twice")

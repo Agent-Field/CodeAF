@@ -159,13 +159,13 @@ type errSurface string
 func (e errSurface) Error() string { return string(e) }
 
 // THE CRASH LOG AND THE RUNNING LOG ARE ONE FILE, under a profile too. A person
-// who moved their profile with AFORGE_PROFILE_DIR has the surface's warnings
+// who moved their profile with CODEAF_PROFILE_DIR has the surface's warnings
 // written inside it; the fatal fault's "Details: <path>" has to name the same
 // file, or the one place to look becomes two.
 func TestTheCrashLogAndTheRunningLogAreOneFileUnderAProfile(t *testing.T) {
 	profile := t.TempDir()
 	t.Setenv(config.ProfileDirEnv, profile)
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 
 	previous := log.Writer()
 	t.Cleanup(func() { log.SetOutput(previous) })

@@ -615,7 +615,7 @@ func TestTypingSearchesAndClearingReturnsToTheColumns(t *testing.T) {
 
 // THE SHEET HOLDS AT THE PLAIN FLOOR: a terminal told not to be styled and one
 // that cannot be trusted with a box-drawing character, both at once, which is
-// the worst terminal aforge claims to run on (designlanguage_test.go's own
+// the worst terminal codeaf claims to run on (designlanguage_test.go's own
 // statement of this law for the places).
 func TestTheSheetHoldsAtThePlainFloor(t *testing.T) {
 	a, _, root := modalLab(t)
@@ -796,7 +796,7 @@ func TestTheTypeOfAThingIsReadFromItsName(t *testing.T) {
 		"song.flac":   folderKindMedia,
 		"src.tar.gz":  folderKindBundle,
 		"Makefile":    folderKindPlain,
-		"aforge":      folderKindPlain,
+		"codeaf":      folderKindPlain,
 	} {
 		if got := folderKindOf(name); got != want {
 			t.Errorf("%q is kind %v, want %v", name, got, want)

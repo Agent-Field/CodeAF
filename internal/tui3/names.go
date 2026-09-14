@@ -144,7 +144,7 @@ func waitTitle(ch <-chan session.Event, gen int) tea.Cmd {
 // THE DEFECT IT FIXES. That ladder ends at the transcript's own file name, and
 // under Decision 26 a session folder is named with an id, so the row a person is
 // most likely to be standing in — the one they just opened, which nothing has
-// named yet — drew `○ 927D303242f9d00e     aforge-v2 here`. At sixty columns
+// named yet — drew `○ 927D303242f9d00e     codeaf here`. At sixty columns
 // that hex is a third of the row, and it is a machine's word in the one column
 // whose whole job is matching names. It is worse than nothing, too, because
 // title-casing it makes it read as a name SOMEBODY CHOSE: a person scanning for

@@ -12,7 +12,7 @@ import (
 // are about the two ways such a file can betray them: applying when it should
 // not, and — far worse — not applying while looking as though it does.
 
-// projectDir writes one <cwd>/.aforge-v3/config.json and answers with the cwd.
+// projectDir writes one <cwd>/.codeaf-v3/config.json and answers with the cwd.
 func projectDir(t *testing.T, rows map[string]any) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -56,8 +56,8 @@ func mustJSON(t *testing.T, rows map[string]any) []byte {
 // developer's own shell cannot decide whether the suite passes.
 func unpinned(t *testing.T) {
 	t.Helper()
-	t.Setenv("AFORGE_HISTORY", "")
-	t.Setenv("AFORGE_DRAFT_PERSIST", "")
+	t.Setenv("CODEAF_HISTORY", "")
+	t.Setenv("CODEAF_DRAFT_PERSIST", "")
 }
 
 // Every row this build honors, answered in all three layers at once: the project
@@ -373,12 +373,12 @@ func TestTheEnvironmentStillOutranksTheProjectFile(t *testing.T) {
 	if err != nil || got {
 		t.Fatalf("without a pin → %v (%v), want the project's off", got, err)
 	}
-	t.Setenv("AFORGE_HISTORY", "on")
+	t.Setenv("CODEAF_HISTORY", "on")
 	if got, err = ProjectBoolAt(project, profile, KeyHistoryEnabled); err != nil || !got {
 		t.Fatalf("with the pin set → %v (%v), want the pin's on", got, err)
 	}
 	// A pin nobody can read is not a choice, and the file below answers.
-	t.Setenv("AFORGE_HISTORY", "sometimes")
+	t.Setenv("CODEAF_HISTORY", "sometimes")
 	if got, err = ProjectBoolAt(project, profile, KeyHistoryEnabled); err != nil || got {
 		t.Fatalf("with an unreadable pin → %v (%v), want the project's off", got, err)
 	}
@@ -430,16 +430,16 @@ func TestEveryProjectKeyIsARegisteredSettingsRow(t *testing.T) {
 	}
 }
 
-// THE DIRECTORY IS ON THE aforge SCHEME UNTIL THE ONE LATE RENAME. openaf is
+// THE DIRECTORY IS ON THE codeaf SCHEME UNTIL THE ONE LATE RENAME. codeaf is
 // the product's final name and the rename is its own refactor, at the end
 // (docs/CHAT-V3.md, Decision 26): a directory that had gone ahead of it would
 // be a path people had already committed to their repositories under a name
 // nothing else in the build uses.
-func TestTheProjectLayerReadsTheAforgeDirectory(t *testing.T) {
-	if got, want := ProjectConfigDir, ".aforge-v3"; got != want {
+func TestTheProjectLayerReadsTheCodeafDirectory(t *testing.T) {
+	if got, want := ProjectConfigDir, ".codeaf-v3"; got != want {
 		t.Fatalf("project settings directory = %q, want %q", got, want)
 	}
-	if got, want := ProjectConfigPath("/repo"), filepath.Join("/repo", ".aforge-v3", "config.json"); got != want {
+	if got, want := ProjectConfigPath("/repo"), filepath.Join("/repo", ".codeaf-v3", "config.json"); got != want {
 		t.Fatalf("project settings path = %q, want %q", got, want)
 	}
 }

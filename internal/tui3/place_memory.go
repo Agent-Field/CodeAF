@@ -749,7 +749,7 @@ func (placeMemory) rowID(a *app) string {
 // enter opens a shelf, or ASKS ME ABOUT A LINE (SCREEN 1f).
 //
 // The card used to be here, and it was the wrong thing behind this key. A line
-// on this page is something aforge believes about you; the useful thing to do
+// on this page is something codeaf believes about you; the useful thing to do
 // with one is to talk about it, and the design puts that on `enter` and moves
 // the card onto the row's strip, behind `c`. The conversation is started through
 // the door every other place starts one through ([app.placeTalkAbout]), so a

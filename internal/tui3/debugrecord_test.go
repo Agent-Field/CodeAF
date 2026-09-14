@@ -19,7 +19,7 @@ import (
 // PROCESS-wide switch on, which is deliberately one-way, so it cannot run
 // before the two that need it off.
 func TestDebugRecordsOnlyTheConversationItWasTypedIn(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	mine := newTestApp(&fakeAgent{model: "m"})
 	mine.ctx = trace.WithRun(mine.ctx, "aaaa1111")
 	theirs := newTestApp(&fakeAgent{model: "m"})
@@ -50,13 +50,13 @@ func TestDebugRecordsOnlyTheConversationItWasTypedIn(t *testing.T) {
 	}
 
 	// And where the pin or the flag already turned the whole process on, it
-	// says THAT instead: "on for everything this aforge is doing" is a
+	// says THAT instead: "on for everything this codeaf is doing" is a
 	// different fact from "on for you", and a person reading the folder later
 	// needs to know which.
 	trace.Enable()
 	theirs.slash("/debug")
 	got := plain(lastNote(t, theirs))
-	if !strings.HasPrefix(got, "the record is already on for every conversation this aforge holds · this one goes to ") {
+	if !strings.HasPrefix(got, "the record is already on for every conversation this codeaf holds · this one goes to ") {
 		t.Fatalf("/debug under the process switch said %q", got)
 	}
 	if !strings.HasSuffix(got, trace.Dir("bbbb2222")) {
@@ -67,7 +67,7 @@ func TestDebugRecordsOnlyTheConversationItWasTypedIn(t *testing.T) {
 // A surface that never began a run has nothing to record, and says so — the
 // alternative is a command that reports success and writes nowhere.
 func TestDebugSaysSoWhenThereIsNoRunToRecord(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(&fakeAgent{model: "m"})
 	// The run id the app would carry is stripped back to nothing; on a process
 	// where a door has begun a run, [trace.RunFrom]'s fallback still names it,

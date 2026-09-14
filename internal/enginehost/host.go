@@ -43,13 +43,13 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // laptop lid would be the version-1 experience with extra steps.
 //
 // AND THEN THE HOST LEAVES. With no conversations left and nobody attached
-// there is nothing to be the host of, so it exits and the next `aforge engine`
+// there is nothing to be the host of, so it exits and the next `codeaf engine`
 // starts a new one — which costs one process spawn and is invisible.
 //
 // THIS DOES NOT PUT THE AMBIENT SIDE TO SLEEP, and that is the one interaction
 // worth stating. Standing items are not held by this process: a firing runs
 // inside whichever process holds the store's tick lock — any live window, or
-// the operating system's timer running `aforge tick` with nobody sitting
+// the operating system's timer running `codeaf tick` with nobody sitting
 // anywhere (cmd/codeaf's chatv3_standing.go states that law). A host that exits
 // hands the tick back to that timer exactly as a closed terminal does. So the
 // two lifetimes are deliberately NOT married: standing work already keeps a
@@ -191,7 +191,7 @@ func Run(workspace string, opts Options) error {
 		return fmt.Errorf("engine host: %w", err)
 	}
 	// The readable half of the directory's name, for a person looking at
-	// ~/.aforge/v3/hosts and wondering which of these is which.
+	// ~/.codeaf/v3/hosts and wondering which of these is which.
 	_ = os.WriteFile(filepath.Join(dir, placeName), []byte(workspace+"\n"), 0o600)
 
 	h := &Host{

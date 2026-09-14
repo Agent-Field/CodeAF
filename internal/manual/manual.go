@@ -1,6 +1,6 @@
-// Package manual is what aforge knows about itself, embedded in the binary.
+// Package manual is what codeaf knows about itself, embedded in the binary.
 //
-// Everything aforge can say about its own capabilities, mechanisms and reasons
+// Everything codeaf can say about its own capabilities, mechanisms and reasons
 // has to come from somewhere. The design docs are the wrong somewhere: they are
 // on disk rather than in the binary, they are written to persuade rather than
 // to answer, and they go stale the moment a build lands. Improvisation is the
@@ -25,7 +25,7 @@
 package manual
 
 // The pages ship packed, not raw: a megabyte of Markdown is otherwise a
-// megabyte of binary, and a manual is the most compressible thing aforge
+// megabyte of binary, and a manual is the most compressible thing codeaf
 // carries. internal/packed says how and why. The folders below are the only
 // tracked source of truth. `make build` generates ignored archives and selects
 // packed_source.go; ordinary Go commands select raw_source.go so a clean
@@ -80,7 +80,7 @@ func Context(query string, k int) string { return resident.Context(query, k) }
 
 // Mentions reports whether a term appears anywhere in the resident's manual.
 // The completeness tests are written against it, so a feature that lands
-// without a page fails the build rather than becoming something aforge
+// without a page fails the build rather than becoming something codeaf
 // improvises about.
 func Mentions(term string) bool { return resident.Mentions(term) }
 

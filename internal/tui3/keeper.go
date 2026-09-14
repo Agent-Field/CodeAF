@@ -863,7 +863,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 // place because this window's engine holds one at a time
 // ([Options.SharedAgent]). It names the connection and not the machine: the
 // limit belongs to the wire's one open session, and the same sentence is true
-// over `--host`, over `--at` and over the socket an ordinary `aforge chat` opens
+// over `--host`, over `--at` and over the socket an ordinary `codeaf chat` opens
 // onto this machine's own engine.
 const oneConversationWord = "a connection holds one conversation at a time"
 

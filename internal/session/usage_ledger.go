@@ -102,7 +102,7 @@ import (
 )
 
 // UsageLedgerName is the file, under the v3 home directory
-// (~/.aforge/v3/usage.jsonl). It is a name beside a path function rather than a
+// (~/.codeaf/v3/usage.jsonl). It is a name beside a path function rather than a
 // literal at every call site, for [ArtifactsIndexName]'s reason: two spellings
 // of one path are two ledgers with half a person's spending in each.
 const UsageLedgerName = "usage.jsonl"
@@ -116,7 +116,7 @@ const UsageLedgerName = "usage.jsonl"
 const usageDayLayout = "2006-01-02"
 
 // UsageLedgerPath is this machine's ledger, resolved through internal/home so
-// AFORGE_HOME moves it with everything else (Decision 26 — one home, one seam).
+// CODEAF_HOME moves it with everything else (Decision 26 — one home, one seam).
 // It is the fallback the engine writes to; a caller with a path of its own —
 // a test, a second brain on one laptop — hands one to [RecordUsage] instead.
 func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
@@ -634,7 +634,7 @@ func FlushUsage() {
 	// thing this whole file exists to survive. A writer parked inside
 	// [openUsageLedger] on a stalled mount never drains its queue again, so an
 	// unbounded flush never returns — and the caller that pays for it is
-	// [v3Process.closeAll], which means a hung ~/.aforge stopped the terminal
+	// [v3Process.closeAll], which means a hung ~/.codeaf stopped the terminal
 	// from coming back. The turn path was carefully kept off the disk and the
 	// exit path was handed to it instead. The bargain at the top of this file
 	// settles it: a spending record is worth less than the turn that earned it,

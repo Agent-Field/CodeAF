@@ -78,7 +78,7 @@ func TestDistilledCraftIsSavedWithItsEvidence(t *testing.T) {
 	}
 	distill := func(context.Context, string, string, bool) ([]Learned, error) {
 		return []Learned{
-			{Scope: "repo:aforge", Kind: store.FactLesson, Body: "the changelog lives in docs/"},
+			{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "the changelog lives in docs/"},
 			{Craft: &CraftCandidate{Name: "release-notes", YAML: releaseNotesFile}},
 		}, nil
 	}
@@ -103,7 +103,7 @@ func TestDistilledCraftIsSavedWithItsEvidence(t *testing.T) {
 		t.Fatalf("commit subject = %q", versions[0].Subject)
 	}
 	// The ordinary memory rode out of the same call and still landed.
-	facts, err := graph.ActiveFacts("repo:aforge", 10)
+	facts, err := graph.ActiveFacts("repo:codeaf", 10)
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("notebook = %+v err=%v", facts, err)
 	}

@@ -50,7 +50,7 @@ func runNotebookTo(args []string, output io.Writer, now time.Time) error {
 		return writeNotebook(output, graph, now)
 	}
 	if len(rest) != 2 {
-		return fmt.Errorf("usage: aforge notebook retract|restore <seq> [--db path]")
+		return fmt.Errorf("usage: codeaf notebook retract|restore <seq> [--db path]")
 	}
 	seq, err := parseFactSeq(rest[1])
 	if err != nil {
@@ -99,10 +99,10 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	// as a table that failed to load rather than as a notebook nothing has been
 	// written in yet. One short sentence instead — and it says what fills the
 	// page, because a person who typed the command wants to know what to do to
-	// see something on it. `aforge why self` answers its own emptiness the same
-	// way (why.go), and `aforge cache` was the model for both.
+	// see something on it. `codeaf why self` answers its own emptiness the same
+	// way (why.go), and `codeaf cache` was the model for both.
 	if len(facts) == 0 {
-		fmt.Fprintln(output, "the notebook is empty — hand aforge some work, and what it learns lands here.")
+		fmt.Fprintln(output, "the notebook is empty — hand codeaf some work, and what it learns lands here.")
 	} else {
 		if err := writeNotebookRows(output, graph, facts, outcomes, now); err != nil {
 			return err

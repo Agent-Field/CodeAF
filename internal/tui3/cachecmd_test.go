@@ -10,7 +10,7 @@ import (
 )
 
 // seedCacheDir fills the cache under the state root the fixture has already
-// moved: sheetApp points AFORGE_HOME at its own temporary directory, so the
+// moved: sheetApp points CODEAF_HOME at its own temporary directory, so the
 // seeding has to come AFTER the app and write where the app will look.
 func seedCacheDir(t *testing.T) {
 	t.Helper()

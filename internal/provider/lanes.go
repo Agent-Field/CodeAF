@@ -541,7 +541,7 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 		// refuses the pin (tellRetiredPins). One predicate, so the machine a
 		// person is asked for and the sentence they get when it is refused can
 		// never belong to two different sets of calls. Inside a command a
-		// person typed every call is theirs — the planning pass of `aforge do`
+		// person typed every call is theirs — the planning pass of `codeaf do`
 		// runs in a role nobody reads and is still the thing they are waiting
 		// on — and the same predicate says so.
 		if named == "" || retired || !readByAPerson(knobs.role) {
@@ -980,7 +980,7 @@ func sheetNotFound(status string, payload []byte) error {
 //
 // IT IS A HINT AND NEVER A REFUSAL. This build used to decide whether the
 // endpoints page was fetched at all by this very substring test, so a binary
-// driven through AFORGE_BASE_URL at a proxy, a mirror, a self-hosted router or
+// driven through CODEAF_BASE_URL at a proxy, a mirror, a self-hosted router or
 // the router reached by its IP silently got no sheet, an empty frontier and no
 // lane behaviour whatever — nothing errored and nothing logged a refusal, the
 // feature was simply absent (issue #373). A ROUTER IS RECOGNISABLE BY WHAT IT

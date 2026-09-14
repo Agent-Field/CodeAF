@@ -210,7 +210,7 @@ func spendPlaceLab(t *testing.T) *app {
 				At:    time.Date(2026, time.August, day, 12, 0, 0, 0, time.Local),
 				Model: model, Role: "execution", Calls: 10 + i, Input: 100000, Output: 20000,
 				USD: float64(day) / 10, Session: "talk-1", Task: "errand-" + itoa(day),
-				Workspace: "/work/aforge",
+				Workspace: "/work/codeaf",
 			})
 		}
 	}

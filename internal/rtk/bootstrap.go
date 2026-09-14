@@ -79,7 +79,7 @@ func fetch(ctx context.Context) error {
 	}
 	dir, err := BinDir()
 	if err != nil {
-		return fmt.Errorf("resolve the aforge bin directory: %w", err)
+		return fmt.Errorf("resolve the codeaf bin directory: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)

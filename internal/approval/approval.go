@@ -303,7 +303,7 @@ func bashCommand(args json.RawMessage) (string, bool) {
 //	bash.patterns  : [{"match": "git status*", "approval": "allow"}, …]
 //
 // The patterns list is accepted both nested (bash → patterns) and under the
-// flattened dotted key, because aforge's config registry keys are dotted and
+// flattened dotted key, because codeaf's config registry keys are dotted and
 // a JSON settings file is not. Keys this package does not know are ignored:
 // the map it is handed is a whole settings tree, not a struct built for it.
 //

@@ -18,7 +18,7 @@
 //
 //   - A LIVE-LOOKING ROW IS NOT A LIVE ROW. The project's index is append-only
 //     and a task takes its row when it starts; a machine that lost power, or an
-//     aforge that was killed, leaves rows on disk that say `running` forever.
+//     codeaf that was killed, leaves rows on disk that say `running` forever.
 //     So this layer never repeats a file's claim of liveness. It asks the
 //     SESSION, through the presence file it refreshes every few seconds
 //     (taskpresence.go): a `running` index row counts as running only when a

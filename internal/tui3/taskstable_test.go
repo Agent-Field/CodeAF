@@ -27,7 +27,7 @@ func tasksTableFixture() (session.World, session.UsageWindow, time.Time) {
 			EndedAt: ended, FilesChanged: files, Cost: cost,
 		}
 	}
-	first := session.SessionRow{ID: "room-a", Title: "the pricing page", Project: "aforge", Open: true}
+	first := session.SessionRow{ID: "room-a", Title: "the pricing page", Project: "codeaf", Open: true}
 	first.Tasks.Rows = []session.TaskIndexEntry{
 		work("room-a", "1", "put the annual toggle up", string(session.TaskDone), ago(time.Hour), 2, 1.50),
 		work("room-a", "2", "pages one two", string(session.TaskDone), ago(2*time.Hour), 1, .25),
@@ -37,14 +37,14 @@ func tasksTableFixture() (session.World, session.UsageWindow, time.Time) {
 	second.Tasks.Rows = []session.TaskIndexEntry{
 		work("room-b", "1", "render the fight clip", string(session.TaskDone), ago(5*time.Hour), 12, .10),
 	}
-	third := session.SessionRow{ID: "room-c", Title: "the corpus sweep", Project: "aforge", Open: true}
+	third := session.SessionRow{ID: "room-c", Title: "the corpus sweep", Project: "codeaf", Open: true}
 	third.Tasks.Rows = []session.TaskIndexEntry{
 		work("room-c", "1", "sweep the corpus", string(session.TaskDone), ago(4*time.Hour), 3, 4.20),
 		work("room-c", "2", "count the tokens", string(session.TaskDone), ago(6*time.Hour), 1, .60),
 	}
 	third.Tasks.Rows[1].Parent = "1"
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{first, third}},
+		{Name: "codeaf", Sessions: []session.SessionRow{first, third}},
 		{Name: "media", Sessions: []session.SessionRow{second}},
 	}, Read: now}
 	return world, session.LastDays(now, 7), now

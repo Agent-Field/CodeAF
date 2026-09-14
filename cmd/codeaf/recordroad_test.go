@@ -11,10 +11,10 @@ import (
 
 // ── A RUN THAT IS RECORDING MAKES ITS OWN CALLS ─────────────────────────────
 //
-// THE MEASURED FAILURE (issue #1022). `AFORGE_DEBUG=1 aforge` wrote a folder
+// THE MEASURED FAILURE (issue #1022). `CODEAF_DEBUG=1 codeaf` wrote a folder
 // holding `run.json` and not one request body, four launches running: the header
 // is written by the process at the door and the calls were made by this
-// workspace's session host, which was never told to record. `aforge chat
+// workspace's session host, which was never told to record. `codeaf chat
 // --debug` wrote them all, because the host rule read the FLAG while the record
 // has three doors and the flag is one of them.
 //

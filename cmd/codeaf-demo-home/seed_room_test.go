@@ -33,7 +33,7 @@ func roomAgent(t *testing.T) (nodes []session.TaskNotice, jobs []session.JobNoti
 	if _, err := seedDemoHome(dir, time.Now()); err != nil {
 		t.Fatalf("seed the demo home: %v", err)
 	}
-	world := session.ReadWorld(filepath.Join(dir, ".aforge", "v3", "projects"))
+	world := session.ReadWorld(filepath.Join(dir, ".codeaf", "v3", "projects"))
 	var found session.SessionRow
 	for _, row := range world.Sessions() {
 		if row.Title == roomTalkTitle {
@@ -222,7 +222,7 @@ func TestTheFixtureHasNamesThatDoNotFit(t *testing.T) {
 	if _, err := seedDemoHome(dir, time.Now()); err != nil {
 		t.Fatalf("seed the demo home: %v", err)
 	}
-	world := session.ReadWorld(filepath.Join(dir, ".aforge", "v3", "projects"))
+	world := session.ReadWorld(filepath.Join(dir, ".codeaf", "v3", "projects"))
 
 	wide := ""
 	for _, row := range world.Sessions() {

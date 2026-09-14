@@ -73,9 +73,9 @@ const (
 // WithWorkspace tells the head where artifacts are born.
 //
 // It is a builder rather than a constant because where a chat writes is a
-// property of the surface that started it: `aforge chat` in a project means that
+// property of the surface that started it: `codeaf chat` in a project means that
 // project's directory, a room under rooms will mean the room's own. Unset, the
-// head writes into the process's working directory — the same choice `aforge do`
+// head writes into the process's working directory — the same choice `codeaf do`
 // already makes for an errand pointed at somebody's own folder, and the one a
 // person typing "write me the diagram" in a terminal expects.
 func (h *Head) WithWorkspace(root string) *Head {
@@ -248,7 +248,7 @@ func artifactName(name string) error {
 // A relative one is read against the workspace and may not climb out of it: a
 // bare "../reports" is as likely to be a model's guess as a person's
 // instruction, and the spelling that means it is the absolute one. The single
-// floor is aforge's own state root — the journal, the CAS, the craft repo live
+// floor is codeaf's own state root — the journal, the CAS, the craft repo live
 // there, and a deliverable written among them is a deliverable that can corrupt
 // the product's memory of itself. The workspace is exempt from that floor even
 // when it sits under the state root, because the workspace is exactly the place
@@ -266,7 +266,7 @@ func artifactDirectory(root, named string) (string, error) {
 	}
 	directory = filepath.Clean(directory)
 	if !artifactWithin(root, directory) && artifactWithin(home.Dir(), directory) {
-		return "", fmt.Errorf("%s is inside aforge's own state directory and nothing may be written there — it holds the journal, not their files. Say so, and write it somewhere of theirs or leave dir out for the workspace", directory)
+		return "", fmt.Errorf("%s is inside codeaf's own state directory and nothing may be written there — it holds the journal, not their files. Say so, and write it somewhere of theirs or leave dir out for the workspace", directory)
 	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return "", fmt.Errorf("%s could not be opened for writing: %w", directory, err)

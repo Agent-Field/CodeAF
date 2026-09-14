@@ -19,7 +19,7 @@ import (
 // ── THE HEADLESS DOOR LEARNS A SHEET TOO ────────────────────────────────────
 //
 // The lane ledger is ONE OBJECT every surface feeds and reads, and until issue
-// #318 the fetching half of it lived on `session.Agent` alone. `aforge do`
+// #318 the fetching half of it lived on `session.Agent` alone. `codeaf do`
 // builds no session, so a headless install wrote sightings forever and never
 // fetched an endpoints page: no cache under `v3/lanes/`, no sheet facts in the
 // belief, and a chooser ranking the one lane the run happened to be served by.
@@ -75,7 +75,7 @@ func TestAHeadlessRunFetchesTheSheetForItsOwnModel(t *testing.T) {
 	// to smuggle `openrouter.ai` into the URL's userinfo so that a substring
 	// gate would let the beat run; the gate is gone (issue #373) and the base
 	// is recognised by the endpoints page it answers with.
-	t.Setenv("AFORGE_BASE_URL", stub.URL())
+	t.Setenv("CODEAF_BASE_URL", stub.URL())
 	t.Setenv(config.ModelEnv, routed)
 	lanes.Default().Reset()
 	t.Cleanup(lanes.Default().Reset)

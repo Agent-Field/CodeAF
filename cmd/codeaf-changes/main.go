@@ -9,7 +9,7 @@
 // most needs, so it is the field the format is built around.
 //
 // It is not shipped. Like cmd/codeaf-demo-home this is a developer's binary and
-// never a verb on aforge, so it costs the product nothing on the SIZE-BUDGET.
+// never a verb on codeaf, so it costs the product nothing on the SIZE-BUDGET.
 //
 // Usage:
 //

@@ -41,15 +41,15 @@ import (
 // directory whose repository, to `git rev-parse --show-toplevel`, is the
 // checkout above it. A task grounded there cuts `task/do-the-thing-<hex>` in
 // the person's own repository and registers a worktree at
-// `<checkout>/.aforge-v3/tasks/s1/1`, and neither shows here: the branch never
-// moves HEAD, and everything under `.aforge-v3/` is in .gitignore, so
+// `<checkout>/.codeaf-v3/tasks/s1/1`, and neither shows here: the branch never
+// moves HEAD, and everything under `.codeaf-v3/` is in .gitignore, so
 // `git status --porcelain` never names it. So the branches and the registered
 // worktrees are read too, and they are read the same symmetric way.
 //
 // THE GUARD REPORTS WHAT THIS RUN COULD HAVE WRITTEN, NOT EVERYTHING THAT
 // MOVED. Branches and worktrees are not facts about this working copy: they
 // belong to the whole shared repository, and this one shares its refs with
-// ~/src/aforge-v2 and with every other lane's worktree. This repo builds a
+// ~/src/codeaf and with every other lane's worktree. This repo builds a
 // feature wave in a worktree as a matter of routine, several sessions at once,
 // and one `go test ./internal/session/` is nearly two minutes long — so a
 // neighbour's `git worktree add` inside that window would appear here as `now:`
@@ -133,19 +133,19 @@ func (c checkout) moved() string {
 	// not own — the merge that would have moved HEAD is the only part that did
 	// not happen yet.
 	//
-	// AND A LIVE AFORGE CREATES THE SAME BRANCHES. When another aforge is using
+	// AND A LIVE codeaf CREATES THE SAME BRANCHES. When another codeaf is using
 	// this checkout and TMPDIR is outside it, branch and worktree churn is
 	// ambient the way journal growth is (hermetic_test.go) — report the head
 	// and the porcelain, which a neighbour's ordinary work does not move, and
 	// leave the shared refs alone. The #578 TempDir-inside-checkout case still
 	// reports everything, because that is when the suite itself can mint them.
-	ignoreAmbientRefs := liveAforgeUsingCheckout(c.root) && !tempDirInsideCheckout(c.root)
+	ignoreAmbientRefs := liveCodeafUsingCheckout(c.root) && !tempDirInsideCheckout(c.root)
 	if !ignoreAmbientRefs {
 		if moved := differing(c.branches, branchNames(c.root)); len(moved) > 0 {
 			said = append(said, "these branches are not what they were before the run:\n\t"+strings.Join(moved, "\n\t"))
 		}
 		// AND A WORKTREE IS A WRITE GIT IS TOLD TO IGNORE. The ground ladder puts a
-		// task's tree under `.aforge-v3/`, which .gitignore covers, so the porcelain
+		// task's tree under `.codeaf-v3/`, which .gitignore covers, so the porcelain
 		// above stays silent about a whole second checkout sitting in the person's
 		// tree. The registration is not ignorable: git keeps it, so it is asked for.
 		if moved := differing(c.worktrees, worktreePaths(c.root)); len(moved) > 0 {
@@ -153,7 +153,7 @@ func (c checkout) moved() string {
 		}
 	} else if moved := differing(c.branches, branchNames(c.root)); len(moved) > 0 ||
 		len(differing(c.worktrees, worktreePaths(c.root))) > 0 {
-		fmt.Fprintf(os.Stderr, "checkout guard: another aforge is using %s; ignoring task branch/worktree churn (head and porcelain still watched)\n", c.root)
+		fmt.Fprintf(os.Stderr, "checkout guard: another codeaf is using %s; ignoring task branch/worktree churn (head and porcelain still watched)\n", c.root)
 	}
 	if len(said) == 0 {
 		return ""
@@ -167,7 +167,7 @@ func (c checkout) moved() string {
 		"`rev-parse --show-toplevel` answers with this checkout (task_run.go's repositoryRoot, " +
 		"#578). Which one it was, this guard cannot tell you; if the run had GOTMPDIR or TMPDIR " +
 		"pointing inside a checkout, suspect the second. Undo the above before pushing.\n" +
-		"(a second checkout running this same suite beside you cannot cause this; a test that names no directory can, and so can a temporary directory that is not outside your tree. A live aforge using this checkout is ignored for branch/worktree churn when TMPDIR is outside the tree.)"
+		"(a second checkout running this same suite beside you cannot cause this; a test that names no directory can, and so can a temporary directory that is not outside your tree. A live codeaf using this checkout is ignored for branch/worktree churn when TMPDIR is outside the tree.)"
 }
 
 // differing names every line that is in one listing and not the other, marked
@@ -273,7 +273,7 @@ func worktreePaths(root string) map[string]bool {
 // could have made.
 //
 // THERE ARE TWO ROADS AND EACH NEEDS ITS OWN QUESTION. A task grounded in a
-// repository puts its tree INSIDE that repository, under `.aforge-v3/tasks/…`,
+// repository puts its tree INSIDE that repository, under `.codeaf-v3/tasks/…`,
 // so a path below the watched root is the harness's whatever it is checked out
 // on. A task grounded in a session folder puts its tree at
 // `<session folder>/trees/<id>`, which is nowhere near the checkout and is
@@ -300,18 +300,18 @@ func harnessWorktrees(root string, lines []string) map[string]bool {
 }
 
 // harnessWorktree says whether one registered worktree is one a task run made:
-// a working copy inside the watched checkout (except the ambient `.aforge-v3/`
-// tree a live aforge also uses — see below), or one standing on a task branch
+// a working copy inside the watched checkout (except the ambient `.codeaf-v3/`
+// tree a live codeaf also uses — see below), or one standing on a task branch
 // wherever it happens to live. The checkout itself is neither — it was there
 // before the run and no test registered it.
 //
-// `.aforge-v3/` UNDER THE CHECKOUT IS AMBIENT when TMPDIR/GOTMPDIR do not point
-// inside the tree. A developer running aforge in another window registers
-// exactly those paths (`<checkout>/.aforge-v3/tasks/…`), and a guard that named
+// `.codeaf-v3/` UNDER THE CHECKOUT IS AMBIENT when TMPDIR/GOTMPDIR do not point
+// inside the tree. A developer running codeaf in another window registers
+// exactly those paths (`<checkout>/.codeaf-v3/tasks/…`), and a guard that named
 // them would fail every shared-box run for something no test did — which is the
 // same law hermetic_test.go already keeps for journal trees. The #578 leak
 // (t.TempDir() inside the checkout) still reaches this reading: when the
-// temporary directory itself is under the watched root, in-tree `.aforge-v3/`
+// temporary directory itself is under the watched root, in-tree `.codeaf-v3/`
 // worktrees ARE reported, because that is the only road the suite has to put
 // them there without also moving HEAD.
 func harnessWorktree(root, path, branch string) bool {
@@ -319,7 +319,7 @@ func harnessWorktree(root, path, branch string) bool {
 		return false
 	}
 	under := strings.TrimSuffix(root, "/") + "/"
-	if strings.HasPrefix(path, under+".aforge-v3/") && !tempDirInsideCheckout(root) {
+	if strings.HasPrefix(path, under+".codeaf-v3/") && !tempDirInsideCheckout(root) {
 		return false
 	}
 	if strings.HasPrefix(path, under) {
@@ -367,7 +367,7 @@ func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
 		{"dev", false},
 		{"fix/578-task-ground", false},
 		{"bench/canary", false},
-		{"aforge/leaf/task-2", false}, // a task in the NAME is not the prefix
+		{"codeaf/leaf/task-2", false}, // a task in the NAME is not the prefix
 		{"", false},
 	} {
 		if got := harnessBranch(branch.name); got != branch.ours {
@@ -383,11 +383,11 @@ func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
 		"HEAD 1111111111111111111111111111111111111111",
 		"branch refs/heads/fix/578-task-ground",
 		"",
-		"worktree " + root + "/.aforge-v3/tasks/s1/1",
+		"worktree " + root + "/.codeaf-v3/tasks/s1/1",
 		"HEAD 2222222222222222222222222222222222222222",
 		"branch refs/heads/task/do-the-thing-0f1430",
 		"",
-		"worktree /home/somebody/.aforge-v3/sessions/s1/trees/4",
+		"worktree /home/somebody/.codeaf-v3/sessions/s1/trees/4",
 		"HEAD 3333333333333333333333333333333333333333",
 		"branch refs/heads/task/measure-9ab120",
 		"",
@@ -400,11 +400,11 @@ func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
 		"detached",
 	}
 	want := map[string]bool{
-		// `.aforge-v3/` under the checkout is ambient when TMPDIR is outside —
-		// a live aforge writes the same path. The session-folder worktree on a
+		// `.codeaf-v3/` under the checkout is ambient when TMPDIR is outside —
+		// a live codeaf writes the same path. The session-folder worktree on a
 		// task branch is still ours: that shape is nowhere near a person's
 		// ordinary lane worktree.
-		"/home/somebody/.aforge-v3/sessions/s1/trees/4": true,
+		"/home/somebody/.codeaf-v3/sessions/s1/trees/4": true,
 	}
 	got := harnessWorktrees(root, listing)
 	for path := range want {
@@ -418,14 +418,14 @@ func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
 		}
 	}
 
-	// AND WHEN TMPDIR IS INSIDE THE CHECKOUT, the in-tree `.aforge-v3/` path is
+	// AND WHEN TMPDIR IS INSIDE THE CHECKOUT, the in-tree `.codeaf-v3/` path is
 	// the #578 leak and MUST be reported — that is the whole reason the worktree
 	// reading exists.
 	t.Setenv("TMPDIR", root+"/tmp")
 	t.Setenv("GOTMPDIR", "")
 	wantInside := map[string]bool{
-		root + "/.aforge-v3/tasks/s1/1":                 true,
-		"/home/somebody/.aforge-v3/sessions/s1/trees/4": true,
+		root + "/.codeaf-v3/tasks/s1/1":                 true,
+		"/home/somebody/.codeaf-v3/sessions/s1/trees/4": true,
 	}
 	gotInside := harnessWorktrees(root, listing)
 	for path := range wantInside {
@@ -440,16 +440,16 @@ func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
 	}
 }
 
-// liveAforgeUsingCheckout reports whether another aforge process looks like it
+// liveCodeafUsingCheckout reports whether another codeaf process looks like it
 // is working in this repository right now — a chat, a tick, a hosted session —
-// whose task/ branches and `.aforge-v3/` worktrees would otherwise look exactly
+// whose task/ branches and `.codeaf-v3/` worktrees would otherwise look exactly
 // like the suite's own leak.
 //
 // IT IS BEST-EFFORT AND FAILS OPEN TO "NO". A machine without /proc, a binary
 // renamed something else, or a sandbox that hides other processes simply keeps
 // the stricter reading; a false negative is a red that a person can re-run with
-// aforge closed, and a false positive would hide a real suite write.
-func liveAforgeUsingCheckout(root string) bool {
+// codeaf closed, and a false positive would hide a real suite write.
+func liveCodeafUsingCheckout(root string) bool {
 	under := strings.TrimSuffix(root, "/") + "/"
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -480,11 +480,11 @@ func liveAforgeUsingCheckout(root string) bool {
 			continue
 		}
 		joined := strings.ReplaceAll(string(cmdline), "\x00", " ")
-		if !strings.Contains(joined, "aforge") {
+		if !strings.Contains(joined, "codeaf") {
 			continue
 		}
-		// The suite's own test binary and helpers name aforge too (`go test`,
-		// `aforge-session-test-home`). A live chat is the binary itself, or a
+		// The suite's own test binary and helpers name codeaf too (`go test`,
+		// `codeaf-session-test-home`). A live chat is the binary itself, or a
 		// tick/host child, with the checkout in its cwd or its arguments.
 		cwd, err := os.Readlink("/proc/" + name + "/cwd")
 		if err == nil && (cwd == root || strings.HasPrefix(cwd, under)) {

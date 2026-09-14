@@ -805,8 +805,8 @@ func RanOutOfRoom(err error) (time.Duration, bool) {
 }
 
 // Requeued is the whole rule an exhausted node is judged by, and it is asked by
-// both schedulers: the resident's, which drives `aforge do` and the chat, and
-// the one-shot [Scheduler] that drives `aforge run`.
+// both schedulers: the resident's, which drives `codeaf do` and the chat, and
+// the one-shot [Scheduler] that drives `codeaf run`.
 //
 // AN ENDING THAT IS EXHAUSTION IS NOT A VERDICT ON THE WORK. The worker ran out
 // of the room it was given; that is the queue's input and the growth governor's,

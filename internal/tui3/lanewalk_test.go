@@ -199,7 +199,7 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 	if !ok || row.Apply(config.RoutingOff) != nil {
 		t.Fatal("could not write the routing row")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
 	a.models = func() []Model { return laneCatalog }
 	a.width, a.height = 120, 24
@@ -219,7 +219,7 @@ func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
 }
 
 // AND UNDER ROUTING `simple` THE FOLD OPENS AND THE `auto` ROW STOPS PROMISING
-// A TAKEOVER. That row sends no preference of aforge's own: with nothing pinned
+// A TAKEOVER. That row sends no preference of codeaf's own: with nothing pinned
 // the request goes out bare and OpenRouter's own routing answers, so nothing on
 // this side chooses a machine, predicts which one the next turn lands on, or
 // rescues an answer that turns slow — and the sentence a person reads on the row
@@ -231,7 +231,7 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 	if !ok || row.Apply(config.RoutingSimple) != nil {
 		t.Fatal("could not write the routing row")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
 	a.models = func() []Model { return laneCatalog }
 	a.width, a.height = 120, 24
@@ -242,13 +242,13 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)
 	}
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "openrouter's own routing; aforge stays out") {
+	if !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
 		t.Fatalf("the auto row does not say who is choosing under simple:\n%s", screen)
 	}
 	// THE TWO CLAIMS THAT ONLY A CHOOSER CAN MAKE ARE GONE WITH IT: the machine
 	// the next turn would go to, which under this row nobody on this side picks,
 	// and the takeover the sentence used to promise.
-	for _, gone := range []string{"aforge takes over", "cloudflare now"} {
+	for _, gone := range []string{"codeaf takes over", "cloudflare now"} {
 		if strings.Contains(screen, gone) {
 			t.Fatalf("under routing simple the fold still says %q:\n%s", gone, screen)
 		}

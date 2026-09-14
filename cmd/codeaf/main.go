@@ -1,8 +1,8 @@
-// Command aforge is an agent you talk to, and hand work to when you walk away.
+// Command codeaf is an agent you talk to, and hand work to when you walk away.
 //
-//	aforge                       open the conversation this directory was having
-//	aforge do "<task>"           hand it one job and read the answer on stdout
-//	aforge plan new "<goal>"     write a plan to a file without running it
+//	codeaf                       open the conversation this directory was having
+//	codeaf do "<task>"           hand it one job and read the answer on stdout
+//	codeaf plan new "<goal>"     write a plan to a file without running it
 //
 // The static plan pipeline it opened life as is four subcommands of `plan` now,
 // and it is one feature of many rather than the product.
@@ -119,7 +119,7 @@ func execute() (code int) {
 		// then repeat itself in machine form on the next line, while `exec`,
 		// `plan`, `models` and `run` said only the machine half — so four
 		// callers out of five were told the cause and not what to do about it.
-		fmt.Fprintln(os.Stderr, "aforge needs a model to work with.")
+		fmt.Fprintln(os.Stderr, "codeaf needs a model to work with.")
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return 1
 	default:
@@ -150,7 +150,7 @@ func run() error {
 		tuneForTheSurface()
 		return runResumeV3(os.Args[2:])
 	case "engine":
-		// The far half of `aforge chat --host <host>`: the process ssh starts
+		// The far half of `codeaf chat --host <host>`: the process ssh starts
 		// on the other machine, speaking the wire protocol on its own pipes
 		// (engine.go). It is DELIBERATELY ABSENT from the usage text below —
 		// it is machinery a surface dials, not a thing a person runs, and a
@@ -182,7 +182,7 @@ func run() error {
 		// word and where nobody reads it.
 		return runPlanCommand(os.Args[2:])
 	case "revise":
-		// The old top-level spelling of `aforge plan revise`, kept working for
+		// The old top-level spelling of `codeaf plan revise`, kept working for
 		// one release (rename.go).
 		return renamedTo("revise <plan.json>", "plan revise <plan.json>",
 			os.Args[2:], func(args []string) error { return runRevise("plan revise", args) })
@@ -191,7 +191,7 @@ func run() error {
 	case "exec":
 		return runExec(os.Args[2:])
 	case "show":
-		// The old top-level spelling of `aforge plan show`.
+		// The old top-level spelling of `codeaf plan show`.
 		return renamedTo("show <plan.json>", "plan show <plan.json>",
 			os.Args[2:], func(args []string) error { return runShow("plan show", args) })
 	case "models":
@@ -224,7 +224,7 @@ func run() error {
 	case "why":
 		return runWhy(os.Args[2:])
 	case "manual":
-		// Everything aforge knows about itself, read straight (manual.go). It
+		// Everything codeaf knows about itself, read straight (manual.go). It
 		// is the same corpus the chat's manual tool reads, printed as it is
 		// written rather than retold — and it is here rather than only there
 		// because the questions people ask most are the ones they ask before
@@ -232,8 +232,8 @@ func run() error {
 		return runManual(os.Args[2:])
 	// Three spellings for one question, because three different callers ask it
 	// and none of them should have to know which one this build prefers: the
-	// agentfield Python doctor runs `aforge version`, the Go doctor runs
-	// `aforge --version`, and a person types `-v`.
+	// agentfield Python doctor runs `codeaf version`, the Go doctor runs
+	// `codeaf --version`, and a person types `-v`.
 	case "version", "--version", "-v":
 		return runVersion()
 	case "-h", "--help", "help":
@@ -265,35 +265,35 @@ const (
 	helpTextColumn = 6
 )
 
-// usageText is what `aforge --help` prints, and it is FIVE HEADED GROUPS AND
+// usageText is what `codeaf --help` prints, and it is FIVE HEADED GROUPS AND
 // FIVE EXAMPLES AND NOTHING ELSE.
 //
 // It used to be one flat list of twenty-three commands followed by a sixty-line
 // environment table, so the last thing on a person's screen after asking what
-// the commands are was AFORGE_CALL_LOG_BODIES, and the commands themselves had
+// the commands are was CODEAF_CALL_LOG_BODIES, and the commands themselves had
 // scrolled off the top. The table is a REFERENCE — it is consulted, never read
-// — so it lives at `aforge help env` ([environmentText]) and the one line at
+// — so it lives at `codeaf help env` ([environmentText]) and the one line at
 // the bottom here says so.
 //
 // The groups are ordered most-reached-for first rather than alphabetically,
 // because a list nobody reads to the end is a list whose ordering is the whole
 // design. Adjacent forms of one verb stay together.
 //
-// THE TABLE IS ALSO THE ONE SOURCE OF EVERY PER-COMMAND SYNOPSIS. `aforge do
+// THE TABLE IS ALSO THE ONE SOURCE OF EVERY PER-COMMAND SYNOPSIS. `codeaf do
 // --help` lifts `do`'s lines straight out of it ([usageForCommand]), so a
 // synopsis cannot go stale, and a group heading is written at column zero
 // precisely so it ends a command's block rather than joining it.
 //
 // AND THE EXAMPLES ARE INDENTED FOUR, NOT TWO, FOR THE SAME READER. Two spaces
-// is what a command row is written with, so an example beginning `  aforge do`
-// was lifted into `aforge do --help` as though it were part of that command's
+// is what a command row is written with, so an example beginning `  codeaf do`
+// was lifted into `codeaf do --help` as though it were part of that command's
 // synopsis — which is what happened the first time they were added.
 // handWorkFooter is what `do`, `exec` and `run` have in common, said ONCE under
 // the group rather than three times inside it — twelve of this page's lines used
 // to be the same ladder printed under each verb, in the page whose own defect
 // row was that half of it was an environment table.
 //
-// IT IS A NAMED CONSTANT BECAUSE TWO READERS NEED IT. `aforge --help` prints it
+// IT IS A NAMED CONSTANT BECAUSE TWO READERS NEED IT. `codeaf --help` prints it
 // under the group, and [usageForCommand] appends it to each of the three
 // per-command pages — which is where somebody writing a script actually looks,
 // and where taking it out of the group's lines had silently removed it. One
@@ -305,110 +305,110 @@ var handWorkFooter = `  the three differ by how much thinking happens first: do 
   and --yes-spend answers that in advance. All three end the same way, and
   why is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
-  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
+  CODEAF_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
 
-var usageText = `aforge — an agent you talk to, and hand work to when you walk away
+var usageText = `codeaf — an agent you talk to, and hand work to when you walk away
 
 Talk to it — a surface you sit in front of
-  aforge
+  codeaf
       open the conversation this directory was last having
-  aforge chat [--model slug] [--reasoning level] [--session path] [--yolo]
+  codeaf chat [--model slug] [--reasoning level] [--session path] [--yolo]
               [--host host[:path]] [--at name[:path]] [--once "text"]
               [--no-compact] [--one-model] [--no-host] [--debug]
       --no-host runs the conversation in this process rather than on this
       workspace's session host; --debug keeps the whole record of the run
-  aforge resume
+  codeaf resume
       pick an earlier conversation by name and open it — the same list is
       /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
-  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
+  codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
       do one task and exit — the same living agent the chat runs, with nobody
       watching. What you type is the goal, and it is run verbatim
-  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
+  codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
               [--token-budget N] [--timeout 15m] [--model slug]
               [--context-fill N] [--completion-reserve N] [--json]
               [--out file] [--debug]
       run one worker for one pass, with no planning at all
-  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug]
+  codeaf run  <program> --input <file.json|-> [--dir dir] [--model slug]
               [--journal path] [--json]
       run one saved program: typed input in, its typed output on stdout. A
       question it was not told how to answer stops it rather than being guessed
 ` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent
-  aforge why self [--db path]
+  codeaf why self [--db path]
       show today's self-spend receipts
-  aforge why <task-id> [--db path]
+  codeaf why <task-id> [--db path]
       what one piece of work did — its turns, tools, arguments, how it ended
-  aforge logs [--tail 40] [--follow] [--path] [--json] [--run id]
+  codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
-      every model call aforge made — what was asked, which lane answered, what
+      every model call codeaf made — what was asked, which lane answered, what
       came back. The filters are exact and combine; --json prints the rows as
-      they are on disk, --body one call's bodies. AFORGE_CALL_LOG=off is off
-  aforge models [--refresh]
+      they are on disk, --body one call's bodies. CODEAF_CALL_LOG=off is off
+  codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
-  aforge doctor [--db path]
+  codeaf doctor [--db path]
       is this install healthy, and where does it keep things
-  aforge manual
-      every page of aforge's own manual, one per line
-  aforge manual <page> | "<question>"
+  codeaf manual
+      every page of codeaf's own manual, one per line
+  codeaf manual <page> | "<question>"
       that page printed whole, or the sections that answer a question
-  aforge version
+  codeaf version
       print the build this binary was cut from (--version and -v say the same)
 
 Housekeeping — changes state on disk or on the network
-  aforge cache
+  codeaf cache
       what the shared build cache holds, and how big it is
-  aforge cache clean [--yes]
-      delete ~/.aforge/cache to free disk. It prints the size and path, then
+  codeaf cache clean [--yes]
+      delete ~/.codeaf/cache to free disk. It prints the size and path, then
       asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
-  aforge rebuild [--db path] [--yes]
-      discard everything aforge worked out from the journal and replay it
-  aforge serve [--workspace path] [--relay url]
+  codeaf rebuild [--db path] [--yes]
+      discard everything codeaf worked out from the journal and replay it
+  codeaf serve [--workspace path] [--relay url]
       be reachable from your other devices without ssh, with a pairing code
-  aforge devices
+  codeaf devices
       list the devices paired with this machine
-  aforge devices revoke <name> [--all]
+  codeaf devices revoke <name> [--all]
       stop one device opening a conversation here; --all, every device of that
       name
-  aforge notebook [--db path]
+  codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
-  aforge notebook retract|restore <seq> [--db path]
+  codeaf notebook retract|restore <seq> [--db path]
 ` + collectionsSummary + `
-  aforge competence [--db path] [--model slug]
+  codeaf competence [--db path] [--model slug]
       what it has been measured as good at
-  aforge services [--db path]
+  codeaf services [--db path]
       long-running processes it was asked to keep
-  aforge services stop <name> [--db path]
-  aforge wake [--db path] [--timeout 2m]
+  codeaf services stop <name> [--db path]
+  codeaf wake [--db path] [--timeout 2m]
       run one full background pass by hand and exit
-  aforge help env
+  codeaf help env
       the environment table: every variable and its default
 
 Plan work by hand — a plan you can read, edit and diff
-  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json]
+  codeaf plan new "<goal>" [--out plan.json] [--dir dir] [--json]
               [--instructions] [--passes auto|off|N] [--model slug]
               [--plan-model slug]
-  aforge plan show <plan.json>
-  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]
+  codeaf plan show <plan.json>
+  codeaf plan revise <plan.json> "<what happened>" [--done 1,2,3]
               [--out plan.json] [--model slug] [--plan-model slug]
-  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
+  codeaf plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
               [--yes-spend] [--model slug] [--plan-model slug]
       a plan written to a file, then executed exactly as written. It is not
       what most people want: nothing learnt mid-flight moves a frozen plan
 
 Examples:
-    aforge                                open the conversation you were having
-    aforge do "add a health endpoint and a test for it"
-    aforge do "summarise CHANGELOG.md" --json | jq -r .answer
-    aforge logs --tail 20 --model anthropic/claude-opus-4
-    aforge chat --host devbox:~/src/api   the chat here, the work over there
+    codeaf                                open the conversation you were having
+    codeaf do "add a health endpoint and a test for it"
+    codeaf do "summarise CHANGELOG.md" --json | jq -r .answer
+    codeaf logs --tail 20 --model anthropic/claude-opus-4
+    codeaf chat --host devbox:~/src/api   the chat here, the work over there
 
-Every command answers ` + "`aforge <command> --help`" + ` with its own line and its flags.
-The environment table is ` + "`aforge help env`" + ` — every variable and its default.`
+Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.
+The environment table is ` + "`codeaf help env`" + ` — every variable and its default.`
 
 // environmentText is the reference half of the old `--help`: every variable a
 // person can set, and what it defaults to.
@@ -425,7 +425,7 @@ The environment table is ` + "`aforge help env`" + ` — every variable and its 
 // its sentence soft-wrapped back under the name, which is the shape of a table
 // that has stopped being one. The name is at column 2 and the sentence at
 // column 23, or on the next line at column 23 when the name reaches past it.
-var environmentText = `aforge — the environment
+var environmentText = `codeaf — the environment
 
 Every variable below is read at launch. A variable set here always wins over the
 ` + "`/settings`" + ` sheet in the chat, and that row reads read-only in the sheet rather
@@ -435,64 +435,64 @@ than fighting your shell.
                        looked for — this, then OPENAI_API_KEY, then the key
                        kept in your profile. Any one of them is enough, so a
                        machine set up in the chat needs no variable at all;
-                       ` + "`aforge doctor`" + ` names the one that answered.
-  AFORGE_MODEL         default ` + config.DefaultModel + `
-  AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
+                       ` + "`codeaf doctor`" + ` names the one that answered.
+  CODEAF_MODEL         default ` + config.DefaultModel + `
+  CODEAF_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
                        replans, working methods and the delivery gate on a
                        stronger model while a smaller one does the steps;
                        --model and --plan-model do the same per run.
-  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel
+  CODEAF_MODELS        unset: one model, exactly as above. Set it to a panel
                        and calls cascade — cheapest model first, escalating
                        when a verifier catches a failure. Either a
                        comma-separated list of slugs, or a path to a JSON file:
-                       AFORGE_MODELS=google/gemma-3-12b-it,~moonshotai/kimi-k2.6
-                       AFORGE_MODELS=~/.aforge/models.json
-                       Ratings accumulate in ~/.aforge/router-ledger.json
-                       across runs; see them with ` + "`aforge models`" + `.
-  AFORGE_REASONING     planning calls: model default (unset), off, low, medium,
+                       CODEAF_MODELS=google/gemma-3-12b-it,~moonshotai/kimi-k2.6
+                       CODEAF_MODELS=~/.codeaf/models.json
+                       Ratings accumulate in ~/.codeaf/router-ledger.json
+                       across runs; see them with ` + "`codeaf models`" + `.
+  CODEAF_REASONING     planning calls: model default (unset), off, low, medium,
                        high
-  AFORGE_EXEC_REASONING
+  CODEAF_EXEC_REASONING
                        executor calls: model default (unset), off, low, medium,
                        high
-  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall when --timeout is not
+  CODEAF_EXEC_TIMEOUT  ` + "`codeaf exec`" + ` only: hard wall when --timeout is not
                        passed, as a duration or a bare number of seconds.
-                       AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do the same for
+                       CODEAF_EXEC_BUDGET and CODEAF_EXEC_TURNS do the same for
                        --token-budget and --max-turns. A flag that was typed
                        always wins; these exist so a harness can set the walls
                        once for a campaign instead of on every call.
-  AFORGE_EXIT_CODES    ` + legacyExitCodesHelp + `
-  AFORGE_MAX_DEPTH     2   how many levels of decomposition
-  AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total steps
-  AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
-  AFORGE_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
+  CODEAF_EXIT_CODES    ` + legacyExitCodesHelp + `
+  CODEAF_MAX_DEPTH     2   how many levels of decomposition
+  CODEAF_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total steps
+  CODEAF_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
+  CODEAF_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
                        and waits for your word (0 = never asks)
-  AFORGE_IMAGE_MODEL   image-generation model (catalog-resolved by default)
-  AFORGE_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
-  AFORGE_MUSIC_MODEL   music-generation model (catalog-resolved by default)
-  AFORGE_VIDEO_MODEL   video-generation model (catalog-resolved by default)
-  AFORGE_VISION_MODEL  image-inspection proxy (talk, work, catalog-resolved)
-  AFORGE_DOC_ENGINE    auto (default), local, free or ocr document reading
-  AFORGE_PRACTICE_BUDGET
+  CODEAF_IMAGE_MODEL   image-generation model (catalog-resolved by default)
+  CODEAF_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
+  CODEAF_MUSIC_MODEL   music-generation model (catalog-resolved by default)
+  CODEAF_VIDEO_MODEL   video-generation model (catalog-resolved by default)
+  CODEAF_VISION_MODEL  image-inspection proxy (talk, work, catalog-resolved)
+  CODEAF_DOC_ENGINE    auto (default), local, free or ocr document reading
+  CODEAF_PRACTICE_BUDGET
                        ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
-  AFORGE_PRACTICE_IDLE 20m  quiet period before self-practice
-  AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
-  AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
+  CODEAF_PRACTICE_IDLE 20m  quiet period before self-practice
+  CODEAF_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
+  CODEAF_MAX_HOURS     how many hours an unattended chat --yolo session may
                        carry its own work on (default none: it stops when the
                        model stops). --max-hours wins.
-  AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
+  CODEAF_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.
-  AFORGE_PREAUTHORIZE_SPEND
+  CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
-  AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
-                       profiles, catalog, skills (default ~/.aforge). Move it
+  CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
+                       profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.
-  AFORGE_PROFILE_DIR   where measured behaviour is kept (default AFORGE_HOME)
-  AFORGE_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
+  CODEAF_PROFILE_DIR   where measured behaviour is kept (default CODEAF_HOME)
+  CODEAF_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
                        "off" writes nothing; any other value is the file to
                        write.
-  AFORGE_CALL_LOG_BODIES=1
+  CODEAF_CALL_LOG_BODIES=1
                        also record each call's whole request and response —
                        your prompts included. Off by default, and for one run
                        at a time.
@@ -501,7 +501,7 @@ The user-facing knobs above — budgets, rhythm, the document reader, the vision
 and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
 them to the profile's config.json.
 
-Run ` + "`aforge --help`" + ` for every command.`
+Run ` + "`codeaf --help`" + ` for every command.`
 
 // usageDollars writes a default the way the table has always written it: the
 // shortest form that is still the same number, so 500 stays 500 and 2.5 stays
@@ -510,7 +510,7 @@ func usageDollars(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-// usage answers `aforge --help`, `-h` and `aforge help`. With `env` after it,
+// usage answers `codeaf --help`, `-h` and `codeaf help`. With `env` after it,
 // it prints the environment table instead — which is where the table went when
 // it stopped being two thirds of the front page.
 func usage(args []string) error {
@@ -529,7 +529,7 @@ func usage(args []string) error {
 //
 // ASKING AN OLD SPELLING FOR HELP SAYS NOTHING. `--help` runs nothing, prints
 // the NEW spelling's own line out of the one table, and leaves with 0 — so a
-// developer probing `aforge show --help` is shown `aforge plan show` and a
+// developer probing `codeaf show --help` is shown `codeaf plan show` and a
 // Makefile that checks the binary is healthy still reads a clean stderr. The
 // notice is about a run; there is no run.
 func renamedTo(old, now string, args []string, door func([]string) error) error {
@@ -542,11 +542,11 @@ func renamedTo(old, now string, args []string, door func([]string) error) error 
 // runPlanCommand is the four verbs of the static pipeline under the one noun
 // they all act on, and the old top-level spelling of the first of them.
 //
-// `aforge plan "<goal>"` was the whole command; it is `aforge plan new
+// `codeaf plan "<goal>"` was the whole command; it is `codeaf plan new
 // "<goal>"` now, and the bare form still works for one release. The two are
 // told apart by the word itself: a lone `new`, `show`, `revise` or `run` in the
 // first position is a subcommand and anything else is the goal, which is the
-// same reading `aforge cache clean` already has.
+// same reading `codeaf cache clean` already has.
 func runPlanCommand(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
@@ -560,14 +560,14 @@ func runPlanCommand(args []string) error {
 			return runGraph("plan run", args[1:])
 		}
 	}
-	// `aforge plan --help` is a question about the group, so it answers with all
+	// `codeaf plan --help` is a question about the group, so it answers with all
 	// four lines rather than with `plan new`'s alone.
 	if askedForHelp(args) {
 		return commandHelp("plan")
 	}
 	if len(args) == 0 {
 		// Nothing was spelled the old way, so there is nothing to say about a
-		// spelling. `aforge plan` alone answers the way it always did — the
+		// spelling. `codeaf plan` alone answers the way it always did — the
 		// goal is missing, and here is the shape it wanted — reading a piped
 		// goal first if one is there.
 		return runPlanNew("plan new", args)
@@ -627,7 +627,7 @@ func runPlanNew(name string, args []string) error {
 	}
 	defer closePlanner()
 	// A PERSON TYPED THIS (exec.go's [typedDoorContext]), so the plan's own
-	// calls carry the talk pin the way `aforge exec`'s do.
+	// calls carry the talk pin the way `codeaf exec`'s do.
 	ctx := typedDoorContext(settings.Context(context.Background(), goal))
 
 	// The ruler in force comes from measured work when there is any; the
@@ -636,7 +636,7 @@ func runPlanNew(name string, args []string) error {
 
 	if !*asJSON {
 		// Every line of it is an aside: the answer this door gives is the PLAN,
-		// and a preamble in front of it is what broke `aforge plan new "x"
+		// and a preamble in front of it is what broke `codeaf plan new "x"
 		// --json | jq` (streams.go).
 		fmt.Fprintf(aside, "goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
 		fmt.Fprintln(aside, seats.Report())
@@ -769,7 +769,7 @@ func runRevise(name string, args []string) error {
 	noteRenamedFlags(flags)
 	rest := flags.Args()
 	if len(rest) < 2 {
-		return fmt.Errorf("usage: aforge plan revise <plan.json> \"<what happened>\"")
+		return fmt.Errorf("usage: codeaf plan revise <plan.json> \"<what happened>\"")
 	}
 	data, err := os.ReadFile(rest[0])
 	if err != nil {
@@ -827,14 +827,14 @@ func runRevise(name string, args []string) error {
 }
 
 func runShow(name string, args []string) error {
-	// `aforge show --help` used to answer `open --help: no such file or
+	// `codeaf show --help` used to answer `open --help: no such file or
 	// directory` — a filesystem error about a flag — because this door parses
 	// no flags at all and read the argument as a path (usage.go).
 	if askedForHelp(args) {
 		return commandHelp(name)
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: aforge plan show <plan.json>")
+		return fmt.Errorf("usage: codeaf plan show <plan.json>")
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {
@@ -879,7 +879,7 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // text is on stdin", which is the convention every unix filter keeps, and no
 // positional at all means the same thing WHEN NOTHING IS ATTACHED TO THE
 // TERMINAL. The terminal check is what stops the third case being a hang: a
-// person who typed `aforge do` with nothing after it used to get a process
+// person who typed `codeaf do` with nothing after it used to get a process
 // silently reading their keyboard forever, which reads exactly like a program
 // that has crashed. They get the usage instead.
 // The command's name is carried in so the miss can answer with THAT command's
@@ -914,20 +914,20 @@ func readPipedText(name string) (string, error) {
 func noGoalGiven(name string) error {
 	shape := usageForCommand(name)
 	if shape == "" {
-		return fmt.Errorf("no goal given\n\nrun `aforge --help` for every command.")
+		return fmt.Errorf("no goal given\n\nrun `codeaf --help` for every command.")
 	}
-	return fmt.Errorf("no goal given\n\n%s\n\nrun `aforge --help` for every command.", shape)
+	return fmt.Errorf("no goal given\n\n%s\n\nrun `codeaf --help` for every command.", shape)
 }
 
 // reorder moves flags ahead of positional arguments. Go's flag package stops
-// parsing at the first non-flag token, so `aforge plan "goal" -o out.json`
+// parsing at the first non-flag token, so `codeaf plan "goal" -o out.json`
 // would otherwise fold the flag into the goal text — silently, which is the
 // worst way for it to fail.
 //
 // ── A BRIEF THAT BEGINS WITH "-" IS TEXT, NOT A FLAG ────────────────────────
 //
 // This used to decide by shape alone: a leading dash meant a flag. So
-// `aforge do "- Update the display style property…"` — a brief written as a
+// `codeaf do "- Update the display style property…"` — a brief written as a
 // bullet list, which is how people write briefs — was moved into the flag
 // section and the run died in one second with `flag provided but not defined:
 // - Update the display style property…` and a usage dump. It happened to a real
@@ -1027,14 +1027,14 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 
 // THE TWO MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
 //
-// The wording they replaced was `(default AFORGE_MODEL)`, which named one rung
+// The wording they replaced was `(default CODEAF_MODEL)`, which named one rung
 // of four and hid the two that decide most runs: a profile's crew, and this
 // build's own default when nobody has said anything at all. A help string that
 // names the whole ladder is the shortest place a person can learn that their
 // crew reaches this command (config.ResolveSeats).
 const (
-	workLadderHelp    = "flag › AFORGE_MODEL › crew › default"
-	planLadderHelp    = "flag › AFORGE_PLAN_MODEL › crew mastermind › the work model"
+	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
+	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
 	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
 	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
 )
@@ -1055,7 +1055,7 @@ const yesSpendFlagHelp = "spend past today's limit and past the plan-price quest
 //
 // Six of them said "path to the durable graph database", which is two words for
 // one file and one of them — `graph` — is how the ENGINE thinks. A developer
-// looking for where their data lives searches for a store, and `aforge doctor`
+// looking for where their data lives searches for a store, and `codeaf doctor`
 // now labels the same file that way.
 const storeFlagHelp = "the store to work in"
 
@@ -1064,7 +1064,7 @@ const storeFlagHelp = "the store to work in"
 //
 // It read `in a folder of its own under the state root`, which names no folder
 // at all — and the state root has two of them. The developer who turned the
-// switch on went to `~/.aforge/runs/aforge-do-<n>/`, which is where the run's
+// switch on went to `~/.codeaf/runs/codeaf-do-<n>/`, which is where the run's
 // own line on stderr had just pointed them for a DIFFERENT thing (the graph
 // scratch `--keep` holds), found nothing but a `graph.db`, and concluded the
 // record was never written. It had been: the record is a sibling of the
@@ -1076,12 +1076,12 @@ const storeFlagHelp = "the store to work in"
 // does not is exactly how this sentence went wrong the first time.
 //
 // It is a function and not a constant because the root MOVES: internal/home
-// reads AFORGE_HOME, so the answer is only right once the environment the door
+// reads CODEAF_HOME, so the answer is only right once the environment the door
 // was started with has been read. A package-level string would be computed at
 // init and would name somebody else's path for the rest of the process.
 func debugFlagHelp() string {
 	return "keep the full record of this run — call bodies, tool calls and the choices " +
-		"made — in a folder of its own under " + debugRecordRoot() + " (env AFORGE_DEBUG)"
+		"made — in a folder of its own under " + debugRecordRoot() + " (env CODEAF_DEBUG)"
 }
 
 // debugRecordRoot is where the debug records go, as a person would type it:

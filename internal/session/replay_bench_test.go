@@ -51,7 +51,7 @@ func benchJournal(b *testing.B, messages int) string {
 }
 
 // BenchmarkReplaySessionFile is the resume path: everything between typing
-// `aforge --resume` and the transcript being on screen. It is paid once, with a
+// `codeaf --resume` and the transcript being on screen. It is paid once, with a
 // person waiting on it, so the number that matters is the whole scan over a
 // file the length of a real session.
 func BenchmarkReplaySessionFile(b *testing.B) {

@@ -1,8 +1,8 @@
-// Package furrowbin carries furrow inside aforge and puts it on disk the first
+// Package furrowbin carries furrow inside codeaf and puts it on disk the first
 // time anything wants it.
 //
-// THE RULING THIS PACKAGE EXISTS FOR IS "NO VARIANCE": every aforge is an
-// aforge with furrow. Before this, furrow was a program the person went and
+// THE RULING THIS PACKAGE EXISTS FOR IS "NO VARIANCE": every codeaf is an
+// codeaf with furrow. Before this, furrow was a program the person went and
 // installed, so the four workspace verbs — byte-exact forks that carry the
 // dirty tree, the sealed timeline, the restore that puts a .env back — were a
 // capability some machines had. Half a product is worse than either half: the
@@ -21,7 +21,7 @@
 //     artifact is gitignored — six megabytes of binary in git is six megabytes
 //     in every clone forever — and a fetch that cannot happen fails the build
 //     out loud, naming the command to run, rather than quietly producing an
-//     aforge without furrow.
+//     codeaf without furrow.
 //  3. This package embeds cache/ and, on first need, writes the binary out
 //     under the state root.
 //
@@ -66,7 +66,7 @@ var staged embed.FS
 // this platform — a plain `go build ./...` in a fresh clone, which is a real
 // and useful thing to be able to do. It is not the shipped state: `make build`
 // fetches first and fails rather than produce one.
-var ErrNotEmbedded = errors.New("this aforge was not built with furrow inside it")
+var ErrNotEmbedded = errors.New("this codeaf was not built with furrow inside it")
 
 // stagedName is where the build put this platform's furrow, and it is derived
 // rather than written down so that the fetcher and the reader cannot disagree.
@@ -117,12 +117,12 @@ func extract() (string, error) {
 // there, an older version beside it, a root that cannot be written to.
 func extractInto(dir, version string, archive []byte) (string, error) {
 	// THE PATH IS STAMPED WITH THE VERSION, AND THAT IS WHAT MAKES REPLACING A
-	// RUNNING BINARY IMPOSSIBLE RATHER THAN CAREFUL. An aforge that upgrades
+	// RUNNING BINARY IMPOSSIBLE RATHER THAN CAREFUL. A codeaf that upgrades
 	// its pinned furrow writes a file with a new name; the old one keeps its
 	// inode and any furrow still running out of it keeps running. This repo has
 	// paid the other bill twice — a binary written over in place is a process
 	// killed with signal 9 on macOS the moment it next pages in — and the
-	// lesson generalises past aforge's own binary to any binary it writes.
+	// lesson generalises past codeaf's own binary to any binary it writes.
 	path := filepath.Join(dir, "furrow-"+version)
 
 	// One stat is the steady state. A file at this path is complete by
@@ -144,7 +144,7 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 		return "", err
 	}
 
-	// Write somewhere else and move it into place. Two aforges starting at the
+	// Write somewhere else and move it into place. Two codeafs starting at the
 	// same moment each write their own temporary file and each rename it over
 	// the same name; the rename is atomic, the loser's bytes are identical to
 	// the winner's, and neither ever sees a half-written furrow.

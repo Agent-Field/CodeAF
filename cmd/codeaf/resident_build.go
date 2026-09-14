@@ -22,7 +22,7 @@ import (
 // planClient structures (the task graph, replans, contracts, the delivery
 // gate), and taskClient executes leaves. By default plan follows work, so the
 // split is dormant until a plan model is chosen.
-// oneShotErrand says this reconciler serves `aforge do`: one errand, run once,
+// oneShotErrand says this reconciler serves `codeaf do`: one errand, run once,
 // with nobody who could answer a question about it. It is a fact about the
 // surface, not a judgement about the work, and it travels to both halves that
 // would otherwise have to guess it — the compiler's temporal classification and

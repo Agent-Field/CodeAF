@@ -43,7 +43,7 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 	github.mu.Unlock()
 
 	path := request.URL.Path
-	const prefix = "/repos/Agent-Field/aforge-v2/"
+	const prefix = "/repos/Agent-Field/codeaf/"
 	if strings.HasPrefix(path, prefix) {
 		if github.failAPI {
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
@@ -67,7 +67,7 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 		}
 	}
 
-	const downloads = "/Agent-Field/aforge-v2/releases/download/"
+	const downloads = "/Agent-Field/codeaf/releases/download/"
 	if strings.HasPrefix(path, downloads) {
 		rest := strings.TrimPrefix(path, downloads)
 		tag, name, ok := strings.Cut(rest, "/")
@@ -104,7 +104,7 @@ func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string)
 }
 
 func fakeBinary(tag string) []byte {
-	return []byte("#!/bin/sh\nprintf 'aforge " + tag + " · fake\\n'\n")
+	return []byte("#!/bin/sh\nprintf 'codeaf " + tag + " · fake\\n'\n")
 }
 
 func platformAsset() string {
@@ -112,7 +112,7 @@ func platformAsset() string {
 	if runtime.GOOS == "windows" {
 		extension = ".exe"
 	}
-	return "aforge-" + runtime.GOOS + "-" + runtime.GOARCH + extension
+	return "codeaf-" + runtime.GOOS + "-" + runtime.GOARCH + extension
 }
 
 func contains(values []string, value string) bool {
@@ -146,9 +146,9 @@ func runInstaller(t *testing.T, github *installGitHub, arguments []string, extra
 	command := exec.Command(bash, append([]string{filepath.Join(repositoryRoot(t), "scripts", "install.sh")}, arguments...)...)
 	command.Env = append([]string{
 		"HOME=" + home,
-		"AFORGE_INSTALL_DIR=" + installDir,
-		"AFORGE_GITHUB_API=" + github.server.URL,
-		"AFORGE_GITHUB_DOWNLOAD=" + github.server.URL,
+		"CODEAF_INSTALL_DIR=" + installDir,
+		"CODEAF_GITHUB_API=" + github.server.URL,
+		"CODEAF_GITHUB_DOWNLOAD=" + github.server.URL,
 		"PATH=" + path,
 		"SHELL=/bin/bash",
 	}, extraEnv...)
@@ -193,16 +193,16 @@ func minimalPath(t *testing.T, withCurl bool) string {
 
 func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3")
-	run := runInstaller(t, github, nil, "AFORGE_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, nil, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 0 {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
-	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "aforge v1.2.3 · fake"} {
+	for _, want := range []string{"stable v1.2.3", runtime.GOOS + "/" + runtime.GOARCH, "codeaf v1.2.3 · fake"} {
 		if !strings.Contains(run.output, want) {
 			t.Errorf("output does not contain %q:\n%s", want, run.output)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(run.installDir, "aforge")); err != nil {
+	if _, err := os.Stat(filepath.Join(run.installDir, "codeaf")); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(run.output, "export PATH=") {
@@ -222,7 +222,7 @@ func TestInstallerSelectsTheNewestBuildOfEachChannel(t *testing.T) {
 	} {
 		t.Run(test.channel, func(t *testing.T) {
 			arguments := []string{"--" + test.channel}
-			environment := []string{"AFORGE_NO_MODIFY_PATH=1"}
+			environment := []string{"CODEAF_NO_MODIFY_PATH=1"}
 			if test.channel == "rc" {
 				arguments = nil
 				environment = append(environment, "CHANNEL=rc")
@@ -237,21 +237,21 @@ func TestInstallerSelectsTheNewestBuildOfEachChannel(t *testing.T) {
 
 func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3", "build-legacy")
-	run := runInstaller(t, github, []string{"--version", "v1.2.3"}, "AFORGE_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, []string{"--version", "v1.2.3"}, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 0 || !strings.Contains(run.output, "stable v1.2.3") {
 		t.Fatalf("exit %d:\n%s", run.code, run.output)
 	}
-	fromEnvironment := runInstaller(t, github, nil, "VERSION=v1.2.3", "AFORGE_NO_MODIFY_PATH=1")
+	fromEnvironment := runInstaller(t, github, nil, "VERSION=v1.2.3", "CODEAF_NO_MODIFY_PATH=1")
 	if fromEnvironment.code != 0 || !strings.Contains(fromEnvironment.output, "stable v1.2.3") {
 		t.Fatalf("VERSION install exit %d:\n%s", fromEnvironment.code, fromEnvironment.output)
 	}
-	legacy := runInstaller(t, github, []string{"--version", "build-legacy"}, "AFORGE_NO_MODIFY_PATH=1")
-	wantLegacy := "aforge: build-legacy for " + runtime.GOOS + "/" + runtime.GOARCH
-	if legacy.code != 0 || !strings.Contains(legacy.output, wantLegacy) || strings.Contains(legacy.output, "aforge: version ") {
+	legacy := runInstaller(t, github, []string{"--version", "build-legacy"}, "CODEAF_NO_MODIFY_PATH=1")
+	wantLegacy := "codeaf: build-legacy for " + runtime.GOOS + "/" + runtime.GOARCH
+	if legacy.code != 0 || !strings.Contains(legacy.output, wantLegacy) || strings.Contains(legacy.output, "codeaf: version ") {
 		t.Fatalf("legacy-tag install exit %d:\n%s", legacy.code, legacy.output)
 	}
 
-	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "AFORGE_NO_MODIFY_PATH=1")
+	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "CODEAF_NO_MODIFY_PATH=1")
 	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
 		t.Fatalf("missing release: exit %d:\n%s", missing.code, missing.output)
 	}
@@ -276,10 +276,10 @@ func TestDocumentedVersionPinReachesThePipedInstaller(t *testing.T) {
 	command := exec.Command(bash, "-c", `cat "$1" | VERSION=v1.2.3 bash`, "documented-pin", script)
 	command.Env = []string{
 		"HOME=" + home,
-		"AFORGE_INSTALL_DIR=" + installDir,
-		"AFORGE_GITHUB_API=" + github.server.URL,
-		"AFORGE_GITHUB_DOWNLOAD=" + github.server.URL,
-		"AFORGE_NO_MODIFY_PATH=1",
+		"CODEAF_INSTALL_DIR=" + installDir,
+		"CODEAF_GITHUB_API=" + github.server.URL,
+		"CODEAF_GITHUB_DOWNLOAD=" + github.server.URL,
+		"CODEAF_NO_MODIFY_PATH=1",
 		"PATH=" + path,
 		"SHELL=/bin/bash",
 	}
@@ -301,7 +301,7 @@ func TestInstallerNamesAnEmptyChannelWithoutWriting(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			github := newInstallGitHub(t, test.releases...)
 			run := runInstaller(t, github, test.arguments)
-			want := "aforge: no " + test.name + " build has been published yet"
+			want := "codeaf: no " + test.name + " build has been published yet"
 			if run.code != 1 || !strings.Contains(run.output, want) {
 				t.Fatalf("exit %d:\n%s", run.code, run.output)
 			}
@@ -317,11 +317,11 @@ func TestInstallerChecksBeforeReplacingAndCanRunTwice(t *testing.T) {
 	badHome := t.TempDir()
 	badDir := filepath.Join(badHome, "install")
 	github.badChecksum = true
-	run := runInstaller(t, github, nil, "AFORGE_INSTALL_DIR="+badDir, "AFORGE_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, nil, "CODEAF_INSTALL_DIR="+badDir, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 1 || !strings.Contains(run.output, "checksum") {
 		t.Fatalf("checksum refusal: exit %d:\n%s", run.code, run.output)
 	}
-	if _, err := os.Stat(filepath.Join(badDir, "aforge")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(badDir, "codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("a failed checksum left a binary: %v", err)
 	}
 
@@ -331,11 +331,11 @@ func TestInstallerChecksBeforeReplacingAndCanRunTwice(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "aforge"), []byte("old running binary"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "codeaf"), []byte("old running binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	first := runInstaller(t, github, nil, "HOME="+home, "AFORGE_INSTALL_DIR="+dir)
-	second := runInstaller(t, github, nil, "HOME="+home, "AFORGE_INSTALL_DIR="+dir)
+	first := runInstaller(t, github, nil, "HOME="+home, "CODEAF_INSTALL_DIR="+dir)
+	second := runInstaller(t, github, nil, "HOME="+home, "CODEAF_INSTALL_DIR="+dir)
 	if first.code != 0 || second.code != 0 {
 		t.Fatalf("repeat exits %d and %d:\n%s\n%s", first.code, second.code, first.output, second.output)
 	}
@@ -343,13 +343,13 @@ func TestInstallerChecksBeforeReplacingAndCanRunTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(rc), "# aforge installer") != 1 {
+	if strings.Count(string(rc), "# codeaf installer") != 1 {
 		t.Fatalf("PATH edit is not idempotent:\n%s", rc)
 	}
-	if matches, _ := filepath.Glob(filepath.Join(dir, ".aforge.tmp.*")); len(matches) != 0 {
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
 		t.Fatalf("atomic install left temporary files: %v", matches)
 	}
-	installed, err := os.ReadFile(filepath.Join(dir, "aforge"))
+	installed, err := os.ReadFile(filepath.Join(dir, "codeaf"))
 	if err != nil || strings.Contains(string(installed), "old running binary") {
 		t.Fatalf("the old binary was not replaced: %v %q", err, installed)
 	}
@@ -361,13 +361,13 @@ func TestInstallerSendsTheTokenOnAPICalls(t *testing.T) {
 		arguments []string
 		path      string
 	}{
-		{name: "latest", path: "/repos/Agent-Field/aforge-v2/releases/latest"},
-		{name: "list", arguments: []string{"--rc"}, path: "/repos/Agent-Field/aforge-v2/releases"},
+		{name: "latest", path: "/repos/Agent-Field/codeaf/releases/latest"},
+		{name: "list", arguments: []string{"--rc"}, path: "/repos/Agent-Field/codeaf/releases"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := newInstallGitHub(t, "v1.2.3", "v1.3.0-rc.1")
 			const token = "secret-installer-token"
-			run := runInstaller(t, github, test.arguments, "GITHUB_TOKEN="+token, "AFORGE_NO_MODIFY_PATH=1")
+			run := runInstaller(t, github, test.arguments, "GITHUB_TOKEN="+token, "CODEAF_NO_MODIFY_PATH=1")
 			if run.code != 0 {
 				t.Fatalf("token install exit %d:\n%s", run.code, run.output)
 			}
@@ -394,7 +394,7 @@ func TestInstallerNeverSendsAuthorizationOnDownloads(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			github := newInstallGitHub(t, "v1.2.3")
-			environment := []string{"AFORGE_NO_MODIFY_PATH=1"}
+			environment := []string{"CODEAF_NO_MODIFY_PATH=1"}
 			if token != "" {
 				environment = append(environment, token)
 			}
@@ -423,7 +423,7 @@ func TestInstallerNeverSendsAuthorizationOnDownloads(t *testing.T) {
 func TestInstallerDoesNotPrintTheTokenWithVerboseOutput(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3")
 	const token = "secret-installer-token"
-	run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token, "VERBOSE=1", "AFORGE_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token, "VERBOSE=1", "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 0 || strings.Contains(run.output, token) {
 		t.Fatalf("verbose install exit %d or leaked token:\n%s", run.code, run.output)
 	}
@@ -451,11 +451,11 @@ func TestInstallerUsesWgetWhenCurlIsAbsent(t *testing.T) {
 		t.Skip("wget is not installed")
 	}
 	github := newInstallGitHub(t, "v1.2.3")
-	run := runInstaller(t, github, nil, "PATH="+minimalPath(t, false), "AFORGE_NO_MODIFY_PATH=1")
-	if run.code != 0 || !strings.Contains(run.output, "aforge v1.2.3 · fake") {
+	run := runInstaller(t, github, nil, "PATH="+minimalPath(t, false), "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 || !strings.Contains(run.output, "codeaf v1.2.3 · fake") {
 		t.Fatalf("wget install exit %d:\n%s", run.code, run.output)
 	}
-	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "PATH="+minimalPath(t, false), "AFORGE_NO_MODIFY_PATH=1")
+	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "PATH="+minimalPath(t, false), "CODEAF_NO_MODIFY_PATH=1")
 	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
 		t.Fatalf("wget missing release exit %d:\n%s", missing.code, missing.output)
 	}
@@ -471,7 +471,7 @@ func TestInstallerNamesAnUnsupportedPlatform(t *testing.T) {
 	if err := os.WriteFile(uname, []byte("#!/bin/sh\nprintf 'plan9\\n'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	run := runInstaller(t, github, nil, "PATH="+path, "AFORGE_NO_MODIFY_PATH=1")
+	run := runInstaller(t, github, nil, "PATH="+path, "CODEAF_NO_MODIFY_PATH=1")
 	if run.code != 1 || !strings.Contains(run.output, "unsupported platform: plan9") {
 		t.Fatalf("unsupported install exit %d:\n%s", run.code, run.output)
 	}

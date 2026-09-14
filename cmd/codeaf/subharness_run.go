@@ -16,8 +16,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/substore"
 )
 
-// `aforge run <program> --input <file.json|->` is one program, run once, with
-// nobody watching. It was `aforge run subharness <name>` until `run` stopped
+// `codeaf run <program> --input <file.json|->` is one program, run once, with
+// nobody watching. It was `codeaf run subharness <name>` until `run` stopped
 // meaning two things, and that spelling still works for one release
 // (rename.go).
 //
@@ -74,13 +74,13 @@ func runSubharnessCommand(args []string) error {
 	noteRenamedFlags(flags)
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge run <program> --input <file.json|->")
+		return fmt.Errorf("usage: codeaf run <program> --input <file.json|->")
 	}
 	name := strings.TrimSpace(rest[0])
 	// THE NAME IS CHECKED BEFORE THE INPUT, because the name is what the person
 	// typed and the input is what they piped.
 	//
-	// `aforge run nosuchharness --input -` used to answer `the input is empty —
+	// `codeaf run nosuchharness --input -` used to answer `the input is empty —
 	// there is nothing here for the run to do` and never mention the name at
 	// all, so somebody who had misspelled a program went away and fixed their
 	// input. Two things were wrong and the message named the one they had not
@@ -125,7 +125,7 @@ func runSubharnessCommand(args []string) error {
 	}
 	defer closeRouter(client)
 
-	// The directory this program works in, resolved exactly the way `aforge do`
+	// The directory this program works in, resolved exactly the way `codeaf do`
 	// resolves its own: the place it was pointed at is the work, edited in place,
 	// and saying nothing means the current directory. A one-shot that filed its
 	// results into a freshly created subdirectory would write where nobody looks.
@@ -348,7 +348,7 @@ func (run subharnessRun) note(result exec.RunResult, runErr error) {
 // stdout carries the account and then the typed output, and nothing else, so a
 // caller can read the answer off the last line. Everything a person watches — the
 // progress, the files, the ledger, the reason a run did not finish — goes to
-// stderr, which is where a run's own words have gone since `aforge do`.
+// stderr, which is where a run's own words have gone since `codeaf do`.
 func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
 	sayArtifacts(run.stderr, result.Artifacts)
 	sayLedger(run.stderr, run.journal.Ledger())

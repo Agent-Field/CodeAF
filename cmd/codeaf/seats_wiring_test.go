@@ -51,8 +51,8 @@ func TestEveryHeadlessDoorResolvesItsSeatsThroughTheOneLadder(t *testing.T) {
 			t.Errorf("%s resolves the seats and never seats them", name)
 		}
 		for _, reach := range []string{
-			`os.Getenv("AFORGE_MODEL")`,
-			`os.Getenv("AFORGE_PLAN_MODEL")`,
+			`os.Getenv("CODEAF_MODEL")`,
+			`os.Getenv("CODEAF_PLAN_MODEL")`,
 			"os.Getenv(config.ModelEnv)",
 			"os.Getenv(config.PlanModelEnv)",
 		} {
@@ -65,7 +65,7 @@ func TestEveryHeadlessDoorResolvesItsSeatsThroughTheOneLadder(t *testing.T) {
 
 	// The build's default is the ladder's bottom rung and nothing else's. It
 	// survives in main.go exactly once — in the usage table, where the row for
-	// AFORGE_MODEL prints the default it falls back to — and that is prose, not
+	// CODEAF_MODEL prints the default it falls back to — and that is prose, not
 	// resolution.
 	for _, name := range []string{"do.go", "exec.go", "run.go", "subharness_run.go"} {
 		raw, err := os.ReadFile(name)
@@ -81,7 +81,7 @@ func TestEveryHeadlessDoorResolvesItsSeatsThroughTheOneLadder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, "config.DefaultModel") && !strings.Contains(line, "AFORGE_MODEL") {
+		if strings.Contains(line, "config.DefaultModel") && !strings.Contains(line, "CODEAF_MODEL") {
 			t.Errorf("main.go reads the build's default outside the usage table: %q", strings.TrimSpace(line))
 		}
 	}
@@ -95,16 +95,16 @@ func TestTheModelFlagsNameTheWholeLadder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(raw), "run (default AFORGE_MODEL)") {
-			t.Errorf("%s still says the work model defaults to AFORGE_MODEL, which was one rung of four", name)
+		if strings.Contains(string(raw), "run (default CODEAF_MODEL)") {
+			t.Errorf("%s still says the work model defaults to CODEAF_MODEL, which was one rung of four", name)
 		}
 	}
-	for _, want := range []string{"AFORGE_MODEL", "crew", "default"} {
+	for _, want := range []string{"CODEAF_MODEL", "crew", "default"} {
 		if !strings.Contains(modelFlagHelp, want) {
 			t.Errorf("--model's help does not mention %q: %q", want, modelFlagHelp)
 		}
 	}
-	if !strings.Contains(planModelFlagHelp, "AFORGE_PLAN_MODEL") || !strings.Contains(planModelFlagHelp, "crew") {
+	if !strings.Contains(planModelFlagHelp, "CODEAF_PLAN_MODEL") || !strings.Contains(planModelFlagHelp, "crew") {
 		t.Errorf("--plan-model's help does not name its own ladder: %q", planModelFlagHelp)
 	}
 }
@@ -483,7 +483,7 @@ func TestAnErrandOnACrewOlderThanTheWorkerSeatNeverTouchesTheBuildsDefault(t *te
 // The chat resolves its five classes through [v3RolesSource], which is a
 // different road from [config.ResolveSeats] on purpose — a conversation has no
 // flag and no campaign variable for its crew, only a profile — but it must end
-// at the same model, or a person's crew means one thing in `aforge do` and
+// at the same model, or a person's crew means one thing in `codeaf do` and
 // another in the window they actually work in. This is the ladder read the way
 // the door reads it: the key internal/roles asks for, on a profile older than
 // the worker seat.

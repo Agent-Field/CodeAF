@@ -1,10 +1,10 @@
 package pair
 
-// `aforge chat --at otter-lamp-42`: the surface side.
+// `codeaf chat --at otter-lamp-42`: the surface side.
 //
 // THE FIRST TIME IT PAIRS AND EVERY TIME AFTER THAT IT JUST OPENS. That is the
 // whole shape of the door, and the reason the pairing prompt lives here rather
-// than in a separate `aforge pair` command: a person types the command they
+// than in a separate `codeaf pair` command: a person types the command they
 // want to use, and pairing is a question that comes up on the way, once.
 //
 // EVERYTHING THAT MIGHT ASK A QUESTION HAPPENS BEFORE THE SURFACE TAKES THE
@@ -90,7 +90,7 @@ func (r Reach) say(line string) {
 // keeps one sentence for each.
 func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
 	if !relay.ValidName(r.Name) {
-		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `aforge serve` prints the one for a machine", r.Name)
+		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the one for a machine", r.Name)
 	}
 	known, found, err := r.Machines.Machine(r.Name)
 	if err != nil {
@@ -188,6 +188,6 @@ func (r Reach) dial(ctx context.Context, service string) (io.ReadWriteCloser, er
 	}
 }
 
-// Machines is every machine this device can reach, for `aforge devices` on a
+// Machines is every machine this device can reach, for `codeaf devices` on a
 // surface and for a door that wants to say which names it knows.
 func Machines() ([]Known, error) { return MachineBook().Machines() }

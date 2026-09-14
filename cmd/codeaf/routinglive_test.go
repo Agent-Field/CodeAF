@@ -24,7 +24,7 @@ import (
 func TestTheProfileDoorInstallsTheRoutingRowAndHandsDownNone(t *testing.T) {
 	before := provider.RoutingNow()
 	t.Cleanup(func() { provider.InstallRouting(before) })
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyRouting)
 	if !ok || row.Apply(config.RoutingLatency) != nil {

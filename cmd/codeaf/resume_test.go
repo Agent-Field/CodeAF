@@ -40,7 +40,7 @@ func TestRecentSessionsListsThisDirectorysConversations(t *testing.T) {
 		`{"type":"message","role":"assistant","content":"done","timestamp":"2026-08-16T15:04:07Z"}`,
 		`{"type":"message","role":"user","content":"now run the migration","timestamp":"2026-08-16T15:05:00Z"}`,
 		`{"type":"title","title":"port the resume picker","timestamp":"2026-08-16T15:05:01Z"}`)
-	// Opened and never spoken in — the file a `aforge resume` that was escaped
+	// Opened and never spoken in — the file a `codeaf resume` that was escaped
 	// out of leaves behind. It is not a conversation and not a row.
 	write("00000000000000a3",
 		`{"type":"session","version":1,"id":"s-3","timestamp":"2026-08-16T16:00:00Z"}`)
@@ -79,11 +79,11 @@ func TestRecentSessionsIsEmptyBeforeTheFirstConversation(t *testing.T) {
 	}
 }
 
-// `aforge resume` opens a picker, and a picker needs somebody watching it.
+// `codeaf resume` opens a picker, and a picker needs somebody watching it.
 func TestResumeRefusesTheHeadlessDoor(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	err := runResumeV3([]string{"--once", "hello"})
-	if err == nil || !strings.Contains(err.Error(), "aforge chat --once") {
+	if err == nil || !strings.Contains(err.Error(), "codeaf chat --once") {
 		t.Fatalf("resume --once said %v, want the door it should have used", err)
 	}
 }

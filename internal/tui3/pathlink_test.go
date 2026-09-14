@@ -328,7 +328,7 @@ func TestFlattenSkipsAHyperlinkWhole(t *testing.T) {
 }
 
 // END TO END, through the frame a person is actually looking at: the model's
-// prose, aforge's own note, and a tool row's target all carry a link, and the
+// prose, codeaf's own note, and a tool row's target all carry a link, and the
 // tool row's does so even though the row was too narrow to show the path.
 func TestTheFrameLinksProseNotesAndToolTargets(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"internal/tui3/pathlink.go": 8})

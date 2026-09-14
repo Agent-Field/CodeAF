@@ -213,7 +213,7 @@ func TestAFamilyWithNoBaselineLandsTheWayItAlwaysDid(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the line the task wrote\n")
 	writeFile(t, filepath.Join(ground, "notes.md"), "the line the person typed\n")
 	// The older build's folder: a copy, and nothing written down beside it.
-	if err := os.Remove(filepath.Join(tree.dir, aforgeDroppings, groundBaselineRecord)); err != nil {
+	if err := os.Remove(filepath.Join(tree.dir, codeafDroppings, groundBaselineRecord)); err != nil {
 		t.Fatalf("remove the record: %v", err)
 	}
 

@@ -1,6 +1,6 @@
 // The model-call log from the command line.
 //
-// `aforge logs` is the reading end of internal/calllog: the file every model
+// `codeaf logs` is the reading end of internal/calllog: the file every model
 // call in the process writes a line to, always, without a proxy in front of
 // anything. The file is JSON Lines because a machine reads it too; this command
 // exists because a person does not want to.
@@ -32,7 +32,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// defaultLogTail is how many calls `aforge logs` shows when nobody says. Forty
+// defaultLogTail is how many calls `codeaf logs` shows when nobody says. Forty
 // is a few minutes of a busy run — enough to hold the call that went wrong and
 // the ones around it, short enough to read in a terminal without scrolling.
 const defaultLogTail = 40
@@ -56,10 +56,10 @@ const (
 
 func runLogs(args []string) error {
 	// Resolved from the profile directory the same way every other durable
-	// aforge file is, rather than from the running log's own singleton: this
+	// codeaf file is, rather than from the running log's own singleton: this
 	// process has not loaded a config and has opened nothing.
 	return runLogsWith(args, os.Stdout,
-		calllog.PathFor(strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))), time.Now)
+		calllog.PathFor(strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))), time.Now)
 }
 
 // runLogsWith is the command with its two outside readings injectable: where
@@ -82,7 +82,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge logs [--tail N] [--follow] [--path] [--json] " +
+		return fmt.Errorf("usage: codeaf logs [--tail N] [--follow] [--path] [--json] " +
 			"[--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]")
 	}
 	// --body is answered before the ledger's own switch is consulted, because
@@ -105,7 +105,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	// WHERE THE LOG IS IS COMMENTARY, NOT THE ANSWER, so it is written to the
 	// aside in both modes (streams.go). It used to be the first line on stdout
 	// with `--json` special-cased out of it — which was the right instinct
-	// reached by the wrong road: `aforge logs | grep -c .` counted one call too
+	// reached by the wrong road: `codeaf logs | grep -c .` counted one call too
 	// many, and `--path` exists precisely because that line is not the rows.
 	// With the line where it belongs the special case disappears.
 	fmt.Fprintln(aside, path)
@@ -139,7 +139,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	//
 	// A lookup that found nothing and left with 0 tells the script that ran it
 	// the run exists and made no calls — which is the same answer it gets for a
-	// run that really did exist and really made none. `aforge notebook retract
+	// run that really did exist and really made none. `codeaf notebook retract
 	// 999` has always had this right; this door had not.
 	//
 	// The rung is exitCannotRun, and the sentence above stays on stdout: the
@@ -604,7 +604,7 @@ func compactFields(fields []string) []string {
 // recordDirFor names the folder the bodies live in: the one the ledger itself
 // is in, which is `<state root>/logs` wherever the ledger has not been moved by
 // hand. Keying it to the ledger rather than to the state root means a person
-// who pointed AFORGE_CALL_LOG somewhere they could watch finds the bodies in
+// who pointed CODEAF_CALL_LOG somewhere they could watch finds the bodies in
 // the same place they are watching.
 func recordDirFor(path string) string {
 	if strings.TrimSpace(path) == "" {

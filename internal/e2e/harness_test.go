@@ -46,8 +46,8 @@ import (
 const e2eModel = "deepseek/deepseek-v4-flash"
 
 // personConfig is the credentials this lane borrows: the profile in the
-// person's OWN aforge home, read before the throwaway one is put in front of
-// it. It is COPIED into that throwaway AFORGE_HOME and never read out loud,
+// person's OWN codeaf home, read before the throwaway one is put in front of
+// it. It is COPIED into that throwaway CODEAF_HOME and never read out loud,
 // because it holds the person's key.
 //
 // IT IS RESOLVED, NOT SPELLED. It was a constant naming one machine's home
@@ -55,7 +55,7 @@ const e2eModel = "deepseek/deepseek-v4-flash"
 // the phase clock — skipped with "no provider credentials", which reads as a
 // key that was never set rather than as a path that was never yours. Resolving
 // through [home.InheritedDir] honours the same override the binary does, so a
-// person who runs aforge out of AFORGE_HOME runs this lane out of it too.
+// person who runs codeaf out of CODEAF_HOME runs this lane out of it too.
 //
 // It is the INHERITED root and not [home.Dir], which hands a test binary a
 // throwaway root of its own so that a suite cannot write into a person's state
@@ -69,7 +69,7 @@ func personConfig() string {
 
 // ── the throwaway machine ───────────────────────────────────────────────────
 
-// world is one disposable aforge home with the person's provider credentials
+// world is one disposable codeaf home with the person's provider credentials
 // in it: the settings the door loads, the standing store the door opens, and
 // the roles source the door resolves auxiliary models through.
 type world struct {
@@ -83,7 +83,7 @@ type world struct {
 	spent float64
 }
 
-// newWorld builds it. AFORGE_HOME is the one seam that moves every path
+// newWorld builds it. CODEAF_HOME is the one seam that moves every path
 // (internal/home), so the store, the profile and the artifacts index all land
 // under a directory the test owns.
 func newWorld(t *testing.T) *world {
@@ -98,10 +98,10 @@ func newWorld(t *testing.T) *world {
 	profile := personConfig()
 	dir := t.TempDir()
 	t.Setenv(home.EnvVar, dir)
-	// AFORGE_PROFILE_DIR is the narrow override that would move the profile
-	// out from under AFORGE_HOME. Cleared, so config.BudgetConfigPath("")
+	// CODEAF_PROFILE_DIR is the narrow override that would move the profile
+	// out from under CODEAF_HOME. Cleared, so config.BudgetConfigPath("")
 	// answers <dir>/config.json — the file copied one line down.
-	t.Setenv("AFORGE_PROFILE_DIR", "")
+	t.Setenv("CODEAF_PROFILE_DIR", "")
 
 	// A PROFILE THAT IS NOT THERE IS NO LONGER A SKIP. It was, and that made a
 	// second way for this lane to go green without running: a machine whose key
@@ -172,7 +172,7 @@ func newWorld(t *testing.T) *world {
 	if err != nil {
 		t.Fatalf("standing.Open: %v", err)
 	}
-	t.Logf("AFORGE_HOME=%s  model=%s  standing root=%s", dir, e2eModel, store.Root())
+	t.Logf("CODEAF_HOME=%s  model=%s  standing root=%s", dir, e2eModel, store.Root())
 	return &world{t: t, home: dir, settings: settings, store: store}
 }
 

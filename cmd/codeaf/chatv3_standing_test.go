@@ -12,12 +12,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// THE STORE IS UNDER THE STATE ROOT AND NOWHERE ELSE, so AFORGE_HOME moves the
+// THE STORE IS UNDER THE STATE ROOT AND NOWHERE ELSE, so CODEAF_HOME moves the
 // ambient side with everything else it moves. A second spelling of this path
 // would be two stores with half a person's reminders in each.
 func TestStandingLivesUnderTheStateRoot(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	if got, want := v3StandingRoot(), home.Join("v3", "standing"); got != want {
 		t.Fatalf("standing root = %q, want %q", got, want)
 	}
@@ -31,7 +31,7 @@ func TestStandingLivesUnderTheStateRoot(t *testing.T) {
 // ambient side being off — the absence law, not a broken tool.
 func TestStandingSeamOpensTheStoreAtThatPath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	seam := v3Standing(t.TempDir())
 	if seam == nil || seam.Store == nil {
 		t.Fatal("the door built no standing seam")
@@ -131,7 +131,7 @@ func TestARepairThatFailedSaysSoInTheLog(t *testing.T) {
 // naming the program that is.
 func TestTheRepairRewritesADefinitionThatNamesADeadPath(t *testing.T) {
 	homeDir := t.TempDir()
-	gone := filepath.Join(t.TempDir(), "aforge-that-moved")
+	gone := filepath.Join(t.TempDir(), "codeaf-that-moved")
 	if err := os.WriteFile(gone, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestTheRepairRewritesADefinitionThatNamesADeadPath(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 
-	here := filepath.Join(t.TempDir(), "aforge")
+	here := filepath.Join(t.TempDir(), "codeaf")
 	if err := os.WriteFile(here, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

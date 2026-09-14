@@ -14,7 +14,7 @@ import (
 // declared a belt. It is a FIXTURE AND A PATTERN NOWHERE: the detector reads
 // shape — declared name fenced in delimiters, delimiter-dense text — so this
 // stays true for the next provider's grammar too.
-const leakedGrammar = `<｜DSML｜_web_search>{"query":"aforge harness token speed"}<｜/DSML｜_web_search><｜DSML｜tool_calls_end｜>`
+const leakedGrammar = `<｜DSML｜_web_search>{"query":"codeaf harness token speed"}<｜/DSML｜_web_search><｜DSML｜tool_calls_end｜>`
 
 func machineryTools(names ...string) []ai.ToolDefinition {
 	tools := make([]ai.ToolDefinition, 0, len(names))

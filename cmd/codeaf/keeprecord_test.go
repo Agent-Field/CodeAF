@@ -44,7 +44,7 @@ func TestAFailedHeadlessRunKeepsItsRecord(t *testing.T) {
 	}
 }
 
-// `aforge exec` runs one leaf, and every model call it makes belongs to that
+// `codeaf exec` runs one leaf, and every model call it makes belongs to that
 // leaf. The key is what puts the node on the call-log row: without it the whole
 // run's rows name no work at all, and a person reading the record afterwards
 // cannot tell an exec call from a call with nothing behind it.
@@ -144,7 +144,7 @@ func TestARunSaysWhichOfTheTwoEndingsItGot(t *testing.T) {
 func TestARunThatNeverStartedKeepsNoRecord(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(homepkg.EnvVar, root)
-	t.Setenv("AFORGE_PROFILE_DIR", root)
+	t.Setenv("CODEAF_PROFILE_DIR", root)
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 

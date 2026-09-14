@@ -339,7 +339,7 @@ func foldMarkerTarget(t *testing.T, marker string) (path string, from, to int) {
 // line span, a path alone when the lines cannot be named, and the honest
 // fallback when there is no file at all.
 func TestFoldMarkerNamesAGrepableJournalPath(t *testing.T) {
-	const journal = "/home/x/.aforge/v3/sessions/abc.jsonl"
+	const journal = "/home/x/.codeaf/v3/sessions/abc.jsonl"
 	cases := []struct {
 		journal  string
 		from, to int

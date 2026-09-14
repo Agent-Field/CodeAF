@@ -19,7 +19,7 @@ import (
 //
 // It is assembled here for the reason every other registry on this path is
 // (chatv3_harness.go): where the bundles live is the SURFACE'S decision, and a
-// package that opened ~/.aforge/subharnesses itself would open it from a test and
+// package that opened ~/.codeaf/subharnesses itself would open it from a test and
 // from a task node's own agent too. internal/session is handed the four seams and
 // nothing about a directory.
 //

@@ -100,7 +100,7 @@ func toolGloss(name, arguments string) string {
 		if page := glossArg(args, "page"); page != "" {
 			return "reading the manual on " + quoteGloss(page)
 		}
-		return "reading aforge's own manual"
+		return "reading codeaf's own manual"
 	case beltToolResult:
 		// The subject rides at the END of every gloss here, and it is a grammar
 		// rule rather than a preference: the summary row downstream says what

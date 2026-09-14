@@ -38,10 +38,10 @@ func TestBothSurfacesSendTheirMachineryOutOfTheLeafsDirectory(t *testing.T) {
 	}
 
 	// The headless surface: the workspace may be a person's repository, so the
-	// machinery goes to aforge's own state root rather than to a sibling of it.
-	headless := home.Join("scratch", "aforge-abc123")
+	// machinery goes to codeaf's own state root rather than to a sibling of it.
+	headless := home.Join("scratch", "codeaf-abc123")
 	if !within(state, headless) {
-		t.Fatalf("the headless scratch home %s is outside aforge's state root %s", headless, state)
+		t.Fatalf("the headless scratch home %s is outside codeaf's state root %s", headless, state)
 	}
 	repository := filepath.Join(t.TempDir(), "someones-project")
 	if within(repository, headless) {

@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// LockFileEx is range based. Every AForge lock uses the same first byte, which
+// LockFileEx is range based. Every codeaf lock uses the same first byte, which
 // gives Windows the same whole-lock-file coordination contract as flock.
 func Lock(file *os.File, exclusive, nonBlocking bool) error {
 	var flags uint32

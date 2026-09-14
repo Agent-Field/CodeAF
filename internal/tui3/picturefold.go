@@ -183,7 +183,7 @@ type pictureOpenedMsg struct {
 func (a *app) openMediaOriginal(item mediaItem) tea.Cmd {
 	// The viewer must run beside the person, not on the SSH server.
 	if a.remote {
-		a.note("This terminal is over SSH. Use aforge --host from your computer to open the original, or copy this file: " + drawableLine(item.path))
+		a.note("This terminal is over SSH. Use codeaf --host from your computer to open the original, or copy this file: " + drawableLine(item.path))
 		return nil
 	}
 	if !item.here && a.rfiles != nil {

@@ -1269,13 +1269,13 @@ func orchestrateDigest(child *Agent, changed []string) string {
 }
 
 // orchestrateJournalPath is where one node's transcript lives, under the run
-// that asked for it: ~/.aforge/v3/runs/<session>/<run>/<node>.jsonl.
+// that asked for it: ~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl.
 //
 // It is a REAL SESSION FILE for taskJournalPath's reason — the node is an
 // agent, and everything it did should be readable with the same tools.
 //
 // ONE HOME, ONE SEAM. The state root comes from internal/home, exactly as
-// taskJournalPath's legacy branch does, so AFORGE_HOME moves a run's
+// taskJournalPath's legacy branch does, so CODEAF_HOME moves a run's
 // transcripts with every other v3 file. Reading os.UserHomeDir here instead was
 // the bug that left node journals in the real home while everything else in the
 // process had been pointed somewhere disposable.

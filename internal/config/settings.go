@@ -67,14 +67,14 @@ const (
 	// CategorySpending is every dollar the product will spend without asking,
 	// and NOTHING that is not a dollar.
 	CategorySpending = "spending"
-	// CategorySafety is what aforge may do without asking you first: the
+	// CategorySafety is what codeaf may do without asking you first: the
 	// approval gate, its exceptions, the model that stands in for you, and the
 	// two clocks that answer when nobody does.
 	CategorySafety = "safety"
 	// CategoryTasks is how work you can walk away from is run — how it starts,
 	// how it is checked, how much of it happens at once, and on whose hands.
 	CategoryTasks = "tasks"
-	// CategoryPractice is what aforge does with its own time, and what it
+	// CategoryPractice is what codeaf does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
 	// CategoryInterface is how the surface draws itself, and how it signs the
@@ -115,7 +115,7 @@ const (
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
 	// what was typed, and what was half-typed. They are one pair of questions —
-	// "may aforge remember my own words between sessions" — and they are two
+	// "may codeaf remember my own words between sessions" — and they are two
 	// rows rather than one because they answer it at different depths: history
 	// is every prompt ever submitted from this machine, the draft is the single
 	// unsent sentence in front of you right now, and a person who wants the
@@ -156,7 +156,7 @@ const (
 	// the start, which is what a person who reads every prompt wants.
 	KeyConsentTimeout = "approval.timeout_seconds"
 
-	// KeyPromptProfile is how much aforge puts in front of the model before a
+	// KeyPromptProfile is how much codeaf puts in front of the model before a
 	// person has typed: the whole page and the whole tool list, or the lean
 	// pair a small window can afford (internal/session's promptprofile.go).
 	//
@@ -222,7 +222,7 @@ const (
 	//
 	// THIS COMMENT SAID "OFF IS THE DEFAULT" while [DefaultMouse] said on, and a
 	// stale sentence here is the expensive kind: it is the first thing anybody
-	// reads when the answer to "does aforge ask for the mouse at all" decides
+	// reads when the answer to "does codeaf ask for the mouse at all" decides
 	// whether a pointer bug is in this program or in the terminal. One source of
 	// truth — [MouseModes] states the choice and [DefaultMouse] states the
 	// answer, and this row's doc may not contradict either.
@@ -306,7 +306,7 @@ const (
 	KeyMemoryEnabled = "memory.enabled"
 
 	// KeyStandingBackground is whether this machine's own scheduler keeps
-	// standing items current when no aforge window is open (internal/standing's
+	// standing items current when no codeaf window is open (internal/standing's
 	// watch.go). It is dotted with the other v3 keys, under `standing.` because
 	// that is the thing it is about, and it is PROFILE-ONLY — deliberately
 	// absent from [ProjectKeys]: installing a timer is a change to somebody's
@@ -694,7 +694,7 @@ const DefaultPromptProfile = PromptProfileAuto
 // row takes. It is spelled here and read from here by internal/session's
 // promptprofile.go, because a pin the sheet renders read-only and a pin the
 // engine obeys must be one string or they drift.
-const EnvPromptProfile = "AFORGE_PROMPT_PROFILE"
+const EnvPromptProfile = "CODEAF_PROMPT_PROFILE"
 
 // The background-checks row's two answers.
 const (
@@ -1010,7 +1010,7 @@ const (
 	DefaultMastermindModel = "z-ai/glm-5.3"
 )
 
-// DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
+// DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
 
 // SearchProviderAuto is the row's default: no pin, and internal/search walks
@@ -1036,62 +1036,62 @@ var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "e
 // planner internals. They are listed read-only in the sheet's environment
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
-	"AFORGE_BASE_URL",
-	// AFORGE_HOME moves the graph, workspace, craft repository and resident
+	"CODEAF_BASE_URL",
+	// CODEAF_HOME moves the graph, workspace, craft repository and resident
 	// lease somewhere else in one word. It is plumbing rather than a setting
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
-	"AFORGE_HOME",
-	// AFORGE_RELAY points a headless peer at the relay this host pairs through
+	"CODEAF_HOME",
+	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
-	// AFORGE_BASE_URL is.
-	"AFORGE_RELAY",
-	// AFORGE_FURROW names a furrow to use instead of the one aforge carries
+	// CODEAF_BASE_URL is.
+	"CODEAF_RELAY",
+	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
-	"AFORGE_FURROW",
+	"CODEAF_FURROW",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is a constant in internal/provider that nothing
 	// reads from the environment any more. A footer that still listed them
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
-	"AFORGE_PROFILE_DIR",
-	// The two pins on the model-call log (internal/calllog). AFORGE_CALL_LOG
-	// switches it off or moves the file; AFORGE_CALL_LOG_BODIES adds the whole
+	"CODEAF_PROFILE_DIR",
+	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
+	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
 	// and the second one emphatically so: a row in the sheet offering to record
 	// every prompt a person ever sends is not a preference, it is a decision
 	// somebody should have to make on purpose, in a shell, for one run.
-	"AFORGE_CALL_LOG",
-	"AFORGE_CALL_LOG_BODIES",
+	"CODEAF_CALL_LOG",
+	"CODEAF_CALL_LOG_BODIES",
 	// THE DEBUG RECORD'S SWITCH AND ITS TWO CEILINGS (internal/trace).
-	// AFORGE_DEBUG turns on the full record of a run — the bodies of its model
+	// CODEAF_DEBUG turns on the full record of a run — the bodies of its model
 	// calls, its tool calls and the choices it made, in one folder per run under
 	// the state root — and it is the same switch as `--debug` on chat, do and
-	// exec and as `/debug` inside a conversation. AFORGE_CALL_LOG_BODIES above
+	// exec and as `/debug` inside a conversation. CODEAF_CALL_LOG_BODIES above
 	// means the same thing for one release, which is why it is written beside
-	// this one rather than anywhere else. AFORGE_TRACE_MAX_MB moves what one
-	// run's folder may hold and AFORGE_TRACE_KEEP how many run folders survive.
+	// this one rather than anywhere else. CODEAF_TRACE_MAX_MB moves what one
+	// run's folder may hold and CODEAF_TRACE_KEEP how many run folders survive.
 	//
 	// All three are plumbing for exactly the reason the bodies pin is: what they
 	// record is the person's own prompts and files, and a sheet row offering to
 	// keep all of that is not a preference — it is a decision somebody should
 	// have to make on purpose, in a shell, for one run.
-	"AFORGE_DEBUG",
-	"AFORGE_TRACE_MAX_MB",
-	"AFORGE_TRACE_KEEP",
-	"AFORGE_MODELS",
-	"AFORGE_REASONING",
-	"AFORGE_EXEC_REASONING",
-	// The three `aforge exec` walls. They are plumbing rather than settings
+	"CODEAF_DEBUG",
+	"CODEAF_TRACE_MAX_MB",
+	"CODEAF_TRACE_KEEP",
+	"CODEAF_MODELS",
+	"CODEAF_REASONING",
+	"CODEAF_EXEC_REASONING",
+	// The three `codeaf exec` walls. They are plumbing rather than settings
 	// for the reason the node budget is: they are the ceilings one headless
 	// invocation runs under, set by the harness that made the call, and the
 	// preference the product actually has an opinion about is the daily rail.
 	// A sheet row offering to persist them would be offering to cap a
 	// conversation nobody is holding.
-	"AFORGE_EXEC_TURNS",
-	"AFORGE_EXEC_BUDGET",
-	"AFORGE_EXEC_TIMEOUT",
+	"CODEAF_EXEC_TURNS",
+	"CODEAF_EXEC_BUDGET",
+	"CODEAF_EXEC_TIMEOUT",
 	// The two walls an UNATTENDED conversation carries its own work on under
 	// (--max-hours / --max-cost, internal/session's principal.go). They are
 	// plumbing for exactly the reason the three above are: they are the ceilings
@@ -1099,24 +1099,24 @@ var OperatorEnvPins = []string{
 	// offering to persist them would be offering to make every future
 	// conversation an unattended one. The preference the product has an opinion
 	// about is the daily rail, and it is a row already.
-	"AFORGE_MAX_HOURS",
-	"AFORGE_MAX_COST",
-	"AFORGE_SPINE_SAMPLES",
-	"AFORGE_MAX_DEPTH",
-	"AFORGE_NODE_BUDGET",
-	"AFORGE_SKILL_DIR",
-	"AFORGE_SKILLS_BIN",
-	"AFORGE_RTK",
-	"AFORGE_RTK_BIN",
-	"AFORGE_PREAUTHORIZE_SPEND",
-	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
+	"CODEAF_MAX_HOURS",
+	"CODEAF_MAX_COST",
+	"CODEAF_SPINE_SAMPLES",
+	"CODEAF_MAX_DEPTH",
+	"CODEAF_NODE_BUDGET",
+	"CODEAF_SKILL_DIR",
+	"CODEAF_SKILLS_BIN",
+	"CODEAF_RTK",
+	"CODEAF_RTK_BIN",
+	"CODEAF_PREAUTHORIZE_SPEND",
+	// CODEAF_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,
-	// because there is no question a person using aforge would ask that it
+	// because there is no question a person using codeaf would ask that it
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
-	"AFORGE_WIRE_LOG",
-	// AFORGE_QUESTION_DEMO names one of the fixture questions the question page
+	"CODEAF_WIRE_LOG",
+	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through
 	// a test's string comparison. It is the same trade `make demo-home` makes
@@ -1125,22 +1125,22 @@ var OperatorEnvPins = []string{
 	// writes nothing anywhere, and it goes the day the ask tool and the cards
 	// give the page real questions. A row offering to persist it would be
 	// offering to open a fixture over somebody's conversation every launch.
-	"AFORGE_QUESTION_DEMO",
-	// AFORGE_PROMPT_PROFILE used to sit here, on the reasoning that the profile
+	"CODEAF_QUESTION_DEMO",
+	// CODEAF_PROMPT_PROFILE used to sit here, on the reasoning that the profile
 	// is derived and the pin belongs to a bench measuring one arm against the
 	// other. It is a settings row's pin now ([KeyPromptProfile]), because the
 	// derivation can be wrong about an endpoint that misreports its window and
 	// a person needs somewhere to say so. The sheet renders that row read-only
 	// while the variable is set, which is what the entry here could never do.
-	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
+	// CODEAF_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
 	// plumbing rather than a preference — a wave's escape hatch — and it has
 	// the same lifetime a persisted setting must not have: it disappears once the gate
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
-	"AFORGE_GROWTH_GATE",
-	// AFORGE_SWARM is cooperative decomposition's ESCAPE HATCH, and it used to
+	"CODEAF_GROWTH_GATE",
+	// CODEAF_SWARM is cooperative decomposition's ESCAPE HATCH, and it used to
 	// be its arming switch (config.go's Config.Swarm). ON IS NOW THE DEFAULT
 	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
 	// task's worker carries divide_work, and the sizing judgments read measured
@@ -1150,8 +1150,8 @@ var OperatorEnvPins = []string{
 	// opinion about — and it has the same lifetime: it
 	// disappears when nobody has a reason to turn the default off any more,
 	// which is exactly the lifetime a persisted setting must not have.
-	"AFORGE_SWARM",
-	// AFORGE_SPLITGATE names which reading of the split gate the binary runs
+	"CODEAF_SWARM",
+	// CODEAF_SPLITGATE names which reading of the split gate the binary runs
 	// (internal/splitgate, read by cmd/codeaf/cooperative.go and by
 	// internal/session's task_divide.go). UNSET IS OFF: every division the
 	// planner or a worker drew is kept, and nothing here counts anything. `1`
@@ -1166,36 +1166,36 @@ var OperatorEnvPins = []string{
 	// ran four planner arms against four readings of this gate over 273 judged
 	// plan draws, and the front it drew is the planner with the gate off —
 	// docs/design/plan-gate-doe/REPORT.md, issues #418 and #384. It is plumbing
-	// for the reason AFORGE_SWARM is — it picks which decomposition doctrine the
+	// for the reason CODEAF_SWARM is — it picks which decomposition doctrine the
 	// binary runs, not something the product has an opinion about — and it has
 	// the same lifetime: it disappears when nobody has a reason to reach for a
 	// floor any more, which is exactly the lifetime a persisted setting must not
 	// have.
-	"AFORGE_SPLITGATE",
-	// AFORGE_MECHANISM names which coordination mechanism the binary arms —
+	"CODEAF_SPLITGATE",
+	// CODEAF_MECHANISM names which coordination mechanism the binary arms —
 	// today its one recognized word is `quorum`, which sets Config.Quorum the
-	// same way AFORGE_QUORUM does (config.go). It is plumbing for the reason
+	// same way CODEAF_QUORUM does (config.go). It is plumbing for the reason
 	// its siblings are — it picks a doctrine under benchmark, not a
 	// preference — and it shares their lifetime: it disappears when one
 	// mechanism has won.
-	"AFORGE_MECHANISM",
-	// AFORGE_QUORUM is the two-verifier gate's arming switch
+	"CODEAF_MECHANISM",
+	// CODEAF_QUORUM is the two-verifier gate's arming switch
 	// (config.go's Config.Quorum): on, a passed deliverable is independently
 	// verified by two cheap validators before it commits; off, the judge's
-	// pass is the final word. Same lifetime as AFORGE_SWARM.
-	"AFORGE_QUORUM",
-	// AFORGE_EXIT_CODES is the migration hatch for the ONE EXIT LADDER
+	// pass is the final word. Same lifetime as CODEAF_SWARM.
+	"CODEAF_QUORUM",
+	// CODEAF_EXIT_CODES is the migration hatch for the ONE EXIT LADDER
 	// (cmd/codeaf/envelope.go). It takes exactly one word, `legacy`, and unset
 	// — which is every ordinary run — means the ladder every headless verb now
 	// leaves on: 0 done, 1 it could not be run at all, 2 it ran and did not
 	// finish, 3 a limit you set stopped it, 4 it needed an answer and nobody
-	// was there. What it decides: whether `aforge exec` returns its OLD
+	// was there. What it decides: whether `codeaf exec` returns its OLD
 	// 2/3/4/5/6 instead, so that a harness written against those numbers keeps
-	// working while it is being fixed. It decides nothing about `aforge do`,
-	// nothing about `aforge run subharness`, and nothing about `--json`.
+	// working while it is being fixed. It decides nothing about `codeaf do`,
+	// nothing about `codeaf run subharness`, and nothing about `--json`.
 	//
-	// IT IS PLUMBING AND NOT A ROW, for the reason AFORGE_SWARM and
-	// AFORGE_SPLITGATE are: it is a wave's escape hatch, it lives for one
+	// IT IS PLUMBING AND NOT A ROW, for the reason CODEAF_SWARM and
+	// CODEAF_SPLITGATE are: it is a wave's escape hatch, it lives for one
 	// release and then goes, and that is exactly the lifetime a persisted
 	// setting must not have. A row would also be worse than useless here — a
 	// person who set `legacy` in the sheet once would have their exit codes
@@ -1203,22 +1203,22 @@ var OperatorEnvPins = []string{
 	// which is the failure the hatch exists to prevent, not to cause. The
 	// scripts that need it set it in the environment beside the command, which
 	// is where a compatibility switch belongs.
-	"AFORGE_EXIT_CODES",
+	"CODEAF_EXIT_CODES",
 	// The three numbers the response boundary reads (internal/taxonomy, and
 	// [ResponseAttemptsAt] below). They are plumbing rather than rows for the
 	// reason the context-budget pins are: nobody sets them to express a
 	// preference, they are turned when a specific provider is behaving badly or
 	// when a run is being held to a price, and the sheet already has the two
 	// rows a person actually budgets with — the daily rail and the repair count.
-	"AFORGE_RESPONSE_ATTEMPTS",
-	"AFORGE_RESPONSE_LIFT_AFTER",
-	"AFORGE_RESPONSE_LIFT_CAP",
+	"CODEAF_RESPONSE_ATTEMPTS",
+	"CODEAF_RESPONSE_LIFT_AFTER",
+	"CODEAF_RESPONSE_LIFT_CAP",
 	// The fixture door onto the question page (internal/tui3/questiondemo.go).
 	// It names a case for one launch so the page can be SEEN full before
 	// anything in the program raises such a question — `make demo-home`'s
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
-	"AFORGE_QUESTION_DEMO",
+	"CODEAF_QUESTION_DEMO",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -1319,7 +1319,7 @@ const (
 	DefaultTaskParallel = 0
 
 	// DefaultTaskMaxLoad is one and a half runnable threads per core, which is
-	// the number an earlier incident settled on: aforge pinning a laptop's fan
+	// the number an earlier incident settled on: codeaf pinning a laptop's fan
 	// by running real compilers and real test suites beside each other
 	// (internal/exec's governor.go carries the same figure for the same class of
 	// work). Below it the machine is busy; at it, the scheduler is handing out
@@ -1628,7 +1628,7 @@ type SettingsOptions struct {
 	ModelCost func(slug string) string
 
 	// BackgroundChecks is this machine's own scheduler as internal/standing
-	// drives it: the launchd agent or systemd user timer that runs `aforge tick`
+	// drives it: the launchd agent or systemd user timer that runs `codeaf tick`
 	// every [standing.Interval] so standing items are checked with no window
 	// open. It is what the `standing.background` row reads and writes.
 	//
@@ -1753,9 +1753,9 @@ func (s *Settings) build() []Setting {
 		// They sit with the models because that is the question they answer.
 		Setting{
 			Key: KeyVisionModel, Category: CategoryModels, Kind: SettingText,
-			Label: "looking", Env: "AFORGE_VISION_MODEL", EmptyLabel: "automatic",
-			Hint: "the model that looks at images. Leave it blank and aforge picks one that can see. " +
-				"A change lands the next time aforge starts.",
+			Label: "looking", Env: "CODEAF_VISION_MODEL", EmptyLabel: "automatic",
+			Hint: "the model that looks at images. Leave it blank and codeaf picks one that can see. " +
+				"A change lands the next time codeaf starts.",
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
 		},
@@ -1774,15 +1774,15 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyDocumentEngine, Category: CategoryModels, Kind: SettingChoice,
-			Label: "reading", Env: "AFORGE_DOC_ENGINE", Choices: DocumentEngines,
+			Label: "reading", Env: "CODEAF_DOC_ENGINE", Choices: DocumentEngines,
 			Hint: "which rung reads your documents. auto walks local, then free, then paid OCR. " +
-				"A change lands the next time aforge starts.",
+				"A change lands the next time codeaf starts.",
 			read:  func() string { return resolvedEngine(DocumentEngineAt(dir)) },
 			write: func(raw string) error { return writeChoice(dir, KeyDocumentEngine, raw, DocumentEngines) },
 		},
 
 		// Searching sits beside looking and reading because it is the third
-		// question of the same shape — which back end answers when aforge has
+		// question of the same shape — which back end answers when codeaf has
 		// to go outside the machine — and the three keys sit under it because a
 		// key is not a preference on its own: it is the thing that decides
 		// what the row above it can resolve to.
@@ -1806,7 +1806,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
-			Hint: "the key aforge talks to models with. With the default provider, a missing key " +
+			Hint: "the key codeaf talks to models with. With the default provider, a missing key " +
 				"opens connect openrouter in your browser; paste a replacement here if needed. " +
 				"Set in the shell it outranks this row. A change lands on this conversation at once.",
 			read:  func() string { return maskCredential(APIKeyAt(dir)) },
@@ -1850,8 +1850,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyGoogleOAuthClient, Category: CategoryModels, Kind: SettingText,
 			Label: "google app id", Env: "GOOGLE_OAUTH_CLIENT", EmptyLabel: "not set",
-			Hint: "the application id Google sees when aforge asks to use your account. " +
-				"Blank uses the one aforge ships with, which is what most people want — " +
+			Hint: "the application id Google sees when codeaf asks to use your account. " +
+				"Blank uses the one codeaf ships with, which is what most people want — " +
 				"fill this in only to have your own registration ask instead, and fill in " +
 				"the secret below with it. A change lands on the next session.",
 			read:  func() string { return googleOAuthClientAt(dir) },
@@ -1861,7 +1861,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyGoogleOAuthSecret, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "google app secret", Env: "GOOGLE_OAUTH_SECRET", EmptyLabel: "not set",
 			Hint: "the secret that goes with the application id above. Blank uses the one " +
-				"aforge ships with. Write both or neither: your own id against the shipped " +
+				"codeaf ships with. Write both or neither: your own id against the shipped " +
 				"secret connects nothing. A change lands on the next session.",
 			read: func() string { return maskCredential(googleOAuthSecretAt(dir)) },
 			write: func(raw string) error {
@@ -1871,8 +1871,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeySlackOAuthClient, Category: CategoryModels, Kind: SettingText,
 			Label: "slack app id", Env: "SLACK_OAUTH_CLIENT", EmptyLabel: "not set",
-			Hint: "the application id Slack sees when aforge asks to use your workspace. " +
-				"Blank uses the one aforge ships with, which is what most people want — " +
+			Hint: "the application id Slack sees when codeaf asks to use your workspace. " +
+				"Blank uses the one codeaf ships with, which is what most people want — " +
 				"fill this in only to have your own application ask instead, with proof-key " +
 				"sign-in turned on. A change lands on the next session.",
 			read:  func() string { return slackOAuthClientAt(dir) },
@@ -1881,9 +1881,9 @@ func (s *Settings) build() []Setting {
 
 		Setting{
 			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
-			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
+			Label: "daily budget", Env: "CODEAF_DAILY_BUDGET",
 			EmptyLabel: noLimitWord,
-			Hint: "what aforge may spend on your work in a day. It starts large — " +
+			Hint: "what codeaf may spend on your work in a day. It starts large — " +
 				"it is a backstop against a runaway, not a budget — so set it to what " +
 				"you actually want to spend. When the day's calls reach it, new work " +
 				"waits for midnight or for you to raise it here. " +
@@ -1894,9 +1894,9 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyPlanConsent, Category: CategorySpending, Kind: SettingDollars,
-			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
+			Label: "ask before spending", Env: "CODEAF_PLAN_CONSENT",
 			EmptyLabel: "never asks",
-			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
+			Hint: "when a planned job is estimated to cost more than this, codeaf quotes " +
 				"the step count and the price and waits for your go-ahead — it asks, it " +
 				"does not stop. Say none and it never asks.",
 			read:  func() string { return moneyValue(resolvedDollars(PlanConsentUSDAt(dir))) },
@@ -1904,18 +1904,18 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
-			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
+			Label: "practice budget", Env: "CODEAF_PRACTICE_BUDGET",
 			EmptyLabel: "practice off",
-			Hint: "the slice of the day reserved for aforge practicing on itself. When it " +
+			Hint: "the slice of the day reserved for codeaf practicing on itself. When it " +
 				"is spent, practice stops until tomorrow and your own work is untouched. " +
 				"0 is the one money row that does not mean no limit: it turns practice " +
-				"off. A change lands the next time aforge starts.",
+				"off. A change lands the next time codeaf starts.",
 			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
 		// The two consent rows sit with spending because they answer the same
-		// question about a different currency: what may aforge do without
+		// question about a different currency: what may codeaf do without
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
 			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
@@ -1931,7 +1931,7 @@ func (s *Settings) build() []Setting {
 			Label: "tool approvals", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
-				"aforge's own notes are allowed unless you name them, and everything else " +
+				"codeaf's own notes are allowed unless you name them, and everything else " +
 				"you do not name follows the setting above. Answering always on an approval " +
 				"question writes one, and it takes effect straight away.",
 			read:  func() string { return ToolApprovalsAt(dir) },
@@ -1977,7 +1977,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many providers, and they answer at very " +
-				"different speeds AND very different prices. Left alone — simple — aforge " +
+				"different speeds AND very different prices. Left alone — simple — codeaf " +
 				"sends no preference of its own at all: with no provider pinned the router's own " +
 				"default routing answers, and a provider you pinned is the whole request, that " +
 				"provider and no fallbacks. Choosing another word here changes that " +
@@ -1995,17 +1995,17 @@ func (s *Settings) build() []Setting {
 		// which machine answers; this says how much is put in front of it
 		// before you have typed. It sits with the models because that is what a
 		// person is thinking about when they touch it: this model is small, and
-		// aforge is spending its room on instructions.
+		// codeaf is spending its room on instructions.
 		Setting{
 			Key: KeyPromptProfile, Category: CategoryModels, Kind: SettingChoice,
 			Label: "prompt profile", Env: EnvPromptProfile, Choices: PromptProfileModes,
-			Hint: "how much aforge tells the model before you type. auto decides from the " +
+			Hint: "how much codeaf tells the model before you type. auto decides from the " +
 				"model's context window and is right almost always: under 32,000 tokens it " +
 				"goes lean. lean takes one section off the page, leaves seven verbs one " +
 				"load_capability call away, puts ask straight in the list, turns saved " +
 				"memories off and cuts the project's own instructions to 2KiB. full sends " +
 				"everything. Choose one of those two when the provider reports a window its " +
-				"model does not really have. A change lands the next time aforge starts.",
+				"model does not really have. A change lands the next time codeaf starts.",
 			read:  func() string { return PromptProfileAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyPromptProfile, raw, PromptProfileModes) },
 		},
@@ -2018,7 +2018,7 @@ func (s *Settings) build() []Setting {
 			Hint: "which provider answers your model, for requests from this home. One model id is served by " +
 				"a dozen providers that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets the router " +
-				"route — and aforge takes over choosing the provider when its answers start coming " +
+				"route — and codeaf takes over choosing the provider when its answers start coming " +
 				"back refused or unusable, handing it back once it has been well for a while; " +
 				"a name — `cloudflare` — pins it and nothing else is asked; " +
 				"`pinned: cloudflare, borrow when slow` keeps the pin but lets " +
@@ -2117,7 +2117,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
 			Label: "memory", Choices: MemoryModes,
-			Hint: "when on, aforge carries a handful of things across conversations: what you " +
+			Hint: "when on, codeaf carries a handful of things across conversations: what you " +
 				"asked it to remember, preferences you stated, corrections you made. A small " +
 				"model decides before each message which of them bear on it, and after each " +
 				"answer whether anything new is worth keeping. Off remembers nothing and makes " +
@@ -2127,7 +2127,7 @@ func (s *Settings) build() []Setting {
 		},
 		// The countdown sits with the two consent rows and the guardian because
 		// it answers their question in the other currency: those say what
-		// aforge may DO without asking, this says how long you get to say
+		// codeaf may DO without asking, this says how long you get to say
 		// something about work it has already decided to hand off.
 		Setting{
 			Key: KeyTaskAutoApprove, Category: CategorySafety, Kind: SettingCount,
@@ -2161,7 +2161,7 @@ func (s *Settings) build() []Setting {
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
 				"tasks back when it is loaded — and the model provider's own rate limit, which " +
-				"aforge already paces itself against. A cap is a queue, never a refusal.",
+				"codeaf already paces itself against. A cap is a queue, never a refusal.",
 			read: func() string {
 				if value := TaskParallelAt(dir); value > 0 {
 					return strconv.Itoa(value)
@@ -2173,7 +2173,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskMaxLoad, Category: CategoryTasks, Kind: SettingText,
 			Label: "busy machine", Unit: "per core",
-			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
+			Hint: "the load average per core at which codeaf stops starting new tasks — 1.5 by " +
 				"default, which is where the machine is handing out slices rather than running " +
 				"work. Tasks already running are never touched, so the queue moves again on " +
 				"its own. 0 stops watching the load.",
@@ -2221,20 +2221,20 @@ func (s *Settings) build() []Setting {
 
 		Setting{
 			Key: KeyPracticeIdle, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "quiet before practice", Env: "AFORGE_PRACTICE_IDLE",
-			Hint:  "how long the room stays quiet before aforge starts practicing.",
+			Label: "quiet before practice", Env: "CODEAF_PRACTICE_IDLE",
+			Hint:  "how long the room stays quiet before codeaf starts practicing.",
 			read:  func() string { return formatDuration(resolvedDuration(PracticeIdleAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyPracticeIdle, raw) },
 		},
 		Setting{
 			Key: KeyBriefAfter, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "arrival brief after", Env: "AFORGE_BRIEF_AFTER",
-			Hint:  "how long you have to be away before aforge greets you with a summary. 0 always briefs.",
+			Label: "arrival brief after", Env: "CODEAF_BRIEF_AFTER",
+			Hint:  "how long you have to be away before codeaf greets you with a summary. 0 always briefs.",
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
 		},
 		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
-		// actually configures for the calls aforge makes on its own — the name it
+		// actually configures for the calls codeaf makes on its own — the name it
 		// gives a session, the check on work a task says is finished, the plan an
 		// adaptive run steers by (internal/roles). Four rows, not one per feature: a new
 		// call joins a class and needs no row of its own.
@@ -2246,7 +2246,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
 			Label: "crew", Choices: CrewPresets,
-			Hint: "the five models aforge works with, chosen as one: `frugal` is glm-5.3-flash " +
+			Hint: "the five models codeaf works with, chosen as one: `frugal` is glm-5.3-flash " +
 				"thinking over deepseek-v4-flash working, `balanced` has glm-5.3 think while " +
 				"glm-5.3-flash works and qwen checks, `max` puts glm-5.3 to work with kimi-k3 " +
 				"thinking and checking. Change one of the five rows below and this reads `custom`.",
@@ -2325,8 +2325,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
-			Label: "context fill", Unit: "%", Env: "AFORGE_CONTEXT_FILL_PCT",
-			Hint: "how much of a model's context window aforge fills before it starts " +
+			Label: "context fill", Unit: "%", Env: "CODEAF_CONTEXT_FILL_PCT",
+			Hint: "how much of a model's context window codeaf fills before it starts " +
 				"compacting. Higher packs more in; the rest stays as thinking " +
 				"and answer room. Left alone, a conversation follows its own model's window " +
 				"instead — set this and it becomes the line, which /status then says. " +
@@ -2336,7 +2336,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyCompletionReserve, Category: CategoryModels, Kind: SettingCount,
-			Label: "answer room", Unit: "tok", Env: "AFORGE_COMPLETION_RESERVE",
+			Label: "answer room", Unit: "tok", Env: "CODEAF_COMPLETION_RESERVE",
 			Hint: "tokens every call keeps free for its answer and its reasoning. " +
 				"Generous costs nothing on turns that do not use it; small produces empty " +
 				"replies from a model that thinks past it. A change lands on the next call.",
@@ -2345,8 +2345,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyWorkingSet, Category: CategoryModels, Kind: SettingCount,
-			Label: "working set", Unit: "tok", Env: "AFORGE_WORKING_SET",
-			Hint: "the most material aforge keeps quoted in front of a worker at once, in tokens, " +
+			Label: "working set", Unit: "tok", Env: "CODEAF_WORKING_SET",
+			Hint: "the most material codeaf keeps quoted in front of a worker at once, in tokens, " +
 				"however large the model's window is. A huge window is permission to send a lot, " +
 				"not a reason to: past this the older material fades to pointers it can still read " +
 				"back. A change lands on the next call.",
@@ -2355,7 +2355,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextReuse, Category: CategoryModels, Kind: SettingCount,
-			Label: "context reuse", Unit: "%", Env: "AFORGE_CONTEXT_REUSE_PCT",
+			Label: "context reuse", Unit: "%", Env: "CODEAF_CONTEXT_REUSE_PCT",
 			// THE UNIT NAMES THE WHOLE, AND THE SENTENCE LEADS WITH THE WORKED
 			// EXAMPLE. A bare "as a percent" over a row whose default reads 250
 			// asks a reader to find the whole this is a percentage OF — a window,
@@ -2366,7 +2366,7 @@ func (s *Settings) build() []Setting {
 			// window would clamp above it), so the example comes before anything
 			// else the row has to say.
 			Hint: "how many times over one piece of work may re-send its whole context before " +
-				"aforge tells it to land, as a share of one whole context — 100% is once, " +
+				"codeaf tells it to land, as a share of one whole context — 100% is once, " +
 				"250% is two and a half times, and 100% is the floor. Every turn re-sends " +
 				"everything before it, so this is what stops a worker going round in circles " +
 				"at full price. A change lands on the next job.",
@@ -2388,7 +2388,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
-			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "AFORGE_TENURE_AFTER",
+			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "CODEAF_TENURE_AFTER",
 			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
@@ -2431,7 +2431,7 @@ func (s *Settings) build() []Setting {
 				"work this session has run, newest first, foldable into the shape each run " +
 				"grew. ctrl+g puts it away and brings it back; this is where the answer is " +
 				"remembered. With no column, running work still shows as a row of chips above " +
-				"the conversation. A change here lands the next time aforge starts.",
+				"the conversation. A change here lands the next time codeaf starts.",
 			read:  func() string { return formatBool(TaskColumnAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyTaskColumn, raw) },
 		},
@@ -2445,18 +2445,18 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyHistoryEnabled, Category: CategoryInterface, Kind: SettingBool,
-			Label: "input history", Env: "AFORGE_HISTORY",
+			Label: "input history", Env: "CODEAF_HISTORY",
 			Hint: "remembers the messages you send, so the up arrow walks them back in a later " +
 				"session. Turn it off and nothing is written; what is already on disk stays. " +
-				"A change lands the next time aforge starts.",
+				"A change lands the next time codeaf starts.",
 			read:  func() string { return formatBool(HistoryEnabledAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyHistoryEnabled, raw) },
 		},
 		Setting{
 			Key: KeyDraftPersist, Category: CategoryInterface, Kind: SettingBool,
-			Label: "keep drafts", Env: "AFORGE_DRAFT_PERSIST",
+			Label: "keep drafts", Env: "CODEAF_DRAFT_PERSIST",
 			Hint: "keeps the half-typed message in the box across a restart, per directory. " +
-				"A change lands the next time aforge starts.",
+				"A change lands the next time codeaf starts.",
 			read:  func() string { return formatBool(DraftPersistAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
@@ -2471,15 +2471,15 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
-			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
+			Label: "attribution", Env: "CODEAF_ATTRIBUTION",
 			// THE ROW GOVERNS BOTH SURFACES NOW, so the hint says both. The chat
 			// resolves it once when it starts (cmd/codeaf's applyV3Governance) and a
 			// job resolves it when the job begins, which is why a change lands at two
 			// different moments and the person is told which.
-			Hint: "signs the commits, pull requests, issues and comments aforge writes for " +
+			Hint: "signs the commits, pull requests, issues and comments codeaf writes for " +
 				"you — one commit trailer, one footer line on a body, one small line on the " +
 				"first comment in a thread, and nothing anywhere else. A change lands on the " +
-				"next job, and in a conversation the next time aforge starts.",
+				"next job, and in a conversation the next time codeaf starts.",
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
 		},
@@ -2731,7 +2731,7 @@ func (s *Settings) mediaModelRow(slot ModelSlot) Setting {
 // the resolver could not tell from a deliberate pin.
 //
 // A slot that is not a capability slot answers nothing at all: "talk" is the
-// conversation, and reading AFORGE_MODEL through this door would let a media
+// conversation, and reading CODEAF_MODEL through this door would let a media
 // resolver quietly take the chat model for a modality it cannot serve.
 func MediaSlotModelAt(profileDir, slot string) string {
 	slot = strings.TrimSpace(slot)
@@ -2790,9 +2790,9 @@ func (s *Settings) backgroundRow(watch standing.Watch) Setting {
 	return Setting{
 		Key: KeyStandingBackground, Category: CategoryPractice, Kind: SettingChoice,
 		Label: "background checks", Choices: BackgroundModes,
-		Hint: "whether reminders, watches and routines are checked when no aforge window " +
+		Hint: "whether reminders, watches and routines are checked when no codeaf window " +
 			"is open. On installs one small timer under your own login that runs " +
-			"`aforge tick` every " + standing.IntervalWords() + " — a launchd agent called " +
+			"`codeaf tick` every " + standing.IntervalWords() + " — a launchd agent called " +
 			standing.DarwinTickLabel + " on a Mac, a systemd user timer called " +
 			standing.LinuxTickTimer + " on Linux — and on is the default. Off removes it, and " +
 			"then things are checked only while a window is open. Either way nothing runs " +
@@ -2892,19 +2892,19 @@ func modelPrefsField(slot string) string {
 func modelSlotEnvDefault(slot string) (string, bool) {
 	switch slot {
 	case "talk", "work":
-		return "AFORGE_MODEL", true
+		return "CODEAF_MODEL", true
 	case "plan":
-		return "AFORGE_PLAN_MODEL", true
+		return "CODEAF_PLAN_MODEL", true
 	case "voice":
-		return "AFORGE_VOICE_MODEL", true
+		return "CODEAF_VOICE_MODEL", true
 	case "image":
-		return "AFORGE_IMAGE_MODEL", true
+		return "CODEAF_IMAGE_MODEL", true
 	case "speech":
-		return "AFORGE_SPEECH_MODEL", true
+		return "CODEAF_SPEECH_MODEL", true
 	case "music":
-		return "AFORGE_MUSIC_MODEL", true
+		return "CODEAF_MUSIC_MODEL", true
 	case "video":
-		return "AFORGE_VIDEO_MODEL", true
+		return "CODEAF_VIDEO_MODEL", true
 	default:
 		return "", false
 	}
@@ -2950,8 +2950,8 @@ func modelSlotHint(slot ModelSlot) string {
 
 // PlanConsentUSDAt resolves the estimate above which a plan asks first.
 func PlanConsentUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_PLAN_CONSENT")); raw != "" {
-		return validateDailyBudgetValue(raw, "AFORGE_PLAN_CONSENT")
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_PLAN_CONSENT")); raw != "" {
+		return validateDailyBudgetValue(raw, "CODEAF_PLAN_CONSENT")
 	}
 	if value, ok := persistedFloat(profileDir, KeyPlanConsent); ok && value >= 0 {
 		return value, nil
@@ -2961,8 +2961,8 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 
 // PracticeBudgetUSDAt resolves the daily self-practice carve-out.
 func PracticeBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_PRACTICE_BUDGET")); raw != "" {
-		return validateDailyBudgetValue(raw, "AFORGE_PRACTICE_BUDGET")
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_PRACTICE_BUDGET")); raw != "" {
+		return validateDailyBudgetValue(raw, "CODEAF_PRACTICE_BUDGET")
 	}
 	if value, ok := persistedFloat(profileDir, KeyPracticeBudget); ok && value >= 0 {
 		return value, nil
@@ -2972,12 +2972,12 @@ func PracticeBudgetUSDAt(profileDir string) (float64, error) {
 
 // PracticeIdleAt resolves the quiet period before self-practice.
 func PracticeIdleAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "AFORGE_PRACTICE_IDLE", KeyPracticeIdle, DefaultPracticeIdle)
+	return durationAt(profileDir, "CODEAF_PRACTICE_IDLE", KeyPracticeIdle, DefaultPracticeIdle)
 }
 
 // BriefAfterAt resolves the absence that earns an arrival brief.
 func BriefAfterAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "AFORGE_BRIEF_AFTER", KeyBriefAfter, DefaultBriefAfter)
+	return durationAt(profileDir, "CODEAF_BRIEF_AFTER", KeyBriefAfter, DefaultBriefAfter)
 }
 
 func durationAt(profileDir, envName, key string, fallback time.Duration) (time.Duration, error) {
@@ -2996,7 +2996,7 @@ func durationAt(profileDir, envName, key string, fallback time.Duration) (time.D
 
 // TenureAfterAt resolves the clean-firing count that earns a charter tenure.
 func TenureAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_TENURE_AFTER")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -3017,11 +3017,11 @@ func TenureAfterAt(profileDir string) int {
 // leave it turning. When the learning loop that wants them lands it brings its
 // own rows, and the completeness gate will make sure of it.
 
-// AttributionAt resolves whether aforge signs the git work it does for the
+// AttributionAt resolves whether codeaf signs the git work it does for the
 // user. A malformed pin reads as the default rather than refusing a launch over
 // a signature.
 func AttributionAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_ATTRIBUTION")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_ATTRIBUTION")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3034,10 +3034,10 @@ func AttributionAt(profileDir string) bool {
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
-// into ~/.aforge/v3/history.jsonl. A malformed pin reads as the default
+// into ~/.codeaf/v3/history.jsonl. A malformed pin reads as the default
 // rather than refusing a launch over a recall list.
 func HistoryEnabledAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_HISTORY")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_HISTORY")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3052,7 +3052,7 @@ func HistoryEnabledAt(profileDir string) bool {
 // DraftPersistAt resolves whether the v3 chat surface keeps the unsent draft on
 // disk between sessions. Shaped exactly like [HistoryEnabledAt].
 func DraftPersistAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_DRAFT_PERSIST")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_DRAFT_PERSIST")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3109,10 +3109,10 @@ func HintsAt(profileDir string) bool {
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_DOC_ENGINE")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_DOC_ENGINE")); raw != "" {
 		engine := strings.ToLower(raw)
 		if !knownDocumentEngine(engine) {
-			return "", fmt.Errorf("AFORGE_DOC_ENGINE: unknown engine %q (auto, local, free, ocr)", engine)
+			return "", fmt.Errorf("CODEAF_DOC_ENGINE: unknown engine %q (auto, local, free, ocr)", engine)
 		}
 		return engine, nil
 	}
@@ -3127,7 +3127,7 @@ func DocumentEngineAt(profileDir string) (string, error) {
 // VisionModelAt resolves the image-inspection proxy slot. Empty means resolve
 // from the live catalog at use.
 func VisionModelAt(profileDir string) string {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_VISION_MODEL")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_VISION_MODEL")); raw != "" {
 		return raw
 	}
 	if value, ok := persistedString(profileDir, KeyVisionModel); ok {
@@ -3141,11 +3141,11 @@ func VisionModelAt(profileDir string) string {
 // relaunch without a second lookup path. A variable the user actually set is
 // never overwritten — the environment still wins.
 func InstallPersistedEnv(profileDir string) {
-	if strings.TrimSpace(os.Getenv("AFORGE_TENURE_AFTER")) != "" {
+	if strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER")) != "" {
 		return
 	}
 	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
-		_ = os.Setenv("AFORGE_TENURE_AFTER", strconv.Itoa(value))
+		_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
 	}
 }
 
@@ -3160,7 +3160,7 @@ func InstallPersistedEnv(profileDir string) {
 // would make the same person paste the same secret twice and then wonder which
 // copy was live.
 //
-// They are the vendors' spellings rather than AFORGE_-prefixed ones for that
+// They are the vendors' spellings rather than CODEAF_-prefixed ones for that
 // same reason: the value is not ours, and renaming somebody's key variable to
 // claim it would be the product asking the world to accommodate it.
 //
@@ -3949,7 +3949,7 @@ func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 // for three times the patience now — which is a reading of their row this change
 // cannot avoid and says so in its change entry.
 func ResponseAttemptsAt(profileDir string) float64 {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_ATTEMPTS")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_ATTEMPTS")); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 1 {
 			return value
 		}
@@ -3963,7 +3963,7 @@ func ResponseAttemptsAt(profileDir string) float64 {
 
 // ResponseLiftAfterAt resolves K, the same way.
 func ResponseLiftAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_AFTER")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_LIFT_AFTER")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
 			return value
 		}
@@ -3981,7 +3981,7 @@ func ResponseLiftAfterAt(profileDir string) int {
 // 0 means no cap, and somebody who wrote it must not find one back in the
 // morning.
 func ResponseLiftCapAt(profileDir string) float64 {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_RESPONSE_LIFT_CAP")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_LIFT_CAP")); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 0 {
 			return value
 		}
@@ -4303,7 +4303,7 @@ func writeText(profileDir, key, raw string) error {
 // ContextFillAt resolves the fill law: environment pin, then the persisted
 // row, then the package default. A malformed pin reads as the default.
 func ContextFillAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_CONTEXT_FILL_PCT")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_CONTEXT_FILL_PCT")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4317,7 +4317,7 @@ func ContextFillAt(profileDir string) int {
 
 // CompletionReserveAt resolves the answer-and-reasoning reserve the same way.
 func CompletionReserveAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_COMPLETION_RESERVE")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_COMPLETION_RESERVE")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4331,7 +4331,7 @@ func CompletionReserveAt(profileDir string) int {
 
 // WorkingSetAt resolves the cap on the live working set the same way.
 func WorkingSetAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_WORKING_SET")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_WORKING_SET")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4345,7 +4345,7 @@ func WorkingSetAt(profileDir string) int {
 
 // ContextReuseAt resolves the cumulative re-send allowance the same way.
 func ContextReuseAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_CONTEXT_REUSE_PCT")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CODEAF_CONTEXT_REUSE_PCT")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4478,7 +4478,7 @@ func writeTenure(profileDir, raw string) error {
 	if err := writeProfileValue(profileDir, KeyTenureAfter, value); err != nil {
 		return err
 	}
-	_ = os.Setenv("AFORGE_TENURE_AFTER", strconv.Itoa(value))
+	_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
 	return nil
 }
 

@@ -28,7 +28,7 @@ func TestNoGoErrorChainReachesAPerson(t *testing.T) {
 	if !strings.Contains(said, "nosuch/model-xyz is not a valid model ID") {
 		t.Fatalf("the one fact a person can act on was lost:\n%s", said)
 	}
-	if !strings.Contains(said, "aforge models") || !strings.Contains(said, "--model") {
+	if !strings.Contains(said, "codeaf models") || !strings.Contains(said, "--model") {
 		t.Fatalf("the message says what went wrong and never says what to do about it:\n%s", said)
 	}
 	if !strings.Contains(said, "I couldn't apply that request") {
@@ -36,7 +36,7 @@ func TestNoGoErrorChainReachesAPerson(t *testing.T) {
 	}
 }
 
-// A cause aforge does not recognise is printed as it is. A remedy that is a
+// A cause codeaf does not recognise is printed as it is. A remedy that is a
 // guess is worse than none: it sends somebody to the wrong place with
 // confidence.
 func TestAnUnrecognisedCauseIsSaidPlainlyAndNothingIsInvented(t *testing.T) {
@@ -67,7 +67,7 @@ func TestAChainOfNothingButVerbsIsStillSaid(t *testing.T) {
 	}
 }
 
-// ── C12: A DISK FAULT IS SAID IN AFORGE'S WORDS, WITH WHAT TO DO ─────────────
+// ── C12: A DISK FAULT IS SAID IN codeaf'S WORDS, WITH WHAT TO DO ─────────────
 //
 // The five doors in the audit row spelled four different wrapping verbs in
 // front of the same operating-system sentence, and not one of them said what to
@@ -81,7 +81,7 @@ func TestAChainOfNothingButVerbsIsStillSaid(t *testing.T) {
 //
 // Every one of them arrives here, because every command in this binary reports
 // its failure through the one line in main.go.
-func TestADiskFaultIsSaidInAforgesWordsAndSaysWhatToDo(t *testing.T) {
+func TestADiskFaultIsSaidInCodeafsWordsAndSaysWhatToDo(t *testing.T) {
 	for _, probe := range []struct {
 		name  string
 		chain string
@@ -181,7 +181,7 @@ func TestAPathThatCouldNotBeMadeIsNotToldItIsSimplyMissing(t *testing.T) {
 func TestASentenceThatIsNotADiskFaultIsLeftAlone(t *testing.T) {
 	for _, sentence := range []string{
 		"I couldn't apply that request: splice parent \"task-1\" is closed",
-		"could not open /home/x/.aforge/graph.db: permission denied",
+		"could not open /home/x/.codeaf/graph.db: permission denied",
 		"the planner is unreachable",
 		"model /nope/graph.json: was refused",
 	} {

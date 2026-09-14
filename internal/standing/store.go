@@ -317,7 +317,7 @@ func (s *Store) read(path string) (Item, error) {
 		return Item{}, fmt.Errorf("standing: cannot read %s: %w", filepath.Base(path), err)
 	}
 	if item.Schema > Schema {
-		return Item{}, errors.New("standing: " + filepath.Base(path) + " was written by a newer aforge")
+		return Item{}, errors.New("standing: " + filepath.Base(path) + " was written by a newer codeaf")
 	}
 	if item.ID == "" {
 		item.ID = strings.TrimSuffix(filepath.Base(path), ".json")

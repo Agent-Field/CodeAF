@@ -94,7 +94,7 @@ func TestAConversationRootWearsAFolderTagOnlyWhereItIsNews(t *testing.T) {
 	if got := draw(root("Crafting a Multi-Page Website", "pricing", "/home/pat/code/pricing"), "/home/pat/code/pricing"); strings.Contains(got, "pricing") {
 		t.Fatalf("a chat in this window's own folder still wears its tag:\n  %s", got)
 	}
-	if got := draw(root("AI Influencers", "aforge", "/home/pat/code/aforge"), "/home/pat/code/pricing"); !strings.Contains(got, "aforge") {
+	if got := draw(root("AI Influencers", "codeaf", "/home/pat/code/codeaf"), "/home/pat/code/pricing"); !strings.Contains(got, "codeaf") {
 		t.Fatalf("another project's chat lost the one fact that places it:\n  %s", got)
 	}
 }
@@ -114,18 +114,18 @@ func TestTheReadingKnowsTheFolderThisWindowIsSittingIn(t *testing.T) {
 		Transcript: "/tmp/room-a/transcript.jsonl", Open: true, Live: true,
 	}}
 	world := session.World{Projects: []session.Project{{
-		Name: "aforge", Sessions: []session.SessionRow{{
+		Name: "codeaf", Sessions: []session.SessionRow{{
 			ID: "room-a", Title: "Sweeping the Frame Budget", Transcript: "/tmp/room-a/transcript.jsonl",
-			Project: "aforge", ProjectDir: "/home/pat/code/aforge", At: now.Add(-time.Hour),
+			Project: "codeaf", ProjectDir: "/home/pat/code/codeaf", At: now.Add(-time.Hour),
 		}},
 	}}, Read: now}
 	r := readTasks(world, mine, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
-	if r.folder != "/home/pat/code/aforge" {
+	if r.folder != "/home/pat/code/codeaf" {
 		t.Fatalf("the reading thinks this window is in %q, want the folder its own conversation names", r.folder)
 	}
 	// AND THE PAGE DOES NOT DRAW THAT FOLDER. The conversation's own title is on
 	// the page and its project's name is not, which is the whole of the rule.
-	if page := tasksPage(r, 100); strings.Contains(page, "aforge") {
+	if page := tasksPage(r, 100); strings.Contains(page, "codeaf") {
 		t.Fatalf("the page drew the folder it is already in:\n%s", page)
 	}
 }

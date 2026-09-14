@@ -124,7 +124,7 @@ func OpenEvents(dir string) (*Events, error) {
 }
 
 // Append writes one row. Rows are written whole and O_APPEND is atomic for a
-// write of this size on every platform this runs on, so two concurrent aforge
+// write of this size on every platform this runs on, so two concurrent codeaf
 // processes interleave rows without ever interleaving bytes.
 //
 // That is the one thing the buffering must not break, and it is why the buffer

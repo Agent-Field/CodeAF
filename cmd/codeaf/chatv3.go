@@ -38,7 +38,7 @@ import (
 // conversation has any business reading.
 func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 
-// runResumeV3 is `aforge resume`: the same door, opened on the session picker.
+// runResumeV3 is `codeaf resume`: the same door, opened on the session picker.
 //
 // It is one word rather than a flag on chat because it is what a person is
 // doing when they type it — coming back to a conversation, not starting one —
@@ -46,7 +46,7 @@ func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 // session, and a model or a reasoning level named on the way in is named about
 // that.
 //
-// IT DOES NOT RESUME ANYTHING BY ITSELF. The surface opens exactly as `aforge`
+// IT DOES NOT RESUME ANYTHING BY ITSELF. The surface opens exactly as `codeaf`
 // bare does, on this directory's most recent conversation, with the picker over
 // it — so esc lands where the person would have been anyway, and enter lands
 // where they asked to be. A launcher that opened on an empty session instead
@@ -54,7 +54,7 @@ func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 func runResumeV3(args []string) error { return openChatV3("resume", args, true) }
 
 // v3OpenRouterConnection is the default provider's browser door. Comparing the
-// resolved endpoint, rather than merely looking for AFORGE_BASE_URL, also does
+// resolved endpoint, rather than merely looking for CODEAF_BASE_URL, also does
 // the right thing for a caller that explicitly names the built-in address and
 // for one that carries a harmless trailing slash.
 func v3OpenRouterConnection(settings config.Config, interactive bool) func(context.Context) (tui3.OpenRouterFlow, error) {
@@ -75,9 +75,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
-	at := flags.String("at", "", "reach a machine that has no ssh, by the name `aforge serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
+	at := flags.String("at", "", "reach a machine that has no ssh, by the name `codeaf serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
 	// --no-host is the escape hatch off the local dial, and it means here
-	// exactly what it means on `aforge engine`: open this conversation in this
+	// exactly what it means on `codeaf engine`: open this conversation in this
 	// process and never look for a session host. It exists because a fallback
 	// nobody can ask for is a fallback nobody can use on the day the host
 	// itself is the thing that is wrong.
@@ -90,10 +90,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// `--max-hours 0.5`, not `6h0m0s`. Either alone is a budget; neither is the
 	// posture this build has always had. They mean nothing without --yolo, and
 	// the check below says so rather than letting a flag do nothing in silence.
-	maxHours := flags.Float64("max-hours", envFloat("AFORGE_MAX_HOURS"),
-		"how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)")
-	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
-		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
+	maxHours := flags.Float64("max-hours", envFloat("CODEAF_MAX_HOURS"),
+		"how many hours an unattended --yolo session may carry its own work on (env CODEAF_MAX_HOURS)")
+	maxCost := flags.Float64("max-cost", envFloat("CODEAF_MAX_COST"),
+		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
 		debugFlagHelp()+" · /debug turns it on mid-session")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
@@ -114,9 +114,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
+			return fmt.Errorf(`usage: codeaf resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
+		return fmt.Errorf(`usage: codeaf chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -136,7 +136,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// local host in the picture for the flag to refuse. Accepting it and doing
 	// nothing is the shrug this tree does not do, so the pair is named.
 	if *noHost && strings.TrimSpace(*host) != "" {
-		return fmt.Errorf("--no-host keeps a conversation in this process; over --host the conversation is on the far machine, so the two cannot be combined — `ssh %s aforge engine --no-host` is where that setting lives", strings.TrimSpace(*host))
+		return fmt.Errorf("--no-host keeps a conversation in this process; over --host the conversation is on the far machine, so the two cannot be combined — `ssh %s codeaf engine --no-host` is where that setting lives", strings.TrimSpace(*host))
 	}
 	if *noHost && strings.TrimSpace(*at) != "" {
 		return fmt.Errorf("--no-host keeps a conversation in this process; over --at the conversation is on the far machine, so the two cannot be combined")
@@ -167,7 +167,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// door, and the two are a contradiction rather than a combination, so it is
 	// said here — before a session file is opened — instead of being ignored.
 	if pickSession && strings.TrimSpace(*once) != "" {
-		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --once "text"`)
+		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --once "text"`)
 	}
 	// The level is validated HERE, before anything is opened, so a typo is a
 	// usage error and not a knob that silently did nothing for a whole session.
@@ -239,7 +239,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		noHost: *noHost,
 		once:   strings.TrimSpace(*once) != "",
 		// THE SWITCH AND NOT THE FLAG. --debug has already turned the record on
-		// above, and so has AFORGE_DEBUG in the shell that started this process
+		// above, and so has CODEAF_DEBUG in the shell that started this process
 		// (internal/trace's init) — both are this process being told to record,
 		// and both must keep the calls in this process to have anything to
 		// record ([v3HostChoice.debug]).
@@ -269,7 +269,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 	// Everything both v3 doors assemble the same way: the settings, the model
 	// catalog, the harness registry, the session file, and the config every
-	// governance row has landed on. `aforge engine` opens a conversation for a
+	// governance row has landed on. `codeaf engine` opens a conversation for a
 	// surface on another machine and opens it THROUGH HERE (engine.go), so a
 	// remote session is the same launch this one is rather than a second one
 	// drifting quietly away from it.
@@ -497,8 +497,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// SAME directory this launch read every governance row out of. It was
 		// missing here while the --host door supplied it (chatv3_host.go), and
 		// the gap was invisible in the ordinary case and silent in the one that
-		// mattered: with AFORGE_PROFILE_DIR set, the panel wrote into
-		// ~/.aforge/config.json while the session went on reading the profile
+		// mattered: with CODEAF_PROFILE_DIR set, the panel wrote into
+		// ~/.codeaf/config.json while the session went on reading the profile
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
@@ -572,7 +572,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// moves it here (internal/tui3's takeover.go, and [v3TakeOverInstead]
 		// above for what this window is sitting in meanwhile).
 		TakeOver: takeOver,
-		// WHETHER HOME GREETS THIS LAUNCH. It is a person opening aforge with no
+		// WHETHER HOME GREETS THIS LAUNCH. It is a person opening codeaf with no
 		// particular conversation in mind: no --session, no picker asked for,
 		// and — by the time this line runs — no --once, which returned above.
 		// The surface applies the rest of the law, including the one condition
@@ -608,12 +608,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Whether that workspace is the session's own work/ directory or a
 		// project this was opened inside of (Decision 26). The surface uses it
 		// for one thing: what to CALL the place, because an owned workspace's
-		// path is aforge's bookkeeping rather than an answer to "where am I".
+		// path is codeaf's bookkeeping rather than an answer to "where am I".
 		Owned:       launch.Place.Owned,
 		SessionFile: transcript,
 		Resumed:     resumed,
 		// AND THE LAUNCH FACTS A PERSON CAN ACT ON. The unattended boundary and
-		// a replaced aforge both ride the session-moved line — one dim row at
+		// a replaced codeaf both ride the session-moved line — one dim row at
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
@@ -640,8 +640,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 // ── the shared assembly ─────────────────────────────────────────────────────
 //
-// A conversation is the same object whoever is looking at it. `aforge chat`
-// draws it on the terminal it was typed into; `aforge engine` answers frames
+// A conversation is the same object whoever is looking at it. `codeaf chat`
+// draws it on the terminal it was typed into; `codeaf engine` answers frames
 // about it from the other end of an ssh pipe. NEITHER DOOR MAY ASSEMBLE ITS OWN
 // AGENT: two assemblies would be two sets of governance rows, two model
 // catalogs and two session-file rules, and the drift between them would show up
@@ -649,7 +649,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 // hardest class of bug to see, because both halves look right on their own.
 
 // v3Options is what a door says about the conversation it wants opened. Every
-// field is a flag some door carries; the zero value is what `aforge` bare does.
+// field is a flag some door carries; the zero value is what `codeaf` bare does.
 type v3Options struct {
 	// Workspace is the directory the conversation runs in. Empty is the
 	// process's own, which is what a terminal door means and what the engine
@@ -766,11 +766,11 @@ type v3Launch struct {
 	Resumed     bool
 	// Project is the DIRECTORY THIS CONVERSATION IS ABOUT, which is not always
 	// Workspace above: an OWNED conversation works in its own private work/
-	// folder under ~/.aforge/v3/projects, and Workspace is that folder.
+	// folder under ~/.codeaf/v3/projects, and Workspace is that folder.
 	//
 	// It is carried because two things are keyed by the project and not by the
 	// tools root — the engine host that holds this workspace's conversations
-	// (internal/enginehost), and therefore the `aforge engine --stop --workspace
+	// (internal/enginehost), and therefore the `codeaf engine --stop --workspace
 	// X` in [sessionHeldElsewhereSentence]. Handing that sentence Workspace
 	// spelled a command that pointed at a host which does not exist.
 	Project string
@@ -796,7 +796,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	settings := proc.Settings
 	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
-	// this is: `aforge` typed in repo/cmd/ is a conversation about the
+	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
 	// (Decision 26). A door that named a workspace has already answered the
 	// project question and its answer is taken as given.
@@ -975,7 +975,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// apply — the road is armed one task at a time, and a division still
 		// has to name enough separate items and find a free hand before
 		// anything is born — which is what makes on the right default and
-		// `AFORGE_SWARM=0` the whole of the way out.
+		// `CODEAF_SWARM=0` the whole of the way out.
 		Divide: settings.Swarm,
 	}
 
@@ -1086,7 +1086,7 @@ func v3SavedEffort(place session.Place) string {
 // last chose and it was written down (internal/config's chatmodel.go), then
 // what the environment and the built-in default say.
 //
-// THE SAVED CHOICE BEATS AFORGE_MODEL, which is the settings row's own law
+// THE SAVED CHOICE BEATS CODEAF_MODEL, which is the settings row's own law
 // rather than this door's invention: the talk slot carries the variable as an
 // [config.Setting.EnvDefault] and not an [config.Setting.Env], so it seeds a
 // value nobody has chosen and never freezes the row. A launch that let the
@@ -1185,7 +1185,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 // A launch that can draw offers the conversation instead: it opens a fresh one
 // beside it and lands on home with this row armed, so one enter moves the real
 // one here ([v3TakeOverInstead], and internal/tui3's takeover.go). A launch with
-// nobody watching — `--once`, `aforge engine` — has nowhere to put an offer, so
+// nobody watching — `--once`, `codeaf engine` — has nowhere to put an offer, so
 // it prints [sessionHeldElsewhere.Error] and stops. The transcript is carried
 // because the surface needs the PATH and the sentence deliberately does not
 // contain one.
@@ -1235,13 +1235,13 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 //
 // IT POINTS AT THE HAND-OFF AND NOT AT A NEW CONVERSATION. What somebody who
 // meets this actually wants is to CONTINUE the conversation here — issue #71's
-// own words — so the sentence names the move: open aforge in this directory and
+// own words — so the sentence names the move: open codeaf in this directory and
 // press enter on that row. "Start a new conversation here" was the old way out
 // and it is not offered as the way out any more, because it answers a question
 // nobody asked.
 //
 // IT NAMES THE WORKSPACE IN THE COMMAND AND NOT A JOURNAL PATH. The path is
-// aforge's own bookkeeping and there is nothing to do with it; and `aforge
+// codeaf's own bookkeeping and there is nothing to do with it; and `codeaf
 // engine --stop` with no --workspace means the HOME directory rather than this
 // one, so the flag is spelled out. It is [staleEngineHostSentence]'s voice,
 // said about this machine.
@@ -1251,9 +1251,9 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 // to a person who met one of them last week.
 func sessionHeldElsewhereSentence(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
-		return sessionHeldElsewhereOpening + " — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
+		return sessionHeldElsewhereOpening + " — open codeaf here and press enter on it to move it here, or run codeaf engine --stop to let go of it"
 	}
-	return fmt.Sprintf("%s — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", sessionHeldElsewhereOpening, workspace)
+	return fmt.Sprintf("%s — open codeaf here and press enter on it to move it here, or run codeaf engine --stop --workspace %s to let go of it", sessionHeldElsewhereOpening, workspace)
 }
 
 // sessionHeldElsewhereOpening is the first clause of that sentence, spelled
@@ -1288,7 +1288,7 @@ func hostHeldRefusal(err error) bool {
 // meant to close it.
 //
 // THE PROJECT LAYER ENTERS HERE. cfg.Workspace is the directory this session
-// runs in, so <workspace>/.aforge-v3/config.json is the repository's own answer to
+// runs in, so <workspace>/.codeaf-v3/config.json is the repository's own answer to
 // these rows, and every read below resolves project → profile → default
 // (internal/config's projectconfig.go). A caller with no workspace — a test, a
 // door that has not resolved a directory — gets an empty layer rather than a
@@ -1396,7 +1396,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
 	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
-	// AND WHETHER AFORGE SIGNS THE GIT WORK IT DOES IN THE PERSON'S NAME, read
+	// AND WHETHER codeaf SIGNS THE GIT WORK IT DOES IN THE PERSON'S NAME, read
 	// here for the reason the audit row above it is read here: every v3 door
 	// comes through this function, and a row honoured in the conversation but
 	// not in a standing firing is a row the person cannot trust. PROFILE-ONLY —
@@ -1411,7 +1411,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// somebody's own replies, and a repository has no business turning off a
 	// visitor's protection against a model that has stopped writing language.
 	cfg.ReplyGuardOff = !config.ReplyGuardEnabledAt(profileDir)
-	// How much aforge puts in front of the model before the person has typed.
+	// How much codeaf puts in front of the model before the person has typed.
 	// The engine settles this from the model's window and this row is the
 	// person overruling that (internal/session's promptprofile.go); `auto`, the
 	// default, hands over the word that decides nothing and leaves the window
@@ -1720,7 +1720,7 @@ func v3BuiltinApprovals() map[string]any {
 // rather than a branch in every caller (internal/session's memory.go states the
 // law). A store that would not open — a locked file, a disk with nothing left,
 // a database an older build wrote — is the SAME answer, said once on stderr:
-// a person who typed `aforge` wanted a conversation, and refusing them one
+// a person who typed `codeaf` wanted a conversation, and refusing them one
 // because a memory file is unhappy would be losing the whole product to the
 // least of its parts.
 //
@@ -1730,7 +1730,7 @@ func v3BuiltinApprovals() map[string]any {
 // read.
 //
 // A FIRST RUN IS NOT ONE OF THOSE UNHAPPY CASES, and for a long time it was.
-// The state root does not exist on a machine that has never run aforge, SQLite
+// The state root does not exist on a machine that has never run codeaf, SQLite
 // creates database files but never the directories holding them, and the
 // resulting complaint came back spelled `out of memory (14)` — so the first
 // launch on a new machine reported a memory problem it did not have and then
@@ -1995,7 +1995,7 @@ type v3Catalog interface {
 // carrying them costs one more field per row in a file that is already written.
 //
 // Nil while the catalog is warming — which is not a failure but the picker's
-// cue to read ~/.aforge/v3/models.json and then its built-ins (internal/tui3
+// cue to read ~/.codeaf/v3/models.json and then its built-ins (internal/tui3
 // models.go states that order and applies it).
 func v3Models(models v3Catalog) []tui3.Model {
 	if models == nil {
@@ -2281,11 +2281,11 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
 	// THE SENTENCE NAMES THE PROJECT AND NOT THE SESSION'S OWN WORK DIRECTORY.
-	// [sessionHeldElsewhereSentence] spells `aforge engine --stop --workspace X`
+	// [sessionHeldElsewhereSentence] spells `codeaf engine --stop --workspace X`
 	// and X has to be the directory a host is keyed by, or the command it hands
 	// a person points at a host that does not exist. cfg.Workspace is not that
 	// directory for an OWNED conversation — there it is the session's private
-	// work folder under ~/.aforge/v3/projects — so the launch's own workspace is
+	// work folder under ~/.codeaf/v3/projects — so the launch's own workspace is
 	// carried in rather than read back off the config.
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {

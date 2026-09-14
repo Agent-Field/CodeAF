@@ -1049,7 +1049,7 @@ func TestStandingProbeIsClippedFromTheTail(t *testing.T) {
 
 // THE MODEL DOES NOT DO THE ARITHMETIC AND DOES NOT READ A CLOCK. Written from
 // a person's own transcripts: every "remind me in 2 mins" opened with a
-// `bash date +"%Y-%m-%dT%H:%M:%S%z"`. `when.in` is the answer — aforge resolves
+// `bash date +"%Y-%m-%dT%H:%M:%S%z"`. `when.in` is the answer — codeaf resolves
 // the duration against the clock at the instant of the call — and the moment it
 // landed on is SAID BACK, on the card and in the tool result, so nobody has to
 // take it on trust.

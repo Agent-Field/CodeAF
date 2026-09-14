@@ -56,7 +56,7 @@ func (quietCompleter) CompleteWithMessages(context.Context, []ai.Message, ...ai.
 
 // A line type this build does not know is READ AND SKIPPED, never turned into
 // something a person said. This is the property the whole format rests on: a
-// usage line was added without bumping sessionFileVersion, so an older aforge
+// usage line was added without bumping sessionFileVersion, so an older codeaf
 // has to resume a newer file as exactly the conversation it always was.
 func TestAnUnknownEntryTypeIsSkippedWithoutBecomingAMessage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -243,7 +243,7 @@ func TestAnAuxiliaryCallJournalsAnAuxLineAndReplaysAsACallNotATurn(t *testing.T)
 }
 
 // A journal written before usage lines existed replays to a session that spent
-// nothing — which is what it always did, and what an older aforge still writes.
+// nothing — which is what it always did, and what an older codeaf still writes.
 func TestAJournalWithNoUsageLinesReplaysToNoSpend(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	write(t, path,

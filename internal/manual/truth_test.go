@@ -155,15 +155,15 @@ func quotedFacts(t *testing.T) []quotedFact {
 	}, {
 		fact: "how many models the crew is", owner: "config.ModelTiers", value: seats, others: notSeats,
 		quotes: []quotedIn{
-			{"commands", "the %s models aforge uses on its own behalf"},
+			{"commands", "the %s models codeaf uses on its own behalf"},
 			{"commands", "The other %s — reflex, small work"},
 			{"commands", "picking one puts all %s back"},
 			{"commands", "sets the %s and confirms"},
 			{"commands", "each of the %s classes funds"},
 			{"commands", "of the %s classes are **select** rows"},
-			{"getting-started", "the %s models aforge uses on its own behalf"},
+			{"getting-started", "the %s models codeaf uses on its own behalf"},
 			{"getting-started", "The crew is the %s class rows"},
-			{"screen", "the preset the %s models aforge"},
+			{"screen", "the preset the %s models codeaf"},
 			{"permissions", "one of the %s crew classes"},
 			{"permissions", "set all %s at once"},
 			{"models-and-cost", "worked out from the %s"},
@@ -181,7 +181,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		fact: "how many seats the crew chooser reads", owner: "config.ModelTiers and the seat you talk to",
 		value: chooser, others: notChooser,
 		quotes: []quotedIn{
-			{"commands", "aforge runs **%s model seats**"},
+			{"commands", "codeaf runs **%s model seats**"},
 			{"commands", "the %s-seat reading"},
 			{"commands", "reads all %s and sets the"},
 		},
@@ -197,7 +197,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// one, so this row carries no others (see [quotedFact.others]).
 		fact: "the shipped default model", owner: "config.DefaultModel",
 		value:  config.DefaultModel,
-		quotes: []quotedIn{{"lanes", "The model aforge ships with is spelled `%s`"}},
+		quotes: []quotedIn{{"lanes", "The model codeaf ships with is spelled `%s`"}},
 	}, {
 		fact: "the shipped context fill", owner: "ctxbudget.DefaultFillPercent",
 		value:  strconv.Itoa(ctxbudget.DefaultFillPercent),
@@ -218,7 +218,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// without the screen plans a campaign around, and the page states both,
 		// so both are answerable to the line the command's own help prints them
 		// from.
-		fact: "how many turns one worker gets", owner: "`aforge exec`'s --max-turns default",
+		fact: "how many turns one worker gets", owner: "`codeaf exec`'s --max-turns default",
 		value:  strconv.Itoa(flagNumber(t, "../../cmd/codeaf/exec.go", "max-turns")),
 		quotes: []quotedIn{{"adaptive-runs", "it stops itself after %s turns"}},
 	}, {
@@ -226,7 +226,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// `--budget` was renamed `--token-budget`: *budget* is a word about
 		// money everywhere else in this product, so a token count wearing it
 		// read as dollars.
-		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --token-budget default",
+		fact: "how many tokens one worker gets", owner: "`codeaf exec`'s --token-budget default",
 		value:  grouped(flagNumber(t, "../../cmd/codeaf/exec.go", "token-budget")),
 		quotes: []quotedIn{{"adaptive-runs", "when the run has spent %s tokens"}},
 	}, {
@@ -456,7 +456,7 @@ func TestTheCrewCommandRowCountsTheSeatsConfigOwns(t *testing.T) {
 	// a hole where the figure goes, filled from config rather than from either
 	// sentence. A reword that loses one of them fails here too, loudly, which is
 	// the right answer for a row that has stopped saying how many seats there are.
-	for _, pattern := range []string{"the %s models aforge uses", "set the %s to"} {
+	for _, pattern := range []string{"the %s models codeaf uses", "set the %s to"} {
 		if want := fmt.Sprintf(pattern, seats); !strings.Contains(rows, want) {
 			t.Errorf("no /crew row says %q — config.ModelTiers has %d seats:\n%s",
 				want, len(config.ModelTiers), rows)
@@ -667,8 +667,8 @@ func flagNumber(t *testing.T, path, name string) int {
 // goes, spelled the way the door writes it.
 //
 // A DOOR THAT READS ITS DEFAULT FROM A CONSTANT IS THE REPOSITORY'S OWN RULE
-// WORKING, not a shape to exempt. `aforge exec --token-budget` used to spell
-// 150000 itself, and so did `aforge run` and the chat surface, so a
+// WORKING, not a shape to exempt. `codeaf exec --token-budget` used to spell
+// 150000 itself, and so did `codeaf run` and the chat surface, so a
 // recalibration had to move four numbers together and a door could print a
 // figure the loop no longer used. They read [executor.DefaultLeafTokens] now.
 // That fix took the literal this gate was reading away, and the gate's own

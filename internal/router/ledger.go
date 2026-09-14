@@ -378,7 +378,7 @@ func (l *Ledger) Close() error {
 
 // flush merges this process's queued observations into the file.
 //
-// The merge is the point. Several aforge processes may be running at once, each
+// The merge is the point. Several codeaf processes may be running at once, each
 // doing read-modify-write on the same small file, and a plain write would let
 // the last one out overwrite everyone else's evidence. So the file is re-read
 // under an exclusive lock, the queued observations are replayed onto whatever is

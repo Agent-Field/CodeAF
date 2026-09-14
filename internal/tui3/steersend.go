@@ -283,7 +283,7 @@ const (
 // steerAddress is WHO A SEND IS FOR: one task, inside one conversation.
 //
 // THE OWNER IS A WHOLE IDENTITY AND NOT A PATH. A transcript path is not unique
-// by itself: the same `/srv/app/.aforge/…jsonl` names different work on two
+// by itself: the same `/srv/app/.codeaf/…jsonl` names different work on two
 // machines, so the machine and the workspace are part of it (host.go's own
 // reading of what a hosted conversation is). A conversation with no transcript
 // has no such identity and no sender either ([app.steerDoorNow]), so no address

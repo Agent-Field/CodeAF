@@ -891,7 +891,7 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); strings.TrimSpace(branches) != "" {
 		t.Fatalf("the merged branch was kept: %q", branches)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".aforge-v3", "tasks", "1")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf-v3", "tasks", "1")); !os.IsNotExist(err) {
 		t.Fatal("the merged worktree was left behind")
 	}
 	if len(notice.Changed) != 1 || notice.Changed[0] != "hello.txt" {
@@ -2173,10 +2173,10 @@ func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
 
 	// The harness's own droppings are not the node's work: a background job
 	// writing its log every second must not make every step look like progress.
-	if err := os.MkdirAll(filepath.Join(dir, aforgeDroppings, "jobs"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, codeafDroppings, "jobs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, aforgeDroppings, "jobs", "1.log"), []byte("building"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, codeafDroppings, "jobs", "1.log"), []byte("building"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if watch.moved(settle) {

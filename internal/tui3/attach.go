@@ -419,7 +419,7 @@ type wslPaths struct {
 // the environment ([Options.Env]); it is a function of that door now, so a suite
 // that hands [newApp] a table is told whether it is inside WSL by the table and
 // not by the developer's shell. The two boot files are still read the way they
-// were, once per app, which in a running aforge is once.
+// were, once per app, which in a running codeaf is once.
 func bootWSLPaths(env func(string) string) wslPaths {
 	return detectWSLPathsAt(env, procVersionPath, wslConfigPath)
 }

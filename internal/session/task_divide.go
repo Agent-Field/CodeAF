@@ -625,7 +625,7 @@ func (n *TaskNode) armAfterAdmission(word string) bool {
 //
 // AND THIS COUNT IS ARMING, NOT THE GATE, which since 2026-09-02 is the whole
 // difference between them. The gate now keeps every division unless somebody
-// pinned AFORGE_SPLITGATE on (splitgate's modes.go, and the experiment behind
+// pinned CODEAF_SPLITGATE on (splitgate's modes.go, and the experiment behind
 // it in docs/design/plan-gate-doe/REPORT.md), so on an unpinned binary this is
 // the only place the six-item floor still decides anything: it asks whether
 // work looks wide enough to be handed the verb at all, not whether a division
@@ -936,7 +936,7 @@ func (a *Agent) weighDivision(ctx context.Context, args json.RawMessage, asker d
 	// is no plan to read.
 	//
 	// AND ON AN UNPINNED BINARY IT IS NEVER THIN. The gate is off unless
-	// somebody pinned AFORGE_SPLITGATE, so this evidence test — and the tiebreak
+	// somebody pinned CODEAF_SPLITGATE, so this evidence test — and the tiebreak
 	// and the refusal that hang off it below — are reachable only where a run
 	// asked for a floor. Everything they say is still true when it is asked for,
 	// which is why the machinery stays rather than being deleted with the
@@ -1716,7 +1716,7 @@ func divideReviewQuestion(parent *TaskNode, parsed divideArguments, thin bool) s
 //
 // IT IS ONLY REACHED WHERE THE GATE WAS PINNED ON. An unpinned binary keeps
 // every division a worker asks for (splitgate's modes.go), so a worker meets
-// this sentence only under AFORGE_SPLITGATE=1 or judgment — which is also why
+// this sentence only under CODEAF_SPLITGATE=1 or judgment — which is also why
 // it goes on quoting the floor: a run that asked for a floor is owed the
 // number it is being held to.
 func divisionTooNarrow(evidence string) string {

@@ -3,7 +3,7 @@ package main
 // testenv_test.go gives this package's tests a machine of their own, because the
 // suite was running on the DEVELOPER'S machine instead.
 //
-// WHAT IT COST. Several doors here are exercised end to end — `aforge exec "a
+// WHAT IT COST. Several doors here are exercised end to end — `codeaf exec "a
 // prompt"`, the rename rows in vocabulary_test.go — under the belief, written
 // into those tests, that every one of them "stops at a missing key". That is
 // only true of a process with no key: on a laptop with OPENROUTER_API_KEY
@@ -29,7 +29,7 @@ import (
 // with the run. It answers a cleanup the caller runs last.
 func isolateTestEnvironment() func() {
 	clearTestCredentials()
-	root, err := os.MkdirTemp("", "aforge-cmd-tests-")
+	root, err := os.MkdirTemp("", "codeaf-cmd-tests-")
 	if err != nil {
 		// A machine with no temp directory is not one these tests can be made
 		// safe on; they run against whatever the environment says, exactly as
@@ -37,11 +37,11 @@ func isolateTestEnvironment() func() {
 		// holds.
 		return func() {}
 	}
-	// HOME MOVES WITH THE STATE ROOT, and both are needed. AFORGE_HOME answers
-	// where aforge keeps its things (internal/home), while the profile's own
+	// HOME MOVES WITH THE STATE ROOT, and both are needed. CODEAF_HOME answers
+	// where codeaf keeps its things (internal/home), while the profile's own
 	// resolution and every `~` a door expands still read HOME — so a suite that
 	// moved only the first would go on reading the developer's saved key out of
-	// ~/.aforge/config.json ([config.PersistedAPIKey]).
+	// ~/.codeaf/config.json ([config.PersistedAPIKey]).
 	restore := pinTestEnv(map[string]string{
 		home.EnvVar: filepath.Join(root, "state"),
 		"HOME":      filepath.Join(root, "home"),
@@ -77,7 +77,7 @@ func clearTestCredentials() {
 
 // pinTestEnv sets each variable that this process was not deliberately started
 // with, and answers the undo. A variable the caller pinned is left alone: a run
-// that says AFORGE_HOME means it, which is how the UX suite drives this binary.
+// that says CODEAF_HOME means it, which is how the UX suite drives this binary.
 func pinTestEnv(values map[string]string) func() {
 	undo := map[string]*string{}
 	for name, value := range values {

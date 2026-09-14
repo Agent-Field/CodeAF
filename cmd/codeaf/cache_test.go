@@ -105,7 +105,7 @@ func TestBareCacheAnswersBothWays(t *testing.T) {
 }
 
 // Row 28. The prompt was on stdout, which is where the answer goes, so
-// `aforge cache clean | tee clean.log` put the question in the log file and
+// `codeaf cache clean | tee clean.log` put the question in the log file and
 // left the person looking at a blank terminal waiting for a word they could not
 // see. The receipt stays on stdout: that IS the answer.
 func TestTheCacheQuestionIsAskedOffTheAnswerStream(t *testing.T) {
@@ -141,7 +141,7 @@ func TestBothSurfacesConfirmTheCacheDeletionWithTheSameWord(t *testing.T) {
 		t.Fatalf("the chat's confirming word is not %q — the terminal prompt and the chat have drifted apart again", cacheCleanWord)
 	}
 	if !strings.Contains(usageText, `type "`+cacheCleanWord+`"`) {
-		t.Fatalf("`aforge --help` does not tell a person to type %q before the cache is deleted", cacheCleanWord)
+		t.Fatalf("`codeaf --help` does not tell a person to type %q before the cache is deleted", cacheCleanWord)
 	}
 	seedCache(t)
 	_ = captureAside(t)

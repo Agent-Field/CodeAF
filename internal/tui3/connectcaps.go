@@ -926,13 +926,13 @@ func capStateInk(pal palette, note string, selected bool) string {
 func (s *sheet) connFootNote() string {
 	item, ok := s.current()
 	if !ok || item.conn == nil {
-		return "the accounts aforge may reach for you"
+		return "the accounts codeaf may reach for you"
 	}
 	switch item.conn.kind {
 	case connCapability:
 		return "saved the moment you change it"
 	case connDisconnect:
-		return "the account stays yours — aforge forgets its keys"
+		return "the account stays yours — codeaf forgets its keys"
 	}
 	if item.conn.entry != nil {
 		if !item.conn.entry.secret {

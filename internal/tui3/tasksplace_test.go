@@ -23,7 +23,7 @@ func tasksFixture() (session.World, session.UsageWindow, time.Time) {
 	entry := func(id, label, status string, ended time.Time, cost float64) session.TaskIndexEntry {
 		return session.TaskIndexEntry{ID: id, Label: label, Status: status, EndedAt: ended, Cost: cost}
 	}
-	first := session.SessionRow{ID: "room-a", Title: "swarm splitting", Project: "aforge", Open: true}
+	first := session.SessionRow{ID: "room-a", Title: "swarm splitting", Project: "codeaf", Open: true}
 	first.Tasks.Rows = []session.TaskIndexEntry{
 		entry("1", "verify the pro model's pricing", string(session.TaskUnverified), at(25, 11), .40),
 		entry("2", "read 40 filings", string(session.TaskRunning), time.Time{}, .92),
@@ -50,7 +50,7 @@ func tasksFixture() (session.World, session.UsageWindow, time.Time) {
 			entry(string(rune('a'+i)), "earlier task "+itoa(i+1), string(session.TaskDone), at(24-i, 9), cost))
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{first}},
+		{Name: "codeaf", Sessions: []session.SessionRow{first}},
 		{Name: "media", Sessions: []session.SessionRow{second}},
 	}, Read: now}
 	return world, session.LastDays(now, 24), now
@@ -71,7 +71,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 		last = at
 	}
 	// THE HEADING NAMES THE PLACE AND COUNTS IT, and the spend is a quiet last
-	// clause rather than the sentence it used to end. It read `work aforge ran on
+	// clause rather than the sentence it used to end. It read `work codeaf ran on
 	// its own. 14 pieces of work since aug 2, $34.10 between them.` — a paragraph
 	// teaching the machinery's own idea of itself, ahead of every row on the page.
 	if !strings.Contains(page, "tasks · 14 pieces of work · $34.10") {
@@ -384,7 +384,7 @@ func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
 	loc := time.FixedZone("fixture", -4*60*60)
 	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
 	at := func(hour int) time.Time { return time.Date(2026, time.August, 25, hour, 0, 0, 0, loc) }
-	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "aforge", Open: true}
+	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "codeaf", Open: true}
 	kid := func(id, parent, label string) session.TaskIndexEntry {
 		return session.TaskIndexEntry{
 			ID: id, Parent: parent, Label: label, SessionID: "room-a",
@@ -399,7 +399,7 @@ func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
 		kid("9", "", "rename the flag"),
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	return world, session.LastDays(now, 24), now
 }
@@ -582,7 +582,7 @@ func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
 			FilesChanged: files, Outcome: outcome, Cost: cost,
 		}
 	}
-	row := session.SessionRow{ID: "room-a", Title: "The Annual Toggle", Project: "aforge", Open: true}
+	row := session.SessionRow{ID: "room-a", Title: "The Annual Toggle", Project: "codeaf", Open: true}
 	row.Tasks.Rows = []session.TaskIndexEntry{
 		done("1", "Put the annual toggle on the pricing page",
 			"Annual is the default and the monthly price stays visible beside it.", 2, .27, 5*time.Hour),
@@ -592,7 +592,7 @@ func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
 			"The sweep is a standing order now, with a cap of a dollar a day.", 1, .14, 2*time.Hour),
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	return world, session.LastDays(now, 14), now
 }
@@ -750,7 +750,7 @@ func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 }
 
 // THE HEAD SENTENCE IS A CLAIM ABOUT THE PLACE AND THE FILTER IS A PROPERTY OF
-// THE QUERY. Typing a word nothing matches used to draw `work aforge ran on its
+// THE QUERY. Typing a word nothing matches used to draw `work codeaf ran on its
 // own. nothing.` across the top of a machine that had run ten pieces of work.
 func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 	world, win, now := tasksPolishFixture()
@@ -959,7 +959,7 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 	loc := time.FixedZone("fixture", -4*60*60)
 	now := time.Date(2026, time.September, 11, 14, 25, 0, 0, loc)
 	id := "de9ea39e6f4c18c3"
-	transcript := "/private/tmp/htw/aforge-v2/" + id + "/transcript.jsonl"
+	transcript := "/private/tmp/htw/codeaf/" + id + "/transcript.jsonl"
 	// THE ROW AS THE PLACE ACTUALLY RECEIVES IT. A titleless session's
 	// [session.SessionRow.Title] starts as the stem — the raw id — and
 	// [tasksConversationRows] hands the composer [homeName]'s title case of it,
@@ -967,8 +967,8 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 	// walk fills: what EqualFold must catch whichever casing arrives.
 	for _, title := range []string{id, "De9ea39e6f4c18c3", ""} {
 		untitled := session.SessionRow{
-			ID: id, Dir: "/private/tmp/htw/aforge-v2/" + id, Transcript: transcript,
-			Workspace: "/private/tmp/htw/aforge-v2", Project: "infra",
+			ID: id, Dir: "/private/tmp/htw/codeaf/" + id, Transcript: transcript,
+			Workspace: "/private/tmp/htw/codeaf", Project: "infra",
 			ProjectDir: "/private/tmp/htw", Open: true, Live: true, Title: title,
 		}
 		titled := session.SessionRow{

@@ -291,7 +291,7 @@ var watcherReads = map[string]bool{
 func watcherMay(method string) bool { return watcherReads[method] }
 
 // notDrivingWord is what a surface without the keyboard is told when it tries to
-// type anyway. `another window` is the word aforge already uses at home for a
+// type anyway. `another window` is the word codeaf already uses at home for a
 // conversation open somewhere else (internal/tui3's home.go), and it is kept
 // here so the two places a person meets this fact sound like one program.
 func notDrivingWord(driver Driver) string {

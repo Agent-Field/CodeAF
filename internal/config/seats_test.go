@@ -493,7 +493,7 @@ func TestApplyingACrewLeavesNoSeatToInherit(t *testing.T) {
 // the crew word all resolve a tier row through [TierModelAt], which knew two
 // answers — the row somebody wrote, and this build's choice — so a profile older
 // than the worker seat handed every task started in a conversation to the build's
-// default while the same profile handed `aforge do` the crew's own model. The
+// default while the same profile handed `codeaf do` the crew's own model. The
 // rung is the same rung; what this table pins is that adding it moved NOTHING
 // else: a row written, a row cleared and a profile with no rows at all read
 // exactly what they read before, on every tier.
@@ -667,7 +667,7 @@ func TestEveryReadOfATierRowGoesThroughTheLadder(t *testing.T) {
 	// AND THE CONVERSATION'S OWN ROLE MAP IS ON IT. This is the wiring #312 was
 	// about: the three rows the chat resolves from the profile go through this
 	// package, which is what makes the worker row inherit there too.
-	raw, err := os.ReadFile(filepath.Join(root, "cmd", "aforge", "chatv3.go"))
+	raw, err := os.ReadFile(filepath.Join(root, "cmd", "codeaf", "chatv3.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,8 +716,8 @@ func moduleRoot(t *testing.T) string {
 
 // ── THE INHERITED-SEAT NOTICE ENDED IN A DOOR NOBODY COULD FIND ─────────────
 //
-// The line is printed on four HEADLESS doors — `aforge do`, `aforge plan run`,
-// `aforge exec` and `aforge run` — and it ended `until you pick a crew again`.
+// The line is printed on four HEADLESS doors — `codeaf do`, `codeaf plan run`,
+// `codeaf exec` and `codeaf run` — and it ended `until you pick a crew again`.
 // There is no way to pick a crew from a terminal: a crew is written by `/crew`
 // and by the settings sheet's Providers row, both of which are the
 // conversation, and no flag and no verb in the binary sets one. So the one line

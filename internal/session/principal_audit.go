@@ -318,7 +318,7 @@ func checkTail(output string) string {
 // IT IS THE WORKSPACE AND NOT THE SESSION FOLDER. The folder holds the
 // harness's own litter — transcripts, job logs, the worktrees the units of work
 // were built in (place.go) — and none of it is the deliverable; the workspace is
-// the directory the person opened aforge in and the one every relative path a
+// the directory the person opened codeaf in and the one every relative path a
 // tool was given resolves against.
 func (a *Agent) deliverableTree() string {
 	return strings.TrimSpace(a.config.Workspace)
@@ -625,7 +625,7 @@ func (a *Agent) stashedWork() int {
 // isGroundStash says an entry is one the ground ladder pushed for a landing.
 //
 // IT IS THE SHAPE OF THE SUBJECT AND NOT THE WORDS ANYWHERE IN IT. A person
-// whose own stash message happens to quote the sentence — "before I ask aforge:
+// whose own stash message happens to quote the sentence — "before I ask codeaf:
 // your own work, set aside to land the parser" — is describing their own work,
 // and swallowing it would be this reading going quiet about exactly the entry it
 // exists to name. So the match is anchored:

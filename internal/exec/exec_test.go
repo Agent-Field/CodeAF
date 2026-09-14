@@ -137,7 +137,7 @@ func TestRecallSurfacesActiveSkillKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := history.ActivateSkill(candidate.Seq, "/home/test/.aforge/skills/repo-audit"); err != nil {
+	if err := history.ActivateSkill(candidate.Seq, "/home/test/.codeaf/skills/repo-audit"); err != nil {
 		t.Fatal(err)
 	}
 

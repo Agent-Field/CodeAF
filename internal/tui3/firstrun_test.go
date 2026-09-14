@@ -31,16 +31,16 @@ func (f *setupOpenRouterFlow) Cancel() { f.cancelled = true }
 // by trusting the screen: the screen is the part a person sees, and the file is
 // the part they live with.
 
-// setupApp is a surface opened the way `aforge` bare on a TTY opens it, over a
+// setupApp is a surface opened the way `codeaf` bare on a TTY opens it, over a
 // profile `seed` has prepared first. It is [sheetApp] with the setup allowed
 // and the seed run BEFORE the app, because the setup is decided inside newApp
 // and a file written afterwards would be a file it never saw.
 func setupApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
 	t.Helper()
-	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", "AFORGE_PROFILE_DIR"} {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", "CODEAF_PROFILE_DIR"} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	if seed != nil {
 		seed(dir)
@@ -179,10 +179,10 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 }
 
 func TestAMissingDefaultProviderReturnsOverAResumedProfileAndKeepsTheDraft(t *testing.T) {
-	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", "AFORGE_PROFILE_DIR"} {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", "CODEAF_PROFILE_DIR"} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	if err := config.MarkSetupSeen(dir, time.Now()); err != nil {
 		t.Fatal(err)
@@ -417,10 +417,10 @@ func TestEscSkipsTheWholeFlowAndWritesNothingButTheMarker(t *testing.T) {
 
 func TestAKeyInTheShellSkipsTheKeyStepSilently(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "sk-or-v1-from-the-shell-0123456789")
-	for _, pin := range []string{"OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", "AFORGE_PROFILE_DIR"} {
+	for _, pin := range []string{"OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", "CODEAF_PROFILE_DIR"} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "openai/gpt-4.1-mini"}, Workspace: "/tmp/lab", ProfileDir: dir, Setup: true})
 	a.width, a.height = 90, 30
@@ -438,7 +438,7 @@ func TestAKeyInTheShellSkipsTheKeyStepSilently(t *testing.T) {
 func TestTheSetupStaysAwayFromEveryLaunchThatIsNotAPersonArriving(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	open := func(opts Options) bool {
 		opts.Agent = &fakeAgent{model: "openai/gpt-4.1-mini"}
 		opts.Workspace = "/tmp/lab"

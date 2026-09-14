@@ -2,7 +2,7 @@ package main
 
 // THE TRANSPORT, deliberately the smallest one that tells the truth.
 //
-// internal/provider is aforge's own OpenRouter path and it is the right thing
+// internal/provider is codeaf's own OpenRouter path and it is the right thing
 // for a chat turn: attribution, the refusal ladder, the velocity ledger, the
 // stream. None of that is what this rig is measuring. What this rig measures is
 // whether a MODEL can architect a sub-harness from a plain goal, so the

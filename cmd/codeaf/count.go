@@ -10,7 +10,7 @@ import (
 // countFlag is a whole number typed at a flag, refused with a sentence about
 // the flag rather than with the number package's own word for it.
 //
-// `aforge logs --tail notanumber` answered
+// `codeaf logs --tail notanumber` answered
 //
 //	invalid value "notanumber" for flag -tail: parse error
 //

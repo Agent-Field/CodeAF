@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// `aforge do --timeout 5m` was a parse error because the flag was an integer
+// `codeaf do --timeout 5m` was a parse error because the flag was an integer
 // of seconds. It is a duration now, and a bare number is still seconds for one
 // release, so no script that passed `-timeout 900` notices (#376).
 func TestTheWallTakesAUnitAndStillTakesBareSeconds(t *testing.T) {

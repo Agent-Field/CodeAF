@@ -65,7 +65,7 @@ func TestTheInkLeafResumesFromItsOwnRecord(t *testing.T) {
 
 	// The workspace as the world holds it: the files that attempt changed, read
 	// back from the tree rather than from what any tool claimed (FAILSAFE.md
-	// rule 2). `aforge do` runs in a shared workspace — the user's checkout —
+	// rule 2). `codeaf do` runs in a shared workspace — the user's checkout —
 	// which is why this reading is asked for by the leaf's own key.
 	jobDir := t.TempDir()
 	space, err := exec.NewWorkspace(jobDir)

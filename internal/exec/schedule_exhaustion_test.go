@@ -13,7 +13,7 @@ import (
 // The resident learned it from the ink run of 2026-08-29: a node abandoned on
 // the clock was settled failed in the same second it was said to be going back
 // on the queue, over a twenty-six kilobyte patch and seventy-three minutes of
-// unspent wall. `aforge run` drives this scheduler instead, and it was making
+// unspent wall. `codeaf run` drives this scheduler instead, and it was making
 // the identical mistake one package along — so the rule is [Requeued], asked by
 // both, and this is that rule arriving here.
 func TestAnExhaustedNodeGoesBackOnTheQueueWithItsRecord(t *testing.T) {

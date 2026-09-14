@@ -10,7 +10,7 @@ import (
 
 // THE MANUAL LAW, ENFORCED FOR THIS PACKAGE'S OWN SENTENCES.
 //
-// The chat answers questions about aforge out of the pages in
+// The chat answers questions about codeaf out of the pages in
 // internal/manual/chat, and its training data contains nothing about this
 // program — so a sentence a person can be shown that is not in a page is a
 // sentence the chat will improvise around or deny. Every line below is
@@ -27,7 +27,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		PairingWeight,
 		strings.TrimSpace(PairingPrompt("otter-lamp-42")),
 		PairedLine("otter-lamp-42"),
-		// What `aforge serve` prints.
+		// What `codeaf serve` prints.
 		strings.TrimRight(Lines("otter-lamp-42", code), "\n"),
 		// The four ways `--at` fails, each naming its own cause.
 		NoRelay("otter-lamp-42").Error(),
@@ -62,7 +62,7 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 		"5 attempts",              // CodeAttempts
 		"up to 16",                // relay.MaxStreams
 		"30 connections a minute", // relay.DialsPerMinute
-		"~/.aforge/v3/remote/device.key",
+		"~/.codeaf/v3/remote/device.key",
 	} {
 		if !strings.Contains(page, quoted) {
 			t.Errorf("the page does not quote %q", quoted)

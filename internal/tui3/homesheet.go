@@ -10,7 +10,7 @@ package tui3
 //
 //	 ‹ back                            esc
 //	 fix the nil-map crash
-//	 aforge-v2 · ~/src/aforge-v2
+//	 codeaf · ~/src/codeaf
 //	 ─────────────────────────────────────
 //	 open in another window
 //	 bash wants to run: git push --force

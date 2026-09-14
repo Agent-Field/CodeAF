@@ -18,7 +18,7 @@ import (
 
 // THE ESCAPE HATCH'S OWN TABLE, pinned to the numbers it exists to restore.
 // These are exec's exit codes as they were before the one ladder, and they are
-// reachable only under AFORGE_EXIT_CODES=legacy.
+// reachable only under CODEAF_EXIT_CODES=legacy.
 func TestExecLegacyExitCodeIsTheOldTable(t *testing.T) {
 	tests := []struct {
 		name string
@@ -194,9 +194,9 @@ func TestApplyExecEnvLeavesDefaultsAlone(t *testing.T) {
 func TestApplyExecEnvFillsWallsNobodyPassed(t *testing.T) {
 	flags, turns, budget, wall := execFlagsForTest(t)
 	env := fakeEnv(map[string]string{
-		"AFORGE_EXEC_TURNS":   "3",
-		"AFORGE_EXEC_BUDGET":  " 20000 ",
-		"AFORGE_EXEC_TIMEOUT": "150",
+		"CODEAF_EXEC_TURNS":   "3",
+		"CODEAF_EXEC_BUDGET":  " 20000 ",
+		"CODEAF_EXEC_TIMEOUT": "150",
 	})
 	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
@@ -209,13 +209,13 @@ func TestApplyExecEnvFillsWallsNobodyPassed(t *testing.T) {
 		t.Fatalf("deadline = %s, want 150s", got)
 	}
 	// THE VARIABLE READS A DURATION TOO, because the flag it stands in for does.
-	// AFORGE_EXEC_TIMEOUT=2m was a refusal on a machine where --timeout 2m works.
+	// CODEAF_EXEC_TIMEOUT=2m was a refusal on a machine where --timeout 2m works.
 	flags, turns, budget, wall = execFlagsForTest(t)
-	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "2m"}), turns, budget, wall); err != nil {
-		t.Fatalf("AFORGE_EXEC_TIMEOUT=2m was refused: %v", err)
+	if err := applyExecEnv(flags, fakeEnv(map[string]string{"CODEAF_EXEC_TIMEOUT": "2m"}), turns, budget, wall); err != nil {
+		t.Fatalf("CODEAF_EXEC_TIMEOUT=2m was refused: %v", err)
 	}
 	if wall.wall != 2*time.Minute {
-		t.Fatalf("AFORGE_EXEC_TIMEOUT=2m gave %s, want 2m0s", wall.wall)
+		t.Fatalf("CODEAF_EXEC_TIMEOUT=2m gave %s, want 2m0s", wall.wall)
 	}
 }
 
@@ -227,9 +227,9 @@ func TestApplyExecEnvNeverOverrulesATypedFlag(t *testing.T) {
 	flags, turns, budget, wall := execFlagsForTest(t,
 		"-max-turns", "200", "-token-budget", "9000", "-timeout", "42")
 	env := fakeEnv(map[string]string{
-		"AFORGE_EXEC_TURNS":   "3",
-		"AFORGE_EXEC_BUDGET":  "20000",
-		"AFORGE_EXEC_TIMEOUT": "150",
+		"CODEAF_EXEC_TURNS":   "3",
+		"CODEAF_EXEC_BUDGET":  "20000",
+		"CODEAF_EXEC_TIMEOUT": "150",
 	})
 	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
@@ -255,9 +255,9 @@ func TestApplyExecEnvNeverOverrulesATypedFlag(t *testing.T) {
 func TestApplyExecEnvIsPerWall(t *testing.T) {
 	flags, turns, budget, wall := execFlagsForTest(t, "-token-budget", "9000")
 	env := fakeEnv(map[string]string{
-		"AFORGE_EXEC_TURNS":   "3",
-		"AFORGE_EXEC_BUDGET":  "20000",
-		"AFORGE_EXEC_TIMEOUT": "150",
+		"CODEAF_EXEC_TURNS":   "3",
+		"CODEAF_EXEC_BUDGET":  "20000",
+		"CODEAF_EXEC_TIMEOUT": "150",
 	})
 	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
@@ -271,9 +271,9 @@ func TestApplyExecEnvIsPerWall(t *testing.T) {
 func TestApplyExecEnvIgnoresEmptyVariables(t *testing.T) {
 	flags, turns, budget, wall := execFlagsForTest(t)
 	env := fakeEnv(map[string]string{
-		"AFORGE_EXEC_TURNS":   "",
-		"AFORGE_EXEC_BUDGET":  "   ",
-		"AFORGE_EXEC_TIMEOUT": "",
+		"CODEAF_EXEC_TURNS":   "",
+		"CODEAF_EXEC_BUDGET":  "   ",
+		"CODEAF_EXEC_TIMEOUT": "",
 	})
 	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
@@ -287,10 +287,10 @@ func TestApplyExecEnvIgnoresEmptyVariables(t *testing.T) {
 // thinks it capped every call at 150 seconds because of an unnoticed typo
 // measures the wrong thing all night.
 func TestApplyExecEnvRefusesNonNumericValues(t *testing.T) {
-	// AFORGE_EXEC_TIMEOUT is not on this list any more and `2m` is not the typo
+	// CODEAF_EXEC_TIMEOUT is not on this list any more and `2m` is not the typo
 	// to probe it with: the wall reads durations now, on the flag and in the
 	// environment alike, so `2m` is a value there and `later` is the typo.
-	for _, variable := range []string{"AFORGE_EXEC_TURNS", "AFORGE_EXEC_BUDGET"} {
+	for _, variable := range []string{"CODEAF_EXEC_TURNS", "CODEAF_EXEC_BUDGET"} {
 		flags, turns, budget, timeout := execFlagsForTest(t)
 		err := applyExecEnv(flags, fakeEnv(map[string]string{variable: "2m"}), turns, budget, timeout)
 		if err == nil {
@@ -301,9 +301,9 @@ func TestApplyExecEnvRefusesNonNumericValues(t *testing.T) {
 		}
 	}
 	flags, turns, budget, wall := execFlagsForTest(t)
-	err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "later"}), turns, budget, wall)
-	if err == nil || !strings.Contains(err.Error(), "AFORGE_EXEC_TIMEOUT") {
-		t.Fatalf("AFORGE_EXEC_TIMEOUT=later answered %v, want a refusal naming the variable", err)
+	err := applyExecEnv(flags, fakeEnv(map[string]string{"CODEAF_EXEC_TIMEOUT": "later"}), turns, budget, wall)
+	if err == nil || !strings.Contains(err.Error(), "CODEAF_EXEC_TIMEOUT") {
+		t.Fatalf("CODEAF_EXEC_TIMEOUT=later answered %v, want a refusal naming the variable", err)
 	}
 }
 
@@ -311,7 +311,7 @@ func TestApplyExecEnvRefusesNonNumericValues(t *testing.T) {
 // flags have always had, so there is one rule about what a wall may be.
 func TestApplyExecEnvValuesStillMeetTheFlagGuards(t *testing.T) {
 	flags, turns, budget, wall := execFlagsForTest(t)
-	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TURNS": "0"}), turns, budget, wall); err != nil {
+	if err := applyExecEnv(flags, fakeEnv(map[string]string{"CODEAF_EXEC_TURNS": "0"}), turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
 	if *turns > 0 {
@@ -322,25 +322,25 @@ func TestApplyExecEnvValuesStillMeetTheFlagGuards(t *testing.T) {
 	// refuses it here, naming the variable that held it, which is one refusal
 	// instead of two readings of one rule (wall.go).
 	flags, turns, budget, wall = execFlagsForTest(t)
-	err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "-1"}), turns, budget, wall)
-	if err == nil || !strings.Contains(err.Error(), "AFORGE_EXEC_TIMEOUT") {
-		t.Fatalf("AFORGE_EXEC_TIMEOUT=-1 answered %v, want a refusal naming the variable", err)
+	err := applyExecEnv(flags, fakeEnv(map[string]string{"CODEAF_EXEC_TIMEOUT": "-1"}), turns, budget, wall)
+	if err == nil || !strings.Contains(err.Error(), "CODEAF_EXEC_TIMEOUT") {
+		t.Fatalf("CODEAF_EXEC_TIMEOUT=-1 answered %v, want a refusal naming the variable", err)
 	}
 }
 
 // The help text is where a harness author finds out the variables exist.
 func TestUsageMentionsExecEnvironmentFallbacks(t *testing.T) {
-	// The environment table moved out of `--help` and into `aforge help env`
+	// The environment table moved out of `--help` and into `codeaf help env`
 	// when `--help` was 127 lines and more than half of them were this table.
 	// So the variables are looked for where they now are, and `--help` is held
 	// to naming the door that carries them.
-	for _, variable := range []string{"AFORGE_EXEC_TIMEOUT", "AFORGE_EXEC_BUDGET", "AFORGE_EXEC_TURNS"} {
+	for _, variable := range []string{"CODEAF_EXEC_TIMEOUT", "CODEAF_EXEC_BUDGET", "CODEAF_EXEC_TURNS"} {
 		if !strings.Contains(environmentText, variable) {
-			t.Fatalf("`aforge help env` does not mention %s", variable)
+			t.Fatalf("`codeaf help env` does not mention %s", variable)
 		}
 	}
-	if !strings.Contains(usageText, "aforge help env") {
-		t.Fatal("`aforge --help` never says where the environment table went")
+	if !strings.Contains(usageText, "codeaf help env") {
+		t.Fatal("`codeaf --help` never says where the environment table went")
 	}
 }
 
@@ -355,10 +355,10 @@ func TestHeadlessDocumentsExec(t *testing.T) {
 	}
 	document := string(raw)
 	for _, want := range []string{
-		"aforge exec",
-		"AFORGE_EXEC_TURNS",
-		"AFORGE_EXEC_BUDGET",
-		"AFORGE_EXEC_TIMEOUT",
+		"codeaf exec",
+		"CODEAF_EXEC_TURNS",
+		"CODEAF_EXEC_BUDGET",
+		"CODEAF_EXEC_TIMEOUT",
 		"elapsed_ms",
 		"turn-cap",
 	} {
@@ -406,7 +406,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 				t.Fatalf("%s leaks the internal verb %q into the machine contract: %q", door.what, machinery, said)
 			}
 		}
-		if !strings.Contains(said, "aforge models") {
+		if !strings.Contains(said, "codeaf models") {
 			t.Fatalf("%s never says what to do about it: %q", door.what, said)
 		}
 	}

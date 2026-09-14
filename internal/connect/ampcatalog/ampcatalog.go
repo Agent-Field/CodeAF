@@ -1,7 +1,7 @@
-// Package ampcatalog is aforge's own copy of the parts of the amp-labs
+// Package ampcatalog is codeaf's own copy of the parts of the amp-labs
 // provider catalog that this program reads.
 //
-// WHY A COPY RATHER THAN THE LIBRARY. The catalog aforge wants is data: a few
+// WHY A COPY RATHER THAN THE LIBRARY. The catalog codeaf wants is data: a few
 // hundred rows of display name, base URL, auth type, and where a key rides on
 // a request. The library that publishes it is a full connector SDK, and
 // importing the one package that holds those rows drags in its whole world —
@@ -21,7 +21,7 @@
 // constant names below are the ones amp uses, spelled the same way, so the
 // call sites read identically against either and so a future field is a
 // two-line change in gen/main.go rather than a translation layer. Only the
-// fields aforge actually reads are carried; a field nobody reads is a field
+// fields codeaf actually reads are carried; a field nobody reads is a field
 // nobody can be wrong about.
 package ampcatalog
 
@@ -42,7 +42,7 @@ type Provider string
 
 // AuthType is how a service expects to be authenticated.
 //
-// All six the catalog uses are named, not only the two aforge can drive
+// All six the catalog uses are named, not only the two codeaf can drive
 // itself: the switches that read this fall through the other four, and a
 // falling-through case a reader can name is easier to be sure about than a
 // bare string.
@@ -65,7 +65,7 @@ const (
 	Query  ApiKeyOptsAttachmentType = "query"
 )
 
-// ProviderInfo is one catalog row, cut to what aforge reads.
+// ProviderInfo is one catalog row, cut to what codeaf reads.
 type ProviderInfo struct {
 	DisplayName     string            `json:"displayName,omitempty"`
 	BaseURL         string            `json:"baseURL"`
@@ -136,7 +136,7 @@ var ErrProviderNotFound = errors.New("provider not found")
 // Nothing on the launch path asks the catalog anything: the rows are read when
 // the accounts surface opens, which is a keystroke away at the earliest and
 // never happens in most runs. Decoding here would put the whole table on every
-// `aforge` invocation, `--help` included, for nothing.
+// `codeaf` invocation, `--help` included, for nothing.
 var catalog = sync.OnceValue(func() map[Provider]*ProviderInfo {
 	var rows map[Provider]*ProviderInfo
 	if err := json.Unmarshal(snapshot, &rows); err != nil {

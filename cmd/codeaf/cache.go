@@ -1,8 +1,8 @@
 // The cache from the command line: what it holds, and the one destructive verb
 // that empties it.
 //
-// `aforge cache` answers the question and changes nothing. `aforge cache clean`
-// deletes ~/.aforge/cache — the shared toolchain caches every task worker fills
+// `codeaf cache` answers the question and changes nothing. `codeaf cache clean`
+// deletes ~/.codeaf/cache — the shared toolchain caches every task worker fills
 // (internal/cachedir says what lives there and what never does) — and because a
 // deletion cannot be undone it is guarded the way destructive command lines are
 // guarded everywhere a person has already learned: the blast radius is printed
@@ -48,12 +48,12 @@ func runCacheWith(args []string, input io.Reader, output io.Writer) error {
 	case "clean":
 		return cleanCache(args[1:], input, output)
 	default:
-		// `aforge cache --help` reaches here rather than a flag set, because
+		// `codeaf cache --help` reaches here rather than a flag set, because
 		// the reading form parses nothing at all (usage.go).
 		if askedForHelp(args) {
 			return commandHelp("cache")
 		}
-		return fmt.Errorf("usage: aforge cache [clean [--yes]]")
+		return fmt.Errorf("usage: codeaf cache [clean [--yes]]")
 	}
 }
 
@@ -66,7 +66,7 @@ func showCache(output io.Writer) error {
 		return err
 	}
 	_, err := fmt.Fprintf(output,
-		"the cache holds %s · %s\nshared toolchain caches — go modules, builds, npm, pip, cargo. `aforge cache clean` frees it.\n",
+		"the cache holds %s · %s\nshared toolchain caches — go modules, builds, npm, pip, cargo. `codeaf cache clean` frees it.\n",
 		cachedir.Human(size), cachedir.Root())
 	return err
 }
@@ -78,7 +78,7 @@ func cleanCache(args []string, input io.Reader, output io.Writer) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge cache clean [--yes]")
+		return fmt.Errorf("usage: codeaf cache clean [--yes]")
 	}
 	size := cachedir.Size()
 	if size == 0 {
@@ -93,7 +93,7 @@ func cleanCache(args []string, input io.Reader, output io.Writer) error {
 	if !*yes {
 		// THE QUESTION GOES TO THE ASIDE, NOT TO STDOUT, and of everything this
 		// wave moved off stdout this is the one that mattered most: a prompt on
-		// stdout means `aforge cache clean | tee clean.log` puts the question
+		// stdout means `codeaf cache clean | tee clean.log` puts the question
 		// into the file and leaves the person looking at a blank terminal,
 		// waiting for a word they cannot see. See streams.go.
 		fmt.Fprintf(aside, "This deletes the shared build cache — %s at %s.\n", cachedir.Human(size), cachedir.Root())

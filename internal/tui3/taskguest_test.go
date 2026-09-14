@@ -262,7 +262,7 @@ func TestAReadingPageWithNoOwnerLaneSaysTheStateIsTheLastItWasTold(t *testing.T)
 var theirLiveSession = session.SessionRow{
 	ID:         "the-other-window",
 	Title:      "docs pass",
-	Transcript: "/w/.aforge/v3/sessions/-w/the-other-window/session.jsonl",
+	Transcript: "/w/.codeaf/v3/sessions/-w/the-other-window/session.jsonl",
 	ProjectDir: "/w",
 }
 

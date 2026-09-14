@@ -20,7 +20,7 @@
 // per role class, because a second of a watched answer and a second of an
 // unattended errand are not the same second.
 //
-// IT IS A DEVELOPER'S BINARY AND NEVER A VERB ON aforge, for the reason
+// IT IS A DEVELOPER'S BINARY AND NEVER A VERB ON codeaf, for the reason
 // cmd/codeaf-census and cmd/codeaf-changes are: the shipped binary is on a
 // checked-in byte budget (SIZE-BUDGET) and a measuring tool must not spend the
 // product's weight.

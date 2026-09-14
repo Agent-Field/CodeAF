@@ -101,7 +101,7 @@ var capabilityGroups = []capabilityGroup{{
 	// of the person, which is not a fact about the schema.
 	prose: "A refusal is the person's own machine answering and not an error to work around: relay it exactly as " +
 		"written, and point them at `/settings`, where they can make the change themselves. Never reach for `edit` " +
-		"or `write` on a config file instead — a hand-edited file is not what aforge reads.",
+		"or `write` on a config file instead — a hand-edited file is not what codeaf reads.",
 }, {
 	name:    "harnesses",
 	members: []string{"build_harness", "list_harnesses", "propose_subharness", "list_subharnesses"},

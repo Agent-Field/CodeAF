@@ -13,7 +13,7 @@ import (
 
 // ── THE SIGHTINGS AS THEY ARRIVED ───────────────────────────────────────────
 //
-// `~/.aforge/v3/lanes.log` is internal/lane's own append-only observation
+// `~/.codeaf/v3/lanes.log` is internal/lane's own append-only observation
 // journal: one NDJSON line per thing the ledger was told, in the order it was
 // told it. Its public rows — what the router publishes about a machine's price,
 // its limits and its four timing percentiles — are the PRIOR every belief starts

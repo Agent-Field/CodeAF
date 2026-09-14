@@ -14,7 +14,7 @@
 //
 // ── THE DOOR THIS SUITE OPENS, AND WHY IT IS NOT THE DEFAULT ONE ────────────
 //
-// Nearly every scenario below launches `aforge chat --no-host`, which keeps the
+// Nearly every scenario below launches `codeaf chat --no-host`, which keeps the
 // conversation IN THIS PROCESS. The ordinary road since #736 is a session host
 // over a unix socket (cmd/codeaf's chatv3_local.go), and a scenario about a
 // compare table or a dial has nothing to say about a wire: opening the host road
@@ -132,7 +132,7 @@ const (
 	questionPageCols = 120
 )
 
-// questionRig is one aforge on this machine's own keyboard, IN THIS PROCESS.
+// questionRig is one codeaf on this machine's own keyboard, IN THIS PROCESS.
 //
 // `chat --no-host` is the whole of the difference from [start]'s ordinary use
 // and the file header says why: the default road puts the session behind a unix
@@ -527,7 +527,7 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 // the moment the scenario ends.
 func keepJournals(t *testing.T, r *rig) string {
 	t.Helper()
-	dir := filepath.Join(os.TempDir(), "aforge-e2e-journals")
+	dir := filepath.Join(os.TempDir(), "codeaf-e2e-journals")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "nowhere: " + err.Error()
 	}
@@ -1099,14 +1099,14 @@ func questionsHeadless(t *testing.T) {
 			`options [{"key":"1","label":"postgres"},{"key":"2","label":"sqlite"}], `+
 			`pick {"key":"1"}.`)
 	command.Dir = ws
-	command.Env = append(os.Environ(), "AFORGE_HOME="+home,
+	command.Env = append(os.Environ(), "CODEAF_HOME="+home,
 		config.APIKeyEnv+"="+liveKey(t))
 	out, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("aforge chat --once: %v\n%s", err, out)
+		t.Fatalf("codeaf chat --once: %v\n%s", err, out)
 	}
 	printed := string(out)
-	t.Logf("── aforge chat --once ──\n%s", printed)
+	t.Logf("── codeaf chat --once ──\n%s", printed)
 	if !strings.Contains(printed, say(t, "headlessAskedWord")) {
 		t.Errorf("headless: the run never printed %q, so a decision it took on nobody's behalf "+
 			"is a decision nothing on the outer stream records.\nIt printed:\n%s",
@@ -1122,7 +1122,7 @@ func questionsHeadless(t *testing.T) {
 // questionsDefaultDoor is the road a person actually takes, and the one thing in
 // this file that is not about a form.
 //
-// Bare `aforge` has not run the conversation in this process since #736: it
+// Bare `codeaf` has not run the conversation in this process since #736: it
 // attaches this workspace's session host over a unix socket (cmd/codeaf's
 // chatv3_local.go), so the question object has to cross internal/remote's wire
 // in both directions — the raise on the way out and the answer on the way back —
@@ -1139,7 +1139,7 @@ func questionsDefaultDoor(t *testing.T) {
 	r := start(t, "q-door", root, ws, questionCols, questionRows)
 	t.Cleanup(func() {
 		stop := exec.Command(binary(t), "engine", "--stop", "--workspace", ws)
-		stop.Env = append(os.Environ(), "AFORGE_HOME="+root)
+		stop.Env = append(os.Environ(), "CODEAF_HOME="+root)
 		_ = stop.Run()
 	})
 	// AND IT PROVES WHICH ROAD IT IS ON BEFORE IT MEASURES ANYTHING. The rule
@@ -1292,11 +1292,11 @@ func shortQuestionHome(t *testing.T) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	// The test process asks internal/enginehost where the socket would be, and
-	// that answer moves with AFORGE_HOME exactly as the binary's does.
+	// that answer moves with CODEAF_HOME exactly as the binary's does.
 	t.Setenv(home.EnvVar, root)
 	rows := map[string]any{}
 	if there, err := os.UserHomeDir(); err == nil {
-		if raw, err := os.ReadFile(filepath.Join(there, ".aforge", "config.json")); err == nil {
+		if raw, err := os.ReadFile(filepath.Join(there, ".codeaf", "config.json")); err == nil {
 			if err := json.Unmarshal(raw, &rows); err != nil {
 				t.Fatalf("the profile config would not parse: %v", err)
 			}

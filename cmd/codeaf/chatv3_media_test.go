@@ -67,8 +67,8 @@ func writeMediaSlot(t *testing.T, profileDir, slot, slug string) {
 func mediaEnvOff(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		"AFORGE_VISION_MODEL", "AFORGE_IMAGE_MODEL", "AFORGE_SPEECH_MODEL",
-		"AFORGE_MUSIC_MODEL", "AFORGE_VIDEO_MODEL", "AFORGE_VOICE_MODEL",
+		"CODEAF_VISION_MODEL", "CODEAF_IMAGE_MODEL", "CODEAF_SPEECH_MODEL",
+		"CODEAF_MUSIC_MODEL", "CODEAF_VIDEO_MODEL", "CODEAF_VOICE_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -264,7 +264,7 @@ func TestTheMediaSlotReadsTheEnvironmentFirst(t *testing.T) {
 	profile := t.TempDir()
 	models := mediaCatalogFor(t, mediaFixture)
 	writeMediaSlot(t, profile, "image", "vendor/first-painter")
-	t.Setenv("AFORGE_IMAGE_MODEL", "krea/krea-2-medium-turbo")
+	t.Setenv("CODEAF_IMAGE_MODEL", "krea/krea-2-medium-turbo")
 	if got := v3MediaModel(models, profile, nil)("image"); got != "krea/krea-2-medium-turbo" {
 		t.Fatalf("the drawing slot resolved to %q with the environment set", got)
 	}

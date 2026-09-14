@@ -31,8 +31,8 @@ func searchFixture() ([]store.ConversationHit, session.World) {
 		found(5, "room-b", "Lead research", "A different report", 5*time.Hour),
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge-v2", Sessions: []session.SessionRow{{
-			ID: "room-a", Title: "Swarm splitting", Project: "aforge-v2", Dir: "/state/room-a",
+		{Name: "codeaf", Sessions: []session.SessionRow{{
+			ID: "room-a", Title: "Swarm splitting", Project: "codeaf", Dir: "/state/room-a",
 			Transcript: "/state/room-a/transcript.jsonl", Live: true,
 		}}},
 		{Name: "leadgen", Sessions: []session.SessionRow{{ID: "room-b", Project: "leadgen", Dir: "/state/room-b"}}},
@@ -43,7 +43,7 @@ func searchFixture() ([]store.ConversationHit, session.World) {
 func TestSearchJoinsConversationDoorsAndKeepsUnlistedConversations(t *testing.T) {
 	hits, world := searchFixture()
 	r := readSearch("report", hits, world, searchTestNow)
-	if got := r.hits[0]; got.project != "aforge-v2" || got.transcript != "/state/room-a/transcript.jsonl" || !got.live {
+	if got := r.hits[0]; got.project != "codeaf" || got.transcript != "/state/room-a/transcript.jsonl" || !got.live {
 		t.Fatalf("the first result did not join its conversation row: %+v", got)
 	}
 	page := strings.Join(r.rows(120, newPalette(tokens.NoColor, false)), "\n")
@@ -82,7 +82,7 @@ func TestSearchLiftsMatchingWordsAsData(t *testing.T) {
 func TestSearchListsProjectFacetsWithCounts(t *testing.T) {
 	hits, world := searchFixture()
 	page := ansi.Strip(readSearch("report", hits, world, searchTestNow).rows(120, newPalette(tokens.NoColor, false))[0])
-	for _, want := range []string{"aforge-v2 1", "leadgen 1"} {
+	for _, want := range []string{"codeaf 1", "leadgen 1"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("facet line %q does not contain %q", page, want)
 		}

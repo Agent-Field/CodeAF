@@ -56,7 +56,7 @@ func (d Device) noiseKey() noise.DHKey {
 // Keeper is where a device key lives. It is an interface because THIS IS THE
 // SEAM THE OS KEYCHAIN GOES BEHIND — on a Mac the key should be a keychain item
 // whose release the platform can gate on Touch ID, so that a fingerprint
-// unlocks a connection and aforge never sees a biometric.
+// unlocks a connection and codeaf never sees a biometric.
 //
 // THAT IS NOT BUILT. The only implementation in this build is [FileKeeper], and
 // [OpenKeeper] returns it on every platform. Nothing in this package pretends
@@ -83,7 +83,7 @@ func OpenKeeper() Keeper {
 }
 
 // Dir is where everything this package writes lives, moved wholesale by
-// AFORGE_HOME like the rest of aforge's state.
+// CODEAF_HOME like the rest of codeaf's state.
 func Dir() string { return home.Join("v3", "remote") }
 
 // DeviceKeyPath is the file the device key is in.
@@ -167,7 +167,7 @@ func ThisDevice(keeper Keeper) (Device, error) {
 // something that is obviously a mistake.
 func encodeSeed(seed []byte) string {
 	var text strings.Builder
-	text.WriteString("aforge-device-key ")
+	text.WriteString("codeaf-device-key ")
 	for _, b := range seed {
 		text.WriteString(hexDigits[b>>4 : b>>4+1])
 		text.WriteString(hexDigits[b&15 : b&15+1])
@@ -180,7 +180,7 @@ const hexDigits = "0123456789abcdef"
 
 func decodeSeed(raw []byte) ([]byte, error) {
 	text := strings.TrimSpace(string(raw))
-	text = strings.TrimPrefix(text, "aforge-device-key ")
+	text = strings.TrimPrefix(text, "codeaf-device-key ")
 	text = strings.TrimSpace(text)
 	if len(text) != 64 {
 		return nil, errors.New("wrong length")

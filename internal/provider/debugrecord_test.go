@@ -17,7 +17,7 @@ import (
 // and cannot leave the process-wide switch on for the tests that follow.
 func recordingRun(t *testing.T) context.Context {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	ctx := trace.Begin(context.Background())
 	if trace.EnableRun(ctx) == "" {
 		t.Fatal("EnableRun did not take this run")
@@ -68,7 +68,7 @@ func TestACompletedCallWritesItsBodiesIntoTheDebugRecord(t *testing.T) {
 }
 
 func TestACallWithTheRecordOffWritesNoBodyFile(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	ctx := trace.Begin(context.Background())
 	client, _ := newTestClient(t, Config{})
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {

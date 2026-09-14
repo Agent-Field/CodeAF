@@ -34,7 +34,7 @@ import (
 //	room = one object × how many objects were asked for  +  what must be echoed
 //
 // ONE OBJECT is a share of the completion reserve — the room the whole tree
-// keeps for a reply and its reasoning, AFORGE_COMPLETION_RESERVE, which an
+// keeps for a reply and its reasoning, CODEAF_COMPLETION_RESERVE, which an
 // operator may move and which everything else here moves with. A form-shaped
 // answer genuinely is small beside a leaf's completion, so it takes a fraction
 // rather than the whole; the floor under that fraction is what stops a lowered

@@ -39,14 +39,14 @@ func TestATestBinaryNeverWritesIntoTheHomeItInherited(t *testing.T) {
 }
 
 // TestTheProfileRootIsInheritedToo is the second root a test binary is handed
-// without asking: AFORGE_PROFILE_DIR moves the profile — the key, the measured
+// without asking: CODEAF_PROFILE_DIR moves the profile — the key, the measured
 // behaviour and this log with them — out from under the state root, so a gate
 // that watched only the state root would refuse the common case and write into
 // the person's ledger in the rarer one.
 func TestTheProfileRootIsInheritedToo(t *testing.T) {
 	elsewhere := t.TempDir()
 	t.Setenv(home.EnvVar, t.TempDir())
-	t.Setenv("AFORGE_PROFILE_DIR", elsewhere)
+	t.Setenv("CODEAF_PROFILE_DIR", elsewhere)
 	t.Setenv(EnvVar, "")
 
 	if got := PathFor(elsewhere); got != "" {
@@ -63,7 +63,7 @@ func TestTheProfileRootIsInheritedToo(t *testing.T) {
 
 // TestATestThatSaysWhereItsLogGoesStillGetsOne is the other half, and it is why
 // the gate can be this blunt: the refusal is of an INHERITED path, never of a
-// path a test chose. A temporary directory of its own and the AFORGE_CALL_LOG
+// path a test chose. A temporary directory of its own and the CODEAF_CALL_LOG
 // pin both still work, so a test with something to assert about the log has two
 // ways to say so.
 func TestATestThatSaysWhereItsLogGoesStillGetsOne(t *testing.T) {
@@ -71,7 +71,7 @@ func TestATestThatSaysWhereItsLogGoesStillGetsOne(t *testing.T) {
 	t.Setenv(home.EnvVar, inherited)
 	t.Setenv(EnvVar, "")
 
-	t.Setenv("AFORGE_PROFILE_DIR", "")
+	t.Setenv("CODEAF_PROFILE_DIR", "")
 	own := t.TempDir()
 	fresh(t, "")
 	Open(own)
@@ -110,7 +110,7 @@ func TestOnlyTheInheritedRootIsRefusedAndNotItsNeighbours(t *testing.T) {
 
 // TestOutsideATestTheProductResolvesExactlyAsItAlwaysHas holds the gate to test
 // binaries. The product's log is always on, and a change that quietly switched
-// it off for the person running aforge would trade one silent problem for a
+// it off for the person running codeaf would trade one silent problem for a
 // worse one.
 func TestOutsideATestTheProductResolvesExactlyAsItAlwaysHas(t *testing.T) {
 	inherited := t.TempDir()

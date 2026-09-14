@@ -39,12 +39,12 @@ func captureUsage(t *testing.T) (out, errs *bytes.Buffer) {
 //
 // `--help` on every one of these doors used to answer with Go's own internal
 // string — `error: flag: help requested` — and exit 1. Nine of them printed
-// that line and NOTHING ELSE, so there was no way at all to learn what `aforge
-// why` or `aforge logs` take; the seven that did print a usage block still
+// that line and NOTHING ELSE, so there was no way at all to learn what `codeaf
+// why` or `codeaf logs` take; the seven that did print a usage block still
 // ended with the word "error" under text that is not one, and a Makefile that
-// ran `aforge do --help` to check the binary read a failing command.
+// ran `codeaf do --help` to check the binary read a failing command.
 func TestAskingForHelpIsNotAFailure(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	for _, door := range []struct {
 		name string
 		run  func([]string) error
@@ -84,16 +84,16 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 			out, errs := captureUsage(t)
 			err := door.run([]string{"--help"})
 			if code := exitCodeOf(err); code != 0 {
-				t.Fatalf("`aforge %s --help` left with %d, want 0 — asking for help is not a failure\n%s%s",
+				t.Fatalf("`codeaf %s --help` left with %d, want 0 — asking for help is not a failure\n%s%s",
 					door.name, code, errs.String(), out.String())
 			}
 			printed := out.String()
 			if strings.TrimSpace(printed) == "" {
-				t.Fatalf("`aforge %s --help` printed nothing at all, so there is no way to learn what it takes",
+				t.Fatalf("`codeaf %s --help` printed nothing at all, so there is no way to learn what it takes",
 					door.name)
 			}
 			if strings.Contains(printed, "flag: help requested") {
-				t.Fatalf("`aforge %s --help` printed Go's own internal string:\n%s", door.name, printed)
+				t.Fatalf("`codeaf %s --help` printed Go's own internal string:\n%s", door.name, printed)
 			}
 			named := door.name
 			if door.name == "show" || door.name == "revise" {
@@ -101,11 +101,11 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 				// now called, which is the whole point of keeping it.
 				named = "plan " + door.name
 			}
-			if !strings.Contains(printed, "aforge "+named) {
-				t.Fatalf("`aforge %s --help` never names the command it is about:\n%s", door.name, printed)
+			if !strings.Contains(printed, "codeaf "+named) {
+				t.Fatalf("`codeaf %s --help` never names the command it is about:\n%s", door.name, printed)
 			}
 			if errs.Len() != 0 {
-				t.Fatalf("`aforge %s --help` wrote to stderr, where a caller reads failures:\n%s",
+				t.Fatalf("`codeaf %s --help` wrote to stderr, where a caller reads failures:\n%s",
 					door.name, errs.String())
 			}
 		})
@@ -128,7 +128,7 @@ func TestABadFlagIsRefusedOnceAndOnStderr(t *testing.T) {
 	if count := strings.Count(said, "has no --nosuchflag flag"); count != 1 {
 		t.Fatalf("the same refusal is printed %d times, want once:\n%s", count, said)
 	}
-	if !strings.Contains(said, "aforge do") {
+	if !strings.Contains(said, "codeaf do") {
 		t.Fatalf("a bad flag never says which command it was refused by:\n%s", said)
 	}
 	if out.Len() != 0 {
@@ -136,18 +136,18 @@ func TestABadFlagIsRefusedOnceAndOnStderr(t *testing.T) {
 	}
 }
 
-// ONE SPELLING FOR ONE FLAG. `aforge --help` writes `--json` and the flag
+// ONE SPELLING FOR ONE FLAG. `codeaf --help` writes `--json` and the flag
 // package writes `-json`, so a reader comparing the two help surfaces saw two
 // conventions for one flag and had to guess whether both worked.
 func TestEveryFlagIsSpelledTheWayTheUsageSpellsIt(t *testing.T) {
 	out, _ := captureUsage(t)
 	if code := exitCodeOf(runDo([]string{"--help"})); code != 0 {
-		t.Fatalf("`aforge do --help` left with %d", code)
+		t.Fatalf("`codeaf do --help` left with %d", code)
 	}
 	printed := out.String()
 	for _, want := range []string{"--json", "--timeout", "--model"} {
 		if !strings.Contains(printed, want) {
-			t.Fatalf("`aforge do --help` never writes %q:\n%s", want, printed)
+			t.Fatalf("`codeaf do --help` never writes %q:\n%s", want, printed)
 		}
 	}
 	// One dash is right for `-w` and `-o` and wrong for everything else, which
@@ -164,7 +164,7 @@ func TestEveryFlagIsSpelledTheWayTheUsageSpellsIt(t *testing.T) {
 }
 
 // A TYPO IS ANSWERED WITH THE COMMAND SOMEBODY MEANT, not with the whole book.
-// `aforge lgos` used to print `unknown command` followed by every command and
+// `codeaf lgos` used to print `unknown command` followed by every command and
 // the entire environment table, so the one line that mattered scrolled off the
 // top and the obvious next step was never named.
 func TestAMisspelledCommandNamesTheNearestOne(t *testing.T) {
@@ -175,14 +175,14 @@ func TestAMisspelledCommandNamesTheNearestOne(t *testing.T) {
 		{"maunal", "manual"},
 	} {
 		said := unknownCommand(row.typed).Error()
-		if !strings.Contains(said, "aforge "+row.meant) {
-			t.Fatalf("`aforge %s` was answered with %q, and never names `aforge %s`", row.typed, said, row.meant)
+		if !strings.Contains(said, "codeaf "+row.meant) {
+			t.Fatalf("`codeaf %s` was answered with %q, and never names `codeaf %s`", row.typed, said, row.meant)
 		}
-		if strings.Contains(said, "AFORGE_DAILY_BUDGET") {
-			t.Fatalf("`aforge %s` dumped the environment table over the one line that matters:\n%s", row.typed, said)
+		if strings.Contains(said, "CODEAF_DAILY_BUDGET") {
+			t.Fatalf("`codeaf %s` dumped the environment table over the one line that matters:\n%s", row.typed, said)
 		}
 		if lines := strings.Count(said, "\n") + 1; lines > 2 {
-			t.Fatalf("`aforge %s` answered with %d lines, want the miss and where the rest is:\n%s",
+			t.Fatalf("`codeaf %s` answered with %d lines, want the miss and where the rest is:\n%s",
 				row.typed, lines, said)
 		}
 	}
@@ -190,11 +190,11 @@ func TestAMisspelledCommandNamesTheNearestOne(t *testing.T) {
 	// is worse than none: `quux` is three edits from `run`, which is not a typo
 	// for anything.
 	if said := unknownCommand("quux").Error(); strings.Contains(said, "did you mean") {
-		t.Fatalf("`aforge quux` was answered with a guess:\n%s", said)
+		t.Fatalf("`codeaf quux` was answered with a guess:\n%s", said)
 	}
 }
 
-// A MISSING QUOTED STRING IS ANSWERED WITH THAT COMMAND'S OWN LINE. `aforge do`
+// A MISSING QUOTED STRING IS ANSWERED WITH THAT COMMAND'S OWN LINE. `codeaf do`
 // with nothing after it used to scroll a hundred and twenty-seven lines past
 // the reader for the sake of one missing argument.
 func TestAMissingGoalShowsTheCommandAndNotTheWholeTable(t *testing.T) {
@@ -202,15 +202,15 @@ func TestAMissingGoalShowsTheCommandAndNotTheWholeTable(t *testing.T) {
 	if !strings.Contains(said, "no goal given") {
 		t.Fatalf("the miss is no longer named:\n%s", said)
 	}
-	if !strings.Contains(said, `aforge do   "<task>"`) {
-		t.Fatalf("`aforge do` with no task never shows the shape it wanted:\n%s", said)
+	if !strings.Contains(said, `codeaf do   "<task>"`) {
+		t.Fatalf("`codeaf do` with no task never shows the shape it wanted:\n%s", said)
 	}
-	if strings.Contains(said, "AFORGE_DAILY_BUDGET") || strings.Contains(said, "aforge manual") {
-		t.Fatalf("`aforge do` with no task printed the whole usage table:\n%s", said)
+	if strings.Contains(said, "CODEAF_DAILY_BUDGET") || strings.Contains(said, "codeaf manual") {
+		t.Fatalf("`codeaf do` with no task printed the whole usage table:\n%s", said)
 	}
 }
 
-// ONE SOURCE OF TRUTH: a command's shape is written once, in the table `aforge
+// ONE SOURCE OF TRUTH: a command's shape is written once, in the table `codeaf
 // --help` prints, and every per-command usage is a reading of that table.
 func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
 	// The ladder is interpolated from envelope.go's one rung list, so this asks
@@ -224,7 +224,7 @@ func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
 	if shape := usageForCommand("do"); !strings.Contains(shape, handWorkFooter) {
 		t.Fatalf("`do`'s usage lost the exit ladder that is written in usageText:\n%s", shape)
 	}
-	// `aforge run` MEANS ONE THING: run a saved program. It used to mean that
+	// `codeaf run` MEANS ONE THING: run a saved program. It used to mean that
 	// and the graph runner both, and `longerCommands` existed to stop this very
 	// lookup returning the wrong one of the two.
 	if shape := usageForCommand("run"); !strings.Contains(shape, "--input") {
@@ -233,12 +233,12 @@ func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
 	if shape := usageForCommand("run"); strings.Contains(shape, "plan.json") {
 		t.Fatalf("`run`'s usage still borrows the plan runner's line:\n%s", shape)
 	}
-	// And the pipeline's four verbs are one group: `aforge plan --help` answers
+	// And the pipeline's four verbs are one group: `codeaf plan --help` answers
 	// with all four, each of them answers with its own.
 	group := usageForCommand("plan")
-	for _, verb := range []string{"aforge plan new", "aforge plan show", "aforge plan revise", "aforge plan run"} {
+	for _, verb := range []string{"codeaf plan new", "codeaf plan show", "codeaf plan revise", "codeaf plan run"} {
 		if !strings.Contains(group, verb) {
-			t.Fatalf("`aforge plan --help` does not offer %q:\n%s", verb, group)
+			t.Fatalf("`codeaf plan --help` does not offer %q:\n%s", verb, group)
 		}
 	}
 	if shape := usageForCommand("plan run"); !strings.Contains(shape, "--parallel") {
@@ -260,27 +260,27 @@ func TestTheUsageNamesEveryFlagAPersonCanType(t *testing.T) {
 	}
 }
 
-// EXEC'S EXIT LADDER IS WRITTEN DOWN. A harness wrapping `aforge exec` could
+// EXEC'S EXIT LADDER IS WRITTEN DOWN. A harness wrapping `codeaf exec` could
 // not branch on its six exit codes without reading the source, while the same
 // page spelled out `do`'s and `run subharness`'s.
 func TestExecsExitLadderIsWrittenWhereACallerLooks(t *testing.T) {
 	shape := usageForCommand("exec")
 	// The five rungs of the ONE ladder every headless verb leaves on
 	// (envelope.go), not exec's old six. The old numbers are still reachable
-	// behind AFORGE_EXIT_CODES=legacy, and that is said on the same line.
+	// behind CODEAF_EXIT_CODES=legacy, and that is said on the same line.
 	for _, want := range []string{"exit 0", "· 1 ", "· 2 ", "· 3 ", "· 4 "} {
 		if !strings.Contains(shape, want) {
-			t.Fatalf("`aforge exec`'s usage does not say what %q means:\n%s", strings.TrimSpace(want), shape)
+			t.Fatalf("`codeaf exec`'s usage does not say what %q means:\n%s", strings.TrimSpace(want), shape)
 		}
 	}
-	if !strings.Contains(shape, "AFORGE_EXIT_CODES=legacy") {
-		t.Fatalf("`aforge exec`'s usage never names the hatch back to its old numbers:\n%s", shape)
+	if !strings.Contains(shape, "CODEAF_EXIT_CODES=legacy") {
+		t.Fatalf("`codeaf exec`'s usage never names the hatch back to its old numbers:\n%s", shape)
 	}
 }
 
-// A DOOR THAT PARSES NO FLAGS STILL ANSWERS THE FIRST GESTURE. `aforge show
+// A DOOR THAT PARSES NO FLAGS STILL ANSWERS THE FIRST GESTURE. `codeaf show
 // --help` used to answer `open --help: no such file or directory` — a
-// filesystem error about a flag. (`aforge models` was on this list until
+// filesystem error about a flag. (`codeaf models` was on this list until
 // `--refresh` gave it a flag set; the help test above covers it now.)
 func TestProbingAFlaglessCommandWithHelpIsNotAnError(t *testing.T) {
 	for _, door := range []struct {
@@ -293,10 +293,10 @@ func TestProbingAFlaglessCommandWithHelpIsNotAnError(t *testing.T) {
 		out, _ := captureUsage(t)
 		err := door.run([]string{"--help"})
 		if code := exitCodeOf(err); code != 0 {
-			t.Fatalf("`aforge %s --help` left with %d: %v", door.name, code, err)
+			t.Fatalf("`codeaf %s --help` left with %d: %v", door.name, code, err)
 		}
 		if strings.Contains(out.String(), "no such file or directory") {
-			t.Fatalf("`aforge %s --help` answered with a filesystem error:\n%s", door.name, out.String())
+			t.Fatalf("`codeaf %s --help` answered with a filesystem error:\n%s", door.name, out.String())
 		}
 	}
 }
@@ -357,7 +357,7 @@ func TestARefusedFlagIsSpelledTheWayItWasTyped(t *testing.T) {
 // surfaces share, and the one place it used to break.
 //
 // `--yolo` is the conversation's word for "do not stop and ask me". A developer
-// arriving at `aforge do` types it, and `do` is unattended by construction — so
+// arriving at `codeaf do` types it, and `do` is unattended by construction — so
 // the flag would mean nothing — but the refusal said only `flag provided but
 // not defined: -yolo` and left with 1, teaching them a word on one surface and
 // refusing it on the other with nothing in between.
@@ -376,11 +376,11 @@ func TestTheDoorThatHasNoYoloSaysWhatToTypeInstead(t *testing.T) {
 			_, errs := captureUsage(t)
 			_ = door.run(door.args)
 			said, _, _ := strings.Cut(errs.String(), "\n")
-			if !strings.Contains(said, "aforge "+door.name+" has no --yolo flag") {
-				t.Fatalf("`aforge %s --yolo` is not refused in this surface's own words:\n%s", door.name, said)
+			if !strings.Contains(said, "codeaf "+door.name+" has no --yolo flag") {
+				t.Fatalf("`codeaf %s --yolo` is not refused in this surface's own words:\n%s", door.name, said)
 			}
 			if !strings.Contains(said, door.names) {
-				t.Errorf("`aforge %s --yolo` refuses the word without naming what does the job here (%s):\n%s",
+				t.Errorf("`codeaf %s --yolo` refuses the word without naming what does the job here (%s):\n%s",
 					door.name, door.names, said)
 			}
 		})
@@ -415,11 +415,11 @@ func TestABadCountNamesTheFlagAndWhatItTakes(t *testing.T) {
 			_ = runExec([]string{"a prompt", typed.flag, "notanumber"})
 			said, _, _ := strings.Cut(errs.String(), "\n")
 			if strings.Contains(said, "parse error") {
-				t.Errorf("`aforge exec %s notanumber` still answers with the number package's own word for it:\n%s",
+				t.Errorf("`codeaf exec %s notanumber` still answers with the number package's own word for it:\n%s",
 					typed.flag, said)
 			}
 			if !strings.Contains(said, typed.want) {
-				t.Errorf("`aforge exec %s notanumber` never says what the flag takes — want %q:\n%s",
+				t.Errorf("`codeaf exec %s notanumber` never says what the flag takes — want %q:\n%s",
 					typed.flag, typed.want, said)
 			}
 		})

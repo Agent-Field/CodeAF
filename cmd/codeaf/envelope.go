@@ -11,12 +11,12 @@ import (
 )
 
 // ONE EXIT LADDER AND ONE RESULT ENVELOPE, for every headless verb this binary
-// has: `aforge do`, `aforge exec`, and `aforge run`.
+// has: `codeaf do`, `codeaf exec`, and `codeaf run`.
 //
 // THIS FILE IS THE WHOLE OF BOTH CONTRACTS. It exists because there used to be
 // three exit tables, each written where its own command was, and two of them
 // said the opposite thing with the same number: `do` exit 1 meant "nothing
-// usable came back", `aforge run` exit 1 meant "it could not be run at
+// usable came back", `codeaf run` exit 1 meant "it could not be run at
 // all", and `exec` returned 2, 3, 4, 5 and 6 and never returned 1. A script
 // that branched across any two of them branched WRONG on at least one, and
 // there was no way to read the code and find out which — the tables were three
@@ -55,7 +55,7 @@ const (
 	// THAT SENTENCE IS A PROMISE AND NOT A DESCRIPTION. A run that started and
 	// then failed leaves on exitIncomplete however early it broke, because it
 	// may have spent money and what it did manage is worth reading; only a
-	// refusal BEFORE any work starts belongs here. `aforge exec` published a
+	// refusal BEFORE any work starts belongs here. `codeaf exec` published a
 	// mid-run provider failure on this rung for a while, and a script reading
 	// the ladder retried a run that had already cost real money as though it
 	// had never begun (execStop).
@@ -79,7 +79,7 @@ const (
 // verbs. It is what a script should have been reading all along: the exit code
 // says how much is wrong, `stop` says what.
 //
-// The five words `aforge exec` already published — done, budget, turn-cap,
+// The five words `codeaf exec` already published — done, budget, turn-cap,
 // deadline, error — are kept spelled exactly as they were, because harnesses in
 // the wild read them. The three that are new name states exec never had.
 type stopReason string
@@ -219,22 +219,22 @@ func exitMeaning(code exitStatus) string {
 
 // legacyExitCodes is THE ESCAPE HATCH, and it is one line and one release.
 //
-// `aforge exec`'s old rungs — 2 budget, 3 turn cap, 4 deadline, 5 error, 6
+// `codeaf exec`'s old rungs — 2 budget, 3 turn cap, 4 deadline, 5 error, 6
 // finished with nothing to show — are read by harnesses that were written
 // against them, and this change moves every one of those numbers. Setting
-// AFORGE_EXIT_CODES=legacy puts exec's old table back and CHANGES NOTHING ELSE:
+// CODEAF_EXIT_CODES=legacy puts exec's old table back and CHANGES NOTHING ELSE:
 // not `do`, not `run`, not one field of the envelope, not one word on stderr.
 //
 // IT IS NOT A GENERAL COMPATIBILITY MODE AND MUST NOT BECOME ONE. If a second
 // thing is ever tempted to read this variable, that is the signal to give that
 // thing its own switch and its own removal date, not to widen this one.
 func legacyExitCodes() bool {
-	return strings.TrimSpace(os.Getenv("AFORGE_EXIT_CODES")) == "legacy"
+	return strings.TrimSpace(os.Getenv("CODEAF_EXIT_CODES")) == "legacy"
 }
 
 // legacyExitCodesHelp is the one line `--help` carries about the hatch. It is
 // spelled once so the manual page and the flag table cannot disagree.
-const legacyExitCodesHelp = `"legacy" restores ` + "`aforge exec`" + `'s old 2/3/4/5/6 exit
+const legacyExitCodesHelp = `"legacy" restores ` + "`codeaf exec`" + `'s old 2/3/4/5/6 exit
                        codes for one release, and changes nothing else`
 
 // jsonFlagHelp is the ONE sentence `--json` is described with, on `do`, `exec`
@@ -309,10 +309,10 @@ type resultEnvelope struct {
 	// wrote for this run carries it under the same key.
 	//
 	// It is here because a developer who wanted a call count went to
-	// `~/.aforge/logs/calls.jsonl` and found nothing on the rows naming which run
+	// `~/.codeaf/logs/calls.jsonl` and found nothing on the rows naming which run
 	// had written them — so attribution in a file several runs append to was by
 	// timestamp alone. Publishing the id is the half that makes the other half
-	// usable: `aforge logs --run <run>` is now a question with an answer.
+	// usable: `codeaf logs --run <run>` is now a question with an answer.
 	Run string `json:"run"`
 	// Calls is how many model calls this run made — every attempt that went out
 	// on the wire, counted at the one door they all pass through
@@ -439,8 +439,8 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 }
 
 // envelopeIncomplete is the ONE name for "the reason it did not finish", and it
-// is spelled here because two verbs publish it: `aforge run` when a saved
-// program stopped part of the way through, and `aforge exec` when a limit cut a
+// is spelled here because two verbs publish it: `codeaf run` when a saved
+// program stopped part of the way through, and `codeaf exec` when a limit cut a
 // run that had already produced text.
 //
 // IT IS NOT `error`, AND THAT IS THE WHOLE POINT OF IT. `error` means the run
@@ -463,7 +463,7 @@ var envelopeContract = []string{
 // The old spellings, one small function per verb, kept beside the contract they
 // are deprecated against so that removing them in a release's time is one edit.
 
-// legacyErrandFields are `aforge do --json`'s field names as they were before
+// legacyErrandFields are `codeaf do --json`'s field names as they were before
 // the envelope. Every one of them is going away after one release; the new
 // spelling for each is named in docs/design/polish/envelope-and-exits.md.
 //
@@ -517,7 +517,7 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	return fields
 }
 
-// legacyExecFields are `aforge exec --json`'s field names as they were before
+// legacyExecFields are `codeaf exec --json`'s field names as they were before
 // the envelope: `text` is now `answer`, `artifacts` is `files`, `turns` is
 // `steps`, `elapsed_ms` is `seconds`, and `usage` is `tokens` plus `spend_usd`.
 // All five go away after one release.

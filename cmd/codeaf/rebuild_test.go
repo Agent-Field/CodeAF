@@ -67,14 +67,14 @@ func TestRebuildReplaysTheJournalBehindAConfirmation(t *testing.T) {
 
 // TestTheRebuildQuestionIsAnAsideAndNotInThePipe is row 28.
 //
-// `aforge rebuild` asked `[y/N] ` on the command's `output` — os.Stdout in the
-// shipped binary — so `aforge rebuild | tee log` handed the person a blank
+// `codeaf rebuild` asked `[y/N] ` on the command's `output` — os.Stdout in the
+// shipped binary — so `codeaf rebuild | tee log` handed the person a blank
 // terminal waiting for a word they could not see, and put the question into the
 // data file. It is the exact defect `cache clean` was fixed for.
 //
 // And the question was in the storage engine's own words. `materialized view`
 // is not something a person has to know to decide whether they want this; what
-// is thrown away is everything aforge worked out from the journal.
+// is thrown away is everything codeaf worked out from the journal.
 func TestTheRebuildQuestionIsAnAsideAndNotInThePipe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")
 	graph, err := store.Open(path)

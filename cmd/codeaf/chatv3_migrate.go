@@ -10,12 +10,12 @@ package main
 // not cost anybody their new one, and a session another window is holding open
 // is not touched at all.
 //
-// What moves, per flat transcript under ~/.aforge/v3/sessions/<workspace>/:
+// What moves, per flat transcript under ~/.codeaf/v3/sessions/<workspace>/:
 //
 //	<stamp>_<rand>.jsonl        → projects/<workspace>/<id>/transcript.jsonl
 //	<stamp>_<rand>.state.json   → projects/<workspace>/<id>/state.json
 //	<stamp>_<rand>.tasks.json   → projects/<workspace>/<id>/tasks.json
-//	~/.aforge/v3/tasks/<id>/    → projects/<workspace>/<id>/tasks/
+//	~/.codeaf/v3/tasks/<id>/    → projects/<workspace>/<id>/tasks/
 //	<workspace>/tasks.jsonl     → projects/<workspace>/tasks.jsonl
 //
 // The id is the transcript header's own, which is what makes the folder's name
@@ -58,7 +58,7 @@ func migrateV3Tree() {
 	}
 	buckets, err := os.ReadDir(old)
 	if err != nil {
-		log.Printf("aforge: leaving the old session directory in place: %v", err)
+		log.Printf("codeaf: leaving the old session directory in place: %v", err)
 		return
 	}
 	for _, bucket := range buckets {
@@ -80,12 +80,12 @@ func migrateV3Tree() {
 func migrateV3Bucket(old, name string) {
 	entries, err := os.ReadDir(old)
 	if err != nil {
-		log.Printf("aforge: leaving %s in place: %v", old, err)
+		log.Printf("codeaf: leaving %s in place: %v", old, err)
 		return
 	}
 	fresh := home.Join("v3", "projects", name)
 	if err := os.MkdirAll(fresh, 0o700); err != nil {
-		log.Printf("aforge: leaving %s in place: %v", old, err)
+		log.Printf("codeaf: leaving %s in place: %v", old, err)
 		return
 	}
 	for _, entry := range entries {
@@ -122,16 +122,16 @@ func migrateV3Session(transcript, bucket string) {
 	}
 	header, ok := migrateV3Header(transcript)
 	if !ok {
-		log.Printf("aforge: %s has no readable session header; leaving it in the old layout", transcript)
+		log.Printf("codeaf: %s has no readable session header; leaving it in the old layout", transcript)
 		return
 	}
 	dir := filepath.Join(bucket, header.ID)
 	if _, err := os.Stat(dir); err == nil {
-		log.Printf("aforge: %s is already folded into %s; leaving the old file in place", transcript, dir)
+		log.Printf("codeaf: %s is already folded into %s; leaving the old file in place", transcript, dir)
 		return
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		log.Printf("aforge: leaving %s in the old layout: %v", transcript, err)
+		log.Printf("codeaf: leaving %s in the old layout: %v", transcript, err)
 		return
 	}
 	// READ BEFORE MOVE: the summary is what fills the picker's row, and it is
@@ -172,7 +172,7 @@ func migrateV3Session(transcript, bucket string) {
 	if err := session.SaveMeta(dir, meta); err != nil {
 		// The folder is already correct; only its citation is missing, and the
 		// session's next turn writes one (internal/session's placemeta.go).
-		log.Printf("aforge: %s moved but its meta.json could not be written: %v", place.Transcript(), err)
+		log.Printf("codeaf: %s moved but its meta.json could not be written: %v", place.Transcript(), err)
 	}
 }
 
@@ -233,18 +233,18 @@ func migrateV3Move(from, to string) bool {
 		return false
 	}
 	if _, err := os.Stat(to); err == nil {
-		log.Printf("aforge: %s is already in place; leaving %s where it is", to, from)
+		log.Printf("codeaf: %s is already in place; leaving %s where it is", to, from)
 		return false
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		log.Printf("aforge: leaving %s where it is: %v", from, err)
+		log.Printf("codeaf: leaving %s where it is: %v", from, err)
 		return false
 	}
 	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
-		log.Printf("aforge: leaving %s where it is: %v", from, err)
+		log.Printf("codeaf: leaving %s where it is: %v", from, err)
 		return false
 	}
 	if err := os.Rename(from, to); err != nil {
-		log.Printf("aforge: leaving %s where it is: %v", from, err)
+		log.Printf("codeaf: leaving %s where it is: %v", from, err)
 		return false
 	}
 	return true

@@ -102,7 +102,7 @@ func TestAutonomyPersistsPerProjectAndFillsPolicy(t *testing.T) {
 	}
 	// And a file edited by hand cannot make either of them run on a clock,
 	// because the READ has the same floor as the write.
-	if err := os.WriteFile(filepath.Join(root, ".aforge", "autonomy.json"),
+	if err := os.WriteFile(filepath.Join(root, ".codeaf", "autonomy.json"),
 		[]byte(`{"confirmation":{"kind":"decide"},"clarification":{"kind":"decide"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestTheRecordRidesInModelContext(t *testing.T) {
 	}
 }
 
-func TestAnExplainedOverrideBecomesAForgettablePreference(t *testing.T) {
+func TestAnExplainedOverrideBecomesAPreferenceThatCanBeForgotten(t *testing.T) {
 	a, _ := brainAgent(t, &scriptedCompleter{}, func(config *Config) { config.Interactive = true })
 	raw := json.RawMessage(`{"head":"Which report style?","kind":"choice","reason":"the record has no report style","options":[{"key":"1","label":"long"},{"key":"2","label":"compact"}],"pick":{"key":"1","reason":"it carries more detail"},"stakes":"reversible"}`)
 	done := make(chan struct{})

@@ -22,8 +22,8 @@ import (
 // does not matter.
 func TestTheDoorRegistersConfiguredCredentialsWithTheRecord(t *testing.T) {
 	profile := t.TempDir()
-	t.Setenv("AFORGE_PROFILE_DIR", profile)
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 
@@ -63,7 +63,7 @@ func TestTheDoorRegistersConfiguredCredentialsWithTheRecord(t *testing.T) {
 //
 // It said `in a folder of its own under the state root`, which names no folder
 // — and the state root has two. The developer who turned the switch on went to
-// `~/.aforge/runs/aforge-do-<n>/`, found a `graph.db` and nothing else, and
+// `~/.codeaf/runs/codeaf-do-<n>/`, found a `graph.db` and nothing else, and
 // concluded no record had been written. One had: it goes beside the model-call
 // log, under `logs/trace/<run>/`. The sentence was the half that was wrong.
 //
@@ -71,8 +71,8 @@ func TestTheDoorRegistersConfiguredCredentialsWithTheRecord(t *testing.T) {
 // appeared, rather than asserting one string against another.
 func TestTheDebugFlagNamesTheFolderTheRecordIsActuallyWrittenTo(t *testing.T) {
 	house := t.TempDir()
-	t.Setenv("AFORGE_HOME", house)
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_HOME", house)
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 
 	// The door's own three steps, in the door's own order (openDebugRecord).
 	// The switch is turned on for THIS RUN and not for the process:

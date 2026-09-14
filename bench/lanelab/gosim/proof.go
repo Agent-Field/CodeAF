@@ -32,7 +32,7 @@ package main
 // time-to-action is measured, and the healthy half is where a false hedge would
 // have to come from.
 //
-//   - COLD STORE — a fresh AFORGE_HOME, nothing primed, no sheet. The chooser
+//   - COLD STORE — a fresh CODEAF_HOME, nothing primed, no sheet. The chooser
 //     therefore has nothing to rank and returns an empty [lane.Choice], the
 //     plan is built with no belief and no alternative, and the lane that serves
 //     goes silent for [quietFor]. This is the reported defect's own state, and
@@ -958,7 +958,7 @@ func scenarioNamed(name string) (scenario, bool) {
 // runProofSeed is one case at one seed, in a home of its own.
 //
 // A HOME OF ITS OWN, AND A FRESH ONE PER SEED. The ledger writes every belief
-// through a store that resolves under AFORGE_HOME on every call, so a run that
+// through a store that resolves under CODEAF_HOME on every call, so a run that
 // did not move the state root would fold this program's lanes into the belief
 // file of whoever ran it — and the cold-store row would not be cold on its
 // second seed.

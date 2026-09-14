@@ -21,7 +21,7 @@ import (
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
 //
-// This file is everything the local half of `aforge chat --host devbox` needs:
+// This file is everything the local half of `codeaf chat --host devbox` needs:
 // a [Client] over the ssh process's pipes, and an [Agent] that satisfies
 // internal/tui3's own Agent interface so the surface cannot tell the difference.
 // The surface calls methods; this turns them into lines; the engine answers.
@@ -325,9 +325,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// THE REFUSAL IS AT THE DOOR, which is what wire.go's Version says. Two
 	// builds that might disagree about a frame must not find that out three
 	// turns into a conversation, and the sentence names the fix — one machine
-	// has an older aforge on it, and the person knows which machine is which.
+	// has an older codeaf on it, and the person knows which machine is which.
 	if welcome.Version != Version {
-		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())}
+		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol", c.where())}
 	}
 	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
@@ -439,7 +439,7 @@ func (c *Client) Host() string { return c.host }
 // IT IS A FACT A PERSON MUST BE ABLE TO LEARN. Two windows on one conversation
 // — two people, or one person and their own forgotten laptop — is a thing that
 // changes what typing into it means, and a screen that hid it would be the one
-// place aforge kept a secret about who is in the room. Zero draws nothing, by
+// place codeaf kept a secret about who is in the room. Zero draws nothing, by
 // the emptiness law.
 func (c *Client) Attached() int { return c.Welcome().Attached }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
-// passesFlag is how many independent passes `aforge plan new` plans with before
+// passesFlag is how many independent passes `codeaf plan new` plans with before
 // merging them, TYPED AS WORDS RATHER THAN AS MAGIC INTEGERS.
 //
 // It was `--ensemble 0|-1|N`, where 0 meant "decide from the goal", -1 meant

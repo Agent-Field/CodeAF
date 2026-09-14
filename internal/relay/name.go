@@ -2,7 +2,7 @@ package relay
 
 // A MACHINE'S NAME IS DERIVED FROM ITS KEY, NEVER CHOSEN.
 //
-// The name is what a person types — `aforge chat --at otter-lamp-42` — so it has
+// The name is what a person types — `codeaf chat --at otter-lamp-42` — so it has
 // to be sayable, typable over a phone call, and short enough to read off a
 // screen. But it is also what the relay matches a dial against, so if it were
 // chosen there would be a land rush for the good ones and a way to sit on
@@ -30,7 +30,7 @@ import (
 // nameSalt keeps this derivation from ever colliding with another use of the
 // same key. Every hash of a device key in this tree carries the label of what
 // it is being hashed FOR.
-const nameSalt = "aforge relay name\x00"
+const nameSalt = "codeaf relay name\x00"
 
 // NameFor is the name a machine holding this public key registers under.
 //

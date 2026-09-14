@@ -36,7 +36,7 @@ func resumedJournal(t *testing.T, dir string) string {
 }
 
 // resumedAgent opens a real session on a journal, which is the resume path a
-// person takes with `aforge chat --session <path>`.
+// person takes with `codeaf chat --session <path>`.
 func resumedAgent(t *testing.T, dir, file string) *session.Agent {
 	t.Helper()
 	agent, err := session.New(session.Config{

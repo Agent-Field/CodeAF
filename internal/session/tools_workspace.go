@@ -19,7 +19,7 @@ package session
 // nil and this appends nothing. There is no second check to remember and no
 // tool that exists in order to fail.
 //
-// WHY THE NAMES ARE `workspace_` AND NOT `rewind_`. aforge already has a
+// WHY THE NAMES ARE `workspace_` AND NOT `rewind_`. codeaf already has a
 // rewind, and it is an edit of the CONVERSATION that touches no file on disk
 // (rewind.go). These four move bytes. Two families that both meant "put it
 // back how it was" would be one word doing two jobs, and the first person to

@@ -23,7 +23,7 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 		return err
 	}
 	if flags.NArg() != 1 {
-		return fmt.Errorf("usage: aforge why self|<node-id> [--db path]")
+		return fmt.Errorf("usage: codeaf why self|<node-id> [--db path]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -59,7 +59,7 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	// A COLUMN HEADER IS NEVER PRINTED WITHOUT A ROW UNDER IT. `TRIED COST
 	// LEARNED` over nothing is a table claiming rows that are not there, and a
 	// person reads it as a reader that failed rather than as a day with no
-	// self-spend on it. One short sentence instead, which is what `aforge
+	// self-spend on it. One short sentence instead, which is what `codeaf
 	// cache` answers over the same emptiness.
 	if len(receipts) == 0 {
 		_, err := fmt.Fprintln(output, "nothing was tried on its own account today.")
@@ -142,7 +142,7 @@ func writeNodeTranscript(output io.Writer, graph *store.Store, nodeID string) er
 		// AND A MISS IS NOT A SUCCESS. This returned nil, so a script asking
 		// whether an id exists read exit 0 and concluded it existed and was
 		// empty — the two states this sentence exists to tell apart, collapsed
-		// again the moment anything but a person read it. `aforge logs` took
+		// again the moment anything but a person read it. `codeaf logs` took
 		// exactly this change over the same emptiness, and `notebook retract`
 		// has always got it right. Exit 1 is the rung: nothing ran, because
 		// there was nothing here to run (envelope.go).
@@ -182,10 +182,10 @@ func transcriptHeadline(entry store.TranscriptEntry) string {
 		// which names neither who wrote the line nor what happened — and
 		// "harness" is machinery vocabulary besides, spent in this product on
 		// the saved shapes of work a person builds and runs by name. A note in
-		// this record is aforge writing about the run rather than the model
-		// speaking, and `aforge` says exactly that in a word the reader already
+		// this record is codeaf writing about the run rather than the model
+		// speaking, and `codeaf` says exactly that in a word the reader already
 		// knows, because it is what they typed to get here.
-		return turn + " · aforge"
+		return turn + " · codeaf"
 	case store.TranscriptElided:
 		return turn + " · the record stops here"
 	}

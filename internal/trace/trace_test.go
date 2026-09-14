@@ -29,7 +29,7 @@ func forgetProcessRun(t *testing.T) {
 // another's folder. It returns the run's context.
 func fresh(t *testing.T) context.Context {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	forgetProcessRun(t)
 	runs.mutex.Lock()
 	runs.by = nil
@@ -54,7 +54,7 @@ func TestEveryMethodIsANoOpOnANilRecorder(t *testing.T) {
 }
 
 func TestForIsNilWhenTheSwitchIsOff(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	was := on.Load()
 	t.Cleanup(func() { on.Store(was) })
 	on.Store(false)
@@ -64,7 +64,7 @@ func TestForIsNilWhenTheSwitchIsOff(t *testing.T) {
 }
 
 func TestForIsNilWithNoRunToBelongTo(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	was := on.Load()
 	t.Cleanup(func() { on.Store(was) })
 	on.Store(true)
@@ -153,7 +153,7 @@ func TestARunWritesItsCallsToolsAndDecisionsUnderItsOwnID(t *testing.T) {
 		Choice: "fireworks", Reason: "the pinned lane answered first", Alternatives: []string{"together"},
 	})
 
-	folder := filepath.Join(os.Getenv("AFORGE_HOME"), DirName, TraceDirName, run)
+	folder := filepath.Join(os.Getenv("CODEAF_HOME"), DirName, TraceDirName, run)
 	if got := recorder.Folder(); got != folder {
 		t.Fatalf("folder: got %q, want %q", got, folder)
 	}
@@ -264,7 +264,7 @@ func TestARunThatReachesTheCapSaysSoAndStops(t *testing.T) {
 
 func TestTheOldestRunFolderIsPrunedWhole(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("AFORGE_HOME", home)
+	t.Setenv("CODEAF_HOME", home)
 	t.Setenv(KeepEnvVar, "2")
 	was := on.Load()
 	t.Cleanup(func() { on.Store(was) })
@@ -506,7 +506,7 @@ func TestTheDoorsHeaderOpensTheFolderAndNamesTheRun(t *testing.T) {
 // safe to leave out rather than something a person has to remember to clean up.
 func TestADoorWithTheSwitchOffCreatesNoFolder(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("AFORGE_HOME", home)
+	t.Setenv("CODEAF_HOME", home)
 	runs.mutex.Lock()
 	runs.by = nil
 	runs.mutex.Unlock()
@@ -532,7 +532,7 @@ func TestADoorWithTheSwitchOffCreatesNoFolder(t *testing.T) {
 // is exactly the difference between one run and the process.
 func quiet(t *testing.T) {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	forgetProcessRun(t)
 	runs.mutex.Lock()
 	runs.by = nil
@@ -600,7 +600,7 @@ func TestTheProcessRunFallbackDoesNotCarryOneRunsDebug(t *testing.T) {
 		t.Fatalf("a context with no run got the recorder %v after a /debug elsewhere; want nil", got)
 	}
 	// And with the process-wide switch on it records again, under the process's
-	// own run — which is what --debug and AFORGE_DEBUG mean.
+	// own run — which is what --debug and CODEAF_DEBUG mean.
 	Enable()
 	recorder := For(context.Background())
 	if recorder == nil {
@@ -853,7 +853,7 @@ func TestTheFallbackAnswersForOneRunAndGoesQuietForTwo(t *testing.T) {
 	on.Store(true)
 
 	// One run: a record written from a context that carries nothing — which is
-	// every deeper layer of `aforge do` — lands in that run's folder.
+	// every deeper layer of `codeaf do` — lands in that run's folder.
 	first := Begin(context.Background())
 	recorder := For(context.Background())
 	if recorder == nil {

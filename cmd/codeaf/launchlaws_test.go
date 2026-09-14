@@ -32,14 +32,14 @@ func deadCatalogEndpoint(t *testing.T) {
 		http.Error(w, "no catalog for a test", http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("AFORGE_BASE_URL", server.URL)
+	t.Setenv("CODEAF_BASE_URL", server.URL)
 }
 
 // v3SubharnessBlockingReads is what wiring one conversation's subharness
 // registry is allowed to ask the catalog through the waiting door, and the
 // whole of it is ONE call that does not belong to this surface: [buildLinear]
 // in subharness.go, which asks ContextLength to size a leaf. That file is
-// shared with `aforge exec`, `aforge run` and `aforge subharness` — headless
+// shared with `codeaf exec`, `codeaf run` and `codeaf subharness` — headless
 // doors where waiting for a catalog is correct — and it is the KNOWN RESIDUAL
 // on this path, recorded here rather than asserted away.
 //
@@ -114,7 +114,7 @@ func TestTheLaunchesBlockingCatalogReadsDoNotGrow(t *testing.T) {
 //
 // internal/packed's whole design is that declaring a folder reads nothing and
 // the first read pays for the whole thing at once, so a run that never asks a
-// corpus a question never pays for it — its package doc says `aforge --version`
+// corpus a question never pays for it — its package doc says `codeaf --version`
 // decompresses none of this, in those words. That is a claim about the launch,
 // and until this test it was a claim nothing checked: one manual lookup moved
 // onto the launch path, one roster consulted while assembling a registry, and a
@@ -127,13 +127,13 @@ func TestNothingOnTheWayToTheFirstFrameUnpacksACorpus(t *testing.T) {
 
 	t.Run("version", func(t *testing.T) {
 		// The shortest path through the binary, and the one the package doc
-		// names: an installer asking whether aforge is here.
+		// names: an installer asking whether codeaf is here.
 		before := packed.Unpacks()
 		if err := runVersion(); err != nil {
 			t.Fatalf("--version: %v", err)
 		}
 		if unpacked := packed.Unpacks() - before; unpacked != 0 {
-			t.Fatalf("`aforge --version` decompressed %d packed corpora. It reads nothing, writes nothing "+
+			t.Fatalf("`codeaf --version` decompressed %d packed corpora. It reads nothing, writes nothing "+
 				"and needs no key (version.go), and internal/packed's own doc says so in as many words.", unpacked)
 		}
 	})

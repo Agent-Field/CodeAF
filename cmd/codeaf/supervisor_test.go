@@ -12,7 +12,7 @@ import (
 // The resident loop was launched as `_ = Serve(ctx)`. One transient failure
 // inside one pass ended the background half of the surface silently and
 // permanently: no announcement, no restart, and a lease still claiming the role
-// so every `aforge wake` stepped aside for a process that had stopped serving
+// so every `codeaf wake` stepped aside for a process that had stopped serving
 // hours before. Standing watches, charters and practice simply never fired
 // again, and nothing anywhere said so.
 func TestTheResidentSupervisorRestartsAndThenGivesUpLoudly(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 //
 // Four doors open the same surface: the in-process door (chatv3.go), the ssh
 // door (chatv3_host.go), the relay door (chatv3_at.go), and the unix-socket
-// door a plain `aforge chat` takes when a session host already holds this
+// door a plain `codeaf chat` takes when a session host already holds this
 // workspace (chatv3_local.go). Everything that is true BECAUSE THE SURFACE OWNS
 // THE TERMINAL belongs here rather than at any of them, because a rule stated
 // four times is a rule three doors will eventually be missing: the logger
@@ -31,7 +31,7 @@ import (
 func runSurface(ctx context.Context, options tui3.Options) error {
 	// The byte meter, off unless a developer named a log file (wire.go). It
 	// measures what this surface DRAWS and is therefore as local as the terminal
-	// is, so it is armed here and never at a door: with AFORGE_WIRE_LOG unset
+	// is, so it is armed here and never at a door: with CODEAF_WIRE_LOG unset
 	// this is a nil writer and a close that does nothing, and tui3.Run leaves
 	// the output option alone so Bubble Tea paints straight into os.Stdout.
 	wire, closeWire := v3Wire()

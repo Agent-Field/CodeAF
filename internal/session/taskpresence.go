@@ -47,7 +47,7 @@ package session
 //
 // ONE JSON OBJECT, written whole, in the session's own folder as presence.json:
 //
-//	~/.aforge/v3/projects/<encoded-workspace>/<session-id>/presence.json
+//	~/.codeaf/v3/projects/<encoded-workspace>/<session-id>/presence.json
 //
 // JSON and not JSONL because there is exactly one fact here and it is replaced
 // rather than accumulated — the append-only shape task_index.go argues for is
@@ -368,7 +368,7 @@ type SessionPresence struct {
 	// it: the resolved project root, or the owned work/ directory. The encoded
 	// bucket the folder sits in is not an identity and is not written here.
 	Workspace string `json:"workspace"`
-	// Build names the aforge that is making this live claim.
+	// Build names the codeaf that is making this live claim.
 	Build string `json:"build,omitempty"`
 	// PID is the process holding this session, recorded so a person looking at
 	// two windows can tell which is which. IT IS NOT CONSULTED FOR LIVENESS:

@@ -21,10 +21,10 @@ func settings(t *testing.T) Config {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	// Nothing here may reach the network. A refused connection is the offline
 	// case, which the catalog is required to tolerate.
-	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
-	t.Setenv("AFORGE_BRIEF_AFTER", "")
+	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_BRIEF_AFTER", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -33,11 +33,11 @@ func settings(t *testing.T) Config {
 }
 
 func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
-	t.Setenv("AFORGE_IMAGE_MODEL", "user/image")
-	t.Setenv("AFORGE_SPEECH_MODEL", "user/speech")
-	t.Setenv("AFORGE_MUSIC_MODEL", "user/music")
-	t.Setenv("AFORGE_VIDEO_MODEL", "user/video")
-	t.Setenv("AFORGE_VISION_MODEL", "user/vision")
+	t.Setenv("CODEAF_IMAGE_MODEL", "user/image")
+	t.Setenv("CODEAF_SPEECH_MODEL", "user/speech")
+	t.Setenv("CODEAF_MUSIC_MODEL", "user/music")
+	t.Setenv("CODEAF_VIDEO_MODEL", "user/video")
+	t.Setenv("CODEAF_VISION_MODEL", "user/vision")
 	configured := settings(t)
 	if configured.ImageModel != "user/image" || configured.SpeechModel != "user/speech" ||
 		configured.MusicModel != "user/music" || configured.VideoModel != "user/video" || configured.VisionModel != "user/vision" {
@@ -50,11 +50,11 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 		t.Fatal("explicit media slots were made catalog-dependent")
 	}
 
-	t.Setenv("AFORGE_IMAGE_MODEL", "")
-	t.Setenv("AFORGE_SPEECH_MODEL", "")
-	t.Setenv("AFORGE_MUSIC_MODEL", "")
-	t.Setenv("AFORGE_VIDEO_MODEL", "")
-	t.Setenv("AFORGE_VISION_MODEL", "")
+	t.Setenv("CODEAF_IMAGE_MODEL", "")
+	t.Setenv("CODEAF_SPEECH_MODEL", "")
+	t.Setenv("CODEAF_MUSIC_MODEL", "")
+	t.Setenv("CODEAF_VIDEO_MODEL", "")
+	t.Setenv("CODEAF_VISION_MODEL", "")
 	resolved := settings(t)
 	// Use the package's offline defaults to exercise the verified preference
 	// slugs without exposing catalog construction internals.
@@ -79,13 +79,13 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 }
 
 func TestVisionModelResolutionOrder(t *testing.T) {
-	t.Setenv("AFORGE_VISION_MODEL", "operator/vision")
+	t.Setenv("CODEAF_VISION_MODEL", "operator/vision")
 	explicit := settings(t)
 	if got := explicit.ResolveVisionModel(nil, "talk/vision", "work/vision"); got != "operator/vision" {
 		t.Fatalf("explicit vision = %q", got)
 	}
 
-	t.Setenv("AFORGE_VISION_MODEL", "")
+	t.Setenv("CODEAF_VISION_MODEL", "")
 	configured := settings(t)
 	models := runtimeCatalog(t, `
 		{"id":"first/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
@@ -227,17 +227,17 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 }
 
 func TestPracticeBudgetAndIdleDefaultsAndOverrides(t *testing.T) {
-	t.Setenv("AFORGE_PRACTICE_BUDGET", "")
-	t.Setenv("AFORGE_PRACTICE_IDLE", "")
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "")
+	t.Setenv("CODEAF_PRACTICE_IDLE", "")
 	got := settings(t)
 	if got.PracticeBudgetUSD != DefaultPracticeBudgetUSD || got.PracticeIdle != DefaultPracticeIdle {
 		t.Fatalf("practice defaults = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
 	}
 
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
-	t.Setenv("AFORGE_PRACTICE_BUDGET", "3.5")
-	t.Setenv("AFORGE_PRACTICE_IDLE", "45m")
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "3.5")
+	t.Setenv("CODEAF_PRACTICE_IDLE", "45m")
 	got, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -249,8 +249,8 @@ func TestPracticeBudgetAndIdleDefaultsAndOverrides(t *testing.T) {
 	for _, test := range []struct{ budget, idle string }{
 		{budget: "-1"}, {budget: "NaN"}, {idle: "-1m"}, {idle: "later"},
 	} {
-		t.Setenv("AFORGE_PRACTICE_BUDGET", test.budget)
-		t.Setenv("AFORGE_PRACTICE_IDLE", test.idle)
+		t.Setenv("CODEAF_PRACTICE_BUDGET", test.budget)
+		t.Setenv("CODEAF_PRACTICE_IDLE", test.idle)
 		if _, err := Load(); err == nil {
 			t.Fatalf("invalid practice settings budget=%q idle=%q were accepted", test.budget, test.idle)
 		}
@@ -263,7 +263,7 @@ func TestBriefAfterConfiguration(t *testing.T) {
 		t.Fatalf("default brief threshold = %s, want 4h", config.BriefAfter)
 	}
 
-	t.Setenv("AFORGE_BRIEF_AFTER", "90m")
+	t.Setenv("CODEAF_BRIEF_AFTER", "90m")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -272,18 +272,18 @@ func TestBriefAfterConfiguration(t *testing.T) {
 		t.Fatalf("configured brief threshold = %s, want 90m", config.BriefAfter)
 	}
 
-	t.Setenv("AFORGE_BRIEF_AFTER", "-1h")
+	t.Setenv("CODEAF_BRIEF_AFTER", "-1h")
 	if _, err := Load(); err == nil {
-		t.Fatal("negative AFORGE_BRIEF_AFTER was accepted")
+		t.Fatal("negative CODEAF_BRIEF_AFTER was accepted")
 	}
 }
 
 // TestNoPanelIsTheKillSwitch is the promise the whole feature is gated on. With
-// AFORGE_MODELS unset the harness must build the adapter it has always built and
+// CODEAF_MODELS unset the harness must build the adapter it has always built and
 // run the path it has always run — not a router with one rung, which would be a
 // different code path wearing the same behaviour.
 func TestNoPanelIsTheKillSwitch(t *testing.T) {
-	t.Setenv("AFORGE_MODELS", "")
+	t.Setenv("CODEAF_MODELS", "")
 	config := settings(t)
 	if len(config.Panel.Models) != 0 {
 		t.Fatalf("panel = %+v, want none", config.Panel)
@@ -318,11 +318,11 @@ func TestNoPanelIsTheKillSwitch(t *testing.T) {
 }
 
 func TestVoiceModelHasIndependentDefaultAndEnvironmentOverride(t *testing.T) {
-	t.Setenv("AFORGE_VOICE_MODEL", "")
+	t.Setenv("CODEAF_VOICE_MODEL", "")
 	if got := settings(t).VoiceModel; got != DefaultVoiceModel {
 		t.Fatalf("voice model = %q, want %q", got, DefaultVoiceModel)
 	}
-	t.Setenv("AFORGE_VOICE_MODEL", "acme/transcriber")
+	t.Setenv("CODEAF_VOICE_MODEL", "acme/transcriber")
 	if got := settings(t).VoiceModel; got != "acme/transcriber" {
 		t.Fatalf("voice model override = %q", got)
 	}
@@ -331,7 +331,7 @@ func TestVoiceModelHasIndependentDefaultAndEnvironmentOverride(t *testing.T) {
 // TestAPanelSwitchesInTheRouter is the other side of the switch, and it is one
 // line of environment away.
 func TestAPanelSwitchesInTheRouter(t *testing.T) {
-	t.Setenv("AFORGE_MODELS", "google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6")
+	t.Setenv("CODEAF_MODELS", "google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6")
 	config := settings(t)
 	if len(config.Panel.Models) != 3 {
 		t.Fatalf("panel = %+v, want three models", config.Panel.Models)
@@ -376,10 +376,10 @@ func TestAPanelSwitchesInTheRouter(t *testing.T) {
 }
 
 // TestPanelStateLivesWhereTheProfileDoes keeps a run's memory in one place. An
-// operator who redirected AFORGE_PROFILE_DIR — a test, a sandbox, a second
+// operator who redirected CODEAF_PROFILE_DIR — a test, a sandbox, a second
 // account — must not find half of it in their home directory anyway.
 func TestPanelStateLivesWhereTheProfileDoes(t *testing.T) {
-	t.Setenv("AFORGE_MODELS", "a/one,b/two")
+	t.Setenv("CODEAF_MODELS", "a/one,b/two")
 	config := settings(t)
 	client, err := config.Client()
 	if err != nil {
@@ -398,11 +398,11 @@ func TestPanelStateLivesWhereTheProfileDoes(t *testing.T) {
 }
 
 // TestAnUnreadablePanelIsAStartupError rather than a silent fallback. A typo in
-// AFORGE_MODELS that quietly ran everything on one model would be discovered
+// CODEAF_MODELS that quietly ran everything on one model would be discovered
 // only in the bill, or never.
 func TestAnUnreadablePanelIsAStartupError(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_MODELS", filepath.Join(t.TempDir(), "missing.json"))
+	t.Setenv("CODEAF_MODELS", filepath.Join(t.TempDir(), "missing.json"))
 	if _, err := Load(); err == nil {
 		t.Fatal("a panel file that does not exist was accepted")
 	}
@@ -419,7 +419,7 @@ func TestDailyBudgetUSDDefaultOverrideAndUnlimited(t *testing.T) {
 		{"0", 0},
 	} {
 		t.Run(test.raw, func(t *testing.T) {
-			t.Setenv("AFORGE_DAILY_BUDGET", test.raw)
+			t.Setenv("CODEAF_DAILY_BUDGET", test.raw)
 			got, err := Load()
 			if err != nil {
 				t.Fatal(err)
@@ -432,7 +432,7 @@ func TestDailyBudgetUSDDefaultOverrideAndUnlimited(t *testing.T) {
 
 	for _, raw := range []string{"-1", "NaN", "Inf", "twenty"} {
 		t.Run("invalid-"+raw, func(t *testing.T) {
-			t.Setenv("AFORGE_DAILY_BUDGET", raw)
+			t.Setenv("CODEAF_DAILY_BUDGET", raw)
 			if _, err := DailyBudgetUSD(); err == nil {
 				t.Fatalf("invalid daily budget %q was accepted", raw)
 			}
@@ -449,7 +449,7 @@ func TestDailyBudgetUSDPersistedConfigAndEnvironmentPrecedence(t *testing.T) {
 	if err := WriteDailyBudgetUSD(dir, 35); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	got, err := DailyBudgetUSDAt(dir)
 	if err != nil || got != 35 {
 		t.Fatalf("persisted daily budget = %v err=%v", got, err)
@@ -466,7 +466,7 @@ func TestDailyBudgetUSDPersistedConfigAndEnvironmentPrecedence(t *testing.T) {
 		t.Fatalf("persisted config = %#v", values)
 	}
 
-	t.Setenv("AFORGE_DAILY_BUDGET", "42")
+	t.Setenv("CODEAF_DAILY_BUDGET", "42")
 	got, err = DailyBudgetUSDAt(dir)
 	if err != nil || got != 42 {
 		t.Fatalf("environment override = %v err=%v", got, err)
@@ -483,17 +483,17 @@ func TestDocumentEngineDefaultsToAutoAndRefusesUnknownRungs(t *testing.T) {
 		t.Fatalf("default document engine = %q", got)
 	}
 	for raw, want := range map[string]string{"local": "local", " Free ": "free", "OCR": "ocr", "auto": "auto"} {
-		t.Setenv("AFORGE_DOC_ENGINE", raw)
+		t.Setenv("CODEAF_DOC_ENGINE", raw)
 		if got := settings(t).DocumentEngine; got != want {
-			t.Fatalf("AFORGE_DOC_ENGINE=%q resolved to %q, want %q", raw, got, want)
+			t.Fatalf("CODEAF_DOC_ENGINE=%q resolved to %q, want %q", raw, got, want)
 		}
 	}
 
-	t.Setenv("AFORGE_DOC_ENGINE", "tesseract")
+	t.Setenv("CODEAF_DOC_ENGINE", "tesseract")
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AFORGE_DOC_ENGINE") {
+	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CODEAF_DOC_ENGINE") {
 		t.Fatalf("unknown engine error = %v", err)
 	}
 }

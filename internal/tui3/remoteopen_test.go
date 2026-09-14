@@ -14,7 +14,7 @@ import (
 )
 
 // openFixture is a far disk with one file on it and a state root of its own, so
-// that nothing here writes into the developer's ~/.aforge.
+// that nothing here writes into the developer's ~/.codeaf.
 func openFixture(t *testing.T) (*app, *fakeWire, string) {
 	t.Helper()
 	dir := t.TempDir()

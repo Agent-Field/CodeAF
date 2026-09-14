@@ -363,7 +363,7 @@ type toolBudgets struct {
 //
 // The convergence this introduces is the honest part rather than the cost: past
 // the working set a result cap stops growing because the memory holding it
-// stopped growing. It is a dial and not a belief — AFORGE_WORKING_SET raises
+// stopped growing. It is a dial and not a belief — CODEAF_WORKING_SET raises
 // the window and these four bounds together, which is the only coherent way to
 // raise either.
 func toolBudgetsFor(contextTokens int) toolBudgets {
@@ -1572,16 +1572,16 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
-			environment = replaceEnv(environment, "AFORGE_SKILLS_BIN", bin)
-			command = "export PATH=\"${AFORGE_SKILLS_BIN:?}:$PATH\"\n" + command
+			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
+			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
 	if rtkBin != "" {
 		if environment == nil {
 			environment = os.Environ()
 		}
-		environment = replaceEnv(environment, "AFORGE_RTK_BIN", filepath.Dir(rtkBin))
-		command = "export PATH=\"${AFORGE_RTK_BIN:?}:$PATH\"\n" + command
+		environment = replaceEnv(environment, "CODEAF_RTK_BIN", filepath.Dir(rtkBin))
+		command = "export PATH=\"${CODEAF_RTK_BIN:?}:$PATH\"\n" + command
 	}
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)

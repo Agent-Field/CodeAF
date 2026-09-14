@@ -430,7 +430,7 @@ type Options struct {
 	// queryable from its own artifacts rather than only as a field inside the
 	// plan blob. The caller forms the store id; see BriefJournal. Nil leaves
 	// briefs exactly as durable as they were before this existed, which is the
-	// one-shot `aforge plan` path and every caller with no store to journal to.
+	// one-shot `codeaf plan` path and every caller with no store to journal to.
 	Journal BriefJournal
 }
 
@@ -1257,7 +1257,7 @@ func plural(count int, noun string) string {
 // that re-running the same goal lands in the same directory.
 func RunID(goal string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(goal)))
-	return "aforge-" + hex.EncodeToString(sum[:8])
+	return "codeaf-" + hex.EncodeToString(sum[:8])
 }
 
 func trim(value string) string { return strings.TrimSpace(value) }

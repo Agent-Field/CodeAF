@@ -18,7 +18,7 @@ import (
 // a finished run leaves behind for the next list to draw.
 //
 // EVERY TEST HERE USES [substore.At] OVER A TEMPORARY DIRECTORY and never
-// [substore.Home]. A test that wrote into ~/.aforge would be a test that changes
+// [substore.Home]. A test that wrote into ~/.codeaf would be a test that changes
 // what the person's own `/subharness` list says.
 
 // toyBundle mints one small, valid subharness into a store and hands back the

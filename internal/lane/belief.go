@@ -247,7 +247,7 @@ func (l *ledger) restore() {
 // and compacts what it found.
 //
 // IT IS THE OTHER HALF OF THE MULTI-PROCESS CONTRACT (store.go, "state, and the
-// observations since"). Another aforge may have been running the whole time
+// observations since"). Another codeaf may have been running the whole time
 // this one was, learning about models this session has never mentioned; its
 // observations are in the journal and this is where they are folded in. The
 // beat calls it, which is the one moment a session is already doing a round of

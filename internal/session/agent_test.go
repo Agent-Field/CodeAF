@@ -2974,8 +2974,8 @@ func TestTheSessionStampsItsCacheKeyOnTheWire(t *testing.T) {
 	if keys[0] == "" {
 		t.Fatal("no prompt_cache_key on the wire; the session sent bare's no-key posture")
 	}
-	if !strings.HasPrefix(keys[0], "aforge-") {
-		t.Fatalf("prompt_cache_key = %q, want the aforge- lineage shape", keys[0])
+	if !strings.HasPrefix(keys[0], "codeaf-") {
+		t.Fatalf("prompt_cache_key = %q, want the codeaf- lineage shape", keys[0])
 	}
 	for index, key := range keys {
 		if key != keys[0] {

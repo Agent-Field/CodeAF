@@ -17,7 +17,7 @@ import (
 
 // THE HEADLESS ENV: the six host doors with nobody standing behind them.
 //
-// This is the whole capability surface a subharness gets from `aforge run
+// This is the whole capability surface a subharness gets from `codeaf run
 // subharness` (docs/SUBHARNESS-PRD.md §9, the "Headless" bullet). It implements
 // [exec.Env] and NOTHING IN THIS FILE MAY REACH THE TASK SYSTEM — the PRD says
 // it in one sentence, "the headless path must not import the task system", and
@@ -292,7 +292,7 @@ func (e *headlessEnv) Ask(_ context.Context, question string, opts exec.AskOptio
 //
 // A NAMED SEAM FOR THE STORE LANE, and this is the honest shape of it until that
 // lane lands. A bundle's memory is a file beside the bundle in
-// `~/.aforge/subharnesses/` or `.aforge/subharnesses/`, and both of those
+// `~/.codeaf/subharnesses/` or `.codeaf/subharnesses/`, and both of those
 // directories, their versioning and the run journals kept next to them are the
 // store lane's whole assignment (docs/SUBHARNESS-CONTRACT.md §6). There is
 // nowhere for a note to go until it exists, so this answers exactly what the

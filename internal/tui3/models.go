@@ -22,7 +22,7 @@ import (
 //
 //  1. the catalog, when it can answer without a fetch — the door passes it in
 //     as [Options.Models] (see cmd/codeaf/chatv3.go);
-//  2. this package's own cache, ~/.aforge/v3/models.json, written whenever a
+//  2. this package's own cache, ~/.codeaf/v3/models.json, written whenever a
 //     catalog fetch elsewhere succeeded;
 //  3. [BuiltinModels], five names this build remembers.
 //
@@ -111,15 +111,15 @@ type Model struct {
 	Direct bool `json:"-"`
 }
 
-// modelCacheName is the file under the aforge state root. It is v3's own list
+// modelCacheName is the file under the codeaf state root. It is v3's own list
 // and deliberately NOT internal/catalog's cache: this one holds the two fields
 // a picker draws, so reading it costs a kilobyte or two rather than the whole
 // six-hundred-row catalog, and a schema change on either side cannot break the
 // other.
 var modelCacheName = []string{"v3", "models.json"}
 
-// ModelCachePath is ~/.aforge/v3/models.json, moved wholesale by AFORGE_HOME
-// the way every other file aforge writes is.
+// ModelCachePath is ~/.codeaf/v3/models.json, moved wholesale by CODEAF_HOME
+// the way every other file codeaf writes is.
 func ModelCachePath() string { return home.Join(modelCacheName...) }
 
 // ModelCachePathFor returns the cache owned by one service-and-base pair. The
@@ -442,7 +442,7 @@ func chatModel(model Model) bool { return answersText(model) && readsText(model)
 // The id-word marks are the last resort, exactly as [makesModality] uses them:
 // a row that published nothing is read by its name, against the narrow
 // vocabulary that means sight and nothing else. And the slot's own blank still
-// means "aforge picks one that can see", so nothing here has to guess for it.
+// means "codeaf picks one that can see", so nothing here has to guess for it.
 func seesImages(model Model) bool {
 	if len(model.Input) > 0 {
 		return hasModality(model.Input, "image")
@@ -451,7 +451,7 @@ func seesImages(model Model) bool {
 }
 
 // inspectsImages is what the VISION SLOT actually asks, and it is [seesImages]
-// AND [chatModel] because the slot is an inspection proxy: aforge hands it a
+// AND [chatModel] because the slot is an inspection proxy: codeaf hands it a
 // picture and reads back a sentence about one (config's ResolveVisionModel, and
 // the view_image tool behind it). Image input alone is half the question — it
 // keeps google/gemini-3.1-flash-image, which reads pictures and answers in
@@ -816,7 +816,7 @@ func modelFields(model Model, pin, routing string) []rowField {
 // for — can it see my screenshot — and because a model that both sees and draws
 // reads better forwards than backwards.
 //
-// It is exported for `aforge models`, which draws the same tail beside the same
+// It is exported for `codeaf models`, which draws the same tail beside the same
 // facts (cmd/codeaf's models.go). One spelling of "draws", in one place.
 func ModalityWord(input, output []string) string {
 	words := make([]string, 0, 5)

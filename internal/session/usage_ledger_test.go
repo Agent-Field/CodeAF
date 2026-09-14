@@ -319,7 +319,7 @@ func TestTheCacheNoticesAReplacementOfTheSameSizeAndTime(t *testing.T) {
 }
 
 // THE ROWS ARE NOT IN TIME ORDER AND THE FLOOR MUST NOT ASSUME THEY ARE. This
-// ledger is machine-wide: a second aforge can stamp a call at 09:00 and land it
+// ledger is machine-wide: a second codeaf can stamp a call at 09:00 and land it
 // after this one's 10:00 row, because its own turn ran in between. A floor read
 // as a prefix cut stops at the 10:00 row and hands back everything behind it,
 // which includes an hour nobody asked about.

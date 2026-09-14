@@ -5,7 +5,7 @@ package main
 // person changing the reviewer brief can re-run the evidence instead of trusting
 // a paragraph in a commit message.
 //
-// It is OPT-IN — `AFORGE_LIVE_REVIEW=1 go test ./cmd/harness-design -run Live -v`
+// It is OPT-IN — `CODEAF_LIVE_REVIEW=1 go test ./cmd/harness-design -run Live -v`
 // — because it spends money and takes a minute, and a suite that reaches the
 // network by default is a suite people stop running.
 //
@@ -78,14 +78,14 @@ func collapsedC2() (design, subharness.Harness) {
 // one line saying the gate is the answer — but SILENCE is the outcome the duties
 // exist to forbid, so silence is what this asserts against.
 func TestLiveReviewAnswersBothDutiesOnTheCollapsedDraft(t *testing.T) {
-	if os.Getenv("AFORGE_LIVE_REVIEW") == "" {
-		t.Skip("set AFORGE_LIVE_REVIEW=1 to spend a real review turn on this")
+	if os.Getenv("CODEAF_LIVE_REVIEW") == "" {
+		t.Skip("set CODEAF_LIVE_REVIEW=1 to spend a real review turn on this")
 	}
 	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	if key == "" {
 		t.Skip("OPENROUTER_API_KEY is not set")
 	}
-	model := os.Getenv("AFORGE_LIVE_MODEL")
+	model := os.Getenv("CODEAF_LIVE_MODEL")
 	if model == "" {
 		model = "deepseek/deepseek-v4-flash"
 	}

@@ -41,7 +41,7 @@ func (w rateWriter) Write(p []byte) (int, error) {
 }
 
 func TestPipeMeasureHelper(t *testing.T) {
-	if os.Getenv("AFORGE_PIPE_HELPER") != "1" {
+	if os.Getenv("CODEAF_PIPE_HELPER") != "1" {
 		t.Skip("helper")
 	}
 	entries := make([]session.DisplayEntry, 24000)
@@ -49,7 +49,7 @@ func TestPipeMeasureHelper(t *testing.T) {
 		entries[i] = session.DisplayEntry{Role: "assistant", Text: fmt.Sprintf("%06d the same long transcript sentence repeats enough words to compress cleanly across an ordinary remote link", i)}
 	}
 	agent := &fakeAgent{model: "measure/model", transcript: entries}
-	bytesPerSecond, _ := strconv.ParseInt(os.Getenv("AFORGE_MEASURE_BPS"), 10, 64)
+	bytesPerSecond, _ := strconv.ParseInt(os.Getenv("CODEAF_MEASURE_BPS"), 10, 64)
 	err := Serve(os.Stdin, rateWriter{w: os.Stdout, b: bytesPerSecond}, Options{Boot: func(Hello) (*Engine, error) {
 		return engineOn(agent), nil
 	}})
@@ -60,17 +60,17 @@ func TestPipeMeasureHelper(t *testing.T) {
 }
 
 func TestPipeMeasure(t *testing.T) {
-	if os.Getenv("AFORGE_MEASURE") != "1" {
+	if os.Getenv("CODEAF_MEASURE") != "1" {
 		t.Skip("measurement")
 	}
 	testbin, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if helper := os.Getenv("AFORGE_MEASURE_HELPER_BIN"); helper != "" {
+	if helper := os.Getenv("CODEAF_MEASURE_HELPER_BIN"); helper != "" {
 		testbin = helper
 	}
-	remoteCommand := "AFORGE_PIPE_HELPER=1 AFORGE_MEASURE_BPS=" + os.Getenv("AFORGE_MEASURE_BPS") + " " + testbin + " -test.run=TestPipeMeasureHelper"
+	remoteCommand := "CODEAF_PIPE_HELPER=1 CODEAF_MEASURE_BPS=" + os.Getenv("CODEAF_MEASURE_BPS") + " " + testbin + " -test.run=TestPipeMeasureHelper"
 	cmd := exec.Command("ssh", "-T", "localhost", remoteCommand)
 	attachStart := time.Now()
 	in, err := cmd.StdinPipe()
@@ -91,7 +91,7 @@ func TestPipeMeasure(t *testing.T) {
 		t.Fatal(err)
 	}
 	handshakeElapsed := time.Since(attachStart)
-	if os.Getenv("AFORGE_MEASURE_TRANSCRIPT_FIRST") == "1" {
+	if os.Getenv("CODEAF_MEASURE_TRANSCRIPT_FIRST") == "1" {
 		entries := client.Agent().Transcript()
 		t.Logf("long-transcript attach entries=%d handshake=%s total=%s", len(entries), handshakeElapsed, time.Since(attachStart))
 		_ = client.Close()

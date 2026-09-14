@@ -12,14 +12,14 @@ import (
 
 // ── C17: A BAD PROGRAM NAME WAS REPORTED AS AN EMPTY INPUT ───────────────────
 //
-// `aforge run nosuchharness --input -` answered
+// `codeaf run nosuchharness --input -` answered
 //
 //	the input is empty — there is nothing here for the run to do
 //
 // and never mentioned the name. Two things were wrong and the message named the
 // one the person had NOT got wrong, so they went away and fixed their input.
 func TestABadProgramNameIsSaidBeforeTheInputIsBlamed(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	// An input that is ALSO wrong, so the two refusals are genuinely in a race
 	// and the test is about which one answers. A file rather than a pipe,
 	// because os.Stdin is not something the door takes from a caller.
@@ -49,7 +49,7 @@ func TestABadProgramNameIsSaidBeforeTheInputIsBlamed(t *testing.T) {
 // is right — still arrives.
 func TestAProgramThatIsReallyThereGetsPastTheNameCheck(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	// One bundle, laid out the way substore lays them out: a named directory
 	// holding a complete version. The listing is a directory read, so this is
 	// the whole of what it takes to be a program a person can name.

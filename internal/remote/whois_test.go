@@ -83,7 +83,7 @@ func TestAskingAHostToStandDownReachesTheHostAndComesBack(t *testing.T) {
 	}
 }
 
-// A bare `aforge engine` on a pipe is nobody's host: nothing it holds outlives
+// A bare `codeaf engine` on a pipe is nobody's host: nothing it holds outlives
 // the connection, so it can never be the stale middle half — and the answer
 // says exactly that rather than pretending to be a host with nothing to do.
 func TestAPipeEngineIsNobodysHost(t *testing.T) {
@@ -148,7 +148,7 @@ func TestAFarEndThatHangsUpReadsAsNotThisBuild(t *testing.T) {
 
 // ── the clause the refusal was missing ──────────────────────────────────────
 
-// The sentence that trapped somebody: `aforge version` on the far machine said
+// The sentence that trapped somebody: `codeaf version` on the far machine said
 // the new build, both halves WERE the same build, and the refusal still told
 // them to update the older one — because the half doing the refusing was a host
 // left running from before the rebuild. When there is a host behind the
@@ -162,7 +162,7 @@ func TestTheMismatchRefusalNamesTheOlderBuildStillRunningHere(t *testing.T) {
 	if !strings.Contains(reason, "still running the older one") {
 		t.Fatalf("the refusal from a host said %q", reason)
 	}
-	if !strings.Contains(reason, "aforge engine --stop") {
+	if !strings.Contains(reason, "codeaf engine --stop") {
 		t.Fatalf("the refusal named no way out: %q", reason)
 	}
 	if !strings.Contains(reason, "the two halves have to be the same build") {

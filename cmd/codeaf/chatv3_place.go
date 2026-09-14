@@ -21,7 +21,7 @@ import (
 )
 
 // artifactsIndexPath is the deliverables index for this machine:
-// ~/.aforge/v3/artifacts.jsonl, resolved through internal/home so AFORGE_HOME
+// ~/.codeaf/v3/artifacts.jsonl, resolved through internal/home so CODEAF_HOME
 // moves it with everything else (Decision 26 — one home, one seam).
 //
 // It is one function rather than a literal at the two call sites, because the
@@ -99,7 +99,7 @@ func initOwnedRepository(work string) error {
 		return err
 	}
 	if _, err := gitIn(work,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+		"-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost",
 		"commit", "--allow-empty", "--no-verify", "--quiet", "-m", "session opened",
 	); err != nil {
 		return err

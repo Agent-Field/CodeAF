@@ -201,7 +201,7 @@ func (s *v3ModelShelf) ModelsNow() []catalog.Model {
 }
 
 // refresh is the surface's [tui3.Options.RefreshModels]: today's list from the
-// router, put on the shelf, written to ~/.aforge/v3/models.json so the next
+// router, put on the shelf, written to ~/.codeaf/v3/models.json so the next
 // launch opens on it, and handed back with when it left the router.
 //
 // A FAILURE PUTS NOTHING ON THE SHELF. [catalog.Refresh] has already degraded to

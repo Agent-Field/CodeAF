@@ -101,7 +101,7 @@ func TestTheQuestionMarkIsAdvertisedOnTheSheetAndTheOpeningLine(t *testing.T) {
 
 // THE FIRST SCREEN OF A FRESH INSTALL MAY NOT PRINT A GO ERROR. Seven of the
 // setup's refusals were `err.Error()`, so the first sentence a new person could
-// be shown was a wrapped chain with a path inside aforge's own storage in it
+// be shown was a wrapped chain with a path inside codeaf's own storage in it
 // and no act anywhere.
 func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 	// THE SIGN-IN THAT NEVER STARTED.

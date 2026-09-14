@@ -13,11 +13,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
-// The adapter's end of aforge's model-call log (internal/calllog says why it
+// The adapter's end of codeaf's model-call log (internal/calllog says why it
 // exists at all).
 //
 // IT IS WRITTEN HERE BECAUSE EVERY OUTBOUND CALL IN THE PROCESS PASSES THROUGH
-// HERE. The chat's turn, `aforge do`, a plan's briefs and contracts, the
+// HERE. The chat's turn, `codeaf do`, a plan's briefs and contracts, the
 // delivery gate, a reflex, the document route — they are a dozen packages that
 // share exactly one door, and a record written at that door cannot be missed by
 // a caller who forgot to write one.

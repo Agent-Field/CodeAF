@@ -42,7 +42,7 @@ func pinnedDoorHome(t *testing.T) (*lanestub.Server, string) {
 	model := "test/pinned-headless-door"
 	stub := lanestub.New(model, routedLanes()...)
 	t.Cleanup(stub.Close)
-	t.Setenv("AFORGE_BASE_URL", stub.URL())
+	t.Setenv("CODEAF_BASE_URL", stub.URL())
 	t.Setenv(config.ModelEnv, model)
 	t.Setenv(config.PlanModelEnv, model)
 	if err := config.SetLane(profile, config.LaneSlotTalk, pinnedDoorLane); err != nil {
@@ -64,7 +64,7 @@ func firstAskCarriedPin(t *testing.T, stub *lanestub.Server) {
 	}
 }
 
-// TestAPinnedHomeSendsTheDemandOnTheFirstHeadlessRequest is C2 for `aforge do`.
+// TestAPinnedHomeSendsTheDemandOnTheFirstHeadlessRequest is C2 for `codeaf do`.
 // The outcome is deliberately irrelevant: the contract is the first request
 // the real door put on the wire.
 func TestAPinnedHomeSendsTheDemandOnTheFirstHeadlessRequest(t *testing.T) {
@@ -86,7 +86,7 @@ func TestEveryHeadlessDoorSendsThePinOnItsFirstRequest(t *testing.T) {
 		run  func(t *testing.T, model string) error
 	}{
 		{
-			name: "aforge exec",
+			name: "codeaf exec",
 			run: func(t *testing.T, model string) error {
 				return runExec([]string{
 					"answer with one sentence", "--dir", t.TempDir(), "--max-turns", "1",
@@ -95,7 +95,7 @@ func TestEveryHeadlessDoorSendsThePinOnItsFirstRequest(t *testing.T) {
 			},
 		},
 		{
-			name: "aforge plan new",
+			name: "codeaf plan new",
 			run: func(_ *testing.T, model string) error {
 				return runPlanNew("plan new", []string{
 					"make a one-step plan", "--passes", "off", "--model", model,
@@ -170,7 +170,7 @@ func TestNoDoorResolvesTheLaneRowForItself(t *testing.T) {
 // THE INSTALL IS INVISIBLE FROM A DOOR ON PURPOSE. A door does not name the
 // lane row at all any more; it gets one because loading the profile installs it
 // ([config.InstallLaneRows], called from internal/config's load). That is the
-// whole of why `aforge do` was sending its first request with nobody's answer
+// whole of why `codeaf do` was sending its first request with nobody's answer
 // on it: the pin was resolved at one door and every other door was written
 // without knowing there was anything to resolve.
 //
@@ -181,13 +181,13 @@ func TestNoDoorResolvesTheLaneRowForItself(t *testing.T) {
 // somebody measures where their work went.
 func TestEveryDoorReachesTheLaneRowsThroughTheProfileLoad(t *testing.T) {
 	doors := map[string]string{
-		"chat.go":            "the brain `aforge do` builds",
-		"exec.go":            "aforge exec",
-		"main.go":            "aforge plan new and aforge plan revise",
-		"run.go":             "aforge run and aforge plan run",
-		"subharness_run.go":  "aforge run subharness",
-		"wake.go":            "aforge wake, the resident's own pass",
-		"chatv3_standing.go": "the standing pass an aforge window and `aforge tick` both run",
+		"chat.go":            "the brain `codeaf do` builds",
+		"exec.go":            "codeaf exec",
+		"main.go":            "codeaf plan new and codeaf plan revise",
+		"run.go":             "codeaf run and codeaf plan run",
+		"subharness_run.go":  "codeaf run subharness",
+		"wake.go":            "codeaf wake, the resident's own pass",
+		"chatv3_standing.go": "the standing pass a codeaf window and `codeaf tick` both run",
 		"chatv3_process.go":  "the conversation",
 	}
 	for name, door := range doors {

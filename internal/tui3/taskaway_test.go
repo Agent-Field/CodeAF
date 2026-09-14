@@ -11,7 +11,7 @@ import (
 
 // ── THE PROJECT IS BIGGER THAN THIS WINDOW ──────────────────────────────────
 //
-// Two aforge windows open on one directory used to be able to see nothing of
+// Two codeaf windows open on one directory used to be able to see nothing of
 // each other: a task started in the first appeared on no surface of the second,
 // and a task some window was killed in the middle of went on claiming `running`
 // in the shared file forever with nobody left to correct it. These are the whole
@@ -51,7 +51,7 @@ func awayApp(t *testing.T) (*app, *awayFake, func(time.Duration)) {
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
 
-// window is one other aforge, still speaking, with the work it has out. What
+// window is one other codeaf, still speaking, with the work it has out. What
 // that window is CALLED is not on it: a window's name comes out of its own
 // meta.json, so the reading carries it beside the rows rather than inside them
 // ([session.NewElsewhere] takes it as a map).
@@ -177,7 +177,7 @@ func awaySectionOf(t *testing.T, a *app, title string) string {
 // THE HISTORY PAGE SHOWS WORK THAT IS IN NO FILE. An ordinary task writes no row
 // into the project's index until it lands, so the window next door is the ONLY
 // place its running work can be read from — and this is the case a person hit:
-// a second aforge in a directory that was busy, showing nothing at all.
+// a second codeaf in a directory that was busy, showing nothing at all.
 func TestTheHistoryPageShowsAnotherWindowsRunningWork(t *testing.T) {
 	a, agent, _ := awayApp(t)
 	agent.away = session.NewElsewhere(time.Now(),

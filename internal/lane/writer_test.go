@@ -33,7 +33,7 @@ import (
 const sendBound = 2 * time.Second
 
 // heldGate takes the belief file's own gate exclusively and hands back the
-// release, exactly as another aforge in the middle of a compaction holds it.
+// release, exactly as another codeaf in the middle of a compaction holds it.
 //
 // It is a second open file description of the same path, which is what makes it
 // a real conflict rather than a re-entrant one: flock is a property of the

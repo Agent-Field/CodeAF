@@ -87,7 +87,7 @@ const (
 //
 // AND THE READ NEVER REPAIRS THE PROFILE. Writing the inherited key back would
 // end the substitution for good after one run, and it would also mean every
-// `aforge do` — several at once on the same profile, on a machine where the disk
+// `codeaf do` — several at once on the same profile, on a machine where the disk
 // may be full — rewrites the file a person's crew lives in, to record a decision
 // this build made rather than one they did. [ApplyCrew] already writes every
 // row, so a person who answers the line ends it themselves, once, deliberately.
@@ -153,7 +153,7 @@ func inheritedTier(profileDir, tier string) (model, from string, ok bool) {
 // tierSeatRole is what one tier's seat is CALLED in the line a person reads
 // about it. The two seats a run sits somebody in have names of their own
 // ([SeatWork], [SeatPlan]) and both surfaces have to spell them the same way: a
-// conversation whose work seat was inherited must read the sentence `aforge do`
+// conversation whose work seat was inherited must read the sentence `codeaf do`
 // prints, not a second wording for one fact. Every other row answers with its
 // own name on the settings sheet, so a tier that joins the lineage tomorrow has
 // a sentence before anybody writes one.
@@ -204,7 +204,7 @@ func crewRow(profileDir, tier string) (model, from string, source SeatSource, cl
 //
 // IT IS [resolveSeat] WITHOUT THE TWO RUNGS THAT BELONG TO AN INVOCATION. A flag
 // is something a command line said and a conversation has no command line for
-// its crew; AFORGE_MODEL names the model a person TALKS TO ([Load] folds it into
+// its crew; CODEAF_MODEL names the model a person TALKS TO ([Load] folds it into
 // Config.Model), and a variable that also filled the work seat of every task
 // handed off in that conversation would be one word quietly moving two dials.
 // What is left is the profile — which is where a conversation's seats have
@@ -217,7 +217,7 @@ func crewRow(profileDir, tier string) (model, from string, source SeatSource, cl
 //     that is an answer — "follow the conversation" — and refusing it would make
 //     a default into a rule ([TierModelAt] argues it at length);
 //   - a key NEVER HELD asks the lineage before the bottom rung, so a profile
-//     older than the worker seat hands a task the same model `aforge do` hands
+//     older than the worker seat hands a task the same model `codeaf do` hands
 //     it (#302 headless, #312 in the conversation), and the seat carries the fact
 //     so a surface can say it once ([Seat.Notice]);
 //   - anything else is this build's own choice for that class of work.
@@ -242,8 +242,8 @@ func TierSeatAt(profileDir, tier string) Seat {
 // spelled here once because three places need them by name: the ladder, [Load],
 // and the receipt that says one of them answered.
 const (
-	ModelEnv     = "AFORGE_MODEL"
-	PlanModelEnv = "AFORGE_PLAN_MODEL"
+	ModelEnv     = "CODEAF_MODEL"
+	PlanModelEnv = "CODEAF_PLAN_MODEL"
 )
 
 // Seat is one seat's answer: the model, and where it came from.
@@ -327,8 +327,8 @@ func (s Seat) crewRung() string {
 //
 // AND THE PROMISE NAMES THE DOOR, because it used to end in one nobody could
 // find. `until you pick a crew again` is a remedy with no address on it, and
-// this line is printed on FOUR HEADLESS DOORS — `aforge do`, `aforge plan run`,
-// `aforge exec` and `aforge run` — where there is no way at all to pick a crew:
+// this line is printed on FOUR HEADLESS DOORS — `codeaf do`, `codeaf plan run`,
+// `codeaf exec` and `codeaf run` — where there is no way at all to pick a crew:
 // [CrewPreset] is written by `/crew` and by the settings sheet's Providers row,
 // both of which are the conversation, and no flag and no terminal verb sets one.
 // So a person reading this in a terminal was told to do something, given no way
@@ -488,7 +488,7 @@ func withNotice(line, notice string) string {
 //
 // profileDir is the profile to ask, [ProfileDir] for an ordinary process. The
 // environment is read HERE, at call time, and not carried in from [Load]: Load
-// resolves AFORGE_MODEL and DefaultModel into one field and the difference
+// resolves CODEAF_MODEL and DefaultModel into one field and the difference
 // between them is exactly what the receipt has to report.
 //
 // A tier value may carry a thinking level (`moonshotai/kimi-k3:low`) and is

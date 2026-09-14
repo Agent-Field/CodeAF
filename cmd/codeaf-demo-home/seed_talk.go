@@ -123,7 +123,7 @@ var demoConversations = []demoTalk{
 			// link broken in half is a link that does not work.
 			{"where are the streaming docs, and where is the journal?",
 				"The call is https://openrouter.ai/docs/api-reference/streaming?model=deepseek/deepseek-v4-flash-latest&stream=true " +
-					"and the journal for this one is /home/dev/.aforge/v3/projects/-home-dev-work-aforge-v2-checkout/e918879eb00988c5/transcript.jsonl — " +
+					"and the journal for this one is /home/dev/.codeaf/v3/projects/-home-dev-work-codeaf-checkout/e918879eb00988c5/transcript.jsonl — " +
 					"both of those are one token to a reader."},
 		},
 	},

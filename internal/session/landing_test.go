@@ -62,7 +62,7 @@ func TestJobLogsFollowTheSessionFolder(t *testing.T) {
 	if want := filepath.Join(place.Logs(), "jobs", "1.log"); job.logPath != want {
 		t.Fatalf("job log = %q, want %q", job.logPath, want)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3")); !os.IsNotExist(err) {
 		t.Fatalf("the session littered the workspace: %v", err)
 	}
 }
@@ -76,7 +76,7 @@ func TestJobLogsKeepTheLegacyPathWithoutAFolder(t *testing.T) {
 	}
 	defer job.sink.close()
 
-	if want := filepath.Join(workspace, ".aforge-v3", "jobs", "1.log"); job.logPath != want {
+	if want := filepath.Join(workspace, ".codeaf-v3", "jobs", "1.log"); job.logPath != want {
 		t.Fatalf("job log = %q, want %q", job.logPath, want)
 	}
 }
@@ -128,7 +128,7 @@ func TestStubBytesFollowTheSessionFolder(t *testing.T) {
 	if _, err := os.Stat(filepath.FromSlash(path)); err != nil {
 		t.Fatalf("the stub line names a path with nothing at it: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3")); !os.IsNotExist(err) {
 		t.Fatalf("the session littered the workspace: %v", err)
 	}
 }
@@ -141,8 +141,8 @@ func TestStubBytesKeepTheLegacyPathWithoutAFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writeStub: %v", err)
 	}
-	if !strings.HasPrefix(path, ".aforge-v3/stubs/") {
-		t.Fatalf("stub path = %q, want it under .aforge-v3/stubs", path)
+	if !strings.HasPrefix(path, ".codeaf-v3/stubs/") {
+		t.Fatalf("stub path = %q, want it under .codeaf-v3/stubs", path)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(path))); err != nil {
 		t.Fatalf("the stub line names a path with nothing at it: %v", err)
@@ -227,7 +227,7 @@ func workerWorkingIn(t *testing.T, session *Agent, dir, title string) *Agent {
 
 // THE MEASURED FAILURE, PINNED. A worker read a long file, the stub pass filed
 // the bytes, and with no Place of its own it wrote them to
-// <repo>/.aforge-v3/stubs/<digest>.txt — inside the repository it was working
+// <repo>/.codeaf-v3/stubs/<digest>.txt — inside the repository it was working
 // in. The bytes belong to the family: logs/stubs of the session that
 // commissioned the work, and nothing at all in the borrowed tree.
 func TestATaskWorkersStubsLandWithTheFamilyAndNotInTheRepository(t *testing.T) {
@@ -489,7 +489,7 @@ func TestAPaintedPictureLandsInArtifactsForABorrowedSession(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("artifacts directory = %v, %v; want one picture", entries, err)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3")); !os.IsNotExist(err) {
 		t.Fatalf("the session painted into the person's repository: %v", err)
 	}
 
@@ -556,7 +556,7 @@ func TestAPaintedPictureKeepsTheLegacyPathWithoutAFolder(t *testing.T) {
 	if result, isError := runTool(t, agent, "generate_image", `{"prompt":"a harbour"}`); isError {
 		t.Fatalf("generate_image failed: %s", result)
 	}
-	entries, err := os.ReadDir(filepath.Join(workspace, ".aforge-v3", "images"))
+	entries, err := os.ReadDir(filepath.Join(workspace, ".codeaf-v3", "images"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("legacy image directory = %v, %v; want one picture", entries, err)
 	}

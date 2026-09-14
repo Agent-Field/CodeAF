@@ -31,9 +31,9 @@ var renameNotice io.Writer = os.Stderr
 //
 // ONE LINE, NOT A PARAGRAPH. A person who typed the old spelling wants to keep
 // working; what they are owed is the new word and the fact that this grace ends.
-// Everything else about the rename is in `aforge --help` and in the manual.
+// Everything else about the rename is in `codeaf --help` and in the manual.
 func sayRenamed(old, now string) {
-	fmt.Fprintf(renameNotice, "note: `aforge %s` is now `aforge %s` — the old spelling works for one more release.\n",
+	fmt.Fprintf(renameNotice, "note: `codeaf %s` is now `codeaf %s` — the old spelling works for one more release.\n",
 		old, now)
 }
 
@@ -85,7 +85,7 @@ func aliasOf(flags *flag.FlagSet, name string) flag.Value {
 		// A door aliasing a flag it never declared is a programming mistake and
 		// not a person's, so it fails loudly at the door rather than quietly at
 		// the parse.
-		panic("aforge: aliased the undeclared flag --" + name)
+		panic("codeaf: aliased the undeclared flag --" + name)
 	}
 	return &aliasValue{target: target.Value}
 }
@@ -149,7 +149,7 @@ func dashed(name string) string {
 // It exists for one law: a flag that was typed always wins over an environment
 // variable that stands in for it. Reading flag.Visit directly would report
 // `budget` where a person typed the old spelling and `token-budget` where they
-// typed the new one, so AFORGE_EXEC_BUDGET would silently overrule half the
+// typed the new one, so CODEAF_EXEC_BUDGET would silently overrule half the
 // callers — which is exactly the failure the environment fallbacks are guarded
 // against in the first place.
 func typedFlags(flags *flag.FlagSet) map[string]bool {

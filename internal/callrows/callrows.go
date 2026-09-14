@@ -1,5 +1,5 @@
 // Package callrows reads the model-call log this build always writes
-// (`~/.aforge/logs/calls.jsonl`, internal/calllog) back into rows.
+// (`~/.codeaf/logs/calls.jsonl`, internal/calllog) back into rows.
 //
 // IT IS ONE READER BECAUSE THERE IS ONE FILE. Two instruments now read it —
 // cmd/codeaf-census, which prints what went wrong, and cmd/codeaf-replay, which
@@ -113,7 +113,7 @@ func Read(path string) ([]Row, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	// A row carrying bodies (AFORGE_CALL_LOG_BODIES) is hundreds of kilobytes,
+	// A row carrying bodies (CODEAF_CALL_LOG_BODIES) is hundreds of kilobytes,
 	// and bufio's default 64 KiB would stop the scan at the first one.
 	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	var rows []Row

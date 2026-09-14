@@ -45,7 +45,7 @@ import (
 // summaryFileList is the header a leaf writes over the absolute paths it
 // produced, before handing its summary on. The spelling is a constant because
 // two readers depend on it byte for byte: the person who opens the files, and
-// `aforge do`, which strips the block back off the deliverable so its own
+// `codeaf do`, which strips the block back off the deliverable so its own
 // `files:` footer is the only list on stdout.
 const summaryFileList = "\n\nFiles:\n"
 
@@ -54,7 +54,7 @@ const summaryFileList = "\n\nFiles:\n"
 // the construction cannot work out for itself.
 //
 // THEY DESCRIBE THE WORK, NEVER A SURFACE. A brain has no conversational half
-// to switch off any more: `aforge chat` is internal/tui3 over internal/session
+// to switch off any more: `codeaf chat` is internal/tui3 over internal/session
 // and reaches none of this, and the entry point that once built a talking brain
 // here went with the surface it served (#329). The compiler, the reconciler,
 // the runner, the contracts, the gate, the extensions and the replans are what
@@ -105,7 +105,7 @@ type brainOptions struct {
 	// nothing downstream of the run can ask it what was written unless somebody
 	// catches the answer on the way past.
 	//
-	// Only an errand wires it — `aforge do` is one process around one job, so
+	// Only an errand wires it — `codeaf do` is one process around one job, so
 	// the paths a leaf recorded here are the paths its footer prints and its
 	// --json carries. Nil is every other driver, which reads files off the graph
 	// like any other reader.
@@ -242,7 +242,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// The plan slot structures work — the task graph, replans, contracts, the
 	// delivery gate. Empty follows the work model live, so by default this is
 	// the same model behind a second hot-swappable handle; a picked plan model
-	// or AFORGE_PLAN_MODEL splits structuring from execution, and a /model
+	// or CODEAF_PLAN_MODEL splits structuring from execution, and a /model
 	// change lands on the very next planning call.
 	planModel := firstNonEmptyString(opts.planModel, prefs.PlanModel, settings.PlanModel, workModel)
 	// How much the structuring model can hold, read once for the session. Every
@@ -305,7 +305,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// rail have all passed, so on the common path it is never asked at all; the
 	// paths that ask it reach it through a package seam because they are
 	// reached through signatures that carry a plan function and a budget and
-	// have no client to give it. AFORGE_GROWTH_GATE=0 turns it off.
+	// have no client to give it. CODEAF_GROWTH_GATE=0 turns it off.
 	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient, planContextTokens))
 	workspaceRoot := strings.TrimSpace(opts.workspaceRoot)
 	if workspaceRoot == "" {
@@ -400,7 +400,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// named with --db it is worse, because the charter and its work land in
 	// somebody's own journal as the residue of an errand that was asked for one
 	// thing. Either way it competes with the single job this process was
-	// started to run. So every `aforge do` schedules nothing, whatever its
+	// started to run. So every `codeaf do` schedules nothing, whatever its
 	// store, and the resident that owns that store keeps practising on its own
 	// time.
 	reconciler = reconciler.WithPracticeLoop(0, 0)
@@ -1093,7 +1093,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// Work that is finished and is NOT in the workspace is the one thing a
 		// person cannot find for themselves: there is no file to open, the
 		// artifact list is correctly empty, and the checkout it is in is under
-		// aforge's own state root under a digest of a path. So it is said here,
+		// codeaf's own state root under a digest of a path. So it is said here,
 		// above the failure branch and above the happy one, because a gate
 		// failure is exactly the ending that produces it — and it is said with a
 		// progress payload, which is what carries it out of the record and into
@@ -2208,7 +2208,7 @@ func (b *chatBrain) stop() {
 // this name.
 const notebookInputTitle = "your notebook — standing preferences and lessons, not results"
 
-// leafNotebookInputs is the whole of how what aforge has learned reaches the
+// leafNotebookInputs is the whole of how what codeaf has learned reaches the
 // work: one retrieval against this leaf's own brief and goal, rendered into the
 // first input the worker reads.
 //
@@ -3463,7 +3463,7 @@ const sessionNewWord = "new"
 // an overnight job posted into the session it was born in. So the default is
 // continuity: come back to the conversation the journal last saw someone in.
 // Starting over is the explicit act — the caller asks for [sessionNewWord]. An
-// errand asks for neither: `aforge do` mints its own id and hands it straight
+// errand asks for neither: `codeaf do` mints its own id and hands it straight
 // down, so what this resolves for today is a name it was given.
 //
 // The journal is the only honest source for "the last one", and it holds two
@@ -3962,7 +3962,7 @@ type jobPlans struct {
 	// worth of them; losing a reading costs one journal field and never the job.
 	readings map[string]string
 	// journal persists a job's structure, and hydrate reads it back. Both are
-	// nil on surfaces with no store to write to — `aforge wake` builds a
+	// nil on surfaces with no store to write to — `codeaf wake` builds a
 	// registry for one bounded pass and never outlives it — and a nil pair
 	// leaves the registry exactly the memory-only map it used to be.
 	journal func(prefix string, entry plannedJob)
@@ -4466,7 +4466,7 @@ func isJobNode(id, prefix string) bool {
 // the error thrown away, the goroutine gone, and no one told. A single
 // transient failure inside one pass therefore ended the resident silently for
 // the lifetime of the terminal, while the lease went on saying the role was
-// taken, so `aforge wake` stepped aside for a process that had stopped serving
+// taken, so `codeaf wake` stepped aside for a process that had stopped serving
 // hours ago. Standing watches, charters and practice simply never fired again.
 //
 // So the loop gets a supervisor. Restarting is the right default because the
@@ -4514,7 +4514,7 @@ func superviseResident(ctx context.Context, serve func(context.Context) error,
 			log.Printf("resident loop abandoned after %d restarts; background work has stopped", consecutive)
 			if announce != nil {
 				announce("my background half has stopped and I could not restart it — " +
-					"standing rules, watching and follow-up work are paused until aforge is restarted. " +
+					"standing rules, watching and follow-up work are paused until codeaf is restarted. " +
 					"The reason is in the log: " + firstLine(fmt.Sprint(err)))
 			}
 			return
@@ -4555,7 +4555,7 @@ func nodeDisplay(node store.Node) string {
 // It is a fresh recorder per attempt rather than one per node: a retried leaf
 // appends a second run behind the first, and merging the two would make a
 // record that reads as one impossible run. Every surface that launches a leaf
-// goes through here, which is what makes `aforge do` and the chat's own leaves
+// goes through here, which is what makes `codeaf do` and the chat's own leaves
 // equally readable afterwards — the defect this answers was found on the
 // headless one, and the interactive one was no better off.
 func armTranscript(ctx context.Context, graph *store.Store, nodeID, model string) context.Context {

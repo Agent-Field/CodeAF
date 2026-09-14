@@ -11,7 +11,7 @@ package main
 // ── WHO TICKS ──
 //
 // Any window that is open takes the store's lock and runs a pass every
-// [standing.Interval]; the OS timer running `aforge tick` is the backup for
+// [standing.Interval]; the OS timer running `codeaf tick` is the backup for
 // "no terminal open". Both build the ticker through [v3StandingTicker], so
 // there is exactly one answer to "what does a pass do" and it cannot drift
 // between the two callers.
@@ -53,8 +53,8 @@ import (
 // honest destination is a file an operator can read afterwards.
 const standingLogName = "standing.log"
 
-// v3StandingRoot is where everything standing lives: ~/.aforge/v3/standing,
-// resolved through internal/home so AFORGE_HOME moves it with the rest
+// v3StandingRoot is where everything standing lives: ~/.codeaf/v3/standing,
+// resolved through internal/home so CODEAF_HOME moves it with the rest
 // (Decision 26 — one home, one seam).
 func v3StandingRoot() string { return home.Join("v3", "standing") }
 
@@ -92,7 +92,7 @@ func v3StandingDailyRail(profileDir string) float64 {
 }
 
 // standingWatch is the OS timer that keeps checking with no window open: a
-// launchd agent or a systemd user timer running `aforge tick` every
+// launchd agent or a systemd user timer running `codeaf tick` every
 // [standing.Interval] (internal/standing's watch.go). Nil is the honest answer
 // on a host the package cannot arrange one for, and every caller reads nil as
 // "there are no background checks here" — nothing is installed, nothing is
@@ -106,7 +106,7 @@ func standingWatch(store *standing.Store) standing.Watch {
 }
 
 // v3StandingTicker builds one pass. IT IS THE ONE CONSTRUCTOR: a window's
-// goroutine below and `aforge tick` both call exactly this, so the two can
+// goroutine below and `codeaf tick` both call exactly this, so the two can
 // never disagree about what a pass is allowed to do.
 //
 // IT READS THE PROFILE KEYLESS, and that is the law rather than a convenience:
@@ -192,7 +192,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		// answerable by the work itself rather than by a person noticing at
 		// breakfast — and it is free where it does not apply, because a firing
 		// whose brief enumerates nothing is never armed and carries no verb
-		// (internal/session's standingWideWork). `AFORGE_SWARM=0` takes it away
+		// (internal/session's standingWideWork). `CODEAF_SWARM=0` takes it away
 		// here exactly as it does everywhere else.
 		Divide: settings.Swarm,
 	}
@@ -309,7 +309,7 @@ func noteStanding(line string) {
 //
 // Running IS supplied, and what makes that honest is that something on disk now
 // says it. A firing runs inside whichever process holds the tick lock — a live
-// window, or the operating system's timer running `aforge tick` with nobody
+// window, or the operating system's timer running `codeaf tick` with nobody
 // sitting anywhere — and internal/standing's running.go is that process leaving
 // a marker in the item's folder for the length of the pass it is doing. Every
 // other window reads it, doubts it (a dead pid, an age past one pass) and draws
@@ -412,7 +412,7 @@ type backgroundTimer interface {
 // it is a (home, program) pair; a timer naming another home, or another program
 // that can still run, is not drift and is left exactly as it is
 // (internal/standing's WatchDrift says why). So a launch under an isolated
-// AFORGE_HOME has nothing to say about the machine's timer, and two builds on
+// CODEAF_HOME has nothing to say about the machine's timer, and two builds on
 // one machine no longer take it from each other on every launch.
 func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
 	if watch == nil || !wanted {

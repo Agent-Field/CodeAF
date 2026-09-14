@@ -17,7 +17,7 @@ import (
 // disposable folder so a test cannot write into whoever ran it.
 func recordingRun(t *testing.T) context.Context {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	ctx := trace.Begin(context.Background())
 	if trace.EnableRun(ctx) == "" {
 		t.Fatal("EnableRun did not take this run")
@@ -108,7 +108,7 @@ func TestARefusedToolCallNamesWhoSaidNo(t *testing.T) {
 }
 
 func TestAToolCallWithTheRecordOffWritesNothing(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	ctx := trace.Begin(context.Background())
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}

@@ -1,7 +1,7 @@
 package session
 
 // SAME-OWNER COMPLETION, AT THE REAL DOOR (calibration-02, cell
-// 018-revision-midwork-aforge).
+// 018-revision-midwork-codeaf).
 //
 // The live trace these cases are written from is that cell's own
 // `transcript.jsonl`, lines 4-37: a person asked for a one-minute command AND a

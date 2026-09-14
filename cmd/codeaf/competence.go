@@ -25,7 +25,7 @@ func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge competence [--db path] [--model slug]")
+		return fmt.Errorf("usage: codeaf competence [--db path] [--model slug]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -45,8 +45,8 @@ func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 	defer graph.Close()
 
 	prefs := loadChatPrefs(filepath.Dir(path))
-	model := firstNonEmptyString(*modelFlag, prefs.TaskModel, os.Getenv("AFORGE_MODEL"), config.DefaultModel)
-	competence, err := measureCompetence(graph, os.Getenv("AFORGE_PROFILE_DIR"), model, now)
+	model := firstNonEmptyString(*modelFlag, prefs.TaskModel, os.Getenv("CODEAF_MODEL"), config.DefaultModel)
+	competence, err := measureCompetence(graph, os.Getenv("CODEAF_PROFILE_DIR"), model, now)
 	if err != nil {
 		return err
 	}

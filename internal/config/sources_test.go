@@ -492,7 +492,7 @@ func TestAnUnqualifiedIdResolvesExactlyAsItDidBefore(t *testing.T) {
 	t.Setenv(APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 	for _, base := range []string{"", "https://company.example/v1"} {
-		t.Setenv("AFORGE_BASE_URL", base)
+		t.Setenv("CODEAF_BASE_URL", base)
 		loaded, err := Load()
 		if err != nil {
 			t.Fatal(err)

@@ -10,7 +10,7 @@ import (
 
 // SAYING NO IS NOT AN ERROR, AND NOBODY BEING THERE IS ITS OWN RUNG.
 //
-// `aforge rebuild` asks before it throws away everything the store worked out
+// `codeaf rebuild` asks before it throws away everything the store worked out
 // from the journal. Answering `n` used to leave on a rung that means the work
 // did not stand, and running it from a pipe — where there is no keyboard to
 // answer with — came back as `error: rebuild cancelled` on exit 1, which tells

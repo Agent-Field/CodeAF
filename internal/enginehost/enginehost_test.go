@@ -65,7 +65,7 @@ var _ remote.WrappedAgent = stubAgent{}
 
 // shortHome is a state root a socket can actually be named in, and it is what
 // every test in this package that builds a real socket path uses for
-// AFORGE_HOME. The one test that wants a path too long for a socket
+// CODEAF_HOME. The one test that wants a path too long for a socket
 // ([TestASocketPathTooLongIsRefusedAtTheDoor]) builds its own on purpose.
 //
 // It is NOT t.TempDir, and it does not honour $TMPDIR either, and the reason is
@@ -76,7 +76,7 @@ var _ remote.WrappedAgent = stubAgent{}
 // anything. WHETHER THIS SUITE PASSES MUST NOT BE A FUNCTION OF HOW DEEP
 // $TMPDIR IS, so the root is named directly under /tmp, where it costs about
 // twenty bytes wherever the test runs. A test that ran out of bytes would be
-// failing the same honest refusal a person with a deep AFORGE_HOME gets —
+// failing the same honest refusal a person with a deep CODEAF_HOME gets —
 // which is a law with a test of its own, not something the rest of the package
 // should keep re-discovering by accident, and not a reason for the ledger in
 // .github/known-red.txt to carry a socket test on macOS.
@@ -94,7 +94,7 @@ func shortHome(t *testing.T) string {
 	} else {
 		t.Cleanup(func() { _ = os.RemoveAll(root) })
 	}
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	return root
 }
 
@@ -158,7 +158,7 @@ func TestTheSocketMovesWithTheStateRoot(t *testing.T) {
 // pipe knowing why.
 func TestASocketPathTooLongIsRefusedAtTheDoor(t *testing.T) {
 	root := filepath.Join(t.TempDir(), strings.Repeat("deep/", 40))
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	if _, err := SocketPath("/home/somebody/api"); err == nil {
 		t.Fatal("a socket path far past the limit was accepted")
 	}
@@ -381,7 +381,7 @@ func TestAttachGivesUpQuietlyWhenNoHostCanStart(t *testing.T) {
 // listen.
 func TestAStatePathTooLongForASocketIsAnsweredBeforeAnythingIsStarted(t *testing.T) {
 	root := filepath.Join(t.TempDir(), strings.Repeat("deep/", 20))
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	spawned := false
 	started := time.Now()
 
@@ -504,9 +504,9 @@ type writerFunc func([]byte) (int, error)
 
 func (w writerFunc) Write(p []byte) (int, error) { return w(p) }
 
-// ASKING WHETHER A HOST IS THERE MAKES NOTHING. Every plain `aforge chat` puts
+// ASKING WHETHER A HOST IS THERE MAKES NOTHING. Every plain `codeaf chat` puts
 // this question before it opens anything, so a Dial that made a directory would
-// leave one under every workspace anybody ever ran aforge in.
+// leave one under every workspace anybody ever ran codeaf in.
 func TestAskingWhetherAHostIsThereLeavesNothingBehind(t *testing.T) {
 	root := shortHome(t)
 	workspace := t.TempDir()

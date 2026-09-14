@@ -18,7 +18,7 @@ func ownedPlace(t *testing.T) session.Place {
 	t.Helper()
 	fake := t.TempDir()
 	t.Setenv("HOME", fake)
-	t.Setenv(home.EnvVar, filepath.Join(fake, ".aforge"))
+	t.Setenv(home.EnvVar, filepath.Join(fake, ".codeaf"))
 	dir := home.Join("v3", "projects", "owned", "0123456789abcdef")
 	place := session.Place{Dir: dir, Owned: true}
 	place.Workspace = place.Work()
@@ -65,7 +65,7 @@ func TestAnOwnedWorkspaceOpensAsARepositoryWithACommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git log: %v", err)
 	}
-	if got, want := strings.TrimSpace(subject), "session opened|aforge|aforge@localhost"; got != want {
+	if got, want := strings.TrimSpace(subject), "session opened|codeaf|codeaf@localhost"; got != want {
 		t.Fatalf("first commit = %q, want %q", got, want)
 	}
 }
@@ -98,7 +98,7 @@ func TestReopeningAnOwnedWorkspaceAddsNoCommit(t *testing.T) {
 func TestABorrowedSessionMakesNoWorkspace(t *testing.T) {
 	fake := t.TempDir()
 	t.Setenv("HOME", fake)
-	t.Setenv(home.EnvVar, filepath.Join(fake, ".aforge"))
+	t.Setenv(home.EnvVar, filepath.Join(fake, ".codeaf"))
 	place := session.Place{Dir: home.Join("v3", "projects", "repo", "0123456789abcdef")}
 	if err := prepareOwnedWorkspace(place); err != nil {
 		t.Fatalf("prepareOwnedWorkspace: %v", err)
@@ -129,7 +129,7 @@ func TestAWorkspaceWithoutGitStillOpens(t *testing.T) {
 }
 
 // The index every deliverable is cited in is ONE path, resolved through
-// internal/home so AFORGE_HOME moves it with the rest of the state root.
+// internal/home so CODEAF_HOME moves it with the rest of the state root.
 func TestTheArtifactsIndexLivesUnderTheStateRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)

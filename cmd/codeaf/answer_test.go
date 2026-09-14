@@ -213,12 +213,12 @@ func newAnswerBrain(t *testing.T) *answerBrain {
 	t.Helper()
 	brain := &answerBrain{t: t, dir: t.TempDir(), counts: map[string]int{}}
 	brain.server = httptest.NewServer(http.HandlerFunc(brain.serve))
-	t.Setenv("AFORGE_BASE_URL", brain.server.URL)
+	t.Setenv("CODEAF_BASE_URL", brain.server.URL)
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_PROFILE_DIR", brain.dir)
-	t.Setenv("AFORGE_DAILY_BUDGET", "0")
-	t.Setenv("AFORGE_PRACTICE_BUDGET", "0")
-	t.Setenv("AFORGE_PLAN_CONSENT", "0")
+	t.Setenv("CODEAF_PROFILE_DIR", brain.dir)
+	t.Setenv("CODEAF_DAILY_BUDGET", "0")
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "0")
+	t.Setenv("CODEAF_PLAN_CONSENT", "0")
 	return brain
 }
 

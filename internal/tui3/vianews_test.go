@@ -203,7 +203,7 @@ func TestTheFirstAnswerNamesItsMachineWhileItIsWritten(t *testing.T) {
 // under an id this window was not asking for.
 func TestTheConversationsNewsIsFoundAfterTheModelMoved(t *testing.T) {
 	a, now := newsApp(t, phaseModel)
-	a.file = "/home/dev/.aforge/v3/sessions/conv-one/session.jsonl"
+	a.file = "/home/dev/.codeaf/v3/sessions/conv-one/session.jsonl"
 	a.state = stateWorking
 	answerArriving(a)
 	// The person picked another model; the engine is still finishing on the old.
@@ -226,7 +226,7 @@ func TestTheConversationsNewsIsFoundAfterTheModelMoved(t *testing.T) {
 // the compatibility bargain, byte for byte what it always drew.
 func TestAnOlderEnginesNewsIsStillFoundByModel(t *testing.T) {
 	a, now := newsApp(t, phaseModel)
-	a.file = "/home/dev/.aforge/v3/sessions/conv-one/session.jsonl"
+	a.file = "/home/dev/.codeaf/v3/sessions/conv-one/session.jsonl"
 	a.state = stateWorking
 	answerArriving(a)
 	PostPhaseNews(PhaseNews{

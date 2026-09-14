@@ -3,7 +3,7 @@ package tui3
 // THE ORDINARY LAUNCH, WHICH IS THE ONE NOBODY HAD A TEST FOR.
 //
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
-// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] carries AFORGE_PROFILE_DIR,
+// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] carries CODEAF_PROFILE_DIR,
 // which almost nobody exports, so what reaches this package on very nearly
 // every launch is the empty string — and internal/config has always resolved
 // that to this process's own profile in the state root ([config.ProfilePath]).
@@ -13,7 +13,7 @@ package tui3
 // tool gate is open (#322).
 //
 // EVERY TEST IN THIS FILE IS WRITTEN FROM THE LAUNCH AND NOT FROM THE FIELD. It
-// names no profile directory, exactly as `aforge` bare on a terminal does, and
+// names no profile directory, exactly as `codeaf` bare on a terminal does, and
 // then asks what a person sitting in front of it would see. The suite already
 // had thorough tests of all three behaviours and every one of them named a
 // profile directory first — which is how a class of defects that made the
@@ -29,7 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ordinaryLaunch is a surface opened the way `aforge` bare on a TTY opens it: a
+// ordinaryLaunch is a surface opened the way `codeaf` bare on a TTY opens it: a
 // state root of its own, no provider key anywhere the door would look, and NO
 // PROFILE DIRECTORY NAMED.
 //
@@ -45,10 +45,10 @@ func ordinaryLaunch(t *testing.T, opts Options, seed func()) *app {
 	// Everything the key resolution and the rails would otherwise read out of
 	// the developer's own shell. Empty reads as unset everywhere in
 	// internal/config.
-	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", config.ProfileDirEnv} {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", config.ProfileDirEnv} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	if seed != nil {
 		seed()
 	}

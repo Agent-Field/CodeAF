@@ -20,7 +20,7 @@ import (
 // request nobody would call dishonest: the model thought for the whole wall,
 // the cut threw the thought away, and the person read that the model had
 // stopped answering. The unit tests prove each half of the fix where it lives;
-// these prove the chain through `aforge do --json`, the door the issue names,
+// these prove the chain through `codeaf do --json`, the door the issue names,
 // against a model that never stops thinking. They fail if the structuring slots
 // lose their wall (chat.go's WithCallWall), if the wall stops telling the model
 // how long it has, or if the cut stops asking for the answer the thought
@@ -148,7 +148,7 @@ func believeTheStub(t *testing.T) {
 	})
 }
 
-// planOnThinkingModel runs one errand through `aforge do --json` and returns
+// planOnThinkingModel runs one errand through `codeaf do --json` and returns
 // its outcome, its log and its error.
 func planOnThinkingModel(t *testing.T, script *scriptedBrain) (settled bool, log string, err error) {
 	t.Helper()

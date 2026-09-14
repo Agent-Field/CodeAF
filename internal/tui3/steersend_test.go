@@ -696,7 +696,7 @@ func TestAConversationWithNoTranscriptCannotSteer(t *testing.T) {
 
 	// AND A SAVED ONE CARRIES THE MACHINE IT IS ON. The same transcript path
 	// names different work on two machines.
-	a.file = "/srv/app/.aforge/one.jsonl"
+	a.file = "/srv/app/.codeaf/one.jsonl"
 	here := a.steerOwner()
 	if !a.canSteerTask() {
 		t.Fatal("a named conversation could not steer")

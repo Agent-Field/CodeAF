@@ -823,7 +823,7 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 		}
 		parts = append(parts, "order "+itoa(persisted.Order))
 		if persisted.ID == "z-ai" && service.Door.ID == "coding-plan" {
-			parts = append(parts, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.")
+			parts = append(parts, "Zhipu lists the tools its plan covers; codeaf is not listed, and its request has been drafted but not sent.")
 		}
 		out = append(out, &modelServiceRow{
 			id: persisted.ID, name: service.Source.Written, value: strings.Join(parts, " · "),

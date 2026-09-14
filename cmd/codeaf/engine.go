@@ -1,6 +1,6 @@
 package main
 
-// engine.go is the far half of `aforge chat --host devbox`: the process that
+// engine.go is the far half of `codeaf chat --host devbox`: the process that
 // ssh starts on the other machine, holding the real conversation and answering
 // frames about it on its own stdin and stdout (internal/remote).
 //
@@ -25,7 +25,7 @@ package main
 //     running, one is started and this connection waits a moment for it.
 //  1a. AND THE HOST IS ASKED WHICH BUILD IT IS FIRST. A host outlives the
 //     binary that started it, so `rm bin/codeaf && make build` on this machine
-//     leaves the NEW aforge answering `aforge version` while the OLD one is
+//     leaves the NEW codeaf answering `codeaf version` while the OLD one is
 //     still holding the socket — and a splice that copied bytes handed the new
 //     surface straight to it. What came back was the old host's own refusal
 //     about protocol versions, telling the person to update a machine they had
@@ -87,7 +87,7 @@ func runRemoteEngine(args []string) error {
 	stop := flags.Bool("stop", false, "stop whatever is holding this workspace's conversations on this machine")
 	// --stop-all IS THE ONE A PERSON REACHES FOR WHEN THEY DO NOT KNOW WHICH
 	// WORKSPACE IS THE PROBLEM, and that is the ordinary case: the refusal names
-	// a machine, a person has run aforge in six folders this month, and finding
+	// a machine, a person has run codeaf in six folders this month, and finding
 	// the one that will not let go means reading a directory of hashes. It is
 	// the same stand-down as --stop, asked of every workspace this machine has a
 	// host directory for, one at a time and named as it goes.
@@ -100,7 +100,7 @@ func runRemoteEngine(args []string) error {
 		// and nothing a person accomplishes by typing it, so the usage line
 		// offers the two flags somebody might mean and stays quiet about the
 		// one they would only ever mean by accident.
-		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host] [--stop] [--stop-all]")
+		return fmt.Errorf("usage: codeaf engine [--workspace path] [--session path] [--no-host] [--stop] [--stop-all]")
 	}
 
 	if *daemon {
@@ -146,7 +146,7 @@ func runRemoteEngine(args []string) error {
 // turned away has already had its reason written down the wire, and OVER SSH
 // THIS PROCESS'S STDERR IS THE PERSON'S TERMINAL — the same terminal the
 // surface is about to draw that reason on. Printing it here as well is how one
-// refusal became two identical `error:` lines on `aforge chat --host
+// refusal became two identical `error:` lines on `codeaf chat --host
 // devbox:/nowhere`. The exit code stays 1, because the engine did fail.
 func quietRefusal(err error) error {
 	var refusal *remote.Refusal
@@ -156,8 +156,8 @@ func quietRefusal(err error) error {
 	return err
 }
 
-// staleHost is an older aforge still holding this workspace, and it is the ONE
-// reason `aforge engine` refuses instead of falling back to the pipe. The
+// staleHost is an older codeaf still holding this workspace, and it is the ONE
+// reason `codeaf engine` refuses instead of falling back to the pipe. The
 // sentence has already been written for a person to read; the caller's whole
 // job is to put it on the wire.
 type staleHost struct{ reason string }
@@ -172,7 +172,7 @@ func (s *staleHost) Error() string { return s.reason }
 // the surface puts it on the ssh command line as well as in the frame
 // (chatv3_host.go's dialEngine) — which was already true and is what makes
 // routing to a per-workspace socket possible at all without parsing a single
-// frame here. A hand-run `aforge engine` with no --workspace resolves to the
+// frame here. A hand-run `codeaf engine` with no --workspace resolves to the
 // home directory, which is exactly what its hello would have meant.
 //
 // ── THE THREE THINGS THE QUESTION CAN FIND ──────────────────────────────────
@@ -227,7 +227,7 @@ func clearStaleEngineHost(workspace string) (string, error) {
 //
 // WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE THEY WERE BUILT FROM, and
 // [buildinfo.Identity] is where that is decided. Rebuilding a commit does not
-// make an older aforge, and while the moment of the build was part of the answer
+// make an older codeaf, and while the moment of the build was part of the answer
 // every window opened after a `make build` told somebody their own engine was
 // behind (#730).
 //
@@ -235,7 +235,7 @@ func clearStaleEngineHost(workspace string) (string, error) {
 //
 // It used to be the third refusal here: a host on yesterday's binary, holding a
 // turn or a task, was asked to go, said no, and the person was told to run
-// `aforge engine --stop` — which would have ENDED the very work they were trying
+// `codeaf engine --stop` — which would have ENDED the very work they were trying
 // to get back on screen. What they wanted was their running conversation, and it
 // was one socket away.
 //
@@ -307,7 +307,7 @@ func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 // hostname, the same one every window in a shared conversation is labelled with
 // ([remote.MachineName]).
 // IT NAMES THE WORKSPACE IN THE COMMAND, and that is the half this sentence was
-// missing. `aforge engine --stop` with NO `--workspace` resolves to the HOME
+// missing. `codeaf engine --stop` with NO `--workspace` resolves to the HOME
 // directory ([engineWorkspace]), never to the workspace being complained about —
 // so a person reading this line inside a checkout, and typing it exactly as
 // written, stopped their healthy home host and left the offending one running.
@@ -327,14 +327,14 @@ func staleEngineHostSentence(busy bool, workspace string) string {
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	stop := "aforge engine --stop"
+	stop := "codeaf engine --stop"
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
 		stop += " --workspace " + workspace
 	}
 	if busy {
-		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run %s on %s", name, stop, name)
+		return fmt.Sprintf("engine: %s is still running an older codeaf and something is still going in it — let that finish, or run %s on %s", name, stop, name)
 	}
-	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run %s on %s", name, stop, name)
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s", name, stop, name)
 }
 
 // hostWorkspace is what the host says it is holding, and what this process asked
@@ -365,9 +365,9 @@ func busyEngineHostSentence(busy bool) string {
 		name = "this machine"
 	}
 	if busy {
-		return fmt.Sprintf("the engine on %s is an older aforge and is still holding work — it picks up this build the moment it goes quiet", name)
+		return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it picks up this build the moment it goes quiet", name)
 	}
-	return fmt.Sprintf("the engine on %s is an older aforge — it is holding this conversation and picks up this build the moment you leave it", name)
+	return fmt.Sprintf("the engine on %s is an older codeaf — it is holding this conversation and picks up this build the moment you leave it", name)
 }
 
 // olderEngineHostSentence is the same notice for the host that went quietly: an
@@ -382,16 +382,16 @@ func olderEngineHostSentence(busy bool) string {
 		name = "this machine"
 	}
 	if busy {
-		return fmt.Sprintf("the engine on %s was an older aforge until just now — it has picked up this build", name)
+		return fmt.Sprintf("the engine on %s was an older codeaf until just now — it has picked up this build", name)
 	}
-	return fmt.Sprintf("the engine on %s was an older aforge holding this conversation — it has picked up this build", name)
+	return fmt.Sprintf("the engine on %s was an older codeaf holding this conversation — it has picked up this build", name)
 }
 
-// runEngineStop is `aforge engine --stop`: whatever is holding this workspace
+// runEngineStop is `codeaf engine --stop`: whatever is holding this workspace
 // on this machine, let go of.
 //
 // IT TALKS TO A PERSON, WHICH IS WHY IT IS THE ONE DOOR IN THIS FILE THAT
-// PRINTS. Every other shape of `aforge engine` owns stdout as the protocol and
+// PRINTS. Every other shape of `codeaf engine` owns stdout as the protocol and
 // a stray line there is a frame the surface cannot parse; this one is nobody's
 // engine, it is somebody typing on the machine itself and waiting to be told
 // what happened.
@@ -412,12 +412,12 @@ func runEngineStop(workspaceFlag string) error {
 	return nil
 }
 
-// runEngineStopAll is `aforge engine --stop-all`: every engine this machine is
+// runEngineStopAll is `codeaf engine --stop-all`: every engine this machine is
 // holding, in every workspace, let go of.
 //
 // IT EXISTS BECAUSE THE REMEDY USED TO REQUIRE KNOWING THE ANSWER. A stale host
 // announces itself by refusing a launch, and the fix is `--stop --workspace
-// <path>` — but the person reading that has run aforge in six folders and the
+// <path>` — but the person reading that has run codeaf in six folders and the
 // state root names them by hash. On 2026-09-12 a host on an older wire held one
 // checkout for twenty-two hours and eight rebuilds, and clearing it took reading
 // a directory of hashes to find which one it was. This is that reading, done by
@@ -608,7 +608,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		return nil, err
 	}
 	// There IS a surface answering the consent cards; it is simply on another
-	// machine. This is the same line `aforge chat` sets and for the same reason,
+	// machine. This is the same line `codeaf chat` sets and for the same reason,
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = true
@@ -657,7 +657,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	//
 	// IT IS SAFE BECAUSE THE ENGINE IS THE MACHINE. Everything the two
 	// capabilities above lack is present here: the store is a directory under
-	// THIS machine's AFORGE_HOME ([v3StandingRoot]), a firing runs under THIS
+	// THIS machine's CODEAF_HOME ([v3StandingRoot]), a firing runs under THIS
 	// machine's profile rules (chatv3_standing.go's header states that law), the
 	// OS timer a first yes offers to install is THIS machine's timer, and the
 	// work an item does happens where the workspace is. And the card travels a
@@ -939,7 +939,7 @@ func engineStandingWatch(seam *session.Standing) func() (standing.WatchStatus, b
 //
 // EMPTY IS THE HOME DIRECTORY and a relative path is relative to it — NOT to the
 // process's own directory. That is not a convenience, it is what the person
-// typed: `aforge chat --host devbox:work/api` is read by whoever is holding the
+// typed: `codeaf chat --host devbox:work/api` is read by whoever is holding the
 // ssh session, and an ssh command starts in the home directory. Resolving
 // "work/api" against wherever sshd happened to leave the process would make the
 // same words mean different places on different machines.

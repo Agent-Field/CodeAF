@@ -40,7 +40,7 @@ import (
 // then the answers row:
 //
 //	? wants to start a task: rewrite the packer
-//	  it will run on its own branch and open a pull request · aforge
+//	  it will run on its own branch and open a pull request · codeaf
 //	    1  start it        on a branch of its own
 //	  ▸ 2  not now         nothing runs
 //	    3  change it first
@@ -149,7 +149,7 @@ type questionResolver interface {
 // type assertion — so a single method missing on the far half is not a question
 // drawn smaller, it is a question that never reaches a screen at all. That is
 // exactly what happened: the wire carried ResolveQuestion and neither
-// WatchQuestions nor OpenQuestions, and on the road a plain `aforge` takes every
+// WatchQuestions nor OpenQuestions, and on the road a plain `codeaf` takes every
 // `ask` stopped the turn with nothing on any screen.
 func DrawsQuestions(agent Agent) bool {
 	_, ok := agent.(questionAgent)

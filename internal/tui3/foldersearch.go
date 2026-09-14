@@ -28,17 +28,17 @@ package tui3
 // difference in match offset outrank a week of use would reorder the top of the
 // list every time a person added a letter.
 //
-//	aforge      → the leaf name, spelled out          folderTierName
-//	afo         → the leaf name starts with it        folderTierNameLead
+//	codeaf      → the leaf name, spelled out          folderTierName
+//	cod         → the leaf name starts with it        folderTierNameLead
 //	~/code      → the path itself starts with it      folderTierPathLead
 //	internal    → a segment above the leaf            folderTierSegment
-//	forge       → inside the leaf name                folderTierNameIn
-//	ait         → the initials, in order              folderTierShort
-//	de/af       → somewhere else in the path          folderTierPathIn
-//	afv         → the letters, in order               folderTierLoose
-//	afroge      → one slip away from a name           folderTierSlip
+//	dea         → inside the leaf name                folderTierNameIn
+//	cit         → the initials, in order              folderTierShort
+//	de/co       → somewhere else in the path          folderTierPathIn
+//	oea         → the letters, in order               folderTierLoose
+//	codefa      → one slip away from a name           folderTierSlip
 //
-// THE LAST RUNG IS THE ONE THAT PAYS FOR ITSELF. `afroge` is the typo people
+// THE LAST RUNG IS THE ONE THAT PAYS FOR ITSELF. `codefa` is the typo people
 // actually make on this program's name, and every tier above it answers it with
 // nothing at all — a list that says "no folder matches" to a query that is one
 // swapped pair of letters from the folder in front of them. It is last because
@@ -151,7 +151,7 @@ func folderSlipBound(text string) int {
 // and the segment boundaries are what every tier reads, and neither may be
 // recomputed per keystroke.
 type folderFolded struct {
-	// lower is the shown path — `~/code/aforge-v2/internal/tui3` — lowercased.
+	// lower is the shown path — `~/code/codeaf/internal/tui3` — lowercased.
 	// It is the SHOWN spelling and not the absolute one, because a person
 	// typing `~/co` is typing what they can see.
 	lower string
@@ -233,7 +233,7 @@ func folderScore(q folderQuery, f folderFolded) (folderHit, bool) {
 		return folderHit{tier: folderTierNameIn, detail: at<<8 + len(base) - len(needle)}, true
 	}
 	// THE INITIALS ARE ASKED OF THE LEAF FIRST. `av2` is somebody naming
-	// `aforge-v2`, and the same letters read across a whole path are a weaker
+	// `codeaf`, and the same letters read across a whole path are a weaker
 	// claim about the same thing — so the second reading is pushed a fixed
 	// distance behind the first rather than given a rung of its own.
 	if span, ok := folderShort(base, needle); ok {
@@ -269,8 +269,8 @@ func folderScoreOf(query, show string) (folderHit, bool) {
 //
 // IT IS SCANNED FROM THE LEAF UPWARDS and the first hit wins, because a person
 // who types a name that appears twice in one path means the one nearer the
-// thing they are pointing at. `~/code/aforge/internal/aforge` typed at with
-// `aforge` is the deeper one every time.
+// thing they are pointing at. `~/code/codeaf/internal/codeaf` typed at with
+// `codeaf` is the deeper one every time.
 func folderSegmentHit(f folderFolded, needle string) (folderHit, bool) {
 	for at := len(f.starts) - 1; at >= 0; at-- {
 		start := f.starts[at]
@@ -300,7 +300,7 @@ func folderSegmentHit(f folderFolded, needle string) (folderHit, bool) {
 //
 // Every character has to land either on the start of a word or immediately
 // after the character before it. That one rule is what separates this from the
-// loose rung below it: `av2` reaches `aforge-v2` because `a` and `v` start
+// loose rung below it: `av2` reaches `codeaf` because `a` and `v` start
 // words and `2` carries straight on from `v`, while `ag2` reaches it on the
 // loose rung only, where it belongs.
 //
@@ -407,7 +407,7 @@ func folderSlipHit(f folderFolded, needle string, bound int) (folderHit, bool) {
 			continue
 		}
 		// AND A LONGER NAME IS MISTYPED AT ITS START. `afroge` is somebody
-		// reaching for `aforge-v2`, which no whole-name comparison can see: the
+		// reaching for `codeaf`, which no whole-name comparison can see: the
 		// name is three characters longer than the query and the query was not
 		// finished. So the START of the name is compared too, at every length
 		// the bound allows the query to have been — which is the name-lead rung
@@ -434,7 +434,7 @@ func folderSlipHit(f folderFolded, needle string, bound int) (folderHit, bool) {
 // that, so a caller never learns a distance it would not have used.
 //
 // The transposition is the whole reason this is not the plain edit distance.
-// `afroge` for `aforge` is two substitutions to Levenshtein and one slip to a
+// `afroge` for `codeaf` is two substitutions to Levenshtein and one slip to a
 // person, and treating it as two would put it level with `abcdef` typed at a
 // six letter name — which is not a typo, it is a different word.
 //

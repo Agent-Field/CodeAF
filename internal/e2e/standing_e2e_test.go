@@ -86,7 +86,7 @@ func standingReminderStands(t *testing.T) {
 	}
 	switch {
 	case strings.TrimSpace(args.When.In) != "":
-		t.Logf("the model used when.in = %q — the moment is aforge's to resolve", args.When.In)
+		t.Logf("the model used when.in = %q — the moment is codeaf's to resolve", args.When.In)
 	case strings.TrimSpace(args.When.At) != "":
 		moment, err := time.ParseInLocation(time.RFC3339, args.When.At, time.Local)
 		if err != nil {

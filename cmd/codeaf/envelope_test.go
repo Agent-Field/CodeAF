@@ -118,7 +118,7 @@ func TestTheExitLadderIsOneTable(t *testing.T) {
 				stop: stopDone, want: exitDone},
 			// THE PROVIDER FAILING IS A RUN THAT RAN. It is `incomplete` and
 			// not `error`, because an outcome exists at all only after the
-			// executor started (execStop); exit 1 is `aforge exec` refusing
+			// executor started (execStop); exit 1 is `codeaf exec` refusing
 			// before it opens a connection, and never a run that spent money.
 			{what: "the provider failed mid-run", outcome: exec.Outcome{Stop: exec.StopError, Turns: 9},
 				runErr: errors.New("upstream returned 500"), stop: stopIncomplete, want: exitIncomplete},
@@ -287,7 +287,7 @@ func TestTheThreeVerbsReturnOneEnvelope(t *testing.T) {
 
 // THE ESCAPE HATCH, and nothing but it.
 //
-// AFORGE_EXIT_CODES=legacy puts `aforge exec`'s old 2/3/4/5/6 back for one
+// CODEAF_EXIT_CODES=legacy puts `codeaf exec`'s old 2/3/4/5/6 back for one
 // release. This asserts it restores exactly those numbers, and that it changes
 // nothing else — not `do`, not `run`, not one field of the envelope.
 func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
@@ -319,7 +319,7 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 		}
 	}
 
-	t.Setenv("AFORGE_EXIT_CODES", "legacy")
+	t.Setenv("CODEAF_EXIT_CODES", "legacy")
 	for _, row := range rows {
 		outcome := row.outcome
 		if got := execExit(&outcome, row.runErr); got != row.legacy {
@@ -347,7 +347,7 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 		t.Fatalf("the legacy switch changed the envelope: %+v", envelope)
 	}
 
-	t.Setenv("AFORGE_EXIT_CODES", "")
+	t.Setenv("CODEAF_EXIT_CODES", "")
 	if got := execExit(&exec.Outcome{Stop: exec.StopBudget, Text: "half"}, nil); got != exitLimit {
 		t.Fatalf("the hatch did not close: budget left with %d, want 3", got)
 	}
@@ -358,7 +358,7 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 //
 // `do --json` carried spend, steps, seconds, settled and the models, and no
 // call count and no round count — so a developer who wanted either went to
-// `~/.aforge/logs/calls.jsonl` and counted rows by hand. The two figures are on
+// `~/.codeaf/logs/calls.jsonl` and counted rows by hand. The two figures are on
 // the object now, and beside them the run id that makes that file joinable to
 // this one.
 //

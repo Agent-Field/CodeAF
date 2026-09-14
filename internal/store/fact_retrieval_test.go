@@ -34,7 +34,7 @@ func TestOldButRelevantSurvivesANewerCue(t *testing.T) {
 		"they use a 60-column terminal",
 		"they want the answer first and the working after",
 		"they never want emoji in a deliverable",
-		"they call the product aforge, lowercase",
+		"they call the product codeaf, lowercase",
 	} {
 		if _, err := graph.RecordFactFrom(FactWriterDistiller, "", "user", FactPreference, body); err != nil {
 			t.Fatal(err)

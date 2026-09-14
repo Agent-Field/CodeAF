@@ -14,7 +14,7 @@ package tui3
 //
 // ── THE ENGINE ROAD, WHICH IS THE ORDINARY ONE ──────────────────────────────
 //
-// A plain `aforge chat` runs its conversation in the workspace's ENGINE
+// A plain `codeaf chat` runs its conversation in the workspace's ENGINE
 // (internal/enginehost), and the engine is what holds the journal. So the second
 // terminal does not have to ask anybody for anything: it opens the conversation
 // through the same engine, which hands back the session it is already running —
@@ -45,7 +45,7 @@ package tui3
 //	                  on the standing lane — the one subscription that outlives
 //	                  every turn — and lets go the way /new lets go: interrupt,
 //	                  close, land on whatever else this window was holding.
-//	the launch        `aforge chat` in a folder whose conversation is open
+//	the launch        `codeaf chat` in a folder whose conversation is open
 //	                  somewhere else comes up on home with that row's question
 //	                  already asked ([Options.TakeOver]).
 //

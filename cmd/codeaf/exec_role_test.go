@@ -12,7 +12,7 @@ import (
 // `lane.talk` scope.
 //
 // THE MEASURED FAILURE (2026-09-13). With `routing: simple` and a machine
-// pinned, `aforge exec --model … --debug` put a body on the wire carrying
+// pinned, `codeaf exec --model … --debug` put a body on the wire carrying
 // `provider: null`: the pin a person had written was not demanded, and nothing
 // said so. The cause was here — this command named no role at all, so every
 // call it made read as [lane.RoleUnknown], which is a hidden background errand,
@@ -24,7 +24,7 @@ import (
 func TestTheExecDoorRunsAsALeafSomebodyIsWatching(t *testing.T) {
 	role := provider.RoleFrom(typedDoorContext(context.Background()))
 	if role != lanes.RoleLeafAttached {
-		t.Fatalf("`aforge exec` runs as %q, want the leaf somebody is watching", role)
+		t.Fatalf("`codeaf exec` runs as %q, want the leaf somebody is watching", role)
 	}
 	// THE CLAIM IS WHAT THE TABLE MAKES OF IT, and the table is the authority:
 	// a role is only the person's own turn to everything downstream if it reads

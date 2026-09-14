@@ -90,7 +90,7 @@ type DeliveryGate struct {
 	// the door ended `ok` at exit 0, and the store held no gate row for the
 	// delivered leaf at all — so the rig compared an unchecked delivery against
 	// runs that had been judged and read it as a clean pass (2026-09-02,
-	// aforge-v2-14 anchor 1; #514). Whole below spends it, so the exit code
+	// codeaf-14 anchor 1; #514). Whole below spends it, so the exit code
 	// cannot report a delivery nobody read as one that stands.
 	Unjudged bool `json:"unjudged,omitempty"`
 

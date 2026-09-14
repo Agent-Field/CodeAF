@@ -10,9 +10,9 @@
 //
 // It is a DEVELOPER'S instrument and nothing else. There is no settings row,
 // no flag and no slash command, because there is no question a person using
-// aforge would ask that this answers — the audience is whoever is holding the
+// codeaf would ask that this answers — the audience is whoever is holding the
 // SSH story and needs to know whether a change made it cheaper. It turns on
-// only when AFORGE_WIRE_LOG names a file, and when it does not, the surface
+// only when CODEAF_WIRE_LOG names a file, and when it does not, the surface
 // never learns it exists: [FromEnv] returns a nil *Meter, the caller leaves
 // the output writer nil, and Bubble Tea paints straight into os.Stdout exactly
 // as it did before. The cost of the meter when it is off is one LookupEnv at
@@ -48,7 +48,7 @@ import (
 // in the help output, in the settings screen and in the user-facing docs by
 // design — the day it becomes something a person should reach for, it earns a
 // name there and stops being this.
-const EnvVar = "AFORGE_WIRE_LOG"
+const EnvVar = "CODEAF_WIRE_LOG"
 
 // tickInterval is how often an idle meter checks whether a second has closed.
 // Only silent seconds need it — a second with any output in it is closed by
@@ -104,7 +104,7 @@ func FromEnv(out *os.File) *Meter {
 	}
 	meter, err := Open(path, out)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aforge: %s: %v\n", EnvVar, err)
+		fmt.Fprintf(os.Stderr, "codeaf: %s: %v\n", EnvVar, err)
 		return nil
 	}
 	return meter

@@ -348,10 +348,10 @@ func TestALayoutStacksWhereItsPanesWillNotBothFitWhole(t *testing.T) {
 // with an ellipsis in it is a path nobody can open.
 func TestAnImageThatCannotBePaintedIsThePathAndAWayIn(t *testing.T) {
 	q := demoQuestionReading()
-	q.Options[0].Blocks = []session.Block{{Kind: session.BlockImage, Path: "/tmp/aforge-question-fixture/cover.png"}}
+	q.Options[0].Blocks = []session.Block{{Kind: session.BlockImage, Path: "/tmp/codeaf-question-fixture/cover.png"}}
 	a, _ := standingInAQuestion(t, q)
 	drawn := pageText(a)
-	if !strings.Contains(drawn, "/tmp/aforge-question-fixture/cover.png") {
+	if !strings.Contains(drawn, "/tmp/codeaf-question-fixture/cover.png") {
 		t.Errorf("the path should be on the page whole:\n%s", drawn)
 	}
 	if !strings.Contains(drawn, strings.TrimSpace(questionOpenWord)) {

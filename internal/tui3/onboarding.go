@@ -21,7 +21,7 @@ import (
 // the one screen that replaced them, and the rule that decided its contents is
 // written in docs/design/onboarding/DESIGN.md: a control belongs here when it is
 // NECESSARY TO WORK, MATERIALLY CHANGES THE FIRST EXPERIENCE, and CAN BE
-// UNDERSTOOD BEFORE THE PERSON HAS USED AFORGE. Three pass — the day's limit
+// UNDERSTOOD BEFORE THE PERSON HAS USED codeaf. Three pass — the day's limit
 // (money is consequential and an amount can be chosen with no knowledge of the
 // engine), the chat model, and the crew — and everything else is a setting or a
 // thing to be taught at the moment it happens.
@@ -112,7 +112,7 @@ const (
 
 // The detail behind `?`, on the field with the focus.
 //
-// THE LIMIT'S DETAIL REFUSES TO OVERPROMISE. It is a ceiling on what aforge
+// THE LIMIT'S DETAIL REFUSES TO OVERPROMISE. It is a ceiling on what codeaf
 // RECORDS spending, calls already in flight can carry the day a little past it,
 // and the provider account has controls of its own that this number knows nothing
 // about. A screen that said "you will never be billed more than this" would be
@@ -1285,7 +1285,7 @@ func (a *app) setupFieldRow(width int, control setupControl, label, value, sourc
 // it is not simply this person's own saved choice.
 //
 // THE TWO ENVIRONMENT CASES ARE DIFFERENT AND ARE SPELLED DIFFERENTLY. A row the
-// registry has PINNED cannot be edited here and says `set by`; AFORGE_MODEL is
+// registry has PINNED cannot be edited here and says `set by`; CODEAF_MODEL is
 // carried by the talk slot as an [Setting.EnvDefault], which only SEEDS a value
 // nobody has chosen and is outranked by a choice made here — so it says `from`,
 // and the list still opens (internal/config's chatmodel.go states that law).
@@ -1465,7 +1465,7 @@ const setupNoMatchWord = "nothing matches · backspace widens it"
 //
 // The registry's line is written for somebody who already has the vocabulary:
 // `deepseek works, glm-flash thinks · pennies a day` names four models and makes
-// a claim about money. Both halves are wrong here. Nobody meeting aforge for the
+// a claim about money. Both halves are wrong here. Nobody meeting codeaf for the
 // first time can rank `glm-flash` against `kimi-k3`, and — the harder rule —
 // THIS SCREEN MAKES NO CLAIM ABOUT WHAT ANYTHING COSTS. "Pennies a day" is a
 // forecast about somebody else's usage on somebody else's pricing, said on the

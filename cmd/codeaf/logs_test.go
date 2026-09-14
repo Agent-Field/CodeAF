@@ -21,7 +21,7 @@ import (
 // The log is always on in the product, so a test binary that says nothing about
 // it appends a row for every call these tests make — including the ones that
 // deliberately dial a host that does not exist — into the developer's own
-// ~/.aforge/logs/calls.jsonl, where it is noise in the one file somebody is
+// ~/.codeaf/logs/calls.jsonl, where it is noise in the one file somebody is
 // reading to debug a real run. The tests below read fixtures instead.
 //
 // AND THE SAME ARGUMENT IS TRUE OF THE CREDENTIALS AND THE STATE ROOT, which is
@@ -678,10 +678,10 @@ func TestANegativeCountIsRefusedWhereTheFlagCanStillBeNamed(t *testing.T) {
 
 // ── C25: A MISS WAS REPORTED AS A SUCCESS ────────────────────────────────────
 //
-// `aforge logs --run <id>` for a run that is not in the log printed a sentence
+// `codeaf logs --run <id>` for a run that is not in the log printed a sentence
 // and left with 0. A script asking whether a run exists could not tell "not
 // found" from "found, and it made no calls" without parsing prose — and the two
-// mean opposite things. `aforge notebook retract 999` has always had this right.
+// mean opposite things. `codeaf notebook retract 999` has always had this right.
 func TestAnIdThatIsNotInTheLogIsNotReportedAsSuccess(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "calls.jsonl")
 	if err := os.WriteFile(path, []byte(`{"call_id":"c1","model":"m","run":"r1"}`+"\n"), 0o600); err != nil {
@@ -734,7 +734,7 @@ func TestASearchThatMatchedNothingIsNotAMiss(t *testing.T) {
 		{"--run", "r-nosuch", "--json"},
 	} {
 		if err := runLogsWith(args, io.Discard, path, time.Now); err != nil {
-			t.Fatalf("`aforge logs %s` was reported as a failure: %v", strings.Join(args, " "), err)
+			t.Fatalf("`codeaf logs %s` was reported as a failure: %v", strings.Join(args, " "), err)
 		}
 	}
 }

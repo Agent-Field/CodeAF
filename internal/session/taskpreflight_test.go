@@ -28,7 +28,7 @@ func awayWindow(now time.Time, id, title string, files ...string) SessionPresenc
 
 func TestPreflightNamesTheFileAndTheWorkAlreadyInIt(t *testing.T) {
 	now := time.Now()
-	away := NewElsewhere(now, map[string]string{"other": "aforge-v2"},
+	away := NewElsewhere(now, map[string]string{"other": "codeaf"},
 		awayWindow(now, "other", "Port the picker", "internal/tui3/home.go"))
 
 	line := PreflightNote("", away, "Rewrite the picker in internal/tui3/home.go and keep the tests green")

@@ -121,8 +121,8 @@ func TestTheQuestionsWhereAWrongPageCostsSomething(t *testing.T) {
 			t.Errorf("%q must reach the permissions page; it reached none of it", query)
 		}
 	}
-	if first := page("what is aforge", 0); first != "what-i-can-do" && first != "starting-codeaf" {
-		t.Errorf(`"what is aforge" should answer from what-i-can-do or starting-codeaf; it answered from %q`, first)
+	if first := page("what is codeaf", 0); first != "what-i-can-do" && first != "starting-codeaf" {
+		t.Errorf(`"what is codeaf" should answer from what-i-can-do or starting-codeaf; it answered from %q`, first)
 	}
 	// "program" is the collision: a saved program is a shape of work, and the
 	// person asking this means writing software. The general-purpose answer has

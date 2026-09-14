@@ -130,7 +130,7 @@ func shortEngineHome(t *testing.T) {
 		t.Fatalf("make a state root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 }
 
 // ── the three things the question can find ──────────────────────────────────
@@ -179,7 +179,7 @@ func TestAHostOfAnotherBuildWithWorkInFlightIsRefusedAndNotKilled(t *testing.T) 
 	if !strings.Contains(stale.reason, "something is still going in it") {
 		t.Fatalf("the refusal did not say what was true: %q", stale.reason)
 	}
-	if !strings.Contains(stale.reason, "aforge engine --stop") {
+	if !strings.Contains(stale.reason, "codeaf engine --stop") {
 		t.Fatalf("the refusal named no way out: %q", stale.reason)
 	}
 	// AND IT IS STILL THERE. Nobody's turn ended because another connection
@@ -205,10 +205,10 @@ func TestAHostTooOldToBeAskedIsRefusedInWordsAndLeftAlone(t *testing.T) {
 	if !errors.As(err, &stale) {
 		t.Fatalf("a host that cannot be asked answered %v, want a refusal", err)
 	}
-	if !strings.Contains(stale.reason, "an older aforge") {
+	if !strings.Contains(stale.reason, "an older codeaf") {
 		t.Fatalf("the refusal did not name the older build: %q", stale.reason)
 	}
-	if !strings.Contains(stale.reason, "aforge engine --stop") {
+	if !strings.Contains(stale.reason, "codeaf engine --stop") {
 		t.Fatalf("the refusal named no way out: %q", stale.reason)
 	}
 	// THE SENTENCE THE OLD ONE USED TO GIVE IS GONE. Telling somebody to update
@@ -246,7 +246,7 @@ func TestASameProtocolHostOfAnotherBuildIsRetired(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(note, "older aforge") {
+			if !strings.Contains(note, "older codeaf") {
 				t.Fatalf("the notice did not say it was an older build: %q", note)
 			}
 			if !strings.Contains(note, "picked up this build") {
@@ -299,7 +299,7 @@ func TestABusyHostBuiltFromAnotherSourceStillSaysSoAndAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a busy host on this wire was refused: %v", err)
 	}
-	if !strings.Contains(note, "older aforge") {
+	if !strings.Contains(note, "older codeaf") {
 		t.Fatalf("the notice did not say the engine is an older build: %q", note)
 	}
 	if !strings.Contains(note, "goes quiet") {
@@ -314,7 +314,7 @@ func TestABusyHostBuiltFromAnotherSourceStillSaysSoAndAnswers(t *testing.T) {
 
 // A HOST ONE BUILD BEHIND, HOLDING WORK, IS ATTACHED TO AND NOT REFUSED. It used
 // to be the third refusal on this road, and the sentence it printed —
-// `run aforge engine --stop` — would have ended the very conversation the person
+// `run codeaf engine --stop` — would have ended the very conversation the person
 // was trying to get back on screen. It speaks this build's wire, so it is joined,
 // and the entry notice carries one line saying which state the machine is in.
 func TestASameProtocolBusyOlderBuildIsAttachedToAndSaysSo(t *testing.T) {
@@ -325,7 +325,7 @@ func TestASameProtocolBusyOlderBuildIsAttachedToAndSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a busy host on this wire was refused: %v", err)
 	}
-	if !strings.Contains(note, "older aforge") {
+	if !strings.Contains(note, "older codeaf") {
 		t.Fatalf("the notice did not say the engine is an older build: %q", note)
 	}
 	if !strings.Contains(note, "goes quiet") {
@@ -357,7 +357,7 @@ func TestASameProtocolIdleOlderBuildIsRetiredAndSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an idle host on this wire was refused: %v", err)
 	}
-	if !strings.Contains(note, "older aforge") {
+	if !strings.Contains(note, "older codeaf") {
 		t.Fatalf("the notice did not say it was an older build: %q", note)
 	}
 	if !strings.Contains(note, "picked up this build") {

@@ -38,7 +38,7 @@ func TestStatusNamesTheDerivedRuleWhenNobodySetOne(t *testing.T) {
 // question a person opens /status to answer: my conversation folded early — was
 // that me?
 func TestStatusNamesThePinnedRuleWhenSomebodyDid(t *testing.T) {
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "60")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "60")
 	const claimed = 1_000_000
 	a := newTestApp(&fakeAgent{model: "m", window: claimed, weight: 40_000})
 	a.model, a.ctxWindow, a.ctxTokens = "m", claimed, 40_000
@@ -59,7 +59,7 @@ func TestStatusNamesThePinnedRuleWhenSomebodyDid(t *testing.T) {
 // wrong — which is the failure session.CompactThresholdFor is exported to
 // prevent.
 func TestTheFoldLineDrawnIsTheOneTheTriggerUses(t *testing.T) {
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "90")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "90")
 	// A window small enough that the ceiling bites: ninety percent of it is more
 	// than the law will leave the answer, so the line comes back clamped and the
 	// drawn percentage is NOT the ninety somebody typed.

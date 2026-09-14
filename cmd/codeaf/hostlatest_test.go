@@ -29,7 +29,7 @@ import (
 // The key a plain hello resolves to is the journal the boot would open. One
 // reading, asked twice.
 func TestAPlainHelloKeysToTheConversationTheBootWouldOpen(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestAPlainHelloKeysToTheConversationTheBootWouldOpen(t *testing.T) {
 // there is nothing to join, so the hello boots. The conversation that boot
 // opens is what the NEXT plain hello keys to.
 func TestAWorkspaceWithNoConversationKeysToNothingAndThenToWhatItOpened(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 
 	if key := engineHelloKey(remote.Hello{Version: remote.Version, Workspace: workspace}, workspace, ""); key != "" {
@@ -88,7 +88,7 @@ func TestAWorkspaceWithNoConversationKeysToNothingAndThenToWhatItOpened(t *testi
 // A hello that NAMED a conversation is spelled the way the boot spells it, so
 // two surfaces naming one file two ways are asking for one conversation.
 func TestANamedHelloKeysToTheSpellingTheBootUses(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	named := filepath.Join(workspace, "somewhere", "transcript.jsonl")
 
@@ -129,7 +129,7 @@ func TestAHeldRefusalIsRecognisedAfterATripOverTheSocket(t *testing.T) {
 // home with that row armed — where one enter MOVES it, because a window on this
 // road has an engine to ask (tui3.Options.EngineAnswers).
 func TestAHeldRefusalAsksTheEngineAgainRatherThanFallingInProcess(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
@@ -177,9 +177,9 @@ func TestAHeldRefusalAsksTheEngineAgainRatherThanFallingInProcess(t *testing.T) 
 // THE HELD SENTENCE NAMES A DIRECTORY A HOST IS KEYED BY, and never a session's
 // own work folder.
 //
-// [sessionHeldElsewhereSentence] spells `aforge engine --stop --workspace X`.
+// [sessionHeldElsewhereSentence] spells `codeaf engine --stop --workspace X`.
 // For an OWNED conversation session.Config.Workspace is that session's private
-// work/ directory under ~/.aforge/v3/projects — a real path, and a command
+// work/ directory under ~/.codeaf/v3/projects — a real path, and a command
 // pointing at a host that does not exist. So no call may hand this door a
 // `.Workspace`; the project is carried separately ([v3Launch.Project]).
 func TestNoDoorHandsTheHeldSentenceAWorkspaceField(t *testing.T) {

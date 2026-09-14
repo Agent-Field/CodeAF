@@ -201,7 +201,7 @@ func Open(source Source) (*Door, error) {
 		return nil, err
 	}
 	address := listener.Addr().String()
-	name := "aforge_door"
+	name := "codeaf_door"
 	if _, port, err := net.SplitHostPort(address); err == nil && port != "" {
 		name += "_" + port
 	}

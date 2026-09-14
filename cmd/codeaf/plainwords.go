@@ -36,7 +36,7 @@ var machineryVerbs = []string{
 
 // plainWords is the whole rule, applied to one sentence: drop the machinery
 // verbs wherever they stand in the chain, keep everything a person could act
-// on, and add the remedy when the fact is one aforge recognises.
+// on, and add the remedy when the fact is one codeaf recognises.
 func plainWords(sentence string) string {
 	// A DISK FAULT IS ANSWERED FIRST AND WHOLE, because it is the one kind of
 	// chain where the tail already carries every fact and the whole front is
@@ -51,12 +51,12 @@ func plainWords(sentence string) string {
 	return fact
 }
 
-// ── THE OPERATING SYSTEM'S WORDS ARE NOT AFORGE'S ────────────────────────────
+// ── THE OPERATING SYSTEM'S WORDS ARE NOT codeaf'S ────────────────────────────
 //
 // A filesystem failure arrives as an [os.PathError] wrapped on every floor it
 // passed on the way up:
 //
-//	open notebook: stat /home/x/.aforge/graph.db: no such file or directory
+//	open notebook: stat /home/x/.codeaf/graph.db: no such file or directory
 //	create chat workspace: mkdir /nope: permission denied
 //
 // `stat`, `mkdir` and `open` are the names of system calls — a library's words
@@ -131,7 +131,7 @@ func filesystemFault(sentence string) (fsFault, bool) {
 	return fsFault{}, false
 }
 
-// filesystemSentences is what aforge says about each thing the operating system
+// filesystemSentences is what codeaf says about each thing the operating system
 // can say, and what to do about it. The `created` half is the sentence when the
 // verb was trying to make something ([creatingVerbs]); `found` is the sentence
 // when it was only trying to look.
@@ -229,7 +229,7 @@ func isMachinery(segment string) bool {
 	return strings.HasPrefix(lowered, "api error")
 }
 
-// remedies are the failures aforge can name in a person's own words and say
+// remedies are the failures codeaf can name in a person's own words and say
 // what to do about. The match is on the fact the provider or the store left
 // behind, lower-cased, and the remedy is one line: the gesture that fixes it.
 //
@@ -242,7 +242,7 @@ var remedies = []struct {
 }{
 	{
 		fact:   "is not a valid model id",
-		remedy: "run `aforge models` to see the ids this key can reach, or pass --model with one of them.",
+		remedy: "run `codeaf models` to see the ids this key can reach, or pass --model with one of them.",
 	},
 	{
 		fact:   "no auth credentials found",
@@ -255,7 +255,7 @@ var remedies = []struct {
 	},
 	{
 		fact:   "insufficient credits",
-		remedy: "that key is out of credit at the provider — top it up, or point AFORGE_MODEL at a model it can still reach.",
+		remedy: "that key is out of credit at the provider — top it up, or point CODEAF_MODEL at a model it can still reach.",
 	},
 }
 

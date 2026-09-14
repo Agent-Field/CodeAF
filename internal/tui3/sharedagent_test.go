@@ -11,7 +11,7 @@ import (
 
 // ── A DOOR WHOSE CONVERSATIONS SHARE ONE HANDLE ─────────────────────────────
 //
-// The engine doors — `--host`, `--at`, and the socket an ordinary `aforge chat`
+// The engine doors — `--host`, `--at`, and the socket an ordinary `codeaf chat`
 // opens onto this machine's own engine — all answer [Options.Resume] with the
 // AGENT THEY WERE GIVEN, because that agent holds no state: it is a handle on
 // whichever conversation the engine currently has open, and the engine has just

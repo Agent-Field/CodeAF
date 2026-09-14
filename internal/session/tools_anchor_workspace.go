@@ -1,6 +1,6 @@
 package session
 
-// An owned conversation starts in aforge's scratch directory, not in a project.
+// An owned conversation starts in codeaf's scratch directory, not in a project.
 // This file is the one door that turns it into a conversation about a project:
 // both the model's `workspace` tool and the surface's `/workspace` command call
 // [Agent.AnchorWorkspace], so persistence, prompt replacement and belt rebuilding

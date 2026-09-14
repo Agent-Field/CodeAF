@@ -11,10 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
-// faultMessage is what the user reads when aforge could not keep going. It is
+// faultMessage is what the user reads when codeaf could not keep going. It is
 // the whole story: what happened, what it cost them (nothing), and where the
 // detail lives. A raw goroutine dump over the alt screen says none of that.
-const faultMessage = "aforge hit an internal fault and had to stop. Nothing is lost — the graph is durable, and restarting resumes where it left off. Details: %s\n"
+const faultMessage = "codeaf hit an internal fault and had to stop. Nothing is lost — the graph is durable, and restarting resumes where it left off. Details: %s\n"
 
 // reportFault writes the stack where it is useful and the sentence where it is
 // read, and answers with the process exit code.
@@ -39,13 +39,13 @@ func reportFault(stderr io.Writer, detail string, stack []byte) int {
 // "what happened" has one answer.
 //
 // AN EMPTY PROFILE IS THE STATE ROOT AND NEVER THE WORKING DIRECTORY. Most
-// launches set no AFORGE_PROFILE_DIR at all, and joining "chat.log" onto an
+// launches set no CODEAF_PROFILE_DIR at all, and joining "chat.log" onto an
 // empty string names it RELATIVE — so every repository a person opened a chat in
 // grew an untracked chat.log, and the surface's own repository band then counted
 // that workspace dirty because of a file the surface itself had written. The
 // fallback is [config.BudgetConfigPath]'s, spelled the same way for the same
 // reason: internal/home is the one place that knows where state lives, and
-// AFORGE_HOME moves this with the rest of it (chatv3_layout.go).
+// CODEAF_HOME moves this with the rest of it (chatv3_layout.go).
 func chatLogPath(profileDir string) string { return config.ProfilePath(profileDir, "chat.log") }
 
 // displayPath prefers the ~ form: it is what the user typed to get here and

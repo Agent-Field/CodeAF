@@ -9,7 +9,7 @@ import (
 )
 
 func TestAPickerCacheForOneServiceIsNeverServedToAnother(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	const base = "https://shared.example/v1"
 	if err := WriteModelCacheFor("deepseek", base, []Model{{ID: "deepseek-chat"}}); err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestAPickerCacheForOneServiceIsNeverServedToAnother(t *testing.T) {
 }
 
 func TestTheDefaultPickerCacheKeepsItsLegacyPathAndShape(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	legacy := []byte(`{"models":[{"id":"legacy/model"}]}`)
 	if err := os.MkdirAll(filepath.Dir(ModelCachePath()), 0o700); err != nil {
 		t.Fatal(err)

@@ -35,7 +35,7 @@ func compressorBench(t *testing.T) (*Toolbox, string, func() []string) {
 		t.Fatal(err)
 	}
 	logPath := filepath.Join(t.TempDir(), "asked.log")
-	t.Setenv("AFORGE_RTK_STUB_LOG", logPath)
+	t.Setenv("CODEAF_RTK_STUB_LOG", logPath)
 	t.Setenv(rtk.EnvBinary, binary)
 
 	asked := func() []string {

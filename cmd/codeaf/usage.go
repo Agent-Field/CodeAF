@@ -15,10 +15,10 @@ import (
 //
 // It exists because the same three lines were copied into eight doors and left
 // out of seven others, and the two halves disagreed about the one gesture every
-// developer makes first. `aforge doctor --help` printed Go's internal string
-// `flag: help requested` and nothing else; `aforge do --help` printed a usage
+// developer makes first. `codeaf doctor --help` printed Go's internal string
+// `flag: help requested` and nothing else; `codeaf do --help` printed a usage
 // block and then the same internal string under `error:` and left with 1. A
-// Makefile that runs `aforge do --help` to see whether the binary is healthy
+// Makefile that runs `codeaf do --help` to see whether the binary is healthy
 // read a failing command, and a person read the word "error" under text that
 // was not one.
 
@@ -107,7 +107,7 @@ func flagRefusal(command string, err error) string {
 	text := err.Error()
 	if name, found := strings.CutPrefix(text, undefinedFlagPrefix); found {
 		name = strings.TrimLeft(strings.TrimSpace(name), "-")
-		refusal := "aforge " + command + " has no --" + name + " flag"
+		refusal := "codeaf " + command + " has no --" + name + " flag"
 		if instead := flagInstead(command, name); instead != "" {
 			return refusal + " — " + instead
 		}
@@ -176,10 +176,10 @@ var parseWatcher func(*flag.FlagSet)
 func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 	shape := usageForCommand(flags.Name())
 	if shape == "" {
-		// A door with no line in the table — `aforge engine`, which is
+		// A door with no line in the table — `codeaf engine`, which is
 		// machinery a surface dials rather than a thing a person runs — still
 		// says what it is called and what it takes.
-		shape = "  aforge " + flags.Name()
+		shape = "  codeaf " + flags.Name()
 	}
 	fmt.Fprintln(w, shape)
 	if rows := flagRows(flags); rows != "" {
@@ -190,12 +190,12 @@ func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 	// longer spelling of this sentence — "…for the environment table." — drew
 	// eighty-three, so the one line under every per-command page was the one
 	// line on it that wrapped.
-	fmt.Fprintln(w, "run `aforge --help` for every command, `aforge help env` for the variables.")
+	fmt.Fprintln(w, "run `codeaf --help` for every command, `codeaf help env` for the variables.")
 }
 
 // flagRows writes a flag set the way the usage table spells flags — two dashes
 // for a word, one for a single letter. The flag package writes one dash for
-// everything, so `aforge --help` and `aforge do --help` showed two conventions
+// everything, so `codeaf --help` and `codeaf do --help` showed two conventions
 // for the same flag and left a reader guessing whether both worked. They do;
 // only one of them is written down.
 func flagRows(flags *flag.FlagSet) string {
@@ -310,28 +310,28 @@ func breakLong(word string, width int) []string {
 // [commandLine] has to look past the words it was asked about.
 //
 // `run subharness` WAS THE FIRST ENTRY AND IS GONE, because the thing it was
-// working around is gone. Its whole job was to stop `aforge run --help`
+// working around is gone. Its whole job was to stop `codeaf run --help`
 // printing the saved-program runner's line as though it were the graph
 // runner's, and a verb whose help needs a special case to say which of two
 // commands it is, is a verb wearing two meanings: `run` now means one thing —
-// run a saved program — and the static pipeline is `aforge plan new|show|
-// revise|run`, four lines that all begin `aforge plan` and therefore cannot be
-// mistaken for `aforge run`'s.
+// run a saved program — and the static pipeline is `codeaf plan new|show|
+// revise|run`, four lines that all begin `codeaf plan` and therefore cannot be
+// mistaken for `codeaf run`'s.
 //
-// `cache clean` STAYS, and it is a different shape: `aforge cache` and `aforge
+// `cache clean` STAYS, and it is a different shape: `codeaf cache` and `codeaf
 // cache clean` are one noun with two verbs on it, not one word meaning two
-// things, and without this entry `aforge cache --help` would print the
+// things, and without this entry `codeaf cache --help` would print the
 // destructive command's line under the harmless one's name.
 // `devices revoke` is the same shape as `cache clean` and is here for the same
 // reason: one noun, a harmless reading verb and a destructive one, and without
-// the entry `aforge devices --help` would print the revoking line under the
+// the entry `codeaf devices --help` would print the revoking line under the
 // listing's name.
 var longerCommands = []string{"cache clean", "devices revoke"}
 
 // usageForCommand lifts one command's lines out of [usageText].
 //
 // ONE SOURCE OF TRUTH: the shape of a command — what it is called, what it
-// takes, what its exit codes mean — is written once, in the table `aforge
+// takes, what its exit codes mean — is written once, in the table `codeaf
 // --help` prints, and every per-command usage is a reading of that table. A
 // synopsis typed out a second time beside the flags would be stale by the next
 // flag anybody added, which is the same defect the environment table's
@@ -345,7 +345,7 @@ func usageForCommand(name string) string {
 	lines := strings.Split(usageText, "\n")
 	var blocks []string
 	for index := 0; index < len(lines); index++ {
-		if !strings.HasPrefix(lines[index], "  aforge ") {
+		if !strings.HasPrefix(lines[index], "  codeaf ") {
 			continue
 		}
 		block := []string{lines[index]}
@@ -354,7 +354,7 @@ func usageForCommand(name string) string {
 			// A continuation is indented under the command it belongs to. A
 			// blank line, the environment table, or the next command ends it.
 			if strings.TrimSpace(following) == "" ||
-				strings.HasPrefix(following, "  aforge ") ||
+				strings.HasPrefix(following, "  codeaf ") ||
 				!strings.HasPrefix(following, "   ") {
 				break
 			}
@@ -367,8 +367,8 @@ func usageForCommand(name string) string {
 	}
 	// AND WHAT THE GROUP SAYS ONCE, EACH OF ITS PAGES SAYS TOO. The exit ladder
 	// lives under the `hand it work` group rather than inside all three of its
-	// verbs, which saved the reader of `aforge --help` from being told the same
-	// thing three times — and took it off `aforge exec --help`, which is where
+	// verbs, which saved the reader of `codeaf --help` from being told the same
+	// thing three times — and took it off `codeaf exec --help`, which is where
 	// somebody writing a script goes to find out what a number means. It is read
 	// from the same constant the group prints, so the two cannot disagree.
 	if len(blocks) > 0 && handsWork(name) {
@@ -391,7 +391,7 @@ func handsWork(name string) bool {
 func commandLine(line, name string) bool {
 	fields := strings.Fields(strings.TrimSpace(line))
 	wanted := strings.Fields(name)
-	if len(wanted) == 0 || len(fields) < 1+len(wanted) || fields[0] != "aforge" {
+	if len(wanted) == 0 || len(fields) < 1+len(wanted) || fields[0] != "codeaf" {
 		return false
 	}
 	for index, word := range wanted {
@@ -409,9 +409,9 @@ func commandLine(line, name string) bool {
 
 // askedForHelp is the same gesture read by a door that parses NO flags at all.
 //
-// `show` and `manual` take a positional and nothing else, so `aforge show
+// `show` and `manual` take a positional and nothing else, so `codeaf show
 // --help` answered `open --help: no such file or directory` — a filesystem
-// error about a flag — and `aforge models --help`, before `--refresh` gave it a
+// error about a flag — and `codeaf models --help`, before `--refresh` gave it a
 // flag set of its own, ran the command with the flag silently ignored. A person
 // probing an unfamiliar command types this first and is owed the usage, not a
 // stat error.
@@ -439,10 +439,10 @@ func commandHelp(name string) error {
 // named. Now it is the miss, the nearest thing to it, and where the rest is.
 func unknownCommand(typed string) error {
 	if nearest := nearestCommand(typed); nearest != "" {
-		return fmt.Errorf("there is no `aforge %s`. did you mean `aforge %s`?\n"+
-			"run `aforge --help` for every command", typed, nearest)
+		return fmt.Errorf("there is no `codeaf %s`. did you mean `codeaf %s`?\n"+
+			"run `codeaf --help` for every command", typed, nearest)
 	}
-	return fmt.Errorf("there is no `aforge %s`.\nrun `aforge --help` for every command", typed)
+	return fmt.Errorf("there is no `codeaf %s`.\nrun `codeaf --help` for every command", typed)
 }
 
 // nearestCommand is the one thing a person wants after a typo: the command they

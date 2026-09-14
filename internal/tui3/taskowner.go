@@ -10,7 +10,7 @@ package tui3
 // conversation closed months ago and wrong for the rows a person actually
 // presses, which are the ones happening right now.
 //
-// THE LANE INTO THOSE ROWS ALREADY EXISTS, AND `aforge chat` IS ALREADY ON IT.
+// THE LANE INTO THOSE ROWS ALREADY EXISTS, AND `codeaf chat` IS ALREADY ON IT.
 // The ordinary local launch is a SURFACE talking to this workspace's engine over
 // a unix socket (cmd/codeaf's chatv3_local.go: `remote.Roam("", …)` with an
 // empty machine label, dialling [enginehost.Attach]). The engine keys its
@@ -109,7 +109,7 @@ const (
 	// reachAttach is a conversation the engine is running that this window can
 	// join as a second view, for the length of one page.
 	reachAttach
-	// reachAway is work another aforge window is running that this window has no
+	// reachAway is work another codeaf window is running that this window has no
 	// capability to join. It is the one reach with no door.
 	reachAway
 )

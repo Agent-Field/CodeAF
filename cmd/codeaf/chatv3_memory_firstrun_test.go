@@ -10,19 +10,19 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// The first launch on a machine that has never run aforge must come up holding
+// The first launch on a machine that has never run codeaf must come up holding
 // a brain.
 //
 // It did not, for as long as the state root was assumed rather than made:
 // SQLite creates a database file but never the directory around it, so the very
-// first `aforge` on a new machine printed a complaint about memory it did not
+// first `codeaf` on a new machine printed a complaint about memory it did not
 // have and then carried the whole of that person's use with nothing remembered.
 // The fix is in [store.Open]; this is the door proving it from where the person
 // stands.
 func TestTheFirstLaunchOnANewMachineOpensABrain(t *testing.T) {
 	fresh := t.TempDir()
 	t.Setenv("HOME", fresh)
-	t.Setenv(home.EnvVar, filepath.Join(fresh, ".aforge"))
+	t.Setenv(home.EnvVar, filepath.Join(fresh, ".codeaf"))
 
 	profile := t.TempDir()
 	brain := v3Memory(profile)

@@ -419,7 +419,7 @@ func TestBriefCarriesTheForgedCraftLine(t *testing.T) {
 	if _, err := graph.TouchSeen("tui", "old", store.SeenDetached); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := graph.RecordFact(store.RootID, "repo:aforge", store.FactPlain,
+	if _, err := graph.RecordFact(store.RootID, "repo:codeaf", store.FactPlain,
 		"The release branch is stable."); err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@
 //	recall.go   the up arrow: input history, and the draft it holds for you
 //	draft.go    the unsent sentence, kept per directory between sessions
 //	replay.go   a resumed session, drawn
-//	resume.go   the session picker: /resume, and what `aforge resume` opens on
+//	resume.go   the session picker: /resume, and what `codeaf resume` opens on
 //	models.go   where the model list comes from, and never from the network
 //	settings.go the settings panel: tabs over internal/config's own registry
 //	welcome.go  the box an empty session opens with, and the sessions in it
@@ -139,7 +139,7 @@ type Agent interface {
 	// every offer that named no model and every surface that draws the row
 	// without one.
 	ResolveHarness(id uint64, run bool, model string)
-	// ResolveConnect answers one session.EventConnectAsk: whether aforge may
+	// ResolveConnect answers one session.EventConnectAsk: whether codeaf may
 	// connect the account it reached for (connect.go). Approving is what opens
 	// the browser; declining is "not now" and is remembered nowhere.
 	ResolveConnect(id string, approve bool)
@@ -411,7 +411,7 @@ type Options struct {
 	// environment.
 	EngineRoad bool
 
-	// Build names the aforge process holding the conversation. The door hands
+	// Build names the codeaf process holding the conversation. The door hands
 	// it in because a hosted surface and its conversation run on different
 	// machines, where this process's own build would be the wrong answer.
 	Build string
@@ -583,7 +583,7 @@ type Options struct {
 	// IT IS THE ANSWER TO "I CANNOT CLICK INTO THAT TASK". The tasks place draws
 	// every piece of work this project has run, and the rows a person most wants
 	// are the ones happening right now — in the conversation next door, which
-	// this window has no lane into. The lane exists: `aforge chat` is a SURFACE
+	// this window has no lane into. The lane exists: `codeaf chat` is a SURFACE
 	// talking to this workspace's engine over a socket (cmd/codeaf's
 	// chatv3_local.go), and that engine holds every conversation open. So the door
 	// dials the engine it is already talking to, names the conversation with
@@ -652,7 +652,7 @@ type Options struct {
 	Answer func(dir string, kind session.QuestionKind, id uint64, key string) error
 
 	// StandingRoot is where the ambient side keeps its things —
-	// ~/.aforge/v3/standing — which is where an errand's folder is made and where
+	// ~/.codeaf/v3/standing — which is where an errand's folder is made and where
 	// one that came to nothing stays. Empty falls through to the sibling of the
 	// projects root, which is what that path is by construction (internal/standing).
 	StandingRoot string
@@ -662,12 +662,12 @@ type Options struct {
 	Workspace string
 
 	// Owned says the workspace above is the session's OWN work/ directory
-	// rather than a project the person opened aforge inside of — the difference
+	// rather than a project the person opened codeaf inside of — the difference
 	// Decision 26 draws between a borrowed workspace and an owned one.
 	//
 	// It changes two presentation choices. An owned workspace lives at
-	// ~/.aforge/v3/projects/<encoded>/<session>/work, and a path like that told
-	// the person nothing they wanted to know — it is aforge's own bookkeeping,
+	// ~/.codeaf/v3/projects/<encoded>/<session>/work, and a path like that told
+	// the person nothing they wanted to know — it is codeaf's own bookkeeping,
 	// shown where they expected to read which project they were in or browse
 	// their own files. So an owned session is named rather than pathed
 	// ([app.placeWord]), and its chooser opens on this window's directory
@@ -676,7 +676,7 @@ type Options struct {
 	Owned bool
 
 	// Host is the machine the agent is on, when it is not this one: the ssh
-	// destination `aforge chat --host devbox` was given. Empty is a local
+	// destination `codeaf chat --host devbox` was given. Empty is a local
 	// session and every line below it is dead code.
 	//
 	// IT IS THE PLACE, NOT A BADGE (host.go states the whole law). The surface
@@ -736,7 +736,7 @@ type Options struct {
 
 	// ArtifactsIndex is the deliverables index a finished /export writes its row
 	// to (internal/session's artifacts.go). Empty falls through to
-	// ~/.aforge/v3/artifacts.jsonl, the way [Options.Models] falls through to
+	// ~/.codeaf/v3/artifacts.jsonl, the way [Options.Models] falls through to
 	// this package's own cache: the door usually says, and a surface driven
 	// without one still records where the rest of the product looks.
 	//
@@ -750,7 +750,7 @@ type Options struct {
 	// picker opens, so a catalog that resolved after boot is on offer, and it
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
 	// a question with a spinner. Nil, or an empty answer, falls through to
-	// ~/.aforge/v3/models.json and then to [BuiltinModels] (see models.go).
+	// ~/.codeaf/v3/models.json and then to [BuiltinModels] (see models.go).
 	//
 	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
 	// RefreshModels] runs as a command off the loop while the picker keeps
@@ -772,7 +772,7 @@ type Options struct {
 	// returns the whole list, when those rows left the router, and why not.
 	//
 	// A DOOR THAT IMPLEMENTS IT OWES THREE THINGS: [Options.Models] reads the
-	// new list from then on, ~/.aforge/v3/models.json is written with it
+	// new list from then on, ~/.codeaf/v3/models.json is written with it
 	// ([WriteModelCache]), and a failure changes nothing and says why — the
 	// surface keeps the list it was showing either way.
 	//
@@ -786,7 +786,7 @@ type Options struct {
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
-	// default profile (~/.aforge), which is what the door passes when it has
+	// default profile (~/.codeaf), which is what the door passes when it has
 	// not been told otherwise.
 	ProfileDir string
 
@@ -914,7 +914,7 @@ type Options struct {
 	//
 	// IT IS A STATEMENT ABOUT THE DOOR AND NOT ABOUT THE TRANSPORT, which is why
 	// it is a field rather than something read off [Options.Host]. The engine
-	// doors — `--host`, `--at`, and the ordinary `aforge chat` that talks to this
+	// doors — `--host`, `--at`, and the ordinary `codeaf chat` that talks to this
 	// machine's own engine over a socket — all hand back the SAME [remote.Agent]
 	// from both seams, because that agent holds no state: it is a handle on
 	// whichever conversation the engine currently has open (cmd/codeaf's
@@ -946,13 +946,13 @@ type Options struct {
 	// somebody discover it.
 	SharedAgent bool
 
-	// PickSession opens the resume picker over the first frame — `aforge
+	// PickSession opens the resume picker over the first frame — `codeaf
 	// resume`, which is this same surface asked to start by choosing. It is a
 	// property of one launch and not of the profile, which is why it is a
 	// field here rather than a settings row.
 	PickSession bool
 
-	// Landing says this launch is a person opening aforge with no particular
+	// Landing says this launch is a person opening codeaf with no particular
 	// conversation in mind, and that home may therefore greet them
 	// (home.go's [app.landHome]).
 	//
@@ -960,11 +960,11 @@ type Options struct {
 	// sitting down at a full terminal — `--once`, the headless frame, a test,
 	// anything over `--host` — leaves it false and gets no home by saying
 	// nothing, rather than by each of them remembering to switch one off. The
-	// one door that sets it is `aforge` and `aforge chat` with no --session and
+	// one door that sets it is `codeaf` and `codeaf chat` with no --session and
 	// no --once (cmd/codeaf's chatv3.go).
 	//
 	// A person who NAMED a conversation is not landing: `--session <path>` and
-	// `aforge resume` both mean "that one", and a menu over the thing somebody
+	// `codeaf resume` both mean "that one", and a menu over the thing somebody
 	// just asked for by name is the door second-guessing them.
 	Landing bool
 
@@ -972,7 +972,7 @@ type Options struct {
 	// window is holding its journal, and it is a TRANSCRIPT PATH.
 	//
 	// THE LAUNCH THAT MEETS A LOCK OPENS HOME RATHER THAN A NEW CONVERSATION.
-	// `aforge chat` in a folder whose conversation is open in another terminal
+	// `codeaf chat` in a folder whose conversation is open in another terminal
 	// used to start a second one without a word, which is the fault this field
 	// ends: the surface comes up on home with that row pointed and ARMED, the
 	// foot line saying what one more enter will do, so continuing the
@@ -995,7 +995,7 @@ type Options struct {
 	// a full terminal with no particular conversation in mind is asked, and
 	// every other door — --once, --host, the picker, a named session, a test,
 	// a pipe — leaves it false by saying nothing. The one door that sets it is
-	// `aforge` and `aforge chat` bare on a TTY (cmd/codeaf's chatv3.go). The
+	// `codeaf` and `codeaf chat` bare on a TTY (cmd/codeaf's chatv3.go). The
 	// returning OpenRouter connection is governed separately by
 	// [Options.ConnectOpenRouter], because a missing prerequisite is not a
 	// first-run greeting and may stand over a resumed conversation too.
@@ -1018,7 +1018,7 @@ type Options struct {
 	ApplyModelSources func(modelsource.Set)
 
 	// ConnectOpenRouter starts the default model provider's browser connection.
-	// It is present only on a local interactive launch using aforge's built-in
+	// It is present only on a local interactive launch using codeaf's built-in
 	// OpenRouter endpoint. With no key, its presence turns the key step into a
 	// one-press browser trip and makes that step return on later launches until
 	// the profile is connected. Nil keeps the direct paste box, which is the

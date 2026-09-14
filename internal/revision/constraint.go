@@ -15,7 +15,7 @@ package revision
 // rule while leaving a green repository behind has still done the one thing it
 // was told not to do.
 //
-// The measured case is #427: `aforge do "…report the final line it prints.
+// The measured case is #427: `codeaf do "…report the final line it prints.
 // Change no files."` did exactly that in its first leaf, and the repair nodes
 // its own review spliced behind it wrote a test into an existing `_test.go` and
 // a shell script at the workspace root. Twice out of two. Nothing in the gate

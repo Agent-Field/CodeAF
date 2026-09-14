@@ -86,7 +86,7 @@ func slashRows() []Entry {
 			Scope: slashScope, Slash: "new"},
 		{ID: "slash.cancel", Verb: "cancel work", Description: "cancel a piece of work that has not finished",
 			Scope: slashScope, Slash: "cancel", Journal: Journal{Kind: store.CommandCancel}},
-		{ID: "slash.quit", Verb: "quit", Description: "exit aforge cleanly",
+		{ID: "slash.quit", Verb: "quit", Description: "exit codeaf cleanly",
 			Scope: slashScope, Slash: "quit"},
 	}
 }

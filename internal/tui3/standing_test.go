@@ -493,7 +493,7 @@ func standReminder() standing.Item {
 //
 // Written from a person's transcript: they asked for a one-minute reminder, met
 // three chips, pressed `3` because it was the answer that committed to nothing,
-// and were told aforge could not hold a one-minute timer. It can; a standing
+// and were told codeaf could not hold a one-minute timer. It can; a standing
 // one-off IS the timer. The chip was the defect.
 func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	a, agent, tick := standApp(t)

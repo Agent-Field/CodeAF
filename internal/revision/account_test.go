@@ -25,7 +25,7 @@ func TestTheEvidenceBlockCarriesTheWorkersOwnAccount(t *testing.T) {
 		},
 		Checks: []exec.Check{
 			{Command: "go build ./...", Kind: "build", Passed: true},
-			{Command: "go test ./...", Kind: "test", Passed: true, Tail: "ok  aforge 1.2s"},
+			{Command: "go test ./...", Kind: "test", Passed: true, Tail: "ok  codeaf 1.2s"},
 		},
 	}
 	block := Evidence{Account: account, Observed: true}.block(ctxbudget.Budget{})

@@ -105,27 +105,27 @@ func TestShellQuoteSurvivesAPathWithSpacesAndQuotes(t *testing.T) {
 
 func TestMissingCommandIsRecognizedInEveryShellsWording(t *testing.T) {
 	for _, said := range []string{
-		"bash: aforge: command not found",
-		"sh: 1: aforge: not found",
-		"zsh: command not found: aforge",
+		"bash: codeaf: command not found",
+		"sh: 1: codeaf: not found",
+		"zsh: command not found: codeaf",
 	} {
 		if !mentionsMissingCommand(said) {
-			t.Fatalf("not recognized as a missing aforge: %q", said)
+			t.Fatalf("not recognized as a missing codeaf: %q", said)
 		}
 	}
 	if mentionsMissingCommand("Permission denied (publickey).") {
-		t.Fatal("an ssh refusal was read as a missing aforge")
+		t.Fatal("an ssh refusal was read as a missing codeaf")
 	}
 }
 
 func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(os.TempDir(), "acp"))
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
-	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	t.Setenv("CODEAF_HOME", filepath.Join(os.TempDir(), "acp"))
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	args := strings.Join(sshTransportArgs("devbox", "codeaf engine"), " ")
 	for _, want := range []string{
 		"-T", "ControlMaster=auto", "ControlPath=", "ControlPersist=300",
 		"ServerAliveInterval=3", "ServerAliveCountMax=3", "IPQoS=lowdelay",
-		"devbox aforge engine",
+		"devbox codeaf engine",
 	} {
 		if !strings.Contains(args, want) {
 			t.Fatalf("ssh args %q do not contain %q", args, want)
@@ -137,17 +137,17 @@ func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
 }
 
 func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), strings.Repeat("deep", 40)))
-	args := strings.Join(sshTransportArgs("devbox", "aforge engine"), " ")
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), strings.Repeat("deep", 40)))
+	args := strings.Join(sshTransportArgs("devbox", "codeaf engine"), " ")
 	if strings.Contains(args, "ControlPath=") || strings.Contains(args, "ControlMaster=") {
 		t.Fatalf("overlong control socket was still enabled: %q", args)
 	}
-	if !strings.Contains(args, "ServerAliveInterval=3") || !strings.HasSuffix(args, "devbox aforge engine") {
+	if !strings.Contains(args, "ServerAliveInterval=3") || !strings.HasSuffix(args, "devbox codeaf engine") {
 		t.Fatalf("the ordinary ssh transport was lost with multiplexing: %q", args)
 	}
 }
 
-// The flag exists and is documented in exactly one place: `aforge chat -h`.
+// The flag exists and is documented in exactly one place: `codeaf chat -h`.
 //
 // ASKING FOR HELP IS NOT A FAILURE (usage.go), so the page goes to stdout and
 // the door leaves with 0 rather than handing back the flag package's internal
@@ -157,10 +157,10 @@ func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
 	page, _ := captureUsage(t)
 	if code := exitCodeOf(openChatV3("chat", []string{"--help"}, false)); code != 0 {
-		t.Fatalf("`aforge chat --help` left with %d, want 0", code)
+		t.Fatalf("`codeaf chat --help` left with %d, want 0", code)
 	}
 	if !strings.Contains(page.String(), "--host") {
-		t.Fatalf("`aforge chat --help` does not document --host:\n%s", page)
+		t.Fatalf("`codeaf chat --help` does not document --host:\n%s", page)
 	}
 }
 
@@ -178,7 +178,7 @@ func TestHostFlagIsOnTheChatUsage(t *testing.T) {
 func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("AFORGE_HOME", filepath.Join(home, "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Chdir(home)
 

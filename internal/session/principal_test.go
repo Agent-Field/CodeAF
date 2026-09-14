@@ -648,7 +648,7 @@ func TestTheBaselineSharesOneWindowAndRefusesAMutatingCheck(t *testing.T) {
 	agent.readBaseline(context.Background(), []string{
 		"printf after > keep.txt",
 		"exit 1",
-		"aforge-no-such-command-anywhere",
+		"codeaf-no-such-command-anywhere",
 	})
 
 	red, unread, read := agent.baselineRedChecks()

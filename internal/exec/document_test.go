@@ -121,9 +121,9 @@ func documentNativeStub(text string, cost float64) documentWireStub {
 }
 
 const (
-	stubPDFTextEnv  = "AFORGE_TEST_PDFTOTEXT_TEXT"
-	stubPDFLogEnv   = "AFORGE_TEST_PDFTOTEXT_LOG"
-	stubPDFPagesEnv = "AFORGE_TEST_PDFINFO_PAGES"
+	stubPDFTextEnv  = "CODEAF_TEST_PDFTOTEXT_TEXT"
+	stubPDFLogEnv   = "CODEAF_TEST_PDFTOTEXT_LOG"
+	stubPDFPagesEnv = "CODEAF_TEST_PDFINFO_PAGES"
 )
 
 // stubPDFBinaries puts a scripted poppler on an otherwise empty PATH. The local

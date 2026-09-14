@@ -11,26 +11,26 @@ import (
 // THE CHIP SAYS AN ADDRESS OR IT SAYS THIS WINDOW'S.
 //
 // `here` is where what you type will land, and a display name in that slot is
-// not somewhere: `here aforge-v2` cannot be told from a second checkout of the
-// same name, and the row above it says `here ~/aforge-v2` about the same
+// not somewhere: `here codeaf` cannot be told from a second checkout of the
+// same name, and the row above it says `here ~/codeaf` about the same
 // machine. The rule is one line: a row answers with a path or with nothing, and
 // nothing falls through to the workspace this window is standing in.
 func TestTheScopeChipTakesARowsAddressAndNeverItsName(t *testing.T) {
-	const project = "/work/aforge-v2"
+	const project = "/work/codeaf"
 	for _, c := range []struct {
 		what string
 		line homeLine
 		want string
 	}{
-		{"a conversation", homeLine{kind: homeSession, project: "aforge-v2",
+		{"a conversation", homeLine{kind: homeSession, project: "codeaf",
 			row: session.SessionRow{ProjectDir: project}}, project},
-		{"a standing item that knows its project root", homeLine{kind: homeItem, project: "aforge-v2",
+		{"a standing item that knows its project root", homeLine{kind: homeItem, project: "codeaf",
 			item: standing.Item{Workspace: project}}, project},
-		{"a project heading", homeLine{kind: homeProject, project: "aforge-v2",
-			proj: session.Project{Name: "aforge-v2", Path: project}}, project},
+		{"a project heading", homeLine{kind: homeProject, project: "codeaf",
+			proj: session.Project{Name: "codeaf", Path: project}}, project},
 		// THE ROW THIS FIX IS ABOUT. It knows its project's NAME and nothing
 		// else, and a name is not an answer to "where".
-		{"a standing item that recorded no directory", homeLine{kind: homeItem, project: "aforge-v2"}, ""},
+		{"a standing item that recorded no directory", homeLine{kind: homeItem, project: "codeaf"}, ""},
 	} {
 		got := scopeAddress(c.line)
 		if got != c.want {
@@ -50,11 +50,11 @@ func TestTwoHomeRowsSayWhereInTheSameWords(t *testing.T) {
 
 	// The list this test needs is a conversation that records its project and an
 	// item that records nothing but a name, side by side.
-	const project = "/work/aforge-v2"
+	const project = "/work/codeaf"
 	a.home.hover = -1
 	a.home.lines = []homeLine{
-		{kind: homeSession, project: "aforge-v2", row: session.SessionRow{ProjectDir: project, Title: "porting the picker"}},
-		{kind: homeItem, project: "aforge-v2", item: standing.Item{Words: "draft the weekly update"}},
+		{kind: homeSession, project: "codeaf", row: session.SessionRow{ProjectDir: project, Title: "porting the picker"}},
+		{kind: homeItem, project: "codeaf", item: standing.Item{Words: "draft the weekly update"}},
 	}
 
 	a.home.cursor = 0
@@ -74,7 +74,7 @@ func TestTwoHomeRowsSayWhereInTheSameWords(t *testing.T) {
 		t.Fatalf("the item's chip reads %q — a name in the slot that says where a task will land; the row above it reads %q",
 			onItem, onChat)
 	}
-	if strings.HasSuffix(onItem, " aforge-v2") {
+	if strings.HasSuffix(onItem, " codeaf") {
 		t.Fatalf("the item's chip reads %q, which is a project's NAME and not an address", onItem)
 	}
 }

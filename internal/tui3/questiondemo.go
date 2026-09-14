@@ -28,7 +28,7 @@ import (
 
 // questionDemoEnv is the variable that names a case. Its values are the case
 // names in [questionDemos].
-const questionDemoEnv = "AFORGE_QUESTION_DEMO"
+const questionDemoEnv = "CODEAF_QUESTION_DEMO"
 
 // openDemoQuestion raises one of the fixtures where the environment names it.
 func (a *app) openDemoQuestion(env func(string) string) {

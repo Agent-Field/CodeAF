@@ -17,7 +17,7 @@ package tui3
 //
 // ── WHY IT IS PER PROJECT AND NOT PER PROFILE ──
 //
-// The engine stores it in the project (`.aforge/autonomy.json`, session's
+// The engine stores it in the project (`.codeaf/autonomy.json`, session's
 // autonomy.go), and the reason is the whole point of the setting: the same shape
 // of question deserves a different answer in two pieces of work. `permission` on
 // a scratch repository somebody is exploring is a key press; `permission` on the
@@ -262,7 +262,7 @@ func autonomyKindNamed(word string) session.AskKind {
 // ([app.questionClockWord]).
 //
 // IT READS THE CACHE AND NEVER THE DOOR. The rules are a call to another
-// process — bare `aforge` talks to its engine over a socket like every hosted
+// process — bare `codeaf` talks to its engine over a socket like every hosted
 // window does — and this is asked from the update loop, where a surface may not
 // wait on a network (offloop.go's law, and its structural test). So the ask is
 // [app.readAutonomy], fired once on [app.Init] and again whenever a rule is

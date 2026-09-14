@@ -84,7 +84,7 @@ func (a *app) watching() bool {
 //	typing from spark now · enter takes it back
 //
 // `another window` is what it says about a window on this same machine, because
-// that is the word aforge already uses at home for a conversation open somewhere
+// that is the word codeaf already uses at home for a conversation open somewhere
 // else ([homeHeldWord]) and the two places a person meets this fact should sound
 // like one program. A machine that sent no name gets the same word: it is the
 // weaker claim of the two and the one that stays true either way.

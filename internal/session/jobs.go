@@ -588,7 +588,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 //
 // The name is claimed, not merely chosen. The counter behind it is this
 // process's own and starts at one in every window, so `1.log` is a name two
-// aforges in one directory both pick within a minute of each other — and the
+// codeafs in one directory both pick within a minute of each other — and the
 // open that used to be here truncated whatever was already at the name. Nothing
 // visible went wrong: the older session's writer kept its own file offset, so
 // its log became a hole where its first pages had been followed by two runs

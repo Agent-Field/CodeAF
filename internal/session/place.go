@@ -172,7 +172,7 @@ func (p Place) Work() string {
 
 // Meta is one session's identity, written where a picker can read it without
 // parsing a journal. It is a citation, not a copy: every conversation fact in
-// it is recoverable from the transcript, while Build names the aforge that
+// it is recoverable from the transcript, while Build names the codeaf that
 // wrote the citation. A session whose meta.json is missing or corrupt is a
 // session with a blank row, never a session that will not open.
 type Meta struct {
@@ -196,7 +196,7 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
-	// Build names the aforge that most recently wrote this identity.
+	// Build names the codeaf that most recently wrote this identity.
 	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —
 	// how hard its turns ask the model to think (internal/effort). Empty is

@@ -30,8 +30,8 @@ import (
 
 // GateMode is which reading of "is this division real" the binary is running.
 // It is a string rather than an integer because the pin is read by people
-// typing it in front of a command, and `AFORGE_SPLITGATE=judgment` says what it
-// is doing where `AFORGE_SPLITGATE=3` would not.
+// typing it in front of a command, and `CODEAF_SPLITGATE=judgment` says what it
+// is doing where `CODEAF_SPLITGATE=3` would not.
 type GateMode string
 
 const (
@@ -66,12 +66,12 @@ const (
 // had to leave a run on the shipped gate, because the danger was a typo
 // silently moving somebody onto an experimental arm. Now the danger runs the
 // other way: the measured behaviour is the gate having no say, and a typo
-// (`AFORGE_SPLITGATE=on`, `AFORGE_SPLITGATE=true`, `AFORGE_SPLITGATE=lanes`
+// (`CODEAF_SPLITGATE=on`, `CODEAF_SPLITGATE=true`, `CODEAF_SPLITGATE=lanes`
 // from the experiment that has since ended) must not quietly put a floor back
 // under somebody's divisions. So the two words that arm it are exact, and
 // everything else — including nothing at all — is off.
 func Mode() GateMode {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("AFORGE_SPLITGATE"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CODEAF_SPLITGATE"))) {
 	case string(ModeCount):
 		return ModeCount
 	case string(ModeJudgment):

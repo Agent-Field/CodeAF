@@ -11,13 +11,13 @@ import (
 
 // THE POINT OF THIS COMMAND IS THAT IT COSTS NOTHING TO ASK, so every test here
 // runs it with no key, no store and no network, exactly as a person meets it on
-// the machine where they have not decided yet whether to set aforge up. A test
+// the machine where they have not decided yet whether to set codeaf up. A test
 // that needed a fixture would be a test of a different command.
 
 func TestManualListsEveryPageWithItsTitle(t *testing.T) {
 	var out bytes.Buffer
 	if err := runManualWith(nil, &out); err != nil {
-		t.Fatalf("aforge manual: %v", err)
+		t.Fatalf("codeaf manual: %v", err)
 	}
 	printed := out.String()
 	for _, page := range manual.Chat().Pages() {
@@ -43,7 +43,7 @@ func TestManualListsEveryPageWithItsTitle(t *testing.T) {
 func TestManualPrintsAPageAsItIsWritten(t *testing.T) {
 	var out bytes.Buffer
 	if err := runManualWith([]string{"permissions"}, &out); err != nil {
-		t.Fatalf("aforge manual permissions: %v", err)
+		t.Fatalf("codeaf manual permissions: %v", err)
 	}
 	page, found := manual.Chat().Page("permissions")
 	if !found {
@@ -61,7 +61,7 @@ func TestManualPrintsAPageAsItIsWritten(t *testing.T) {
 func TestManualAnswersAQuestionWithLabelledSections(t *testing.T) {
 	var out bytes.Buffer
 	if err := runManualWith([]string{"who", "can", "see", "my", "files"}, &out); err != nil {
-		t.Fatalf("aforge manual \"who can see my files\": %v", err)
+		t.Fatalf("codeaf manual \"who can see my files\": %v", err)
 	}
 	printed := out.String()
 	sections := manual.Chat().Search("who can see my files", manualQuestionSections)
@@ -87,7 +87,7 @@ func TestManualAnswersAQuestionWithLabelledSections(t *testing.T) {
 func TestManualAnswersTheQuestionAboutItsOwnDoor(t *testing.T) {
 	var out bytes.Buffer
 	if err := runManualWith([]string{"how", "do", "I", "read", "the", "manual"}, &out); err != nil {
-		t.Fatalf("aforge manual \"how do I read the manual\": %v", err)
+		t.Fatalf("codeaf manual \"how do I read the manual\": %v", err)
 	}
 	if !strings.Contains(out.String(), "## commands · ") {
 		t.Errorf("the question about reading the manual reached no section of the commands page:\n%s", out.String())
@@ -101,7 +101,7 @@ func TestManualRefusesAPageThatDoesNotExist(t *testing.T) {
 	var out bytes.Buffer
 	err := runManualWith([]string{"no-such-page"}, &out)
 	if err == nil {
-		t.Fatal("aforge manual no-such-page exited 0")
+		t.Fatal("codeaf manual no-such-page exited 0")
 	}
 	if out.Len() != 0 {
 		t.Errorf("a refusal wrote to stdout:\n%s", out.String())
@@ -131,10 +131,10 @@ func TestManualDispatchesFromTheCommandLine(t *testing.T) {
 	previousArgs := os.Args
 	t.Cleanup(func() { os.Args = previousArgs })
 
-	os.Args = []string{"aforge", "manual"}
+	os.Args = []string{"codeaf", "manual"}
 	printed, err := captureStdout(t, run)
 	if err != nil {
-		t.Fatalf("aforge manual: %v", err)
+		t.Fatalf("codeaf manual: %v", err)
 	}
 	if !strings.Contains(printed, "permissions") {
 		t.Errorf("the dispatched listing named no pages:\n%s", printed)
@@ -143,7 +143,7 @@ func TestManualDispatchesFromTheCommandLine(t *testing.T) {
 
 // The help text is the only place a person finds out the subcommand exists.
 func TestUsageMentionsManual(t *testing.T) {
-	if !strings.Contains(usageText, "aforge manual") {
-		t.Fatal("usageText does not mention `aforge manual`")
+	if !strings.Contains(usageText, "codeaf manual") {
+		t.Fatal("usageText does not mention `codeaf manual`")
 	}
 }

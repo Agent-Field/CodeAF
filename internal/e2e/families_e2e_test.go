@@ -323,7 +323,7 @@ func (r *familyRun) waitForRest(ctx context.Context) bool {
 func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 	for {
 		if root, found := r.node(r.root); found && root.Worktree != "" {
-			if _, err := os.Stat(filepath.Join(root.Worktree, aforgeDroppings, groundBaselineRecord)); err == nil {
+			if _, err := os.Stat(filepath.Join(root.Worktree, codeafDroppings, groundBaselineRecord)); err == nil {
 				r.t.Logf("  the family's tree is at %s, with the folder's baseline recorded beside it", root.Worktree)
 				return
 			}
@@ -339,11 +339,11 @@ func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 
 // The family tree's private corner, and the record in it that says what the
 // person's folder held when the copy was taken. Both are internal/session's own
-// (task_run.go's aforgeDroppings, task_mirror_manners.go's
+// (task_run.go's codeafDroppings, task_mirror_manners.go's
 // groundBaselineRecord), spelled again here because they are unexported there
 // and this lane reads the disk rather than the engine.
 const (
-	aforgeDroppings      = ".aforge-v3"
+	codeafDroppings      = ".codeaf-v3"
 	groundBaselineRecord = "ground-baseline.json"
 )
 
@@ -519,7 +519,7 @@ func TestFamilies(t *testing.T) {
 	// finding about whether handing work out PAYS — a question this lane is not
 	// asking. Three sections and two write-ups are the smallest families that can
 	// prove isolation and landing, and they are deliberately below that floor.
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 
 	t.Run("a three-section report on a folder ground", func(t *testing.T) {
 		threeSectionsOnAFolder(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})

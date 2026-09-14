@@ -41,7 +41,7 @@ func (a *Agent) autonomyFile() string {
 	if root == "" {
 		return ""
 	}
-	return filepath.Join(root, ".aforge", "autonomy.json")
+	return filepath.Join(root, ".codeaf", "autonomy.json")
 }
 
 // SetAutonomy is the one door surfaces use for the D-key promise.

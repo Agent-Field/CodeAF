@@ -95,7 +95,7 @@ func TestAnAnswerThroughTheOneDoorEmptiesTheWaitingRoom(t *testing.T) {
 	sess := NewSession(&Engine{
 		Agent:       far,
 		Workspace:   "/home/somebody/api",
-		SessionFile: "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+		SessionFile: "/home/somebody/.codeaf/v3/sessions/-home-somebody-api/one.jsonl",
 	}, true)
 	sess.mu.Lock()
 	sess.held.raise(WireEvent(session.Event{

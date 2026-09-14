@@ -3,14 +3,14 @@ package main
 // chatv3_layout.go is where a v3 conversation lives, and which one a launch
 // opens (docs/CHAT-V3.md, Decision 26).
 //
-// A session is a FOLDER: ~/.aforge/v3/projects/<encoded-workspace>/<id>/, with
+// A session is a FOLDER: ~/.codeaf/v3/projects/<encoded-workspace>/<id>/, with
 // the transcript, the sidecars, the node journals and — for an owned session —
 // the workspace itself inside it. internal/session's place.go is the arithmetic
 // on that folder; this file is the three decisions a launch makes before the
 // arithmetic can start:
 //
 //   - WHICH PROJECT. The workspace is the git root of the directory the person
-//     stood in, so `aforge` typed in repo/cmd and in repo/ is the same project.
+//     stood in, so `codeaf` typed in repo/cmd and in repo/ is the same project.
 //     The encoded directory name is a bucket and not an identity — meta.json
 //     carries the real path — which is what lets the encoding stay dumb.
 //   - BORROWED OR OWNED. A conversation opened inside a project borrows it and
@@ -19,7 +19,7 @@ package main
 //     reused rather than duplicated, or a new one — and the other empties are
 //     reaped on the way past.
 //
-// EVERY PATH GOES THROUGH internal/home, so AFORGE_HOME moves all of it.
+// EVERY PATH GOES THROUGH internal/home, so CODEAF_HOME moves all of it.
 
 import (
 	"context"
@@ -36,7 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// v3Dir is ~/.aforge/v3: the directory this surface keeps its own files in —
+// v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
 // the model cache, the history list, the drafts, the memory file. The
 // conversations live under it in projects/ (see [v3ProjectDir]).
 func v3Dir() (string, error) {
@@ -95,7 +95,7 @@ func v3Workspace(cwd, explicit string) (string, bool) {
 // accident rather than on purpose — the two places a conversation has no
 // project to be about.
 //
-// A PLAIN DIRECTORY IS STILL BORROWED. Somebody who runs aforge in ~/notes
+// A PLAIN DIRECTORY IS STILL BORROWED. Somebody who runs codeaf in ~/notes
 // means ~/notes: it is not a repository, but it is where their work is, and a
 // session that quietly worked in a hidden folder of its own instead would be
 // answering questions about the wrong directory. What is left is the home
@@ -512,8 +512,8 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 // answer back. The reason is that a process can now open several conversations
 // and one of them may be about another project entirely: the launch directory is
 // a fact about the WINDOW — where the person was standing when they typed
-// `aforge` — and re-reading it per conversation would only be a way for it to
-// come back different. Nothing in this process changes directory; `aforge
+// `codeaf` — and re-reading it per conversation would only be a way for it to
+// come back different. Nothing in this process changes directory; `codeaf
 // engine` is the one door that does and it does so before it opens anything
 // (engine.go), so its first call captures the workspace it moved into, exactly
 // as the per-call read did.

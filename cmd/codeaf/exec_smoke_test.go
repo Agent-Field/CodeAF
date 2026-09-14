@@ -27,10 +27,10 @@ import (
 
 const smokeAnswer = "the smoke test answer"
 
-// buildAforgeStamped compiles the binary under test with a revision stamped in,
+// buildCodeafStamped compiles the binary under test with a revision stamped in,
 // which also exercises the -ldflags path the release workflow depends on. An
 // empty stamp builds it exactly as `go build ./cmd/codeaf` would.
-func buildAforgeStamped(t *testing.T, stamp string) string {
+func buildCodeafStamped(t *testing.T, stamp string) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("builds and runs the binary")
@@ -39,7 +39,7 @@ func buildAforgeStamped(t *testing.T, stamp string) string {
 	if err != nil {
 		t.Skip("no go toolchain on PATH to build the binary with")
 	}
-	binary := filepath.Join(t.TempDir(), "aforge")
+	binary := filepath.Join(t.TempDir(), "codeaf")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
@@ -96,11 +96,11 @@ func smokeEnv(t *testing.T, baseURL string) (env []string, home string) {
 		"HOME=" + home,
 		"PATH=" + os.Getenv("PATH"),
 		"OPENROUTER_API_KEY=smoke-test-key",
-		"AFORGE_BASE_URL=" + baseURL,
-		"AFORGE_HOME=" + home,
-		"AFORGE_PROFILE_DIR=" + home,
-		"AFORGE_MODEL=test/model",
-		"AFORGE_DAILY_BUDGET=0",
+		"CODEAF_BASE_URL=" + baseURL,
+		"CODEAF_HOME=" + home,
+		"CODEAF_PROFILE_DIR=" + home,
+		"CODEAF_MODEL=test/model",
+		"CODEAF_DAILY_BUDGET=0",
 	}, home
 }
 
@@ -138,7 +138,7 @@ func asExitError(err error, target **osexec.ExitError) bool {
 // The machine contract, end to end: a prompt on stdin, one JSON object on
 // stdout and nothing else, every diagnostic on stderr, exit 0.
 func TestExecBinaryWritesOneEnvelopeToStdout(t *testing.T) {
-	binary := buildAforgeStamped(t, "v0.0.0-smoke")
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	server := fakeOpenRouter(t)
 	env, _ := smokeEnv(t, server.URL)
 	workspace := t.TempDir()
@@ -188,7 +188,7 @@ func TestExecBinaryWritesOneEnvelopeToStdout(t *testing.T) {
 // Without --json the same run prints the deliverable and nothing else, which is
 // the other half of the stdout promise.
 func TestExecBinaryWithoutJSONPrintsOnlyTheText(t *testing.T) {
-	binary := buildAforgeStamped(t, "v0.0.0-smoke")
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	server := fakeOpenRouter(t)
 	env, _ := smokeEnv(t, server.URL)
 	workspace := t.TempDir()
@@ -211,36 +211,36 @@ func TestExecBinaryWithoutJSONPrintsOnlyTheText(t *testing.T) {
 // the binary reports. This tests the real -ldflags seam rather than a variable
 // rewritten inside the test process.
 func TestExecBinaryReportsTheStampedVersion(t *testing.T) {
-	binary := buildAforgeStamped(t, "abcdef01")
+	binary := buildCodeafStamped(t, "abcdef01")
 	env, _ := smokeEnv(t, "http://127.0.0.1:1")
 
 	for _, spelling := range []string{"version", "--version", "-v"} {
 		stdout, stderr, code := runSmoke(t, binary, env, "", spelling)
 		if code != 0 {
-			t.Fatalf("aforge %s exited %d\nstderr:\n%s", spelling, code, stderr)
+			t.Fatalf("codeaf %s exited %d\nstderr:\n%s", spelling, code, stderr)
 		}
 		// The stamped revision is the FIRST thing on the line, and the
 		// toolchain and platform follow it: a defect report needs the commit
 		// and the machine, and an installer reads the prefix.
-		if !strings.HasPrefix(strings.TrimSpace(stdout), "aforge abcdef01") {
-			t.Fatalf("aforge %s printed %q, want it to open %q", spelling, stdout, "aforge abcdef01")
+		if !strings.HasPrefix(strings.TrimSpace(stdout), "codeaf abcdef01") {
+			t.Fatalf("codeaf %s printed %q, want it to open %q", spelling, stdout, "codeaf abcdef01")
 		}
 	}
 }
 
-// Probing for the binary must not be a configuration problem: `aforge version`
+// Probing for the binary must not be a configuration problem: `codeaf version`
 // answers with no API key in the environment at all.
 func TestExecBinaryVersionNeedsNoAPIKey(t *testing.T) {
-	binary := buildAforgeStamped(t, "v0.0.0-smoke")
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	home := t.TempDir()
-	env := []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "AFORGE_HOME=" + home, "AFORGE_PROFILE_DIR=" + home}
+	env := []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "CODEAF_HOME=" + home, "CODEAF_PROFILE_DIR=" + home}
 
 	stdout, stderr, code := runSmoke(t, binary, env, "", "version")
 	if code != 0 {
 		t.Fatalf("exit %d with no key set, want 0\nstderr:\n%s", code, stderr)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(stdout), "aforge v0.0.0-smoke") {
-		t.Fatalf("printed %q, want it to open %q", stdout, "aforge v0.0.0-smoke")
+	if !strings.HasPrefix(strings.TrimSpace(stdout), "codeaf v0.0.0-smoke") {
+		t.Fatalf("printed %q, want it to open %q", stdout, "codeaf v0.0.0-smoke")
 	}
 }
 
@@ -248,14 +248,14 @@ func TestExecBinaryVersionNeedsNoAPIKey(t *testing.T) {
 // failure is on stderr, the exit code is non-zero, and stdout stays empty so a
 // harness never parses an error as a result.
 func TestExecBinaryWithoutAKeyFailsCleanly(t *testing.T) {
-	binary := buildAforgeStamped(t, "v0.0.0-smoke")
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	home := t.TempDir()
 	workspace := t.TempDir()
 	env := []string{
 		"HOME=" + home,
 		"PATH=" + os.Getenv("PATH"),
-		"AFORGE_HOME=" + home,
-		"AFORGE_PROFILE_DIR=" + home,
+		"CODEAF_HOME=" + home,
+		"CODEAF_PROFILE_DIR=" + home,
 	}
 
 	stdout, stderr, code := runSmoke(t, binary, env, "say hello\n",

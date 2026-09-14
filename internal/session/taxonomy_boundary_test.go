@@ -219,7 +219,7 @@ func boundaryGateAgent(t *testing.T, tiers map[string]string) (*Agent, *TaskNode
 // holds, the second lifts, and both are on the file as capability — which is the
 // class that is ALLOWED to cost money.
 func TestFindingsBuyOneLiftAfterTheCountIsReached(t *testing.T) {
-	t.Setenv("AFORGE_RESPONSE_LIFT_AFTER", "2")
+	t.Setenv("CODEAF_RESPONSE_LIFT_AFTER", "2")
 	agent, node, path := boundaryGateAgent(t, map[string]string{roles.TierKey(roles.TierHigh): carefulTier})
 
 	first := agent.readFinding(node, io.Discard)
@@ -316,7 +316,7 @@ func TestAPassHandsTheLiftBack(t *testing.T) {
 
 // (e) AND THE LIFTED TIER HAS A CEILING, PAST WHICH THE ANSWER IS THE WORK'S.
 func TestASpentCapStopsBuyingAndReturnsTheWork(t *testing.T) {
-	t.Setenv("AFORGE_RESPONSE_LIFT_CAP", "1.50")
+	t.Setenv("CODEAF_RESPONSE_LIFT_CAP", "1.50")
 	agent, node, path := boundaryGateAgent(t, map[string]string{roles.TierKey(roles.TierHigh): carefulTier})
 
 	lift := agent.readFinding(node, io.Discard)

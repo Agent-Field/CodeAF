@@ -300,7 +300,7 @@ func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 
 func TestHeadLearningQuestionCarriesSeededNotebookFact(t *testing.T) {
 	graph := openHeadStore(t)
-	fact, err := graph.RecordFact(store.RootID, "repo:aforge", store.FactLesson,
+	fact, err := graph.RecordFact(store.RootID, "repo:codeaf", store.FactLesson,
 		"card receipts stay anchored to the job that produced them")
 	if err != nil {
 		t.Fatal(err)

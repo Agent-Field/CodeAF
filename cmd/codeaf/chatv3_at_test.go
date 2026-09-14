@@ -62,15 +62,15 @@ func TestTheFlagsThatBuildASessionCannotTravelOverAt(t *testing.T) {
 // running, and a person who meets this must not be left guessing whether their
 // network is broken.
 func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
-	t.Setenv("AFORGE_RELAY", "")
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_RELAY", "")
 
 	err := openChatV3At(atLaunch{target: "otter-lamp-42"})
 	if err == nil {
 		t.Fatal("--at opened a connection with no relay set up")
 	}
 	said := err.Error()
-	for _, want := range []string{"no relay is set up", "AFORGE_RELAY", "--host over ssh", "otter-lamp-42"} {
+	for _, want := range []string{"no relay is set up", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("--at with no relay said %q, which does not mention %q", said, want)
 		}
@@ -81,20 +81,20 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 
 	err = runServe(nil)
 	if err == nil {
-		t.Fatal("aforge serve started with no relay set up")
+		t.Fatal("codeaf serve started with no relay set up")
 	}
 	said = err.Error()
-	for _, want := range []string{"no relay is set up", "AFORGE_RELAY", "--host"} {
+	for _, want := range []string{"no relay is set up", "CODEAF_RELAY", "--host"} {
 		if !strings.Contains(said, want) {
-			t.Fatalf("aforge serve with no relay said %q, which does not mention %q", said, want)
+			t.Fatalf("codeaf serve with no relay said %q, which does not mention %q", said, want)
 		}
 	}
 }
 
-// `aforge devices` on a machine nothing has paired with is one sentence and an
+// `codeaf devices` on a machine nothing has paired with is one sentence and an
 // invitation, not a heading over an empty table.
 func TestDevicesOnAFreshMachineSaysNothingIsPaired(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	if err := runDevices(nil); err != nil {
 		t.Fatal(err)
 	}

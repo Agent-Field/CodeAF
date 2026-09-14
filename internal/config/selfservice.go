@@ -50,7 +50,7 @@ const (
 	// guardProof is the auditor. A model that can switch off the check on its own
 	// work can call anything done.
 	guardProof = "decides whether my own work is checked before it lands"
-	// guardSignature is the trailer aforge puts on commits and PRs it writes. A
+	// guardSignature is the trailer codeaf puts on commits and PRs it writes. A
 	// model taking its own name off work that leaves the machine is the one
 	// change nobody downstream can see was made.
 	guardSignature = "decides how work that leaves this machine is signed"

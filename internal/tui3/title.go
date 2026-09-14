@@ -10,23 +10,23 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// THE TERMINAL'S OWN TAB SAYS WHERE A PERSON IS INSIDE AFORGE.
+// THE TERMINAL'S OWN TAB SAYS WHERE A PERSON IS INSIDE codeaf.
 //
 // A terminal title is read exactly when nobody is looking at the window — in a
 // tab bar, the cmd-tab switcher, a tmux status line — so it answers the one
-// question a glance from outside can use: which place in aforge is this tab
+// question a glance from outside can use: which place in codeaf is this tab
 // standing in, and is anything in it waiting on me. It is the place and the
 // thing's own name, then the product, so a tab bar truncating from the right
 // gives up the product first and the name last:
 //
-//	aforge                              home, nothing waiting
-//	3 want you · aforge                 home, three things stopped on a person
-//	porting the parser · aforge         a conversation
-//	new conversation · aforge           one that has not been named yet
-//	? porting the parser · aforge       one waiting on the person
-//	Fix the nil-map crash · task · aforge   a task room
-//	memory · aforge                     any other place, by its own word
-//	porting the parser @ devbox · aforge    any of them over --host
+//	codeaf                              home, nothing waiting
+//	3 want you · codeaf                 home, three things stopped on a person
+//	porting the parser · codeaf         a conversation
+//	new conversation · codeaf           one that has not been named yet
+//	? porting the parser · codeaf       one waiting on the person
+//	Fix the nil-map crash · task · codeaf   a task room
+//	memory · codeaf                     any other place, by its own word
+//	porting the parser @ devbox · codeaf    any of them over --host
 //
 // WHAT IT DELIBERATELY IS NOT IS A STATUS LINE. No spinner, no model, no cost,
 // no clock: each would move the one piece of chrome a person cannot scroll away
@@ -46,7 +46,7 @@ import (
 // titleMax bounds the sentence in cells. A tab shows twenty-odd characters and
 // a window bar under a hundred; past sixty the bytes are pure cost down a
 // channel that exists to say one line. It is the NAME that is cut to fit, never
-// the suffix: ` · aforge` is how a person tells an aforge tab from a shell's.
+// the suffix: ` · codeaf` is how a person tells a codeaf tab from a shell's.
 const titleMax = 60
 
 // The words the sentence adds to the names it borrows, quoted in
@@ -173,7 +173,7 @@ func titleSend(title string) tea.Cmd { return tea.Raw(ansi.SetIconName(title)) }
 // EVERY road out — the ordinary quit, a signal, a cancelled context. A title
 // left behind is a lie about a process that is gone: Terminal.app keeps an icon
 // name until something replaces it, and a shell prompt that does not set one
-// would leave the tab saying `aforge` over a shell. The empty string hands the
+// would leave the tab saying `codeaf` over a shell. The empty string hands the
 // tab back to the terminal's own default. Bubble Tea's renderer already clears
 // the window title it declared as it closes, so this is the tab's half only.
 func titleFarewell(out io.Writer, a *app) {

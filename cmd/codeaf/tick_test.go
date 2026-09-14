@@ -15,7 +15,7 @@ import (
 // The door is machinery, not a command, so it must not appear in the list of
 // things a person can usefully type — for the same reason `engine` does not.
 func TestTickIsAbsentFromTheUsageText(t *testing.T) {
-	for _, word := range []string{"aforge tick", " tick "} {
+	for _, word := range []string{"codeaf tick", " tick "} {
 		if strings.Contains(usageText, word) {
 			t.Fatalf("the usage text offers %q", word)
 		}
@@ -33,7 +33,7 @@ func TestTickIsAbsentFromTheUsageText(t *testing.T) {
 // is no keychain seam and no second file. Empty reads as unset for the two
 // variables. The profile is the one that hides: it is [config.ProfileDirEnv],
 // taken straight from the environment rather than from the state root this test
-// already moved, so a developer with AFORGE_PROFILE_DIR exported would have
+// already moved, so a developer with CODEAF_PROFILE_DIR exported would have
 // reached their own persisted key past every temporary directory here. It is
 // pointed at an empty one, which has no config.json and therefore no key.
 func keyless(t *testing.T) {
@@ -43,7 +43,7 @@ func keyless(t *testing.T) {
 	t.Setenv(config.ProfileDirEnv, t.TempDir())
 }
 
-// The whole door, on a machine that has never been given a key: `aforge tick`
+// The whole door, on a machine that has never been given a key: `codeaf tick`
 // builds its pass, takes the lock, walks the one item there is, looks at the
 // world, and cannot buy the judgment that would decide whether to fire. THE
 // WALK STILL HAPPENS AND THE WAKE LINE STILL SAYS SO — a pass that will mostly

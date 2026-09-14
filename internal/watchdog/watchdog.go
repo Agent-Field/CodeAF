@@ -1,4 +1,4 @@
-// Package watchdog keeps standing watches available when no aforge terminal
+// Package watchdog keeps standing watches available when no codeaf terminal
 // is open. The user-facing surfaces describe the consequence; this package
 // owns the deliberately quiet operating-system details.
 package watchdog
@@ -21,11 +21,11 @@ const (
 	// Interval is the cadence promised by the standing-watch ratification.
 	Interval = 5 * time.Minute
 
-	darwinLabel       = "ai.agentfield.aforge.wake"
+	darwinLabel       = "ai.agentfield.codeaf.wake"
 	darwinPlistName   = darwinLabel + ".plist"
-	linuxTimerName    = "aforge-wake.timer"
-	linuxServiceName  = "aforge-wake.service"
-	standingUnitTitle = "Keep aforge standing watches current"
+	linuxTimerName    = "codeaf-wake.timer"
+	linuxServiceName  = "codeaf-wake.service"
+	standingUnitTitle = "Keep codeaf standing watches current"
 )
 
 // Runner is the complete process boundary used to load and unload the user
@@ -330,7 +330,7 @@ func writeDefinition(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("standing watch: create definition directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".aforge-wake-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".codeaf-wake-*")
 	if err != nil {
 		return fmt.Errorf("standing watch: create definition: %w", err)
 	}

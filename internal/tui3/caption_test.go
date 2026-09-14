@@ -70,7 +70,7 @@ func TestTheCompositeStandsWhenTheModelSaidNothing(t *testing.T) {
 func TestABashFloorNamesTheWorkNotTheVerb(t *testing.T) {
 	es := []entry{{
 		kind: entryTool, tool: "bash", status: toolOK,
-		detail: toolDetail{Args: `{"command":"gh issue list --repo Agent-Field/aforge-v2 --state open --limit 60"}`},
+		detail: toolDetail{Args: `{"command":"gh issue list --repo Agent-Field/codeaf --state open --limit 60"}`},
 	}}
 	if got := composeCaption(es, 0, 1); got != "listing github issues" {
 		t.Fatalf("bash floor = %q", got)
@@ -163,8 +163,8 @@ func TestCaptionWordsKeepsTokenPunctuationAndSentenceBoundaries(t *testing.T) {
 		},
 		{
 			name: "dot inside a path without a sentence end",
-			line: "searching ~/.aforge/v3/projects for the transcript",
-			want: "searching ~/.aforge/v3/projects for the transcript",
+			line: "searching ~/.codeaf/v3/projects for the transcript",
+			want: "searching ~/.codeaf/v3/projects for the transcript",
 		},
 		{
 			name: "real sentence boundary",

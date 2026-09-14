@@ -16,7 +16,7 @@ import (
 // implies.
 //
 // THE BUDGET IS ATTACHED BY THE WALL, SO A PLANNING CALL MUST GO THROUGH ONE.
-// The structuring slot the resident and `aforge do` hand this package is walled
+// The structuring slot the resident and `codeaf do` hand this package is walled
 // (internal/provider/pool), and the wall is what tells the model how long it
 // may think and keeps what it thought if it runs out. That guarantee holds for
 // every pass here only while no pass can reach a model any other way — so this

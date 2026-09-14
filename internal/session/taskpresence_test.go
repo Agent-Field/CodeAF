@@ -12,7 +12,7 @@ import (
 )
 
 // newPresenceSession builds one agent that lives in a real-shaped session
-// folder: a bucket standing in for ~/.aforge/v3/projects/<workspace>/ with one
+// folder: a bucket standing in for ~/.codeaf/v3/projects/<workspace>/ with one
 // session folder under it, exactly the layout [ReadProjectPresence] reads.
 func newPresenceSession(t *testing.T, bucket, id string) (*Agent, string) {
 	t.Helper()

@@ -122,7 +122,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 		admission: a.admissionContext(),
 	}
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
-	// ladder a proposal gets, because a person who opened aforge in their home
+	// ladder a proposal gets, because a person who opened codeaf in their home
 	// directory and typed `/task fix the crash` is in exactly the position issue
 	// #76 was written about — and the one thing this door cannot do is ask, so it
 	// takes the rung below rather than stopping. The ladder reads the paths in

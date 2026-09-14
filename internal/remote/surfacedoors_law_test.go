@@ -23,7 +23,7 @@ import (
 // the thing behind it went missing, because a failed assertion looks exactly
 // like a capability that was never meant to be there.
 //
-// AND THE DEFAULT ROAD IS THE REMOTE ONE. A bare `aforge` holds a
+// AND THE DEFAULT ROAD IS THE REMOTE ONE. A bare `codeaf` holds a
 // `*remote.Agent` talking to a detached engine — `v3TakeHostRoad` in
 // cmd/codeaf/chatv3_local.go is true for every launch but `--no-host`,
 // `--debug`, first-run setup and a hostless `--once`. So a door that
@@ -48,7 +48,7 @@ import (
 // and about half of these obey it: the page, the section or the count is simply
 // not drawn, and a person meets nothing. The other half do the inverse. The
 // surface's `a.hosted()` guard is `a.host != ""` and is set only on the
-// `--host <dest>` road, so on a BARE `aforge` — the default launch, and the one
+// `--host <dest>` road, so on a BARE `codeaf` — the default launch, and the one
 // that holds a `*remote.Agent` — every one of those guards is skipped, the local
 // branch runs, and the person is told a reason that is not the reason. `/remember`
 // says memory is switched off. `/land` says nothing is waiting. `/autonomy` says

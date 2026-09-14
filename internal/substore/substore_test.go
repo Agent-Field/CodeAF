@@ -552,8 +552,8 @@ func TestAMintRefusesRatherThanWaitForAGateSomebodyElseHolds(t *testing.T) {
 	}
 }
 
-// The store moves wholesale with AFORGE_HOME, through the one package that reads
-// that variable, like everything else durable aforge writes.
+// The store moves wholesale with CODEAF_HOME, through the one package that reads
+// that variable, like everything else durable codeaf writes.
 func TestTheHomeStoreFollowsTheStateRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)

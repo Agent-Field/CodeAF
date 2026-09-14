@@ -8,7 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
-// /crew — THE FIVE MODELS AFORGE WORKS WITH, ANSWERED IN ONE WORD.
+// /crew — THE FIVE MODELS codeaf WORKS WITH, ANSWERED IN ONE WORD.
 //
 // The settings panel has the same five rows and a crew row above them, and this
 // command exists anyway for the reason /model exists beside the model slot: the
@@ -70,7 +70,7 @@ func (a *app) applyCrew(preset string) {
 	a.refreshSettings()
 	// AND THE CONFIRMATION NAMES WHAT IT DID NOT CHANGE, BY ITS ID. The status
 	// line's model readout is the CONVERSATION's model and the crew never touches
-	// it — so the person who typed /crew to make aforge think harder reads three
+	// it — so the person who typed /crew to make codeaf think harder reads three
 	// model names, looks down at a bottom row that says exactly what it said
 	// before, and concludes the command did nothing. The clause used to say only
 	// that "the model you talk to is /model", and a person who had not yet
@@ -205,7 +205,7 @@ type crewReading struct {
 // box's clause — and it reports false for a window that has no crew of its own.
 //
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
-// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] is AFORGE_PROFILE_DIR, which
+// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] is CODEAF_PROFILE_DIR, which
 // almost nobody exports, and every reader in internal/config resolves the empty
 // string to this process's own profile in the state root
 // ([config.ProfilePath]) — so the guard these surfaces used to carry was true on
@@ -324,7 +324,7 @@ func (a *app) crewHint() string { return a.crewSegment() }
 // runs its tasks resolves it (cmd/codeaf's v3Crew).
 //
 // AN EMPTY profileDir IS THE ORDINARY PROFILE AND NOT THE ABSENCE OF ONE.
-// [config.ProfileDir] is AFORGE_PROFILE_DIR, which almost nobody sets, and every
+// [config.ProfileDir] is CODEAF_PROFILE_DIR, which almost nobody sets, and every
 // reader in internal/config takes the empty string to mean "this process's own
 // profile" — so a guard on the field would silence the line on precisely the
 // launch it was written for. The absence is a CONNECTION: over --host the crew
@@ -413,7 +413,7 @@ func (p *crewPicker) move(delta int) {
 const (
 	// crewScopeLine is the header: what the presets below move, and what they
 	// do not. It is the one sentence the whole surface exists to make plain.
-	crewScopeLine = "the five models aforge uses on its own behalf — not the one you chat with"
+	crewScopeLine = "the five models codeaf uses on its own behalf — not the one you chat with"
 	// crewSeatLead is seat one's label. It is a plain phrase and not a class word,
 	// because the class words are what the presets change and this seat is not.
 	crewSeatLead = "you talk to"
@@ -459,7 +459,7 @@ func (p *crewPicker) height() int {
 // the models their own dim line: with three fixed choices, comparison matters
 // more than fitting a fourth choice that does not exist.
 //
-// THE CHOOSER IS THE FIVE-SEAT READING. aforge runs five model seats — the one
+// THE CHOOSER IS THE FIVE-SEAT READING. codeaf runs five model seats — the one
 // you talk to, then reflex, small work, careful work and mastermind — and until
 // this wave the chooser showed four of them and said nothing about the fifth,
 // which is the one seat a person can see on the frame and the one `/crew` never

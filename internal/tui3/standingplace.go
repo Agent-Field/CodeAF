@@ -279,7 +279,7 @@ func standRowStops(rows []standRow) []int {
 	return stops
 }
 
-// standRowLabel is an order's own half of its row: the mark every aforge screen
+// standRowLabel is an order's own half of its row: the mark every codeaf screen
 // agrees on ([standing.Item.Glyph] is the authority), and what the order is
 // called.
 func standRowLabel(row standRow, pal palette) string {

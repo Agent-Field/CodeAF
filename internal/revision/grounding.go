@@ -29,7 +29,7 @@ import (
 // three were fixed before a word was produced, so none of them can have moved in
 // response to what the work turned out to be — which is the whole property the
 // invariant is protecting. The compiled goal, the working decisions and the last
-// round's output are aforge talking to aforge, and a finding that can only quote
+// round's output are codeaf talking to codeaf, and a finding that can only quote
 // those is a preference rather than a failure.
 //
 // One value, read by both doors. The revision round and the extension used to

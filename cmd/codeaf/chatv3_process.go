@@ -51,7 +51,7 @@ import (
 type v3Process struct {
 	// Settings is the one profile every governance row is resolved out of, and
 	// ProfileDir the directory the settings panel writes back into. They must be
-	// the same one: with AFORGE_PROFILE_DIR set, a panel writing ~/.aforge while
+	// the same one: with CODEAF_PROFILE_DIR set, a panel writing ~/.codeaf while
 	// the session read the named profile is a gate turned off in the sheet that
 	// stays on with nothing on screen saying why.
 	Settings   config.Config
@@ -91,7 +91,7 @@ type v3Process struct {
 	// other would not know had moved.
 	Conns *connect.Manager
 	// LaunchDir is where the person was standing when the process started,
-	// captured ONCE. The process never changes directory (`aforge engine` is the
+	// captured ONCE. The process never changes directory (`codeaf engine` is the
 	// one door that does, and it does it before it builds any of this), so one
 	// capture is the honest one — and a conversation opened later into another
 	// project is still a conversation this door opened from here.
@@ -111,7 +111,7 @@ type v3Process struct {
 // `door` is the word the missing-key sentence names, and it moved here from
 // [v3Options] because this is now the first thing that reads the profile and
 // therefore the first thing that can fail for the want of a key. Empty is
-// "chat", which is what both terminal doors say — `aforge resume` has always
+// "chat", which is what both terminal doors say — `codeaf resume` has always
 // said it and says it still, because what it could not open is a chat.
 func openV3Process(door string) (*v3Process, error) { return openV3ProcessWith(door, false) }
 
@@ -144,9 +144,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		if strings.TrimSpace(door) == "" {
 			door = "chat"
 		}
-		fmt.Fprintln(os.Stderr, "aforge "+door+" needs a model to talk with.")
+		fmt.Fprintln(os.Stderr, "codeaf "+door+" needs a model to talk with.")
 		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
-			fmt.Fprintln(os.Stderr, "run `aforge` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
 		} else {
 			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
 		}
@@ -158,7 +158,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// the one moment this build knows where the program actually is.
 	startBackgroundRepair(settings.ProfileDir)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
-	// this is: `aforge` typed in repo/cmd/ is a conversation about the
+	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
 	// (Decision 26).
 	launchDir, err := os.Getwd()

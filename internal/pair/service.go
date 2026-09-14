@@ -22,7 +22,7 @@ import (
 
 // RelayEnv names the override, exported so that a sentence and the code that
 // reads it spell it the same way.
-const RelayEnv = "AFORGE_RELAY"
+const RelayEnv = "CODEAF_RELAY"
 
 // RelayFile is where a relay address is kept when somebody wants it to outlive
 // a shell.

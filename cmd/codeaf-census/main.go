@@ -1,5 +1,5 @@
 // codeaf-census is the instrument the recovery design asks for: it reads the
-// model-call log this build always writes (`~/.aforge/logs/calls.jsonl`,
+// model-call log this build always writes (`~/.codeaf/logs/calls.jsonl`,
 // internal/calllog) and prints, as markdown, the table
 // docs/design/recovery/DESIGN.md §1 argues from.
 //
@@ -9,7 +9,7 @@
 // throwaway pass over the same file; this is that pass, committed, tested on a
 // fixture, and runnable nightly by a cron on the Spark (`make census`).
 //
-// It is a developer's binary and never a verb on aforge, for the reason
+// It is a developer's binary and never a verb on codeaf, for the reason
 // cmd/codeaf-changes and cmd/codeaf-demo-home are: the shipped binary is on a
 // checked-in byte budget (SIZE-BUDGET) and a measuring tool must not spend the
 // product's weight.

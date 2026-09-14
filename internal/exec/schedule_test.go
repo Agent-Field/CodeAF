@@ -362,7 +362,7 @@ func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error)
 
 // TestSchedulerLaunchesEveryReadyLeafHoweverBusyTheHostIs is the headless half
 // of the admission doctrine. The gate used to be the host's load average, and a
-// leaf is a goroutine parked on a socket waiting for a model — so `aforge run
+// leaf is a goroutine parked on a socket waiting for a model — so `codeaf run
 // --concurrency 8` on a machine somebody else was compiling on launched three
 // leaves and then waited, forever, for a reading that its own idle sockets could
 // never bring down. Concurrency belongs to the graph: a node runs when the nodes

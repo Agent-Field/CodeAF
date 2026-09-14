@@ -89,9 +89,9 @@ package session
 // identifies the world it made — furrow's sealed snapshot, the machine commit's
 // sha — onto the tree, onto the node, and into the node's own log.
 //
-// ── AND WHY AFORGE ATTACHES THE FOLDER ITSELF ──
+// ── AND WHY codeaf ATTACHES THE FOLDER ITSELF ──
 //
-// Every aforge carries furrow ([internal/furrowbin]), so the half of the answer
+// Every codeaf carries furrow ([internal/furrowbin]), so the half of the answer
 // that used to vary by machine no longer does; what still varied was whether
 // somebody had remembered to type `furrow watch` in this project. A capability
 // the binary carries and never engages is this codebase's absent-not-broken law
@@ -118,7 +118,7 @@ package session
 // So a rung that FELL says why, into the node's own log with how long it cost
 // ([groundClimb]), and a fork that could not be made of a ground is REMEMBERED
 // for that ground (groundfalls.go): the next node standing on it does not try
-// again until something that could change the answer has changed — this aforge,
+// again until something that could change the answer has changed — this codeaf,
 // or the furrow it runs — and its log says it did not try, and why.
 //
 // AND THE FORK IS SEALED THROUGH THE SAME DOOR AS THE SNAPSHOT. It used to seal
@@ -447,7 +447,7 @@ func (universeRung) rung() GroundRung { return GroundRungUniverse }
 
 // reach is [universeReaches], plus the two things that make furrow worth asking
 // at all: a furrow on this machine to run, and no memory of it failing at this
-// ground under the same aforge and the same furrow (groundfalls.go). The second
+// ground under the same codeaf and the same furrow (groundfalls.go). The second
 // is the only refusal on the whole ladder that says anything, because it is the
 // only one where the rung WOULD apply and is choosing not to.
 func (universeRung) reach(order groundOrder) (bool, string) {
@@ -678,7 +678,7 @@ func openForkAt(dir, branch, frozen string) error {
 	if out, err := git(dir, "checkout", "-b", branch, frozen); err != nil {
 		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
-	if out, err := git(dir, "clean", "-fd", "-e", aforgeDroppings, "-e", furrowMarkerDir); err != nil {
+	if out, err := git(dir, "clean", "-fd", "-e", codeafDroppings, "-e", furrowMarkerDir); err != nil {
 		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
 	return nil
@@ -888,7 +888,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, err
 //
 // ── AN INDEX OF ITS OWN MEANS ONE PER SEAL, NOT ONE PER REPOSITORY ──
 //
-// The private index used to be a fixed name, `aforge-ground-index`, and one
+// The private index used to be a fixed name, `codeaf-ground-index`, and one
 // parent's siblings are carved CONCURRENTLY — the frontier starts every part of
 // a division at once, and each of them seals the same parent tree before
 // [cutWorktreeFrom] takes the repository lock. Two seals sharing one file is one
@@ -928,7 +928,7 @@ func sealGroundWork(dir, title string) (string, error) {
 	}
 	// The exclusions are the two corners that belong to machinery rather than to
 	// anybody's world: a task's private metadata (task_run.go's
-	// [aforgeDroppings]), and furrow's own bookkeeping, which a folder gains the
+	// [codeafDroppings]), and furrow's own bookkeeping, which a folder gains the
 	// moment anything attaches it ([hideFurrowMarker]). Neither is in the
 	// worktree this commit is about to be carved into, so committing either
 	// would put a file in the child's world that its parent's world does not
@@ -950,7 +950,7 @@ func sealGroundWork(dir, title string) (string, error) {
 	if out, err := withIndex("add", "-A", "--", "."); err != nil {
 		return "", sealProblem(out, err)
 	}
-	if out, err := withIndex("reset", "-q", "--", aforgeDroppings, furrowMarkerDir); err != nil {
+	if out, err := withIndex("reset", "-q", "--", codeafDroppings, furrowMarkerDir); err != nil {
 		return "", sealProblem(out, err)
 	}
 	tree, err := withIndex("write-tree")
@@ -971,7 +971,7 @@ func sealGroundWork(dir, title string) (string, error) {
 		// nothing. It is the one road out of here that answers nothing twice.
 		return "", nil
 	}
-	commit, err := git(dir, append(aforgeGitIdentity(),
+	commit, err := git(dir, append(codeafGitIdentity(),
 		"commit-tree", tree, "-p", "HEAD", "-m", groundCommitMessage(title))...)
 	if err != nil {
 		return "", sealProblem(commit, err)
@@ -984,7 +984,7 @@ func sealGroundWork(dir, title string) (string, error) {
 // siblings off each other ([sealGroundWork] says what happened when it was a
 // name), and it is written down once so that a sweep looking for the harness's
 // leavings in a repository has one string to look for.
-const groundIndexPrefix = "aforge-ground-index-"
+const groundIndexPrefix = "codeaf-ground-index-"
 
 // sealProblem is the one error a seal that would not go answers with, and it
 // PREFERS GIT'S OWN WORDS exactly as [familyTreeProblem] does one file over: a
@@ -1064,7 +1064,7 @@ func (t taskTree) replayOwnWork() bool {
 	if strings.TrimSpace(t.base) == "" || strings.TrimSpace(t.dir) == "" {
 		return false
 	}
-	if _, err := git(t.dir, append(aforgeGitIdentity(),
+	if _, err := git(t.dir, append(codeafGitIdentity(),
 		"rebase", "--onto", t.base+"^", t.base)...); err == nil {
 		return false
 	}

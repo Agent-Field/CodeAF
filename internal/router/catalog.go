@@ -174,7 +174,7 @@ func writeCatalog(path string, catalog *Catalog) {
 }
 
 // statePath resolves where the router keeps what it has learned. It follows the
-// profile package exactly — AFORGE_PROFILE_DIR when set, ~/.aforge otherwise —
+// profile package exactly — CODEAF_PROFILE_DIR when set, ~/.codeaf otherwise —
 // because a run's memory should live in one directory, not two.
 func statePath(dir, name string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
@@ -187,7 +187,7 @@ func statePath(dir, name string) (string, error) {
 }
 
 // replaceFile writes through a temporary file and renames over the target, so a
-// reader — another aforge process, or this one after a crash — never sees a
+// reader — another codeaf process, or this one after a crash — never sees a
 // half-written state file. A partial catalog would be read back as a set of
 // free models.
 func replaceFile(path string, data []byte) error {

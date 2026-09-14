@@ -13,7 +13,7 @@ import (
 )
 
 func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	path := filepath.Join(t.TempDir(), "graph.db")
 	graph, err := store.Open(path)
 	if err != nil {
@@ -108,7 +108,7 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 }
 
 func TestNotebookDisplaysCanonicalScopesAndAliases(t *testing.T) {
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func assertNotebookStatus(t *testing.T, path string, seq int64, want string) {
 
 // ── C21: A COLUMN HEADER OVER NO ROWS ────────────────────────────────────────
 //
-// On a fresh machine `aforge notebook` printed `SEQ SCOPE KIND AGE USES RIDES
+// On a fresh machine `codeaf notebook` printed `SEQ SCOPE KIND AGE USES RIDES
 // BAD STATUS BELIEF` and nothing under it, which is the whole output. Nine
 // column names with no rows read as a table that failed to load rather than as
 // a notebook nothing has been written in yet — and an empty state has to say
@@ -192,7 +192,7 @@ func TestAnEmptyNotebookSaysSoInsteadOfPrintingAHeader(t *testing.T) {
 	}
 	// AND IT SAYS WHAT TO DO NEXT. A person who typed the command and got one
 	// flat sentence still does not know what would put something on the page.
-	if !strings.Contains(text, "hand aforge some work") {
+	if !strings.Contains(text, "hand codeaf some work") {
 		t.Fatalf("the empty state does not say what fills the page:\n%s", text)
 	}
 }

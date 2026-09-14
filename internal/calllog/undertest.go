@@ -13,7 +13,7 @@ import (
 //
 // The log is always on and works out its own path when nobody hands it one,
 // which is exactly right for the product and exactly wrong under `go test`: a
-// test binary inherits the AFORGE_HOME of whoever started it, so a package that
+// test binary inherits the CODEAF_HOME of whoever started it, so a package that
 // streams scripted answers through a client appends its fiction to the ledger
 // of the person at the keyboard. It has happened twice — 356 rows of
 // `vendor/vision-model` priced at $4.25 beside one run's real rows (#286), and
@@ -24,7 +24,7 @@ import (
 // So under test this package will not resolve a path it was not given. A log
 // that would land in the state root the environment named is refused and the
 // log is simply off; a test that WANTS one says where it goes — `Open` with a
-// directory of its own, or the AFORGE_CALL_LOG pin — and gets one.
+// directory of its own, or the CODEAF_CALL_LOG pin — and gets one.
 //
 // THE GATE IS HERE RATHER THAN IN THE HELPERS THAT BUILD CLIENTS because a
 // helper can be forgotten. `internal/provider` and `cmd/codeaf` each pin the
@@ -40,8 +40,8 @@ var underTest = testing.Testing()
 // test binary can inherit without asking for it. The name is spelled here
 // rather than taken from internal/config, which owns it as
 // config.ProfileDirEnv: config opens this log, so the import would be a cycle.
-// `aforge logs` and `aforge doctor` spell it out for the same reason.
-const profileDirEnv = "AFORGE_PROFILE_DIR"
+// `codeaf logs` and `codeaf doctor` spell it out for the same reason.
+const profileDirEnv = "CODEAF_PROFILE_DIR"
 
 // chosenPath is the path its caller may write to, and "" for one that would
 // land in a root whoever started a test binary named. Outside a test it is the
@@ -51,7 +51,7 @@ func chosenPath(path string) string {
 		return path
 	}
 	// Both roots, because either can be the person's: the profile moves out
-	// from under the state root when AFORGE_PROFILE_DIR is exported, and a log
+	// from under the state root when CODEAF_PROFILE_DIR is exported, and a log
 	// refused at one of them while landing in the other would be the same
 	// defect with a rarer environment.
 	for _, root := range []string{home.Dir(), os.Getenv(profileDirEnv)} {

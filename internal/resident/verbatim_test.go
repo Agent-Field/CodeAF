@@ -8,7 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// The ask a script submits is the specification, and `aforge do` promises to
+// The ask a script submits is the specification, and `codeaf do` promises to
 // run it rather than a better-worded version of it.
 //
 // The seam this holds is the one a benchmark cannot see from outside: the

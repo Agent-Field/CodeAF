@@ -184,7 +184,7 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 	}
 	node.spendMergeRoundCount()
 
-	out, err := git(tree.dir, append(aforgeGitIdentity(), "merge", "--no-edit", home)...)
+	out, err := git(tree.dir, append(codeafGitIdentity(), "merge", "--no-edit", home)...)
 	if err == nil {
 		// The two branches had nothing to argue about after all — a merge git
 		// could do by itself, which is the cheapest possible round.
@@ -284,7 +284,7 @@ func settleResolvedMerge(tree taskTree, files []string) string {
 	if still := conflictedPaths(tree.dir); len(still) > 0 {
 		return "git still holds " + namedFew(still, conflictNamesShown) + " as unresolved"
 	}
-	if out, err := git(tree.dir, append(aforgeGitIdentity(), "commit", "--no-edit")...); err != nil {
+	if out, err := git(tree.dir, append(codeafGitIdentity(), "commit", "--no-edit")...); err != nil {
 		return "the merge could not be committed — " + firstLine(out)
 	}
 	return ""

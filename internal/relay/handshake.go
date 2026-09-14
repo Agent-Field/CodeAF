@@ -35,7 +35,7 @@ import (
 
 // registrationLabel domain-separates this proof from every other use of a
 // machine's long-term key.
-const registrationLabel = "aforge relay registration v1"
+const registrationLabel = "codeaf relay registration v1"
 
 // challengeBytes is the relay's ephemeral public key followed by a fresh nonce.
 const challengeBytes = 32 + 32
@@ -45,7 +45,7 @@ const proofBytes = 32
 
 // The one-byte verdicts the relay writes once it has read a proof. A verdict
 // rather than an HTTP status because the upgrade has already happened by then,
-// and a person watching `aforge serve` needs a sentence rather than a number.
+// and a person watching `codeaf serve` needs a sentence rather than a number.
 const (
 	verdictReady   byte = 1
 	verdictRefused byte = 2

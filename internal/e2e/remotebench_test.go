@@ -10,11 +10,11 @@
 // arrangement COSTS — a round trip is free over net.Pipe, base64 is free, ssh
 // is not there at all, and a killed link is a thing a test invents rather than
 // a thing that happens. Those are exactly the four numbers a person weighing
-// `aforge chat --host` against `scp` wants, so they are measured here, over
+// `codeaf chat --host` against `scp` wants, so they are measured here, over
 // ssh, against a machine in another room.
 //
 // THE LOCAL HALF RUNS IN THIS PROCESS. [benchLink.spawn] is cmd/codeaf's
-// engineLink.spawn with the same shape — `ssh -T <dest> "aforge engine …
+// engineLink.spawn with the same shape — `ssh -T <dest> "codeaf engine …
 // --workspace '<ws>'"`, stdin and stdout as one [io.ReadWriteCloser] — handed
 // to [remote.Roam] as its dialer. So what is being timed is the wire the
 // product actually uses, including its redialling, and not a re-implementation
@@ -26,7 +26,7 @@
 // copies included, and [noteDigest] is checked once at the top so that a run
 // pointed at the wrong directory stops there instead of publishing a table.
 //
-// WHAT IT NEEDS ON THE FAR MACHINE: an aforge built from this branch (the two
+// WHAT IT NEEDS ON THE FAR MACHINE: a codeaf built from this branch (the two
 // ends refuse each other at the door otherwise), and a workspace holding
 // note.txt, sub/inner.txt, five-mb.bin and twenty-mb.bin. Nothing else on that
 // machine is written to, and the one directory this harness makes is removed
@@ -35,7 +35,7 @@
 // TWO DEPARTURES FROM THE DOOR'S OWN SPAWN, both stated here because a
 // benchmark that quietly ran something else than the product would be worthless.
 //
-//   - `--no-host`. The door lets the far `aforge engine` attach to a session
+//   - `--no-host`. The door lets the far `codeaf engine` attach to a session
 //     HOST that outlives the connection, and that is the right default for a
 //     conversation. It is the wrong one for a measurement on somebody else's
 //     laptop: the numbers would be partly about a socket splice, an already
@@ -53,10 +53,10 @@
 //
 // RUN IT:
 //
-//	AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
+//	CODEAF_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
 //
 // The build tag keeps it out of `go test ./...` entirely, and with no
-// AFORGE_BENCH_HOST it skips with the sentence that says what to set.
+// CODEAF_BENCH_HOST it skips with the sentence that says what to set.
 package e2e
 
 import (
@@ -82,22 +82,22 @@ const (
 	// hostEnv names the ssh destination, and its absence is what makes this
 	// file skip rather than fail: a benchmark that needs another machine is not
 	// a broken test on a machine that has not got one.
-	hostEnv = "AFORGE_BENCH_HOST"
+	hostEnv = "CODEAF_BENCH_HOST"
 	// workspaceEnv is the seeded directory over there, as `--host host:path`
 	// would spell it — relative to the far machine's home.
-	workspaceEnv = "AFORGE_BENCH_WORKSPACE"
+	workspaceEnv = "CODEAF_BENCH_WORKSPACE"
 	// linkEnv is one phrase describing the link, which goes into the document
 	// because a throughput number with no link beside it means nothing — and
 	// because only a person knows whether two machines are a cable apart or
 	// coming back through a relay on another continent. Unset, the document
 	// says it was not told rather than guessing.
-	linkEnv = "AFORGE_BENCH_LINK"
+	linkEnv = "CODEAF_BENCH_LINK"
 
 	// keyEnv is a provider key for the FAR machine's engine, which refuses to
 	// boot without one. Set it only if that machine has none of its own; it
 	// travels on the remote command line and is therefore visible in that
 	// machine's process list for as long as the run takes.
-	keyEnv = "AFORGE_BENCH_KEY"
+	keyEnv = "CODEAF_BENCH_KEY"
 
 	defaultWorkspace = "af-files-e2e"
 
@@ -105,7 +105,7 @@ const (
 	// available. It is deliberately not a key: no turn is submitted anywhere in
 	// this file, so nothing ever tries to spend it, and the shape of the
 	// sentence says so to anybody who finds it in a process list.
-	placeholderKey = "sk-aforge-bench-placeholder-never-spent"
+	placeholderKey = "sk-codeaf-bench-placeholder-never-spent"
 )
 
 // The seeded files and their digests. THE DIGESTS ARE THE POINT: they are
@@ -137,7 +137,7 @@ const benchDoc = "../../docs/remote-files-bench.md"
 // reproduce is the command a reader types to get these numbers themselves. It
 // is written into the document, so it lives here once rather than in prose
 // that could drift away from the build tag it names.
-const reproduce = "AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/"
+const reproduce = "CODEAF_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/"
 
 // ── the link ────────────────────────────────────────────────────────────────
 
@@ -162,14 +162,14 @@ type benchLink struct {
 	spawns int
 }
 
-// spawn starts one `ssh -T <dest> aforge engine --workspace '<ws>'` and hands
+// spawn starts one `ssh -T <dest> codeaf engine --workspace '<ws>'` and hands
 // back its pipes. It is [remote.Dialer], and it is deliberately the same shape
 // as cmd/codeaf/chatv3_host.go's engineLink.spawn: -T because there is nothing
 // interactive on the far end and a pseudo-terminal would turn a frame into
 // nonsense, and the workspace quoted because a path with a space in it is a
 // path.
 func (l *benchLink) spawn() (io.ReadWriteCloser, error) {
-	remoteCommand := "aforge engine --no-host"
+	remoteCommand := "codeaf engine --no-host"
 	if l.workspace != "" {
 		remoteCommand += " --workspace " + shellWord(l.workspace)
 	}
@@ -257,7 +257,7 @@ func shellWord(word string) string {
 func TestRemoteBench(t *testing.T) {
 	dest := strings.TrimSpace(os.Getenv(hostEnv))
 	if dest == "" {
-		t.Skipf("this benchmark needs a real second machine: set %s to an ssh destination that already works and has an aforge from this branch on the PATH a non-login ssh command sees (`ssh <host> aforge version` must answer), and %s to the seeded workspace there — it defaults to %q, and must hold %s, %s and %s.",
+		t.Skipf("this benchmark needs a real second machine: set %s to an ssh destination that already works and has a codeaf from this branch on the PATH a non-login ssh command sees (`ssh <host> codeaf version` must answer), and %s to the seeded workspace there — it defaults to %q, and must hold %s, %s and %s.",
 			hostEnv, workspaceEnv, defaultWorkspace, noteName, fiveName, twentyName)
 	}
 	workspace := strings.TrimSpace(os.Getenv(workspaceEnv))
@@ -279,15 +279,15 @@ func TestRemoteBench(t *testing.T) {
 		// file needs is a second computer, and a laptop with its lid shut is
 		// the ordinary state of one — so an unreachable host skips with the
 		// far end's own words and the fix, exactly as a missing
-		// AFORGE_BENCH_HOST does.
+		// CODEAF_BENCH_HOST does.
 		//
 		// A VERSION MISMATCH IS DIFFERENT AND FAILS. There the machine
 		// answered: two builds that disagree about the wire is a fault
 		// somebody has to fix, and a skip would hide it.
-		if strings.Contains(err.Error(), "different version of aforge") {
-			t.Fatalf("%s and this machine do not speak the same wire (this build is v%d): %v — rebuild the far aforge from this branch", dest, remote.Version, err)
+		if strings.Contains(err.Error(), "different version of codeaf") {
+			t.Fatalf("%s and this machine do not speak the same wire (this build is v%d): %v — rebuild the far codeaf from this branch", dest, remote.Version, err)
 		}
-		t.Skipf("no engine to measure on %s: %v — wake the machine, check `ssh %s aforge version` answers, and run it again.", dest, err, dest)
+		t.Skipf("no engine to measure on %s: %v — wake the machine, check `ssh %s codeaf version` answers, and run it again.", dest, err, dest)
 	}
 	defer func() { _ = client.Close() }()
 
@@ -389,7 +389,7 @@ func TestRemoteBench(t *testing.T) {
 		}
 		coldDial = dial.median()
 		add(benchRow{
-			what:   "cold dial — ssh, `aforge engine` starting over there, handshake",
+			what:   "cold dial — ssh, `codeaf engine` starting over there, handshake",
 			n:      3,
 			median: coldDial,
 			p95:    dial.p95(),
@@ -873,10 +873,10 @@ func document(f findings) string {
 		over = f.link
 	}
 	fmt.Fprintf(&out, "Measured %s, %s → `%s`, over %s.\n\n", time.Now().Format("2006-01-02"), here(), f.dest, over)
-	fmt.Fprintf(&out, "- **surface** — this machine, %s/%s, running the local half in-process: `internal/remote`'s client, dialled exactly as `aforge chat --host` dials it.\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Fprintf(&out, "- **engine** — `%s`, %s, running `aforge engine --no-host --workspace '%s'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `%s`.\n", f.dest, far(f.dest), f.workspace, f.welcome.Workspace)
+	fmt.Fprintf(&out, "- **surface** — this machine, %s/%s, running the local half in-process: `internal/remote`'s client, dialled exactly as `codeaf chat --host` dials it.\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(&out, "- **engine** — `%s`, %s, running `codeaf engine --no-host --workspace '%s'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `%s`.\n", f.dest, far(f.dest), f.workspace, f.welcome.Workspace)
 	fmt.Fprintf(&out, "- **wire** — v%d on both ends. The handshake refuses a mismatch at the door, so every number below is one protocol talking to itself.\n\n", remote.Version)
-	out.WriteString("Reproduce, with a seeded workspace on the far machine (`note.txt`, `sub/inner.txt`, `five-mb.bin`, `twenty-mb.bin`) and an aforge from this branch on its PATH:\n\n")
+	out.WriteString("Reproduce, with a seeded workspace on the far machine (`note.txt`, `sub/inner.txt`, `five-mb.bin`, `twenty-mb.bin`) and a codeaf from this branch on its PATH:\n\n")
 	fmt.Fprintf(&out, "```\n%s\n```\n\n", reproduce)
 	out.WriteString("Every figure is the **median of the whole run** — no best-of, no discarded repetitions — and every fetch's sha256 was checked against the seeded file before its time was counted.\n\n")
 	out.WriteString(markdown(f.rows))
@@ -885,7 +885,7 @@ func document(f findings) string {
 	fmt.Fprintf(&out, "**The round trip is the floor.** Every call is one frame out and one frame back, so nothing here is faster than a stat: %s. A listing of a small directory costs the same, because it IS the same round trip; a thousand entries costs the round trip plus the JSON.\n\n", span(f.rtt))
 	out.WriteString(overhead(f))
 	fmt.Fprintf(&out, "**The dedup path is the real speed-up, and it is a hash comparison.** A file already held is not fetched again: the surface asks whether the path is still there and compares the digest it already has (`FetchedFile.Hash`, the CAS's own key). None of the file's %d bytes cross — the difference between those two rows is the difference between a question and a transfer.\n\n", fiveSize)
-	fmt.Fprintf(&out, "**The transfer survives the cut.** The measurement is literal: two 5MB fetches complete, this harness kills its own ssh child by its process handle, and the clock runs until a fetch succeeds again AND verifies. In the gap calls are refused rather than queued — `reconnecting to %s — try that again in a moment` — and internal/remote's reader goroutine opens the next ssh itself. The gap is not mysterious once the cold-dial row is beside it: one second of first backoff (redial.go's `firstBackoff`), then a whole cold dial (%s here — ssh, plus `aforge engine` starting over there), and the fetch that follows takes what a fetch takes. A persistent engine host, which is the door's default shape, replaces the boot with a socket attach and is the faster of the two.\n\n", f.dest, span(f.coldDial))
+	fmt.Fprintf(&out, "**The transfer survives the cut.** The measurement is literal: two 5MB fetches complete, this harness kills its own ssh child by its process handle, and the clock runs until a fetch succeeds again AND verifies. In the gap calls are refused rather than queued — `reconnecting to %s — try that again in a moment` — and internal/remote's reader goroutine opens the next ssh itself. The gap is not mysterious once the cold-dial row is beside it: one second of first backoff (redial.go's `firstBackoff`), then a whole cold dial (%s here — ssh, plus `codeaf engine` starting over there), and the fetch that follows takes what a fetch takes. A persistent engine host, which is the door's default shape, replaces the boot with a socket attach and is the faster of the two.\n\n", f.dest, span(f.coldDial))
 	fmt.Fprintf(&out, "**The refusal is fast.** A file over the 16MB ceiling is refused from its SIZE on the far disk, before a byte is read, so the no comes back at round-trip speed rather than after 20MB of transfer: `engine: twenty-mb.bin is 20MB and the most one file may cross this connection is 16MB`.\n\n")
 
 	out.WriteString("## Honest asymmetries in these numbers\n\n")

@@ -6,7 +6,7 @@ package enginehost
 //
 // A host outlives the connection that started it, and that is the feature. It
 // also outlives the BUILD that started it, and that is a trap: `rm bin/codeaf
-// && make build` on a machine leaves the new binary answering `aforge version`
+// && make build` on a machine leaves the new binary answering `codeaf version`
 // while the old process is still holding the socket, so every surface that
 // dials in is spliced onto a build nobody has been running for an hour. When
 // the protocol moved with that build, what the person got was the old host's

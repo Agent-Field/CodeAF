@@ -223,7 +223,7 @@ func TestATopLineOverAQuietDaySaysNothingAboutMoney(t *testing.T) {
 // was written to stop.
 func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 	for _, rail := range []float64{500, 12.5, 4.1} {
-		t.Setenv("AFORGE_DAILY_BUDGET", strconv.FormatFloat(rail, 'f', -1, 64))
+		t.Setenv("CODEAF_DAILY_BUDGET", strconv.FormatFloat(rail, 'f', -1, 64))
 		lab := newHomeLab(t)
 		now := moneyFixtureNoon()
 		here := lab.workspace("alpha")

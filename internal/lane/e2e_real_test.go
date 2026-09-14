@@ -40,7 +40,7 @@ package lane_test
 //
 // It skips, green and loudly, with no key. The key is resolved exactly as a
 // session resolves it (`internal/config`.APIKeyAt): the OpenRouter variable,
-// then the OpenAI one, then the profile file — so a machine that can run aforge
+// then the OpenAI one, then the profile file — so a machine that can run codeaf
 // can run this, and one that cannot is told which of the three to set.
 //
 // It is an EXTERNAL test package on purpose. It imports `internal/provider`,
@@ -104,7 +104,7 @@ const realRatedFloor = 8
 // to rescue until a belief exists — and because five tests would each pay for
 // their own sheet fetch and their own warm connection.
 func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
-	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("CODEAF_PROFILE_DIR")))
 	if key == "" {
 		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
 	}
@@ -736,7 +736,7 @@ const realToolTokens = 40
 //
 //	go test -tags e2e ./internal/lane/ -run TestRealRouterChooses -v
 func TestRealRouterChoosesForATierAndATurnThatCarriesTools(t *testing.T) {
-	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("CODEAF_PROFILE_DIR")))
 	if key == "" {
 		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
 	}

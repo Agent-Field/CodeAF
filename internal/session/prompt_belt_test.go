@@ -178,7 +178,7 @@ func systemTextOf(a *Agent) string {
 }
 
 // openTestBrain is a store in a directory the test owns. It is never the
-// person's real one: a test that wrote into ~/.aforge would be a test that
+// person's real one: a test that wrote into ~/.codeaf would be a test that
 // changes their next conversation.
 func openTestBrain(t *testing.T) *store.Store {
 	t.Helper()

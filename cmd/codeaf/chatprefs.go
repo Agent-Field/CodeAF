@@ -1,7 +1,7 @@
 package main
 
 // chatprefs.go holds the model preferences and media-model snapshot an errand
-// (`aforge do`) reads, and the session id it mints. These helpers are what is
+// (`codeaf do`) reads, and the session id it mints. These helpers are what is
 // left of the v1 surface's internal/command after the window it drove was
 // removed, kept here because an errand still needs them.
 

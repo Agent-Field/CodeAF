@@ -44,7 +44,7 @@ type leafBuild struct {
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
-	// model names what this leaf runs on, in aforge's spelling. It is what the
+	// model names what this leaf runs on, in codeaf's spelling. It is what the
 	// router's ledger is keyed on, so it travels with the build rather than
 	// being read back off the client.
 	model string

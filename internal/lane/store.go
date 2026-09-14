@@ -52,7 +52,7 @@ import (
 
 // ── TWO PROCESSES, ONE FILE ─────────────────────────────────────────────────
 //
-// A PERSON RUNS AFORGE TWICE. One window is talking to a remote host and the
+// A PERSON RUNS codeaf TWICE. One window is talking to a remote host and the
 // other is a plain session in another directory; both are this program, both
 // hold a ledger of their own, and both write the whole set to the same file.
 // Written as a bare replace, THE LAST ONE TO SAVE WINS OUTRIGHT — and it wins
@@ -94,7 +94,7 @@ import (
 // back as no beliefs and no error.
 var ErrNoStore = errors.New("lane: no belief store")
 
-// StorePath is the file beliefs sleep in, `~/.aforge/v3/lanes.json` under the
+// StorePath is the file beliefs sleep in, `~/.codeaf/v3/lanes.json` under the
 // home this process was pointed at. It is stated once, here, because a path
 // that appears twice is a path that drifts.
 //
@@ -106,7 +106,7 @@ func StorePath() string { return stateFile("v3", "lanes.json") }
 // store is the belief file.
 //
 // The path is resolved on every call rather than captured at construction
-// because AFORGE_HOME is allowed to move the whole state root under a running
+// because CODEAF_HOME is allowed to move the whole state root under a running
 // process — a disposable run does exactly that — and a store holding the path
 // it was born with would keep writing into the home it was pointed at first.
 type store struct {

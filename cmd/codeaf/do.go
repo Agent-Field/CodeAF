@@ -31,7 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
-// `aforge do` is one errand, start to finish, with nobody watching.
+// `codeaf do` is one errand, start to finish, with nobody watching.
 //
 // It is deliberately not the plan/run pipeline. That path compiles a graph
 // once, writes it to a file, and executes exactly what the file says — which is
@@ -76,7 +76,7 @@ const (
 	defaultResidentWait = 60 * time.Second
 )
 
-// headlessOutcome is what one errand came to. It is `aforge do`'s own shape,
+// headlessOutcome is what one errand came to. It is `codeaf do`'s own shape,
 // and it is turned into the one machine contract every headless verb returns by
 // [errandEnvelope] on the way out (envelope.go) — nothing marshals this struct.
 //
@@ -146,7 +146,7 @@ type headlessOutcome struct {
 	// are the one piece of what the run understood that would die with it.
 	Learned []string `json:"learned,omitempty"`
 	// Model and PlanModel are the two seats this errand ran on, and the two
-	// Source fields name the rung that chose each — `--model`, `AFORGE_MODEL`,
+	// Source fields name the rung that chose each — `--model`, `CODEAF_MODEL`,
 	// `crew frugal`, `default` (config.ResolveSeats). They are here because the
 	// defect that produced them was invisible from outside: a campaign that
 	// believed its profile's crew was in force had no way to read back that the
@@ -256,7 +256,7 @@ func runDo(args []string) error {
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
 	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
-	// "…; sets AFORGE_CONTEXT_FILL_PCT for this run", which is the
+	// "…; sets CODEAF_CONTEXT_FILL_PCT for this run", which is the
 	// implementation, and hard-coded their defaults in prose while their own
 	// DefValue was 0 — two spellings of one number, and one of them would drift.
 	// The figures are interpolated from the constants that own them now.
@@ -357,12 +357,12 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 		return fmt.Errorf("--context-fill and --completion-reserve must not be negative")
 	}
 	if fillPercent > 0 {
-		if err := os.Setenv("AFORGE_CONTEXT_FILL_PCT", strconv.Itoa(fillPercent)); err != nil {
+		if err := os.Setenv("CODEAF_CONTEXT_FILL_PCT", strconv.Itoa(fillPercent)); err != nil {
 			return fmt.Errorf("set the context fill for this run: %w", err)
 		}
 	}
 	if completionReserve > 0 {
-		if err := os.Setenv("AFORGE_COMPLETION_RESERVE", strconv.Itoa(completionReserve)); err != nil {
+		if err := os.Setenv("CODEAF_COMPLETION_RESERVE", strconv.Itoa(completionReserve)); err != nil {
 			return fmt.Errorf("set the completion reserve for this run: %w", err)
 		}
 	}
@@ -573,7 +573,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		settle = brain.stop
 	}
 
-	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT — the same law `aforge run`
+	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT — the same law `codeaf run`
 	// keeps, and it is the keep-on-failure rule that made a headless errand need
 	// it too. A Go process dies on Ctrl+C and on SIGTERM with nothing written,
 	// which is indistinguishable from a crash; now that the store survives such
@@ -867,7 +867,7 @@ func errandSucceeded(outcome headlessOutcome, err error) bool {
 // headlessStore decides where this errand lives. The default is a private home
 // that is deleted on a clean run, because isolation is the point of a one-shot:
 // a task run this way must not inherit half a conversation's assumptions, and a
-// store that survives it is what `aforge chat` already is. What survives a run
+// store that survives it is what `codeaf chat` already is. What survives a run
 // that did NOT go cleanly is keepPrivateStore's answer, not this one's.
 //
 // It is made under the state root's `runs/` and NOT in the operating system's
@@ -877,8 +877,8 @@ func errandSucceeded(outcome headlessOutcome, err error) bool {
 // /tmp is a record the system's own reaper is entitled to delete out from under
 // the person who was told where to find it, and on a machine that clears /tmp at
 // boot the answer to "where is yesterday's failure" is nowhere. THE RECORD STAYS
-// UNDER THE STATE ROOT, which is the one directory aforge owns and nothing else
-// prunes. AFORGE_HOME moves it with everything else, so a disposable run is
+// UNDER THE STATE ROOT, which is the one directory codeaf owns and nothing else
+// prunes. CODEAF_HOME moves it with everything else, so a disposable run is
 // still disposable in one word.
 func headlessStore(database string) (path, home string, ephemeral bool, err error) {
 	if database = strings.TrimSpace(database); database != "" {
@@ -895,7 +895,7 @@ func headlessStore(database string) (path, home string, ephemeral bool, err erro
 	if err = os.MkdirAll(runs, 0o700); err != nil {
 		return "", "", false, fmt.Errorf("create a private store: %w", err)
 	}
-	home, err = os.MkdirTemp(runs, "aforge-do-")
+	home, err = os.MkdirTemp(runs, "codeaf-do-")
 	if err != nil {
 		return "", "", false, fmt.Errorf("create a private store: %w", err)
 	}
@@ -2963,7 +2963,7 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 	return errandStatus(outcome)
 }
 
-// errandEnvelope turns what `aforge do` knows into the one machine contract
+// errandEnvelope turns what `codeaf do` knows into the one machine contract
 // every headless verb returns (envelope.go). It is the ONLY mapping between
 // this file's private shape and what a caller reads, which is what keeps `do`,
 // `exec` and `run` from publishing three different objects again.
@@ -3025,9 +3025,9 @@ func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
 		fmt.Fprintln(stderr, "  "+line)
 	}
 	fmt.Fprintln(stderr,
-		"headless mode cannot answer that — `aforge do` runs with nobody at the keyboard, so nothing was done.")
+		"headless mode cannot answer that — `codeaf do` runs with nobody at the keyboard, so nothing was done.")
 	fmt.Fprintln(stderr,
-		"say the answer in the ask itself and run it again, or bring it to `aforge` where it can be answered.")
+		"say the answer in the ask itself and run it again, or bring it to `codeaf` where it can be answered.")
 }
 
 // errandStatus is the contract a script reads, and it reads it off the one exit

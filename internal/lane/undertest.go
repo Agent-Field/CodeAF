@@ -12,13 +12,13 @@ import (
 // (`v3/lanes.json`) and one sheet cache per model (`v3/lanes/{model}.json`) —
 // and both resolve their own path when nobody hands them one, which is exactly
 // right for the product and exactly wrong under `go test`: a test binary
-// inherits the AFORGE_HOME of whoever started it, so a test that asks this
+// inherits the CODEAF_HOME of whoever started it, so a test that asks this
 // package a question is answered out of the person's own router state.
 //
 // It happened. `TestAnEmptyLedgerIsAnEmptyChoice` asserts the honest answer on
 // a fresh machine — no beliefs, therefore no opinion — and it went red for good
 // on this build box the first time a real run wrote
-// `~/.aforge/v3/lanes/deepseek%2Fdeepseek-v4-flash.json` (#475). Nothing in the
+// `~/.codeaf/v3/lanes/deepseek%2Fdeepseek-v4-flash.json` (#475). Nothing in the
 // test named a file, or a home, or a sheet: it built a chooser with a fake
 // ledger, and the chooser reached the live registry's sheet for the rows the
 // ledger had none of. That is the whole class — the reach-through nobody wrote
@@ -36,7 +36,7 @@ import (
 // A TEST THAT WANTS A FILE STILL GETS ONE, because what is refused is an
 // INHERITED root and never a root the test chose. The deliberate ways through
 // are acts rather than omissions, and all three already exist: `t.Setenv` of
-// AFORGE_HOME to a directory of the test's own (which is what most of this
+// CODEAF_HOME to a directory of the test's own (which is what most of this
 // directory's tests do), `store.at` for the belief file, and `sheet.cacheIn`
 // for the cache. None of them can be reached by forgetting.
 var underTest = testing.Testing()
@@ -47,19 +47,19 @@ var underTest = testing.Testing()
 //
 // The capture is the whole difference between this gate and the call log's,
 // which compares against the live root instead. That is right for a log nobody
-// wants under test and wrong here: a lane test that points AFORGE_HOME at its
+// wants under test and wrong here: a lane test that points CODEAF_HOME at its
 // own `t.TempDir()` and then reads the store back is doing the correct thing,
 // and a gate that watched the live root would refuse it. So what is refused is
 // the root nobody chose.
 //
 // IT IS THE STATE ROOT AND NOT ALSO THE PROFILE ROOT, which is where this gate
 // differs from the call log's second time. That log resolves under
-// AFORGE_PROFILE_DIR, so a gate watching only the state root would have written
+// CODEAF_PROFILE_DIR, so a gate watching only the state root would have written
 // into a person's ledger whenever the profile moved out from under it. Nothing
 // in this package resolves under the profile: both files here are [home.Join]
 // and nothing else. Naming a root this package cannot reach would buy no
-// protection and cost a real one — a test that points AFORGE_HOME at a
-// `t.TempDir()` which happens to sit under an inherited AFORGE_PROFILE_DIR has
+// protection and cost a real one — a test that points CODEAF_HOME at a
+// `t.TempDir()` which happens to sit under an inherited CODEAF_PROFILE_DIR has
 // chosen its root, and would have been refused it.
 var inheritedRoot = home.Dir()
 

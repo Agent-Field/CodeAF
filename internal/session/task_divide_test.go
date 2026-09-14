@@ -143,7 +143,7 @@ const narrowEvidence = "there are 3 bugs in the reconciler"
 // [TestAnUnpinnedBinaryKeepsANarrowDivisionTheWorkerAskedFor].
 func floorPinnedOn(t *testing.T) {
 	t.Helper()
-	t.Setenv("AFORGE_SPLITGATE", "1")
+	t.Setenv("CODEAF_SPLITGATE", "1")
 }
 
 // heldGovernor is a machine that is over its load ceiling and stays there. It
@@ -305,7 +305,7 @@ func TestTheSizingJudgesYesArmsTheSingleWorkerItStarts(t *testing.T) {
 }
 
 func TestTheRoadOffLeavesTheWorkerExactlyAsItWas(t *testing.T) {
-	// AFORGE_SWARM=0 is the whole of the way out, and this is what it buys.
+	// CODEAF_SWARM=0 is the whole of the way out, and this is what it buys.
 	nest := newDivideNest(t, wideBrief, 0)
 	off := nest.node.config
 	off.Divide = false
@@ -454,7 +454,7 @@ func TestTheRoadOffProducesWorkersWithoutTheVerb(t *testing.T) {
 // ([Agent.armDivision]'s third signal, enumeratesWidth, which reads the count
 // whatever the gate is pinned to).
 func TestAnUnpinnedBinaryKeepsANarrowDivisionTheWorkerAskedFor(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "")
+	t.Setenv("CODEAF_SPLITGATE", "")
 	reviewer := &divideReviewer{answer: `{"parts":[` +
 		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
 		`{"title":"two","summary":"s","brief":"b","acceptance":"a"},` +
@@ -1949,7 +1949,7 @@ func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
 func TestTheDivideVerbNamesTheFloorOnlyWhereTheFloorWillDecide(t *testing.T) {
 	floorSentence := "names at least " + strconv.Itoa(splitgate.Floor) + " separate items"
 	t.Run("unpinned", func(t *testing.T) {
-		t.Setenv("AFORGE_SPLITGATE", "")
+		t.Setenv("CODEAF_SPLITGATE", "")
 		nest := newDivideNest(t, wideBrief, 0)
 		tool, found := onBelt(nest.node, "divide_work")
 		if !found {

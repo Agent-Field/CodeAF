@@ -153,7 +153,7 @@ func TestAFolderSaidToBeWorkedInDirectlyIsWrittenDirectly(t *testing.T) {
 }
 
 // THE FOLDER THE CONVERSATION IS STANDING IN IS NEVER STAGED. A person who
-// opened aforge inside their project loses nothing and notices nothing.
+// opened codeaf inside their project loses nothing and notices nothing.
 func TestTheFolderYouAreStandingInIsWrittenDirectly(t *testing.T) {
 	repo := newTestRepo(t)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {

@@ -8,7 +8,7 @@ import (
 func TestDirDefaultsUnderTheUserHome(t *testing.T) {
 	t.Setenv("HOME", "/tmp/pretend-home")
 	t.Setenv(EnvVar, "")
-	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".aforge"); got != want {
+	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".codeaf"); got != want {
 		t.Fatalf("state root: got %q, want %q", got, want)
 	}
 }
@@ -53,7 +53,7 @@ func TestTwoStoresInOneDirectoryNeverShareAWorkspace(t *testing.T) {
 func TestBlankOverrideIsIgnored(t *testing.T) {
 	t.Setenv("HOME", "/tmp/pretend-home")
 	t.Setenv(EnvVar, "   ")
-	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".aforge"); got != want {
+	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".codeaf"); got != want {
 		t.Fatalf("state root: got %q, want %q", got, want)
 	}
 }

@@ -62,7 +62,7 @@ func TestSpeakSavesTheAudioAndReturnsThePath(t *testing.T) {
 		t.Fatalf("speak failed: %s", result)
 	}
 
-	directory := filepath.Join(workspace, ".aforge-v3", "audio")
+	directory := filepath.Join(workspace, ".codeaf-v3", "audio")
 	entries, err := os.ReadDir(directory)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("%s holds %v (%v), want one file", directory, entries, err)
@@ -78,7 +78,7 @@ func TestSpeakSavesTheAudioAndReturnsThePath(t *testing.T) {
 
 	// The result is one line: where it is, how big it is, who said it — and
 	// never the audio, which is image.go's law applied to a bigger blob.
-	if !strings.Contains(result, ".aforge-v3/audio/"+name) {
+	if !strings.Contains(result, ".codeaf-v3/audio/"+name) {
 		t.Fatalf("result %q does not carry the path", result)
 	}
 	if !strings.Contains(result, "talk/model") {
@@ -135,7 +135,7 @@ func TestSpeakHonoursAVoiceAndAPath(t *testing.T) {
 	if !strings.Contains(result, "clips/intro.mp3") {
 		t.Fatalf("result %q does not name the custom path", result)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3", "audio")); err == nil {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3", "audio")); err == nil {
 		t.Fatal("a custom path still wrote into the default directory")
 	}
 }
@@ -204,7 +204,7 @@ func TestSpokenAudioLandsInArtifactsForABorrowedSession(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("artifacts directory = %v, %v; want one audio file", entries, err)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3")); !os.IsNotExist(err) {
 		t.Fatalf("the session spoke into the person's repository: %v", err)
 	}
 }

@@ -62,7 +62,7 @@ func TestASecondWindowOnALockedSessionIsRefusedAndNamesTheWayOut(t *testing.T) {
 	for _, want := range []string{
 		"open in another window",
 		"press enter on it to move it here",
-		"aforge engine --stop --workspace " + workspace,
+		"codeaf engine --stop --workspace " + workspace,
 	} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("the refusal said %q, which does not carry %q", said, want)

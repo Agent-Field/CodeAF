@@ -474,7 +474,7 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why: "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed. " +
 			"It NAMES WHO SPENT THE VERB (#767): the person's own press says `you`, and the model spending it under " +
-			"`task.settle = auto` says `aforge took this as done`, so a receipt is never a lie about whose call it was",
+			"`task.settle = auto` says `codeaf took this as done`, so a receipt is never a lie about whose call it was",
 	},
 	"settleNotRightLine": {
 		screen: "you said it is not finished",
@@ -707,7 +707,7 @@ var tuiWords = map[string]tuiWord{
 			"a person reads is `incomplete` plus one of these sentences",
 	},
 	"taskAutoDecidingWord": {
-		screen: "aforge is deciding",
+		screen: "codeaf is deciding",
 		pkg:    "internal/session",
 		why: "the auto-settle floor's own row. A card with no chips MUST say why it has none — that defect, " +
 			"a card with no choices and no explanation, is what the whole wave exists to close. THE ANSWERS " +
@@ -715,7 +715,7 @@ var tuiWords = map[string]tuiWord{
 			"takes the decision back",
 	},
 
-	// ── the front door, on a machine that has never run aforge ───────────────
+	// ── the front door, on a machine that has never run codeaf ───────────────
 	"setupTitleWord": {
 		screen: "setting up",
 		why:    "the dim line over the first-run question, which says where in the flow this is",
@@ -854,7 +854,7 @@ var tuiWords = map[string]tuiWord{
 			"for it",
 	},
 	"questionDecidedByRuleWord": {
-		screen: "aforge, on your settings",
+		screen: "codeaf, on your settings",
 		pkg:    "internal/session",
 		why: "and a decision the dial took while nobody was there says that instead — F41 was a hidden " +
 			"timer recording `denied`, and this is the sentence that makes such a thing impossible to hide",

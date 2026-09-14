@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// The project-local settings layer: <workspace>/.aforge-v3/config.json.
+// The project-local settings layer: <workspace>/.codeaf-v3/config.json.
 //
-// It is omp's <repo>/.omp/config.yml in aforge's file format, and it answers the
+// It is omp's <repo>/.omp/config.yml in codeaf's file format, and it answers the
 // question the profile cannot: which settings belong to the REPOSITORY rather
 // than to the person. A team's tool approvals, the cheap model a repo's small
 // calls ride, the ceiling one sitting in this codebase may spend — those are
@@ -60,13 +60,13 @@ import (
 const (
 	// ProjectConfigDir is the per-repository settings directory.
 	//
-	// IT IS ON THE aforge SCHEME AND NOT THE PRODUCT'S FINAL NAME. openaf is
+	// IT IS ON THE codeaf SCHEME AND NOT THE PRODUCT'S FINAL NAME. codeaf is
 	// what this will be called, and the rename happens ONCE, at the end, as its
 	// own refactor (docs/CHAT-V3.md, Decision 26 — "One home, one seam, one late
 	// rename"); a single directory that had gone ahead of it would be one name
 	// the rename has to remember not to change, and the migration people write
 	// for their own repositories would be two migrations instead of one.
-	ProjectConfigDir = ".aforge-v3"
+	ProjectConfigDir = ".codeaf-v3"
 	// ProjectConfigFile is the one file inside it this layer reads.
 	ProjectConfigFile = "config.json"
 )
@@ -124,7 +124,7 @@ type ProjectConfig struct {
 	values map[string]json.RawMessage
 }
 
-// LoadProjectConfig reads <cwd>/.aforge-v3/config.json.
+// LoadProjectConfig reads <cwd>/.codeaf-v3/config.json.
 //
 // Absent is empty; unreadable, unparseable, or written in the nested shape is an
 // error naming the path (law 3). Keys this build does not know are kept and
@@ -296,7 +296,7 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 //
 // The environment is checked FIRST and outranks the project file, which is the
 // only place in this file the order is not simply project-over-profile: these
-// two rows are pinned (AFORGE_HISTORY, AFORGE_DRAFT_PERSIST), and a pin is the
+// two rows are pinned (CODEAF_HISTORY, CODEAF_DRAFT_PERSIST), and a pin is the
 // operator speaking about this process. An unreadable pin is not a choice at
 // all — it falls through to the project file, and then to the profile reader,
 // which lands on the default exactly as it always did.
@@ -304,9 +304,9 @@ func (p ProjectConfig) ResolveBool(profileDir, key string) (bool, error) {
 	name := ""
 	switch key {
 	case KeyHistoryEnabled:
-		name = "AFORGE_HISTORY"
+		name = "CODEAF_HISTORY"
 	case KeyDraftPersist:
-		name = "AFORGE_DRAFT_PERSIST"
+		name = "CODEAF_DRAFT_PERSIST"
 	default:
 		if !ProjectKeyAllowed(key) {
 			return false, fmt.Errorf("%q is not a project-local settings row", key)

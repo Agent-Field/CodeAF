@@ -44,7 +44,7 @@ func TestASecondWindowMovesTheConversationAndTheFirstIsTold(t *testing.T) {
 }
 
 // TWO WINDOWS ON ONE MACHINE read as `another window`, which is the weaker claim
-// and the one aforge already uses at home for exactly this.
+// and the one codeaf already uses at home for exactly this.
 func TestAMoveToTheSameMachineReadsAsAnotherWindow(t *testing.T) {
 	agent := &fakeAgent{}
 	sess := heldSession(agent)

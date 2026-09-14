@@ -315,10 +315,10 @@ func TestAPinnedDailyLimitIsNamedAndNeverWritten(t *testing.T) {
 	a, dir := controlsApp(t, func(string) {
 		// The fixture clears every pin before it builds the surface, so the
 		// variable is exported HERE — inside the seed — where it survives.
-		t.Setenv("AFORGE_DAILY_BUDGET", "7")
+		t.Setenv("CODEAF_DAILY_BUDGET", "7")
 	})
 	screen := setupScreen(a)
-	if !strings.Contains(screen, "AFORGE_DAILY_BUDGET") {
+	if !strings.Contains(screen, "CODEAF_DAILY_BUDGET") {
 		t.Fatalf("a pinned limit must name the variable that owns it; got:\n%s", screen)
 	}
 	walkToControl(t, a, controlStart)

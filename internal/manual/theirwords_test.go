@@ -19,9 +19,9 @@ import (
 // through SearchBoth, because a row that reaches without the person's words no
 // longer measures #307.
 var paraphrases = []struct{ person, model, want string }{
-	{"who can see my files in aforge", "document exposure boundaries", "permissions"},
-	{"who can see my files in aforge", "workspace inspection authorization", "permissions"},
-	{"who can see my files in aforge", "local data disclosure controls", "permissions"},
+	{"who can see my files in codeaf", "document exposure boundaries", "permissions"},
+	{"who can see my files in codeaf", "workspace inspection authorization", "permissions"},
+	{"who can see my files in codeaf", "local data disclosure controls", "permissions"},
 }
 
 // R5: TestAParaphraseReachesThePageThePersonsWordsReach is #307. The model does
@@ -111,7 +111,7 @@ func TestASectionBothQuestionsReturnedComesFirst(t *testing.T) {
 // long is material, not a question, and the lookup falls back to exactly what it
 // did before this file existed rather than being diluted by a document.
 func TestAPastedDocumentIsNotReadAsAQuestion(t *testing.T) {
-	const model = "who can view my files in aforge"
+	const model = "who can view my files in codeaf"
 	paste := "who can see my files — here is the file, sorry it is long:\n" +
 		strings.Repeat("the quarterly revenue figures for the northern region and the southern region\n", 200)
 	if len(paste) <= theirWordsCap {

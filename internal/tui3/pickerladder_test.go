@@ -14,7 +14,7 @@ import (
 // while the ladder had five rungs and the `thinking` settings row offered all
 // five. Two vocabularies for one dial cost two things, and both are pinned here:
 // a level this walk did not recognise was CLEARED rather than climbed, so
-// `aforge --reasoning xhigh` lost its pin to one keypress; and `xhigh` and `max`
+// `codeaf --reasoning xhigh` lost its pin to one keypress; and `xhigh` and `max`
 // could not be reached from the picker at all.
 
 // A PIN IS NEVER THROWN AWAY BY ONE KEYPRESS. This is the surface's half of the

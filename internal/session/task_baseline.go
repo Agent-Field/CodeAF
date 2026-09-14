@@ -308,7 +308,7 @@ func readClaimedBaseChecks(ctx context.Context, place Place, base checkBase, cla
 		// separate context check happens to keep it safe today.
 		return checkPhotograph{read: true, unread: commands}
 	}
-	holder, err := os.MkdirTemp("", "aforge-check-base-")
+	holder, err := os.MkdirTemp("", "codeaf-check-base-")
 	if err != nil {
 		return checkPhotograph{}
 	}

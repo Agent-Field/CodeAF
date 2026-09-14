@@ -25,19 +25,19 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-// runExecute is `aforge run`, and `aforge run` MEANS ONE THING NOW: run one
+// runExecute is `codeaf run`, and `codeaf run` MEANS ONE THING NOW: run one
 // saved program.
 //
-// It used to mean two unrelated commands wearing one word — `aforge run
-// <graph.json>` executed a static plan and `aforge run subharness <name>` ran a
+// It used to mean two unrelated commands wearing one word — `codeaf run
+// <graph.json>` executed a static plan and `codeaf run subharness <name>` ran a
 // saved program — and the code admitted it out loud, in a `longerCommands`
-// table whose entire job was to stop `aforge run --help` printing the wrong
-// synopsis (usage.go). The pipeline is `aforge plan run <plan.json>` now, and
+// table whose entire job was to stop `codeaf run --help` printing the wrong
+// synopsis (usage.go). The pipeline is `codeaf plan run <plan.json>` now, and
 // this door reads its argument to keep both old spellings working for one
 // release:
 //
 //   - a leading `subharness` is the old spelling of this very command;
-//   - a first positional SPELLED AS A PATH is the old spelling of `aforge plan
+//   - a first positional SPELLED AS A PATH is the old spelling of `codeaf plan
 //     run`, because a plan is a file a person points at and a program is a
 //     registry name. The positional is found through the union of both doors'
 //     flag sets ([namesAPlanPath]), so `--input in.json` cannot be mistaken
@@ -55,8 +55,8 @@ func runExecute(args []string) error {
 }
 
 // namesAPlanPath reports whether this invocation's first positional argument is
-// SPELLED AS A PATH — which is what tells the old `aforge run <plan.json>`
-// apart from the new `aforge run <program>`.
+// SPELLED AS A PATH — which is what tells the old `codeaf run <plan.json>`
+// apart from the new `codeaf run <program>`.
 //
 // IT IS A QUESTION ABOUT THE WORD AND NEVER ABOUT THE DISK. It used to be
 // os.Stat: a first positional that existed as a file took the old road. So a
@@ -68,15 +68,15 @@ func runExecute(args []string) error {
 // shape of the token and nothing else ([looksLikeAPath]): a bare word is a
 // registry name, and only something a person wrote as a path is a file.
 //
-// AND THE PATH FORM WINS A TIE. `aforge run ./formatter` takes the old road
+// AND THE PATH FORM WINS A TIE. `codeaf run ./formatter` takes the old road
 // even where `formatter` is also a saved program, because the caller spelled a
-// path on purpose; `aforge run formatter` is the saved program whatever is on
+// path on purpose; `codeaf run formatter` is the saved program whatever is on
 // disk beside it.
 //
 // The positional is found the way every other door finds one: by asking A FLAG
 // SET which tokens are flags and which of those consume the token after them
 // ([reorder]). The set here is the UNION of both doors' flags, so
-// `aforge run myprogram --input in.json` finds `myprogram` rather than the
+// `codeaf run myprogram --input in.json` finds `myprogram` rather than the
 // input file named after it.
 func namesAPlanPath(args []string) bool {
 	union := commandFlags("run")
@@ -140,10 +140,10 @@ func looksLikeAPath(token string) bool {
 	return filepath.Ext(token) != ""
 }
 
-// runGraph executes a plan file exactly as it is written: `aforge plan run`.
+// runGraph executes a plan file exactly as it is written: `codeaf plan run`.
 func runGraph(name string, args []string) error {
 	flags := commandFlags(name)
-	workspace := flags.String("dir", "", "the directory to work in (default ./aforge-<goal hash>)")
+	workspace := flags.String("dir", "", "the directory to work in (default ./codeaf-<goal hash>)")
 	shorthandFlag(flags, "w", "dir")
 	output := flags.String("out", "", "write the completed plan as JSON to this file")
 	shorthandFlag(flags, "o", "out")
@@ -175,7 +175,7 @@ func runGraph(name string, args []string) error {
 	*contracts = !*noMethod
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge plan run <plan.json> [--dir dir] [--parallel 8]")
+		return fmt.Errorf("usage: codeaf plan run <plan.json> [--dir dir] [--parallel 8]")
 	}
 	data, err := os.ReadFile(rest[0])
 	if err != nil {
@@ -235,14 +235,14 @@ func runGraph(name string, args []string) error {
 
 	root := *workspace
 	if root == "" {
-		root = "aforge-" + strings.TrimPrefix(plan.RunID(graph.Goal), "aforge-")[:10]
+		root = "codeaf-" + strings.TrimPrefix(plan.RunID(graph.Goal), "codeaf-")[:10]
 	}
 	space, err := exec.NewWorkspace(root)
 	if err != nil {
 		return err
 	}
 	// The harness's own files leave the leaf's working directory here too, and
-	// they go to aforge's state root rather than to a sibling of the workspace:
+	// they go to codeaf's state root rather than to a sibling of the workspace:
 	// `-w` may name a person's repository, and a run that answered "outside your
 	// cwd" by putting a directory next to their project would have moved the mess
 	// rather than removed it. One home per workspace name, so a resumed run
@@ -268,7 +268,7 @@ func runGraph(name string, args []string) error {
 	//
 	// ALL OF IT IS AN ASIDE. This is what a person reads about the run and not
 	// the run's answer, so it goes where `do` has always put the same lines
-	// (streams.go); `aforge plan run p.json > result.txt` keeps the result and
+	// (streams.go); `codeaf plan run p.json > result.txt` keeps the result and
 	// nothing else.
 	fmt.Fprintf(aside, "goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
 	// Both seats, on every run rather than only on a split one, and each with
@@ -413,7 +413,7 @@ func runGraph(name string, args []string) error {
 		if *yesSpend {
 			origin = "headless:--yes-spend"
 		} else if preauthorized {
-			origin = "headless:AFORGE_PREAUTHORIZE_SPEND"
+			origin = "headless:CODEAF_PREAUTHORIZE_SPEND"
 		}
 		return railStore.RaiseDailyRail(rail.RaiseAmount(), origin)
 	}
@@ -517,7 +517,7 @@ func openDailyRailStore() (*store.Store, error) {
 }
 
 func spendPreauthorized(flagged bool, getenv func(string) string) bool {
-	return flagged || (getenv != nil && getenv("AFORGE_PREAUTHORIZE_SPEND") == "1")
+	return flagged || (getenv != nil && getenv("CODEAF_PREAUTHORIZE_SPEND") == "1")
 }
 
 // authorizeHeadlessRail is the spend question `run` asks when a rail is
@@ -538,7 +538,7 @@ func authorizeHeadlessRail(input io.Reader, commentary io.Writer, interactive, p
 		return true, nil
 	}
 	if !interactive {
-		fmt.Fprintln(commentary, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
+		fmt.Fprintln(commentary, "stdin is not a TTY; rerun with --yes-spend or CODEAF_PREAUTHORIZE_SPEND=1 to continue without a prompt")
 		return false, nil
 	}
 	fmt.Fprint(commentary, "Continue? [y/N] ")

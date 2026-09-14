@@ -3,7 +3,7 @@ package remote
 // THE FOLDERS A PERSON ATTACHES, ACROSS THE SEAM.
 //
 // The defect these are written against is not a remote one at all. The ordinary
-// `aforge chat` on this laptop goes through this wire to this machine's own
+// `codeaf chat` on this laptop goes through this wire to this machine's own
 // session host (cmd/codeaf's chatv3_local.go dials with an empty machine name),
 // so the surface's folder picker was type-asserting a door onto a *remote.Agent
 // that had none — and the assertion failing was, by design, silent: the line

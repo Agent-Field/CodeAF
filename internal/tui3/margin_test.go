@@ -93,7 +93,7 @@ func TestTheEmptyMarginDrawsOnlyItsDoors(t *testing.T) {
 	}
 }
 
-// AN ORDER IS ONE LINE: the glyph every aforge surface agrees on, and what the
+// AN ORDER IS ONE LINE: the glyph every codeaf surface agrees on, and what the
 // order is called.
 func TestAStandingOrderIsOneLineOnTheMargin(t *testing.T) {
 	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))

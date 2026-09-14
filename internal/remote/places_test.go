@@ -14,7 +14,7 @@ import (
 // ── THE PLACES OVER THE WIRE ────────────────────────────────────────────────
 //
 // A place is a listing of one machine's disk, and the surface used to list its
-// own: over --host the tasks place walked the LAPTOP's `~/.aforge/v3` and drew
+// own: over --host the tasks place walked the LAPTOP's `~/.codeaf/v3` and drew
 // eight rows and $22.54 of work under a conversation on a server that had run
 // none of it. Places.World is the door that ends that, and what these tests hold
 // it to is the two properties the surface is built on — the reading arrives
@@ -29,14 +29,14 @@ func farWorld(now time.Time) session.World {
 	return session.World{
 		Read: now,
 		Artifacts: []session.Artifact{{
-			Path:    "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002/artifacts/chart.png",
+			Path:    "/srv/.codeaf/v3/projects/-srv-code-api/bbbb000000000002/artifacts/chart.png",
 			Session: "bbbb000000000002", Title: "the sales chart", Kind: "image", Created: now,
 		}},
 		Projects: []session.Project{{
 			Dir: "-srv-code-api", Path: "/srv/code/api", Name: "api",
 			Sessions: []session.SessionRow{{
-				ID: "bbbb000000000002", Dir: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002",
-				Transcript: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002/transcript.jsonl",
+				ID: "bbbb000000000002", Dir: "/srv/.codeaf/v3/projects/-srv-code-api/bbbb000000000002",
+				Transcript: "/srv/.codeaf/v3/projects/-srv-code-api/bbbb000000000002/transcript.jsonl",
 				Title:      "rewriting the importer", Project: "api", ProjectDir: "/srv/code/api",
 				Workspace: "/srv/code/api", Model: "m", At: now, Created: now,
 				Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{{
@@ -53,7 +53,7 @@ func TestTheLatePlaceDoorsCrossAndArchiveStaysInsidePlaces(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	var archived string
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
-		return &Engine{Agent: &fakeAgent{model: "m"}, PlacesRoot: "/srv/.aforge/v3/projects",
+		return &Engine{Agent: &fakeAgent{model: "m"}, PlacesRoot: "/srv/.codeaf/v3/projects",
 			Ledger: func(time.Time) LedgerReading {
 				return LedgerReading{Lines: []session.UsageLine{{At: now, USD: 1.25}}, Held: true}
 			},
@@ -75,7 +75,7 @@ func TestTheLatePlaceDoorsCrossAndArchiveStaysInsidePlaces(t *testing.T) {
 	if err != nil || len(hits) != 1 || hits[0].Title != "importer" {
 		t.Fatalf("search: %+v, %v", hits, err)
 	}
-	inside := "/srv/.aforge/v3/projects/-srv-code-api/one"
+	inside := "/srv/.codeaf/v3/projects/-srv-code-api/one"
 	if err := loop.Client.Archive(inside, true); err != nil || archived != inside {
 		t.Fatalf("archive: %q, %v", archived, err)
 	}
@@ -93,7 +93,7 @@ func TestTheWorldCrossesTheWire(t *testing.T) {
 			Agent:      &fakeAgent{model: "m"},
 			Workspace:  "/srv/code/api",
 			World:      func() session.World { return farWorld(now) },
-			PlacesRoot: "/srv/.aforge/v3/projects",
+			PlacesRoot: "/srv/.codeaf/v3/projects",
 		}, nil
 	}})
 	if err != nil {
@@ -105,7 +105,7 @@ func TestTheWorldCrossesTheWire(t *testing.T) {
 	// path needs its disk: the surface puts the conversation it is sitting in
 	// back into this walk, and works out which bucket it belongs to from the root
 	// ([Welcome.PlacesRoot]).
-	if got := loop.Client.Welcome().PlacesRoot; got != "/srv/.aforge/v3/projects" {
+	if got := loop.Client.Welcome().PlacesRoot; got != "/srv/.codeaf/v3/projects" {
 		t.Fatalf("the welcome did not carry the engine's places root: %q", got)
 	}
 

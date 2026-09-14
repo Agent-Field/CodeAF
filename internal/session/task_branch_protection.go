@@ -8,14 +8,14 @@ import (
 )
 
 const (
-	aforgeGitName  = "aforge"
-	aforgeGitEmail = "aforge@localhost"
+	codeafGitName  = "codeaf"
+	codeafGitEmail = "codeaf@localhost"
 )
 
-// aforgeGitIdentity marks commits the task system creates so sibling landings
+// codeafGitIdentity marks commits the task system creates so sibling landings
 // can distinguish its own forward progress from a person's intervening work.
-func aforgeGitIdentity() []string {
-	return []string{"-c", "user.name=" + aforgeGitName, "-c", "user.email=" + aforgeGitEmail}
+func codeafGitIdentity() []string {
+	return []string{"-c", "user.name=" + codeafGitName, "-c", "user.email=" + codeafGitEmail}
 }
 
 // protectedBranchNames is THE ONE LIST of branch names automatic task landing leaves unchanged.
@@ -95,7 +95,7 @@ func protectedBranch(root, name string) bool {
 }
 
 // landsInThePersonsRepository distinguishes the person's own checkout from
-// repositories aforge owns as working material. It is deliberately not
+// repositories codeaf owns as working material. It is deliberately not
 // [standingInOwnSpace]: that question is gated on an owned conversation, while
 // a referred repository is borrowed and still must be protected.
 func (t taskTree) landsInThePersonsRepository() bool {
@@ -122,15 +122,15 @@ func (t taskTree) landsInThePersonsRepository() bool {
 	}
 	// AND THE LEGACY LAYOUT'S TASK FOLDERS ARE THE HARNESS'S TOO. A session with
 	// no folder of its own puts a family's mirror and a part's worktree under the
-	// repository's `.aforge-v3/` (task_run.go's [taskOwnFolder]), where no Trees()
+	// repository's `.codeaf-v3/` (task_run.go's [taskOwnFolder]), where no Trees()
 	// prefix can name them; a mirror opened there sits on git's default branch,
 	// and reading that as the person's trunk would keep every part of the family
 	// off the tree its parent is waiting to merge.
-	if strings.Contains(root, string(filepath.Separator)+aforgeDroppings+string(filepath.Separator)) {
+	if strings.Contains(root, string(filepath.Separator)+codeafDroppings+string(filepath.Separator)) {
 		return false
 	}
 	// A LEGACY SESSION HAS NO Place, but its family trees still live below the
-	// old .aforge-v3/tasks path. Those repositories are aforge's working
+	// old .codeaf-v3/tasks path. Those repositories are codeaf's working
 	// material too; treating git's default branch there as the person's would
 	// keep every part out of its parent and break the family landing.
 	marker := string(filepath.Separator) + filepath.FromSlash(tasksDirName) + string(filepath.Separator)
@@ -166,7 +166,7 @@ func (t taskTree) keptLandingSentence() string {
 }
 
 // branchMovedByPerson reports that the named branch no longer points at the
-// recorded world and that the movement was not made solely by aforge's own
+// recorded world and that the movement was not made solely by codeaf's own
 // landings. A rewrite is always the person's movement; a forward move is theirs
 // when any commit in the new range carries a different committer identity.
 //
@@ -195,7 +195,7 @@ func branchMovedByPerson(root, branch, recorded string) bool {
 		return false
 	}
 	for _, email := range strings.Fields(committers) {
-		if email != aforgeGitEmail {
+		if email != codeafGitEmail {
 			return true
 		}
 	}

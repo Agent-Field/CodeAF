@@ -1,5 +1,5 @@
 // Package lease elects the one process currently serving as a resident for a
-// durable Aforge store. The lock is only coordination; the journal remains the
+// durable codeaf store. The lock is only coordination; the journal remains the
 // source of truth and another process may take the role as soon as it is free.
 package lease
 

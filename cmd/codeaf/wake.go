@@ -86,8 +86,8 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	// A WALL IS `--timeout` ON EVERY DOOR THAT HAS ONE. This was
 	// `--max-seconds`, which is the same concept spelled a third way and in the
-	// unit rather than in the quantity — so `aforge wake --max-seconds 5m` was a
-	// parse error on a machine where `aforge do --timeout 5m` works (wall.go).
+	// unit rather than in the quantity — so `codeaf wake --max-seconds 5m` was a
+	// parse error on a machine where `codeaf do --timeout 5m` works (wall.go).
 	wall := wallFlag{wall: time.Duration(defaultWakeMaxSeconds) * time.Second}
 	flags.Var(&wall, "timeout", "hard wall on the pass, as a duration such as 2m (a bare number is seconds)")
 	renamedFlag(flags, "max-seconds", "timeout")
@@ -96,7 +96,7 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	}
 	noteRenamedFlags(flags)
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge wake [--db path] [--timeout 2m]")
+		return fmt.Errorf("usage: codeaf wake [--db path] [--timeout 2m]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {

@@ -142,7 +142,7 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 
 // ── C14: DOCTOR SAID NOTHING ABOUT THE ONE THING THAT STOPS EVERYTHING ───────
 //
-// `aforge doctor` is what somebody runs when nothing works. On a machine with
+// `codeaf doctor` is what somebody runs when nothing works. On a machine with
 // no provider key it reported six healthy-looking rows and left with 0, and the
 // single most common reason nothing works was the one thing it did not check.
 func TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt(t *testing.T) {
@@ -281,11 +281,11 @@ func rowSaying(text, label string) string {
 //
 // A developer's first run started with no OPENROUTER_API_KEY at all, because
 // the key they had pasted into the chat lives in the profile's own config.json.
-// `aforge help env` called the variable **required**, so the page said the run
+// `codeaf help env` called the variable **required**, so the page said the run
 // they had just watched succeed was impossible, and sent them hunting for a key
 // they already had.
 //
-// The truth is the ladder [config.APIKeyAt] climbs and `aforge doctor` reports:
+// The truth is the ladder [config.APIKeyAt] climbs and `codeaf doctor` reports:
 // the OpenRouter variable, the OpenAI one, then the profile. This asserts the
 // page against that ladder rather than against a sentence, so a rung added
 // tomorrow is a red test here and not a front door that has quietly gone stale.
@@ -304,7 +304,7 @@ func TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired(t *testing.T) {
 
 	row := environmentRow(t, config.APIKeyEnv)
 	if strings.Contains(strings.ToLower(row), "required") {
-		t.Errorf("`aforge help env` calls %s required, and a key in the profile answers without it — "+
+		t.Errorf("`codeaf help env` calls %s required, and a key in the profile answers without it — "+
 			"a required thing that is not required sends somebody to find a key they already have:\n%s",
 			config.APIKeyEnv, row)
 	}
@@ -334,7 +334,7 @@ func environmentRow(t *testing.T, variable string) string {
 		}
 	}
 	if len(row) == 0 {
-		t.Fatalf("`aforge help env` has no row for %s at all", variable)
+		t.Fatalf("`codeaf help env` has no row for %s at all", variable)
 	}
 	return strings.Join(row, "\n")
 }

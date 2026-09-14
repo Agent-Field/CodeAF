@@ -36,8 +36,8 @@ const (
 	documentEngineFree     = "free"
 	documentEngineOCR      = "ocr"
 
-	documentCacheHashPrefix  = "<!-- aforge-source-sha256: "
-	documentCachePagesPrefix = "<!-- aforge-pages: "
+	documentCacheHashPrefix  = "<!-- codeaf-source-sha256: "
+	documentCachePagesPrefix = "<!-- codeaf-pages: "
 )
 
 var (

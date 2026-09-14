@@ -14,13 +14,13 @@ import (
 
 // ── EVERY PAGE OF HELP FITS THE TERMINAL IT IS READ IN ─────────────────────
 //
-// `aforge --help` was a hundred and eight lines that drew a hundred and
+// `codeaf --help` was a hundred and eight lines that drew a hundred and
 // sixty-seven ROWS on an eighty-column terminal, because its longest line was a
 // hundred and sixty-four cells. Every second line was therefore folded by the
 // terminal, at a break nobody chose, INSIDE A WORD — `resuming you|r last
 // conversation` — and the twenty-five-column hanging indent stopped aligning
 // the moment it happened. The one page that has to be readable was the least
-// readable thing this binary printed, and `aforge help env` was worse: a
+// readable thing this binary printed, and `codeaf help env` was worse: a
 // reference table whose widest row was a hundred and sixteen cells.
 //
 // IT IS MEASURED IN DISPLAY CELLS AND NOT IN BYTES. That is the whole reason
@@ -35,7 +35,7 @@ import (
 // literal would measure a page nobody sees. So every page here is captured from
 // the door that prints it, exactly as a person gets it.
 func TestEveryHelpPageFitsAnEightyColumnTerminal(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 
 	for _, page := range helpPages(t) {
 		t.Run(page.name, func(t *testing.T) {
@@ -65,15 +65,15 @@ func TestEveryHelpPageFitsAnEightyColumnTerminal(t *testing.T) {
 // page it replaced — a hundred and sixty-seven, measured on the binary this
 // change started from.
 func TestTheHelpPageCostsFewerRowsThanTheOneItReplaced(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 
-	// What `aforge --help` cost on an eighty-column terminal before this
+	// What `codeaf --help` cost on an eighty-column terminal before this
 	// change: a hundred and eight lines, a hundred and sixty-seven rows.
 	const rowsBefore = 167
 
 	out, _ := captureUsage(t)
 	if err := usage(nil); err != nil {
-		t.Fatalf("`aforge --help` failed: %v", err)
+		t.Fatalf("`codeaf --help` failed: %v", err)
 	}
 	rows := 0
 	for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
@@ -83,7 +83,7 @@ func TestTheHelpPageCostsFewerRowsThanTheOneItReplaced(t *testing.T) {
 		rows += max(1, (drawn+helpWidth-1)/helpWidth)
 	}
 	if rows >= rowsBefore {
-		t.Errorf("`aforge --help` draws %d rows on an %d-column terminal; the page it replaced "+
+		t.Errorf("`codeaf --help` draws %d rows on an %d-column terminal; the page it replaced "+
 			"drew %d, so folding it has bought the reader nothing",
 			rows, helpWidth, rowsBefore)
 	}
@@ -106,7 +106,7 @@ func helpPages(t *testing.T) []helpPage {
 	capture := func(name string, print func() error) {
 		out, errs := captureUsage(t)
 		if err := print(); err != nil && exitCodeOf(err) != 0 {
-			t.Fatalf("`aforge %s` left with %d: %s", name, exitCodeOf(err), errs.String())
+			t.Fatalf("`codeaf %s` left with %d: %s", name, exitCodeOf(err), errs.String())
 		}
 		pages = append(pages, helpPage{name: name, text: out.String()})
 	}

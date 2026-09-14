@@ -270,7 +270,7 @@ func copySkillFile(source, target string, mode fs.FileMode) error {
 }
 
 func runSkillCheck(ctx context.Context, skillDir string) error {
-	clean, err := os.MkdirTemp("", "aforge-skill-check-")
+	clean, err := os.MkdirTemp("", "codeaf-skill-check-")
 	if err != nil {
 		return fmt.Errorf("create clean check directory: %w", err)
 	}
@@ -280,7 +280,7 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
 	cmd.Dir = clean
-	cmd.Env = append(os.Environ(), "AFORGE_SKILL_DIR="+skillDir)
+	cmd.Env = append(os.Environ(), "CODEAF_SKILL_DIR="+skillDir)
 	cmd.WaitDelay = time.Second
 	output, runErr := cmd.CombinedOutput()
 	if trialCtx.Err() == context.DeadlineExceeded {

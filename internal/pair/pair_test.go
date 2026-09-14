@@ -152,7 +152,7 @@ func TestACodeExpires(t *testing.T) {
 	}
 }
 
-// The line `aforge serve` prints, exactly as the design spells it, with the
+// The line `codeaf serve` prints, exactly as the design spells it, with the
 // validity interpolated rather than typed.
 func TestTheServeLinesReadTheWayTheyWereDesigned(t *testing.T) {
 	code := &Code{digits: "715302"}
@@ -460,10 +460,10 @@ func TestASurfaceRefusesAMachineThatIsNotTheOneItPinned(t *testing.T) {
 
 // EACH ONE NAMES A DIFFERENT THING AND A DIFFERENT NEXT STEP. A shrug that
 // covered all four would send somebody to check their wifi when the answer was
-// `aforge serve`.
+// `codeaf serve`.
 func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("AFORGE_HOME", home)
+	t.Setenv("CODEAF_HOME", home)
 	t.Setenv(RelayEnv, "")
 
 	reach := Reach{
@@ -506,7 +506,7 @@ func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "is not connected to the relay right now") {
 			t.Fatalf("with nothing registered, --at said %v", err)
 		}
-		if !strings.Contains(err.Error(), "aforge serve") {
+		if !strings.Contains(err.Error(), "codeaf serve") {
 			t.Fatalf("the sentence does not say what to do: %q", err)
 		}
 	})

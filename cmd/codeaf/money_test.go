@@ -308,7 +308,7 @@ func TestPlanSpendFallsBackToTheSpineWhenTheJobNeverLands(t *testing.T) {
 	}
 }
 
-// A ONE-SHOT PROCESS HAS NO HEARTBEATS TO SPARE. `aforge do` exits the moment
+// A ONE-SHOT PROCESS HAS NO HEARTBEATS TO SPARE. `codeaf do` exits the moment
 // its plan is refused, and the four landings the parked bill was waiting for
 // never come: a run that spent $0.04 on the wire reported $0.0016. Stopping
 // the brain is the last landing there will be, so it is where the bill goes

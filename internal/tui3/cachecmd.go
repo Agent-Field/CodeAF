@@ -17,7 +17,7 @@ package tui3
 // WHAT "THE CACHE" IS is said out loud in both answers, because the word is
 // one people reasonably stretch over their conversations and their dashboard —
 // and the only good moment to correct that is before a deletion. This verb
-// reaches ~/.aforge/cache and nothing else; internal/cachedir owns the radius
+// reaches ~/.codeaf/cache and nothing else; internal/cachedir owns the radius
 // for this surface and the CLI both.
 
 import (

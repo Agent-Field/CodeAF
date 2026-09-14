@@ -17,8 +17,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// Row 14. The answer `aforge plan show` gives is THE PLAN, and a `goal:` line in
-// front of it is the difference between `aforge plan show p.json > table.txt`
+// Row 14. The answer `codeaf plan show` gives is THE PLAN, and a `goal:` line in
+// front of it is the difference between `codeaf plan show p.json > table.txt`
 // keeping a table and keeping a table with a preamble stuck to its head. The
 // same is true of the receipt for a file `--out` wrote: useful, and not the
 // plan.
@@ -153,13 +153,13 @@ func TestASelfSpendDayWithNothingOnItSaysSoInsteadOfPrintingAHeader(t *testing.T
 		t.Fatalf("a column header was printed with no row under it:\n%s", printed)
 	}
 	if strings.TrimSpace(printed) == "" {
-		t.Fatal("`aforge why self` answered a day with nothing on it with silence, which reads as a broken command")
+		t.Fatal("`codeaf why self` answered a day with nothing on it with silence, which reads as a broken command")
 	}
 }
 
-// Row 13, the other half. `aforge services` on a healthy machine printed
+// Row 13, the other half. `codeaf services` on a healthy machine printed
 // absolutely nothing and exited 0, which is indistinguishable from a command
-// that broke. `aforge cache` has had the sentence all along.
+// that broke. `codeaf cache` has had the sentence all along.
 func TestNothingBeingKeptRunningIsASentenceAndNotSilence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "quiet.db")
 	graph, err := store.Open(path)
@@ -174,21 +174,21 @@ func TestNothingBeingKeptRunningIsASentenceAndNotSilence(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(printed) == "" {
-		t.Fatal("`aforge services` answered an idle machine with silence, which reads as a broken command")
+		t.Fatal("`codeaf services` answered an idle machine with silence, which reads as a broken command")
 	}
 }
 
 // Row 20. `--all` was read by hand and only when it was the FIRST word after
-// `revoke`, so `aforge devices revoke laptop --all` was refused — and refused
+// `revoke`, so `codeaf devices revoke laptop --all` was refused — and refused
 // with a usage line that did not mention `--all` at all. Somebody taking back
 // access to their own machine was told the wrong grammar for the gesture they
 // had just typed correctly.
 func TestDevicesRevokeReadsAllInEitherPositionAndSaysSoInTheUsage(t *testing.T) {
 	if !strings.Contains(usageText, "--all") {
-		t.Fatal("`aforge --help` does not name `--all` on `aforge devices revoke`")
+		t.Fatal("`codeaf --help` does not name `--all` on `codeaf devices revoke`")
 	}
 	if shape := usageForCommand("devices revoke"); !strings.Contains(shape, "--all") {
-		t.Fatalf("`aforge devices revoke --help` does not name --all:\n%s", shape)
+		t.Fatalf("`codeaf devices revoke --help` does not name --all:\n%s", shape)
 	}
 	for _, args := range [][]string{{"revoke", "--all", "laptop"}, {"revoke", "laptop", "--all"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -216,19 +216,19 @@ func TestDevicesRevokeReadsAllInEitherPositionAndSaysSoInTheUsage(t *testing.T) 
 	}
 }
 
-// Row 29. A defect report carrying `aforge dev` names nothing: not the commit,
+// Row 29. A defect report carrying `codeaf dev` names nothing: not the commit,
 // not the day, not the machine, and the first reply to it is always a question.
 // `make build` stamps the revision and the moment; the toolchain and the
 // platform are always there.
 func TestVersionNamesTheBuildAndTheMachineItWasBuiltFor(t *testing.T) {
 	printed := versionString()
-	for _, want := range []string{"aforge ", runtime.Version(), runtime.GOOS + "/" + runtime.GOARCH} {
+	for _, want := range []string{"codeaf ", runtime.Version(), runtime.GOOS + "/" + runtime.GOARCH} {
 		if !strings.Contains(printed, want) {
-			t.Errorf("`aforge version` said %q, which does not carry %q", printed, want)
+			t.Errorf("`codeaf version` said %q, which does not carry %q", printed, want)
 		}
 	}
-	if strings.TrimSpace(printed) == "aforge dev" {
-		t.Fatalf("`aforge version` said %q and nothing else — a bug report carrying it names nothing", printed)
+	if strings.TrimSpace(printed) == "codeaf dev" {
+		t.Fatalf("`codeaf version` said %q and nothing else — a bug report carrying it names nothing", printed)
 	}
 	// AND AN UNSTAMPED BUILD SAYS IT IS UNSTAMPED. Under `go test` there is no
 	// linker stamp, so this is the branch that runs here, and the bare word
@@ -250,19 +250,19 @@ func TestManualHelpPrintsTheCommandsUsageAboveThePageList(t *testing.T) {
 		t.Run(spelling, func(t *testing.T) {
 			out, _ := captureUsage(t)
 			if err := runManualWith([]string{spelling}, os.Stdout); err != nil && err != exitHelped {
-				t.Fatalf("aforge manual %s: %v", spelling, err)
+				t.Fatalf("codeaf manual %s: %v", spelling, err)
 			}
 			printed := out.String()
-			usage := strings.Index(printed, "aforge manual <page>")
+			usage := strings.Index(printed, "codeaf manual <page>")
 			listing := strings.Index(printed, "starting-codeaf")
 			if usage < 0 {
-				t.Fatalf("aforge manual %s printed no usage line:\n%s", spelling, printed)
+				t.Fatalf("codeaf manual %s printed no usage line:\n%s", spelling, printed)
 			}
 			if listing < 0 {
-				t.Fatalf("aforge manual %s stopped printing the page list:\n%s", spelling, printed)
+				t.Fatalf("codeaf manual %s stopped printing the page list:\n%s", spelling, printed)
 			}
 			if usage > listing {
-				t.Fatalf("aforge manual %s printed the page list above its usage:\n%s", spelling, printed)
+				t.Fatalf("codeaf manual %s printed the page list above its usage:\n%s", spelling, printed)
 			}
 		})
 	}

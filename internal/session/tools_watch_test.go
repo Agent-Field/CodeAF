@@ -471,7 +471,7 @@ func TestWatchOutputReachesTheJobLog(t *testing.T) {
 	if !strings.Contains(text, "── tick 1 ──") || !strings.Contains(text, "first line") {
 		t.Fatalf("the tick did not reach the job's output: %q", text)
 	}
-	logPath := filepath.Join(workspace, ".aforge-v3", "jobs", fmt.Sprintf("%d.log", id))
+	logPath := filepath.Join(workspace, ".codeaf-v3", "jobs", fmt.Sprintf("%d.log", id))
 	body, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("the watch has no log file: %v", err)

@@ -13,7 +13,7 @@ package main
 // ── WHAT THE PRODUCT CAN AND CANNOT KEEP ────────────────────────────────────
 //
 // EXECUTION DOES NOT SURVIVE THE PROCESS, AND THAT IS A LAW RATHER THAN A GAP.
-// A background job is a child of the aforge that forked it and dies with it
+// A background job is a child of the codeaf that forked it and dies with it
 // (internal/session's jobrow.go); a task node names a worker in a working copy,
 // and the moment the process ends there is nobody in it. So the two files that
 // keep this work — the session folder's tasks.json — are read back with that
@@ -268,7 +268,7 @@ type demoJob struct {
 
 var demoJobs = []demoJob{
 	{
-		// The one that was still going when aforge closed. It comes back STOPPED
+		// The one that was still going when codeaf closed. It comes back STOPPED
 		// and not running, because a process cannot outlive the program that
 		// forked it — and its log is long, so the page has something to scroll.
 		row: 7, job: 1, name: "npm run dev", state: session.TaskRunning,
@@ -487,7 +487,7 @@ var roomReportJournal = []journalLine{
 // columns.
 func roomDevServerLog() string {
 	var out strings.Builder
-	out.WriteString("> aforge-web@0.1.0 dev\n> vite --host 0.0.0.0 --port 5173\n\n")
+	out.WriteString("> codeaf-web@0.1.0 dev\n> vite --host 0.0.0.0 --port 5173\n\n")
 	out.WriteString("  VITE v5.4.2  ready in 412 ms\n\n")
 	out.WriteString("  ➜  Local:   http://localhost:5173/\n")
 	out.WriteString("  ➜  Network: http://192.168.1.24:5173/\n\n")

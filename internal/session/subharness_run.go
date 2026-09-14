@@ -74,7 +74,7 @@ type subharnessRunSpec struct {
 // process ended says for itself. It says the two things somebody reading the row
 // afterwards needs: it did not finish, and the account of how far it got is
 // still there (task_store.go's [interrupt] states why it is never re-run).
-const subharnessInterruptedReport = "the run did not finish before aforge closed; its journal is kept"
+const subharnessInterruptedReport = "the run did not finish before codeaf closed; its journal is kept"
 
 // subharnessStoppedWord is the report a run a person ended settles with.
 const subharnessStoppedWord = "stopped; its journal is kept"

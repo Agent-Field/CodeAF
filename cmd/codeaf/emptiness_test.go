@@ -64,7 +64,7 @@ func TestTheFooterWritesASpendTheWayEverythingElseDoes(t *testing.T) {
 	}
 }
 
-// `aforge doctor` is what somebody runs when nothing works, and on a fresh
+// `codeaf doctor` is what somebody runs when nothing works, and on a fresh
 // machine it read as a machine that had measured zero rather than one that had
 // not measured: `$0.00 today · rail $500.00` and `0 active charters · 0 pending
 // questions`.

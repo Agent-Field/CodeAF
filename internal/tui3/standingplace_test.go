@@ -199,7 +199,7 @@ func TestTheReadingStopsOnlyOnOrders(t *testing.T) {
 
 // ── the paint ───────────────────────────────────────────────────────────────
 
-// EVERY ROW IS DRAWN IN ONE GRAMMAR: the mark every aforge screen agrees on
+// EVERY ROW IS DRAWN IN ONE GRAMMAR: the mark every codeaf screen agrees on
 // ([standing.Item.Glyph]), what the order is called, and home's own clause
 // ([standRollup]) — on the machine's shelf exactly as on the three above it.
 func TestTheReadingDrawsEveryShelfInOneGrammar(t *testing.T) {

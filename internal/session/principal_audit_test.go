@@ -1424,7 +1424,7 @@ func TestTheGroundLaddersOwnStashIsNotWorkLeftLyingAbout(t *testing.T) {
 	}
 
 	// AND A SUBJECT THAT MERELY MENTIONS THE SENTENCE IS STILL COUNTED. Somebody
-	// writing about what aforge did is describing their own work, and swallowing
+	// writing about what codeaf did is describing their own work, and swallowing
 	// it would be this reading going quiet about the entry it exists to name.
 	if out, err := git(tree, "stash", "pop"); err != nil {
 		t.Fatalf("git stash pop: %v (%s)", err, out)

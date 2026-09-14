@@ -4,10 +4,10 @@ package connect
 //
 // ── WHAT IS DIFFERENT ABOUT THEM, AND WHAT IS NOT ──
 //
-// Google (google.go) is a service this package knows by heart: aforge was told
+// Google (google.go) is a service this package knows by heart: codeaf was told
 // its addresses, was registered in its console, and every tool it offers —
 // searching mail, moving an event — is a function somebody here wrote. The
-// catalog (catalog.go) is the opposite extreme: hundreds of services aforge
+// catalog (catalog.go) is the opposite extreme: hundreds of services codeaf
 // knows nothing about beyond where they answer and where the key goes, with one
 // raw call as their whole tool surface.
 //
@@ -29,7 +29,7 @@ package connect
 //
 // A browser connection normally needs an application registered by hand in the
 // vendor's developer console, which is why [Manager.Services] hides a service
-// this build holds no client credential for. A tool server needs none: aforge
+// this build holds no client credential for. A tool server needs none: codeaf
 // introduces itself to the service at connect time, is issued an identity on the
 // spot, and keeps it (mcp_registration.go). That is the whole reason these
 // services can be shipped as a list rather than as console visits.

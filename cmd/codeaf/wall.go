@@ -8,9 +8,9 @@ import (
 )
 
 // wallFlag is a hard wall typed the way every other duration in the product is
-// typed: with a unit, `5m` or `2h`. It exists because `aforge do` took its
-// wall as a bare integer of seconds while `AFORGE_PRACTICE_IDLE 20m`,
-// `AFORGE_BRIEF_AFTER 4h` and `--max-hours` all take units, so a person who
+// typed: with a unit, `5m` or `2h`. It exists because `codeaf do` took its
+// wall as a bare integer of seconds while `CODEAF_PRACTICE_IDLE 20m`,
+// `CODEAF_BRIEF_AFTER 4h` and `--max-hours` all take units, so a person who
 // had typed `20m` anywhere else typed `5m` here and was refused with a parse
 // error (#376).
 //

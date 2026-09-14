@@ -208,7 +208,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 }
 
 // THE PAGE'S COMMAND IS /history AND IT IS NOT SPELLED WITH "task". /task means
-// give aforge work — three rows of the list say so — and a plural beside them was
+// give codeaf work — three rows of the list say so — and a plural beside them was
 // a command that answered the muscle memory for starting one.
 func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 	var named bool
@@ -344,7 +344,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 // (taskowner.go's [taskSessionOf], which is the same arithmetic
 // [session.TaskIndexEntry.SessionID] is written with). The fixture used to claim
 // an owner while leaving the surface with no journal at all, which is a shape no
-// running aforge has — a conversation with no file has written no index rows to
+// running codeaf has — a conversation with no file has written no index rows to
 // collide with — and under the owner rule it read as two different tasks that
 // happened to share a number and a title: the live one under `running` and a
 // second copy filed as `incomplete` under `earlier`. So the journal is set here,
@@ -691,7 +691,7 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 // looking at.
 func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.file = "/w/.aforge/v3/sessions/-w/current/session.jsonl"
+	a.file = "/w/.codeaf/v3/sessions/-w/current/session.jsonl"
 	a.profileDir = t.TempDir()
 	// One node, nothing folded, and no record: the column is showing the whole of
 	// what there is to show.

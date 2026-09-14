@@ -119,7 +119,7 @@ func TestLiveInterruptFanoutSpendsAtMostOnePlannerAndTitle(t *testing.T) {
 	if key == "" {
 		t.Skip("OPENROUTER_API_KEY missing")
 	}
-	model := strings.TrimSpace(os.Getenv("AFORGE_LIVE_MODEL"))
+	model := strings.TrimSpace(os.Getenv("CODEAF_LIVE_MODEL"))
 	if model == "" {
 		model = "deepseek/deepseek-v4-flash-0731"
 	}

@@ -32,7 +32,7 @@ const sweepLogName = "sweep.log"
 // started and forgotten, and a launch that exits before it finishes has simply
 // swept nothing this time.
 //
-// The once is for the doors, not for a schedule: `aforge chat` and `aforge
+// The once is for the doors, not for a schedule: `codeaf chat` and `codeaf
 // resume` are two entrances to one launch, and a process that came through both
 // should still sweep once.
 //

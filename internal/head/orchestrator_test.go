@@ -157,15 +157,15 @@ func TestAForbiddenDirectoryIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 	graph := openHeadStore(t)
 	root := t.TempDir()
 	// Hermetic: the state root under test is a temp directory, never the real one.
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	workspace := filepath.Join(root, "graph-workspace")
 	run := &beltRun{head: New(nil, graph).WithWorkspace(workspace),
-		user: postUser(t, graph, "artifact", "put it in the aforge folder")}
+		user: postUser(t, graph, "artifact", "put it in the codeaf folder")}
 
 	refusal, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
 		"name": "notes.md", "dir": filepath.Join(root, "cas"), "body": "x"}))
 	if !failed {
-		t.Fatalf("a write into aforge's own state directory was accepted: %s", refusal)
+		t.Fatalf("a write into codeaf's own state directory was accepted: %s", refusal)
 	}
 	if !strings.Contains(refusal, "state directory") {
 		t.Fatalf("the refusal does not say why the place is forbidden: %s", refusal)

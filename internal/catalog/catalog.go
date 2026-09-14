@@ -45,7 +45,7 @@ type Model struct {
 	// CanonicalSlug is the concrete model behind a floating alias. OpenRouter
 	// publishes ids like `deepseek/deepseek-v4-flash-latest` that resolve, at
 	// request time and on its side, to whatever is current — which is why every
-	// call aforge makes with the alias simply works. A second catalog that does
+	// call codeaf makes with the alias simply works. A second catalog that does
 	// not float, keyed by concrete id, has never heard of the alias, and this is
 	// the field that translates between them. Empty for the great majority of
 	// rows, and empty for every row in a cache written before it was read.
@@ -189,7 +189,7 @@ func (m Model) ReasoningLevels() bool { return m.accepts("reasoning_effort") }
 // calls, and a published catalog is not where learned facts live.
 //
 // The phrase lives here, once, because three surfaces show it — the picker, the
-// v2 palette, and `aforge models` — and three spellings of one fact is how a
+// v2 palette, and `codeaf models` — and three spellings of one fact is how a
 // product ends up meaning three different things by the same word.
 func ReasoningWord(model Model, alwaysOn bool) string {
 	if !model.Reasons() {
@@ -220,8 +220,8 @@ type cache struct {
 	Base      string    `json:"base,omitempty"`
 }
 
-// Options describes the one catalog fetch. Dir is the Aforge configuration
-// directory (AFORGE_PROFILE_DIR when configured, ~/.aforge otherwise).
+// Options describes the one catalog fetch. Dir is the codeaf configuration
+// directory (CODEAF_PROFILE_DIR when configured, ~/.codeaf otherwise).
 type Options struct {
 	// Source is the stable service identity. AN EMPTY SOURCE IS THE DEFAULT
 	// SERVICE, whose ids are the only ones the compiled fallbacks describe.
@@ -475,7 +475,7 @@ func (c *Catalog) rowsNow() *rows {
 // while a lazily loaded catalog is still warming.
 //
 // Every other listing here resolves through [Catalog.rows], which on a cold
-// cache means a fifteen-second fetch — fine for `aforge models`, wrong for a
+// cache means a fifteen-second fetch — fine for `codeaf models`, wrong for a
 // picker a person just opened. Nil is the honest answer for "nobody has the
 // facts yet": a surface that gets it falls back to whatever list it can read
 // off disk, and the next time the picker opens the warm catalog answers.
@@ -546,8 +546,8 @@ type Resolves func(modelID string) bool
 // Concrete is the model id in the spelling a foreign catalog can actually find,
 // and it VERIFIES before it substitutes.
 //
-// Nothing inside aforge needs it: an alias is a model id OpenRouter accepts,
-// and every call aforge makes with one is answered. It matters at exactly one
+// Nothing inside codeaf needs it: an alias is a model id OpenRouter accepts,
+// and every call codeaf makes with one is answered. It matters at exactly one
 // boundary — a subprocess that looks a model up in a *different* catalog, one
 // keyed by that catalog's own spellings and with no idea what floats. Handed a
 // name that catalog does not carry, the process dies before it has spent a cent.

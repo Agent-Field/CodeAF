@@ -193,7 +193,7 @@ func TestASettledRunHasNoGate(t *testing.T) {
 // AND A RESTORED RUN IS NEVER AT A GATE. The orchestrator died with the process,
 // so a row that came back asking for money would be asking on behalf of
 // something no answer can reach: it comes back settled, like every other row
-// that was moving when aforge closed (task_store.go's [runRecord]).
+// that was moving when codeaf closed (task_store.go's [runRecord]).
 func TestARestoredRunIsNeverHeldAtAGate(t *testing.T) {
 	_, rows := resumedRunRows(t, func(family *orchestrateFamily) {
 		family.upsert([]orchestrate.NodeStatus{

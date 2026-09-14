@@ -26,20 +26,20 @@ func sheetApp(t *testing.T) (*app, string) {
 	t.Helper()
 	dir := t.TempDir()
 	// The registry resolves the environment BEFORE the file (internal/config),
-	// and a developer with AFORGE_ATTRIBUTION exported would otherwise be
+	// and a developer with CODEAF_ATTRIBUTION exported would otherwise be
 	// testing their shell. Empty reads as unset everywhere in that package.
 	for _, pin := range []string{
-		"AFORGE_ATTRIBUTION", "AFORGE_NERD_FONT", "AFORGE_CHAT_LINEAR",
-		"AFORGE_HISTORY", "AFORGE_DRAFT_PERSIST", "AFORGE_DOC_ENGINE",
-		"AFORGE_CONTEXT_FILL_PCT", "AFORGE_DAILY_BUDGET", "EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY",
+		"CODEAF_ATTRIBUTION", "CODEAF_NERD_FONT", "CODEAF_CHAT_LINEAR",
+		"CODEAF_HISTORY", "CODEAF_DRAFT_PERSIST", "CODEAF_DOC_ENGINE",
+		"CODEAF_CONTEXT_FILL_PCT", "CODEAF_DAILY_BUDGET", "EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY",
 		// The capability slots resolve their environment variable before the
 		// profile too, now that the profile is where their writes land.
-		"AFORGE_VISION_MODEL", "AFORGE_IMAGE_MODEL", "AFORGE_SPEECH_MODEL",
-		"AFORGE_MUSIC_MODEL", "AFORGE_VIDEO_MODEL", "AFORGE_VOICE_MODEL",
+		"CODEAF_VISION_MODEL", "CODEAF_IMAGE_MODEL", "CODEAF_SPEECH_MODEL",
+		"CODEAF_MUSIC_MODEL", "CODEAF_VIDEO_MODEL", "CODEAF_VOICE_MODEL",
 	} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newApp(t.Context(), Options{
 		Agent:      &fakeAgent{model: "openai/gpt-4.1-mini"},
 		Workspace:  "/tmp/lab",
@@ -553,7 +553,7 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 // welcomeApp is an empty session with a wired recent list.
 func welcomeApp(t *testing.T, recent []Session) (*app, *[]string) {
 	t.Helper()
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	resumed := []string{}
 	a := newApp(t.Context(), Options{
 		Agent:          &fakeAgent{model: "openai/gpt-4.1-mini"},

@@ -124,12 +124,12 @@ func TestEverySessionDoorSharesOneTaskAuditReader(t *testing.T) {
 	if doors == 0 {
 		t.Fatal("no door builds a session.Config any more, so this law just passed without reading anything")
 	}
-	if len(assignments) != 1 || assignments[0].file != "aforge/chatv3.go" {
-		t.Errorf("TaskAudit is assigned in more than one place under cmd/, so two doors can disagree about whether work is checked; it belongs once, in aforge/chatv3.go — found %s",
+	if len(assignments) != 1 || assignments[0].file != "codeaf/chatv3.go" {
+		t.Errorf("TaskAudit is assigned in more than one place under cmd/, so two doors can disagree about whether work is checked; it belongs once, in codeaf/chatv3.go — found %s",
 			taskAuditLawLocations(assignments))
 	}
-	if len(readers) != 1 || readers[0].file != "aforge/chatv3.go" {
-		t.Errorf("config.TaskAuditEnabledAt is read in more than one place under cmd/; the row has one reader, in aforge/chatv3.go — found %s",
+	if len(readers) != 1 || readers[0].file != "codeaf/chatv3.go" {
+		t.Errorf("config.TaskAuditEnabledAt is read in more than one place under cmd/; the row has one reader, in codeaf/chatv3.go — found %s",
 			taskAuditLawLocations(readers))
 	}
 }

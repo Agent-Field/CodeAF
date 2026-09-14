@@ -309,7 +309,7 @@ func TestTheSketchAskIsTheMeasuredWording(t *testing.T) {
 	if strings.ContainsAny(checkpointSketchAsk, "0123456789") {
 		t.Errorf("the ask carries a number, so it reads as a threshold:\n%s", checkpointSketchAsk)
 	}
-	// AND IT NAMES NOTHING ABOUT THE KIND OF WORK. aforge is a general harness: a
+	// AND IT NAMES NOTHING ABOUT THE KIND OF WORK. codeaf is a general harness: a
 	// research sweep, a writing project and a mechanical change are one shape of
 	// problem to this question.
 	for _, narrow := range []string{

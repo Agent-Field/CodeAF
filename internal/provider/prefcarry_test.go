@@ -298,7 +298,7 @@ func TestTheAnswerIsLearnedOncePerBaseAndSurvivesASecondClient(t *testing.T) {
 
 // AND A BASE THAT MOVES FORGETS. What one address answered is not evidence
 // about another, which is the sheet's own law (internal/lane's wire) read
-// through this question: a person who repoints AFORGE_BASE_URL at a real router
+// through this question: a person who repoints CODEAF_BASE_URL at a real router
 // after a proxy that dropped their pin gets their pin back.
 func TestABaseThatMovesForgetsWhatTheOldOneAnswered(t *testing.T) {
 	dropped := prefRig(t)

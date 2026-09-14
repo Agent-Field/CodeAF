@@ -233,11 +233,11 @@ func NewCompiler(client Client) *Compiler {
 }
 
 // WithOneShotErrands says every ask this compiler will ever see arrived on a
-// surface that runs exactly one errand and then exits — `aforge do`.
+// surface that runs exactly one errand and then exits — `codeaf do`.
 //
 // This is the surface stating a fact about itself, not an opinion about the
 // work. "Once, not standing" is an option on the ratification card because a
-// person may want it; a person who typed `aforge do "<task>"` has already
+// person may want it; a person who typed `codeaf do "<task>"` has already
 // chosen it, in the verb, before the compiler read a word. Asking them again
 // is asking a question into a process with nobody at the keyboard, and the
 // live defect it caused was total: "flag every discrepancy" tripped the
@@ -597,7 +597,7 @@ func tidyBrief(brief *Brief) {
 //
 // It also removes any assumption that says the same thing as a kept constraint,
 // and that is not tidiness either. A constraint must never live only in
-// Assumptions, because `aforge do` DISCARDS assumptions — the headless surface's
+// Assumptions, because `codeaf do` DISCARDS assumptions — the headless surface's
 // whole law is that the caller's sentence is the specification and the
 // compiler's speculative decisions are not (resident.keepTheAskVerbatim). A rule
 // duplicated into that field would be a rule the one-shot surface silently

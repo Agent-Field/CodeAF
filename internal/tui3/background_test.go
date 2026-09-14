@@ -50,7 +50,7 @@ func promotingTurn(t *testing.T) (*app, *promotingAgent) {
 	t.Helper()
 	agent := &promotingAgent{
 		fakeAgent: &fakeAgent{model: "m"},
-		answer:    session.BashPromotedLead + "3; log at /tmp/lab/.aforge-v3/jobs/3.log",
+		answer:    session.BashPromotedLead + "3; log at /tmp/lab/.codeaf-v3/jobs/3.log",
 	}
 	a := newTestApp(agent)
 	typeLine(t, a, "build it")

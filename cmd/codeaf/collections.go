@@ -14,13 +14,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
-const collectionsSummary = `  aforge collections [list] [--json]    organize chat, work and file references`
+const collectionsSummary = `  codeaf collections [list] [--json]    organize chat, work and file references`
 
 const collectionsUsage = collectionsSummary + `
-  aforge collections create <name> | rename <collection-id> <name>
-  aforge collections show <collection-id>
-  aforge collections add|remove <collection-id> <kind> <record-id>
-  aforge collections find <kind> <record-id>
+  codeaf collections create <name> | rename <collection-id> <name>
+  codeaf collections show <collection-id>
+  codeaf collections add|remove <collection-id> <kind> <record-id>
+  codeaf collections find <kind> <record-id>
       kinds: collection, conversation, task, standing, artifact (a file path)
       tasks need --session <conversation-id>; all accept --db and --json
       organize references without moving files or starting work`
@@ -148,7 +148,7 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 				_, err = fmt.Fprintln(output, "No collection references this record.")
 				return err
 			}
-			_, err = fmt.Fprintln(output, "No collections found. Create one with aforge collections create <name>.")
+			_, err = fmt.Fprintln(output, "No collections found. Create one with codeaf collections create <name>.")
 			return err
 		}
 		for _, c := range value {

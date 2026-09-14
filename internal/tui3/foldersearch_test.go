@@ -16,9 +16,9 @@ import (
 // ones people actually have, including two that share a leaf name, one that is
 // not a repository, one with a space in it and one with an accent.
 var folderPaths = []string{
-	"~/code/aforge-v2",
-	"~/code/aforge-v2/internal/tui3",
-	"~/code/aforge-v2/internal/session",
+	"~/code/codeaf",
+	"~/code/codeaf/internal/tui3",
+	"~/code/codeaf/internal/session",
 	"~/code/agentfield-site",
 	"~/work/client/tui3",
 	"~/Documents/tax returns",
@@ -74,7 +74,7 @@ func TestASegmentAboveTheLeafFindsWhatIsUnderIt(t *testing.T) {
 	// AND A RUN OF SEGMENTS IS THE SAME GESTURE, narrowed. Somebody who types
 	// the shape of the path means exactly the one folder at the end of it.
 	run := rankOf(t, "internal/tui3")
-	if len(run) != 1 || run[0] != "~/code/aforge-v2/internal/tui3" {
+	if len(run) != 1 || run[0] != "~/code/codeaf/internal/tui3" {
 		t.Fatalf("internal/tui3 reached %v, wanted only the one folder", run)
 	}
 }
@@ -82,44 +82,45 @@ func TestASegmentAboveTheLeafFindsWhatIsUnderIt(t *testing.T) {
 func TestTheDeeperOfTwoSegmentsWithOneNameWins(t *testing.T) {
 	// A path that names the same word twice is answered with the one nearer
 	// the thing being pointed at.
-	got := rankOf(t, "aforge", "~/code/aforge/vendor-copy/aforge/inner", "~/mirrors/aforge/one")
+	got := rankOf(t, "codeaf", "~/code/codeaf/vendor-copy/codeaf/inner", "~/mirrors/codeaf/one")
 	if len(got) != 2 {
-		t.Fatalf("aforge reached %v, wanted both: %v", len(got), got)
+		t.Fatalf("codeaf reached %v, wanted both: %v", len(got), got)
 	}
 	// Both are segment matches; the tie is broken by how far the matched
-	// segment sat above the leaf, and `vendor-copy/aforge/inner` matched one
-	// level up while `mirrors/aforge/one` matched one level up too — so this
-	// asserts the scorer picked the DEEPER `aforge` inside the first path
+	// segment sat above the leaf, and `vendor-copy/codeaf/inner` matched one
+	// level up while `mirrors/codeaf/one` matched one level up too — so this
+	// asserts the scorer picked the DEEPER `codeaf` inside the first path
 	// rather than its first one.
-	hit, ok := folderScoreOf("aforge", "~/code/aforge/vendor-copy/aforge/inner")
+	hit, ok := folderScoreOf("codeaf", "~/code/codeaf/vendor-copy/codeaf/inner")
 	if !ok || hit.tier != folderTierSegment {
-		t.Fatalf("aforge scored the doubled path as tier %v (matched %v)", hit.tier, ok)
+		t.Fatalf("codeaf scored the doubled path as tier %v (matched %v)", hit.tier, ok)
 	}
-	shallow, _ := folderScoreOf("aforge", "~/code/aforge/one/two/three/inner")
+	shallow, _ := folderScoreOf("codeaf", "~/code/codeaf/one/two/three/inner")
 	if !(hit.detail < shallow.detail) {
-		t.Fatalf("the deeper aforge scored %d, no better than the shallow one at %d", hit.detail, shallow.detail)
+		t.Fatalf("the deeper codeaf scored %d, no better than the shallow one at %d", hit.detail, shallow.detail)
 	}
 }
 
 func TestTheInitialsFindAFolderNobodySpelledOut(t *testing.T) {
-	hit, ok := folderScoreOf("av2", "~/code/aforge-v2")
+	hit, ok := folderScoreOf("as", "~/code/agentfield-site")
 	if !ok || hit.tier != folderTierShort {
-		t.Fatalf("av2 scored ~/code/aforge-v2 as tier %v (matched %v), wanted the initials", hit.tier, ok)
+		t.Fatalf("as scored ~/code/agentfield-site as tier %v (matched %v), wanted the initials", hit.tier, ok)
 	}
 	// The same letters read across a whole path are the same rung, one step
 	// behind the leaf's own initials.
-	across, ok := folderScoreOf("ait", "~/code/aforge-v2/internal/tui3")
+	across, ok := folderScoreOf("cit", "~/code/codeaf/internal/tui3")
 	if !ok || across.tier != folderTierShort {
-		t.Fatalf("ait scored the deep path as tier %v (matched %v)", across.tier, ok)
+		t.Fatalf("cit scored the deep path as tier %v (matched %v)", across.tier, ok)
 	}
 	if !(hit.detail < across.detail) {
 		t.Fatalf("the leaf's own initials scored %d and a whole-path reading %d", hit.detail, across.detail)
 	}
-	// AND LETTERS THAT MERELY APPEAR IN ORDER ARE NOT INITIALS. `ag2` is the
-	// loose rung, which is what keeps the initials rung meaning something.
-	loose, ok := folderScoreOf("ag2", "~/code/aforge-v2")
+	// AND LETTERS THAT MERELY APPEAR IN ORDER ARE NOT INITIALS. `oea` is the
+	// loose rung, which is what keeps the initials rung meaning something —
+	// not one of its letters starts a word of the path.
+	loose, ok := folderScoreOf("oea", "~/code/codeaf")
 	if !ok || loose.tier != folderTierLoose {
-		t.Fatalf("ag2 scored ~/code/aforge-v2 as tier %v (matched %v), wanted the loose rung", loose.tier, ok)
+		t.Fatalf("oea scored ~/code/codeaf as tier %v (matched %v), wanted the loose rung", loose.tier, ok)
 	}
 }
 
@@ -133,22 +134,24 @@ func TestTheInitialsReachPastAFalseStart(t *testing.T) {
 }
 
 func TestATransposedPairStillFindsTheFolder(t *testing.T) {
-	// THE TYPO THE BRIEF NAMES. Every rung above the last one answers `afroge`
+	// THE TYPO THE BRIEF NAMES. Every rung above the last one answers `codefa`
 	// with nothing at all, and a list that says "no folder matches" to a query
 	// one swapped pair of letters from the folder in front of somebody is the
-	// defect this rung exists for.
-	got := rankOf(t, "afroge")
-	if len(got) == 0 || !strings.Contains(got[0], "aforge-v2") {
-		t.Fatalf("afroge reached %v, wanted ~/code/aforge-v2 first", got)
+	// defect this rung exists for. The two paths are named here rather than
+	// taken from the standing fixture because the rung under test is the last
+	// one, and a deeper path that the loose rung reaches would answer first.
+	got := rankOf(t, "codefa", "~/code/codeaf", "~/scratch/notes")
+	if len(got) == 0 || got[0] != "~/code/codeaf" {
+		t.Fatalf("codefa reached %v, wanted ~/code/codeaf first", got)
 	}
-	hit, ok := folderScoreOf("afroge", "~/code/aforge-v2")
+	hit, ok := folderScoreOf("codefa", "~/code/codeaf-notes")
 	if !ok || hit.tier != folderTierSlip {
-		t.Fatalf("afroge scored ~/code/aforge-v2 as tier %v (matched %v), wanted the slip rung", hit.tier, ok)
+		t.Fatalf("codefa scored ~/code/codeaf-notes as tier %v (matched %v), wanted the slip rung", hit.tier, ok)
 	}
 	// And a whole name mistyped is nearer than the start of a longer one.
-	whole, ok := folderScoreOf("afroge", "~/code/aforge")
+	whole, ok := folderScoreOf("codefa", "~/code/codeaf")
 	if !ok || whole.tier != folderTierSlip {
-		t.Fatalf("afroge scored ~/code/aforge as tier %v (matched %v)", whole.tier, ok)
+		t.Fatalf("codefa scored ~/code/codeaf as tier %v (matched %v)", whole.tier, ok)
 	}
 	if !(whole.detail < hit.detail) {
 		t.Fatalf("the whole mistyped name scored %d, no better than the mistyped lead at %d", whole.detail, hit.detail)
@@ -159,16 +162,16 @@ func TestASlipIsTheLastThingTried(t *testing.T) {
 	// A folder that genuinely contains what was typed comes before one that is
 	// a slip away from it, however used the second one is.
 	cands := []folderRankee{
-		{Show: "~/old/aforge", Freq: 40, Rank: 0},
-		{Show: "~/code/afroge-notes", Rank: 1},
+		{Show: "~/old/codeaf", Freq: 40, Rank: 0},
+		{Show: "~/code/codefa-notes", Rank: 1},
 	}
 	var ranker folderRanker
 	ranker.load(cands)
-	hits := ranker.rank("afroge")
+	hits := ranker.rank("codefa")
 	if len(hits) != 2 {
-		t.Fatalf("afroge reached %d of the two folders", len(hits))
+		t.Fatalf("codefa reached %d of the two folders", len(hits))
 	}
-	if cands[hits[0]].Show != "~/code/afroge-notes" {
+	if cands[hits[0]].Show != "~/code/codefa-notes" {
 		t.Fatalf("a slip outranked a real match: %v", cands[hits[0]].Show)
 	}
 }
@@ -192,27 +195,28 @@ func TestAQueryThatMatchesNothingMatchesNothing(t *testing.T) {
 
 func TestWhatIsUsedWinsBetweenTwoEquallyGoodAnswers(t *testing.T) {
 	// Both are the same rung — the leaf name started — so the folder somebody
-	// actually picks leads. A scorer that let the shorter leftover decide would
-	// reorder the top of the list every time a letter was added.
+	// actually picks leads, even though it is the one with MORE left over after
+	// the query. A scorer that let the shorter leftover decide would reorder
+	// the top of the list every time a letter was added.
 	cands := []folderRankee{
-		{Show: "~/code/afternoon", Rank: 0},
-		{Show: "~/code/aforge-v2", Rank: 1, Freq: 8},
+		{Show: "~/work/code", Rank: 0},
+		{Show: "~/code/codeaf", Rank: 1, Freq: 8},
 	}
 	var ranker folderRanker
 	ranker.load(cands)
-	hits := ranker.rank("af")
+	hits := ranker.rank("cod")
 	if len(hits) != 2 {
-		t.Fatalf("af reached %d of the two folders", len(hits))
+		t.Fatalf("cod reached %d of the two folders", len(hits))
 	}
-	if cands[hits[0]].Show != "~/code/aforge-v2" {
+	if cands[hits[0]].Show != "~/code/codeaf" {
 		t.Fatalf("the folder in use lost to %q", cands[hits[0]].Show)
 	}
 	// AND THE LAYER STILL OUTRANKS USE, which is the picker's own ladder and
 	// this file passes it through untouched.
 	cands[0].Layer, cands[1].Layer = 0, 1
 	ranker.load(cands)
-	hits = ranker.rank("af")
-	if cands[hits[0]].Show != "~/code/afternoon" {
+	hits = ranker.rank("cod")
+	if cands[hits[0]].Show != "~/work/code" {
 		t.Fatalf("a nearer layer lost to a more-used folder: %q", cands[hits[0]].Show)
 	}
 }
@@ -286,11 +290,11 @@ func TestSlipsCountASwappedPairAsOne(t *testing.T) {
 		want  int
 		ok    bool
 	}{
-		{"aforge", "afroge", 1, 1, true},  // the pair swapped
-		{"aforge", "aforgee", 1, 1, true}, // one too many
-		{"aforge", "aforg", 1, 1, true},   // one too few
-		{"aforge", "afergo", 1, 0, false}, // two moves is a different word
-		{"aforge", "aforge", 1, 0, true},  // the same word
+		{"codeaf", "codefa", 1, 1, true},  // the pair swapped
+		{"codeaf", "codeafe", 1, 1, true}, // one too many
+		{"codeaf", "codea", 1, 1, true},   // one too few
+		{"codeaf", "cdoefa", 1, 0, false}, // two moves is a different word
+		{"codeaf", "codeaf", 1, 0, true},  // the same word
 		{"", "ab", 1, 2, false},           // nothing is two away from two
 	} {
 		got, ok := folderSlips(probe.a, probe.b, probe.bound)
@@ -313,10 +317,10 @@ func TestEveryRungIsReachable(t *testing.T) {
 		{"~/co", "~/code/tui3", folderTierPathLead},
 		{"code", "~/code/tui3", folderTierSegment},
 		{"ui3", "~/code/tui3", folderTierNameIn},
-		{"av2", "~/code/aforge-v2", folderTierShort},
+		{"as", "~/code/agentfield-site", folderTierShort},
 		{"ode/t", "~/code/tui3", folderTierPathIn},
-		{"ag2", "~/code/aforge-v2", folderTierLoose},
-		{"afroge", "~/code/aforge-v2", folderTierSlip},
+		{"oea", "~/code/codeaf", folderTierLoose},
+		{"codefa", "~/code/codeaf", folderTierSlip},
 	} {
 		hit, ok := folderScoreOf(probe.query, probe.show)
 		if !ok {

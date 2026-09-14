@@ -42,7 +42,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	}
 
 	// ── home: the projects, the conversations, and the two live rows ──────────
-	world := session.ReadWorld(filepath.Join(dir, ".aforge", "v3", "projects"))
+	world := session.ReadWorld(filepath.Join(dir, ".codeaf", "v3", "projects"))
 	if len(world.Projects) != built.Projects {
 		t.Fatalf("home reads %d projects out of a home built with %d: %+v",
 			len(world.Projects), built.Projects, world.Projects)
@@ -143,7 +143,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	}
 
 	// ── standing: the four states the page draws ──────────────────────────────
-	orders, err := standing.Open(filepath.Join(dir, ".aforge", "v3", "standing"))
+	orders, err := standing.Open(filepath.Join(dir, ".codeaf", "v3", "standing"))
 	if err != nil {
 		t.Fatalf("open the standing store: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	}
 
 	// ── memory: three shelves, both counters, and one let go ──────────────────
-	brain, err := store.Open(filepath.Join(dir, ".aforge", "graph.db"))
+	brain, err := store.Open(filepath.Join(dir, ".codeaf", "graph.db"))
 	if err != nil {
 		t.Fatalf("open the memory store: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	}
 
 	// ── spend: fourteen days, three models, and every subject bound ───────────
-	lines, err := session.ReadUsage(filepath.Join(dir, ".aforge", "v3", session.UsageLedgerName), time.Time{})
+	lines, err := session.ReadUsage(filepath.Join(dir, ".codeaf", "v3", session.UsageLedgerName), time.Time{})
 	if err != nil {
 		t.Fatalf("read the usage ledger: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 
 	// ── made for you: the deliverables index, and the files behind it ─────────
 	deliverables := 0
-	for _, row := range session.ReadArtifacts(filepath.Join(dir, ".aforge", "v3", session.ArtifactsIndexName)) {
+	for _, row := range session.ReadArtifacts(filepath.Join(dir, ".codeaf", "v3", session.ArtifactsIndexName)) {
 		if _, err := os.Stat(row.Path); err != nil {
 			t.Fatalf("the made thing %q is not on the disk: %v", row.Title, err)
 		}
@@ -286,7 +286,7 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 func TestTheDemoHomeSeedsNothingOutsideTheDirectoryItWasGiven(t *testing.T) {
 	outside := t.TempDir()
 	t.Setenv("HOME", outside)
-	t.Setenv("AFORGE_HOME", filepath.Join(outside, ".aforge"))
+	t.Setenv("CODEAF_HOME", filepath.Join(outside, ".codeaf"))
 
 	dir := t.TempDir()
 	if _, err := seedDemoHome(dir, time.Now()); err != nil {
@@ -411,7 +411,7 @@ func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 				t.Fatalf("seed the demo home: %v", err)
 			}
 
-			orders, err := standing.Open(filepath.Join(dir, ".aforge", "v3", "standing"))
+			orders, err := standing.Open(filepath.Join(dir, ".codeaf", "v3", "standing"))
 			if err != nil {
 				t.Fatalf("open the standing store: %v", err)
 			}
@@ -423,7 +423,7 @@ func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 				t.Fatal("nothing standing has spent anything today, so cost per firing draws nothing")
 			}
 
-			lines, err := session.ReadUsage(filepath.Join(dir, ".aforge", "v3", session.UsageLedgerName), time.Time{})
+			lines, err := session.ReadUsage(filepath.Join(dir, ".codeaf", "v3", session.UsageLedgerName), time.Time{})
 			if err != nil {
 				t.Fatalf("read the usage ledger: %v", err)
 			}

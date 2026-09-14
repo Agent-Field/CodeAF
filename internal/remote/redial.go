@@ -25,7 +25,7 @@ package remote
 //
 // AND IT PROMISES NOTHING THE FAR END DOES NOT. A redial gets the turn back
 // only if the engine is a persistent one ([Welcome.Persistent]); against the
-// other honest shape — `aforge engine` on a pipe — a redial gets a FRESH engine
+// other honest shape — `codeaf engine` on a pipe — a redial gets a FRESH engine
 // and the turn that was in flight is over. [Client.reconcile] says so on the
 // turn itself rather than leaving a person to work it out from a reply that
 // stopped mid-sentence, and it says so again if the engine came back with a
@@ -94,7 +94,7 @@ func (r *Roaming) window() time.Duration {
 // Roam dials the engine and returns a client that redials for itself.
 //
 // It is [Dial] with a dialer instead of a pipe, and the first attempt is NOT
-// roamed: a machine that cannot be reached at all, an aforge that is not
+// roamed: a machine that cannot be reached at all, a codeaf that is not
 // installed there, a version that does not match — those are things the door
 // has to be able to say plainly on a terminal that is still the person's (the
 // prompt law in cmd/codeaf's chatv3_host.go), and quietly retrying them for
@@ -218,7 +218,7 @@ func (c *Client) lost(cause error) bool {
 //
 // A WINDOW THAT NEVER LEARNED A NAME HAS NOTHING TO HAVE BEEN SWITCHED AWAY
 // FROM, which is why an empty `left` is not a switch: a scripted engine and an
-// `aforge engine` on a pipe both answer no transcript at all, and a surface
+// `codeaf engine` on a pipe both answer no transcript at all, and a surface
 // roaming onto one of those has been in the same conversation the whole time.
 // It is spelled once because three roads out of a repaired link ask it and a
 // second spelling of the same question is how two of them come to disagree.

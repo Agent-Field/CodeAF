@@ -285,7 +285,7 @@ func TestBoundedStopE2E(t *testing.T) {
 	// it, at the price of being the one case in this file that costs money.
 	t.Run("a real model on an uncancellable wait", func(t *testing.T) {
 		// THE KEY IS LOOKED FOR WHERE THE PRODUCT LOOKS FOR IT, through
-		// [liveKey]: a machine with a key in `~/.aforge/config.json` and nothing
+		// [liveKey]: a machine with a key in `~/.codeaf/config.json` and nothing
 		// in its environment can run this exactly as the product does.
 		liveKey(t)
 		if _, err := exec.LookPath("mkfifo"); err != nil {
@@ -403,12 +403,12 @@ func openBoundedStopRig(t *testing.T, stub *stopStub, name string) (*rig, string
 		"model.talk":         "stub/bounded",
 		"tools.approvalMode": "allow",
 		// AND THE FRONT DOOR IS ALREADY BEHIND THIS PROFILE. A machine that has
-		// never run aforge is shown the setup first (#322), which is a screen
+		// never run codeaf is shown the setup first (#322), which is a screen
 		// this run is not about and which would eat the sentence it types.
 		config.KeySetupSeen: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 	return startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + base, "AFORGE_PROFILE_DIR="},
+		[]string{"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + base, "CODEAF_PROFILE_DIR="},
 		name, home, workspace, 120, 40), home
 }
 

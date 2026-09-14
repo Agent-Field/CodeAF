@@ -42,17 +42,17 @@ func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 		{"judgment", 0, "three sittings that owe each other nothing are a real division whatever the brief counted"},
 	} {
 		t.Run(probe.pin, func(t *testing.T) {
-			t.Setenv("AFORGE_SPLITGATE", probe.pin)
+			t.Setenv("CODEAF_SPLITGATE", probe.pin)
 			graph := threeIndependentSittings(narrow)
 			if got := gatePlanDivision(graph, narrow); got != probe.folded {
-				t.Fatalf("AFORGE_SPLITGATE=%q folded %d leaves, want %d — %s", probe.pin, got, probe.folded, probe.why)
+				t.Fatalf("CODEAF_SPLITGATE=%q folded %d leaves, want %d — %s", probe.pin, got, probe.folded, probe.why)
 			}
 			want := 3
 			if probe.folded > 0 {
 				want = 1
 			}
 			if got := len(graph.Leaves()); got != want {
-				t.Fatalf("AFORGE_SPLITGATE=%q left %d work nodes, want %d", probe.pin, got, want)
+				t.Fatalf("CODEAF_SPLITGATE=%q left %d work nodes, want %d", probe.pin, got, want)
 			}
 		})
 	}
@@ -74,10 +74,10 @@ func TestThePlanDoorKeepsTheThreeLaneBriefUnlessTheCountIsPinnedOn(t *testing.T)
 		{"1", 3},
 	} {
 		t.Run(probe.pin, func(t *testing.T) {
-			t.Setenv("AFORGE_SPLITGATE", probe.pin)
+			t.Setenv("CODEAF_SPLITGATE", probe.pin)
 			graph := threeIndependentSittings(labelled)
 			if got := gatePlanDivision(graph, labelled); got != probe.folded {
-				t.Fatalf("AFORGE_SPLITGATE=%q folded %d leaves of the three-lane brief, want %d", probe.pin, got, probe.folded)
+				t.Fatalf("CODEAF_SPLITGATE=%q folded %d leaves of the three-lane brief, want %d", probe.pin, got, probe.folded)
 			}
 		})
 	}
@@ -89,7 +89,7 @@ func TestThePlanDoorKeepsTheThreeLaneBriefUnlessTheCountIsPinnedOn(t *testing.T)
 // before and after, unsearchable against each other. The pin is on here
 // because a fold is now something a run asks for — the sentence is not.
 func TestTheFoldedNodeStillSaysWhatItAlwaysSaid(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "1")
+	t.Setenv("CODEAF_SPLITGATE", "1")
 	const narrow = "rewrite the handbook in lanes that share no lines"
 	graph := threeIndependentSittings(narrow)
 	if folded := gatePlanDivision(graph, narrow); folded != 3 {

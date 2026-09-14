@@ -2017,7 +2017,7 @@ func citationSpent(citation string, spent []string) bool {
 //
 // The extension was guarded and the revision was not, and the measured cost of
 // that asymmetry is one benchmark cell where the gate held the worker to a
-// working decision aforge had invented for itself — "March refers to any
+// working decision codeaf had invented for itself — "March refers to any
 // calendar year present in the data" — bought a five-turn re-run against it,
 // and got back a worse deliverable than the one it rejected. A round bought on
 // a self-authored standard cannot converge on anything, because the standard

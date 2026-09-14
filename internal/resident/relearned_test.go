@@ -63,7 +63,7 @@ func TestALessonAlreadyInTheLineageIsNotLearnedAgain(t *testing.T) {
 	}
 	// And the guard is narrow: a per-repository line is cheap, local, and none
 	// of its business.
-	local := Learned{Scope: "repo:aforge", Kind: store.FactPreference, Body: relearnedWordings[0]}
+	local := Learned{Scope: "repo:codeaf", Kind: store.FactPreference, Body: relearnedWordings[0]}
 	if reconciler.alreadyLearned(local) {
 		t.Fatal("a scoped belief was judged against the user's standing notebook")
 	}

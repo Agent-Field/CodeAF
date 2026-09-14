@@ -25,12 +25,12 @@ import (
 //
 // The log is always on in the product, which means a test binary that says
 // nothing about it appends a row per simulated call into the developer's own
-// ~/.aforge. The tests in this file switch it back on, pointed at a temporary
+// ~/.codeaf. The tests in this file switch it back on, pointed at a temporary
 // file of their own.
 //
 // AND THE SAME IS NOW TRUE OF THE BELIEF FILE. `internal/lane`'s ledger writes
 // every sighting through a store under [lane.StorePath], which resolves under
-// AFORGE_HOME on every call — so a package whose tests stream simulated answers
+// CODEAF_HOME on every call — so a package whose tests stream simulated answers
 // through a client was folding lanes called "quicksilver" into the belief file
 // of whoever ran the tests, and reading them back on the next run. The symptom
 // was a first request arriving with an `order` it could not have learned yet,
@@ -462,10 +462,10 @@ func TestAnAbandonedStreamStillEndsItsRow(t *testing.T) {
 // TestBothRowsOfACallNameTheRunThatMadeIt is what makes this file joinable to
 // the run that wrote it.
 //
-// A developer wanting the call count and the round count of one `aforge do`
+// A developer wanting the call count and the round count of one `codeaf do`
 // came here to reconstruct them, and found rows carrying a tag, a node and a
 // timestamp and NOTHING naming the run — in a file every run on the machine
-// appends to. Attribution was by clock alone. `aforge logs --run <id>` had been
+// appends to. Attribution was by clock alone. `codeaf logs --run <id>` had been
 // reading a `run` key off these rows for as long as it has existed, and nothing
 // wrote one.
 //

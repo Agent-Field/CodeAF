@@ -374,9 +374,9 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 // and the pad cut to match.
 //
 // A PATH GIVES WAY BEFORE ITS FACTS, from the left. `~/Documents/agentfield/
-// code/aforge-v2` pushed `61 chats` off its row in the owner's first binary,
+// code/codeaf` pushed `61 chats` off its row in the owner's first binary,
 // and the part of a path that tells two folders apart is its end — so the path
-// is cut to `…/code/aforge-v2` while the count and the repository keep their
+// is cut to `…/code/codeaf` while the count and the repository keep their
 // cells. It is cut to the panel's pad as well, so every path on the panel ends
 // at or before one column and the counts beside them stand in one line. Only
 // where even the folder's own name would not fit do the facts give way, in the
@@ -393,8 +393,8 @@ func homeCellPathTitle(cell *homeCell, width int) (string, int) {
 }
 
 // homeFitPathLeft is [fitLeft] for a path: cut from the left, and then on to
-// the next separator, so what is left starts at a folder — `…/code/aforge-v2`
-// and never `…ield/code/aforge-v2`.
+// the next separator, so what is left starts at a folder — `…/code/codeaf`
+// and never `…ield/code/codeaf`.
 func homeFitPathLeft(path string, width int) string {
 	cut := fitLeft(path, width)
 	rest := strings.TrimPrefix(cut, glyphMore)

@@ -290,7 +290,7 @@ func TestATaskMayNotReadThePersonsLogin(t *testing.T) {
 		"gh auth status",
 		"gh auth setup-git",
 		"gh pr list",
-		"gh api repos/Agent-Field/aforge-v2/pulls",
+		"gh api repos/Agent-Field/codeaf/pulls",
 		"git log --oneline -5",
 		"echo 'the gh auth token is not read here'",
 		"grep -rn 'gh auth token' docs/",

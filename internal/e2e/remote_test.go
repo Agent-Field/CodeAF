@@ -1,6 +1,6 @@
 //go:build docker_e2e
 
-// remote_test.go drives `aforge chat --host` across THREE CONTAINERS ON ONE
+// remote_test.go drives `codeaf chat --host` across THREE CONTAINERS ON ONE
 // BRIDGE NETWORK — a surface machine, an engine machine, and a scripted model
 // endpoint — so that the honesty laws of docs/REMOTE.md are proved against two
 // genuinely different filesystems.
@@ -55,10 +55,10 @@ import (
 // what it is removing and a person looking at `docker ps` after an interrupted
 // run can tell instantly which containers are the test's.
 const (
-	netName     = "aforge-e2e-net"
-	modelName   = "aforge-e2e-model"
-	engineName  = "aforge-e2e-engine"
-	surfaceName = "aforge-e2e-surface"
+	netName     = "codeaf-e2e-net"
+	modelName   = "codeaf-e2e-model"
+	engineName  = "codeaf-e2e-engine"
+	surfaceName = "codeaf-e2e-surface"
 
 	// baseImage is alpine because [buildStatic] builds with CGO_ENABLED=0 and
 	// this tree's only sqlite is modernc.org's, which is pure Go — so the
@@ -77,9 +77,9 @@ const (
 const (
 	// The engine machine. Its ssh login lands in /root, so a RELATIVE workspace
 	// is relative to that (cmd/codeaf's engineWorkspace states the law), and
-	// its aforge home is somewhere no laptop would ever put one.
+	// its codeaf home is somewhere no laptop would ever put one.
 	engineLoginHome = "/root"
-	engineAforge    = "/var/lib/aforge-engine"
+	engineCodeaf    = "/var/lib/codeaf-engine"
 	engineWorkspace = "/srv/engine-work/project"
 	engineRelative  = "relwork" // relative to /root: /root/relwork
 	// engineTalks is where the two scenarios that NAME a conversation put it. It
@@ -87,13 +87,13 @@ const (
 	// workspace the engine chdir'd into — true, but a different directory per
 	// scenario, and a scenario that has to reason about which one is a scenario
 	// that will eventually reason wrongly.
-	engineTalks = "/var/lib/aforge-engine/conversations"
+	engineTalks = "/var/lib/codeaf-engine/conversations"
 
-	// The surface machine. A different home root, a different aforge home, and
+	// The surface machine. A different home root, a different codeaf home, and
 	// one directory that exists ONLY here — which is the bait for the "a path
 	// that exists only on the surface is not silently resolved" scenario.
 	surfaceHome    = "/opt/surface-home"
-	surfaceAforge  = "/opt/surface-home/.aforge"
+	surfaceCodeaf  = "/opt/surface-home/.codeaf"
 	surfaceOnlyDir = "/opt/surface-home/laptop-work"
 
 	// The stub's address on the bridge network. Container-to-container DNS by
@@ -174,21 +174,21 @@ func (w *remoteWorld) handshakeAndOneTurn(t *testing.T) {
 	// session file among the things the engine machine owns, and this is that
 	// claim made falsifiable rather than merely stated.
 	//
-	// The conversation lands under the ENGINE's aforge home, in a folder named
+	// The conversation lands under the ENGINE's codeaf home, in a folder named
 	// for the ENGINE's workspace (chatv3_layout.go turns the separators into
 	// dashes) — and the machine the person was sitting at has none.
 	found := w.exec(t, engineName, nil, 30*time.Second, "sh", "-c",
-		"find "+engineAforge+"/v3/projects -name '*.jsonl' 2>/dev/null | head -1")
+		"find "+engineCodeaf+"/v3/projects -name '*.jsonl' 2>/dev/null | head -1")
 	if strings.TrimSpace(found.out) == "" {
 		w.diagnose(t)
-		t.Errorf("the engine wrote no journal under %s/v3/projects", engineAforge)
+		t.Errorf("the engine wrote no journal under %s/v3/projects", engineCodeaf)
 	} else {
 		t.Logf("the engine journalled the conversation at %s", strings.TrimSpace(found.out))
 	}
 	if got := w.exec(t, surfaceName, nil, 20*time.Second,
-		"sh", "-c", "ls "+surfaceAforge+"/v3/projects 2>/dev/null | wc -l"); strings.TrimSpace(got.out) != "0" {
+		"sh", "-c", "ls "+surfaceCodeaf+"/v3/projects 2>/dev/null | wc -l"); strings.TrimSpace(got.out) != "0" {
 		t.Errorf("the SURFACE has %s conversation folders under %s/v3/projects; conversations belong to the engine machine",
-			strings.TrimSpace(got.out), surfaceAforge)
+			strings.TrimSpace(got.out), surfaceCodeaf)
 	}
 
 	// AND THE SURFACE NEVER HELD A CREDENTIAL. This is the other half of the
@@ -240,8 +240,8 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 	if w.pathExists(t, surfaceName, engineWorkspace) {
 		t.Fatalf("%s exists on the SURFACE machine too — this harness proves nothing while that is true", engineWorkspace)
 	}
-	if w.pathExists(t, surfaceName, engineAforge) {
-		t.Fatalf("%s exists on the SURFACE machine too — this harness proves nothing while that is true", engineAforge)
+	if w.pathExists(t, surfaceName, engineCodeaf) {
+		t.Fatalf("%s exists on the SURFACE machine too — this harness proves nothing while that is true", engineCodeaf)
 	}
 
 	// AND THE JOURNAL IS WRITTEN IN THE ENGINE'S OWN VOCABULARY. Decision 6
@@ -253,9 +253,9 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 	// and the claim is made about all of them together: what the engine wrote
 	// down names the engine's own directory.
 	journal := w.exec(t, engineName, nil, 30*time.Second, "sh", "-c",
-		"find "+engineAforge+"/v3/projects -name '*.jsonl' 2>/dev/null | xargs -r cat")
+		"find "+engineCodeaf+"/v3/projects -name '*.jsonl' 2>/dev/null | xargs -r cat")
 	if strings.TrimSpace(journal.out) == "" {
-		t.Errorf("the engine wrote no journal under %s/v3/projects", engineAforge)
+		t.Errorf("the engine wrote no journal under %s/v3/projects", engineCodeaf)
 	} else if !strings.Contains(journal.out, engineWorkspace) {
 		t.Errorf("the engine's journal never names the engine's own workspace %q", engineWorkspace)
 	}
@@ -344,19 +344,19 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 //   - against a PERSISTENT engine (internal/enginehost holding the session on a
 //     unix socket) the redial rejoins the same conversation and the reply
 //     completes;
-//   - against a one-shot `aforge engine` on a pipe the turn is over, and
+//   - against a one-shot `codeaf engine` on a pipe the turn is over, and
 //     internal/remote's reconcile says so in as many words rather than leaving
 //     a person to work it out from a reply that stopped mid-sentence.
 //
 // WHICH ONE IS TRUE IS READ OFF THE ENGINE'S OWN DISK rather than assumed. A
-// persistent engine leaves a socket under its aforge home
+// persistent engine leaves a socket under its codeaf home
 // (internal/enginehost's Dir and SocketPath); a pipe engine leaves nothing. So
 // this scenario asserts the behaviour the machine actually has today, and picks
 // up the stronger assertion by itself on the day lane A wires the host in.
 func (w *remoteWorld) theLinkDiesMidTurn(t *testing.T) {
 	persistent := w.enginePersistent(t)
 	t.Logf("the engine on this build is persistent=%v (a host socket under %s/v3/hosts is what decides it)",
-		persistent, engineAforge)
+		persistent, engineCodeaf)
 
 	// The turn is started in the background so the link can be cut while it is
 	// still in flight. The stub holds this one open for about twelve seconds.
@@ -421,7 +421,7 @@ func (w *remoteWorld) theLinkDiesMidTurn(t *testing.T) {
 	// AND THE CONVERSATION IS STILL ON THE FAR MACHINE'S DISK, which is the
 	// half of the promise a one-shot engine DOES keep: the engine journals as
 	// it goes, so the turn is lost and the conversation is not.
-	if !w.pathExists(t, engineName, engineAforge+"/v3/projects") {
+	if !w.pathExists(t, engineName, engineCodeaf+"/v3/projects") {
 		t.Errorf("the engine kept no conversation folder after the drop")
 	}
 }
@@ -456,7 +456,7 @@ func (w *remoteWorld) anAttachmentLandsOverThere(t *testing.T) {
 // and being handed the rest of it.
 //
 // IT CANNOT BE PROVED WITHOUT A PERSISTENT ENGINE, and it asks the engine
-// rather than assuming. `aforge engine` on a pipe is one process per connection
+// rather than assuming. `codeaf engine` on a pipe is one process per connection
 // by construction — remote.Serve gets that process's own stdin and stdout — so
 // two `--host` launches would be two engines and two conversations, and there
 // would be no room for a second window to walk into. On that shape the scenario
@@ -470,7 +470,7 @@ func (w *remoteWorld) twoSurfacesAtOnce(t *testing.T) {
 			t.Errorf("even a single surface failed on this build: %v\n%s", single.err, tail(single.errOut, 1200))
 		}
 		t.Skip("fan-out to ONE conversation needs the session host (internal/enginehost) wired into " +
-			"`aforge engine`; on a pipe engine two surfaces are two engines")
+			"`codeaf engine`; on a pipe engine two surfaces are two engines")
 	}
 
 	// ONE NAMED CONVERSATION, TWO WINDOWS. Naming it is what makes this a room
@@ -554,7 +554,7 @@ func newRemoteWorld(t *testing.T) *remoteWorld {
 	w.teardownQuietly()
 
 	w.buildStatic(t, "modelstub", "./test/remote/stub")
-	w.buildStatic(t, "aforge", "./cmd/codeaf")
+	w.buildStatic(t, "codeaf", "./cmd/codeaf")
 
 	mustRun(t, 60*time.Second, "docker", "network", "create", netName)
 	w.startModel(t)
@@ -658,18 +658,18 @@ func (w *remoteWorld) startModel(t *testing.T) {
 	}
 }
 
-// startEngine is the machine that owns the work: sshd, aforge, a workspace with
-// a couple of files, and an aforge home whose profile points the provider at
+// startEngine is the machine that owns the work: sshd, codeaf, a workspace with
+// a couple of files, and a codeaf home whose profile points the provider at
 // the stub.
 func (w *remoteWorld) startEngine(t *testing.T) {
 	t.Helper()
 	w.run(t, engineName)
 	w.installSSH(t, engineName, "openssh")
-	w.copyIn(t, engineName, "aforge", "/usr/local/bin/codeaf.bin")
+	w.copyIn(t, engineName, "codeaf", "/usr/local/bin/codeaf.bin")
 
 	// THE WRAPPER EXISTS BECAUSE SSH DOES NOT CARRY AN ENVIRONMENT. `ssh host
-	// aforge engine` is a non-login, non-interactive command: no profile is
-	// sourced, so AFORGE_HOME and AFORGE_BASE_URL would arrive unset and the
+	// codeaf engine` is a non-login, non-interactive command: no profile is
+	// sourced, so CODEAF_HOME and CODEAF_BASE_URL would arrive unset and the
 	// engine would open the wrong home against the real OpenRouter. The
 	// alternative — sshd's PermitUserEnvironment — moves the same three lines
 	// into a file with worse failure modes. Everything the far machine needs to
@@ -677,20 +677,20 @@ func (w *remoteWorld) startEngine(t *testing.T) {
 	// also exactly what Decision 6 says about where these belong.
 	w.write(t, engineName, "/usr/local/bin/codeaf", 0o755, strings.Join([]string{
 		"#!/bin/sh",
-		"export AFORGE_HOME=" + engineAforge,
-		"export AFORGE_PROFILE_DIR=",
-		"export AFORGE_BASE_URL=" + stubBase,
+		"export CODEAF_HOME=" + engineCodeaf,
+		"export CODEAF_PROFILE_DIR=",
+		"export CODEAF_BASE_URL=" + stubBase,
 		"export OPENROUTER_API_KEY=" + stubKey,
 		"exec /usr/local/bin/codeaf.bin \"$@\"",
 		"",
 	}, "\n"))
 
 	// The profile. It is a FLAT map of dotted keys, which is what
-	// internal/config's persistedValue reads out of <AFORGE_HOME>/config.json.
+	// internal/config's persistedValue reads out of <CODEAF_HOME>/config.json.
 	// tools.approvalMode is `allow` because nobody is at a keyboard: a consent
 	// card raised in a headless run is a hang, not a test.
-	w.exec(t, engineName, nil, 20*time.Second, "mkdir", "-p", engineAforge)
-	w.write(t, engineName, engineAforge+"/config.json", 0o600, strings.Join([]string{
+	w.exec(t, engineName, nil, 20*time.Second, "mkdir", "-p", engineCodeaf)
+	w.write(t, engineName, engineCodeaf+"/config.json", 0o600, strings.Join([]string{
 		`{`,
 		`  "api_key": "` + stubKey + `",`,
 		`  "model.talk": "` + stubModel + `",`,
@@ -726,7 +726,7 @@ func (w *remoteWorld) startEngine(t *testing.T) {
 	}, " && "))
 }
 
-// startSurface is the machine the person sits at: ssh, aforge, its OWN home
+// startSurface is the machine the person sits at: ssh, codeaf, its OWN home
 // root, and one directory the engine has never heard of.
 //
 // IT IS DELIBERATELY POORER THAN THE ENGINE. No API key, no model profile, no
@@ -737,10 +737,10 @@ func (w *remoteWorld) startSurface(t *testing.T) {
 	t.Helper()
 	w.run(t, surfaceName)
 	w.installSSH(t, surfaceName, "openssh-client")
-	w.copyIn(t, surfaceName, "aforge", "/usr/local/bin/codeaf")
+	w.copyIn(t, surfaceName, "codeaf", "/usr/local/bin/codeaf")
 
 	w.exec(t, surfaceName, nil, 30*time.Second, "sh", "-c", strings.Join([]string{
-		"mkdir -p " + surfaceHome + "/.ssh " + surfaceAforge + " " + surfaceOnlyDir,
+		"mkdir -p " + surfaceHome + "/.ssh " + surfaceCodeaf + " " + surfaceOnlyDir,
 		// THE HOME IS MOVED IN /etc/passwd AND NOT ONLY IN THE ENVIRONMENT, and
 		// finding that out cost a run: OpenSSH resolves `~` from the password
 		// database (pw_dir) rather than from $HOME, so a surface whose home was
@@ -763,7 +763,7 @@ func (w *remoteWorld) startSurface(t *testing.T) {
 }
 
 // pairThem authorizes the surface's key on the engine and proves ssh works
-// before any aforge is involved — so a red in scenario 1 is about aforge and
+// before any codeaf is involved — so a red in scenario 1 is about codeaf and
 // never about the plumbing under it.
 func (w *remoteWorld) pairThem(t *testing.T) {
 	t.Helper()
@@ -782,10 +782,10 @@ func (w *remoteWorld) pairThem(t *testing.T) {
 			said.out, tail(said.errOut, 2000), sshd.out+sshd.errOut)
 	}
 
-	// And the far machine's aforge really is the one this harness put there.
+	// And the far machine's codeaf really is the one this harness put there.
 	if got := w.tryExec(surfaceName, w.surfaceEnv(), 60*time.Second,
-		"ssh", "-T", "-o", "BatchMode=yes", "root@"+engineName, "aforge --version || aforge version || true"); got.out == "" && got.errOut == "" {
-		t.Logf("the engine's aforge printed nothing for --version; that is not fatal, the handshake will say")
+		"ssh", "-T", "-o", "BatchMode=yes", "root@"+engineName, "codeaf --version || codeaf version || true"); got.out == "" && got.errOut == "" {
+		t.Logf("the engine's codeaf printed nothing for --version; that is not fatal, the handshake will say")
 	}
 }
 
@@ -809,7 +809,7 @@ func (w *remoteWorld) installSSH(t *testing.T, container, pkg string) {
 	}
 }
 
-// ── driving aforge ──────────────────────────────────────────────────────────
+// ── driving codeaf ──────────────────────────────────────────────────────────
 
 // said is one command's whole output.
 type said struct {
@@ -819,14 +819,14 @@ type said struct {
 }
 
 // surfaceEnv is what every command on the surface machine runs with. HOME is
-// the seam that moves ssh's key and config; AFORGE_HOME moves everything this
+// the seam that moves ssh's key and config; CODEAF_HOME moves everything this
 // machine keeps on the person's behalf. THERE IS NO KEY AND NO BASE URL HERE,
 // and that absence is the point.
 func (w *remoteWorld) surfaceEnv() []string {
 	return []string{
 		"HOME=" + surfaceHome,
-		"AFORGE_HOME=" + surfaceAforge,
-		"AFORGE_PROFILE_DIR=",
+		"CODEAF_HOME=" + surfaceCodeaf,
+		"CODEAF_PROFILE_DIR=",
 	}
 }
 
@@ -863,7 +863,7 @@ func (r *running) wait(t *testing.T, within time.Duration) said {
 
 func (r *running) stop() { r.cancel() }
 
-// chatOnceBackground starts `aforge chat --host … --once …` on the surface and
+// chatOnceBackground starts `codeaf chat --host … --once …` on the surface and
 // hands back a handle. The command is the one a person types, spelled the way
 // they would type it: the machine, a colon, the workspace on THAT machine.
 func (w *remoteWorld) chatOnceBackground(t *testing.T, workspace, text string) *running {
@@ -891,7 +891,7 @@ func (w *remoteWorld) launch(t *testing.T, workspace, session, text string) *run
 	for _, pair := range w.surfaceEnv() {
 		args = append(args, "-e", pair)
 	}
-	args = append(args, surfaceName, "aforge", "chat", "--host", target)
+	args = append(args, surfaceName, "codeaf", "chat", "--host", target)
 	if session != "" {
 		args = append(args, "--session", session)
 	}
@@ -913,15 +913,15 @@ func (w *remoteWorld) launch(t *testing.T, workspace, session, text string) *run
 	handle := &running{cmd: cmd, out: out, errOut: errOut, done: done, cancel: cancel}
 	// CANCELLING THE `docker exec` DOES NOT END THE PROCESS INSIDE THE
 	// CONTAINER, and that cost a run too: a scenario that gave up on a slow
-	// turn left an aforge still attached over there, and the NEXT scenario's
+	// turn left a codeaf still attached over there, and the NEXT scenario's
 	// surfaces joined that conversation and were handed its reply. So the
 	// sweep is part of leaving, and it runs at the end of the subtest that
 	// started the run rather than between two concurrent ones.
 	t.Cleanup(func() {
 		cancel()
-		w.tryExec(surfaceName, nil, 20*time.Second, "sh", "-c", "pkill -x aforge; pkill -x ssh; exit 0")
+		w.tryExec(surfaceName, nil, 20*time.Second, "sh", "-c", "pkill -x codeaf; pkill -x ssh; exit 0")
 	})
-	t.Logf("surface → aforge chat --host %s --once %q", target, text)
+	t.Logf("surface → codeaf chat --host %s --once %q", target, text)
 	return handle
 }
 
@@ -936,14 +936,14 @@ func (w *remoteWorld) pathExists(t *testing.T, container, path string) bool {
 	return strings.Contains(got.out, "THERE")
 }
 
-// enginePersistent reads off the engine's own disk whether `aforge engine` is
+// enginePersistent reads off the engine's own disk whether `codeaf engine` is
 // backed by a session host. internal/enginehost's Dir puts a socket under
-// <AFORGE_HOME>/v3/hosts, so its presence is the fact and nothing here has to
+// <CODEAF_HOME>/v3/hosts, so its presence is the fact and nothing here has to
 // guess at a build's shape.
 func (w *remoteWorld) enginePersistent(t *testing.T) bool {
 	t.Helper()
 	got := w.tryExec(engineName, nil, 20*time.Second, "sh", "-c",
-		"ls "+engineAforge+"/v3/hosts/*/host.sock 2>/dev/null | head -1")
+		"ls "+engineCodeaf+"/v3/hosts/*/host.sock 2>/dev/null | head -1")
 	return strings.TrimSpace(got.out) != ""
 }
 
@@ -960,12 +960,12 @@ func (w *remoteWorld) diagnose(t *testing.T) {
 	}{
 		{"model stub log", modelName, "tail -n 60 /var/log/modelstub.log"},
 		{"engine sshd log", engineName, "tail -n 40 /var/log/sshd.log"},
-		{"engine host log", engineName, "cat " + engineAforge + "/v3/hosts/*/host.log 2>/dev/null | tail -n 40"},
-		{"engine conversations", engineName, "find " + engineAforge + "/v3/projects -maxdepth 3 2>/dev/null | head -n 40"},
+		{"engine host log", engineName, "cat " + engineCodeaf + "/v3/hosts/*/host.log 2>/dev/null | tail -n 40"},
+		{"engine conversations", engineName, "find " + engineCodeaf + "/v3/projects -maxdepth 3 2>/dev/null | head -n 40"},
 		{"engine session journal", engineName,
-			"find " + engineAforge + "/v3/projects -name 'session*.jsonl' 2>/dev/null | head -1 | xargs -r tail -n 20"},
+			"find " + engineCodeaf + "/v3/projects -name 'session*.jsonl' 2>/dev/null | head -1 | xargs -r tail -n 20"},
 		{"engine processes", engineName, "ps -o pid,args 2>/dev/null | head -n 25"},
-		{"surface aforge home", surfaceName, "find " + surfaceAforge + " -maxdepth 3 2>/dev/null | head -n 30"},
+		{"surface codeaf home", surfaceName, "find " + surfaceCodeaf + " -maxdepth 3 2>/dev/null | head -n 30"},
 	} {
 		got := w.tryExec(probe.container, nil, 25*time.Second, "sh", "-c", probe.command)
 		t.Logf("── %s (%s) ──\n%s", probe.what, probe.container, strings.TrimSpace(got.out+got.errOut))
@@ -1142,7 +1142,7 @@ func firstLine(text string) string {
 // in. A darwin/arm64 host and a linux/arm64 container agree here; so do
 // linux/amd64 and linux/amd64.
 func containerArch() string {
-	if a := os.Getenv("AFORGE_E2E_ARCH"); a != "" {
+	if a := os.Getenv("CODEAF_E2E_ARCH"); a != "" {
 		return a
 	}
 	return runtime.GOARCH

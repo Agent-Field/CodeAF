@@ -592,7 +592,7 @@ func standFoldWord(count int, folded bool) string {
 //
 //	every Monday at 9, draft the weekly update
 //
-//	aforge-v2 · ~/src/aforge-v2
+//	codeaf · ~/src/codeaf
 //
 //	Mondays at 9am
 //	last went off Mon · the weekly update is in notes/week-34.md

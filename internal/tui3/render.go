@@ -4126,9 +4126,9 @@ func (a *app) awaitingDecision() bool {
 // shortPath abbreviates a directory the way fish's prompt does, at one of three
 // strengths:
 //
-//	hard 0   ~/s/aforge-v2     home to "~", every parent to its initial
-//	hard 1   …/aforge-v2       the parents dropped entirely
-//	hard 2   aforge-v2         the place, alone
+//	hard 0   ~/s/codeaf     home to "~", every parent to its initial
+//	hard 1   …/codeaf       the parents dropped entirely
+//	hard 2   codeaf         the place, alone
 //
 // The LAST SEGMENT IS ALWAYS WHOLE, at every strength. It is the only part of
 // the path that answers the question the legend is for — which project is this

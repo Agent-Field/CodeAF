@@ -80,7 +80,7 @@ func TestALearnedFactIsReadOncePerNameUntilSomethingSaysOtherwise(t *testing.T) 
 // the preview cache's key (imagepreview.go).
 func TestTheFrameStatsOnePictureOnceAndNotOncePerPaint(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image", `{"prompt":"a harbour"}`,
-		".aforge-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 	stats := 0
 	// A FRESH MEMO, so what the turn's own arrival learned is not counted here:
 	// what is being measured is what the FRAME costs from here on.
@@ -123,7 +123,7 @@ func TestTheFrameStatsOnePictureOnceAndNotOncePerPaint(t *testing.T) {
 // after it already has the file — no window, no message, no beat in between.
 func TestAPictureIsStatdWhenItsCallFinishes(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image", `{"prompt":"a harbour"}`,
-		".aforge-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 	if paintedRows(openFirst(t, a)) == 0 {
 		t.Fatal("the first frame after the call drew no picture")
 	}
@@ -133,7 +133,7 @@ func TestAPictureIsStatdWhenItsCallFinishes(t *testing.T) {
 // to be re-read in full by every paint that had no catalog behind it, which is
 // the first-run screen and every window opened with no key.
 func TestTheModelCacheIsReadAtOpenAndNotOnEveryFrame(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	if err := WriteModelCache([]Model{{ID: "cached/one", ContextLength: 32_000}}); err != nil {
 		t.Fatal(err)
 	}

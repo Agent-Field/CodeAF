@@ -478,7 +478,7 @@ func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
 // installed, so the fake carries the claim everywhere and this carries the one
 // thing a fake cannot — that furrow really does forget the fork.
 //
-//	AFORGE_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
+//	CODEAF_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
 func TestARealFurrowForgetsASweptSessionsFork(t *testing.T) {
 	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
 	if binary == "" {

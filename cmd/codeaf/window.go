@@ -5,7 +5,7 @@ import (
 )
 
 // chatWindow is everything one process owns over a durable graph: the store it
-// reads and the conversation it is looking at. It is what `aforge do` opens
+// reads and the conversation it is looking at. It is what `codeaf do` opens
 // before it builds a brain, and the brain reads these three fields rather than
 // resolving any of them a second time.
 //

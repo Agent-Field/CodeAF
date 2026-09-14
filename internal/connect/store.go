@@ -95,7 +95,7 @@ func (s stored) usable() bool {
 //
 // A CONNECTION THAT IS SHORT OF A PERMISSION IS NOT A CONNECTION. The person
 // agreed to something narrower than what this build needs — they signed in when
-// aforge could only read their mail, and it can send now — and the honest thing
+// codeaf could only read their mail, and it can send now — and the honest thing
 // is to put them back through the sign-in they already know rather than to let a
 // tool call fail at the far end with a sentence written by Google.
 //
@@ -130,7 +130,7 @@ func (s stored) covers(wanted []string) bool {
 //
 // THE FILE IS REPLACED WHOLE AND ATOMICALLY: read, replace one service's entry,
 // write a temporary file beside it, rename over the old one. Entries for other
-// services — and any key a later version of aforge adds — survive untouched,
+// services — and any key a later version of codeaf adds — survive untouched,
 // and a process killed mid-write leaves the previous file intact rather than
 // half of a new one.
 type store struct {
@@ -143,7 +143,7 @@ type store struct {
 	afterLoad func()
 }
 
-// newStore names the file under profileDir, or under aforge's state root when
+// newStore names the file under profileDir, or under codeaf's state root when
 // profileDir is empty — the same resolution every other persisted setting uses.
 func newStore(profileDir string) *store {
 	profileDir = strings.TrimSpace(profileDir)

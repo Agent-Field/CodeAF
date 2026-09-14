@@ -36,7 +36,7 @@ func runServices(args []string) error {
 		// A LISTING WITH NOTHING IN IT SAYS SO. Silence and exit 0 is what this
 		// door used to answer on a healthy machine, and silence is
 		// indistinguishable from a command that broke — which is the one
-		// reading the emptiness law exists to prevent. `aforge cache` has had
+		// reading the emptiness law exists to prevent. `codeaf cache` has had
 		// the sentence all along and is the model for it.
 		if len(services) == 0 {
 			_, err := fmt.Println("nothing is being kept running.")
@@ -62,7 +62,7 @@ func runServices(args []string) error {
 		return table.Flush()
 	}
 	if len(remaining) != 2 || remaining[0] != "stop" {
-		return fmt.Errorf("usage: aforge services [--db path] | aforge services stop <name> [--db path]")
+		return fmt.Errorf("usage: codeaf services [--db path] | codeaf services stop <name> [--db path]")
 	}
 	service, found, err := graph.ServiceByName(remaining[1])
 	if err != nil {
@@ -71,7 +71,7 @@ func runServices(args []string) error {
 	if !found {
 		return fmt.Errorf("service %q is not running", remaining[1])
 	}
-	if err := resident.NewServiceSupervisor(graph).Stop(service.ID, "stopped from aforge services"); err != nil {
+	if err := resident.NewServiceSupervisor(graph).Stop(service.ID, "stopped from codeaf services"); err != nil {
 		return err
 	}
 	// The receipt for one service, in the register every other one-line answer

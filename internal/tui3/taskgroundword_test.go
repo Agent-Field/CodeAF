@@ -34,7 +34,7 @@ type groundWordCase struct {
 }
 
 // groundWordCases is every rung, plus the two ways a surface can be handed no
-// rung at all: a record row written before aforge wrote the rung down, and a
+// rung at all: a record row written before codeaf wrote the rung down, and a
 // node given an empty folder of its own on the reference promise.
 var groundWordCases = []groundWordCase{
 	{"a fork of the whole folder", session.GroundRungUniverse, session.TaskModeWorktree, "its own copy of the folder"},

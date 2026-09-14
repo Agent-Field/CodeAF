@@ -2,8 +2,8 @@ package tui3
 
 // THE PULSE: THE ONE LINE AT THE TOP OF EVERY FRAME.
 //
-//	aforge          2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
-//	aforge                                  $0.55 / $20.00 · tue 1:11pm
+//	codeaf          2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+//	codeaf                                  $0.55 / $20.00 · tue 1:11pm
 //
 // The program's name on the left, and right-aligned on the other end — quiet
 // unless it has a reason not to be — the machine's own vital signs. The first
@@ -153,8 +153,8 @@ func (a *app) pulseLine(width int, pal palette, mode pulseMode) string {
 	// to spend.
 	// AND IT IS THE ONE NAME, READ OFF THE ONE CONSTANT (styles.go's [product]).
 	// This line used to hold a second spelling of its own (`pulseName`), which is
-	// how the surface came to greet a fresh install with `openaf` in the wordmark
-	// and `aforge` in the prose under it.
+	// how the surface came to greet a fresh install with `codeaf` in the wordmark
+	// and `codeaf` in the prose under it.
 	name := " " + pal.bold(pal.muted(product))
 	for _, tail := range a.pulseRungs(a.now(), pal, mode) {
 		if tail == "" {

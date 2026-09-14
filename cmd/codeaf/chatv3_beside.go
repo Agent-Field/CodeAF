@@ -2,7 +2,7 @@ package main
 
 // ── SEVERAL CONVERSATIONS, THROUGH ONE ENGINE ───────────────────────────────
 //
-// chatv3_beside.go is what makes `aforge`, `aforge chat`, `--host` and `--at`
+// chatv3_beside.go is what makes `codeaf`, `codeaf chat`, `--host` and `--at`
 // able to hold more than one live conversation at a time. Until this file
 // existed they could not, and the surface said so in as many words —
 // `closed · <name> — a connection holds one conversation at a time`.

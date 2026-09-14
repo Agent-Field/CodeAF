@@ -122,7 +122,7 @@ var settingReaders = map[string]string{
 	KeyPracticeBudget: "PracticeBudgetUSD",
 	KeyPracticeIdle:   "PracticeIdle",
 	KeyBriefAfter:     "BriefAfter",
-	KeyTenureAfter:    "AFORGE_TENURE_AFTER",
+	KeyTenureAfter:    "CODEAF_TENURE_AFTER",
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
@@ -275,10 +275,10 @@ var settingReaders = map[string]string{
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the
 	// persisted half through ctxbudget.Configure.
-	KeyContextFill:       "AFORGE_CONTEXT_FILL_PCT",
-	KeyCompletionReserve: "AFORGE_COMPLETION_RESERVE",
-	KeyWorkingSet:        "AFORGE_WORKING_SET",
-	KeyContextReuse:      "AFORGE_CONTEXT_REUSE_PCT",
+	KeyContextFill:       "CODEAF_CONTEXT_FILL_PCT",
+	KeyCompletionReserve: "CODEAF_COMPLETION_RESERVE",
+	KeyWorkingSet:        "CODEAF_WORKING_SET",
+	KeyContextReuse:      "CODEAF_CONTEXT_REUSE_PCT",
 	// The install's rung on the effort ladder. The v3 door reads it into the
 	// session's posture, from where the resolver hands it to every model call
 	// that has nothing more specific to go on (internal/effort).

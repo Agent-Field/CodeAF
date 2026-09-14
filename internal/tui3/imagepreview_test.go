@@ -228,7 +228,7 @@ func TestAnUnreadableFileDrawsNothingRatherThanAnError(t *testing.T) {
 func TestThePathUnderThePictureIsNeverCut(t *testing.T) {
 	pal := newPalette(tokens.TrueColor, false)
 	preview := imagePreview{width: 1024, height: 768, bytes: 1536, ok: true}
-	path := "/tmp/lab/.aforge-v3/images/harbour.png"
+	path := "/tmp/lab/.codeaf-v3/images/harbour.png"
 
 	one := picturePathLine(linker{pal: pal, on: true}, path, preview, 70)
 	if len(one) != 1 {
@@ -276,7 +276,7 @@ func TestThePathUnderThePictureIsAHyperlink(t *testing.T) {
 func pictureApp(t *testing.T, batches ...[]session.Event) (*app, string) {
 	t.Helper()
 	dir := t.TempDir()
-	path := writePicture(t, dir, ".aforge-v3/images/harbour.png", wideTestPicture())
+	path := writePicture(t, dir, ".codeaf-v3/images/harbour.png", wideTestPicture())
 	var events []session.Event
 	for _, batch := range batches {
 		events = append(events, batch...)
@@ -334,7 +334,7 @@ func wideTestPicture() image.Image {
 func TestOpeningAGeneratedPictureDrawsThePicture(t *testing.T) {
 	a, path := pictureApp(t, call("generate_image",
 		`{"prompt":"a harbour at dawn"}`,
-		".aforge-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 
 	rows := openFirst(t, a)
 	if !strings.Contains(strings.Join(rows, "\n"), halfBlock) {
@@ -355,7 +355,7 @@ func TestOpeningAGeneratedPictureDrawsThePicture(t *testing.T) {
 // halves of the call.
 func TestOpeningALookDrawsThePictureAndTheAnswer(t *testing.T) {
 	a, _ := pictureApp(t, call("view_image",
-		`{"path":".aforge-v3/images/harbour.png","question":"is the mast straight?"}`,
+		`{"path":".codeaf-v3/images/harbour.png","question":"is the mast straight?"}`,
 		"seen by look/model: the mast leans a little to the left."))
 
 	body := strings.Join(openFirst(t, a), "\n")
@@ -398,9 +398,9 @@ func TestThePictureFileIsFoundInEitherPlace(t *testing.T) {
 
 	chosen := &entry{tool: "generate_image", detail: toolDetail{
 		Args:   `{"prompt":"a harbour"}`,
-		Output: ".aforge-v3/images/harbour.png — 1024×1024 png, 1.4MB, generated on paint/model",
+		Output: ".codeaf-v3/images/harbour.png — 1024×1024 png, 1.4MB, generated on paint/model",
 	}}
-	want := "/tmp/lab/.aforge-v3/images/harbour.png"
+	want := "/tmp/lab/.codeaf-v3/images/harbour.png"
 	if got, ok := a.picturePath(chosen); !ok || got != want {
 		t.Fatalf("from the result = %q, %v", got, ok)
 	}
@@ -426,8 +426,8 @@ func TestThePictureFileIsFoundInEitherPlace(t *testing.T) {
 
 // A picture is decoded once, however many frames it is drawn on.
 func TestAPictureIsDecodedOncePerShape(t *testing.T) {
-	a, _ := pictureApp(t, call("generate_image", `{"path":".aforge-v3/images/harbour.png"}`,
-		".aforge-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+	a, _ := pictureApp(t, call("generate_image", `{"path":".codeaf-v3/images/harbour.png"}`,
+		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 	openFirst(t, a)
 	kept := len(a.previews)
 	if kept == 0 {

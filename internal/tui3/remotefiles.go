@@ -1158,7 +1158,7 @@ func (a *app) openBrowse() {
 // in, once.
 //
 // IT IS ROOTED WHERE EVERY OTHER CAS IN THIS TREE IS ROOTED: a `cas` directory
-// under the state root aforge owns (internal/home, and internal/store's own
+// under the state root codeaf owns (internal/home, and internal/store's own
 // cas.New(filepath.Join(dir, "cas"))). It is under `v3/remote/` rather than
 // beside the session store because these blobs are not this machine's work —
 // they are copies of somebody else's disk, kept so a click does not become a

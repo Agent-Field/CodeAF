@@ -300,9 +300,9 @@ func TestTheControllerIsBuiltFromTheOneFactory(t *testing.T) {
 // is here because breaking it costs somebody else their belief file.
 //
 // The default registry's ledger writes every belief through a store rooted at
-// AFORGE_HOME, so a test that touches it without moving the state root folds its
+// CODEAF_HOME, so a test that touches it without moving the state root folds its
 // invented lanes into the file a real session reads on its next cold start. It
-// happened: `~/.aforge/v3/lanes.json` on the machine this design was written on
+// happened: `~/.codeaf/v3/lanes.json` on the machine this design was written on
 // carried lanes from the beat's own test.
 //
 // A helper that moves the root counts for every test that calls it, which is how

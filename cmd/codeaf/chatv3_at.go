@@ -1,17 +1,17 @@
 package main
 
-// ── `aforge serve`, `aforge chat --at otter-lamp-42`, `aforge devices` ───────
+// ── `codeaf serve`, `codeaf chat --at otter-lamp-42`, `codeaf devices` ───────
 //
 // The three doors of reaching a machine WITHOUT ssh. One machine holds an
 // outbound connection open and shows a pairing code; a device pairs with that
 // code once and afterwards just opens; and the machine that owns the work lists
 // and stops the devices it has let in.
 //
-//	big-machine$ aforge serve
+//	big-machine$ codeaf serve
 //	  this machine is reachable as  otter-lamp-42
 //	  pair a new device with code   715 302   (valid 10 minutes)
 //
-//	laptop$ aforge chat --at otter-lamp-42
+//	laptop$ codeaf chat --at otter-lamp-42
 //	  pairing with otter-lamp-42 — enter the code shown there: ______
 //	  paired. this device is now a key to otter-lamp-42.   [chat opens]
 //
@@ -29,7 +29,7 @@ package main
 // prompt, while stderr is still the terminal's. A TUI that came up first would
 // draw a frame over the top of the one question this door has to ask.
 //
-// AND THE ENGINE IS THE MACHINE'S OWN `aforge engine`, started as a child, one
+// AND THE ENGINE IS THE MACHINE'S OWN `codeaf engine`, started as a child, one
 // per connection — the same shape ssh gives it, so the far half of this door is
 // code that has been running in production since the ssh door shipped. What is
 // new here is the pipe, and only the pipe.
@@ -51,7 +51,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
-// ── the surface: aforge chat --at <name> ────────────────────────────────────
+// ── the surface: codeaf chat --at <name> ────────────────────────────────────
 
 // atLaunch is one `--at` launch as the flag parser saw it. It is deliberately
 // the same shape as [hostLaunch], because it is the same launch down a
@@ -66,7 +66,7 @@ type atLaunch struct {
 	level string
 	// once is --once: one message, printed, no terminal ownership.
 	once string
-	// pick is `aforge resume`: the same surface, opened on the session picker.
+	// pick is `codeaf resume`: the same surface, opened on the session picker.
 	pick bool
 	// noCompact and yolo are refused rather than ignored, exactly as they are
 	// over --host: they are properties of a session that is built over there.
@@ -98,7 +98,7 @@ func (l atLaunch) check() error {
 		return nil
 	}
 	name, _, _ := parseAtTarget(l.target)
-	return fmt.Errorf("%s cannot travel over --at: the session is built on %s, so set it there — open the settings panel on that machine, or run `aforge chat %s` on it",
+	return fmt.Errorf("%s cannot travel over --at: the session is built on %s, so set it there — open the settings panel on that machine, or run `codeaf chat %s` on it",
 		strings.Join(named, " and "), name, strings.Join(named, " "))
 }
 
@@ -111,7 +111,7 @@ func (l atLaunch) check() error {
 func parseAtTarget(raw string) (name, workspace string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", "", errors.New("--at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `aforge serve` prints the name of a machine")
+		return "", "", errors.New("--at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `codeaf serve` prints the name of a machine")
 	}
 	name = raw
 	if at := strings.Index(raw, ":"); at >= 0 {
@@ -134,7 +134,7 @@ func openChatV3At(launch atLaunch) error {
 		return err
 	}
 	if launch.pick && launch.once != "" {
-		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --at %s --once "text"`, name)
+		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --at %s --once "text"`, name)
 	}
 
 	device, err := pair.ThisDevice(pair.OpenKeeper())
@@ -237,7 +237,7 @@ func askPairingCode(name string) (string, error) {
 	return strings.TrimSpace(typed), nil
 }
 
-// ── the machine: aforge serve ───────────────────────────────────────────────
+// ── the machine: codeaf serve ───────────────────────────────────────────────
 
 // runServe holds this machine's outbound connection open and answers the
 // devices that arrive on it.
@@ -253,7 +253,7 @@ func runServe(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: aforge serve [--workspace path] [--relay https://…]")
+		return errors.New("usage: codeaf serve [--workspace path] [--relay https://…]")
 	}
 
 	service := strings.TrimSpace(*relayAddress)
@@ -263,7 +263,7 @@ func runServe(args []string) error {
 	if service == "" {
 		// THE HONEST STATE, AND THE ONE MOST PEOPLE WILL MEET. The relay is a
 		// service and this build does not assume one exists.
-		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to a relay's address, or let people in over ssh with `aforge chat --host` from their side")
+		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to a relay's address, or let people in over ssh with `codeaf chat --host` from their side")
 	}
 
 	here := strings.TrimSpace(*workspace)
@@ -300,7 +300,7 @@ func runServe(args []string) error {
 	return nil
 }
 
-// serveOneConnection runs `aforge engine` for one connection, with the tunnel
+// serveOneConnection runs `codeaf engine` for one connection, with the tunnel
 // as its pipes.
 //
 // A CHILD PROCESS RATHER THAN A FUNCTION CALL, and that is the whole reason
@@ -320,7 +320,7 @@ func serveOneConnection(tunnel io.ReadWriteCloser, workspace string) {
 	engine.Stdin = tunnel
 	engine.Stdout = tunnel
 	// The engine's own stderr is this machine's, where a person running
-	// `aforge serve` can see it. It is never put on the tunnel: stdout is the
+	// `codeaf serve` can see it. It is never put on the tunnel: stdout is the
 	// protocol and one stray line there is a frame the surface cannot parse.
 	engine.Stderr = os.Stderr
 	if err := engine.Run(); err != nil && !errors.Is(err, context.Canceled) {
@@ -328,14 +328,14 @@ func serveOneConnection(tunnel io.ReadWriteCloser, workspace string) {
 	}
 }
 
-// ── the machine: aforge devices ─────────────────────────────────────────────
+// ── the machine: codeaf devices ─────────────────────────────────────────────
 
 // runDevices lists the devices this machine lets in, and stops one.
 //
 // THE LIST AND THE STOPPING BOTH BELONG TO THIS MACHINE. A device cannot list
 // itself out of somebody's machine and cannot stop another device; this command
 // answers about the machine it is typed on, which is the same law the rest of
-// aforge keeps about remote surfaces.
+// codeaf keeps about remote surfaces.
 func runDevices(args []string) error {
 	device, err := pair.ThisDevice(pair.OpenKeeper())
 	if err != nil {
@@ -350,7 +350,7 @@ func runDevices(args []string) error {
 		return commandHelp("devices")
 	}
 	if len(args) > 0 {
-		return fmt.Errorf("usage: aforge devices [revoke <name> [--all]]")
+		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all]]")
 	}
 
 	paired, err := book.Devices()
@@ -369,12 +369,12 @@ func runDevices(args []string) error {
 // revokeDevice stops one device, or every device answering to one name.
 //
 // --ALL IS A FLAG LIKE EVERY OTHER FLAG IN THIS BINARY. It used to be read by
-// hand, and only when it was the FIRST word after `revoke`, so `aforge devices
+// hand, and only when it was the FIRST word after `revoke`, so `codeaf devices
 // revoke laptop --all` was refused — with a usage line that did not mention
 // `--all` at all. A person taking back access to their own machine was told the
 // wrong grammar for the gesture they had just typed correctly. Through
 // [commandFlags] and [reorder] it is now accepted in either position, printed
-// by `aforge devices revoke --help`, and named in the one usage table.
+// by `codeaf devices revoke --help`, and named in the one usage table.
 func revokeDevice(book *pair.Book, args []string) error {
 	flags := commandFlags("devices revoke")
 	all := flags.Bool("all", false, "stop every device answering to that name, not just the one")
@@ -382,7 +382,7 @@ func revokeDevice(book *pair.Book, args []string) error {
 		return err
 	}
 	if flags.NArg() != 1 {
-		return errors.New("usage: aforge devices revoke <name> [--all] — `aforge devices` lists the names")
+		return errors.New("usage: codeaf devices revoke <name> [--all] — `codeaf devices` lists the names")
 	}
 	name := flags.Arg(0)
 	if *all {

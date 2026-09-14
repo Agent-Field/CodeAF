@@ -7,18 +7,18 @@ import (
 
 // THE PRODUCT HAS ONE NAME AND EVERY SCREEN SAYS IT.
 //
-// The wordmark on the first screen of a fresh install used to spell `openaf`
-// while the prose three rows under it — on the same frame — said `aforge`, and
-// the top line of every place after it said `aforge` again. Two constants held
-// the one fact (styles.go's [product] and a `pulseName` that no longer exists),
-// which is the ONE SOURCE OF TRUTH law's own worked example: a name written down
-// twice is a name that gets renamed once.
+// The wordmark on the first screen of a fresh install once spelled one name
+// while the prose three rows under it — on the same frame — spelled another,
+// and the top line of every place after it spelled the second again. Two
+// constants held the one fact (styles.go's [product] and a `pulseName` that no
+// longer exists), which is the ONE SOURCE OF TRUTH law's own worked example: a
+// name written down twice is a name that gets renamed once.
 
 // TestTheProductIsNamedOnceAndItIsTheNameYouType holds the constant to the
 // command a person actually typed to get here.
 func TestTheProductIsNamedOnceAndItIsTheNameYouType(t *testing.T) {
-	if product != "aforge" {
-		t.Fatalf("this surface calls itself %q, and a person reaches it by typing %q — the wordmark and the binary have to be one word", product, "aforge")
+	if product != "codeaf" {
+		t.Fatalf("this surface calls itself %q, and a person reaches it by typing %q — the wordmark and the binary have to be one word", product, "codeaf")
 	}
 }
 
@@ -51,6 +51,11 @@ func TestTheWordmarkCanSpellTheProductsWholeName(t *testing.T) {
 
 // TestTheFirstScreensWordmarkAndItsProseNameOneProduct is the clash itself: the
 // letterforms and the sentence under them, on one frame, read off one constant.
+//
+// It used to carry a second half that named the retired spelling as a literal
+// and failed any sentence still carrying it. That duty is not one screen's any
+// more: the rename to codeaf makes it a claim about the whole tree, and the
+// name law is where a claim about the whole tree belongs.
 func TestTheFirstScreensWordmarkAndItsProseNameOneProduct(t *testing.T) {
 	prose := []struct {
 		what string
@@ -67,9 +72,6 @@ func TestTheFirstScreensWordmarkAndItsProseNameOneProduct(t *testing.T) {
 	for _, row := range prose {
 		if !strings.Contains(row.said, product) {
 			t.Fatalf("%s reads %q — the wordmark over it draws %q, and one screen may not name two products", row.what, row.said, product)
-		}
-		if strings.Contains(row.said, "openaf") {
-			t.Fatalf("%s still spells the retired name:\n\tdrawn: %s\n\twant:  the same sentence with %q in it", row.what, row.said, product)
 		}
 	}
 }

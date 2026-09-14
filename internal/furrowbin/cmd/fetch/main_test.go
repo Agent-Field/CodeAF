@@ -213,7 +213,7 @@ func TestAPlatformThePinDoesNotCoverStopsTheBuildByName(t *testing.T) {
 	cache, stage := t.TempDir(), t.TempDir()
 	err := fetch(fakePin("linux-arm64"), "plan9-riscv64", cache, stage, "")
 	if err == nil {
-		t.Fatal("a platform with no pinned artifact built happily; that is an aforge without furrow")
+		t.Fatal("a platform with no pinned artifact built happily; that is a codeaf without furrow")
 	}
 
 	// THE REFUSAL IS THE PRODUCT HERE. A build that stops has to hand back the

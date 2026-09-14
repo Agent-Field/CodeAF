@@ -9,7 +9,7 @@ import (
 
 // A node run by a command a person typed is a node somebody is watching. The
 // live-conversation map cannot say so — a headless command opens no
-// conversation — and before the door's latch `aforge do` ran its nodes as
+// conversation — and before the door's latch `codeaf do` ran its nodes as
 // unattended, so under `simple` the person's own pin never rode their calls.
 func TestANodeRunByATypedCommandCountsAsWatched(t *testing.T) {
 	before := provider.PersonAtTheDoor()

@@ -112,7 +112,7 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 
 // THE SAME ONE FIGURE ON THE ENGINE HOST'S DOOR, AFTER A RECEIPT THAT CAME LATE.
 //
-// A bare `aforge` opens a window on the engine host, which reads the ledger
+// A bare `codeaf` opens a window on the engine host, which reads the ledger
 // through a seam and holds no path to it. The route judge the turn finished in
 // front of was cut, the provider's receipt for it was banked under this
 // conversation twenty seconds after the turn ended, and nothing asked the agent

@@ -56,11 +56,11 @@ func TestPlanProgressPosterSurvivesAZeroConstruction(t *testing.T) {
 func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
 	login := t.TempDir()
 	t.Setenv("HOME", login)
-	// AND WHERE THE STATE ROOT IS, said rather than assumed. AFORGE_HOME moves
+	// AND WHERE THE STATE ROOT IS, said rather than assumed. CODEAF_HOME moves
 	// the whole of it (internal/home), so a test that pins a file's path by
 	// moving HOME alone is reading whatever the environment happened to say —
 	// which is a pass or a failure depending on whose machine it runs on.
-	t.Setenv(home.EnvVar, filepath.Join(login, ".aforge"))
+	t.Setenv(home.EnvVar, filepath.Join(login, ".codeaf"))
 
 	stderr := &bytes.Buffer{}
 	code := reportFault(stderr, "runtime error: slice bounds out of range [:-1]",
@@ -74,7 +74,7 @@ func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
 		t.Fatalf("the stack reached the user's screen: %q", shown)
 	}
 	for _, phrase := range []string{
-		"aforge hit an internal fault and had to stop",
+		"codeaf hit an internal fault and had to stop",
 		"Nothing is lost",
 		"restarting resumes where it left off",
 		"chat.log",
@@ -87,7 +87,7 @@ func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
 		t.Fatalf("the calm block is more than one block: %q", shown)
 	}
 
-	payload, err := os.ReadFile(filepath.Join(login, ".aforge", "chat.log"))
+	payload, err := os.ReadFile(filepath.Join(login, ".codeaf", "chat.log"))
 	if err != nil {
 		t.Fatalf("read the log: %v", err)
 	}

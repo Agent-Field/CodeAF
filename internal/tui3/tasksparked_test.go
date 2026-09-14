@@ -23,7 +23,7 @@ import (
 func tasksParkedFixture() (session.World, session.UsageWindow, time.Time) {
 	loc := time.FixedZone("fixture", -4*60*60)
 	now := time.Date(2026, time.September, 2, 23, 52, 0, 0, loc)
-	row := session.SessionRow{ID: "room-a", Title: "The Task Surface", Project: "aforge", Open: true, Live: false}
+	row := session.SessionRow{ID: "room-a", Title: "The Task Surface", Project: "codeaf", Open: true, Live: false}
 	entry := func(id, label, status string) session.TaskIndexEntry {
 		return session.TaskIndexEntry{ID: id, Label: label, Title: label, SessionID: "room-a", Status: status}
 	}
@@ -34,7 +34,7 @@ func tasksParkedFixture() (session.World, session.UsageWindow, time.Time) {
 		entry("4", "Cut every list over to the shared row fitter", string(session.TaskRunning)),
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	return world, session.LastDays(now, taskSheetDays), now
 }

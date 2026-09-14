@@ -163,7 +163,7 @@ func TestAnUnreadableGateRowIsNotEvidenceOfACheck(t *testing.T) {
 // not be reached ends `unchecked` at exit 2 with the reason beside it, and the
 // last line a person reads says the answer above them is theirs to keep and that
 // nothing has vouched for it. Two graded runs left with `ok` and exit 0 over
-// exactly this shape (2026-09-02, aforge-v2-14 anchor 1).
+// exactly this shape (2026-09-02, codeaf-14 anchor 1).
 func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing.T) {
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {

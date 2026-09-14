@@ -405,7 +405,7 @@ func madeNote(row deliverable, home string, width, label int) string {
 // ── the app's side of the overlay ───────────────────────────────────────────
 
 // The list reads the same global index /export writes to: [app.artifactsIndex]
-// (export.go) is the one resolver, going through internal/home so AFORGE_HOME
+// (export.go) is the one resolver, going through internal/home so CODEAF_HOME
 // moves it with everything else, with the field as the narrower override a
 // test sets directly.
 

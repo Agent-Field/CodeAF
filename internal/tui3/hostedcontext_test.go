@@ -122,12 +122,12 @@ func TestAttachOnADirectoryRefusesOnlyOverAConnection(t *testing.T) {
 }
 
 // AN OWNED CONVERSATION OPENS THE CHOOSER ON THE WINDOW'S DIRECTORY, not on
-// aforge's own work and journal files. A folder the conversation already holds
+// codeaf's own work and journal files. A folder the conversation already holds
 // still wins the ladder ahead of that directory.
 func TestAnOwnedConversationChoosesFromTheWindowsFolder(t *testing.T) {
 	root := t.TempDir()
 	window := filepath.Join(root, "person")
-	state := filepath.Join(root, ".aforge", "v3", "projects", "encoded", "id", "work")
+	state := filepath.Join(root, ".codeaf", "v3", "projects", "encoded", "id", "work")
 	held := filepath.Join(root, "held")
 	for _, dir := range []string{window, state, held} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

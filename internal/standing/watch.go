@@ -1,12 +1,12 @@
 package standing
 
-// watch.go keeps the standing items current when no aforge window is open. It
-// is one launchd agent or one systemd user timer running `aforge tick` every
+// watch.go keeps the standing items current when no codeaf window is open. It
+// is one launchd agent or one systemd user timer running `codeaf tick` every
 // [Interval], and it is the entire footprint this design has on the host: no
 // server, no port, no account, no configuration file.
 //
 // IT IS THE SHAPE OF internal/watchdog AND NOT ITS CODE. v1's resident owns its
-// own units and its own `aforge wake`, and the two must be able to sit on one
+// own units and its own `codeaf wake`, and the two must be able to sit on one
 // machine without either one's install stepping on the other's. So the approach
 // is copied deliberately — injectable platform, home, executable and runner;
 // definitions written temp+rename; status derived from bytes on disk — and the
@@ -25,7 +25,7 @@ package standing
 // that names another program alone for as long as that program can still run;
 // it steps in only when the program the timer names is gone, or the definition
 // is not one this build would have written for this home. Before this law the
-// timer followed whichever aforge launched last, every launch of the other
+// timer followed whichever codeaf launched last, every launch of the other
 // build rewrote it, and a build that was then deleted left it failing every
 // five minutes in silence.
 
@@ -49,20 +49,20 @@ import (
 // DarwinTickLabel and LinuxTickTimer are what this machine's own scheduler
 // calls the timer.
 //
-// THEY ARE EXPORTED BECAUSE THE SETTINGS ROW SAYS THEM OUT LOUD. "aforge
+// THEY ARE EXPORTED BECAUSE THE SETTINGS ROW SAYS THEM OUT LOUD. "codeaf
 // installs a launchd agent" is a sentence nobody can check; the label is what
 // `launchctl list` and `systemctl --user list-timers` answer to, and a person
 // deciding whether to leave background checks on is entitled to the name they
 // would have to type to go and look.
 const (
-	DarwinTickLabel = "ai.agentfield.aforge.tick"
-	LinuxTickTimer  = "aforge-tick.timer"
+	DarwinTickLabel = "ai.agentfield.codeaf.tick"
+	LinuxTickTimer  = "codeaf-tick.timer"
 )
 
 const (
 	darwinTickPlist  = DarwinTickLabel + ".plist"
-	linuxTickService = "aforge-tick.service"
-	tickUnitTitle    = "Keep aforge's standing items current"
+	linuxTickService = "codeaf-tick.service"
+	tickUnitTitle    = "Keep codeaf's standing items current"
 )
 
 // IntervalWords is [Interval] the way a person says it — `5 minutes`.
@@ -102,7 +102,7 @@ type WatchOptions struct {
 	Platform   string
 	HomeDir    string
 	Executable string
-	// StateRoot is the home the timer ticks — AFORGE_HOME when set, the
+	// StateRoot is the home the timer ticks — CODEAF_HOME when set, the
 	// login's default otherwise — and the half of the pair a test has to name
 	// for a home it is not running under. Empty is this process's own.
 	StateRoot string
@@ -564,7 +564,7 @@ func writeDefinition(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("standing: make room for the timer: %w", err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".aforge-tick-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".codeaf-tick-*")
 	if err != nil {
 		return fmt.Errorf("standing: write the timer: %w", err)
 	}
@@ -598,7 +598,7 @@ func removeIfPresent(path string) error {
 // darwinPlist and the two systemd units below interpolate [Interval] rather
 // than spelling five minutes again: a cadence that appears in two places is a
 // cadence that will disagree with itself. Both carry the home the tick runs
-// against as AFORGE_HOME, because a tick that inherited nothing ticked the
+// against as CODEAF_HOME, because a tick that inherited nothing ticked the
 // login's default home whatever home had installed it.
 func darwinPlist(executable, root string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>

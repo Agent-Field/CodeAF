@@ -19,7 +19,7 @@
 // and the second-cheapest model on the panel had the second-highest ability
 // while the second-dearest sat sixth of seven.
 //
-// The whole package is inert unless AFORGE_MODELS names a panel. With it unset
+// The whole package is inert unless CODEAF_MODELS names a panel. With it unset
 // the harness builds the same single adapter it always did, and nothing below
 // this line runs.
 package router
@@ -67,7 +67,7 @@ type Panel struct {
 	MaxOutputPrice float64 `json:"max_output_price,omitempty"`
 }
 
-// LoadPanel reads AFORGE_MODELS. An empty value means no panel, which is not an
+// LoadPanel reads CODEAF_MODELS. An empty value means no panel, which is not an
 // error — it is the kill switch, and it is the default.
 //
 // Two forms are accepted. A comma-separated list of slugs is the one that gets
@@ -93,7 +93,7 @@ func LoadPanel(value string) (Panel, error) {
 		panel.Models = append(panel.Models, Spec{Slug: slug})
 	}
 	if len(panel.Models) == 0 {
-		return Panel{}, fmt.Errorf("AFORGE_MODELS: %q names no models", value)
+		return Panel{}, fmt.Errorf("CODEAF_MODELS: %q names no models", value)
 	}
 	return panel, nil
 }
@@ -101,16 +101,16 @@ func LoadPanel(value string) (Panel, error) {
 func loadPanelFile(path string) (Panel, error) {
 	path = expandHome(path)
 	if extension := strings.ToLower(path); strings.HasSuffix(extension, ".yaml") || strings.HasSuffix(extension, ".yml") {
-		return Panel{}, fmt.Errorf("AFORGE_MODELS: %s is YAML, which this build cannot read — "+
-			"write the panel as JSON, or list the slugs directly: AFORGE_MODELS=a/b,c/d", path)
+		return Panel{}, fmt.Errorf("CODEAF_MODELS: %s is YAML, which this build cannot read — "+
+			"write the panel as JSON, or list the slugs directly: CODEAF_MODELS=a/b,c/d", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Panel{}, fmt.Errorf("AFORGE_MODELS: %w", err)
+		return Panel{}, fmt.Errorf("CODEAF_MODELS: %w", err)
 	}
 	var panel Panel
 	if err := json.Unmarshal(data, &panel); err != nil {
-		return Panel{}, fmt.Errorf("AFORGE_MODELS: parse %s: %w", path, err)
+		return Panel{}, fmt.Errorf("CODEAF_MODELS: parse %s: %w", path, err)
 	}
 	kept := panel.Models[:0]
 	for _, spec := range panel.Models {
@@ -120,21 +120,21 @@ func loadPanelFile(path string) (Panel, error) {
 			continue
 		}
 		if spec.Role != "" && spec.Role != "base" && spec.Role != "mid" && spec.Role != "top" {
-			return Panel{}, fmt.Errorf("AFORGE_MODELS: %s: unknown role %q for %s (base, mid, top)",
+			return Panel{}, fmt.Errorf("CODEAF_MODELS: %s: unknown role %q for %s (base, mid, top)",
 				path, spec.Role, spec.Slug)
 		}
 		kept = append(kept, spec)
 	}
 	panel.Models = kept
 	if len(panel.Models) == 0 {
-		return Panel{}, fmt.Errorf("AFORGE_MODELS: %s lists no models", path)
+		return Panel{}, fmt.Errorf("CODEAF_MODELS: %s lists no models", path)
 	}
 	return panel, nil
 }
 
 // looksLikePath separates the two forms.
 //
-// The tilde is the trap: `~/.aforge/models.json` is a path and
+// The tilde is the trap: `~/.codeaf/models.json` is a path and
 // `~deepseek/deepseek-v4-flash-latest` is a slug — OpenRouter's floating-alias
 // prefix, and the harness's own default model. Only `~/` is a home directory, so
 // only `~/` is treated as one. Everything else is decided by a leading slash or

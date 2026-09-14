@@ -121,7 +121,7 @@ func rememberGroundBaseline(dir string) {
 		// behaviour somebody can predict.
 		return
 	}
-	metadata := filepath.Join(dir, aforgeDroppings)
+	metadata := filepath.Join(dir, codeafDroppings)
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return
 	}
@@ -138,7 +138,7 @@ func rememberGroundBaseline(dir string) {
 // empty when the copy was made, and every path in the ledger is measured against
 // it.
 func rememberedGroundBaseline(dir string) map[string]string {
-	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, groundBaselineRecord))
+	contents, err := os.ReadFile(filepath.Join(dir, codeafDroppings, groundBaselineRecord))
 	if err != nil {
 		return nil
 	}
@@ -242,7 +242,7 @@ func gatherDigests(root, from string, into map[string]string, walk *digestWalk) 
 		if from != "" {
 			child = from + "/" + entry.Name()
 		}
-		if entry.Name() == ".git" || child == aforgeDroppings {
+		if entry.Name() == ".git" || child == codeafDroppings {
 			continue
 		}
 		if walk.budget--; walk.budget < 0 {

@@ -26,7 +26,7 @@ import (
 const (
 	theGround           = "/work/trees/1"
 	thePersonsCheckout  = "/Users/santoshkumar/Documents/agentfield/code/agentfield"
-	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/aforge-v2"
+	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/codeaf"
 	outsideYourCopy     = "is outside your copy"
 	worksInTheGroundNow = "this task works in " + theGround
 )

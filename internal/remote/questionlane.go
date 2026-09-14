@@ -10,7 +10,7 @@ package remote
 // not a degraded drawing but SILENCE: internal/tui3 asserts the questions half
 // of its agent as one interface (its questionAgent), a *Agent carried
 // ResolveQuestion and neither of the other two doors, so the assertion failed,
-// app.questionDoors() was false, and an `ask` on the road a plain `aforge`
+// app.questionDoors() was false, and an `ask` on the road a plain `codeaf`
 // takes stopped the turn with no block, no chip and no row on any screen. The
 // answer's own door had been here all along, carrying [session.Answer] whole,
 // which is exactly why nobody noticed: the half a person presses worked and the

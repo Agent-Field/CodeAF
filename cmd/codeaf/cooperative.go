@@ -46,7 +46,7 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	// SOMEBODY HAS ASKED FOR THAT. Unpinned the gate has no say and a leaf's
 	// division stands as it asked for it (splitgate's modes.go: the experiment
 	// that moved the default is in docs/design/plan-gate-doe/REPORT.md). Under
-	// `AFORGE_SPLITGATE=1` a leaf's own division earns its keep under the same
+	// `CODEAF_SPLITGATE=1` a leaf's own division earns its keep under the same
 	// rule as the planner's: the work it found enumerates many independent
 	// items.
 	//
@@ -190,7 +190,7 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 	// is now the only reader of both the pin and the question behind it — and
 	// with nothing pinned it keeps every division, which is what the plan-gate
 	// experiment measured as the best front (splitgate's modes.go). The leaves
-	// go with the goal because `AFORGE_SPLITGATE=judgment` prefers the plan's
+	// go with the goal because `CODEAF_SPLITGATE=judgment` prefers the plan's
 	// own sizing to anything the brief said, and this is the one caller that
 	// has a plan to offer.
 	if splitgate.Judge(goal, gateLeaves(graph, leaves)).Keep {

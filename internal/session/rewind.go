@@ -322,7 +322,7 @@ func (a *Agent) lastTurnStartLocked() (int, bool) {
 //
 // Two markers answer yes, and both are strings this package controls rather than
 // wordings anybody guessed at: the fold marker the current pass writes
-// ([foldMarker]), and the "[context compacted]" note an older aforge's summary
+// ([foldMarker]), and the "[context compacted]" note an older codeaf's summary
 // arrived under, which a resumed session can still be holding (sessionfile.go's
 // [legacyCompactionNote]).
 func isCompactionNote(text string) bool {

@@ -43,10 +43,10 @@ func TestBothExecutorConstructionSitesCarryAttribution(t *testing.T) {
 	}
 }
 
-// A capability aforge has and cannot explain is one the user meets first as a
+// A capability codeaf has and cannot explain is one the user meets first as a
 // surprise in their own git history.
 func TestManualExplainsAttribution(t *testing.T) {
-	for _, term := range []string{"attribution", "AFORGE_ATTRIBUTION", "sharing", "CONTRIBUTING"} {
+	for _, term := range []string{"attribution", "CODEAF_ATTRIBUTION", "sharing", "CONTRIBUTING"} {
 		if !manual.Mentions(term) {
 			t.Fatalf("no manual page mentions %q", term)
 		}

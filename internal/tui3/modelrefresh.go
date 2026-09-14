@@ -62,7 +62,7 @@ const (
 	modelsNewWord    = "new"
 	modelsNothingNew = "nothing new"
 	// ModelsFetchFailed leads the note a failed fetch leaves, followed by what
-	// the door said went wrong. It is exported for `aforge models --refresh`,
+	// the door said went wrong. It is exported for `codeaf models --refresh`,
 	// which says the same sentence on stderr rather than a second spelling of it.
 	ModelsFetchFailed = "could not fetch the model list"
 )

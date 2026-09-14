@@ -43,7 +43,7 @@ import (
 // machine can read, so the journal writes where they are and what they were, and
 // the replay checks the second before trusting the first (see [journalPart]).
 //
-// The file is locked while it is open. Two aforge processes resuming the same
+// The file is locked while it is open. Two codeaf processes resuming the same
 // path would both replay it and both append, and their lines interleave into
 // one transcript that belongs to neither — the last writer's resume reads the
 // other's messages as its own. A resume picks the newest file by mtime, so the
@@ -56,20 +56,20 @@ const sessionFileVersion = 1
 
 // ErrSessionLocked is what a second open of a live session file returns. Match
 // it with errors.Is; the *SessionLockedError it wraps carries the path.
-var ErrSessionLocked = errors.New("session file is open in another aforge")
+var ErrSessionLocked = errors.New("session file is open in another codeaf")
 
 // errNewerFormat is the ONE refusal a reading of a session file can carry that
 // is about the file's FORMAT rather than about this machine's luck with it — a
 // header declaring a version above [sessionFileVersion].
 //
 // It is a sentinel because a caller has to be able to tell it apart. "This was
-// written by a newer aforge" is a true and useful thing to say to somebody, and
+// written by a newer codeaf" is a true and useful thing to say to somebody, and
 // saying it about a disk that went away, or a read that was cut off, would be a
 // confident wrong answer sending them to upgrade a build that is already fine.
 // Match it with errors.Is; the *newerFormatError it wraps carries the path and
 // both versions, and prints the sentence people are shown and the manual quotes
 // (internal/manual/chat/sessions-and-rewind.md).
-var errNewerFormat = errors.New("session file was written by a newer aforge")
+var errNewerFormat = errors.New("session file was written by a newer codeaf")
 
 // newerFormatError names the file and the two format versions.
 type newerFormatError struct {
@@ -79,7 +79,7 @@ type newerFormatError struct {
 }
 
 func (e *newerFormatError) Error() string {
-	return fmt.Sprintf("session file: %s was written by a newer aforge (format version %d; this build reads %d)",
+	return fmt.Sprintf("session file: %s was written by a newer codeaf (format version %d; this build reads %d)",
 		e.Path, e.Version, e.Reads)
 }
 
@@ -89,7 +89,7 @@ func (e *newerFormatError) Unwrap() error { return errNewerFormat }
 type SessionLockedError struct{ Path string }
 
 func (e *SessionLockedError) Error() string {
-	return fmt.Sprintf("session file: %s is open in another aforge", e.Path)
+	return fmt.Sprintf("session file: %s is open in another codeaf", e.Path)
 }
 
 func (e *SessionLockedError) Unwrap() error { return ErrSessionLocked }
@@ -1716,7 +1716,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 // flock is the right primitive here because the kernel releases it when the
 // holding process dies, however it dies. That is the whole reason there is no
 // pid file and no staleness check: a held flock IS a live writer, so a crashed
-// aforge leaves nothing behind to clean up or to second-guess. The lock rides
+// codeaf leaves nothing behind to clean up or to second-guess. The lock rides
 // the open file description, so it lives exactly as long as the descriptor the
 // journal holds.
 //
@@ -1890,7 +1890,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		}
 		switch entry.Type {
 		case "session":
-			// The header names the format. A file written by a newer aforge can
+			// The header names the format. A file written by a newer codeaf can
 			// hold entry types and fields this build does not know, and every
 			// one of them would be dropped in silence — a session that resumes
 			// looking complete and is not. Say so instead.
@@ -2169,7 +2169,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// a FACT ON THE READING and not an error, because an error here is what every
 	// caller already reads as "refuse to open this file" — which is the loss this
 	// arm exists to end. The one thing that still refuses is a file written by a
-	// newer aforge, above, where refusing is the honest answer.
+	// newer codeaf, above, where refusing is the honest answer.
 	var unread int
 	if scanner.Err() != nil {
 		// The failing Scan never enters the loop, so the line nobody could read is
@@ -2260,7 +2260,7 @@ func rebuiltPart(part journalPart, rebuild bool) ai.ContentPart {
 // this has nothing to add (loop.go's [Agent.compact]).
 //
 // THE OTHER TWO SHAPES ARE LEGACY and are read for one reason: a session
-// compacted by an older aforge has to still resume as itself.
+// compacted by an older codeaf has to still resume as itself.
 //
 //   - SUMMARY — the prose a summarizer wrote. One note, exactly as it was.
 //   - PAGES — the frames rung's images, each re-read only while its digest still
@@ -3146,7 +3146,7 @@ func (s *sessionFile) writeLine(entry any) bool {
 
 // Close flushes the file, releases the claim, and closes the descriptor.
 // Writes are unbuffered appends, so the flush is the kernel's; Close is what
-// makes the file safe for another aforge to open. Calling it twice is safe.
+// makes the file safe for another codeaf to open. Calling it twice is safe.
 //
 // The explicit unlock is belt-and-braces — closing the descriptor drops the
 // flock on its own — but it states the release at the place a reader looks for
@@ -3174,7 +3174,7 @@ func (s *sessionFile) Close() error {
 
 func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
-// InUse reports whether another aforge is holding this transcript open.
+// InUse reports whether another codeaf is holding this transcript open.
 //
 // It is the same flock [lockSessionFile] takes, asked as a question rather than
 // as a claim: the lock is tried and released at once, so the answer is "somebody

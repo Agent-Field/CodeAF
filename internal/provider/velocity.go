@@ -659,7 +659,7 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 // membershipNarrowing reports whether this preference object carries a
 // membership restriction the first ladder rung can remove. max_price is
 // deliberately separate: a wider set is tried under the same ceiling before
-// aforge authorizes a dearer endpoint.
+// codeaf authorizes a dearer endpoint.
 //
 // It is the whole membership rule of the ladder's first rung, written once, so
 // that the rung is offered exactly when it would do something

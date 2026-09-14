@@ -151,7 +151,7 @@ func sweepSession(dir string, now time.Time, note func(string)) {
 	reapSession(dir, meta, note)
 }
 
-// sessionIsOpen reports whether another aforge holds this session's transcript.
+// sessionIsOpen reports whether another codeaf holds this session's transcript.
 //
 // It asks the way sessionfile.go's own claim asks — a non-blocking exclusive
 // flock, dropped the instant it is taken — because a held flock IS a live

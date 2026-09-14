@@ -1,5 +1,5 @@
 // Package remote is the wire between a surface on one machine and an engine on
-// another. The surface half dials `ssh <host> aforge engine …` and speaks this
+// another. The surface half dials `ssh <host> codeaf engine …` and speaks this
 // protocol over the pipes; the engine half wraps an ordinary *session.Agent and
 // answers. Both halves import THIS file and nothing of each other.
 //
@@ -26,7 +26,7 @@ import (
 // about a frame must not guess at each other.
 //
 // VERSION 2 IS THE PERSISTENT ENGINE. Version 1 married a conversation to a
-// pipe: the engine was `ssh … aforge engine`, it read frames on stdin, and when
+// pipe: the engine was `ssh … codeaf engine`, it read frames on stdin, and when
 // the pipe died so did the turn in flight. Version 2 separates the two — a
 // session lives on the engine machine and a surface ATTACHES to it — and the
 // four things that separation needs are the whole of the delta:
@@ -262,7 +262,7 @@ import (
 // moment a surface attaches. That subscription had no frame here, so a hosted
 // surface asserted the questions half of its agent, found no
 // [Agent.WatchQuestions] on it, and drew nothing: an `ask` on the road a plain
-// `aforge` takes stopped the turn with no block, no chip and no row on any
+// `codeaf` takes stopped the turn with no block, no chip and no row on any
 // screen, for as long as the person left it. Measured at three minutes.
 //
 // The delta is one intent up and one fact down, on the shape versions 8 and 11
@@ -287,7 +287,7 @@ import (
 // reason, and the reason is the whole of the discipline here: a version-13
 // engine answers this subscription with "no such method" and leaves the lane
 // permanently dark, with nothing on the screen saying why. Refused at the door,
-// a person is told their engine is an older aforge; accepted, they would be told
+// a person is told their engine is an older codeaf; accepted, they would be told
 // nothing at all and their turn would simply stop. NEVER TO SILENCE.
 // VERSION 15 IS AN ANSWER THAT IS A MESSAGE (docs/design/questions/DESIGN.md).
 // A question the model asks no longer exists only for as long as the call that
@@ -508,7 +508,7 @@ const (
 	// engine process through exactly this client — asked the question and got
 	// "this conversation has no project to keep question rules in", whatever
 	// project it was in. `/autonomy` printed that sentence on a machine with the
-	// rules sitting in `.aforge/autonomy.json`, and the settings rows that read
+	// rules sitting in `.codeaf/autonomy.json`, and the settings rows that read
 	// the same door drew nothing at all.
 	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
 	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
@@ -947,7 +947,7 @@ type Welcome struct {
 	// It is carried because a surface that is not alone must be able to say so:
 	// two people (or one person and their own forgotten window) sharing a
 	// conversation is a fact about that conversation, and a screen that hid it
-	// would be the one place aforge lied about who is in the room. Zero is the
+	// would be the one place codeaf lied about who is in the room. Zero is the
 	// ordinary case and draws nothing, by the emptiness law.
 	Attached int `json:"attached,omitempty"`
 
@@ -972,7 +972,7 @@ type Welcome struct {
 	// engine on a pipe.
 	//
 	// A SURFACE MUST NOT PROMISE A LIFETIME THE ENGINE DOES NOT HAVE. Both
-	// shapes speak this protocol and both are legitimate: `aforge engine`
+	// shapes speak this protocol and both are legitimate: `codeaf engine`
 	// started by hand on a machine with no host is still a conversation, it
 	// simply ends when the pipe does. The screen's word for detaching, and
 	// whether "close the lid, it keeps going" is true, both hang off this
@@ -1104,7 +1104,7 @@ type Welcome struct {
 // IT CARRIES THE FACT AND THE READING, and that is why it is per-recipient
 // rather than one broadcast fact. "The driver is macbook" means two different
 // sentences depending on who hears it: to the window sitting on macbook beside
-// it, the honest word is the one aforge already uses at home — `another window`
+// it, the honest word is the one codeaf already uses at home — `another window`
 // — and to a surface on spark it is the machine's name. Only the engine knows
 // both names, so only the engine can answer that; and the SURFACE still owns
 // the words, because the rest of the line it goes in is about keys on this

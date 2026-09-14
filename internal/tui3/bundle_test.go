@@ -1753,7 +1753,7 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 	a := newTestApp(agent)
 	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
-	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
+	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/codeaf", "codeaf"
 	a.branch, a.branchDirty = "chat-v3-task", true
 	a.gitProbe = func(string) (string, bool, bool) { return "chat-v3-task", true, true }
 	a.width, a.height = 200, 24
@@ -1785,7 +1785,7 @@ func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T)
 	// THE PATH IS NOT ON IT ANY MORE. It is a fact a person already has — the
 	// shell prompt behind this pane says it — and the slot went to the one fact
 	// nothing else on the frame carries.
-	if strings.Contains(line, "aforge-v2") {
+	if strings.Contains(line, "codeaf") {
 		t.Fatalf("the legend is still carrying the workspace path: %q", line)
 	}
 	if !strings.HasPrefix(line, "─ ") || !strings.HasSuffix(line, " ─") {
@@ -1824,7 +1824,7 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	// session that has not named itself yet.
 	line := plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "aforge-v2 · deepseek-v4-flash · chat-v3-task*" {
+	if label != "codeaf · deepseek-v4-flash · chat-v3-task*" {
 		t.Fatalf("an unnamed session's legend label = %q, want the folder standing in for the name", label)
 	}
 	for _, banned := range []string{"untitled", "Untitled", "new chat"} {
@@ -1959,9 +1959,9 @@ func TestThePathAbbreviatesLikeFishAndKeepsTheLastSegmentWhole(t *testing.T) {
 		hard      int
 		want      string
 	}{
-		{"/home/dev/src/aforge-v2", "/home/dev", 0, "~/s/aforge-v2"},
-		{"/home/dev/src/aforge-v2", "/home/dev", 1, "…/aforge-v2"},
-		{"/home/dev/src/aforge-v2", "/home/dev", 2, "aforge-v2"},
+		{"/home/dev/src/codeaf", "/home/dev", 0, "~/s/codeaf"},
+		{"/home/dev/src/codeaf", "/home/dev", 1, "…/codeaf"},
+		{"/home/dev/src/codeaf", "/home/dev", 2, "codeaf"},
 		{"/home/dev", "/home/dev", 0, "~"},
 		{"/home/dev/.claude/projects/lab", "/home/dev", 0, "~/.c/p/lab"},
 		{"/var/log/nginx", "", 0, "/v/l/nginx"},
@@ -2389,7 +2389,7 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	})
 	_ = agent
 	a.width = 200
-	a.tilde, a.workspace = "/home/dev", "/home/dev/src/aforge-v2"
+	a.tilde, a.workspace = "/home/dev", "/home/dev/src/codeaf"
 	a.title = "cleaning the build directory"
 	a.cost = 0.10
 	typeLine(t, a, "clean it")
@@ -2444,7 +2444,7 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		{Kind: session.EventTurnDone},
 	}}}
 	a := newTestApp(agent)
-	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
+	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/codeaf", "codeaf"
 	a.ctxWindow = 200_000
 	a.title, a.cost = "the bottom hud wave", 1.42
 	runTurn(t, a, agent, "bump the limit")
@@ -2523,7 +2523,7 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns the seam is missing %q: %q", tc.width, want, legend)
 			}
 		}
-		if strings.Contains(legend, "aforge-v2") {
+		if strings.Contains(legend, "codeaf") {
 			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
 		}
 	}

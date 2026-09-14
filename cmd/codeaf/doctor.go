@@ -73,7 +73,7 @@ type callLogReport struct {
 }
 
 func runDoctor(args []string) error {
-	profileDir := strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))
+	profileDir := strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))
 	dailyBudget, err := config.DailyBudgetUSDAt(profileDir)
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge doctor [--db path]")
+		return fmt.Errorf("usage: codeaf doctor [--db path]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -130,7 +130,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	// The model-call log lives beside the quirks memo under the profile, which
 	// `--db` does not move: it is read from the same environment runDoctor read
 	// the budget from.
-	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))))
+	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))))
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(os.Getenv(config.ProfileDirEnv)))
@@ -362,7 +362,7 @@ func readResident(path string) string {
 			}
 		}
 		if pid := lockPID(fields["pid"]); pid != "" {
-			return "aforge · pid " + pid
+			return "codeaf · pid " + pid
 		}
 	}
 	if line := firstLine(text); line != "" {

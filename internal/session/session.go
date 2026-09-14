@@ -1139,7 +1139,7 @@ type Config struct {
 	// Place is the session folder and everything inside it (place.go,
 	// Decision 26). The zero Place is the legacy flat layout: sidecar paths
 	// keep deriving from SessionFile, droppings keep landing in the
-	// workspace's .aforge-v3, and nothing changes for a caller that has not
+	// workspace's .codeaf-v3, and nothing changes for a caller that has not
 	// adopted the folder. When set, SessionFile and Place.Transcript() name
 	// the same file.
 	Place Place
@@ -1152,8 +1152,8 @@ type Config struct {
 	//
 	// It is the caller's path rather than one this package derives, for the
 	// reason SessionFile is: where a person's state lives is the surface's
-	// decision. The surface's answer is ~/.aforge/v3/artifacts.jsonl, resolved
-	// through internal/home so AFORGE_HOME moves it with everything else.
+	// decision. The surface's answer is ~/.codeaf/v3/artifacts.jsonl, resolved
+	// through internal/home so CODEAF_HOME moves it with everything else.
 	ArtifactsIndex string
 
 	// Memory is the brain this session remembers into (memory.go): the store's
@@ -1258,7 +1258,7 @@ type Config struct {
 	Guardian  bool
 
 	// Attribution is the person's `attribution` row (internal/config's
-	// KeyAttribution, env AFORGE_ATTRIBUTION), and it says whether aforge signs
+	// KeyAttribution, env CODEAF_ATTRIBUTION), and it says whether codeaf signs
 	// the git work it does in their name: one trailer on a commit, one footer
 	// line on a pull request or an issue. It reaches both readers there are —
 	// the belt fact the model is told (beltfacts.go's [Config.signsGitWork]) and
@@ -1325,7 +1325,7 @@ type Config struct {
 	//
 	// It is the caller's path rather than one this package derives, for the
 	// reason SessionFile is: where a person's state lives is the surface's
-	// decision, and a package that resolved ~/.aforge itself would write there
+	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
 
@@ -1419,7 +1419,7 @@ type Config struct {
 	// The whole registry is handed over rather than a path to it for the reason
 	// SessionFile is a path and not a directory this package picks: where the
 	// entries come from is the surface's business, and a package that read
-	// ~/.aforge/harnesses itself would read it from a test and from a task
+	// ~/.codeaf/harnesses itself would read it from a test and from a task
 	// node's own agent too.
 	Harnesses []subharness.Entry
 
@@ -1465,7 +1465,7 @@ type Config struct {
 	//
 	// It is the STORE and not a path for the reason Harnesses is a slice: where
 	// the registry lives is the surface's decision, and a package that opened
-	// ~/.aforge/harnesses itself would open it from a test and from a task node's
+	// ~/.codeaf/harnesses itself would open it from a test and from a task node's
 	// own agent too.
 	HarnessStore *subharness.Store
 
@@ -1484,7 +1484,7 @@ type Config struct {
 	// (docs/SUBHARNESS-CONTRACT.md). It is the registry itself rather than a
 	// path for the same reason HarnessStore is a store — where the bundles live
 	// is the surface's decision, and a package that opened
-	// ~/.aforge/subharnesses itself would open it from a test and from a task
+	// ~/.codeaf/subharnesses itself would open it from a test and from a task
 	// node's own agent too.
 	//
 	// NIL IS SUBHARNESSES OFF, on exactly the terms RunHarness is detection off.
@@ -1503,7 +1503,7 @@ type Config struct {
 	// answer for a door with nothing behind it. It is a SEAM the store lane
 	// fills, on the terms Subharnesses is one: where a bundle's memory lives is
 	// the surface's decision, and a package that opened
-	// ~/.aforge/subharnesses itself would open it from a test too.
+	// ~/.codeaf/subharnesses itself would open it from a test too.
 	SubharnessMemory SubharnessMemory
 
 	// SubharnessLastRun is the dim note under one row of the `/subharness` list:
@@ -2020,7 +2020,7 @@ type Config struct {
 	Budget Budget
 
 	// newerBuild is the cheap process-local reading that says this running
-	// aforge has been replaced on disk. It is private because the session owns
+	// codeaf has been replaced on disk. It is private because the session owns
 	// when the reading reaches a turn; tests replace only the reading itself.
 	newerBuild func() string
 

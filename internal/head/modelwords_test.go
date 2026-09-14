@@ -232,13 +232,13 @@ func seededModelResolver(models ...string) ModelResolver {
 	}
 }
 
-const kimiAsk = "okay use kimi 3 model to look at our aforge and ideate various " +
+const kimiAsk = "okay use kimi 3 model to look at our codeaf and ideate various " +
 	"=featrures we can build on top of it after underdtand the philosophy dont buikd anything yet"
 
 func kimiCompiler(t *testing.T) *Compiler {
 	t.Helper()
 	client := &fakeClient{responses: []string{
-		`{"goal":"Study aforge and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
+		`{"goal":"Study codeaf and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
 	}}
 	return NewCompiler(client).WithModelResolver(seededModelResolver(
 		"moonshotai/kimi-k2", "moonshotai/kimi-k2-thinking", "google/gemini-3-pro"))
@@ -339,7 +339,7 @@ func TestCompilerAnswerFromOptionPrefersTheExactValueOnlyWhenTheLabelWrapsIt(t *
 func TestModelChoiceRoundTripsThroughTheRealAnswerRailExactlyOnce(t *testing.T) {
 	graph := openHeadStore(t)
 	client := &fakeClient{responses: []string{
-		`{"goal":"Study aforge and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
+		`{"goal":"Study codeaf and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
 	}}
 	compiler := NewCompiler(client).WithModelResolver(seededModelResolver(
 		"moonshotai/kimi-k2", "moonshotai/kimi-k2-thinking", "google/gemini-3-pro"))

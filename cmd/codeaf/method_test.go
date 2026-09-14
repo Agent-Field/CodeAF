@@ -104,7 +104,7 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 	// The split gate is stood down so the planned owner under test exists at
 	// all — partsroute_test.go states the reason once.
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model", MaxDepth: 0, NodeBudget: 6}
 	capture := &planScriptClient{

@@ -421,28 +421,28 @@ func TestTheEntryCountAgreesWithTheShaping(t *testing.T) {
 
 	for name, messages := range map[string][]ai.Message{
 		"nothing at all":   nil,
-		"the system alone": {textMessage("system", "you are aforge")},
+		"the system alone": {textMessage("system", "you are codeaf")},
 		"one exchange": {
-			textMessage("system", "you are aforge"),
+			textMessage("system", "you are codeaf"),
 			textMessage("user", "a question"),
 			textMessage("assistant", "an answer"),
 		},
 		"a batch of three calls": {
-			textMessage("system", "you are aforge"),
+			textMessage("system", "you are codeaf"),
 			textMessage("user", "a question"),
 			call("c1", "c2", "c3"),
 			result("c1"), result("c2"), result("c3"),
 			textMessage("assistant", "an answer"),
 		},
 		"a folded transcript": {
-			textMessage("system", "you are aforge"),
+			textMessage("system", "you are codeaf"),
 			textMessage("user", "the first question"),
 			textMessage("user", foldMarker(9, "", 0, 0, false)),
 			call("c1"), result("c1"),
 			textMessage("user", "the newest question"),
 		},
 		"six exchanges": append(
-			[]ai.Message{textMessage("system", "you are aforge")},
+			[]ai.Message{textMessage("system", "you are codeaf")},
 			exchanges(6, nil)...),
 	} {
 		if got, want := countEntries(messages), len(shapeEntries(messages, nil)); got != want {

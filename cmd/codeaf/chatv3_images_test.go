@@ -15,9 +15,9 @@ import (
 // cannot read one and a provider error that points nowhere near here.
 func TestTheVisionGateAnswersFromTheCatalogsInputModalities(t *testing.T) {
 	// The gate falls through to internal/tui3's on-disk cache while a catalog
-	// is warming, so ~/.aforge/v3/models.json — a real file on a developer's
+	// is warming, so ~/.codeaf/v3/models.json — a real file on a developer's
 	// laptop — is moved somewhere empty before any of this is asked.
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	models := fakeV3Catalog{rows: []catalog.Model{
 		{ID: "vendor/sees", InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
 		{ID: "vendor/reads", InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
@@ -59,7 +59,7 @@ func TestTheVisionGateAnswersFromTheCatalogsInputModalities(t *testing.T) {
 // in that minute went as its text placeholder and the person was told to switch
 // to a model with vision while already sitting on one.
 func TestTheVisionGateReadsTheDiskCacheWhileTheCatalogIsWarming(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	if err := tui3.WriteModelCache([]tui3.Model{
 		{ID: "vendor/sees", Input: []string{"text", "image"}, Output: []string{"text"}},
 		{ID: "vendor/reads", Input: []string{"text"}, Output: []string{"text"}},

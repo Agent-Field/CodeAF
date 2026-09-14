@@ -27,7 +27,7 @@ import (
 //
 //	the deliverables index   7-11ms   900KB of JSON, decoded to keep one row's worth
 //	the conversation's tail  1-33ms   session.Peek scans the whole transcript
-//	the repository            7.7ms   git status on aforge's own worktree, 1s ceiling
+//	the repository            7.7ms   git status on codeaf's own worktree, 1s ceiling
 //
 // The first is gone: that index is one file about the whole machine, so it is
 // read with the world and filed by conversation (homeband_deliverables.go). The

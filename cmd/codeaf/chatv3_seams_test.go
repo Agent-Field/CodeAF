@@ -96,8 +96,8 @@ func TestThePinnedPainterReachesTheSessionAndTheTiersDoNot(t *testing.T) {
 
 // The settings panel writes where the door tells it to, and the door has to
 // tell it the SAME directory it read every governance row out of. The --host
-// door has always said so; the local one did not, and with AFORGE_PROFILE_DIR
-// set the panel wrote into ~/.aforge/config.json while the session went on
+// door has always said so; the local one did not, and with CODEAF_PROFILE_DIR
+// set the panel wrote into ~/.codeaf/config.json while the session went on
 // reading the profile the variable named.
 //
 // The construction sites sit past a real settings load and a live agent, so
@@ -118,7 +118,7 @@ func TestBothV3DoorsHandTheSurfaceAProfileDirectory(t *testing.T) {
 
 // A model picked in /model used to last exactly as long as the session did. The
 // order below is the whole fix, and the middle rung is the one worth pinning: a
-// saved choice beats AFORGE_MODEL, because the settings row treats that
+// saved choice beats CODEAF_MODEL, because the settings row treats that
 // variable as a default that seeds an unanswered row rather than a pin that
 // freezes it — so a launch letting the variable win would revert a pick the
 // sheet still showed as editable.

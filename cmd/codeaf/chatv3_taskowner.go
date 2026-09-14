@@ -7,7 +7,7 @@ package main
 // not in, and the page they get is that task's own transcript rather than a card
 // explaining why they cannot have one.
 //
-// IT IS THE ROAD THIS LAUNCH IS ALREADY ON, dialled a second time. `aforge chat`
+// IT IS THE ROAD THIS LAUNCH IS ALREADY ON, dialled a second time. `codeaf chat`
 // on this machine is a surface talking to the workspace's engine over a unix
 // socket (chatv3_local.go), the engine holds every conversation open, and
 // internal/remote has served several surfaces onto one conversation since version

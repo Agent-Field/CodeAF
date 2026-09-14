@@ -28,7 +28,7 @@ import (
 // surface. This is an offer:
 //
 //	? Google
-//	  openaf wants to connect your Google account
+//	  codeaf wants to connect your Google account
 //	  [enter] connect · [esc] not now
 //
 // Four decisions, each the reason a row is shaped the way it is:
@@ -398,11 +398,11 @@ func connectPurpose(name string) string {
 //
 // Some services have no sign-in page: what they hand a person is a key, from a
 // settings screen somewhere, and connecting one means pasting it. The question
-// is the same question — may aforge connect this account — so the block is the
+// is the same question — may codeaf connect this account — so the block is the
 // same block, and only the row that WAS the offer changes:
 //
 //	? Notion
-//	  openaf wants to connect your Notion account
+//	  codeaf wants to connect your Notion account
 //	  › paste your Notion key
 //
 // Three decisions:

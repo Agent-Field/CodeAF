@@ -26,7 +26,7 @@ package session
 //
 // ── THE ZERO PLACE IS THE LEGACY LAYOUT ──
 //
-// Every answer below falls back to <workspace>/.aforge-v3/<kind>, exactly where
+// Every answer below falls back to <workspace>/.codeaf-v3/<kind>, exactly where
 // a flat-layout session has always written, so the folder lands seam-first: a
 // caller that has not adopted a Place keeps the behavior it had.
 //
@@ -43,13 +43,13 @@ package session
 //
 // IT IS THE WRONG ANSWER ABOUT LITTER, and it was wrong for every dropping every
 // worker ever made. The ladder above read the zero Place, fell to the legacy
-// rung, and wrote <workspace>/.aforge-v3/<kind> — where <workspace> is the
+// rung, and wrote <workspace>/.codeaf-v3/<kind> — where <workspace> is the
 // PERSON'S REPOSITORY or a worktree of it, which is the one thing the paragraph
 // at the top of this file says must never happen.
 //
 // IT WAS MEASURED. On a SWE-Marathon run a task node's worker read a scoring
 // script; the stub pass filed the result (stub.go) and, having no Place, wrote
-// the whole of that script verbatim to <crate>/.aforge-v3/stubs/<digest>.txt —
+// the whole of that script verbatim to <crate>/.codeaf-v3/stubs/<digest>.txt —
 // inside the repository being graded. The benchmark's source scan walks the
 // crate, found files that were not the person's work and were not the person's
 // tools, and zeroed the run. Off a benchmark it is the same fact with a quieter
@@ -68,9 +68,9 @@ import (
 )
 
 // droppingsLegacyDir is the flat layout's dot directory under the workspace. It
-// is on the aforge scheme and stays there until the one late rename (Decision
+// is on the codeaf scheme and stays there until the one late rename (Decision
 // 26, "One home, one seam, one late rename").
-const droppingsLegacyDir = ".aforge-v3"
+const droppingsLegacyDir = ".codeaf-v3"
 
 // The kinds of dropping. They name a subdirectory of [Place.Logs] and, under
 // the legacy layout, a subdirectory of [droppingsLegacyDir] — one word, both

@@ -10,7 +10,7 @@ import (
 
 // ── EXIT 1 MEANS NOTHING RAN, AND IT MAY NOT MEAN ANYTHING ELSE ─────────────
 //
-// `aforge exec` mapped `exec.StopError` onto `stopError`, and `stopError` is
+// `codeaf exec` mapped `exec.StopError` onto `stopError`, and `stopError` is
 // the rung whose published meaning is "it could not be run at all — no key, bad
 // arguments, the store would not open". But `exec.StopError` IS AN OUTCOME: the
 // executor writes it from inside the turn loop when a model call fails and
@@ -97,7 +97,7 @@ func TestOnlyARunWithNoOutcomeAtAllCouldNotBeRunAtAll(t *testing.T) {
 		}
 	}
 
-	// AND NO OUTCOME IS THE ONE THING THAT DOES. This is `aforge exec` refusing
+	// AND NO OUTCOME IS THE ONE THING THAT DOES. This is `codeaf exec` refusing
 	// before it opens a connection: nothing was attempted and nothing was spent.
 	refused := errors.New("node task-1: OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
 	if stop := execStop(nil, refused); stop != stopError {
@@ -109,13 +109,13 @@ func TestOnlyARunWithNoOutcomeAtAllCouldNotBeRunAtAll(t *testing.T) {
 	}
 }
 
-// THE ESCAPE HATCH DID NOT MOVE WITH THE RUNG. AFORGE_EXIT_CODES=legacy exists
-// so a harness pinned to `aforge exec`'s old 2/3/4/5/6 keeps working for one
+// THE ESCAPE HATCH DID NOT MOVE WITH THE RUNG. CODEAF_EXIT_CODES=legacy exists
+// so a harness pinned to `codeaf exec`'s old 2/3/4/5/6 keeps working for one
 // release, and a change to which rung a run lands on is exactly the change that
 // would break it without anybody noticing — the hatch is only ever exercised by
 // somebody else's script.
 func TestTheLegacyExitCodesAreUntouchedByTheRungThatMoved(t *testing.T) {
-	t.Setenv("AFORGE_EXIT_CODES", "legacy")
+	t.Setenv("CODEAF_EXIT_CODES", "legacy")
 	for _, row := range []struct {
 		what    string
 		outcome *exec.Outcome
@@ -134,7 +134,7 @@ func TestTheLegacyExitCodesAreUntouchedByTheRungThatMoved(t *testing.T) {
 		{"it could not be run at all", nil, errors.New("node task-1: no key"), 5},
 	} {
 		if got := execExit(row.outcome, row.runErr); got != row.want {
-			t.Fatalf("with AFORGE_EXIT_CODES=legacy, %s leaves with %d, and exec's old table says %d\n"+
+			t.Fatalf("with CODEAF_EXIT_CODES=legacy, %s leaves with %d, and exec's old table says %d\n"+
 				"  the hatch's whole job is to be the OLD numbers; the new rung may not reach it",
 				row.what, int(got), int(row.want))
 		}
@@ -142,7 +142,7 @@ func TestTheLegacyExitCodesAreUntouchedByTheRungThatMoved(t *testing.T) {
 
 	// And with the hatch unset the same run is on the new ladder, so the test
 	// above is testing the hatch and not the absence of one.
-	t.Setenv("AFORGE_EXIT_CODES", "")
+	t.Setenv("CODEAF_EXIT_CODES", "")
 	if got := execExit(failedAtTurnNine(), errors.New("node task-1: upstream returned 500")); got != exitIncomplete {
 		t.Fatalf("without the hatch the mid-run failure leaves with %d, want %d", int(got), int(exitIncomplete))
 	}

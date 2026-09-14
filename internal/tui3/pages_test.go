@@ -151,7 +151,7 @@ func TestEveryPlaceOpensOnAnEmptyMachine(t *testing.T) {
 	a := lab.app("")
 	a.width, a.height = 120, 40
 	// EVERY SEAM IS NIL AND NOTHING IS ON THE DISK. This is the machine somebody
-	// has just installed aforge on, which is the only machine this test is about.
+	// has just installed codeaf on, which is the only machine this test is about.
 	a.memory, a.stands, a.places = nil, StandingSeam{}, nil
 	a.openHome()
 	for _, id := range pages() {
@@ -634,7 +634,7 @@ func TestAnAmbiguousPrefixOffersNoPlaceAtAll(t *testing.T) {
 	if found := placeMatches("standing up a watch"); len(found) != 0 {
 		t.Fatalf("a sentence offered %d places", len(found))
 	}
-	if found := placeMatches("~/aforge-v2"); len(found) != 0 {
+	if found := placeMatches("~/codeaf"); len(found) != 0 {
 		t.Fatalf("a path offered %d places", len(found))
 	}
 }

@@ -1,6 +1,6 @@
 package session
 
-// Two aforge windows, one directory.
+// Two codeaf windows, one directory.
 //
 // Everything here simulates the shape a person actually works in — two sessions
 // on one repository at the same moment — and the thing each test is watching for

@@ -33,7 +33,7 @@ func TestTheSignatureStripsWhatVariesAndKeepsWhatDiscriminates(t *testing.T) {
 		want: "<path>:n: undefined: notetooloutcome",
 	}, {
 		name: "the same go error from an absolute path",
-		line: "/Users/x/code/aforge/internal/session/loop.go:9:1: undefined: noteToolOutcome",
+		line: "/Users/x/code/codeaf/internal/session/loop.go:9:1: undefined: noteToolOutcome",
 		want: "<path>:n: undefined: notetooloutcome",
 	}, {
 		name: "a killed binary",
@@ -427,7 +427,7 @@ func TestConcurrentWritersKeepTheStoreWhole(t *testing.T) {
 // project being deleted.
 func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "some-workspace")
 	shelf := settledFixShelf(t, bucket)
 
@@ -472,7 +472,7 @@ func TestTheProjectStoreIsAskedFirstAndBothAreWritten(t *testing.T) {
 
 // A conversation with no project directory still gets the machine's store.
 func TestAShelfWithNoProjectStillHasTheMachineStore(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	shelf := settledFixShelf(t, "")
 	if shelf.project != nil {
 		t.Fatal("a session with no bucket should have no project store")

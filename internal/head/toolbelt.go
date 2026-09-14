@@ -22,7 +22,7 @@ import (
 // one" in a way no cue list anticipated. So this file stops constraining the
 // utterance space and constrains the action space instead. The model is handed
 // typed tools over the graph and nothing else — it can read the board, one
-// job's whole result, a file that job actually wrote, and aforge's own manual;
+// job's whole result, a file that job actually wrote, and codeaf's own manual;
 // it can ask for one of five verbs against ids it read there; and it can write
 // one durable line into the notebook. Every rule that
 // makes a change safe lives inside the tools: the store's own legality table,
@@ -55,7 +55,7 @@ const (
 	// beltToolManual is the belt's only read that is not about the graph. It
 	// rides here rather than in a loop of its own because the two questions
 	// arrive in the same sentence often enough — "why did you cancel that?" is
-	// about the board and about aforge at once — and a second loop would have
+	// about the board and about codeaf at once — and a second loop would have
 	// to guess which one to open.
 	beltToolManual = "manual"
 	// beltToolResult is the belt's answer to the same failure the deep slices
@@ -345,7 +345,7 @@ func beltDefinitions() []ai.ToolDefinition {
 				"items": map[string]any{"type": "string"}},
 			"words": beltProp("string", `their own words for it; say pause or hold in them when they want it held rather than ended`),
 		}),
-		beltTool(beltToolManual, "Read aforge's own manual — what it can do, how a mechanism works, why it behaved that way — the only source for answers about aforge itself.", map[string]any{
+		beltTool(beltToolManual, "Read codeaf's own manual — what it can do, how a mechanism works, why it behaved that way — the only source for answers about codeaf itself.", map[string]any{
 			"q":    beltProp("string", "the question, in the user's own words"),
 			"page": beltProp("string", "one page name to read whole, from a page list you have seen"),
 		}),
@@ -573,7 +573,7 @@ func (run *beltRun) board(args map[string]any) (string, bool) {
 }
 
 // manual is a read like board is a read: it never records, so a message that
-// only asked what aforge is journals no command and the reply carries no
+// only asked what codeaf is journals no command and the reply carries no
 // command seq. The answer is grounded or it is not given.
 func (run *beltRun) manual(args map[string]any) (string, bool) {
 	if name := beltString(args, "page"); name != "" {

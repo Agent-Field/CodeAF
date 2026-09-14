@@ -2,7 +2,7 @@ package remote
 
 // news.go is THE STATUS ROW, ACROSS A CONNECTION.
 //
-// THE DEFECT THIS FIXES. Bare `aforge` in a workspace does not run the engine
+// THE DEFECT THIS FIXES. Bare `codeaf` in a workspace does not run the engine
 // in the surface's own process: it dials the machine's engine host
 // (internal/enginehost) and the surface talks to a [Agent] over a pipe. So the
 // road every live figure on that surface travels — the rate at the right edge

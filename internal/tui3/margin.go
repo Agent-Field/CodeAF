@@ -365,7 +365,7 @@ func (a *app) marginDoorLine(typed string, width int) string {
 	return mark + a.pal.dim(fit(word, max(0, width-ansi.StringWidth(marginDoorMark))))
 }
 
-// marginStandRow is one order as one line: the glyph every aforge surface agrees
+// marginStandRow is one order as one line: the glyph every codeaf surface agrees
 // on, what the order is called, and its reach when its reach is not the default.
 //
 // THE TITLE IS THE MUTED VOICE and never the ink. A task that is running is the

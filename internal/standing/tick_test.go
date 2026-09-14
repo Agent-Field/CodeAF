@@ -604,7 +604,7 @@ func TestTickRetiresWhatRanOutOfTime(t *testing.T) {
 	}
 }
 
-func TestTickRefusesWhenAnotherAforgeHoldsTheLock(t *testing.T) {
+func TestTickRefusesWhenAnotherCodeafHoldsTheLock(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
 
@@ -709,7 +709,7 @@ func TestTickFiresNothingWithNoRunner(t *testing.T) {
 	if _, err := store.Create(reminder("remind me now", now)); err != nil {
 		t.Fatal(err)
 	}
-	// This is exactly the ticker `aforge tick` builds before the session lane
+	// This is exactly the ticker `codeaf tick` builds before the session lane
 	// lands: no runner at all, and a sentinel that always says no.
 	ticker := &Ticker{Store: store, Now: held(now), Sentinel: func(context.Context, Judgment) (bool, string, float64, error) {
 		return false, "no runner in this build", 0, nil

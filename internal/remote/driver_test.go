@@ -105,7 +105,7 @@ func TestTheNewestWindowTakesTheKeyboardAndTheOlderOneIsTold(t *testing.T) {
 
 // Two windows on ONE machine send one name, and that is how the engine can tell
 // the desk across the room from the terminal behind this one. `another window`
-// is the word aforge already uses at home for exactly this.
+// is the word codeaf already uses at home for exactly this.
 func TestASecondWindowOnTheSameMachineReadsAsAnotherWindow(t *testing.T) {
 	agent := &fakeAgent{}
 	sess := heldSession(agent)

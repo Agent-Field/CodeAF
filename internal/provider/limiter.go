@@ -10,7 +10,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
-// The concurrency doctrine: aforge sets no artificial ceiling on how much work
+// The concurrency doctrine: codeaf sets no artificial ceiling on how much work
 // runs at once — the only real limit is what the provider's rate limiting
 // permits, and the provider tells us when we cross it. This limiter is that
 // signal made adaptive, TCP-style AIMD: every 429 halves the number of
@@ -20,7 +20,7 @@ import (
 //
 // EVERY CUT HEALS, and that is not decoration. A halving is a guess about a
 // moment, and this process is not the only thing spending the account's rate:
-// sibling aforge processes share the key, so a cut here is often a report about
+// sibling codeaf processes share the key, so a cut here is often a report about
 // somebody else's second. A guess that can only ever tighten is a ratchet. So
 // capacity comes back two ways — in successes under load, and on the clock when
 // there is no load to earn them with (healLocked).
@@ -233,7 +233,7 @@ func (l *adaptiveLimiter) release(rateLimited bool, namedWait time.Duration) {
 //
 // Growth is earned in successes, and a 429 zeroes the counter. That is a fair
 // bargain when the 429 is ours; it is not one on this machine, where several
-// aforge processes — windows, task nodes, the resident — share ONE API KEY, and
+// codeaf processes — windows, task nodes, the resident — share ONE API KEY, and
 // a sibling's burst arrives here as if this process had caused it. Under that
 // contention the halvings compound while the successes that would undo them
 // never accumulate, so one minute of somebody else's traffic ratchets every
@@ -324,7 +324,7 @@ func retryAfter(response *http.Response) time.Duration {
 // thing being adapted to — per-client limiters would each rediscover it.
 //
 // IT IS SHARED NO FURTHER THAN THE PROCESS, and that is a decision rather than
-// an oversight. The contention is per-KEY: several aforge processes on this
+// an oversight. The contention is per-KEY: several codeaf processes on this
 // machine send under one account, so each of them adapts alone to a rate all of
 // them are spending. A file-coordinated limiter could close that gap — the
 // presence files are already there to build it on — and it would buy a lock on

@@ -30,7 +30,7 @@ import (
 // reflex — and alreadyCommissioned, which is one turn's memory of what it has
 // already turned into work. The third guard, the duplicate-ask check against
 // work already waiting in the funnel, has MOVED to the store (admission.go), so
-// a headless `aforge do` is protected by it too.
+// a headless `codeaf do` is protected by it too.
 
 // task commissions one piece of work. It returns what the loop is allowed to
 // say about it and nothing more: a receipt names commands that actually exist.

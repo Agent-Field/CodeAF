@@ -291,7 +291,7 @@ func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	// The second slash of a path is not a boundary either, so nothing about the
 	// depth of a path can bring it back.
 	a.input.reset()
-	typeInto(t, a, "open /tmp/aforge/scratch")
+	typeInto(t, a, "open /tmp/codeaf/scratch")
 	if a.menu.open {
 		t.Fatalf("a path mid-sentence left the list up over %q", a.input.String())
 	}

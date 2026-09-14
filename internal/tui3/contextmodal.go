@@ -28,15 +28,15 @@ package tui3
 //
 // ── THE ARRANGEMENT ─────────────────────────────────────────────────────────
 //
-//	╭─ add context ─────────────────────────────── ~/code/aforge-v2 ─╮
-//	│  › ~/code/aforge-v2/internal/                                  │  the box
+//	╭─ add context ─────────────────────────────── ~/code/codeaf ─╮
+//	│  › ~/code/codeaf/internal/                                  │  the box
 //	│  ──────────────────────────────────────────────────────────    │
-//	│  ~ › code › aforge-v2 › internal                               │  breadcrumb
-//	│  aforge-v2/  › session/        contextpreview.go     14.2 KB   │  the columns
+//	│  ~ › code › codeaf › internal                               │  breadcrumb
+//	│  codeaf/  › session/        contextpreview.go     14.2 KB   │  the columns
 //	│              tui3/             folderpick.go         41.8 KB   │  and the preview
 //	│  2 chosen · ▪ session/  ▪ notes.md                             │  the tray
 //	│  esc cancel · alt+o preview · alt+m choose · ←→ walk            │  the legend
-//	│  add this folder · ~/code/aforge-v2/internal   repository·main  │  the action
+//	│  add this folder · ~/code/codeaf/internal   repository·main  │  the action
 //	╰──────────────────────────────────────────────── esc · cancel ──╯
 //
 // Everything between the breadcrumb and the action row is folderpick.go's own

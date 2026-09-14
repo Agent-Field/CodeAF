@@ -35,7 +35,7 @@ func collectionCreate(t *testing.T, db, name string) workspace.Collection {
 
 func TestCollectionsCommandOrganizesExistingRecordsWithoutMovingWork(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	db := filepath.Join(root, "v3", "collections.db")
 	if got := collectionCommand(t, db, "list"); got != "[]\n" {
 		t.Fatal(got)
@@ -118,7 +118,7 @@ func TestCollectionsRejectBadRequestsBeforeCreatingStorage(t *testing.T) {
 
 func TestCollectionsDefaultStorageIsIndependentOfMemory(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	var out bytes.Buffer
 	if err := runCollectionsTo([]string{"create", "Personal", "--json"}, &out); err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestCollectionsRefuseUnknownCollectionsAndRepeatHarmlessly(t *testing.T) {
 }
 
 func TestCollectionsBlankDatabaseIsAnInvalidArgument(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	err := runCollectionsTo([]string{"list", "--db", ""}, &bytes.Buffer{})
 	if !errors.Is(err, workspace.ErrInvalid) {
 		t.Fatalf("blank database: %v", err)
@@ -263,7 +263,7 @@ func TestCollectionsListLeavesAnExistingEmptyDatabaseAlone(t *testing.T) {
 	if err := runCollectionsTo([]string{"list", "--db", path}, &out); err != nil {
 		t.Fatal(err)
 	}
-	if want := "No collections found. Create one with aforge collections create <name>.\n"; out.String() != want {
+	if want := "No collections found. Create one with codeaf collections create <name>.\n"; out.String() != want {
 		t.Fatalf("list output %q, want %q", out.String(), want)
 	}
 	info, err := os.Stat(path)

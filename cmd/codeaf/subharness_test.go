@@ -78,7 +78,7 @@ func TestExecutorForAlwaysResolvesToSomething(t *testing.T) {
 // exist, and the run stops there. (The sentence is this surface's own now, not
 // the flag package's — see [flagRefusal] and row 6.)
 //
-// The usage text is the other half. It is what `aforge --help` prints, and a
+// The usage text is the other half. It is what `codeaf --help` prints, and a
 // program that had stopped taking the flag while still advertising it would be
 // telling everybody to type something that fails.
 func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
@@ -92,7 +92,7 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 	if code := exitCodeOf(err); code != 1 {
 		t.Fatalf("do accepted --subharness (exit %d)", code)
 	}
-	if !strings.Contains(said.String(), "aforge do has no --subharness flag") {
+	if !strings.Contains(said.String(), "codeaf do has no --subharness flag") {
 		t.Fatalf("do answered %q, want a refusal naming the flag that does not exist", said.String())
 	}
 	if !strings.Contains(said.String(), "subharness") {
@@ -100,7 +100,7 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 	}
 	_, said = captureUsage(t)
 	if code := exitCodeOf(runExecute([]string{"--subharness", "linear", "a-program"})); code != 1 ||
-		!strings.Contains(said.String(), "aforge run has no --subharness flag") {
+		!strings.Contains(said.String(), "codeaf run has no --subharness flag") {
 		t.Fatalf("run answered %q, want a refusal naming the flag that does not exist", said.String())
 	}
 
@@ -115,15 +115,15 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 		t.Fatalf("the usage text still names a worker: %q", word.FindString(usageText))
 	}
 
-	// The saved-program door is what `aforge run` MEANS now, and the old
+	// The saved-program door is what `codeaf run` MEANS now, and the old
 	// `run subharness` spelling still reaches it. Either one with no program
 	// after it answers with the saved-program usage, which is proof the word
 	// routed to runSubharnessCommand and not to the plan runner.
 	for _, spelling := range [][]string{{"subharness"}, {}} {
 		_, said := captureUsage(t)
 		err := runExecute(spelling)
-		if err == nil || !strings.Contains(err.Error(), "aforge run <program>") {
-			t.Fatalf("`aforge run %v` answered %v, want the saved-program usage", spelling, err)
+		if err == nil || !strings.Contains(err.Error(), "codeaf run <program>") {
+			t.Fatalf("`codeaf run %v` answered %v, want the saved-program usage", spelling, err)
 		}
 		_ = said
 	}

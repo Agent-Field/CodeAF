@@ -17,7 +17,7 @@ import (
 // TestARefusedRunThatWroteNothingNamesTheDirectory proves C1: a refused run
 // that kept nothing says so and names the absolute directory where it worked.
 func TestARefusedRunThatWroteNothingNamesTheDirectory(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	script := newScriptedBrain(t)
 	script.stall = true
 	defer script.close()
@@ -48,7 +48,7 @@ func TestARefusedRunThatWroteNothingNamesTheDirectory(t *testing.T) {
 // TestTheSameSentenceIsInTheJSONAnswer proves C2 and C3: both answer spellings
 // carry the stdout sentence and the machine record always names the workspace.
 func TestTheSameSentenceIsInTheJSONAnswer(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	script := newScriptedBrain(t)
 	script.stall = true
 	defer script.close()
@@ -87,7 +87,7 @@ func TestTheSameSentenceIsInTheJSONAnswer(t *testing.T) {
 // TestARunThatWroteFilesIsNeverToldNothingWasKept proves C4: a non-empty file
 // record keeps the empty-tree sentence out of the answer.
 func TestARunThatWroteFilesIsNeverToldNothingWasKept(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	script := newScriptedBrain(t)
 	script.writeFile = true
 	// The invented gap leaves its finding standing after the leaf writes, so
@@ -125,7 +125,7 @@ func TestARunThatWroteFilesIsNeverToldNothingWasKept(t *testing.T) {
 // TestACleanRunSaysNothingAboutTheTree proves C5: a done run stays quiet about
 // the filesystem whether or not its file record is empty.
 func TestACleanRunSaysNothingAboutTheTree(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	script := newScriptedBrain(t)
 	defer script.close()
 
@@ -306,7 +306,7 @@ func TestTheClosingTreeAccountIncludesFilesRegisteredDuringShutdown(t *testing.T
 // This drives the actual timeout door: the worker writes before stalling, and
 // its artifact reaches the registry only while the cancelled leaf lands.
 func TestATimeoutAfterWritingKeepsTheFileInTheJSONEnding(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	script := newScriptedBrain(t)
 	script.writeFile = true
 	script.stallAfterWriting = true

@@ -45,7 +45,7 @@ func writeFlatSession(t *testing.T, bucket, stem, id string, lines ...string) st
 // meta.json built from what the header remembered (docs/CHAT-V3.md, Decision
 // 26's last law).
 func TestTheBootPassFoldsAFlatSessionIntoItsFolder(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	old := home.Join("v3", "sessions", "-home-p-code")
 	writeFlatSession(t, old, "20260815-090102_b7c1", "0123456789abcdef",
 		`{"type":"session","version":1,"id":"0123456789abcdef","cwd":"/home/p/code","model":"test/model","timestamp":"2026-08-15T09:01:02Z"}`,
@@ -96,7 +96,7 @@ func TestTheBootPassFoldsAFlatSessionIntoItsFolder(t *testing.T) {
 // exactly where it is with one line on the log. A corrupt old session must not
 // cost anybody their new one.
 func TestTheBootPassLeavesAnUnreadableSessionWhereItIs(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	old := home.Join("v3", "sessions", "-home-p-code")
 	if err := os.MkdirAll(old, 0o700); err != nil {
 		t.Fatal(err)
@@ -114,10 +114,10 @@ func TestTheBootPassLeavesAnUnreadableSessionWhereItIs(t *testing.T) {
 }
 
 // A session another window is holding open is not touched at all: moving a live
-// transcript out from under a running aforge would cost somebody the
+// transcript out from under a running codeaf would cost somebody the
 // conversation they are in the middle of.
 func TestTheBootPassSkipsALiveSession(t *testing.T) {
-	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	old := home.Join("v3", "sessions", "-home-p-code")
 	live := writeFlatSession(t, old, "20260815-090102_b7c1", "0123456789abcdef",
 		`{"type":"session","version":1,"id":"0123456789abcdef","cwd":"/home/p/code","timestamp":"2026-08-15T09:01:02Z"}`,

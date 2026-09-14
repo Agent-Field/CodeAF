@@ -7,7 +7,7 @@
 //
 // Two properties are load-bearing, and everything in this package serves them.
 //
-// aforge stays the only thing anyone installs. rtk is never a build or install
+// codeaf stays the only thing anyone installs. rtk is never a build or install
 // dependency: it is resolved at runtime, and fetched in the background if it
 // is missing. While it is unavailable — offline, unsupported platform,
 // download still in flight — commands run exactly as they did before. Nothing
@@ -43,14 +43,14 @@ const (
 	// that what a leaf sees does not change under it on someone else's release
 	// schedule. To bump: read the notes at
 	// https://github.com/rtk-ai/rtk/releases, set the tag here, and re-run the
-	// integration test with AFORGE_TEST_RTK=1 — the one test that checks a real
+	// integration test with CODEAF_TEST_RTK=1 — the one test that checks a real
 	// binary still preserves exit codes.
 	Version = "v0.45.0"
 
 	// EnvBinary is the escape hatch: a path to a chosen rtk, or "off" to run
 	// every command plain. It is read on every call so a running resident can
 	// be taken out of the loop without a restart.
-	EnvBinary = "AFORGE_RTK"
+	EnvBinary = "CODEAF_RTK"
 
 	// Off is the EnvBinary value that disables wrapping everywhere.
 	Off = "off"
@@ -176,7 +176,7 @@ type decision struct {
 // leaves is the rewrite memory, which is a fact about a binary rather than
 // about a workspace; where the binary is gets asked again every time, so a
 // background bootstrap becomes visible the moment it lands and a changed
-// AFORGE_RTK takes effect without a restart.
+// CODEAF_RTK takes effect without a restart.
 var (
 	toolMutex sync.Mutex
 	tools     = map[string]*Tool{}
@@ -231,8 +231,8 @@ func executable(path string) bool {
 	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
 }
 
-// BinDir is where a bootstrapped rtk lives. It is aforge's own shelf, not the
-// user's ~/.local/bin, because aforge put it there and aforge maintains it.
+// BinDir is where a bootstrapped rtk lives. It is codeaf's own shelf, not the
+// user's ~/.local/bin, because codeaf put it there and codeaf maintains it.
 func BinDir() (string, error) {
 	return home.Join("bin"), nil
 }
@@ -316,7 +316,7 @@ func (t *Tool) rewrite(ctx context.Context, command string) (string, bool) {
 	ask := exec.CommandContext(askCtx, t.Path, "rewrite", command)
 	// The answer is cached process-wide, so it must not depend on which
 	// directory happened to ask: project-local filters are switched off for the
-	// question. Telemetry is refused outright — aforge does not opt a user into
+	// question. Telemetry is refused outright — codeaf does not opt a user into
 	// a third party's collection on their behalf.
 	ask.Env = append(os.Environ(), "RTK_NO_TOML=1", "RTK_TELEMETRY_DISABLED=1")
 	var out bytes.Buffer

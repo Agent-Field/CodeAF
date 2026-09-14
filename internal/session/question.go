@@ -206,13 +206,13 @@ var questionForms = []QuestionForm{FormLine, FormCard, FormRoom, FormSheet}
 
 // AskerKind is WHO is asking, which is the attribution a surface draws dim
 // beside the head. It is never machinery vocabulary: a person reads "the model
-// asks", "aforge asks", or the task's own name.
+// asks", "codeaf asks", or the task's own name.
 type AskerKind string
 
 const (
 	// AskerModel is the model, through the `ask` tool (lane E2 owns that door).
 	AskerModel AskerKind = "model"
-	// AskerEngine is aforge itself: the approval gate, the fuel gate, a merge
+	// AskerEngine is codeaf itself: the approval gate, the fuel gate, a merge
 	// conflict — questions no model chose to ask.
 	AskerEngine AskerKind = "engine"
 	// AskerTask is one task node, and [Asker.Name] is the task's title.
@@ -226,7 +226,7 @@ const (
 )
 
 // Asker is who put the question, and the name that goes with it where there is
-// one. The name is EMPTY for the engine and the model, because "aforge asks"
+// one. The name is EMPTY for the engine and the model, because "codeaf asks"
 // and "the model asks" are already whole sentences and a name after them would
 // be a second attribution of one asker.
 type Asker struct {
@@ -1133,7 +1133,7 @@ type DecisionClause struct {
 //     up — a row with no room for them is cut rather than emptied;
 //   - WHO DECIDED is never given up either. It is the one thing on the line
 //     nobody can work out for themselves, and it is what keeps a receipt from
-//     reading as something this person did: `another window` and `aforge, on
+//     reading as something this person did: `another window` and `codeaf, on
 //     your settings` are the whole reason the field exists;
 //   - `cannot change` stays for the same kind of reason — it is a LIMIT rather
 //     than a detail, and a row that dropped it would read as a decision
@@ -1172,7 +1172,7 @@ func decidedByWord(by DecidedBy) string {
 	case DecidedByPerson:
 		return "you"
 	case DecidedByDial:
-		return "aforge, on your settings"
+		return "codeaf, on your settings"
 	case DecidedByRecord:
 		return "an earlier decision"
 	case DecidedByAsker:
@@ -2314,7 +2314,7 @@ func (a *Agent) applyLanding(answer Answer, key, words string) error {
 	case LandingAgainKey:
 		return a.ResolveUnverified(answer.ID, TaskReaudit, words)
 	case LandingDecideKey:
-		// A SECOND PRESS IS THE SAME ANSWER AND NOT A REFUSAL. `let aforge decide
+		// A SECOND PRESS IS THE SAME ANSWER AND NOT A REFUSAL. `let codeaf decide
 		// this one` pressed twice used to hand the model the same decision twice,
 		// in two identical lines, because the row a person is looking at was drawn
 		// before the hand-over reached it. The engine says the question is already
@@ -3008,12 +3008,12 @@ func landingReason(ask TaskAsk) string {
 // landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
 // word: a row reading `nobody could check it · auto` would have told a person
 // the name of a setting instead of who is deciding.
-const landingDecidingWord = "aforge is deciding"
+const landingDecidingWord = "codeaf is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.
 //
-// ONE HOLDER, TWO VOCABULARIES. `task.settle = auto` and `[d] let aforge decide
+// ONE HOLDER, TWO VOCABULARIES. `task.settle = auto` and `[d] let codeaf decide
 // this one` both write the model onto the node, and that mark is what the card,
 // the roster and the floor all read; a landing question is DERIVED from the same
 // mark, so a person asking "who is deciding this" gets one answer whichever

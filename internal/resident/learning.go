@@ -124,7 +124,7 @@ const learningMomentsHeld = 24
 
 // flushLearningMoments posts what the tick learned, and keeps what it could not
 // post. The map used to be wiped unconditionally, so a moment composed while no
-// surface happened to be attached was destroyed outright — the whole `aforge
+// surface happened to be attached was destroyed outright — the whole `codeaf
 // wake` path, where overnight work learns things nobody is ever told about.
 // Holding the undelivered ones costs a bounded map and delivers them the moment
 // somebody is there to read them.

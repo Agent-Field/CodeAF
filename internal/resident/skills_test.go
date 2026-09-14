@@ -18,9 +18,9 @@ func TestRecurringSkillPromotesOnlyAfterGreenCheck(t *testing.T) {
 	graph := openStore(t)
 	firstArtifact := writeSkillArtifact(t, "repo-audit", `#!/bin/sh
 set -eu
-test "$PWD" != "$AFORGE_SKILL_DIR"
-test -x "$AFORGE_SKILL_DIR/run.sh"
-printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
+test "$PWD" != "$CODEAF_SKILL_DIR"
+test -x "$CODEAF_SKILL_DIR/run.sh"
+printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 `)
 	first := recordCandidateJob(t, graph, "job-first", firstArtifact)
 	reconciler := New(graph, nil, nil)
@@ -36,9 +36,9 @@ printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
 
 	secondArtifact := writeSkillArtifact(t, "repo-audit", `#!/bin/sh
 set -eu
-test "$PWD" != "$AFORGE_SKILL_DIR"
-test -x "$AFORGE_SKILL_DIR/run.sh"
-printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
+test "$PWD" != "$CODEAF_SKILL_DIR"
+test -x "$CODEAF_SKILL_DIR/run.sh"
+printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 `)
 	second := recordCandidateJob(t, graph, "job-second", secondArtifact)
 	if err := reconciler.Tick(context.Background()); err != nil {
@@ -63,7 +63,7 @@ printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
 	if err != nil {
 		t.Fatalf("check did not execute: %v", err)
 	}
-	if got := string(checkDir); !strings.Contains(got, "aforge-skill-check-") || strings.HasPrefix(got, active[0].Artifact) {
+	if got := string(checkDir); !strings.Contains(got, "codeaf-skill-check-") || strings.HasPrefix(got, active[0].Artifact) {
 		t.Fatalf("check cwd = %q, want a clean temp directory", got)
 	}
 	provenance, err := os.ReadFile(filepath.Join(active[0].Artifact, "PROVENANCE"))

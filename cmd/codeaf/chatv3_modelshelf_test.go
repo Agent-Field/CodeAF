@@ -32,7 +32,7 @@ func shelfRouter(rows string, fail error) *http.Client {
 }
 
 func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	defaultHost := sourcestub.New("openai/gpt-4.1-mini")
 	defer defaultHost.Close()
 	directHost := sourcestub.New("fake-small", "fake-large")
@@ -164,7 +164,7 @@ const shelfNewRow = `{"id":"vendor/shipped-this-morning","architecture":{"input_
 // what /model's list and the vision gate read, so a model the router shipped
 // this morning is both listed and able to see the moment the refresh lands.
 func TestTheShelfTakesTodaysListAndKeepsYesterdaysOnFailure(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	dir := t.TempDir()
 	launch := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://openrouter.example/api/v1", Dir: dir, HTTPClient: shelfRouter(shelfRow, nil),
@@ -194,6 +194,6 @@ func TestTheShelfTakesTodaysListAndKeepsYesterdaysOnFailure(t *testing.T) {
 	}
 	cached := tui3.CachedModels()
 	if len(cached) != 2 || cached[1].ID != "vendor/shipped-this-morning" {
-		t.Fatalf("~/.aforge/v3/models.json is not today's list: %+v", cached)
+		t.Fatalf("~/.codeaf/v3/models.json is not today's list: %+v", cached)
 	}
 }

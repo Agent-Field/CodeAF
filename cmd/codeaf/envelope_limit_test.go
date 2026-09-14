@@ -17,7 +17,7 @@ import (
 // produced one". `--json` is a contract a script is written against, so that
 // sentence is the law and the code moves to match it.
 //
-// `aforge exec` did not. It copied EVERY executor error into `error`, while
+// `codeaf exec` did not. It copied EVERY executor error into `error`, while
 // [execStop] deliberately keeps `budget`, `turn-cap` and `deadline` when the
 // executor hands back an outcome and an error together — so a run cut off by
 // its own token budget, holding half an answer, published the answer AND an
@@ -85,7 +85,7 @@ func TestALimitedExecRunPublishesItsAnswerAndNoError(t *testing.T) {
 				t.Fatalf("%s put %q in the `error` field a script reads", cut.name, got)
 			}
 			// AND THE DIAGNOSTIC IS NOT LOST. It moves to `incomplete`, which is
-			// already the name `aforge run` publishes "the reason it did not
+			// already the name `codeaf run` publishes "the reason it did not
 			// finish" under, in the words a person would have read on stderr and
 			// with no wrapped Go chain in front of them.
 			said, ok := fields[envelopeIncomplete].(string)
@@ -145,13 +145,13 @@ func TestOnlyTheStopThatMeansItNeverRanFillsTheErrorField(t *testing.T) {
 		built resultEnvelope
 	}{
 		{
-			verb: "aforge exec, cut off by its token budget",
+			verb: "codeaf exec, cut off by its token budget",
 			built: buildExecEnvelope(
 				&exec.Outcome{Stop: exec.StopBudget, Text: "half an answer"},
 				errors.New("node task-1: token budget exhausted"), "a/model", ""),
 		},
 		{
-			verb: "aforge do, cut off by the wall",
+			verb: "codeaf do, cut off by the wall",
 			built: errandEnvelope(headlessOutcome{
 				Deliverable: "half an answer",
 				Artifacts:   []string{},
@@ -159,7 +159,7 @@ func TestOnlyTheStopThatMeansItNeverRanFillsTheErrorField(t *testing.T) {
 			}),
 		},
 		{
-			verb:  "aforge run, a saved program that did not finish",
+			verb:  "codeaf run, a saved program that did not finish",
 			built: savedProgramEnvelope(t, "half an answer", "the run stopped part of the way through"),
 		},
 	} {
@@ -180,7 +180,7 @@ func TestOnlyTheStopThatMeansItNeverRanFillsTheErrorField(t *testing.T) {
 	}
 }
 
-// savedProgramEnvelope is `aforge run`'s own mapping, driven through the door
+// savedProgramEnvelope is `codeaf run`'s own mapping, driven through the door
 // that writes it. The run keeps no journal and names no model, which the type
 // documents as a real case rather than an error, so nothing here opens a store
 // or reaches for a provider.
@@ -191,7 +191,7 @@ func savedProgramEnvelope(t *testing.T, report, incomplete string) resultEnvelop
 	_ = run.sayEnvelope(stopIncomplete, exec.RunResult{Report: report}, incomplete)
 	var envelope resultEnvelope
 	if err := json.Unmarshal(printed.Bytes(), &envelope); err != nil {
-		t.Fatalf("`aforge run --json` did not print a parseable envelope (%v):\n%s", err, printed.String())
+		t.Fatalf("`codeaf run --json` did not print a parseable envelope (%v):\n%s", err, printed.String())
 	}
 	return envelope
 }

@@ -123,7 +123,7 @@ func TestTheWalkFindsRepositoriesAndPlainFoldersAndLeadsWithRepositories(t *test
 	// WORK. People keep work in folders that were never a repository, and the
 	// brief asks for both.
 	base := folderTree(t,
-		"code/aforge-v2/.git", "code/aforge-v2/internal",
+		"code/codeaf/.git", "code/codeaf/internal",
 		"Documents/tax returns", "scratch",
 	)
 	answer := folderIndexWalk(context.Background(), folderIndexDefaults(base))
@@ -135,12 +135,12 @@ func TestTheWalkFindsRepositoriesAndPlainFoldersAndLeadsWithRepositories(t *test
 		}
 		found[filepath.ToSlash(rel)] = root.Repo
 	}
-	for _, want := range []string{"code/aforge-v2", "Documents/tax returns", "scratch", "code", "Documents"} {
+	for _, want := range []string{"code/codeaf", "Documents/tax returns", "scratch", "code", "Documents"} {
 		if _, ok := found[want]; !ok {
 			t.Errorf("the walk missed %q: found %v", want, found)
 		}
 	}
-	if !found["code/aforge-v2"] {
+	if !found["code/codeaf"] {
 		t.Error("the repository was not marked as one")
 	}
 	if found["scratch"] {

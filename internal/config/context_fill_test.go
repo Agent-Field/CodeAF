@@ -61,7 +61,7 @@ func TestAFillAPersonSetIsAPinByEitherRoad(t *testing.T) {
 	if _, pinned := ctxbudget.PinnedFillPercent(); pinned {
 		t.Fatal("a second, untouched profile inherited the first one's pin")
 	}
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "35")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "35")
 	percent, pinned = ctxbudget.PinnedFillPercent()
 	if !pinned || percent != 35 {
 		t.Fatalf("an environment pin reads as %d/%v, want 35/true", percent, pinned)

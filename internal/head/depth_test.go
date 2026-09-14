@@ -17,10 +17,10 @@ import (
 const (
 	financeFinding = "Net revenue landed at $4.21M, up 8.4% on Q2, and both disputed vendor invoices resolved in our favour."
 	financeDetail  = "Three accruals were reclassified and the ledger balances to the cent."
-	financeFile    = "/tmp/aforge/finance/q3-close.md"
+	financeFile    = "/tmp/codeaf/finance/q3-close.md"
 	podcastFinding = "Episode 12 is cut to 31 minutes."
 	podcastDetail  = "Levels were normalised to -16 LUFS and the intro sting was replaced."
-	podcastFile    = "/tmp/aforge/podcast/ep12.mp3"
+	podcastFile    = "/tmp/codeaf/podcast/ep12.mp3"
 )
 
 func seedResultBoard(t *testing.T, graph *store.Store) {
@@ -234,7 +234,7 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 			"reconcile the ledger")
 		// The path trails a summary far longer than one slice's share, so it can
 		// only reach the prompt if the files line names what truncation cut.
-		completeNodeWith(t, graph, id, fmt.Sprintf("Ledger pass %02d closed clean.\n%s\n/tmp/aforge/ledger/%02d.md",
+		completeNodeWith(t, graph, id, fmt.Sprintf("Ledger pass %02d closed clean.\n%s\n/tmp/codeaf/ledger/%02d.md",
 			index, long, index))
 	}
 	skeleton, err := New(nil, graph).renderTurnBoard("budget", "", nil)
@@ -254,7 +254,7 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 	if len(deep) > maxDeepContextBytes {
 		t.Fatalf("deep block = %d bytes, over its %d budget", len(deep), maxDeepContextBytes)
 	}
-	if !strings.Contains(deep, "files: /tmp/aforge/ledger/") {
+	if !strings.Contains(deep, "files: /tmp/codeaf/ledger/") {
 		t.Fatalf("truncation swallowed the artifact path with nothing naming it:\n%s", deep)
 	}
 	// Every slice starts on its own line, so the count of them is the count of
@@ -273,7 +273,7 @@ func TestResultToolReadsTheWholeFindingAndRecordsNothing(t *testing.T) {
 		spec("audit", "", "Vendor audit", "audit the vendors"),
 		spec("audit-a", "audit", "Read the contracts", "read the contracts"))
 	completeNodeWith(t, graph, "audit-a", "Four contracts renew in March.")
-	completeNodeWith(t, graph, "audit", "Two vendors are overcharging.\n/tmp/aforge/audit/vendors.md")
+	completeNodeWith(t, graph, "audit", "Two vendors are overcharging.\n/tmp/codeaf/audit/vendors.md")
 
 	run := &beltRun{head: New(nil, graph), user: store.Message{Body: "what did the audit find"}}
 	whole, failed := run.result(map[string]any{"id": "audit"})
@@ -281,7 +281,7 @@ func TestResultToolReadsTheWholeFindingAndRecordsNothing(t *testing.T) {
 		t.Fatalf("result read failed: %s", whole)
 	}
 	for _, wanted := range []string{
-		"Two vendors are overcharging.", "/tmp/aforge/audit/vendors.md",
+		"Two vendors are overcharging.", "/tmp/codeaf/audit/vendors.md",
 		"done", "Four contracts renew in March.", "audit-a",
 	} {
 		if !strings.Contains(whole, wanted) {
@@ -313,9 +313,9 @@ func TestResultToolReadsTheWholeFindingAndRecordsNothing(t *testing.T) {
 func TestFilesLineNamesWhatTheResultDoesNot(t *testing.T) {
 	visible := make([]string, 0, deepFileCap)
 	for index := 0; index < deepFileCap; index++ {
-		visible = append(visible, fmt.Sprintf("/tmp/aforge/seen/%02d.md", index))
+		visible = append(visible, fmt.Sprintf("/tmp/codeaf/seen/%02d.md", index))
 	}
-	hidden := "/tmp/aforge/cut/late.md"
+	hidden := "/tmp/codeaf/cut/late.md"
 	node := store.Node{
 		ID:      "wide",
 		Summary: strings.Join(visible, "\n") + "\n" + hidden,

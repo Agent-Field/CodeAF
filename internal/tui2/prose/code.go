@@ -27,7 +27,7 @@ import (
 // codeStyle is the ramp expressed as a chroma style. Only the seven colours the
 // ramp declares appear on the right-hand side — there is no eighth colour in
 // this file, and [slotFor] would not know what to do with one.
-var codeStyle = chroma.MustNewStyle("aforge", chroma.StyleEntries{
+var codeStyle = chroma.MustNewStyle("codeaf", chroma.StyleEntries{
 	chroma.Background: tokens.CodeTextHex,
 	chroma.Text:       tokens.CodeTextHex,
 	chroma.Error:      tokens.CodeTextHex,

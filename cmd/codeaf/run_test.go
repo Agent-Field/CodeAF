@@ -43,7 +43,7 @@ func TestHeadlessRailAuthorizationPaths(t *testing.T) {
 func TestHeadlessSpendPreauthorizationFlagAndEnvironment(t *testing.T) {
 	environment := func(value string) func(string) string {
 		return func(name string) string {
-			if name == "AFORGE_PREAUTHORIZE_SPEND" {
+			if name == "CODEAF_PREAUTHORIZE_SPEND" {
 				return value
 			}
 			return ""

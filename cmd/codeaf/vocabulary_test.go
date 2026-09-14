@@ -132,7 +132,7 @@ func wordsOf(err error) string {
 }
 
 // typed is a command line, run THROUGH THE BINARY'S OWN DISPATCH — the words
-// after `aforge`, read by the same switch on os.Args a person's shell fills in.
+// after `codeaf`, read by the same switch on os.Args a person's shell fills in.
 //
 // It matters that the rename rows go through the switch rather than calling the
 // door they believe the old word reaches. Half of what a command rename can get
@@ -141,7 +141,7 @@ func wordsOf(err error) string {
 func typed(words ...string) func() error {
 	return func() error {
 		previous := os.Args
-		os.Args = append([]string{"aforge"}, words...)
+		os.Args = append([]string{"codeaf"}, words...)
 		defer func() { os.Args = previous }()
 		return run()
 	}
@@ -186,7 +186,7 @@ func writeTestPlan(t *testing.T) string {
 // missing key, a plan with no nodes, an input that was never named, or a store
 // that is not there.
 func TestAnOldSpellingReachesTheSamePlaceAndSaysWhatItIsCalledNow(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	planFile := writeTestPlan(t)
 
 	for _, spelling := range []struct {
@@ -199,27 +199,27 @@ func TestAnOldSpellingReachesTheSamePlaceAndSaysWhatItIsCalledNow(t *testing.T) 
 		nowTyped func() error
 	}{{
 		name: "run subharness is run",
-		old:  "run subharness", now: "aforge run",
+		old:  "run subharness", now: "codeaf run",
 		wasTyped: typed("run", "subharness", "a-program", "--input", "in.json"),
 		nowTyped: typed("run", "a-program", "--input", "in.json"),
 	}, {
 		name: "run of a plan file is plan run",
-		old:  "run <plan.json>", now: "aforge plan run",
+		old:  "run <plan.json>", now: "codeaf plan run",
 		wasTyped: typed("run", planFile),
 		nowTyped: typed("plan", "run", planFile),
 	}, {
 		name: "bare plan is plan new",
-		old:  `plan "<goal>"`, now: "aforge plan new",
+		old:  `plan "<goal>"`, now: "codeaf plan new",
 		wasTyped: typed("plan", "a goal"),
 		nowTyped: typed("plan", "new", "a goal"),
 	}, {
 		name: "show is plan show",
-		old:  "show", now: "aforge plan show",
+		old:  "show", now: "codeaf plan show",
 		wasTyped: typed("show", planFile),
 		nowTyped: typed("plan", "show", planFile),
 	}, {
 		name: "revise is plan revise",
-		old:  "revise", now: "aforge plan revise",
+		old:  "revise", now: "codeaf plan revise",
 		wasTyped: typed("revise", planFile, "it went badly"),
 		nowTyped: typed("plan", "revise", planFile, "it went badly"),
 	}, {
@@ -319,7 +319,7 @@ func TestAnOldSpellingReachesTheSamePlaceAndSaysWhatItIsCalledNow(t *testing.T) 
 // both would teach a reader that `--budget` and `--token-budget` are two knobs,
 // which is the confusion the rename exists to end.
 func TestNoOldSpellingIsPrintedByHelp(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	// The whole front page, plus every per-command page, read as one body of
 	// text — an old spelling hiding on any of them is the same defect.
 	pages := []string{usageText, environmentText}
@@ -337,7 +337,7 @@ func TestNoOldSpellingIsPrintedByHelp(t *testing.T) {
 	} {
 		out, _ := captureUsage(t)
 		if code := exitCodeOf(door.run([]string{"--help"})); code != 0 {
-			t.Fatalf("`aforge %s --help` left with %d", door.name, code)
+			t.Fatalf("`codeaf %s --help` left with %d", door.name, code)
 		}
 		pages = append(pages, out.String())
 	}
@@ -363,7 +363,7 @@ func TestNoOldSpellingIsPrintedByHelp(t *testing.T) {
 // about their lifetime, and it would fire on almost every headless invocation
 // in the wild.
 func TestASingleLetterShorthandKeepsWorkingAndSaysNothing(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	planFile := writeTestPlan(t)
 	for _, letter := range []struct {
 		name string
@@ -391,7 +391,7 @@ func TestASingleLetterShorthandKeepsWorkingAndSaysNothing(t *testing.T) {
 // exists to protect, so a rename that printed there would do more damage than
 // the rename it was softening.
 func TestARenameNoticeNeverReachesTheJSONOnStdout(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	// The writer itself, first: nothing else in this test can be right if the
 	// notice is aimed at the wrong stream to begin with.
 	if renameNotice != os.Stderr {
@@ -462,15 +462,15 @@ func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 
 	// MACHINERY VOCABULARY DOES NOT REACH A FLAG'S HELP SENTENCE. These are the
 	// words COMMANDS.md §3 rules out of anything a person reads, and `--turns`
-	// and `--budget` on `aforge run` could not be reasoned about at all while
+	// and `--budget` on `codeaf run` could not be reasoned about at all while
 	// their sentences explained them in terms of a *leaf*.
 	//
 	// `lane` is the ONE exception and is not on this list: internal/manual/chat/
 	// lanes.md is an established person-facing page using it to mean the
-	// provider route that answered, and `aforge logs` prints exactly that.
+	// provider route that answered, and `codeaf logs` prints exactly that.
 	//
 	// `node` is not on it either, and for a narrower reason: the only flag that
-	// carries the word is `aforge logs --node`, whose whole contract is that it
+	// carries the word is `codeaf logs --node`, whose whole contract is that it
 	// filters the call log's own recorded field, printed back byte-for-byte
 	// under `--json`. A filter named after the field it filters is not a leak.
 	machinery := []string{
@@ -499,9 +499,9 @@ func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 	//
 	// The table names the doors rather than saying "every door that declares
 	// this flag", because SOME FLAG NAMES GENUINELY MEAN TWO THINGS and pooling
-	// them would demand one sentence for two ideas: `aforge logs --model` is a
-	// FILTER over recorded calls, `aforge competence --model` names whose
-	// measurements to read, and `aforge chat --model` is the model you talk to
+	// them would demand one sentence for two ideas: `codeaf logs --model` is a
+	// FILTER over recorded calls, `codeaf competence --model` names whose
+	// measurements to read, and `codeaf chat --model` is the model you talk to
 	// — none of which is the work model the headless doors take. Likewise
 	// `--json` is a result envelope on the three headless verbs, a document on
 	// the two plan-writing ones, and a row stream on `logs` (COMMANDS.md §5).
@@ -600,7 +600,7 @@ func printedFlags(t *testing.T) []declaredFlag {
 					return true
 				}
 				// A FLAG WITH NO SENTENCE IS NOT A PRINTED FLAG. The only ones
-				// in this package are the union set `aforge run` builds to find
+				// in this package are the union set `codeaf run` builds to find
 				// its first positional (run.go's namesAPlanPath), which is a
 				// reader of somebody else's grammar and prints nothing at all.
 				if usageTextOf(call.Args[usageIndex]) == "" {
@@ -670,39 +670,39 @@ func stringLiteralOf(expression ast.Expr) string {
 //
 // It was 127 lines and more than half of them were the environment table, so
 // the last thing on a person's screen after asking what the commands are was
-// AFORGE_CALL_LOG_BODIES and the commands themselves had scrolled off.
+// CODEAF_CALL_LOG_BODIES and the commands themselves had scrolled off.
 func TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable(t *testing.T) {
 	for _, heading := range []string{
 		"Talk to it", "Hand it work", "Look at what happened", "Housekeeping", "Plan work by hand",
 	} {
 		if !strings.Contains(usageText, "\n"+heading) {
-			t.Errorf("`aforge --help` has no %q group", heading)
+			t.Errorf("`codeaf --help` has no %q group", heading)
 		}
 	}
 	if !strings.Contains(usageText, "\nExamples:\n") {
-		t.Error("`aforge --help` has no worked examples, and the two lines a developer most wants to copy are nowhere")
+		t.Error("`codeaf --help` has no worked examples, and the two lines a developer most wants to copy are nowhere")
 	}
-	if examples := strings.Count(usageText[strings.Index(usageText, "\nExamples:\n"):], "\n    aforge "); examples != 5 {
-		t.Errorf("`aforge --help` shows %d examples, want the five that each teach a different thing", examples)
+	if examples := strings.Count(usageText[strings.Index(usageText, "\nExamples:\n"):], "\n    codeaf "); examples != 5 {
+		t.Errorf("`codeaf --help` shows %d examples, want the five that each teach a different thing", examples)
 	}
 	// AND AN EXAMPLE IS NOT A COMMAND ROW. The per-command usage is lifted out
-	// of this same table by matching lines that begin `  aforge ` — so an
+	// of this same table by matching lines that begin `  codeaf ` — so an
 	// example written at that indent is read as part of a command's synopsis,
-	// and `aforge do --help` printed two example lines under `do`'s shape.
+	// and `codeaf do --help` printed two example lines under `do`'s shape.
 	if shape := usageForCommand("do"); strings.Contains(shape, "jq -r .answer") {
-		t.Errorf("`aforge do --help` swallowed an example out of the table:\n%s", shape)
+		t.Errorf("`codeaf do --help` swallowed an example out of the table:\n%s", shape)
 	}
-	if strings.Contains(usageText, "AFORGE_CALL_LOG_BODIES") {
-		t.Error("the environment table is back on `aforge --help`; it belongs at `aforge help env`")
+	if strings.Contains(usageText, "CODEAF_CALL_LOG_BODIES") {
+		t.Error("the environment table is back on `codeaf --help`; it belongs at `codeaf help env`")
 	}
 	if lines := strings.Count(usageText, "\n") + 1; lines > 110 {
-		t.Errorf("`aforge --help` is %d lines; it was cut down to fit a screen and a bit", lines)
+		t.Errorf("`codeaf --help` is %d lines; it was cut down to fit a screen and a bit", lines)
 	}
 	if !strings.Contains(usageText, "an agent you talk to, and hand work to when you walk away") {
-		t.Error("`aforge --help` no longer opens with what this product is")
+		t.Error("`codeaf --help` no longer opens with what this product is")
 	}
 	if strings.Contains(usageText, "build and revise task graphs") {
-		t.Error("`aforge --help` opens by describing a static pipeline that is four of twenty-three verbs")
+		t.Error("`codeaf --help` opens by describing a static pipeline that is four of twenty-three verbs")
 	}
 }
 
@@ -710,23 +710,23 @@ func TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable(t *tes
 func TestTheEnvironmentTableHasItsOwnDoor(t *testing.T) {
 	out, errs := captureUsage(t)
 	if err := usage([]string{"env"}); err != nil {
-		t.Fatalf("`aforge help env` failed: %v", err)
+		t.Fatalf("`codeaf help env` failed: %v", err)
 	}
 	printed := out.String()
-	for _, variable := range []string{"OPENROUTER_API_KEY", "AFORGE_DAILY_BUDGET", "AFORGE_CALL_LOG_BODIES"} {
+	for _, variable := range []string{"OPENROUTER_API_KEY", "CODEAF_DAILY_BUDGET", "CODEAF_CALL_LOG_BODIES"} {
 		if !strings.Contains(printed, variable) {
-			t.Errorf("`aforge help env` never mentions %s:\n%s", variable, printed)
+			t.Errorf("`codeaf help env` never mentions %s:\n%s", variable, printed)
 		}
 	}
 	if errs.Len() != 0 {
-		t.Errorf("`aforge help env` wrote to stderr, where a caller reads failures:\n%s", errs.String())
+		t.Errorf("`codeaf help env` wrote to stderr, where a caller reads failures:\n%s", errs.String())
 	}
 	out, _ = captureUsage(t)
 	if err := usage(nil); err != nil {
-		t.Fatalf("`aforge --help` failed: %v", err)
+		t.Fatalf("`codeaf --help` failed: %v", err)
 	}
-	if strings.Contains(out.String(), "AFORGE_CALL_LOG_BODIES") {
-		t.Error("`aforge --help` is printing the environment table again")
+	if strings.Contains(out.String(), "CODEAF_CALL_LOG_BODIES") {
+		t.Error("`codeaf --help` is printing the environment table again")
 	}
 }
 
@@ -773,7 +773,7 @@ func TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas(t *testing.T) {
 
 	// The one ladder, and the hatch back to exec's old numbers.
 	for _, promise := range []string{
-		"AFORGE_EXIT_CODES=legacy",
+		"CODEAF_EXIT_CODES=legacy",
 		"same ladder as `do` and `run`",
 		"`stop` is the field to move a script to",
 	} {
@@ -793,12 +793,12 @@ func TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas(t *testing.T) {
 		}
 	}
 	// And the flags say what the binary answers to.
-	for _, retired := range []string{"[--turns N]", "`--budget N`", "-w dir]", "aforge run <graph.json>", "--max-seconds"} {
+	for _, retired := range []string{"[--turns N]", "`--budget N`", "-w dir]", "codeaf run <graph.json>", "--max-seconds"} {
 		if strings.Contains(document, retired) {
 			t.Errorf("docs/HEADLESS.md still offers the retired spelling %q", retired)
 		}
 	}
-	for _, current := range []string{"--token-budget", "--max-turns", "aforge plan run", "aforge run <program>"} {
+	for _, current := range []string{"--token-budget", "--max-turns", "codeaf plan run", "codeaf run <program>"} {
 		if !strings.Contains(document, current) {
 			t.Errorf("docs/HEADLESS.md never names %q", current)
 		}

@@ -881,7 +881,7 @@ func (a *Agent) calendarListTool() bare.Tool {
 // can never be mistaken for a client nobody checked.
 //
 // AN ACCOUNT THAT NO LONGER STANDS IS A QUESTION, NOT AN ERROR. The person
-// disconnected it, or — far more often — they signed in when aforge could only
+// disconnected it, or — far more often — they signed in when codeaf could only
 // read their mail and it is about to send some, so what they agreed to no longer
 // covers the work (internal/connect keeps that record). Either way the honest
 // next move is the sign-in they already know, in the same words use_service

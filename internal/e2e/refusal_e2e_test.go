@@ -139,7 +139,7 @@ func TestTUIRefusedLane(t *testing.T) {
 	})
 	ws := newWorkspace(t, "refusalws", false)
 	r := startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.URL()},
+		[]string{"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + server.URL()},
 		"afe2e_refused", home, ws, tuiWide, 40)
 
 	// THE FRONTIER IS WAITED FOR RATHER THAN ASSUMED. A race with fewer than
@@ -328,7 +328,7 @@ func TestTUIRefusedLaneRowAfterTheTurnStops(t *testing.T) {
 	})
 	ws := newWorkspace(t, "voidws", false)
 	r := startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.URL()},
+		[]string{"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + server.URL()},
 		"afe2e_refused_row", home, ws, tuiWide, 40)
 
 	if !waitForSheetOf(server, voidModel, 30*time.Second) {

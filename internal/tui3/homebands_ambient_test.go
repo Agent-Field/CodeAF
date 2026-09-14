@@ -94,7 +94,7 @@ func TestHostedDeliverablesBandReadsTheFarWorldNotTheLocalIndex(t *testing.T) {
 	a.home.world = session.World{Artifacts: []session.Artifact{{
 		Path: "/srv/app/chart.png", Session: "mine", Title: "from the other machine", Kind: "image", Created: now,
 	}}}
-	row := session.SessionRow{ID: "mine", Transcript: "/srv/.aforge/v3/projects/app/mine/transcript.jsonl"}
+	row := session.SessionRow{ID: "mine", Transcript: "/srv/.codeaf/v3/projects/app/mine/transcript.jsonl"}
 
 	got := plain(strings.Join(drawDeliverablesBand(a, ambientBandContext(a, row, now, 50)), "\n"))
 	if !strings.Contains(got, "chart.png") || strings.Contains(got, "laptop.txt") {

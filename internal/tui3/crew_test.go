@@ -335,7 +335,7 @@ func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
 		t.Errorf("/status shows a rung on a shipped preset's brain: %q", lines[at])
 	}
 	// AND IT IS THE LINE UNDER THE MODEL, because the two are read together or
-	// not at all: one is what the conversation talks to, the other is what aforge
+	// not at all: one is what the conversation talks to, the other is what codeaf
 	// makes its own calls on.
 	if at == 0 || !strings.HasPrefix(lines[at-1], "model ") {
 		t.Fatalf("the crew line does not sit under the model line:\n%s", text)
@@ -394,7 +394,7 @@ func TestStatusSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 
 // AND AN EMPTY PROFILE DIRECTORY IS THE ORDINARY LAUNCH, WHICH HAS A CREW.
 //
-// AFORGE_PROFILE_DIR is exported by almost nobody, so the empty string is what
+// CODEAF_PROFILE_DIR is exported by almost nobody, so the empty string is what
 // nearly every launch carries and internal/config resolves it to this process's
 // own profile in the state root. The guard that read it as "no profile" left the
 // crew off /status, off the status line and out of the picker's hint on every
@@ -476,7 +476,7 @@ func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
 
 // ── THE FIVE SEATS ──────────────────────────────────────────────────────────
 //
-// aforge runs five model seats — the one you talk to, plus reflex, small work,
+// codeaf runs five model seats — the one you talk to, plus reflex, small work,
 // careful work and mastermind — and /crew moves only the last four. Every
 // surface that names the crew now names the fifth seat beside it, so the two
 // dials are visibly two dials.

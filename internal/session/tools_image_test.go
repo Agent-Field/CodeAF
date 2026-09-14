@@ -142,7 +142,7 @@ func TestGenerateImageSavesTheBytesAndReturnsPathAndDimensions(t *testing.T) {
 
 	// The default path: the surface's own directory, a sortable stamp, and a
 	// slug a person can recognise the prompt in.
-	directory := filepath.Join(workspace, ".aforge-v3", "images")
+	directory := filepath.Join(workspace, ".codeaf-v3", "images")
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		t.Fatalf("read %s: %v", directory, err)
@@ -234,7 +234,7 @@ func TestGenerateImageNeverOverwritesADefaultName(t *testing.T) {
 	}
 	wait.Wait()
 
-	entries, err := os.ReadDir(filepath.Join(workspace, ".aforge-v3", "images"))
+	entries, err := os.ReadDir(filepath.Join(workspace, ".codeaf-v3", "images"))
 	if err != nil {
 		t.Fatalf("read the image directory: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestGenerateImageHonoursACustomPath(t *testing.T) {
 	if !strings.Contains(result, "art/hero.png") {
 		t.Fatalf("result %q does not name the custom path", result)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3", "images")); err == nil {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3", "images")); err == nil {
 		t.Fatal("a custom path still wrote into the default directory")
 	}
 

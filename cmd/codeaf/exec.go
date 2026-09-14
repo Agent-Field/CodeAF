@@ -27,8 +27,8 @@ func runExec(args []string) error {
 	shorthandFlag(flags, "w", "dir")
 	system := flags.String("system", "", "working method for the agent")
 	// `--turns` and `--budget` are `--max-turns` and `--token-budget` now, on
-	// this door and on `aforge plan run` alike. `budget` is a word about MONEY
-	// everywhere else in this product — AFORGE_DAILY_BUDGET, /budget,
+	// this door and on `codeaf plan run` alike. `budget` is a word about MONEY
+	// everywhere else in this product — CODEAF_DAILY_BUDGET, /budget,
 	// --max-cost — so `--budget 150000` read as $150,000 exactly once, and the
 	// once was enough. The bound is unchanged; only its spelling is.
 	// A BAD COUNT IS REFUSED WITH A SENTENCE ABOUT THE FLAG, exactly as
@@ -39,22 +39,22 @@ func runExec(args []string) error {
 	// and nothing to do next. The hidden old spellings write through to these,
 	// so `--turns` and `--budget` are refused in the same words.
 	maxTurns := newCountFlag(flags, "max-turns", 200, "turns to allow",
-		"runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
+		"runaway backstop on agent iterations (env CODEAF_EXEC_TURNS)")
 	renamedFlag(flags, "turns", "max-turns")
 	// THE DEFAULT IS THE EXECUTOR'S OWN GRANT, not a number restated at this
 	// door. It was spelled here, in run.go and in the chat surface, so four
 	// places had to be recalibrated together and the help text could tell a
 	// person a figure the loop no longer used.
 	maxTokens := newCountFlag(flags, "token-budget", exec.DefaultLeafTokens, "tokens to allow",
-		"token budget for this run (env AFORGE_EXEC_BUDGET)")
+		"token budget for this run (env CODEAF_EXEC_BUDGET)")
 	renamedFlag(flags, "budget", "token-budget")
 	// A DURATION FLAG TAKES A DURATION, on every door that has one. This was an
-	// integer of seconds while `aforge do --timeout 15m` worked, so the same
+	// integer of seconds while `codeaf do --timeout 15m` worked, so the same
 	// flag with the same job took two types and the difference showed up at the
 	// door of a long unattended run (wall.go). A bare number is still seconds.
 	wall := wallFlag{}
 	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds); "+
-		"env AFORGE_EXEC_TIMEOUT; unset, it scales from the token budget")
+		"env CODEAF_EXEC_TIMEOUT; unset, it scales from the token budget")
 	model := flags.String("model", "", modelFlagHelp)
 	// `--plan-model` IS GONE FROM THIS DOOR. It was accepted "for headless
 	// model-pin parity" and documented as doing nothing, which teaches a harness
@@ -203,7 +203,7 @@ func runExec(args []string) error {
 
 // execEnvFallbacks are the three exec walls a wrapper can set once, in the
 // environment, instead of threading onto every invocation — the same way
-// AFORGE_MODEL is set once rather than passed per call. The caller that reached
+// CODEAF_MODEL is set once rather than passed per call. The caller that reached
 // for exec is usually a harness whose per-call arguments are the prompt and the
 // workspace and nothing else; walls belong to the campaign, not to the errand.
 var execEnvFallbacks = []struct {
@@ -211,9 +211,9 @@ var execEnvFallbacks = []struct {
 	variable string
 	what     string
 }{
-	{flag: "max-turns", variable: "AFORGE_EXEC_TURNS", what: "turn cap"},
-	{flag: "token-budget", variable: "AFORGE_EXEC_BUDGET", what: "token budget"},
-	{flag: "timeout", variable: "AFORGE_EXEC_TIMEOUT", what: "duration or number of seconds"},
+	{flag: "max-turns", variable: "CODEAF_EXEC_TURNS", what: "turn cap"},
+	{flag: "token-budget", variable: "CODEAF_EXEC_BUDGET", what: "token budget"},
+	{flag: "timeout", variable: "CODEAF_EXEC_TIMEOUT", what: "duration or number of seconds"},
 }
 
 // applyExecEnv fills in the walls the caller did not name.
@@ -352,8 +352,8 @@ func execExit(outcome *exec.Outcome, runErr error) exitStatus {
 	return exitFor(execStop(outcome, runErr))
 }
 
-// execLegacyExitCode is `aforge exec`'s exit table AS IT WAS, kept for one
-// release behind AFORGE_EXIT_CODES=legacy and reached from nowhere else. It is
+// execLegacyExitCode is `codeaf exec`'s exit table AS IT WAS, kept for one
+// release behind CODEAF_EXIT_CODES=legacy and reached from nowhere else. It is
 // deliberately left exactly as it was written rather than rebuilt out of the
 // ladder: its whole job is to be the old numbers, and a version of it derived
 // from the new table would stop being that the first time the table moved.
@@ -380,7 +380,7 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // buildExecEnvelope maps what the linear executor knows onto the one machine
 // contract every headless verb returns (envelope.go), so the object written to
 // --json, the object written to -o and the sentence printed on stderr cannot
-// drift apart — and so that a tool that reads `aforge do --json` reads this
+// drift apart — and so that a tool that reads `codeaf do --json` reads this
 // without being rewritten.
 //
 // THE STOP IS DERIVED ONCE AND `error` FOLLOWS IT. `error` is documented in
@@ -394,7 +394,7 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // partial answer away or reported a startup failure that never happened.
 //
 // The limit's own sentence is not lost: it goes to `incomplete`, which is
-// already the name `aforge run` publishes "the reason it did not finish" under
+// already the name `codeaf run` publishes "the reason it did not finish" under
 // ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
 // than growing a second word for it.
 func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) resultEnvelope {
@@ -448,7 +448,7 @@ func execFailureWords(runErr error) string {
 	return plainWords(strings.TrimPrefix(strings.TrimSpace(runErr.Error()), "node "+execNodeKey+": "))
 }
 
-// execNodeKey names the single leaf `aforge exec` runs. It is spelled once so
+// execNodeKey names the single leaf `codeaf exec` runs. It is spelled once so
 // the call log, the artifact bucket and the flight recorder cannot disagree
 // about who did the work.
 const execNodeKey = "task-1"
@@ -458,9 +458,9 @@ const execNodeKey = "task-1"
 // THE MEASURED FAILURE (2026-09-13). Under `simple` the talk pin rides only the
 // calls somebody is reading (internal/provider's drawLaneChoice asks the role's
 // Visible), and a headless door that stamped nothing ran its leaf as
-// [lane.RoleUnknown] — a hidden background errand — so a pinned `aforge exec`
-// went out with no machine named while the row still said one. `aforge do` and
-// `aforge plan new` are the same shape: one command, one person waiting on it,
+// [lane.RoleUnknown] — a hidden background errand — so a pinned `codeaf exec`
+// went out with no machine named while the row still said one. `codeaf do` and
+// `codeaf plan new` are the same shape: one command, one person waiting on it,
 // and cmd/codeaf's lanepin_doors_test names all three as the doors whose first
 // request must carry the pin.
 //
@@ -477,7 +477,7 @@ const execNodeKey = "task-1"
 // none is invented: arriving here IS the fact that a person typed the command.
 //
 // IT SAYS THE FACT TWICE BECAUSE TWO THINGS READ IT: the leaf this door runs
-// itself takes the role off its context, and everything `aforge do` runs
+// itself takes the role off its context, and everything `codeaf do` runs
 // through the session's own executor — its planning pass, its nodes — takes
 // the fact from the process-wide latch (internal/provider's readByAPerson and
 // internal/session's someoneIsWatching), which no context reaches.
@@ -491,7 +491,7 @@ func execTask(prompt, system, root string) exec.Task {
 	return exec.Task{
 		NodeID: 1,
 		// The one node this command runs, named rather than left to the
-		// number. `aforge exec` has a single leaf, and every model call it
+		// number. `codeaf exec` has a single leaf, and every model call it
 		// makes is that leaf's work; without a key the call log's node column
 		// was blank for the whole run, so a person reading the record after it
 		// could not tell an exec row from a row with no work behind it at all.

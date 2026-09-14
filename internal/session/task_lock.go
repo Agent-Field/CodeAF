@@ -11,7 +11,7 @@ package session
 // that happened was that two of them tried at the same instant.
 //
 // A process-local mutex closed that hole for two nodes in one session and left
-// it wide open for the shape people actually work in: two aforge windows on one
+// it wide open for the shape people actually work in: two codeaf windows on one
 // repository, each running tasks. So the serialization is a FILE lock now, and
 // the mutex in front of it is only the cheap first gate for this process's own
 // goroutines.
@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	// gitRootLockName is the file every aforge on this machine flocks before it
+	// gitRootLockName is the file every codeaf on this machine flocks before it
 	// touches the root repository, in the LEGACY layout. It sits with the task
 	// worktrees rather than inside .git, because a repository's toplevel can be a
 	// linked worktree whose .git is a FILE, and because everything else that
@@ -39,7 +39,7 @@ const (
 	// gitRootLockDir is where the lock lives once a session keeps its things in a
 	// folder of its own (Decision 26): under the state root, so that NOTHING OF
 	// OURS LIVES IN THE PERSON'S FOLDER. It goes through internal/home, so
-	// AFORGE_HOME moves it with everything else.
+	// CODEAF_HOME moves it with everything else.
 	gitRootLockDir = "locks"
 
 	// gitRootLockStem is how much of the repository path's digest names the lock
@@ -98,7 +98,7 @@ func lockGitRoot(place Place, root string) func() {
 //
 // flock is the right primitive for the reason sessionfile.go gives: the kernel
 // releases it when the holder dies, however it dies, so there is no stale lock
-// to detect and nothing to clean up after a crashed aforge. What differs here is
+// to detect and nothing to clean up after a crashed codeaf. What differs here is
 // who loses. A second session opening the same transcript is a mistake to name
 // and stop; a second session merging its own task is ordinary work that has to
 // happen, just not at this instant — so the loser WAITS instead of being told
@@ -132,7 +132,7 @@ func claimGitRoot(place Place, root string) *os.File {
 // nil when there is nowhere to put one.
 //
 // A SESSION WITH A FOLDER LOCKS OUTSIDE THE PERSON'S REPOSITORY. The legacy
-// layout kept the file with the worktrees under <repo>/.aforge-v3/, which is the
+// layout kept the file with the worktrees under <repo>/.codeaf-v3/, which is the
 // litter Decision 26 removes; the folder layout keys the same lock on a digest
 // of the repository root instead and keeps it under the state root. Both windows
 // on one repository still meet on one file, because both derive it from the same

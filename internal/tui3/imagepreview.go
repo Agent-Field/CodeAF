@@ -716,7 +716,7 @@ func picturesAFile(tool string) bool {
 // generatedPicturePath reads the file out of `generate_image`'s result, whose
 // whole first line is the path, an em dash, and the facts:
 //
-//	.aforge-v3/images/20260817-142201-a-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
+//	.codeaf-v3/images/20260817-142201-a-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
 //
 // A result that does not have that shape yields nothing, which is the honest
 // floor: a guessed path would draw somebody else's picture.
@@ -738,7 +738,7 @@ const generatedModelMarker = ", generated on "
 // generatedPictureModel is the image model a finished `generate_image` call
 // actually drew with, read out of the tail of its own result line:
 //
-//	.aforge-v3/images/harbour.png — 1024×1024 png, 1.4MB, generated on vendor/paint-5
+//	.codeaf-v3/images/harbour.png — 1024×1024 png, 1.4MB, generated on vendor/paint-5
 //
 // THE RESULT IS THE ONE AUTHORITY ON THIS. The model that drew is chosen inside
 // the tool, after the call's own `model` word has been resolved against the

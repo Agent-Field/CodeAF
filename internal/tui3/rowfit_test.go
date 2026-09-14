@@ -33,7 +33,7 @@ func rowfitPicker(t *testing.T) *app {
 	a.profileDir = t.TempDir()
 	// ON THE RANKED ROAD, and before the picker is armed, because the row is
 	// copied onto the list when it opens (lanes.go's [app.armLanes]). The fold
-	// these widths are measured against is the one where aforge names the
+	// these widths are measured against is the one where codeaf names the
 	// machine it would send you to, and the shipped row names none
 	// (palette.go's [laneAutoSaid]).
 	a.routing = config.RoutingLatency

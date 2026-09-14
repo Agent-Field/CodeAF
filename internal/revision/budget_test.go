@@ -126,11 +126,11 @@ func TestAVerdictsCapIsAFractionOfTheReserveAndNeverTheOldLiterals(t *testing.T)
 	}
 	// A reserve set small enough that the share falls under the floor gets the
 	// floor, and a reserve smaller than the floor is still the operator's word.
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "8000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "8000")
 	if got := verdictRoom(); got != 4096 {
 		t.Fatalf("verdict cap = %d under a small reserve, want the floor", got)
 	}
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "1000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "1000")
 	if got := verdictRoom(); got != 1000 {
 		t.Fatalf("verdict cap = %d, want the stated reserve of 1000", got)
 	}

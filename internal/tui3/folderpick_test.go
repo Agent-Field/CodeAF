@@ -209,7 +209,7 @@ func TestAPathShapeIsTheOnlyThingThatBrowses(t *testing.T) {
 			t.Errorf("%q should browse", typed)
 		}
 	}
-	for _, typed := range []string{"", "code", "aforge-v2", "a/b"} {
+	for _, typed := range []string{"", "code", "codeaf", "a/b"} {
 		if folderPathish(typed) {
 			t.Errorf("%q should filter, not browse", typed)
 		}
@@ -415,13 +415,13 @@ func typeFolder(t *testing.T, a *app, text string) {
 func TestTheFolderBrowserFindsATransposedProjectName(t *testing.T) {
 	var picker folderPick
 	picker.start([]folderCand{
-		{path: "/code/aforge", show: "~/code/aforge", layer: folderProject},
+		{path: "/code/codeaf", show: "~/code/codeaf", layer: folderProject},
 		{path: "/notes", show: "~/notes", layer: folderProject},
 	}, "/home/person")
-	picker.filter.setText("afroge")
+	picker.filter.setText("codefa")
 	picker.rank()
 	path, ok := picker.here()
-	if !ok || path != "/code/aforge" {
-		t.Fatalf("transposed query selected %q, %v; want /code/aforge", path, ok)
+	if !ok || path != "/code/codeaf" {
+		t.Fatalf("transposed query selected %q, %v; want /code/codeaf", path, ok)
 	}
 }

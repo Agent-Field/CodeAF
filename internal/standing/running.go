@@ -7,7 +7,7 @@ package standing
 // WHY IT IS A FILE AND NOT A FIELD. A pass runs in whichever of a live window
 // or the operating system's timer got to the lock first, and the person is very
 // often sitting in a different window from the one doing the work — or in no
-// window at all, with `aforge tick` doing it. So "firing now" is knowledge one
+// window at all, with `codeaf tick` doing it. So "firing now" is knowledge one
 // process has and every other process needs, which on this side of the product
 // means a small file: [Store.markRunning] raises it before the pass looks at an
 // item, [Store.clearRunning] takes it down when that item's pass ends, and

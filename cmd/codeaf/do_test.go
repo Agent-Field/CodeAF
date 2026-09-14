@@ -84,7 +84,7 @@ func TestDoRepairsARejectedDeliverableThroughTheGate(t *testing.T) {
 // against a standard the person never set buys nothing at all.
 //
 // Measured on a benchmark cell, that round held the worker to a working
-// decision aforge had invented for itself, bought a five-turn re-run against
+// decision codeaf had invented for itself, bought a five-turn re-run against
 // it, and handed back a worse answer than the one it rejected. The citation
 // invariant already refused to let such a gap grow the graph; it now refuses
 // to let it redo the work either. Nothing is hidden: the review's words ride
@@ -236,7 +236,7 @@ func TestDoRefusesToBuyAPlanOverTheConsentThreshold(t *testing.T) {
 	defer script.close()
 	// A cent of consent threshold and a measured journal cost puts every plan
 	// over the line, which is the condition under test.
-	t.Setenv("AFORGE_PLAN_CONSENT", "0.01")
+	t.Setenv("CODEAF_PLAN_CONSENT", "0.01")
 	script.leafCost = 1.0
 
 	var stdout, stderr strings.Builder
@@ -761,9 +761,9 @@ func TestAFailedErrandWithoutJSONStillJustReturnsTheError(t *testing.T) {
 	}
 }
 
-// AFORGE_HOME moves the whole home in one word — the seam a harness runs a
-// fleet of isolated aforges through.
-func TestAforgeHomeMovesTheDefaultStore(t *testing.T) {
+// CODEAF_HOME moves the whole home in one word — the seam a harness runs a
+// fleet of isolated codeafs through.
+func TestProductHomeMovesTheDefaultStore(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv(homepkg.EnvVar, home)
 	if got, want := defaultChatDB(), filepath.Join(home, "graph.db"); got != want {
@@ -780,7 +780,7 @@ func TestAforgeHomeMovesTheDefaultStore(t *testing.T) {
 // exited 1 in three seconds having done zero work, with the interactive question
 // sitting in the JSON `deliverable` field where a caller reads the answer.
 //
-// `aforge do` IS the answer to that question. A person who typed the verb has
+// `codeaf do` IS the answer to that question. A person who typed the verb has
 // already chosen "once, not standing", so the classification is settled by the
 // surface before a model reads a word: the temporal route is never taken, and
 // the ask compiles, plans, runs and delivers exactly like any other errand.
@@ -1138,7 +1138,7 @@ func decodeErrand(t *testing.T, stdout string) headlessOutcome {
 // ---------------------------------------------------------------------------
 // The scripted brain: one HTTP endpoint standing in for every model call the
 // run makes, dispatching on the prompt that arrived. It is deliberately not a
-// stub of aforge's own seams — the real compiler, planner, executor, gate and
+// stub of codeaf's own seams — the real compiler, planner, executor, gate and
 // replan all run, and this only decides what the model says back to them.
 
 const (
@@ -1149,8 +1149,8 @@ const (
 	// refused before a planning call was made.
 	citedQuote = "include the migration steps"
 	// inventedQuote is the opposite: words the compiler put in its own goal
-	// and the person never typed. A gap that can only quote this is aforge
-	// holding aforge to a standard it wrote after reading its own output.
+	// and the person never typed. A gap that can only quote this is codeaf
+	// holding codeaf to a standard it wrote after reading its own output.
 	inventedQuote   = "the note is addressed to an operator audience"
 	inventedGapText = "the note does not address an operator audience"
 	// gateCritique is the reviewer's own prose. It is journaled and readable on
@@ -1294,13 +1294,13 @@ func newScriptedBrain(t *testing.T) *scriptedBrain {
 	// The catalog, the media clients and anything else that reaches for an
 	// endpoint find this one; none of them are what is under test, and all of
 	// them degrade cleanly against a server that has no answers for them.
-	t.Setenv("AFORGE_BASE_URL", script.server.URL)
+	t.Setenv("CODEAF_BASE_URL", script.server.URL)
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_PROFILE_DIR", script.dir)
-	t.Setenv("AFORGE_DAILY_BUDGET", "0")
-	t.Setenv("AFORGE_PRACTICE_BUDGET", "0")
-	if os.Getenv("AFORGE_PLAN_CONSENT") == "" {
-		t.Setenv("AFORGE_PLAN_CONSENT", "0")
+	t.Setenv("CODEAF_PROFILE_DIR", script.dir)
+	t.Setenv("CODEAF_DAILY_BUDGET", "0")
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "0")
+	if os.Getenv("CODEAF_PLAN_CONSENT") == "" {
+		t.Setenv("CODEAF_PLAN_CONSENT", "0")
 	}
 	return script
 }
@@ -1843,8 +1843,8 @@ func TestTheClosingNarrationCannotContradictTheArtifacts(t *testing.T) {
 // shell's own exports exactly as it found them, or a campaign that pinned the
 // window in its wrapper script would silently be overridden per errand.
 func TestTheContextFlagsSetTheWindowLawAndSilenceLeavesItAlone(t *testing.T) {
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "42")
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "4242")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "42")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "4242")
 
 	if err := applyContextLaw(0, 0); err != nil {
 		t.Fatal(err)
@@ -2243,7 +2243,7 @@ func TestAHeadlessErrandSchedulesNoPractice(t *testing.T) {
 	defer script.close()
 	// The harness zeroes the practice budget for every other test here. This is
 	// the one run that must prove the gate rather than the setting.
-	t.Setenv("AFORGE_PRACTICE_BUDGET", "2")
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "2")
 
 	database := filepath.Join(t.TempDir(), "graph.db")
 	var stdout, stderr strings.Builder

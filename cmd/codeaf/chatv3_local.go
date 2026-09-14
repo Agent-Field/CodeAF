@@ -1,6 +1,6 @@
 package main
 
-// ── `aforge chat` through this machine's own session host ───────────────────
+// ── `codeaf chat` through this machine's own session host ───────────────────
 //
 // This is the third dialer and the first one with no machine in it: the surface
 // runs here, the session runs in this workspace's session host
@@ -8,7 +8,7 @@ package main
 // child or a relay tunnel.
 //
 // It is the ordinary road now, which is the whole point — the work a person
-// starts goes on when the terminal closes, and the next `aforge chat` here sits
+// starts goes on when the terminal closes, and the next `codeaf chat` here sits
 // back down in the same conversation. [v3HostRoad] is the rule, and it says
 // which launches keep the in-process door instead: onboarding, --once, --debug
 // and --no-host.
@@ -54,7 +54,7 @@ type localLaunch struct {
 	level string
 	// once is --once: one message, printed, no terminal ownership.
 	once string
-	// pick is `aforge resume`: the same surface, opened on the session picker.
+	// pick is `codeaf resume`: the same surface, opened on the session picker.
 	pick bool
 	// shape is --yolo, --no-compact, --one-model and the two ceilings, carried
 	// so the ENGINE builds the session with them. It is only ever honoured on a
@@ -106,9 +106,9 @@ func (l *localLink) noteDown(note string) {
 // it is for: a host that retired under a surface is replaced by a fresh one on
 // the next attempt rather than ending the window.
 //
-// THE STALE HOST IS ASKED ABOUT FIRST, on the same terms `aforge engine` asks
+// THE STALE HOST IS ASKED ABOUT FIRST, on the same terms `codeaf engine` asks
 // (engine.go's [clearStaleEngineHost]): a host outlives the binary that started
-// it, so a rebuilt aforge can meet an older one still holding the socket. It
+// it, so a rebuilt codeaf can meet an older one still holding the socket. It
 // retires if it is holding nothing, and otherwise the person is told in words
 // which command lets go of it — one sentence, already written, and not a splice
 // onto a build that speaks a different protocol.
@@ -151,7 +151,7 @@ func (h *hostUnreachable) Error() string { return h.reason }
 func hostFallbackReason(err error) string {
 	switch {
 	case errors.Is(err, enginehost.ErrSocketPathTooLong):
-		return fmt.Sprintf("aforge's state folder is a longer path than the %d bytes a socket may be named in — AFORGE_HOME moves it somewhere shorter", enginehost.SocketLimit)
+		return fmt.Sprintf("codeaf's state folder is a longer path than the %d bytes a socket may be named in — CODEAF_HOME moves it somewhere shorter", enginehost.SocketLimit)
 	case errors.Is(err, enginehost.ErrNoHostAnswered):
 		return "nothing on this machine came up to hold it in the background"
 	default:
@@ -162,7 +162,7 @@ func hostFallbackReason(err error) string {
 // openChatV3Local is the launch.
 func openChatV3Local(launch localLaunch) error {
 	if launch.pick && launch.once != "" {
-		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --once "text"`)
+		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --once "text"`)
 	}
 	link := &localLink{workspace: launch.workspace}
 	// THE MACHINE NAME IS EMPTY AND THAT IS THE WHOLE SIGNAL. internal/remote
@@ -253,12 +253,12 @@ func openChatV3Local(launch localLaunch) error {
 	options, settings := hostOptions(fleet, welcome, launch.pick)
 	localDoors(&options, welcome, settings)
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
-	// is being greeted is one fact — a person opened aforge with no particular
+	// is being greeted is one fact — a person opened codeaf with no particular
 	// conversation in mind — and [tui3.Options.Landing] is the only place the
 	// surface reads it (internal/tui3's [app.landHome]). It was set on the
 	// in-process door alone, so the day THIS road became the ordinary one for an
 	// interactive launch ([v3TakeHostRoad] stopped requiring a host that was
-	// already answering), every plain `aforge` stopped being greeted and sat down
+	// already answering), every plain `codeaf` stopped being greeted and sat down
 	// in a conversation instead: the same launch, two roads, two behaviours.
 	//
 	// It is spelled here rather than inside [hostOptions] for [Options.EngineAnswers]'
@@ -518,10 +518,10 @@ type v3HostChoice struct {
 	// run that is recording keeps its launch here, where the calls are real.
 	//
 	// IT IS THE SWITCH BECAUSE THE SWITCH HAS THREE DOORS AND THE FLAG IS ONE.
-	// Reading the flag alone meant `AFORGE_DEBUG=1 aforge` took the host road,
+	// Reading the flag alone meant `CODEAF_DEBUG=1 codeaf` took the host road,
 	// and four launches wrote a folder holding run.json and not one request body
 	// — the header written by this process, the calls made by another — while
-	// `aforge chat --debug` wrote them all (issue #1022). The manual advertises
+	// `codeaf chat --debug` wrote them all (issue #1022). The manual advertises
 	// the environment pin for exactly this, so it reaches the same door.
 	debug bool
 	// setup says this machine may still have to be set up — no key it can find —
@@ -531,7 +531,7 @@ type v3HostChoice struct {
 	setup bool
 }
 
-// v3HostRoad answers whether `aforge chat` opens its conversation through this
+// v3HostRoad answers whether `codeaf chat` opens its conversation through this
 // workspace's session host, and names the workspace either way.
 //
 // The host road is the ordinary one. What it buys is what the in-process door

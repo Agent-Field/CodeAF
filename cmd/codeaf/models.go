@@ -52,7 +52,7 @@ func runModels(args []string) error {
 	}
 
 	if len(settings.Panel.Models) == 0 {
-		line := "panel:  none — AFORGE_MODELS is unset, so every call goes to " + settings.Model
+		line := "panel:  none — CODEAF_MODELS is unset, so every call goes to " + settings.Model
 		if word := reasoningWord(models, settings.Model); word != "" {
 			line += "  " + word
 		}
@@ -95,7 +95,7 @@ func runModels(args []string) error {
 
 	if len(entries) == 0 {
 		fmt.Println("\nnothing measured yet. Ratings appear once calls have been graded — " +
-			"run a plan or a graph with AFORGE_MODELS set.")
+			"run a plan or a graph with CODEAF_MODELS set.")
 		return nil
 	}
 	// THE CLASS COLUMN IS AS WIDE AS THE CLASSES ARE. It used to be a constant

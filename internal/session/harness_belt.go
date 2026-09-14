@@ -58,7 +58,7 @@ import (
 // seven wire tools, which is what a harness has always had and what a machine
 // with no media models still gets. A zero [HarnessBeltSeams.Place] does not take
 // a verb away — it moves what the verbs write. Such a run lands its files on the
-// legacy rung, `<workspace>/.aforge-v3/images` and its siblings (landing.go's
+// legacy rung, `<workspace>/.codeaf-v3/images` and its siblings (landing.go's
 // ladder), and records none of them, which is the honest answer for a door that
 // genuinely has no session folder to land in and the WRONG one for every door
 // that has.

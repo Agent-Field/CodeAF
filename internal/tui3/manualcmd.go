@@ -1,6 +1,6 @@
 package tui3
 
-// /manual — WHAT AFORGE KNOWS ABOUT ITSELF, READ RATHER THAN RETOLD.
+// /manual — WHAT codeaf KNOWS ABOUT ITSELF, READ RATHER THAN RETOLD.
 //
 // The manual (internal/manual's chat pages) had exactly one reader for its whole
 // life and it was not the person: the only door onto it was the belt's `manual`
@@ -79,12 +79,12 @@ func (a *app) runManualQuestion(question string) {
 	sections := manual.Chat().Search(question, manualChatSections)
 	if len(sections) == 0 {
 		// NOT A REFUSAL. The manual having nothing on a topic is a fact about
-		// aforge worth saying — it usually means the answer is "no, it does not
+		// codeaf worth saying — it usually means the answer is "no, it does not
 		// do that" — and the pages go under it so the next question is one
 		// keystroke away rather than a guess.
 		// AND THE LISTING UNDER IT IS A BLOCK for [app.runManualCommand]'s reason
 		// exactly: one page per line, cut rather than re-flowed.
-		a.noteBlock("the manual has nothing on that, which usually means aforge does not do it\n\n" + manual.Chat().Listing())
+		a.noteBlock("the manual has nothing on that, which usually means codeaf does not do it\n\n" + manual.Chat().Listing())
 		return
 	}
 	a.note(manual.RenderWhole(sections))

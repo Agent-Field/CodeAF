@@ -1145,7 +1145,7 @@ func TestARacedYesIsLookedAtEarlyAndTheLookConvertsTheTurn(t *testing.T) {
 }
 
 // AND A RACED YES ON ITS OWN CONVERTS NOTHING AND SAYS NOTHING. IT ONLY MAKES
-// AFORGE SAY SOMETHING TO THE TURN SOONER.
+// codeaf SAY SOMETHING TO THE TURN SOONER.
 //
 // This is the demotion, pinned, and it is one step further along than it was.
 // The benchmark measured the raced screen converting BOTH of its small-work

@@ -2,7 +2,7 @@
 // it is written, or the sections that answer a question.
 //
 // It exists because the manual had exactly one reader and it was not the person.
-// Everything aforge knows about itself was reachable only through the belt's
+// Everything codeaf knows about itself was reachable only through the belt's
 // `manual` tool — which is a model call, so it needs an API key, costs money on
 // every lookup, and hands back a RETELLING that nobody can tell from an invented
 // one. That is the exact failure internal/manual was written to prevent, and the
@@ -76,7 +76,7 @@ func runManualWith(args []string, out io.Writer) error {
 // list rather than over it, so the names stay the first thing on the screen and
 // stay pipeable.
 func writeManualPages(out io.Writer) error {
-	_, err := fmt.Fprintf(out, "%s\n\nread one with `aforge manual <page>`, or ask in your own words: aforge manual \"who can see my files\"\n", manual.Chat().Listing())
+	_, err := fmt.Fprintf(out, "%s\n\nread one with `codeaf manual <page>`, or ask in your own words: codeaf manual \"who can see my files\"\n", manual.Chat().Listing())
 	return err
 }
 
@@ -89,7 +89,7 @@ func writeManualPages(out io.Writer) error {
 func writeManualPage(out io.Writer, name string) error {
 	text, found := manual.Chat().Page(name)
 	if !found {
-		return fmt.Errorf("there is no manual page named %q\n\nask in your own words to search instead — aforge manual \"who can see my files\" — or read one of these:\n\n%s",
+		return fmt.Errorf("there is no manual page named %q\n\nask in your own words to search instead — codeaf manual \"who can see my files\" — or read one of these:\n\n%s",
 			name, manual.Chat().Listing())
 	}
 	_, err := fmt.Fprintln(out, text)
@@ -105,13 +105,13 @@ func writeManualAnswer(out io.Writer, question string) error {
 	sections := manual.Chat().Search(question, manualQuestionSections)
 	if len(sections) == 0 {
 		// NOT A FAILURE, and the difference is the whole of the exit code: the
-		// manual having nothing on a topic is a fact about aforge worth
+		// manual having nothing on a topic is a fact about codeaf worth
 		// reporting — it usually means the answer is "no, it does not do that"
 		// — while a non-zero exit would read as a broken command and invite a
 		// retry with rephrased words that will find nothing either. A page
 		// asked for BY NAME and missing is the other case, and that one really
 		// did fail.
-		_, err := fmt.Fprintf(out, "the manual has nothing on that, which usually means aforge does not do it\n\n%s\n", manual.Chat().Listing())
+		_, err := fmt.Fprintf(out, "the manual has nothing on that, which usually means codeaf does not do it\n\n%s\n", manual.Chat().Listing())
 		return err
 	}
 	_, err := fmt.Fprintln(out, manual.RenderWhole(sections))

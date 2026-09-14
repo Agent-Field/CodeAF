@@ -117,7 +117,7 @@ func TestAnUnknownNameIsRefusedNamingEverywhereItLooked(t *testing.T) {
 // just quiet the belief that names it — a belief that went silent while its
 // command stayed on the person's PATH is a half-done retirement, and the
 // command kind is what does both halves in one place.
-func TestForgettingAForgedToolRetiresTheToolRatherThanOnlyTheBelief(t *testing.T) {
+func TestForgettingAToolThatWasForgedRetiresTheToolRatherThanOnlyTheBelief(t *testing.T) {
 	graph := openHeadStore(t)
 	skill, err := graph.RecordSkillCandidate(store.RootID, "tool:imgshrink",
 		"imgshrink squeezes screenshots", t.TempDir())

@@ -1,6 +1,6 @@
 // Package head turns durable thread messages into immediate conversational
 // replies and asynchronous graph commands. It never plans or executes work;
-// the thread remains responsive while the rest of Aforge changes the graph.
+// the thread remains responsive while the rest of codeaf changes the graph.
 package head
 
 import (

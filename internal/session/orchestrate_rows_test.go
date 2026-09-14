@@ -162,7 +162,7 @@ func resumedRunRows(t *testing.T, script func(*orchestrateFamily)) (*Agent, []Ta
 	return today, runRowsOf(familyNotices(t, today.TaskUpdates()), "7")
 }
 
-// THE OWNER'S SCENARIO. A run was mid-flight when aforge closed; the next
+// THE OWNER'S SCENARIO. A run was mid-flight when codeaf closed; the next
 // morning the conversation is reopened and its rows are on the column again —
 // settled, saying what happened to them, and not pretending to be alive.
 func TestAResumedConversationRedrawsAMidFlightRunSettled(t *testing.T) {

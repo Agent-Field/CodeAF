@@ -167,7 +167,7 @@ func forgetLiveSession(agent *Agent) {
 // ([registerLiveSession]), so an entry here is a room with a person in it and
 // nothing else is. A headless run opens no conversation; it answers true only
 // when the door said a person typed it (internal/provider's
-// [provider.SetPersonAtTheDoor]), which is the difference between `aforge do`
+// [provider.SetPersonAtTheDoor]), which is the difference between `codeaf do`
 // at somebody's terminal and a node a spawner built with nobody there.
 //
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work

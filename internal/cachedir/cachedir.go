@@ -1,5 +1,5 @@
-// Package cachedir owns the one directory under aforge's state root that holds
-// nothing but caches: ~/.aforge/cache, where every task worker's toolchain
+// Package cachedir owns the one directory under codeaf's state root that holds
+// nothing but caches: ~/.codeaf/cache, where every task worker's toolchain
 // caches live (internal/exec's sweCacheRoot puts go-mod, go-build, cargo, npm
 // and pip under it).
 //
@@ -10,7 +10,7 @@
 // is everything beside it under the state root: the journal, the CAS, the v3
 // session files, the config and the credentials are a person's own things, and
 // a "cache clean" that reached them would be data loss wearing a janitor's
-// name. Both surfaces that offer the verb — `aforge cache clean` and the chat's
+// name. Both surfaces that offer the verb — `codeaf cache clean` and the chat's
 // /cache clean — call in here rather than spelling a path of their own, so the
 // radius cannot drift between them.
 package cachedir

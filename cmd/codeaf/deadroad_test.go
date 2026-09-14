@@ -15,7 +15,7 @@ import (
 // THE STANDING GATE ON COMMAND ENTRY POINTS THAT NOTHING DISPATCHES.
 //
 // `runChat` sat at the top of `cmd/codeaf/chat.go` for weeks with no caller:
-// `main` sent `aforge chat` to `runChatV3` in every arm, and the six thousand
+// `main` sent `codeaf chat` to `runChatV3` in every arm, and the six thousand
 // lines under the dead entry still read as though a chat window ran the
 // resident scheduler. Nothing in the compiler notices that — an unexported
 // function with no caller is not an error in Go — and a reader has no way to

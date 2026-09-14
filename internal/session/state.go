@@ -195,7 +195,7 @@ type stateStore struct {
 // different extension, beside it in the same directory.
 //
 // It is per-journal rather than one state.json per session DIRECTORY, which the
-// FLAT layout's shape demanded: ~/.aforge/v3/sessions/<workspace>/ held every
+// FLAT layout's shape demanded: ~/.codeaf/v3/sessions/<workspace>/ held every
 // session this workspace ever had, so a single state.json there would have been
 // every window and every resumed conversation writing over each other's
 // beliefs. State belongs to ONE conversation, and the journal is what names one

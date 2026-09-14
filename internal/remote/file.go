@@ -54,7 +54,7 @@ const attachmentStampFormat = "20060102-150405"
 // dropping uses (internal/session's landing.go).
 const (
 	attachmentsDirectory       = "attachments"
-	attachmentsLegacyDirectory = ".aforge-v3/attachments"
+	attachmentsLegacyDirectory = ".codeaf-v3/attachments"
 )
 
 // maxFetchBytes is the most one file may weigh coming the OTHER way, and the

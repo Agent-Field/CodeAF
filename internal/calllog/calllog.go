@@ -1,4 +1,4 @@
-// Package calllog is aforge's always-on record of the model calls it makes.
+// Package calllog is codeaf's always-on record of the model calls it makes.
 //
 // It exists because of what debugging one used to cost. A headless run that
 // sits on "still waiting" for fifteen minutes writes nothing anywhere that says
@@ -7,19 +7,19 @@
 // encrypted reasoning replayed to a model that did not produce it after a
 // /model switch, a bare leaf that never filed its artifacts — were each found
 // by standing a logging proxy in front of OpenRouter. A proxy is not something
-// a person running aforge on their own laptop can be asked to build, so the
+// a person running codeaf on their own laptop can be asked to build, so the
 // record is built in.
 //
 // ONE LINE PER CALL, JSON Lines, appended under a mutex. The provider adapter
 // writes it, because every outbound call in the process passes through that one
-// door — the chat's turn, `aforge do`, plan briefs and contracts, the delivery
+// door — the chat's turn, `codeaf do`, plan briefs and contracts, the delivery
 // gate, reflexes, the document route.
 //
 // WHAT IS NEVER IN IT: the prompts. A transcript is the person's own data and
 // their own files, and a debug log that quietly accumulates it is a liability
 // rather than a tool. The record carries the SHAPE of a request — how many
 // messages, how many tools, which knobs, which ceiling — and the bodies only
-// when someone deliberately asks for them with AFORGE_CALL_LOG_BODIES.
+// when someone deliberately asks for them with CODEAF_CALL_LOG_BODIES.
 //
 // A WRITE FAILURE IS NEVER A FAILED CALL. Anything that goes wrong here — a
 // read-only home, a full disk, a path that is a directory — silences the log
@@ -49,20 +49,20 @@ import (
 
 const (
 	// EnvVar switches the log off or moves it. It is exported so the manual,
-	// the settings footer and `aforge logs` can all say the same word the code
+	// the settings footer and `codeaf logs` can all say the same word the code
 	// reads.
-	EnvVar = "AFORGE_CALL_LOG"
+	EnvVar = "CODEAF_CALL_LOG"
 	// BodiesEnvVar adds the request and response bodies to every record. It is
 	// a separate pin and not a value of EnvVar because the two answer different
 	// questions — where the log goes, and how much of the person's own data it
 	// is allowed to hold.
-	BodiesEnvVar = "AFORGE_CALL_LOG_BODIES"
+	BodiesEnvVar = "CODEAF_CALL_LOG_BODIES"
 	// OffValue is what EnvVar is set to to write nothing at all.
 	OffValue = "off"
 
 	// DirName is the folder the log lives in, beside the quirks memo rather
 	// than under it: both are things this process learned about its provider,
-	// and "where does aforge keep what it wrote down" has one answer.
+	// and "where does codeaf keep what it wrote down" has one answer.
 	DirName = "logs"
 	// FileName is the live log; PreviousFileName is the one predecessor kept
 	// across a rotation.
@@ -102,7 +102,7 @@ type Record struct {
 	// at every door, and the same id that names the debug record's folder.
 	//
 	// IT IS WHAT MAKES THIS FILE JOINABLE. A developer who wanted the call
-	// count and the round count of one `aforge do` came here to reconstruct
+	// count and the round count of one `codeaf do` came here to reconstruct
 	// them, and found rows carrying a tag, a node and a timestamp and nothing
 	// at all naming the run — so attribution was by clock alone, in a file
 	// several runs on one machine append to. The run id is on the row and in
@@ -170,7 +170,7 @@ type Record struct {
 	// EVERY START ROW GETS A ROW UNDER IT. That is the law this field exists to
 	// keep, and it was not kept: 527 of 16,921 attempts over the ten days to
 	// 2026-09-10 had a start row and nothing beside it, which every reader of
-	// this file — a person, `aforge logs`, the census — reads as a call that is
+	// this file — a person, `codeaf logs`, the census — reads as a call that is
 	// still in flight. Six of them were one turn on a model the catalog holds no
 	// endpoints for, where the ladder ran out and returned without writing
 	// anything.
@@ -416,7 +416,7 @@ func ClipError(message string) string {
 // It resolves exactly the way the quirks memo beside it does — the profile
 // directory when there is one, the state root otherwise — with the environment
 // pin on top, so a person debugging one run can put its log somewhere they can
-// watch without moving anything else aforge owns.
+// watch without moving anything else codeaf owns.
 //
 // UNDER `go test` it answers "" for anything that would land inside the state
 // root the environment named, so that a test binary cannot write into the
@@ -485,7 +485,7 @@ var shared = &log{}
 var stderr io.Writer = os.Stderr
 
 // homeJoin is the state-root default, seamed so this package's own tests can
-// exercise the fallback without an AFORGE_HOME.
+// exercise the fallback without an CODEAF_HOME.
 var homeJoin = defaultHomeJoin
 
 // Open points the log at a profile directory and is called once at startup,
@@ -514,7 +514,7 @@ func Close() {
 }
 
 // Path is where records are going, or "" when the log is off. It is what
-// `aforge logs --path` and `aforge doctor` read.
+// `codeaf logs --path` and `codeaf doctor` read.
 func Path() string {
 	shared.mutex.Lock()
 	defer shared.mutex.Unlock()
@@ -537,7 +537,7 @@ func Append(record Record) {
 // calls is how many model calls each run this process opened has started. It is
 // kept in memory beside [last] and for the same reason: the figure a headless
 // verb publishes in its `--json` envelope may not depend on whether anybody
-// turned the file on, and AFORGE_CALL_LOG=off must not change what a run
+// turned the file on, and CODEAF_CALL_LOG=off must not change what a run
 // reports about itself.
 //
 // COUNTED ON THE START ROW, so a call that is still in flight when the run is
@@ -718,7 +718,7 @@ func (l *log) rotate() error {
 func (l *log) silence(err error) {
 	l.close()
 	l.silenced = true
-	fmt.Fprintf(stderr, "aforge: cannot write the model-call log at %s (%v); it is off for this run\n", l.path, err)
+	fmt.Fprintf(stderr, "codeaf: cannot write the model-call log at %s (%v); it is off for this run\n", l.path, err)
 }
 
 func (l *log) close() {
@@ -729,7 +729,7 @@ func (l *log) close() {
 	l.size = 0
 }
 
-// defaultHomeJoin names a file under aforge's state root. It is a function
+// defaultHomeJoin names a file under codeaf's state root. It is a function
 // variable's default rather than a direct call so that this package's tests can
 // exercise the fallback without moving the developer's own state root.
 func defaultHomeJoin(elements ...string) string { return home.Join(elements...) }

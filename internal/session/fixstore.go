@@ -864,7 +864,7 @@ func writeFixDocument(path string, document fixDocument) bool {
 // AND IT LOSES ANY TOKEN THE COMMAND SPELLED OUT (internal/redact), which
 // matters more here than almost anywhere else in this package: a patch is the
 // one thing a session writes into a file that OUTLIVES it — the machine-wide
-// store at `~/.aforge/v3` is read by every project on the laptop — so a `curl`
+// store at `~/.codeaf/v3` is read by every project on the laptop — so a `curl`
 // with a key typed into it would be a credential kept for months and handed
 // back to a model on the next matching error. The result the patch answers is
 // redacted at the chokepoint (loop.go's [Agent.finishToolResult]); this is the
