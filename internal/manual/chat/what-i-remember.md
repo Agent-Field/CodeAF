@@ -86,7 +86,7 @@ they are gone; nothing else keeps a second copy.
 ## How do I see what aforge remembers about me?
 
 Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
-place**, one of seven, taking the whole screen with the tab bar above it and a composer at
+place**, one of eight, taking the whole screen with the tab bar above it and a composer at
 the foot.
 
 The page is **shelves**, not a flat list. There are exactly three of them, because a memory's

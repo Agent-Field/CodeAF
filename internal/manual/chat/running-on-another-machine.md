@@ -261,8 +261,9 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the seven places still read the machine this window is running on, and each says so
-in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+**Spend**, **search** and **memory** follow the far machine too; against an older engine
+without their door, each says so in one line where its rows would be. **Folders** are read
+on the engine machine as well, never from this computer's `collections.db`. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
 
@@ -556,15 +557,16 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the seven places still read this machine.** Spend adds up the ledger every
-    model call on the machine this window runs on writes into, search reads the index of what
-    was said here, and memory reads what sessions here learned — and there is no door on the
-    wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
-    says one line where its rows would be:
+13. **Spend, search and memory need an engine new enough to read them.** They read the far
+    machine's ledger, index and memory now. Against an older engine with no door on the wire
+    for one of them, that place opens, keeps its head, its bar and its box, and says one line
+    where its rows would be:
     `spend shows what this machine has cost, and this session is on another`
     `search reads what was said on this machine, and this session is on another`
     `memory shows what this machine has learned, and this session is on another`
-    Home, tasks, standing and settings all work and all answer for the right machine.
+    Home, tasks, standing, settings and folders all answer for the right machine; folders
+    are read by the engine, and an engine too old to offer them leaves the place saying
+    `could not read this folder · …` rather than showing this computer's folders.
 
 14. **File paths are clickable again, and this is now a capability rather than a limit.**
     They were not for a wave: the only thing your terminal could open was a path of the

@@ -55,8 +55,12 @@ func run(args []string) error {
 	into := flags.String("into", "", "the directory to build the demo home in; empty makes a fresh temporary one")
 	launch := flags.String("launch", "", "an aforge binary to run against the demo home once it is built")
 	reuse := flags.Bool("keep", false, "reuse a directory that already holds a demo home instead of refusing it")
+	personal := flags.Bool("personal", false, "write the small personal fixture into --into, used as AFORGE_HOME (seed_personal.go)")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *personal {
+		return runPersonal(*into, time.Now())
 	}
 
 	dir, fresh, err := demoDir(*into, *reuse)
@@ -110,12 +114,18 @@ func surfaceBeside() string {
 const usageText = `aforge-demo-home — build a home with something on every place, for looking at
 
   aforge-demo-home [--into dir] [--keep] [--launch path/to/aforge]
+  aforge-demo-home --personal --into dir
+
 
   --into    where to build it; a fresh temporary directory when not given
   --keep    reuse a directory that already holds a demo home rather than refusing
             to write over it, so a second launch sees what the first one left
   --launch  run that binary against the demo home, with HOME pointed at it and a
             presence heartbeat running beside it, and return when it exits
+  --personal
+            write only the conversations and work the folders fixture needs into
+            an empty --into, which is then used as AFORGE_HOME rather than HOME,
+            and print their ids as JSON (scripts/demo-personal.sh files them)
 
 It writes inside --into and nowhere else. The real state root (~/.aforge) is
 never opened.

@@ -46,6 +46,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
+	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
 )
 
 const standingSummary = `  aforge standing [add|edit|show|stop|check]  ongoing work and its runs`
@@ -679,33 +680,23 @@ func standingShow(out io.Writer, store *standing.Store, id string, limit int, as
 		return err
 	}
 	record := standingRecord{Item: item}
-	collections := map[string]int{}
-	if org, err := standingOrganization(); err == nil {
-		places, err := org.GoverningCollections(context.Background(), workspace.Ref{Kind: workspace.StandingKind, ID: id})
-		org.Close()
-		if err != nil {
-			record.RulesError = err.Error()
-		}
-		record.Placements = places
-		for _, place := range places {
-			collections[place.ID] = place.Depth
-		}
+	// THE RUN'S OWN READING: its workspace, the conversation it was set up in
+	// (none for a terminal-made item), its folders, and the holds with words
+	// among what applies — so what show lists is what the run's check reads,
+	// whichever door made the item. It is spelled once, in
+	// [workspaceview.RulesReaching], which the folders place reads too.
+	var org *workspace.Store
+	if opened, err := standingOrganization(); err == nil {
+		org = opened
+		defer opened.Close()
 	}
-	if record.RulesError == "" {
-		// THE RUN'S OWN READING: its workspace, the conversation it was set up
-		// in (none for a terminal-made item), its folders, and the holds with
-		// words among what applies — so what show lists is what the run's
-		// check reads, whichever door made the item.
-		rules, err := store.ApplicableScope(item.Workspace, item.Origin.SessionID, collections)
-		if err != nil {
-			record.RulesError = err.Error()
-		}
-		for _, rule := range session.GoverningRules(rules) {
-			if rule.ID == id {
-				continue
-			}
-			record.Rules = append(record.Rules, standingRule{ID: rule.ID, Words: rule.Prompt(), Scope: rule.Scope, Spec: rule.SpecRevision})
-		}
+	places, rules, err := workspaceview.RulesReaching(context.Background(), org, store, item)
+	record.Placements = places
+	if err != nil {
+		record.RulesError = err.Error()
+	}
+	for _, rule := range rules {
+		record.Rules = append(record.Rules, standingRule{ID: rule.ID, Words: rule.Prompt(), Scope: rule.Scope, Spec: rule.SpecRevision})
 	}
 	occurrences, err := store.Occurrences(id, limit)
 	if err != nil {

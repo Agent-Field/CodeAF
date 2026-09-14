@@ -159,10 +159,10 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 	// its own and answers false, which is what stops a clock armed by another
 	// place turning forever behind it ([place.tick] holds the whole argument).
 	if !pl.tick(a, now) {
-		return nil
+		return a.takePlaceLater()
 	}
 	a.touch()
-	return placeTick(a.placeGen)
+	return tea.Batch(placeTick(a.placeGen), a.takePlaceLater())
 }
 
 // leavePage writes the look stamp for one place: the record that says nothing

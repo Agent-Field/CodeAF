@@ -602,6 +602,12 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		StandingItems: engineStandingItems(cfg.Standing),
 		StandingSave:  engineStandingSave(cfg.Standing),
 		StandingWatch: engineStandingWatch(cfg.Standing),
+		// THE PERSON'S LOGICAL FOLDERS, AS THIS MACHINE KEEPS THEM. They live in
+		// this machine's collections database and point at this machine's
+		// conversations, work and files, so the folders place of every surface
+		// that reaches this engine reads them here (internal/remote's
+		// collections.go) and never its own disk.
+		Collections: v3Collections(cfg.Standing).engine(),
 		// ── THE PLACES, AS THIS MACHINE HOLDS THEM ──────────────────────
 		//
 		// The world under THIS machine's state root, and the root it was walked

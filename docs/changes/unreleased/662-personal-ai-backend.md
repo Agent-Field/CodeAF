@@ -87,6 +87,8 @@ invalidates:
   - "A file watch's `when ·` line on the chat's card, in the stand result, on home and in `aforge standing list|show` was the model's `when_words` when it sent any, so a watch on `inbox/*` could be proposed and agreed as \"whenever something lands in inbox/ or notes/\" and never wake for notes/. A file watch is now always said by its pattern (`when inbox/* changes`, the terminal's spelling; a conditioned watch as before): `when_words` sent for a file watch are not recorded, an edit sending only them changes nothing and says why (`a file watch is said by its pattern, so when_words change nothing on it`), and a watch recorded with a model's words before this reads from its pattern too (W5-B)."
   - "Asked to rename the report file of ongoing work, the chat stopped the work — permanently, and without asking — and proposed a new one, reasoning that the report path was part of what the work is (W5-B live 1). The chat's edit has moved a report since it landed (above); `stand`'s `does.report` description now says so (`On an edit, the path it moves to: the same work keeps the new file, and the old one is left as it is`). The chat's stop still asks no card."
   - "A standing run that wrote `<report># Digest` — the opening tag with the report's first line glued after it — and a `</report>` line of its own was withheld as `unopened-report`, the previous report kept (W5-B live 3). A `<report>` at the very start of a line now opens the report, the rest of that line being its first line; a tag later in a line is still a mention, and a closing tag glued to words still closes nothing."
+  - "The chat surface had seven places and nothing browsed collections; folders could be looked through only with `aforge collections` or the chat's `collections` tool. An eighth place, `folders` (`alt+8`, after settings), lists folders, their filed and placed records as one row each, a read-only inspector beside the list from 88 columns (`→ d details` on its own page below), and a text preview of a filed or placed file. It reads the engine's `collections.db` over `Collections.Page|Item|File` (read-only, no protocol version change; an older engine answers that it cannot read its folders). `alt+1…8`, `ctrl+1…8` and the first-run line say eight."
+  - "At 60 columns the places bar carried every word with the air between chips given up. With eight words that no longer fits, so a further rung drops the padding of words nobody is standing on (`home tasks standing … folders`); the `▸ N more` fold now starts below about 58 columns."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -231,3 +233,11 @@ lists every file the sentence names that could be the report by the report's own
 home, absolute, `..` or watched path never is); a rule over folders is bound under
 `mayBindFolders` like a placement; and the card previews the 64 KiB governing gate beside
 the 64-rule one.
+
+Checkpoint 1 of the personal experience (`docs/design/workspace-foundation/grooming/BUILD-TUI-01.md`)
+adds the `folders` place. It is read-only: enter on a chat opens that one conversation
+through the same door home uses (brought forward if held, never copied), work opens on
+tasks or standing, and leaving and returning keeps the path and the selected row.
+`scripts/demo-personal.sh` builds a fixture profile for it through the binary's own
+doors, with `aforge-demo-home --personal` writing the three fixture conversations and
+one finished task; it calls no model and changes only `AFORGE_HOME`.

@@ -49,6 +49,10 @@ const (
 	pageSpend
 	pageSearch
 	pageSettings
+	// pageFolders is the person's logical folders (place_folders.go). It is
+	// LAST ON PURPOSE: it arrived after the other seven, and putting it
+	// anywhere else would move the number every other place already answers to.
+	pageFolders
 )
 
 // ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
@@ -334,7 +338,17 @@ var placeRegistry = map[page]place{}
 // bar's reading order at the mercy of what a file happens to be called — and
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
-var placeOrder = []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch, pageSettings}
+var placeOrder = []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch, pageSettings, pageFolders}
+
+// placeLastDigit and placeCountWord are how many places the bar holds, as the
+// person-facing lines spell it (`alt+1…8`, `the eight places`). They are
+// constants because those lines are constants, and
+// TestThePlaceCountWordsAreTheBar holds them to len([placeOrder]) so a place
+// added later cannot leave every line saying the old number.
+const (
+	placeLastDigit = "8"
+	placeCountWord = "eight"
+)
 
 // registerPlace files one place under its own id. A second registration for one
 // id is a bug this would hide, so it panics at start-up rather than letting one
@@ -491,7 +505,12 @@ func (a *app) placeCount(id page) int {
 //     rung to the single word `home`, because on a quiet machine no place wears
 //     a count. The words are what this row is FOR and the space between them is
 //     not, so the space is what goes first.
-//  3. as many words as fit, in the bar's own order, always carrying the place
+//  3. EVERY WORD STILL, WITH THE PADDING OF THE WORDS NOBODY IS STANDING ON
+//     GIVEN UP TOO. The eighth place (folders) made rung 2 sixty-six cells, so
+//     sixty columns would have folded two places away; a word drawn dim with one
+//     space either side of it is still a word, and only the chip wearing a band
+//     needs the cells the band is painted in ([tabBareGap]).
+//  4. as many words as fit, in the bar's own order, always carrying the place
 //     you are standing in and any place wearing a count, and ending with a dim
 //     count of the places that did not fit ([barMoreWord]).
 //
@@ -507,6 +526,11 @@ func (a *app) placeCount(id page) int {
 // `numbered` is the map ([app.mapShowing]): every chip grows the digit that
 // jumps to it, in the cells the words were already in, and nothing moves that a
 // person has to re-find when the map goes away.
+// tabBareGap asks [app.tabBarAt] for the bare rung: it is not a width, which is
+// why it is negative — the rung spaces its own words, one cell between two
+// unpadded words and none beside the banded one.
+const tabBareGap = -1
+
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	every := func(page) bool { return true }
 	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
@@ -516,6 +540,10 @@ func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	if tight, spans, ok := a.tabBarAt(width, numbered, pal, every, 0, 0); ok {
 		a.tabs = spans
 		return a.placeBarMachine(tight, width, pal)
+	}
+	if bare, spans, ok := a.tabBarAt(width, numbered, pal, every, tabBareGap, 0); ok {
+		a.tabs = spans
+		return a.placeBarMachine(bare, width, pal)
 	}
 	keep, elided := a.barWordsAt(width, numbered)
 	some, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return keep[id] }, 0, elided)
@@ -698,23 +726,36 @@ type placeTabSpan struct {
 func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
 	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
 	spans := make([]placeTabSpan, 0, len(pages()))
-	at, first := tabLead, true
+	at, first, bare, banded := tabLead, true, gap == tabBareGap, false
 	for i, id := range pages() {
 		if !keep(id) {
 			continue
 		}
+		// ON THE BARE RUNG ONLY THE BANDED CHIP KEEPS ITS PADDING, and the words
+		// either side of it lean on that padding instead of a space of their own.
+		padded := !bare || id == a.page || (a.bar.on && id == a.bar.at)
 		if !first {
-			line += strings.Repeat(" ", gap)
-			plain += strings.Repeat(" ", gap)
-			at += gap
+			air := gap
+			if bare {
+				air = 1
+				if padded || banded {
+					air = 0
+				}
+			}
+			line += strings.Repeat(" ", air)
+			plain += strings.Repeat(" ", air)
+			at += air
 		}
-		first = false
+		first, banded = false, padded && bare
 		// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
 		// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
 		// map leaves the bar exactly where the eye left it ([app.barChipWord]).
 		word := a.barChipWord(i, id, numbered)
 		chip := tabPad + word + tabPad
-		band := ansi.StringWidth(word) + tabPadCols
+		if !padded {
+			chip = word
+		}
+		band := ansi.StringWidth(chip)
 		switch {
 		case a.bar.on && id == a.bar.at:
 			// THE CURSOR'S OWN BAND, AND IT REPLACES THE SELECTED MARK RATHER THAN
@@ -1503,7 +1544,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +
+	placeMapWords = "alt+1…" + placeLastDigit + " go to a place · alt+enter send it off as a task · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// mapCloseWords is that line's last clause, named so the switcher's own
 	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
@@ -1992,6 +2033,20 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 // all of them — every verb on these lists is a key, and `enter` leaves the
 // conversation a person is sitting in, so a click that did either would be a
 // gesture nobody can aim.
+// takePlaceLater hands over the reading a place asked for from a gesture that
+// cannot answer a command — a press, a wheel tick, the beat's own `tick` — and
+// clears it.
+//
+// THE THREE GESTURES ANSWER A BOOL, and that was enough while every place's
+// readings were a disk it could take on the spot. A place that reads over a
+// connection must ask off the loop, so it leaves the command here and the router
+// sends it with the gesture's own answer ([app.placeLater]).
+func (a *app) takePlaceLater() tea.Cmd {
+	cmd := a.placeLater
+	a.placeLater = nil
+	return cmd
+}
+
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
@@ -2001,7 +2056,8 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	if pl == nil || a.composer.open {
 		return nil, false
 	}
-	return nil, pl.press(a, y)
+	took := pl.press(a, y)
+	return a.takePlaceLater(), took
 }
 
 // placeBodyHover is the pointer resting over one place's rows: THE POINTER

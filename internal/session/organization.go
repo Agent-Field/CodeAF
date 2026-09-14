@@ -93,6 +93,12 @@ func organizationSelection(ctx context.Context, o *Organization, ref workspace.R
 	return renderOrganizationContext(page.Records, page.More), page.Records, nil
 }
 
+// OrganizationScope is the targets a record reads its shared context through:
+// the record itself, and for a piece of work the conversation that owns it. It
+// is exported so a surface showing what reaches a record asks the same question
+// the record's own turn asks, rather than a second spelling of it.
+func OrganizationScope(ref workspace.Ref) []workspace.Ref { return organizationScope(ref) }
+
 func organizationScope(ref workspace.Ref) []workspace.Ref {
 	if ref.Kind == "" {
 		return nil

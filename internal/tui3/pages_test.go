@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,13 +50,16 @@ func placeFrameText(a *app) string {
 // ([TestEveryPlaceIsRegisteredOnceAndInTabOrder]), because the list they have to
 // agree with is the registry rather than a literal seven this file counted. What
 // is left here is the two facts that are about the EDGES of that list.
-func TestTheSevenPlacesAreOneList(t *testing.T) {
-	if len(pages()) != 7 {
-		t.Fatalf("there are %d places, and the design has seven", len(pages()))
+func TestThePlaceCountWordsAreTheBar(t *testing.T) {
+	if strconv.Itoa(len(pages())) != placeLastDigit {
+		t.Fatalf("there are %d places, and every line that counts them says %s", len(pages()), placeLastDigit)
 	}
-	// AND alt+8 IS NOTHING, rather than the first place again.
-	if _, ok := placeDigit("alt+8"); ok {
-		t.Fatal("alt+8 reaches a place that does not exist")
+	if want := []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}[len(pages())-1]; placeCountWord != want {
+		t.Fatalf("there are %d places, and the lines that name them say %q", len(pages()), placeCountWord)
+	}
+	// AND THE DIGIT PAST THE LAST IS NOTHING, rather than the first place again.
+	if _, ok := placeDigit("alt+" + strconv.Itoa(len(pages())+1)); ok {
+		t.Fatal("a digit past the last place reaches a place that does not exist")
 	}
 }
 
@@ -68,7 +72,7 @@ func TestOnlyTheCollectionsWearACount(t *testing.T) {
 			t.Fatalf("%s holds a pile of things and would not wear a count", id.word())
 		}
 	}
-	for _, id := range []page{pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageSpend, pageSearch, pageSettings, pageFolders} {
 		if id.counted() {
 			t.Fatalf("%s is not a collection and must not wear a count", id.word())
 		}

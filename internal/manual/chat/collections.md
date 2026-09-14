@@ -9,11 +9,23 @@ contain other collections, including one child shared by several parents;
 circular membership is refused. Renaming a collection preserves its ID.
 
 This command does not change the home dashboard, chat tabs or `/folder`.
-`/folder` chooses filesystem context for a conversation. Collection membership
+`/folder` chooses filesystem context for a conversation. To look through
+collections in the terminal, open the `folders` place — the eighth tab, `alt+8`
+(`⌥8` on a Mac). It only reads: walk in with `enter`, back out with `←`. Collection membership
 does not move transcripts, attach a working directory, grant write permissions,
 start work or change an assignment. There is no collection slash command. Chat can inspect and organize logical
 collections through the `collections` tool. Explicitly shared context can reach
 chats and task workers without enabling learned memory.
+
+The `folders` place draws a folder's filed and placed records in one list: a
+record both filed and placed is one row, and `placed` at its right marks a
+placement. Inside a folder, its details say exactly one of `filed here · filing does not apply this
+folder's rules`, `placed here · this folder's rules reach it` or `filed and placed
+here · this folder's rules reach it`, then `filed in` and `placed in` (every
+folder filing it, and every folder whose rules reach it), then `rules`. Facts
+nobody could state are not drawn; a part that failed says `could not be read: …`.
+A failed reading says `could not read this folder · <reason>` and keeps the rows
+it had; an empty folder says `Nothing is filed or placed in this folder.`
 
 ## Where do I file a task
 

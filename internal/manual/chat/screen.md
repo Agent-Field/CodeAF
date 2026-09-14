@@ -47,20 +47,20 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to and no running-turn line owns that slot.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-(`⌥1` … `⌥7` on a Mac) jump straight to one from wherever you are standing — a place or a
+**Eight places take the whole frame instead of sharing it**, at every width: home, tasks,
+standing, memory, spend, search, settings and folders. `tab` walks between them, `alt+1` … `alt+8`
+(`⌥1` … `⌥8` on a Mac) jump straight to one from wherever you are standing — a place or a
 conversation — and each
 has commands of its own (`/home`, `/history`, `/standing`,
-`/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
-deliberately not one of the seven — it is something you do to this conversation rather than
+`/memory`, `/settings`; folders has none). The rewind timeline (`/rewind`) takes the frame the same way and is
+deliberately not one of the eight — it is something you do to this conversation rather than
 a room in the machine.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+naming the eight, a dim rule, the place's body, a rule, the place's own count or note, the
 **composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
@@ -2650,9 +2650,9 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
 
 **It is one key and two spellings, and aforge picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
+running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥8`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
 `⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
-else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
+else the same chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint
 line, the key map, the composer layer's rows and the key sheet `/help` draws read that one
 spelling, so what is on your screen is what is on your keyboard.
 
@@ -2677,7 +2677,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the seven places answer ⌥1…⌥7 · if ⌥ types
+of time, as a condition rather than a diagnosis: `the eight places answer ⌥1…⌥8 · if ⌥ types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -2709,8 +2709,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives aforge
-binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.
@@ -2743,7 +2743,7 @@ legend while one is up. Its whole value is that seeing it anywhere means one thi
 
 ## Home and the places use the same colours as the chat — and their own background, none
 
-**Home and the six places beside it — tasks, standing, memory, spend, search, settings —
+**Home and the seven places beside it — tasks, standing, memory, spend, search, settings, folders —
 paint from the table you just read.** Same inks, same three background steps, same
 terminal background showing through. A place is the chat's palette applied to a list.
 
@@ -3400,7 +3400,7 @@ nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
 again.` from `/subharness`. None of them is ever sent to the model.
 
-The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+The **eight places** are not among them: `/standing`, `/history` and `/memory` open their
 page whatever is in it and let the page say so, rather than writing a line here (the Places
 page states the law).
 

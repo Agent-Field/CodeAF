@@ -511,6 +511,25 @@ func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
 	return readCollections(rows)
 }
 
+// TopLevel lists the collections no collection files as a member, in creation
+// order. It is where browsing starts.
+//
+// ONLY A MEMBERSHIP MAKES A FOLDER A CHILD FOR NAVIGATION. A governing placement
+// of one collection in another is a statement about whose rules reach whom, not
+// about where a person finds it, so a collection that is only placed somewhere
+// is still listed here — and a collection filed under two parents is not, and
+// is found under both of them. One query, so a surface can ask on a keystroke.
+func (s *Store) TopLevel(ctx context.Context) ([]Collection, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.name FROM collections c
+ WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.kind='collection' AND m.ref_id=c.id)
+ ORDER BY c.seq`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return readCollections(rows)
+}
+
 func readCollections(rows *sql.Rows) ([]Collection, error) {
 	result := make([]Collection, 0)
 	for rows.Next() {

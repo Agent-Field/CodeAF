@@ -39,7 +39,7 @@ func TestTheKeySheetNamesTheWayToEveryPlace(t *testing.T) {
 	// THE CHORDS ARE SPELLED THROUGH THE ONE DOOR, so a Mac sheet says ⌥ and this
 	// one does not (chords.go).
 	mac := helpText("", chordSpelling{meta: "⌥"})
-	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "⌥1…7") {
+	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "⌥1…8") {
 		t.Errorf("the place rows are not spelled through chords.say — a Mac sheet still reads alt+:\n%s", mac)
 	}
 }
