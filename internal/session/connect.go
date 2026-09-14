@@ -428,11 +428,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	case answer := <-ask.answers:
 		return answer, nil
 	case <-timer.C:
-		a.forgetConnect(id)
-		// SILENCE CONNECTS NOTHING, BUT IT IS NOT A REFUSAL. The model is told
-		// the person did not answer rather than told they refused — those are
-		// different sentences and only one of them is true.
-		return connectAnswer{kind: connectSilent}, nil
+		return a.expireConnect(id, ask), nil
 	case <-ctx.Done():
 		a.forgetConnect(id)
 		return connectAnswer{}, ctx.Err()
@@ -441,11 +437,31 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 
 // forgetConnect drops a question nobody will answer, so a late resolve does not
 // deliver into a channel with no reader and the map does not grow for the life
-// of the session.
-func (a *Agent) forgetConnect(id string) {
+// of the session. Its answer says whether this call removed the question,
+// because the clock must distinguish its own win from a resolver that already
+// claimed the question and has an answer in flight.
+func (a *Agent) forgetConnect(id string) bool {
 	a.mu.Lock()
-	delete(a.connectAsks, id)
-	a.mu.Unlock()
+	defer a.mu.Unlock()
+	_, waiting := a.connectAsks[id]
+	if waiting {
+		delete(a.connectAsks, id)
+	}
+	return waiting
+}
+
+// expireConnect settles the timer's side of the one atomic claim. If the ask
+// was still registered, the clock won and the empty answer channel makes
+// silence true. If it was already gone, a resolver won and its buffered send
+// is either present or in flight, so that real answer must be returned.
+func (a *Agent) expireConnect(id string, ask connectAsk) connectAnswer {
+	if a.forgetConnect(id) {
+		// SILENCE CONNECTS NOTHING, BUT IT IS NOT A REFUSAL. The model is told
+		// the person did not answer rather than told they refused — those are
+		// different sentences and only one of them is true.
+		return connectAnswer{kind: connectSilent}
+	}
+	return <-ask.answers
 }
 
 // PendingConnect lists the connect questions still waiting for an answer, oldest

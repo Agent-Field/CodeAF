@@ -771,6 +771,43 @@ func TestAConnectQuestionNobodyAnswersSaysTheyDidNotAnswer(t *testing.T) {
 	}
 }
 
+// R1: The resolver and the clock share the map claim as their atomic winner.
+// This white-box test drives both orders without sleeping: expireConnect is the
+// timer branch itself, and the existing C4b test above separately proves the
+// shortened real timer reaches that branch. Deleting its lost-claim receive
+// turns the resolver-first sentence into the silence sentence and fails here.
+func TestAConnectAnswerClaimedBeforeTheClockBeatsSilence(t *testing.T) {
+	const id = "connect-1"
+	t.Run("resolver first", func(t *testing.T) {
+		ask := connectAsk{answers: make(chan connectAnswer, 1)}
+		agent := &Agent{connectAsks: map[string]connectAsk{id: ask}}
+
+		agent.ResolveConnect(id, false)
+		answer := agent.expireConnect(id, ask)
+		result := connectAnswerFailure("Google", answer)
+
+		if !strings.Contains(result, "did not agree") || strings.Contains(result, "did not answer") {
+			t.Fatalf("the clock swallowed the claimed refusal: %q", result)
+		}
+	})
+
+	t.Run("clock first", func(t *testing.T) {
+		ask := connectAsk{answers: make(chan connectAnswer, 1)}
+		agent := &Agent{connectAsks: map[string]connectAsk{id: ask}}
+
+		answer := agent.expireConnect(id, ask)
+		agent.ResolveConnect(id, false)
+		result := connectAnswerFailure("Google", answer)
+
+		if !strings.Contains(result, "did not answer") || strings.Contains(result, "did not agree") {
+			t.Fatalf("the winning clock was not reported as silence: %q", result)
+		}
+		if len(ask.answers) != 0 {
+			t.Fatal("a resolver delivered after the clock had removed the ask")
+		}
+	})
+}
+
 // C4a: A person who picks `2 not now` is a person who said no: the account
 // stays unconnected and the model is told not to ask again this turn.
 func TestADeclinedConnectionIsSaidPlainly(t *testing.T) {

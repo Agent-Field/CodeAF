@@ -314,15 +314,7 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 	case err != nil:
 		return "", "The turn ended before the person answered about connecting " + service.Name + "."
 	case !answer.approved:
-		switch answer.kind {
-		case connectSilent:
-			return "", "The person did not answer about connecting " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
-		case connectMovedOn:
-			return "", "The person moved on to something else. Their words were:\n\n" + answer.words +
-				"\n\nConnecting " + service.Name + " was left undone. Do what the person asked now; do not ask again this turn."
-		default:
-			return "", "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
-		}
+		return "", connectAnswerFailure(service.Name, answer)
 	}
 
 	// An account opened with a key has no page to send anybody to: the person
@@ -388,6 +380,21 @@ func connectFailureReason(err error) string {
 		return "the sign-in came back wrong and nothing was connected"
 	}
 	return text
+}
+
+// connectAnswerFailure gives each way the account was left unconnected its own
+// sentence. Keeping this reading beside the answer kind lets the timeout race
+// test prove what the model receives, rather than only an internal enum value.
+func connectAnswerFailure(service string, answer connectAnswer) string {
+	switch answer.kind {
+	case connectSilent:
+		return "The person did not answer about connecting " + service + ". Do the work without it and say so plainly; do not ask again this turn."
+	case connectMovedOn:
+		return "The person moved on to something else. Their words were:\n\n" + answer.words +
+			"\n\nConnecting " + service + " was left undone. Do what the person asked now; do not ask again this turn."
+	default:
+		return "The person did not agree to connect " + service + ". Do the work without it and say so plainly; do not ask again this turn."
+	}
 }
 
 // armService puts one service's family on the belt and says what arrived.
