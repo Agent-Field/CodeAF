@@ -148,14 +148,35 @@ const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","de
 // every request on the belt.
 
 func readDescription(caps Caps) string {
-	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page the rest with offset/limit.", caps.MaxLines, sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page the rest with offset/limit. Each call is one round trip; an already-read range answers as a pointer.", caps.MaxLines, sizeWord(caps.MaxBytes))
+}
+
+// ── what a read result's text can conclude about the file ────────────────────
+
+// ReadPagingFooter reports whether a read result's text carries either of the
+// two paging footers [readTool] appends. The converse is the ONLY door the
+// holder of those bytes learns the file ended inside what it got: the footers
+// are the tool's own sentences, built here and matched here, so the session's
+// ledger reads the format at its one seam instead of guessing at strings.
+func ReadPagingFooter(text string) bool {
+	return strings.Contains(text, "[Showing lines ") || strings.Contains(text, " more lines in file.")
+}
+
+// ReadContentless reports whether a successful read answer carried no file
+// bytes at all. The ONE such answer is the exceeds-limit line diagnostic
+// [readTool] emits instead of content, and the held-ranges ledger must never
+// record it as bytes the conversation holds.
+func ReadContentless(text string) bool {
+	return strings.HasPrefix(text, "[Line ") && strings.Contains(text, " exceeds ")
 }
 
 func bashDescription(caps Caps) string {
 	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names. Optionally provide a timeout in seconds.", caps.MaxLines, sizeWord(caps.MaxBytes))
 }
 
-const editDescription = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes."
+// The merge sentence owns the whole of it; "do not include large unchanged
+// regions to connect distant changes" said the same thing twice.
+const editDescription = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits."
 
 const writeDescription = "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."
 

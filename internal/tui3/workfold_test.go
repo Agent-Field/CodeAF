@@ -174,3 +174,43 @@ func TestOneTurnCountsItsToolCallsInOneWord(t *testing.T) {
 		t.Fatalf("fourteen calls are spelled %q, want %q", got, "14 tool calls")
 	}
 }
+
+// TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow is the fold's own law said
+// about the line that broke it.
+//
+// THE MEASURED FAILURE (2026-09-13). A pinned machine was refused by the
+// router, the pin was retired, `@deepseek` came off the model word — and the
+// one sentence explaining it was written as an ordinary note, drawn between the
+// question and the answer, and swallowed whole by `▸ worked 1.6s · thought
+// 0.2s · ctrl+e`. A chip hides what the turn DID; it may not hide what the turn
+// has to TELL somebody (session's EventRowNews, [entry.told]).
+func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
+	base := time.Unix(100, 0)
+	said := "deepseek cannot serve this model; routing on auto for this model until you pin again"
+	entries := []entry{
+		{kind: entryUser, text: "say only the word ok", turn: 1, began: base},
+		{kind: entryNote, text: said, turn: 1, told: true},
+		{kind: entryThinking, text: "checking", turn: 1, began: base, ended: base.Add(6 * time.Second), settled: true},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(8 * time.Second)},
+		{kind: entryAssistant, text: "ok", turn: 1, settled: true},
+	}
+	if got := deriveWorkfolds(entries, 0); len(got) != 0 {
+		t.Fatalf("the chip swallowed a sentence addressed to the person: %#v", got)
+	}
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries, a.workMode = entries, config.WorkFold
+	a.touch()
+	// THE SENTENCE WRAPS AT THIS WIDTH, so the assertion is on the half that
+	// carries the fact rather than on the whole line: what is under test is
+	// whether the chip HID it, and a wrapped line is on the screen.
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "deepseek cannot serve this model") {
+		t.Fatalf("the retirement sentence is not on the screen:\n%s", got)
+	}
+	// AND AN ORDINARY NOTE IS STILL WORK. Without this the test would pass on a
+	// build that had simply stopped folding, which hides nothing and says
+	// nothing either.
+	entries[1].told = false
+	if got := deriveWorkfolds(entries, 0); len(got) != 1 {
+		t.Fatalf("an ordinary note stopped the chip forming at all: %#v", got)
+	}
+}

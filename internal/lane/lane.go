@@ -344,7 +344,7 @@ const ReadRate = 18.0
 // every ratio a simulator or a ship gate computed from these numbers — "the
 // wait improved by 30%" — a ratio of mostly reading, which is how a router with
 // no effect at all can be reported as a 5% win. The correction was found by
-// `bench/lanelab`; see ideation/provider-routing.md, Part III.
+// `bench/lanelab`; see docs/design/routing/provider-routing.md, Part III.
 //
 // ttft is in SECONDS and rate in TOKENS PER SECOND. A rate of zero or less is
 // a lane that never finishes, and it is reported as such rather than as a large

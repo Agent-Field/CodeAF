@@ -89,7 +89,7 @@ func knownCommand(word string) bool {
 // left to right.
 //
 // A CANDIDATE STARTS AT A WORD BOUNDARY and runs to the next space or newline.
-// That one rule is what keeps a path out of this: "/Users/santosh" is a single
+// That one rule is what keeps a path out of this: "/Users/example" is a single
 // candidate whose word is "Users/santosh" and matches nothing, rather than two
 // candidates one of which might. A slash with a letter in front of it — the one
 // in "http://", the one in "cmd/aforge" — is not a candidate at all.
@@ -120,7 +120,7 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 		}
 		// Everything up to the end of this token has been decided, chip or no
 		// chip: the slashes inside a path are not boundaries, and re-examining
-		// them is how "/Users/santosh" would grow a chip on its second half.
+		// them is how "/Users/example" would grow a chip on its second half.
 		i = end
 	}
 	return out

@@ -51,8 +51,10 @@ const (
 
 // ApplyAttribution writes the whole attribution set onto a request's headers.
 //
-// IT IS EXPORTED BECAUSE THIS PACKAGE IS NOT THE ONLY ONE THAT POSTS TO THE
-// ROUTER. internal/voice reaches /audio/transcriptions on its own, and it spent
+// IT IS EXPORTED BECAUSE THIS PACKAGE HAS NOT ALWAYS BEEN THE ONLY ONE THAT
+// POSTS TO THE ROUTER. v1's microphone client reached /audio/transcriptions on
+// its own — that package is gone now, and transcribe.go is the one transcription
+// transport — but it spent
 // a release writing out its own half of this set by hand — a referer and the
 // old title spelling, with no X-OpenRouter-Title and no categories at all — so
 // every word a person spoke to v1 was attributed as an unclassified app while

@@ -714,7 +714,7 @@ func projectPath(row SessionRow) string {
 }
 
 // projectName is what a section header says. It is the workspace's last
-// element, `~` for the home directory itself — a header reading "santoshkumar"
+// element, `~` for the home directory itself — a header reading "example"
 // is the machine's answer to a question nobody asked — and the encoded bucket
 // name when nothing recorded a path at all.
 func projectName(path, bucket string) string {

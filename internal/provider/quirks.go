@@ -287,14 +287,24 @@ func NoteAnswerCut(model, lane string, spent int) bool {
 	if key == "" || spent <= 0 {
 		return false
 	}
-	quirks.mutex.Lock()
-	if spent <= quirks.answerCut[key] {
-		quirks.mutex.Unlock()
+	if !quirks.widenAnswerCut(key, spent) {
 		return false
 	}
-	quirks.answerCut[key] = spent
-	quirks.mutex.Unlock()
 	quirks.persist()
+	return true
+}
+
+// widenAnswerCut records a wider cut and reports whether it was one. The write
+// is its own critical section because [quirksStore.persist] schedules a save,
+// and a lock held across it would put a goroutine launch on every reader's
+// path.
+func (q *quirksStore) widenAnswerCut(key string, spent int) bool {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	if spent <= q.answerCut[key] {
+		return false
+	}
+	q.answerCut[key] = spent
 	return true
 }
 
@@ -328,14 +338,24 @@ func NoteServedWindow(model string, tokens int) bool {
 	if key == "" || tokens <= 0 {
 		return false
 	}
-	quirks.mutex.Lock()
-	if known, seen := quirks.servedWindow[key]; seen && known <= tokens {
-		quirks.mutex.Unlock()
+	if !quirks.narrowServedWindow(key, tokens) {
 		return false
 	}
-	quirks.servedWindow[key] = tokens
-	quirks.mutex.Unlock()
 	quirks.persist()
+	return true
+}
+
+// narrowServedWindow records a narrower refused prompt and reports whether it
+// was one, in its own critical section for [quirksStore.widenAnswerCut]'s
+// reason: [quirksStore.persist] follows, and the lock must not be held across
+// it.
+func (q *quirksStore) narrowServedWindow(key string, tokens int) bool {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	if known, seen := q.servedWindow[key]; seen && known <= tokens {
+		return false
+	}
+	q.servedWindow[key] = tokens
 	return true
 }
 
@@ -559,7 +579,17 @@ func (q *quirksStore) save() {
 // a gate on the next one, and a reset that left it true would be the one line
 // here still claiming this process had read a file.
 func (q *quirksStore) resetForTests() {
+	q.forget()
+	q.settle()
+}
+
+// forget is [quirksStore.resetForTests]'s locked half, emptied FIRST for the
+// reason the header above gives: a save already scheduled finds the path empty
+// and writes nothing, and the settle that follows only sees its writers off
+// the profile directory.
+func (q *quirksStore) forget() {
 	q.mutex.Lock()
+	defer q.mutex.Unlock()
 	q.mandatory = map[string]time.Time{}
 	q.disableIgnored = map[string]time.Time{}
 	q.noCacheControl = map[string]time.Time{}
@@ -569,6 +599,4 @@ func (q *quirksStore) resetForTests() {
 	q.servedWindow = map[string]int{}
 	q.path = ""
 	q.loaded = false
-	q.mutex.Unlock()
-	q.settle()
 }

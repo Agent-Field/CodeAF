@@ -345,15 +345,21 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 	response, err := client.CompleteWithMessages(
 		// WithoutStream for the sentinel's reason: nobody is watching this, and
 		// a stream would be typing JSON into a room that is not open.
-		// IntentBackground is the same fact aimed at the router: a pass that runs
-		// six hours from now is not waiting on the fastest endpoint, it is
-		// waiting on the cheapest one.
+		// IntentBackground is the same fact said where the lane chooser reads it:
+		// a pass that runs six hours from now has nobody waiting on it, so a
+		// second of its wait is worth nothing.
 		// And the role, which is the same fact said where the table can price it:
 		// a consolidation is the memory reflex's slow half, unattended and
 		// judged on nothing but whether its answer is usable (internal/lane's
 		// roles.go).
+		// And the purpose, which is what the call log will have to answer with
+		// when somebody asks what the machine spent the night on. This road
+		// builds its own client and never passes the door, so it says the word
+		// the door would have said (clientdoor.go's [withPurpose]).
 		provider.WithRole(
-			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			provider.WithRoutingIntent(
+				provider.WithoutStream(withPurpose(ctx, callPurpose(roles.RoleConsolidate))),
+				provider.IntentBackground),
 			lane.RoleMemory),
 		[]ai.Message{
 			textMessage("system", consolidatePrompt),

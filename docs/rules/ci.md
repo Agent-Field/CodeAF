@@ -162,31 +162,22 @@ It answers for that package at that moment and nothing else. The known-red
 ledger below does not cover this either: it holds tests that fail, not checks
 that never run.
 
-## The known-red ledger
+## The known-red ledger — burned to zero
 
-`.github/known-red.txt` lists tests that fail on a clean tree. `make test` skips
-them by name, and every run — the nightly, `touched packages`, the laws — goes
-through `make test` or reads the file the same way, so "green locally" and
-"green in CI" are one fact. `make check` could not pass on a clean tree before
-2026-09-02, because its `test` target skipped nothing while the nightly did; that
-is over.
+There is no ledger any more. `.github/known-red.txt` listed tests that failed on
+a clean tree so `make test` could skip them by name and red could still mean
+this change did it. Ruled 2026-09-02 that it only shrank, in its own wave, every
+entry fixed for real or deleted with a written ruling, and no new entry allowed
+after; #408 took the first five out, and the burn finished on 2026-09-12 when
+the last entry — the lockdefer scan — was fixed and the file and its
+`internal/ci` ratchet test were deleted together (#1012).
 
-**This exists so that red still means something.** A suite with fifteen permanent
-failures is a suite nobody reads, and the sixteenth failure — the one somebody
-just caused — arrives invisible.
-
-**And it only shrinks.** Ruled 2026-09-02: the ledger burns to zero, in its own
-wave, every entry fixed for real or deleted with a written ruling, and no new
-entry is allowed after. `internal/ci` holds the ratchet — one constant,
-`knownRedEntries`, that a change may not push up and that a change which fixed
-a test lowers in the same commit — and checks that every name on the file is a
-test the tree still declares. The commit that deletes the file deletes that
-test with it; nothing else reads the ledger, and an absent ledger skips nothing.
-
-The list was seeded from `CLAUDE.md` and trued up against the first real Linux
-run on 2026-08-31; #408 took the first five out. What it holds now, and which
-entries are Linux-only, is written in the file's own comments and nowhere else —
-`CLAUDE.md` no longer copies it, and neither does this page.
+**Red means this change did it, now with nothing skipped.** Every run — the
+nightly, `touched packages`, the laws — goes through `make test` or reads the
+file's old location the same way (`Makefile`, `scripts/laws.sh`, both workflows),
+and an absent ledger skips nothing, so "green locally" and "green in CI" are one
+fact with no debt subtracted. A test that fails on a clean tree today is a bug
+report, not a line to add back — the ledger does not return.
 
 ## A test that fails only beside another suite
 

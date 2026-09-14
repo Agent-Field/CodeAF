@@ -324,7 +324,7 @@ answered that with a strike table: two slow answers demote, three refuse for
 five minutes, and slow means a fixed two seconds. That is reactive, blind on the
 first call of every process, forgotten at exit, unable to rescue a request that
 is already slow, and invisible in the picker. Every one of those five is a
-consequence of having a *table* where a *belief* belongs. `ideation/provider-routing.md`
+consequence of having a *table* where a *belief* belongs. `docs/design/routing/provider-routing.md`
 is the full design and the measurements it was drawn from.
 
 ### The boundary

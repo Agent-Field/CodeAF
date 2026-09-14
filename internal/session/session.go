@@ -605,6 +605,26 @@ const (
 	// opposite of that: it is the one thing about a question that stays true
 	// afterwards.
 	EventQuestionAnswered
+	// EventRowNews carries one line in Text about A ROW THE PERSON WROTE that
+	// this build has stopped acting on — a pinned machine the router refuses to
+	// serve a model from, a base that will not carry a lane choice at all
+	// (internal/provider's lanepin.go and prefcarry.go).
+	//
+	// IT IS NOT [EventNotice] AND THE DIFFERENCE IS WHO THE SENTENCE IS FOR. A
+	// notice is the adapter saying what it did to a request to get it accepted,
+	// and it is over once the answer lands — a surface may fold it away with
+	// the rest of the machinery. This is the only account a person will get of
+	// why the machine they named has stopped appearing, and there is nothing to
+	// fold it into: it asks them to do something (pin again, or leave it on
+	// auto). Measured on 2026-09-13, riding the wrong kind: the pin was
+	// retired, `@deepseek` came off the model word, another machine answered,
+	// and the chat's work chip had swallowed the sentence that said so.
+	//
+	// IT IS LAST IN THIS BLOCK AND EVERY NEW KIND BELONGS HERE, because a kind
+	// is an integer on the remote wire (internal/remote's EventWire): one added
+	// in the middle renumbers every kind under it, and a window and an engine
+	// on two builds would then disagree about what each other's events were.
+	EventRowNews
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -988,6 +1008,41 @@ type Usage struct {
 	// and OpenAI-style prompt_tokens_details.cached_tokens.
 	CacheRead  int
 	CacheWrite int
+
+	// byModel is a TURN's own figures kept once per model that answered, keyed
+	// by the response's own name with the turn's latch standing in when the
+	// response names nothing — exactly [Agent.addUsage]'s resolution, because
+	// this is accumulated beside it. A turn that hopped models mid-way seals
+	// one usage line per model rather than one sum attributed to whichever
+	// name was standing last (see [sessionFile.appendUsage]); every other Usage
+	// — the session total, an auxiliary call's — leaves this nil, and nil is
+	// what keeps their lines exactly as they were.
+	byModel *modelShares
+}
+
+// modelShares is the breakdown itself, behind a pointer for one reason: Usage
+// is passed by value and compared against its zero value, and a bare map field
+// would make every one of those comparisons illegal. The pointer keeps Usage
+// the plain value it always was, and nil says "nobody kept a breakdown" —
+// which is every Usage but a turn's.
+type modelShares map[string]Usage
+
+// addShare folds one call's figures into the per-model breakdown. It is a
+// method and not arithmetic at the call site for the reason the field exists
+// at all: the share has to be the SAME six figures the call banked, and a sum
+// spelled twice is a sum that drifts.
+func (u *Usage) addShare(model string, call Usage) {
+	if u.byModel == nil {
+		u.byModel = &modelShares{}
+	}
+	share := (*u.byModel)[model]
+	share.Input += call.Input
+	share.Output += call.Output
+	share.CacheRead += call.CacheRead
+	share.CacheWrite += call.CacheWrite
+	share.CostUSD += call.CostUSD
+	share.Calls += call.Calls
+	(*u.byModel)[model] = share
 }
 
 // CachedShare is the fraction of this session's INPUT that came off a warm
@@ -1057,9 +1112,17 @@ type Config struct {
 
 	// Routing is how this session asks the router to choose among the endpoints
 	// serving its model, and whether it times them at all (internal/provider's
-	// velocity.go). EMPTY IS LATENCY, the default the settings row carries, so a
-	// caller that says nothing still gets the fastest endpoint the router can
-	// find and still measures what it actually got.
+	// velocity.go). EMPTY IS NOBODY HAVING CHOSEN: the session falls to the row
+	// this process installed and, with none installed, to the shipped row
+	// ([provider.DefaultRouting]), which sends no preference of ours at all.
+	//
+	// AND EMPTY IS WHAT A LAUNCH FROM A PROFILE LEAVES IT AT, on purpose: the
+	// profile's row is installed process-wide instead (internal/config's
+	// InstallLaneRows), so a person who cycles `routing` in the settings panel
+	// is answered by the very next request rather than by the next launch
+	// (issue #1022). The field is still the way a caller HANDS a row down — a
+	// child built from a parent's own config rather than from a profile — and
+	// such a caller still wins over the installed row.
 	Routing provider.RoutingStrategy
 
 	// CompactEnabled gates automatic compaction. Manual compaction via the
@@ -1322,8 +1385,8 @@ type Config struct {
 
 	// ModelPrice is a model's own published list price, per token in US dollars,
 	// and whether anybody published one (internal/catalog's PriceNow). The
-	// adapter bounds a latency-sorted request against it, so this session asks
-	// for the fastest endpoint that is not also charging several times what the
+	// adapter bounds a latency-sorted request against it, so a session whose
+	// routing row asks for speed is not also charging several times what the
 	// model itself costs.
 	//
 	// NIL IS "NO PRICE IS KNOWN", which sends no ceiling and routes exactly as an
@@ -2133,6 +2196,12 @@ type Agent struct {
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
 	armMu sync.Mutex
+	// held is the held-range ledger (heldreads.go): which line ranges of which
+	// files this conversation's transcript already carries verbatim, so a read
+	// for exactly that is answered with a pointer and the disk is not opened.
+	// Like jobs it sits outside mu and holds its own lock — dispatch's claim
+	// takes the transcript's lock second, never first.
+	held heldLedger
 	// connect is the accounts seam, nil when the feature is absent (connect.go).
 	// It is written once at construction and read without a lock.
 	connect connectHub
@@ -3056,6 +3125,19 @@ type Agent struct {
 	// a session that never speaks starts no goroutine (placemeta.go).
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
+
+	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
+	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its
+	// OWN writer rather than a second patch on the one above because a
+	// [stampWriter] coalesces by REPLACING its patch: one writer for two files
+	// would drop whichever of them was owed first.
+	toldStampOnce   sync.Once
+	toldStampWriter *stampWriter
+	// toldAtOwed is the latest instant that writer has been asked to stamp. It
+	// is kept because the writer coalesces by replacing its patch, and two
+	// readings over one conversation are not always owed in order
+	// ([Agent.oweToldStampLocked]).
+	toldAtOwed time.Time
 
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).

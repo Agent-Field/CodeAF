@@ -907,7 +907,7 @@ func spendSubjectRowLit(subject session.SubjectSpend, name string, width int, li
 // spendMoneyWord keeps tui3's one dollar formatter while applying the page's
 // extra rule for a measured sliver: a table of many rows reads better with a
 // word than with a column of four-decimal fractions
-// (docs/design/home-rethink/SCREENS.txt states the rule).
+// (docs/design/home-rethink/FIDELITY.md retains the rule).
 //
 // IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL ANOTHER SURFACE ALSO QUOTES. The
 // pointer line quotes the same day figure the Spending tab does, so it uses

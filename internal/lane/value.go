@@ -218,7 +218,7 @@ const PrefixHold = 5 * time.Minute
 // decision into sampling noise. The direction is fixed by the design's own
 // sentence — a dollar buys ninety seconds, so spend up to a cent to save a
 // second — and by [underPriceCeiling], which goes the other way (seconds into
-// dollars) and divides. See ideation/provider-routing.md, Part III.
+// dollars) and divides. See docs/design/routing/provider-routing.md, Part III.
 //
 // THE TWO CASES ARE DIFFERENT UNITS ON PURPOSE. With nobody waiting, a second
 // is worth nothing; the honest score is the money, and perceived time is then

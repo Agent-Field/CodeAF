@@ -151,20 +151,6 @@ func (s *Store) Questions(status string, limit int) ([]Fact, error) {
 		FactQuestion, status, limit)
 }
 
-func validQuestionTransition(from, to string) bool {
-	if from == to || from == QuestionResolved || from == QuestionRetired {
-		return false
-	}
-	switch from {
-	case QuestionOpen:
-		return to == QuestionPracticing || to == QuestionResolved || to == QuestionRetired
-	case QuestionPracticing:
-		return to == QuestionOpen || to == QuestionResolved || to == QuestionRetired
-	default:
-		return false
-	}
-}
-
 func applyQuestionStatus(tx *sql.Tx, payload questionStatusPayload, seq int64) error {
 	if !validFactStatusForKind(FactQuestion, payload.Status) {
 		return fmt.Errorf("invalid question status %q", payload.Status)

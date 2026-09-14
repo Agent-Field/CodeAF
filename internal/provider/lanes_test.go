@@ -155,9 +155,18 @@ func primed(t *testing.T, model string, beliefs ...lanes.Belief) *recordingLedge
 	ledger := &recordingLedger{beliefs: beliefs}
 	lanes.Default().SetLedger(ledger)
 	lanes.ForgetPrefixes()
+	// A PRIMED LEDGER IS THE CHOOSER HOLDING THE ROAD. On the new `auto`
+	// (routefirst.go) the chooser ranks only after a takeover; a fixture that
+	// goes to the trouble of seeding beliefs is a fixture about what the
+	// chooser does with them, so the gate is armed for this model beside the
+	// ledger. The one fixture that measures a cold start arms nothing — it is
+	// the reason the map is reset here rather than only emptied on cleanup.
+	forgetRouterGates()
+	armTakeover(model)
 	t.Cleanup(func() {
 		lanes.Default().Reset()
 		lanes.ForgetPrefixes()
+		forgetRouterGates()
 	})
 	return ledger
 }

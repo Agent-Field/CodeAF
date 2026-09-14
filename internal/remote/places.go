@@ -178,20 +178,6 @@ const foldersOffWord = "this engine cannot keep the folders a conversation is ab
 // draw an engine's error text, which is machinery vocabulary.
 const memoryOffWord = "memory is off on this machine"
 
-// MemoryOff reports whether an error from one of the memory doors is the far
-// machine saying it is not remembering, rather than a store that would not
-// answer.
-//
-// IT IS A STRING MATCH AND THAT IS DELIBERATE. The alternative is an error type
-// crossing the wire, and errors do not survive encoding/json — which is the same
-// reason [EventWire] exists. The word is a constant in this package, both halves
-// are built from one tree, and the fallback if it ever stops matching is the
-// OTHER honest sentence rather than a wrong one.
-func MemoryOff(err error) bool {
-	return err != nil && len(err.Error()) >= len(memoryOffWord) &&
-		err.Error()[len(err.Error())-len(memoryOffWord):] == memoryOffWord
-}
-
 // ── THE SURFACE HALF OF THE FOLDERS ─────────────────────────────────────────
 //
 // These three are what internal/tui3 type-asserts for when somebody picks a

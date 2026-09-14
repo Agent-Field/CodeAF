@@ -378,9 +378,6 @@ func opNames() []string {
 	}
 }
 
-// OpNames lists the verbs, for a brief that has to tell a model what it may do.
-func OpNames() []string { return opNames() }
-
 func firstWord(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback

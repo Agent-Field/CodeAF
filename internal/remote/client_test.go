@@ -210,12 +210,6 @@ func (e *engine) event(stream uint64, ev session.Event) {
 
 func (e *engine) closeStream(stream uint64) { e.send(Frame{Kind: "closed", ID: stream}) }
 
-// state pushes one fact set, unasked — the engine half of "intent up, facts
-// down" (wire.go's version 4). It belongs to no stream and answers no call.
-func (e *engine) state(rev uint64, facts session.Facts) {
-	e.send(Frame{Kind: "facts", Payload: mustClientJSON(FactsPush{Rev: rev, Facts: facts})})
-}
-
 // calls is every call the engine saw, by method.
 func (e *engine) calls(method string) []Frame {
 	e.mu.Lock()

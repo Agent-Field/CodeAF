@@ -12,7 +12,8 @@ import (
 // work — `aforge do` running headless, a question answered into a continuation,
 // a surface with its own composer — journaled twins freely, and the person paid
 // for both. The funnel is the one seam between asking for work and getting it
-// (chat-simplify §2.5), so the duplicate check belongs on this side of it.
+// (the August 2026 chat-simplification audit, no longer in the tree, §2.5), so
+// the duplicate check belongs on this side of it.
 //
 // The window it guards is real: a splice sits pending for as long as the
 // workforce takes to reach it, and every re-ask inside that window is a re-ask

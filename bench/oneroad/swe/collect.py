@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """collect.py — the SWE track's rows as one CSV."""
 import csv, glob, json, os, sys
-OUT_DEFAULT = os.environ.get("SWE_OUT", "/home/santosh/af-bench/swe")
+OUT_DEFAULT = os.environ.get("SWE_OUT", os.path.expanduser("~/af-bench/swe"))
 FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "verdict", "reward",
           "tests_passed", "tests_failed", "changed_files", "agent_patch_bytes",
           "road", "route", "marks", "division", "division_why", "parts", "peak_workers",

@@ -97,17 +97,16 @@ debug: furrow embed
 
 # ── the known-red ledger, read once ─────────────────────────────────────────
 #
-# .github/known-red.txt is the debt: tests that fail on a clean tree, skipped
-# by name so that red still means something. IT IS READ HERE AND ONLY HERE.
-# `make test`, `make test-laws` and both workflows go through this one reading,
-# so "green locally" and "green in CI" are one fact. Before 2026-09-02 they were
-# not: this target was a bare `go test ./...` that could not pass on a clean
-# tree while the full run skipped the ledger, so `make check` — the ritual
+# .github/known-red.txt WAS the debt: tests that failed on a clean tree, skipped
+# by name so that red still meant something. It burned to zero on 2026-09-12
+# (#1012) and the file is gone; this read remains so that a ledger could not
+# quietly return — IT IS READ HERE AND ONLY HERE, and an absent file skips
+# nothing. `make test`, `make test-laws` and both workflows go through this one
+# reading, so "green locally" and "green in CI" are one fact. Before 2026-09-02
+# they were not: this target was a bare `go test ./...` that could not pass on a
+# clean tree while the full run skipped the ledger, so `make check` — the ritual
 # CLAUDE.md sends everybody to — stopped at its second step for everyone, every
-# time (#372). An empty or absent ledger skips nothing, which is what lets the
-# burn-down end by deleting the file rather than by editing this.
-#
-# The count of entries is ratcheted by internal/ci: it may only go down.
+# time (#372).
 KNOWN_RED := $(shell grep -v -e '^\#' -e '^[[:space:]]*$$' .github/known-red.txt 2>/dev/null | paste -sd'|' -)
 TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
 

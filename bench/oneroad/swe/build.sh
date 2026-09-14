@@ -3,7 +3,7 @@
 # patched arm64 Dockerfiles in envs/. Detached, parallel, one log per task.
 set -uo pipefail
 SWE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOGS="${LOGS:-/tmp/claude-1001/-home-santosh/36adab24-74be-4ae9-946a-ab932634b759/scratchpad/swe-builds}"
+LOGS="${LOGS:-$HOME/af-bench/swe-builds}"
 mkdir -p "$LOGS"
 TASKS="${*:-turborepo-fix-prune-missing-sources gitea-fix-force-push-timeline gitea-refactor-auth-middleware gitea-fix-codeql-code-scanning}"
 for t in $TASKS; do

@@ -50,10 +50,6 @@ type ClaimContext struct {
 	Criterion Done
 }
 
-// Empty reports whether a claim-time caller supplied anything at all. The zero
-// value is the build, and renders the prompt the build has always rendered.
-func (c ClaimContext) Empty() bool { return len(c.Landed) == 0 && c.Criterion.Empty() }
-
 // criterionLimit bounds the criterion inside an expansion goal, for the same
 // reason the remainder path bounds it: the goal already carries the node, its
 // ancestry and its inputs, and the criterion is the smallest of the four.

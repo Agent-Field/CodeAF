@@ -15,6 +15,13 @@ AFORGE_DEBUG=1 aforge             for one shell, one run
 `AFORGE_CALL_LOG_BODIES=1` — the older word, if it is the one in your shell history —
 means the same thing now.
 
+**A recording launch keeps its conversation in this terminal.** The record is written by
+the process that makes the calls, and ordinarily `aforge` hands your conversation to this
+folder's background session host — which was never told to record, and would leave you a
+folder holding `run.json` and no request bodies at all. So a run that is recording takes
+the in-process road, by the pin exactly as by the flag. The conversation ends with the
+terminal, the way `--no-host` does.
+
 **It does not change what the run does.** Nothing is asked differently, nothing is slower,
 no model is told anything new. With it off, a run costs one check and writes nothing at
 all; that is why it is safe to leave the flag out and reach for it only on the day you

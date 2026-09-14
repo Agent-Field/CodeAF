@@ -123,10 +123,24 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	if err != nil {
 		return nil, "", err
 	}
-	// EVERY ERRAND ARMS ITS CUT MONEY HERE. [Agent.callRole] is the one door all
-	// auxiliary provider calls pass through, including calls whose own deadline
-	// is not derived from a turn; arming ten callers separately would leave the
-	// next errand able to lose the receipt this shared seam exists to keep.
+	// EVERY ERRAND ARMS ITS CUT MONEY HERE. [Agent.callRole] is the one door every
+	// ERRAND passes through, including errands whose own deadline is not derived
+	// from a turn; arming them separately would leave the next one able to lose
+	// the receipt this shared seam exists to keep.
+	//
+	// AND "ERRAND" IS NARROWER THAN "MODEL CALL", WHICH IS WHAT THIS SENTENCE USED
+	// TO CLAIM. It said this was the door all auxiliary provider calls pass
+	// through, and ten did not: the guardian, vision, the shaper, the spell-out,
+	// the intake, the planner, the designer, the ceiling's handoff draft, a saved
+	// program's own step and the standing sentinel each reached the wire by
+	// another road. Some of them still do, legitimately — vision STREAMS into the
+	// room in the person's own turn, the handoff draft is billed to the turn on
+	// the turn's own model, a program's step runs on the program's model and no
+	// role's — and an errand ladder wrapped round any of those would be the wrong
+	// shape twice over. What every one of them owes is the TAG, and that is the
+	// claim that is now true and enforced: clientdoor.go's [callPurpose] is the
+	// one door every REQUEST passes through, this one is the one door every
+	// ERRAND passes through, and neither pretends to be the other.
 	ctx = provider.WithReconcile(ctx, a.reconciled)
 	if len(rungs) > roleFallThroughs+1 {
 		rungs = rungs[:roleFallThroughs+1]
@@ -181,19 +195,13 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	errandCtx, endErrand := context.WithTimeout(ctx, patience)
 	// AND THE ERRAND SAYS WHAT IT IS FOR, ON EVERY ROW IT WRITES.
 	//
-	// The model-call log names a call by its tag, and a tag is either set here
-	// or derived from a routing slot the planning packages open — and this
-	// package opens none. So every errand this session makes, from every one of
-	// the ten callers below, landed in the log with no tag at all: 2,309 of the
-	// 2,839 untagged finishes in the ten days to 2026-09-10, and with them the
-	// answer to "what was this build spending deepseek-v4-flash on all night"
-	// (docs/design/recovery/census-20260910.md §8, finding 9).
-	//
 	// THE ROLE IS THE TAG, because the role is what the errand IS — naming a
 	// conversation, judging a route, writing a caption — and it is the same word
 	// internal/lane's roles.go and the journal's own call line already use, so
-	// three records of one call agree about what to call it.
-	errandCtx = provider.WithCallTag(errandCtx, string(role))
+	// three records of one call agree about what to call it. It is carried to
+	// the door as a [callPurpose] rather than stamped on the context here: the
+	// door is what every request in this package passes over, and it is the only
+	// thing that spells the tag (clientdoor.go says why that had to move).
 	defer endErrand()
 	tell := errandWatchFrom(ctx)
 
@@ -227,10 +235,12 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// above about what bounds a rung.
 		//
 		// And IntentBackground for the other half of the same sentence. Nobody
-		// asked for it and nobody is waiting on it, so the fastest endpoint is
-		// worth nothing here and its price is worth everything — every errand in
-		// this package routes by price rather than by speed
-		// (internal/provider's velocity.go). This is the one place that says so,
+		// asked for it and nobody is waiting on it, so a second saved here buys
+		// nothing — which is what the lane chooser prices, and what an answer
+		// nobody reads is worth (internal/provider's workload.go). It does not
+		// choose a road: which road every call takes is the routing row's answer
+		// and this build no longer writes one for anybody (velocity.go's
+		// [provider.DefaultRouting]). This is the one place that says it,
 		// because this is the one place an errand is made.
 		//
 		// AND THE ROLE ITSELF, WHICH IS THE SENTENCE ABOVE SAID PROPERLY.
@@ -241,7 +251,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// errand that answered while a person was waiting on their own slow
 		// answer used to take the status line away from it, which was half of
 		// the reported defect the clock exists for. The intent stays beside it
-		// because `provider.sort` is still built from it, and it is now a
+		// because what a wait is worth is still read off it, and it is now a
 		// reading of the role rather than a second opinion about it.
 		callCtx := provider.WithRole(
 			provider.WithRoutingIntent(provider.WithoutStream(errandCtx), provider.IntentBackground),
@@ -275,7 +285,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
 		callCtx, releaseRung := errandRungContext(callCtx, len(rungs)-attempt-1)
-		response, called, callErr := a.completeWithNamedModel(callCtx, messages, rung.Model, options...)
+		response, called, callErr := a.completeWithNamedModel(callCtx, callPurpose(role), messages, rung.Model, options...)
 		if strings.TrimSpace(called) == "" {
 			called = rung.Model
 		}

@@ -22,7 +22,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/openrouterauth"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -239,8 +238,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if workspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
 		once:   strings.TrimSpace(*once) != "",
-		debug:  *debug,
-		setup:  !v3MachineIsSetUp(),
+		// THE SWITCH AND NOT THE FLAG. --debug has already turned the record on
+		// above, and so has AFORGE_DEBUG in the shell that started this process
+		// (internal/trace's init) — both are this process being told to record,
+		// and both must keep the calls in this process to have anything to
+		// record ([v3HostChoice.debug]).
+		debug: trace.Enabled(),
+		setup: !v3MachineIsSetUp(),
 	}); take {
 		err := openChatV3Local(localLaunch{
 			workspace: workspace,
@@ -1434,17 +1438,23 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// process, built at the door and assigned by the launch
 	// (chatv3_process.go's [v3Process.Conns]), because two managers on one store
 	// are two caches with no way to tell each other that a token has moved.
-	// How this session chooses among the endpoints serving its model — and it is
-	// read as the CHOICE rather than as the resolved default, so an unwritten row
-	// arrives here empty. The adapter needs to be able to tell "nobody said" from
-	// "somebody said latency": with nothing said it routes a person's own turn by
-	// speed and a task node or an errand by price, and with a word written that
-	// word wins outright (internal/provider's velocity.go). The parse is still
-	// total, so a word this build does not know leaves the row unset rather than
-	// taking routing away.
-	if word := config.RoutingChoiceAt(profileDir); word != "" {
-		cfg.Routing, _ = provider.ParseRoutingStrategy(word)
-	}
+	// HOW THIS SESSION CHOOSES AMONG THE ENDPOINTS SERVING ITS MODEL IS NOT SET
+	// HERE, and that absence is the point. This door used to read the routing row
+	// and write it onto the config, which the session then handed to every client
+	// it built as an answer of its own ([provider.StaticRouting]) — and an answer
+	// handed down WINS over the row this process installs, which is what a caller
+	// holding a row this process did not install needs it to do. So the
+	// conversation's clients were pinned to the word that was on disk at
+	// launch: a person who cycled `routing` in the settings panel watched the row
+	// change, watched the `lane` row go on explaining itself in the old word, and
+	// got the old routing on every request until they relaunched (issue #1022).
+	//
+	// The row is installed process-wide one line below, where every client that
+	// was handed nothing reads it — including this session's, now — and the panel
+	// re-installs it the moment it is written (internal/config's
+	// InstallRoutingRow). A caller that really does have a row of its own still
+	// hands one down and still wins; this door does not, because the row it would
+	// hand down is the very row it is installing.
 	// AND WHICH MACHINE BEHIND THAT MODEL, which is the row beside routing and a
 	// different question: routing says what a request PREFERS, and this says
 	// which endpoint it actually goes to (internal/config's lane keys). The

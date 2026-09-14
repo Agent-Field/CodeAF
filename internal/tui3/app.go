@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
@@ -257,6 +259,20 @@ type entry struct {
 	// ([app.noteBlock] says why, and a subharness card is the only shape that
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
+
+	// told says this note is ADDRESSED TO THE PERSON rather than narration
+	// about the machinery, so the work chip may not swallow it (workfold.go's
+	// [deriveWorkfolds]).
+	//
+	// THE LAW THE CHIP ALREADY KEEPS, SAID PRECISELY. A chip hides what the
+	// turn DID between a question and its answer, and a line asking the person
+	// to do something is not that — the interrupt's own lines have always been
+	// held out of one for exactly this reason. Until this field the only way to
+	// ask was to look at the note's first word, so a sentence about a person's
+	// own pin being refused was folded away whole: measured on 2026-09-13,
+	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
+	// the explanation should have been (session's EventRowNews).
+	told bool
 
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
@@ -1984,6 +2000,10 @@ type app struct {
 	// Nil history is a surface with no ↑, which is what --no-history is.
 	history History
 	hist    recall
+	// drafts is the kill ring: the sentences the whole-box clears took, newest
+	// first (draftring.go). The same ↑ walk visits them in front of the sent
+	// history, drawn dim, and /drafts lists them.
+	drafts draftRing
 
 	// draftFile is where the unsent sentence is kept between sessions
 	// (draft.go); empty means it is not kept at all.
@@ -2272,13 +2292,25 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
-	// routingOff is whether this session was launched with the routing row at
-	// `off`, which sends no lane choice at all and measures nothing
-	// (internal/provider's lanes.go). It is read ONCE, here, because that is
-	// when the session reads it — the row lands on the next session — and the
-	// chrome that asks it does so on every frame. Under it there is no fold to
-	// open ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]).
-	routingOff bool
+	// routing is the routing row in force, in the words the row itself is
+	// written in — `latency`, `price`, `simple` or `off` (internal/config's
+	// settings.go). It is read here at launch because the chrome that asks it
+	// does so on every frame and may not read a file to answer, and it is READ
+	// AGAIN the moment this surface writes the row (lanes.go's
+	// [app.routingRowChanged]) — a change lands on the next message, so a field
+	// that only moved at launch would leave the panel explaining `auto` in the
+	// word a person had just replaced.
+	//
+	// THE WHOLE ROW IS KEPT AND NOT ONE READING OF IT. This was a `routingOff
+	// bool`, which answered the only question the surface had while the row had
+	// three answers and aforge chose under two of them. `simple` is a fourth,
+	// and under it aforge does not choose at all — so a row that says what auto
+	// does has to be told which routing it is describing ([laneAutoSaid]), and a
+	// second boolean beside the first would be two readings of one row, drifting
+	// the first time either was fixed. Under `off` there is no fold to open
+	// ([app.armLanes]) and no pin on the model's name ([app.pinnedNow]), which
+	// is [app.routingOff] asking this field.
+	routing string
 	// crew is the profile's crew as this surface last read it, so the status
 	// line can name it without reading four settings rows off the disk on every
 	// frame (crew.go's [app.crewReading]).
@@ -2327,6 +2359,10 @@ type app struct {
 	// person's own config, so nothing about it depends on the door having wired
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
+
+	// draftPage is the list /drafts opens over the ring of cleared-but-kept
+	// drafts (draftring.go): closed, it costs the frame nothing.
+	draftPage draftPanel
 
 	// orders is the standing place's state: the shelves of what stands here — this
 	// conversation's orders, this project's and the machine's (place_standing.go).
@@ -2574,6 +2610,18 @@ type app struct {
 	resume         func(file string) (Agent, error)
 }
 
+// noteKilled is the door every whole-box clear goes through BEFORE the words
+// go: the sentence in the box, if there is one, goes on the kill ring
+// (draftring.go), so a clear that was a mistake is one ↑ away rather than
+// retyped. Clears that hand the words on — a send, the rewind's stash — are
+// not kills and do not call here. A conversation switch DOES (detach.go's
+// [app.clearConversation]): the sidecar that picks the sentence up answers
+// only while that conversation is still kept, and the ring is what still has
+// the words if it is let go first.
+func (a *app) noteKilled() {
+	a.drafts.push(a.input.value)
+}
+
 // landingKeysWord is the opening line of every session: the keys the status
 // line has no room for. It is named because the note that writes it also names
 // the chords inside it for THE PAYLOAD RULE (payload.go), and a sentence
@@ -2647,7 +2695,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
 		profileDir:          opts.ProfileDir,
-		routingOff:          config.RoutingAt(opts.ProfileDir) == config.RoutingOff,
+		routing:             config.RoutingAt(opts.ProfileDir),
 		oneModel:            opts.OneModel,
 		settings:            opts.Settings,
 		saveApproval:        opts.SaveApproval,
@@ -2877,6 +2925,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	if !a.welcome.open {
 		a.noteLandingKeys()
 	}
+	// THE LAUNCH GATE'S ONE SWEEP, on the same line family as the landing
+	// keys: any live session still held by an older build rev is named once
+	// (internal/session's [SweepStaleBuilds]), so the newer-build shock stops
+	// arriving as "same old rev" on every screen.
+	a.noteStaleBuilds()
 	a.restoreDraft()
 	// AND THE CORRECTIONS THE LAST LIFE NEVER LEARNED THE FATE OF COME BACK WITH
 	// THEM, under the names they were sent with, as rows their pages raise when
@@ -2925,6 +2978,24 @@ func newApp(ctx context.Context, opts Options) *app {
 // own dim. It is spelled in the hint slot's own grammar — chord, then what it
 // does — and the facts are named rather than recognized, because a note is prose
 // to this surface and only the line that wrote it knows otherwise.
+
+// noteStaleBuilds is the launch gate's one sweep: any live session holding an
+// older build rev is named once, so a stale engine stops reporting today as
+// though this build had reached the wire. The pids are said for a person's
+// `kill`, exactly as the file law asks them to be.
+//
+// FAIL-OPEN TO THE NO-SWEEPLine: an empty projects root answers nothing,
+// which is the whole of `no sessions live`.
+func (a *app) noteStaleBuilds() {
+	root := filepath.Join(a.profileDir, "v3", "projects")
+	rows := session.SweepStaleBuilds(root, buildinfo.Revision(), a.now())
+	if len(rows) == 0 {
+		return
+	}
+	pretty := rows[0]
+	a.noteFacts(fmt.Sprintf("%d session(s) on an older build · e.g. pid %d rev %.8s · they move to this build when closed", len(rows), pretty.PID, pretty.Build), "older build", pretty.SessionID)
+}
+
 func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c", helpAskKey) }
 
 // resumedWord opens the line a session says on the frame it opens over a
@@ -6886,6 +6957,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// on a card, so the only way anybody could name one at a command line is
 		// by reading it off this list first (permissions.go).
 		a.openPermissions()
+		return nil
+
+	case "drafts":
+		// The ring of cleared-but-kept drafts, as a list (draftpage.go). No
+		// argument form: the rows are a person's own words, and naming them is
+		// reading this list first.
+		a.openDrafts()
 		return nil
 
 	case "standing":

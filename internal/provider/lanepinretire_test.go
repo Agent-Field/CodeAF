@@ -57,7 +57,12 @@ type noticeLog struct {
 }
 
 func (l *noticeLog) observe(event StreamEvent) {
-	if event.Kind != StreamNotice {
+	// BOTH KINDS, because what this log is for is what a person READ. A notice
+	// is the adapter reshaping their request and row news is a row of theirs
+	// that stopped being sent (stream.go says why they are two kinds), and a
+	// test that watched only one would pass a build that had quietly moved the
+	// sentence onto the other.
+	if event.Kind != StreamNotice && event.Kind != StreamRowNews {
 		return
 	}
 	l.mu.Lock()

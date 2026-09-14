@@ -440,14 +440,6 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 		services: NewServiceSupervisor(graph)}
 }
 
-func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
-	if r.services == nil {
-		r.services = NewServiceSupervisor(r.store)
-	}
-	r.services.WithRuntime(runtime)
-	return r
-}
-
 // WithCraftRunner installs the craft sentinel's resume half. The runner
 // advances a craft run as each of its nodes lands; this sweep re-derives the
 // same moves from the store alone, which is what makes a run that died between
@@ -516,15 +508,6 @@ func (r *Reconciler) splitModelSlots(pinnedWork string) (plan, run string) {
 // first charter ratification. Nil preserves embedding paths with no host timer.
 func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
 	r.standingWatch = standing
-	return r
-}
-
-// WithStandingWatchKeyPersist supplies the credential step that runs before a
-// watch install: timer-driven wakes see no shell environment, so the key must
-// survive on disk for them. Kept as an injected hook so nothing in this
-// package ever writes to the real home during tests; nil skips persistence.
-func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, error)) *Reconciler {
-	r.standingWatchKeyPersist = persist
 	return r
 }
 

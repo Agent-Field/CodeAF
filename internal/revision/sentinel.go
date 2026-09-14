@@ -36,7 +36,8 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	// The sentinel is this job's own second thought about its own remainder,
 	// so its spend belongs to this job.
 	judgeCtx := pool.WithSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
-	// terrain wiring lands here (world-grounded-planning handoff)
+	// terrain wiring lands here (the August 2026 world-grounded-planning
+	// handoff, no longer in the tree)
 	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph, event)
 	if err != nil || len(operations) == 0 {
 		return 0
@@ -106,71 +107,4 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 		Body:   body,
 	})
 	return applied
-}
-
-// ForUser is Sentinel's twin for the other event source. It differs in exactly
-// two places: the event is the user speaking with authority, and it never
-// declines for want of pending work — the leaves already running still have to
-// be told, and that broadcast is the reconciler's next move.
-//
-// A removal aimed at something already claimed or running is not applied and
-// not silently dropped either: it comes back on the receipt as a running
-// removal, which is the one thing the caller has to say out loud.
-func ForUser(ctx context.Context, settings config.Config, client plan.Completer,
-	graph *store.Store, job store.Node, planGraph *plan.Graph, root, message string,
-	flavor resident.RevisionFlavor) (resident.Redirection, int, error) {
-	// terrain wiring lands here (world-grounded-planning handoff)
-	operations, _, err := plan.Revise(settings.Context(pool.WithSpendNode(ctx, job.ID), planGraph.Goal),
-		client, planGraph, resident.UserRevisionEvent(message, flavor))
-	if err != nil {
-		return resident.Redirection{}, 0, err
-	}
-
-	var redirection resident.Redirection
-	editable := make([]plan.Operation, 0, len(operations))
-	// The same naming law the mirror below applies, from the same place, so this
-	// pre-check and the edit it guards cannot disagree about which store node an
-	// operation means. Spelled out here, a removal aimed at the job's own
-	// deliverable looked at "<job>-n<root>", found nothing, and let the removal
-	// through as though the node were not running.
-	grown := make(map[int]bool)
-	for _, operation := range operations {
-		if operation.Op == "add" && operation.Applied {
-			grown[operation.Node] = true
-		}
-	}
-	storeID := resident.PlanStoreIDs(planGraph, job.ID, grown)
-	for _, operation := range operations {
-		id := storeID(operation.Node)
-		if operation.Op == "remove" {
-			if node, found, err := graph.Node(id); err == nil && found &&
-				(node.Status == store.Running || node.Status == store.Claimed) {
-				redirection.RunningRemovals = append(redirection.RunningRemovals, id)
-				continue
-			}
-		}
-		editable = append(editable, operation)
-	}
-	// Ungated, and only here: the person has just said what they want, so the
-	// question "is the goal already covered" is answered by them and not by a
-	// reader of the plan. The caps and the journal still hold — a redirect can
-	// sprawl a job exactly as anything else can.
-	applied, notes := resident.ApplyRevisionGoverned(ctx,
-		resident.Growth{Reason: resident.GrowRedirect, Ungated: true},
-		graph, planGraph, job.ID, root, editable)
-	redirection.Notes = notes
-	for _, operation := range editable {
-		if !operation.Applied {
-			continue
-		}
-		switch operation.Op {
-		case "add":
-			redirection.Added++
-		case "remove":
-			redirection.Dropped++
-		case "rewire", "retitle":
-			redirection.Amended++
-		}
-	}
-	return redirection, applied, nil
 }

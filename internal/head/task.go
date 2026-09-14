@@ -14,7 +14,8 @@ import (
 // what we just worked out and go do it", and "that's wrong, do it again" are
 // all one intent with different things travelling alongside it: nothing, the
 // conversation, or the previous attempt. So they are arguments now, and the
-// belt carries one verb for commissioning (chat-simplify §2.3).
+// belt carries one verb for commissioning (the August 2026 chat-simplification
+// audit, no longer in the tree, §2.3).
 //
 // What did NOT survive is the orders array. The chat never splits work: a
 // message carrying four asks is one ask that enumerates, and the compiler

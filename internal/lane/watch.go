@@ -377,9 +377,6 @@ func (w *Watch) controller() control.Controller {
 	return w.asked
 }
 
-// Plan is what this watch is waiting against.
-func (w *Watch) Plan() control.Plan { return w.plan }
-
 // SetExpectedTokens says roughly how long this answer is going to be, which is
 // the other half of the commitment arithmetic. It has to be said before the
 // stream starts, which is where the transport says it.

@@ -293,15 +293,6 @@ func (p *Pool) WithUsageJournal(journal func(store.NodeUsage)) *Pool {
 	return p
 }
 
-// ForMessage pins the exact model the durable user message recorded.
-func (p *Pool) ForMessage(message store.Message) (*Client, error) {
-	model := strings.TrimSpace(message.Model)
-	if model == "" {
-		return nil, errors.New("boost message has no model")
-	}
-	return p.ForModel(model)
-}
-
 // ForModel is the same pinning seam seen from the graph side: one client per
 // exact model slug, shared by every leaf that asked for it.
 func (p *Pool) ForModel(model string) (*Client, error) {

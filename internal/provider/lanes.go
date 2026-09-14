@@ -119,13 +119,6 @@ func WithCallHorizon(ctx context.Context, calls int) context.Context {
 	return context.WithValue(ctx, callHorizonContextKey{}, calls)
 }
 
-// CallHorizonFrom answers how many more calls are expected under ctx, and
-// whether anybody said.
-func CallHorizonFrom(ctx context.Context) (int, bool) {
-	calls, said := ctx.Value(callHorizonContextKey{}).(int)
-	return calls, said
-}
-
 func valueOfTimeFrom(ctx context.Context) secondsPerDollar {
 	stated, _ := ctx.Value(valueOfTimeContextKey{}).(secondsPerDollar)
 	return stated
@@ -147,7 +140,7 @@ func callHorizonFrom(ctx context.Context) int {
 //
 // THE ROW A PERSON WROTE AND THE DEFAULT DERIVED FROM WHO IS WAITING ARE NOT
 // THE SAME FACT, and reading them through one value silently made λ a dead
-// letter for every background call. [Client.routingFor] answers `price` for an
+// letter for every background call. The default used to answer `price` for an
 // unattended call because nobody said otherwise; taking that as "a person said
 // speed is worthless" then discarded the call site's own λ, so a task node that
 // declared its wait was worth something was routed as though it had declared
@@ -377,33 +370,52 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	// router's coarser model-list ceiling afterwards can only contradict that
 	// decision and make a serving lane look as though it refused the model.
 	demand := namedLanes(choice.Only)
+	// A PERSON'S OWN PIN IS READ ONCE, FOR BOTH DOORS BELOW (lanepin.go's
+	// [lanePinFor]). A person naming a machine wipes the cache pin off the
+	// demand here exactly as it wipes it off the order below: a heuristic
+	// about a cache is somebody's guess, and `pinned: cloudflare` is
+	// somebody's instruction.
+	person, retired := lanePinFor(model)
+	ownLane := person.pinned() != "" && !retired
+	// AND THE CACHE PIN IS ADMITTED BESIDE THE FRONTIER, NOT DROPPED BY IT. A
+	// demand is priced on latency times λ and tariff, and it never weighs
+	// cache residency — so a warm lane ranked second on speed fell off every
+	// forced set, the answerer became the next pin, and one measured chat
+	// session rotated through five machines in eight calls (GMICloud, Wafer,
+	// Novita, IoNet, Venice), each hop re-pricing eighty to a hundred thousand
+	// cold tokens at 4.7× the warm one. Admission is what makes the pin mean
+	// anything once a demand exists: advisory `provider.order` named the
+	// answering machine 29 % of the time over ten days of call log, while the
+	// strict preference's NAMED machine served 93 % — the pin goes IN the
+	// 93 % set, and it still leads the order composed over that set below.
+	if pinned != "" && len(demand) > 0 && !ownLane &&
+		!namesEndpoint(choice.Ignore, pinned) && !namesEndpoint(demand, pinned) {
+		demand = append(demand, pinned)
+	}
 	if len(demand) > 0 {
 		no := false
 		prefs.Only, prefs.Order, prefs.Sort = demand, nil, ""
 		prefs.AllowFallbacks = &no
 		prefs.MaxPrice = nil
 	}
-	// AND THE AFFINITY PIN YIELDS TO A REFUSAL, which is the one thing a warm
-	// prefix cannot buy its way past.
+	// AND THE PIN YIELDS TO EXACTLY TWO THINGS: A ROLE'S REFUSAL AND A
+	// PERSON'S OWN PIN. The demand above can no longer remove it — the law
+	// is admission, and the doors left standing are the two that must still
+	// remove it: a refusal the role declared (measured below) and a
+	// person's own lane row (lanepin.go, read where the order is composed
+	// below).
 	//
-	// THE MEASURED CASE IS WHY (2026-09-11 09:33). The cache pin latches onto
-	// whichever machine ANSWERED (affinity.go), and `provider.order` is advisory
-	// once `allow_fallbacks` is true — so one request that asked for one machine
-	// and was answered by another made that other machine the head of every
-	// order for the rest of the session, and the reflex tier's whole wait
-	// doubled. A saving on prefill cannot pay for a wait the role has already
-	// said it will not sit through; a machine in `choice.Ignore` is one the role
-	// refused on its own declared patience (internal/lane's beyondThePatience),
-	// and it goes on this body's `ignore` below rather than at the front of its
-	// order.
-	//
-	// AND A MACHINE OUTSIDE THE DEMAND IS THE SAME FACT STATED POSITIVELY. The
-	// admitted set is what the role would wait for; a machine that is not in it
-	// is one the frontier ruled out, and leading the order with it would either
-	// be ignored by the router or — under `allow_fallbacks: false` — name a
-	// machine the same object forbids.
-	if pinned != "" && (namesEndpoint(choice.Ignore, pinned) ||
-		(len(demand) > 0 && !namesEndpoint(demand, pinned))) {
+	// THE REFUSAL IS THE MEASURED CASE (2026-09-11 09:33). The cache pin
+	// latches onto whichever machine ANSWERED (affinity.go), and `provider.order`
+	// is advisory wherever `allow_fallbacks` is still true — so one request that
+	// asked for one machine and was answered by another made that other machine
+	// the head of every order for the rest of the session, and the reflex tier's
+	// whole wait doubled — a wait the role had already declared it would not sit
+	// through. A saving on prefill cannot pay for that wait, and a machine in
+	// `choice.Ignore` is one the role refused on its own declared patience
+	// (internal/lane's beyondThePatience), so it goes on this body's `ignore`
+	// below rather than at the front of its order.
+	if pinned != "" && namesEndpoint(choice.Ignore, pinned) {
 		pinned = ""
 	}
 	if len(choice.Order) > 0 {
@@ -414,8 +426,7 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		// pin is somebody naming the machine they want. Letting the cache jump
 		// the person would make `pinned: cloudflare, borrow when slow` mean "go
 		// wherever the last answer came from", which is not what the row says.
-		person, retired := lanePinFor(model)
-		if person.pinned() != "" && !retired {
+		if ownLane {
 			pinned = ""
 		}
 		if pinned != "" {
@@ -491,8 +502,70 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
 	}
-	strategy := c.routingFor(knobs.intent)
+	strategy := c.routing()
 	if strategy == RoutingOff {
+		return lanes.Choice{}, false
+	}
+	// SIMPLE ROUTING ASKS THE ROW AND NOTHING ELSE. A pin — strict or
+	// borrowable, the difference is a rescue this mode does not run — is the
+	// one instruction that reaches the wire: the demand for the machine it
+	// names, with the frontier still drawn so a stall has somewhere to offer
+	// to go. Every other reading of the world (the routing gate, the belief's
+	// own ranking, the account's exclusions) stays computed by the packages
+	// below and is simply never asked, because under this row the person is
+	// the algorithm. No pin — or one the wire has retired for this model —
+	// means no choice at all: the request goes out with no provider object
+	// and the router's own default answers, and with no choice on the context
+	// nothing downstream hedges either ([Client.raceFor] reads the same
+	// absence).
+	if strategy == RoutingSimple {
+		named := pin.pinned()
+		// AND THE ROW GOVERNS THE CALLS IT IS NAMED FOR. The row is `lane.talk`
+		// (internal/config's LaneSlotTalk) and the slot is the whole scope: the
+		// person's own turn is the talk, and the errands that run beside one —
+		// the title, the memory reflex, the route question, a hand asking about
+		// a document, a subharness node — are not.
+		//
+		// THE MEASURED COST OF NOT SAYING SO (2026-09-13). One turn under
+		// `simple`, pinned to a machine the account excludes, demanded that
+		// machine on all three of its calls and paid three separate 404s: the
+		// turn on the chat model, the title on the reflex tier's own model, and
+		// the memory reflex on a third model the pinned machine does not serve
+		// at all. The retirement is written per PAIRING, so each new model is a
+		// fresh round trip — and two of the three were errands nobody asked for
+		// on machines nobody pinned.
+		//
+		// THE SCOPE IS READ FROM THE ROLE THE CALLER ALREADY STAMPED
+		// (internal/lane's roles.go) through lanepin.go's readByAPerson, the
+		// same reading that decides whether a person is told when the wire
+		// refuses the pin (tellRetiredPins). One predicate, so the machine a
+		// person is asked for and the sentence they get when it is refused can
+		// never belong to two different sets of calls. Inside a command a
+		// person typed every call is theirs — the planning pass of `aforge do`
+		// runs in a role nobody reads and is still the thing they are waiting
+		// on — and the same predicate says so.
+		if named == "" || retired || !readByAPerson(knobs.role) {
+			return lanes.Choice{}, false
+		}
+		ask := c.laneRequest(model, knobs, request, c.laneValueOfTime(knobs))
+		choice := lanes.Default().Chooser().Choose(ask)
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier, Pinned: true}, true
+	}
+	// `auto` IS OPENROUTER'S ROAD UNTIL THE ROUTER LETS GO OF IT (routefirst.go).
+	// A gate per model counts the refusals and the answers that came back
+	// unusable; while it says the router is serving this model, there is no
+	// choice to draw — the request goes out with the legacy preferences (the
+	// sort word, the strike ledger's order, the price ceiling), which is the
+	// shape the wire carried before this package held an opinion. The belief
+	// ledger learns from every named lane's answers all the same, so when the
+	// gate says the router has let go, the chooser below ranks lanes it has
+	// been watching rather than strangers. A pin — strict or borrowable —
+	// skips the gate entirely: it is a person's own instruction, and the
+	// router's record is not theirs to answer for. A pin the wire has already
+	// retired for this model is `auto` again (the retirement block below), so
+	// it answers to the gate like any other unpinned call.
+	pinned := pin.pinned() != "" && !retired
+	if !pinned && !c.routingGateTakenOver(model) {
 		return lanes.Choice{}, false
 	}
 	lambda := c.laneValueOfTime(knobs)
@@ -1020,6 +1093,21 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 		Reason:   reason,
 		At:       laneNow(),
 	})
+	// AND THE ROUTER'S OWN RECORD MOVES WITH THE SAME ANSWER (routefirst.go).
+	// `auto` lends the model to OpenRouter until this says it has let go; an
+	// answer that could not be used counts toward the takeover, and one that
+	// served whole counts it back. The sentence is parked, not emitted: the
+	// call that earned the takeover is often one nobody is watching, and the
+	// next watched request carries it — the same promise lanepin.go's
+	// retired-pin line keeps.
+	//
+	// THE ONE REASON THIS DOOR DOES NOT HEAR IS `error`: an answer that ended
+	// with finish_reason:error is ALSO a refusal, and it already reached the
+	// gate through refuseLane in the same breath (terminal_error.go). Counting
+	// it here would be one event striking the router twice.
+	if reason != "error" && c.noteRouterChoice(model, served, reason, accepted) {
+		parkTakeoverLine(model)
+	}
 }
 
 // coverMargin is the room left above the dearest named lane's tariff, so that

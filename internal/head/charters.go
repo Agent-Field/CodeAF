@@ -642,17 +642,6 @@ func charterFreshness(charter store.Charter) time.Time {
 	return latest
 }
 
-func charterOptionValue(intent charterIntent, id string) string {
-	value := "charter:" + charterOptionAction(intent.Kind) + ":" + id
-	switch intent.Kind {
-	case store.CommandCharterCadence:
-		return value + ":" + intent.Cadence
-	case store.CommandCharterWording:
-		return value + ":" + intent.Wording
-	}
-	return value
-}
-
 // charterWordingCue is how a person says "keep the rule, change what it says".
 // The words after it are the new message, verbatim.
 const charterWordingCue = " to say "
@@ -743,14 +732,4 @@ func charterOptionAction(kind store.CommandKind) string {
 	default:
 		return "cadence"
 	}
-}
-
-func managementInstruction(intent charterIntent) string {
-	switch intent.Kind {
-	case store.CommandCharterCadence:
-		return intent.Cadence
-	case store.CommandCharterWording:
-		return intent.Wording
-	}
-	return string(intent.Kind)
 }

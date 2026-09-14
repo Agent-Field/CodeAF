@@ -61,20 +61,6 @@ func (s *scriptedAgent) running() bool {
 	return s.turn != nil
 }
 
-// finish ends the turn in flight, which is the far machine getting on with it.
-func (s *scriptedAgent) finish() {
-	s.mu.Lock()
-	lane := s.turn
-	s.turn = nil
-	s.finished++
-	s.mu.Unlock()
-	if lane == nil {
-		return
-	}
-	lane <- session.Event{Kind: session.EventTurnDone, Text: "done with " + s.file}
-	close(lane)
-}
-
 func (s *scriptedAgent) Interrupt() { s.InterruptFor(session.StopByPerson) }
 
 func (s *scriptedAgent) InterruptFor(session.StopDoor) {
@@ -255,7 +241,7 @@ func waitUntilBeside(t *testing.T, what string, done func() bool) {
 }
 
 // THE DEFECT, AS THE PERSON MET IT. Three Untitled tabs, a question typed into
-// the third, and `closed · santoshkumar — a connection holds one conversation
+// the third, and `closed · example — a connection holds one conversation
 // at a time` where the answer should have been.
 //
 // The door is asked for three conversations and every one of them has to be a

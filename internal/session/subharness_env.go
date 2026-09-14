@@ -203,7 +203,7 @@ func (e *subharnessEnv) AI(ctx context.Context, promptRef string, input any, opt
 	if !opts.Schema.Empty() {
 		options = append(options, ai.WithSchema(json.RawMessage(opts.Schema)))
 	}
-	response, err := e.agent.completeWithModel(call, []ai.Message{
+	response, err := e.agent.completeWithModel(call, purposeSubharness, []ai.Message{
 		textMessage("system", prompt),
 		// THE INPUT GOES LAST, as its own message and as JSON. The prompt is the
 		// asset under review and the input is the material; two messages keep

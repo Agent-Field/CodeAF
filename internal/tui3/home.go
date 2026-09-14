@@ -30,7 +30,7 @@ import (
 // You open it, you see where things stand, and you leave — into a conversation,
 // into a new one, or back into the one you came from with esc.
 //
-// Three jobs and no fourth (docs/home-design.md):
+// Three jobs and no fourth:
 //
 //   - TRIAGE. The left column is every project as a dim heading with its
 //     conversations under it, ordered by what is happening rather than by what
@@ -259,7 +259,7 @@ const homeDraftRows = 3
 const (
 	// homeFootWord is the three verbs, and it stays three. A footer that grew a
 	// key for everything this screen can do would be the cockpit this is
-	// deliberately not (docs/home-design.md).
+	// deliberately not.
 	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
 	// homeRestHint is that sentence as the whole foot of the resting screen, with
 	// the one key that leaves it. It is composed rather than spelled a second

@@ -163,14 +163,14 @@ func TestPreflightNamesEveryWindowThatIsInTheseFiles(t *testing.T) {
 
 func TestBriefFilesReadsThePathsABriefSpells(t *testing.T) {
 	brief := "Rewrite `internal/tui3/home.go` and internal/session/task_index.go:112, " +
-		"then check docs/coordination-design.md. Do not touch " +
+		"then check docs/ARCHITECTURE.md. Do not touch " +
 		"https://example.com/internal/x.go or github.com/Agent-Field/aforge-v2/internal/session. " +
 		"home.go on its own is not a place, and neither is internal/tui3."
 	got := briefFiles("", brief)
 	want := []string{
 		"internal/tui3/home.go",
 		"internal/session/task_index.go",
-		"docs/coordination-design.md",
+		"docs/ARCHITECTURE.md",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("read %v, want %v", got, want)

@@ -119,6 +119,11 @@ has not produced work stays verbatim, even when keeping it costs more tokens. Th
 of a result that does become a pointer remain in the session journal and the path named by
 the pointer.
 
+One refinement for repetition: when the turn has read the **same file several times**, only
+the newest slice stays whole. Each older slice becomes a pointer naming the file with the
+`offset` and `limit` that read it, and no copy is filed — the file itself is where those
+bytes came from, and `read` brings the slice back.
+
 ## A pass that cannot reach its target
 
 The fold walks the oldest assistant work first and stops at the target, but it never folds

@@ -2,7 +2,7 @@
 """Merge the parallel cells' results.csv and rank v3 `do` against master's recorded node-mode rows."""
 import csv, glob, os, sys
 
-root = open('/home/santosh/af-v3/.bench-par-root').read().strip()
+root = open(os.path.expanduser('~/af-v3/.bench-par-root')).read().strip()
 
 # Master's recorded numbers, BENCHMARKS.md, AFORGE_MODE=node, same model+judge.
 MASTER = {

@@ -10,7 +10,7 @@ const DemoSource = "# Rendering model prose\n" +
 	"\n" +
 	"A reply arrives as **markdown** whether or not anyone asked for it, so the\n" +
 	"surface has to *read* it. Inline `code spans` sit on a raised ground, and a\n" +
-	"link like [the audit](audit-notes/chat-rebuild.md) keeps its address.\n" +
+	"link like [the manual](docs/README.md) keeps its address.\n" +
 	"\n" +
 	"## What changed\n" +
 	"\n" +

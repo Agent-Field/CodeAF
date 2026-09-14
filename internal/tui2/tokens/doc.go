@@ -10,7 +10,7 @@
 // initialization, by one function reading one file's literals — so a render
 // never formats an escape sequence, it appends a constant string.
 //
-// # Why a token layer exists (chat-rebuild 10.1.1, 5.16)
+// # Why a token layer exists (the August 2026 chat-rebuild audit, no longer in the tree, 10.1.1 and 5.16)
 //
 // Today's chat renders colour from ad-hoc lipgloss values scattered through the
 // render code, so the palette cannot be tested, cannot be degraded for a
@@ -53,5 +53,5 @@
 //	tokens.AppendElapsedCell(buf[:0], d)           // zero allocations
 //	sanitize.TextWithPalette(s, sanitize.Table(tokens.ANSI16Remap))
 //
-// Section numbers in comments refer to audit-notes/chat-rebuild.md.
+// Section numbers in comments refer to the August 2026 chat-rebuild audit, no longer in the tree.
 package tokens

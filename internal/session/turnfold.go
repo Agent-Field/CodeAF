@@ -9,6 +9,7 @@ package session
 // This pass bounds that accumulation without summarizing or deleting anything.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -69,6 +70,15 @@ type turnFoldReplacement struct {
 // reaches its headroom target. An observation becomes consumed only after work
 // made from it lands. Assistant text, calls and their arguments, mutating tool
 // batches, and every observation not yet acted upon remain verbatim.
+//
+// One shape of repetition is folded WITHOUT filing a copy. A measured planning
+// turn read one file in ten overlapping slices and carried all ten, verbatim,
+// through twenty requests — yet a slice of a file is re-readable where it came
+// from, which is the one kind of result whose bytes never needed a steward. So
+// when the foldable region holds several reads of ONE path, the newest slice
+// stays whole and each older slice becomes a pointer naming the file and the
+// range it held (turnFoldReadRepeats); every other result keeps the filed
+// pointer it always got.
 func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]bool, hub *eventHub) {
 	line := turnWorkingSet(a.window())
 	if line <= 0 {
@@ -87,7 +97,8 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	if total > line*bytesPerToken {
 		limit := a.turnFoldLimitLocked(seenThrough)
 		batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
-		selected = turnFoldSelection(a.messages, batches, total, turnWorkingTarget(a.window())*bytesPerToken)
+		keepNewest, _ := turnFoldReadRepeats(a.messages, batches)
+		selected = turnFoldSelection(a.messages, batches, keepNewest, total, turnWorkingTarget(a.window())*bytesPerToken)
 	}
 	a.mu.Unlock()
 	if total <= line*bytesPerToken || selected == 0 {
@@ -118,11 +129,12 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
+	keepNewest, superseded := turnFoldReadRepeats(a.messages, batches)
 	// A pass that cannot buy the whole headroom does not run. Every rewrite
 	// invalidates the provider cache from that point onward; repeatedly replacing
 	// one tiny result while protected observations hold the working set above the
 	// line is strictly worse than retaining the original context.
-	selected = turnFoldSelection(a.messages, batches, total, target)
+	selected = turnFoldSelection(a.messages, batches, keepNewest, total, target)
 	if selected == 0 {
 		a.mu.Unlock()
 		return
@@ -139,11 +151,28 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		batchSaved := 0
 		complete := true
 		for _, index := range batch.indices {
+			// The newest slice of a file the turn read more than once stays
+			// whole: it is the reading the model is most likely working from,
+			// and the older slices' pointers already name how to bring any of
+			// their bytes back. A batch with nothing left to replace is simply
+			// skipped, the way a batch of already-stubbed results is.
+			if keepNewest[index] {
+				continue
+			}
 			message := a.messages[index]
 			text := messageContentText(message)
-			// The same pointer the stub pass and the snapshot view give, and for
-			// the same reason: a store ref is not one ([Agent.fullResultPointer]).
-			pointer := a.fullResultPointer(message, place)
+			pointer := ""
+			if slice, repeated := superseded[index]; repeated {
+				// An older slice of a repeatedly read file needs no copy filed:
+				// its bytes were never anywhere but the file itself, so the
+				// pointer is the read that fetches that slice again — the same
+				// kind of recipe the journal fallback already spells.
+				pointer = slice.readRecipe()
+			} else {
+				// The same pointer the stub pass and the snapshot view give, and for
+				// the same reason: a store ref is not one ([Agent.fullResultPointer]).
+				pointer = a.fullResultPointer(message, place)
+			}
 			if pointer == "" {
 				complete = false
 				break
@@ -221,11 +250,15 @@ func (a *Agent) turnFoldLimitLocked(seenThrough int) int {
 // reach the target, or zero when all eligible observations together cannot buy
 // that headroom. It deliberately overestimates savings by the small pointer
 // bodies; the materialization pass below checks the exact bytes before writing
-// anything into the live transcript.
-func turnFoldSelection(messages []ai.Message, batches []turnFoldBatch, total, target int) int {
+// anything into the live transcript. A slice keepNewest holds whole buys
+// nothing, and counting it would promise headroom the pass cannot deliver.
+func turnFoldSelection(messages []ai.Message, batches []turnFoldBatch, keepNewest map[int]bool, total, target int) int {
 	reclaimable := 0
 	for batchIndex, batch := range batches {
 		for _, index := range batch.indices {
+			if keepNewest[index] {
+				continue
+			}
 			reclaimable += messageBytes(messages[index])
 		}
 		if total-reclaimable <= target {
@@ -305,6 +338,116 @@ func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[
 		index = end - 1
 	}
 	return batches
+}
+
+// readSlice is one read call's own recipe: the path it asked for and the slice
+// of it, spelled in the read tool's own arguments. It is parsed from the
+// call's arguments, never from the result's text — a result carries a
+// continuation footer only when it was cut, while the arguments always say
+// what was asked.
+type readSlice struct {
+	path   string
+	offset int // 1-indexed, as the read tool takes it
+	limit  int // 0 means the call named no limit
+}
+
+// readRecipe is the pointer an older slice folds into: the read that brings
+// its bytes back. The pointer family already carries recipes and not just
+// paths — the journal fallback is "grep <id> in <journal>" — and the read
+// tool's own continuation footers teach the offset spelling, so this is the
+// sentence family the prompt already teaches, adapted to name the range.
+func (s readSlice) readRecipe() string {
+	recipe := "read " + s.path
+	if s.offset > 1 {
+		recipe += fmt.Sprintf(" offset=%d", s.offset)
+	}
+	if s.limit > 0 {
+		recipe += fmt.Sprintf(" limit=%d", s.limit)
+	}
+	return recipe
+}
+
+// turnFoldReadSlice answers which slice of which file the result at index
+// holds: its call is found in the assistant message above it, the way
+// toolNameFor finds a name, and only a genuine `read` call with a parseable
+// path qualifies. Anything else — a grep, a find, an unreadable argument
+// string — is not a slice and keeps the ordinary filed pointer.
+func turnFoldReadSlice(messages []ai.Message, index int) (readSlice, bool) {
+	id := messages[index].ToolCallID
+	if id == "" {
+		return readSlice{}, false
+	}
+	for above := index - 1; above > 0; above-- {
+		for _, call := range messages[above].ToolCalls {
+			if call.ID != id {
+				continue
+			}
+			if call.Function.Name != "read" {
+				return readSlice{}, false
+			}
+			var args struct {
+				Path   string `json:"path"`
+				Offset *int   `json:"offset"`
+				Limit  *int   `json:"limit"`
+			}
+			if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil || strings.TrimSpace(args.Path) == "" {
+				return readSlice{}, false
+			}
+			slice := readSlice{path: args.Path, offset: 1}
+			if args.Offset != nil && *args.Offset > 1 {
+				slice.offset = *args.Offset
+			}
+			if args.Limit != nil && *args.Limit > 0 {
+				slice.limit = *args.Limit
+			}
+			return slice, true
+		}
+	}
+	return readSlice{}, false
+}
+
+// turnFoldReadRepeats walks the foldable batches and decides, for every file
+// read MORE THAN ONCE inside the region, which read is the newest slice — the
+// one kept whole — and which are the older slices whose bytes the file itself
+// hands back. The batches arrive in transcript order, so the last index of a
+// path is its newest. A path is grouped by the exact string the calls named:
+// a second spelling of the same file is a different recipe, and canonicalizing
+// it is a filesystem question this pass may not ask under the session lock.
+//
+// FRESHNESS IS NOT THIS PASS'S QUESTION. Whether the newest slice of a file
+// still says what it said — a later edit or a watch may have moved the file —
+// belongs to the held-read seam at the live edge (heldreads.go), which owns
+// the short-circuit of a read the world has outrun. This pass is transcript
+// hygiene: the pointer it writes only ever says the range WAS read and how to
+// read it back, so a stale file cannot turn it into a coverage claim, and a
+// slice kept whole is the observation the model received, nothing more.
+func turnFoldReadRepeats(messages []ai.Message, batches []turnFoldBatch) (keepNewest map[int]bool, superseded map[int]readSlice) {
+	byPath := make(map[string][]int)
+	slices := make(map[int]readSlice)
+	for _, batch := range batches {
+		for _, index := range batch.indices {
+			slice, ok := turnFoldReadSlice(messages, index)
+			if !ok {
+				continue
+			}
+			slices[index] = slice
+			byPath[slice.path] = append(byPath[slice.path], index)
+		}
+	}
+	for _, indices := range byPath {
+		if len(indices) < 2 {
+			continue
+		}
+		if keepNewest == nil {
+			keepNewest = make(map[int]bool)
+			superseded = make(map[int]readSlice)
+		}
+		keepNewest[indices[len(indices)-1]] = true
+		for _, index := range indices[:len(indices)-1] {
+			superseded[index] = slices[index]
+		}
+	}
+	return keepNewest, superseded
 }
 
 func turnFoldMarker(results, tokens int) string {

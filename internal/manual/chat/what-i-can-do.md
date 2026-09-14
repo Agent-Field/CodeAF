@@ -36,6 +36,13 @@ cut is announced so paging is possible:
 the end is an error: `Offset 900 is beyond end of file (120 lines total)`.
 A single line over the size cap is reported, not shown.
 
+A read for a range already in the conversation comes back as a pointer instead
+of fresh bytes: `[already read] <path> lines X–Y are in this conversation above
+— use those bytes.` Once any part of a file has been read here, asking for it
+again is answered, not fetched — which keeps paging cheap. A file that changed
+on disk since is simply read fresh, and a range some of which was never read is
+fetched whole.
+
 ## How much of a file does one read return — what is the truncation limit
 
 **The limit follows the model's context window: a tenth of it, and never more

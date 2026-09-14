@@ -9,7 +9,7 @@
 # for room rather than taking it.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWE_OUT="${SWE_OUT:-/home/santosh/af-bench/swe}"
+SWE_OUT="${SWE_OUT:-$HOME/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 
 ARMS="${ARMS:-aforge-swe-crew pi opencode}"

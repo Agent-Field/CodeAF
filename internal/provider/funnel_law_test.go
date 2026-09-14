@@ -233,14 +233,8 @@ var funnelExemptTrees = map[string]string{
 //     from the model's would be measuring the wrong thing. Its own
 //     TODO-consolidate names internal/subharness's exec_model.go as where it
 //     should end up.
-//   - internal/voice/transcriber.go posts to /audio/transcriptions on its own,
-//     which internal/provider's transcribe.go now also does — attribution.go
-//     says as much in as many words. It is a duplicate transport for the v1 and
-//     v2 voice input, and it is the one on this list that is simply owed a
-//     rewrite onto MediaClient.Transcribe.
 var funnelKnownSecondTransports = map[string]string{
 	"cmd/harness-design/openrouter.go": "the harness-design rig's deliberate flat transport",
-	"internal/voice/transcriber.go":    "the v1/v2 voice input's own /audio/transcriptions post",
 }
 
 // TestNothingOutsideTheFunnelTalksToAModelEndpoint is law (a).

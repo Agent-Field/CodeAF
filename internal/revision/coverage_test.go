@@ -13,21 +13,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
-// unmapped is a mapping in which the first two behaviours are exercised by
-// nothing, which is the shape igel s6's gate event actually held: seventeen
-// rows, three of them empty.
-func unmapped(points []plan.Point, covered int) []store.ExercisedPoint {
-	mapping := make([]store.ExercisedPoint, 0, len(points))
-	for index, point := range points {
-		row := store.ExercisedPoint{Point: point.Behaviour}
-		if index >= len(points)-covered {
-			row.Check = "tests/test_thing.py::test_" + strings.Fields(point.Behaviour)[0]
-		}
-		mapping = append(mapping, row)
-	}
-	return mapping
-}
-
 // measuredEvidence is a delivery whose project was read: a roster exists, so the
 // coverage question is answerable.
 func measuredEvidence(points []plan.Point) Evidence {

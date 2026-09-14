@@ -17,7 +17,8 @@ import (
 // choose between two halves of one intent. Worse, the model had to know which
 // half it wanted BEFORE anything with the plan in hand had read the sentence.
 //
-// So the critical move is that change carries NO VERB (chat-simplify §2.3). The
+// So the critical move is that change carries NO VERB (the August 2026
+// chat-simplification audit, no longer in the tree, §2.3). The
 // head binds the person's intent to a target and journals their words verbatim;
 // what the words mean is decided on the far side, by the party that can see the
 // plan. The revision judge already owns that decision — plan edit, broadcast-only

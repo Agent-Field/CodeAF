@@ -89,15 +89,30 @@ type picker struct {
 	// chooser decides where a request goes — and the `auto` row is a claim about
 	// the second of those. Empty when nothing is believed, which draws no name.
 	auto string
-	// pin is the lane this conversation is held to, empty for auto. It is a
-	// snapshot taken when the list opened, exactly as current is, and for the
-	// same reason: it answers "what am I on", which cannot change while a modal
-	// overlay owns the keyboard.
+	// pin is the lane ROW this conversation is held to, VERBATIM — a machine's
+	// name, `auto` or `openrouter` — which is what tells the three rungs of the
+	// fold apart ([picker.marked]). It is a snapshot taken when the list opened,
+	// exactly as current is, and for the same reason: it answers "what am I on",
+	// which cannot change while a modal overlay owns the keyboard.
 	pin string
+	// force is the machine the next request would actually DEMAND ([app.pinnedNow]),
+	// and it is what every row that NAMES a machine draws. It differs from the
+	// row above it exactly when the wire has retired the pairing: the row goes on
+	// saying morph and no request asks for it, and the fold then marks `auto`,
+	// which is where the requests are really going (issue #1022). A snapshot for
+	// [picker.pin]'s reason.
+	force string
 	// guard is whether a slow answer may be rescued elsewhere. It rides here
 	// because it is a fact about what `auto` PROMISES, and this list is where a
 	// person decides whether to leave the choosing to it.
 	guard bool
+	// routing is the routing row this session was launched under ([app.routing]),
+	// and it rides here for the same reason the guard does: under `simple` aforge
+	// makes no choice of its own at all, so what the `auto` row may honestly say
+	// it does is a question only this row answers ([laneAutoSaid]). A snapshot,
+	// like the rest of them — the row lands on the next session and cannot move
+	// while a modal list owns the keyboard.
+	routing string
 	// ascii is whether this terminal was refused box drawing, so the two marks
 	// on the fold's own rows have a plain spelling. It is a snapshot like the
 	// rest of them, and the list is closed long before a terminal could change
@@ -280,8 +295,14 @@ func (p *picker) rank() {
 	// same query and gets the same list.
 	tokens, terms := splitQuery(p.filter.String())
 	now := timeNow()
+	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
+	// the fold is forgotten below ([picker.narrowFold]).
+	open := p.unfold
 	p.hits = p.hits[:0]
 	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
+	if p.narrowFold(open, tokens, terms, now) {
+		return
+	}
 	for i, id := range p.lower {
 		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
 			continue
@@ -290,16 +311,8 @@ func (p *picker) rank() {
 			p.hits = append(p.hits, i)
 			continue
 		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(id, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
+		total, hit := queryScore(id, tokens)
+		if !hit {
 			continue
 		}
 		p.score[i] = total
@@ -333,6 +346,99 @@ func (p *picker) rank() {
 	if len(tokens) == 0 && len(terms) == 0 {
 		p.cursorToCurrent()
 	}
+}
+
+// narrowFold answers the filter box AS A QUESTION ABOUT THE MACHINES ALREADY ON
+// SCREEN, and false when it is not one — in which case the box filters models
+// exactly as it always has.
+//
+// WHAT IS OPEN IS WHAT IS BEING ASKED ABOUT. Somebody who has walked into a
+// model's fold and typed `morph` is looking at a list of machines and narrowing
+// it; the shipped reading took the same keystrokes as a hunt for a MODEL, found
+// `morph/morph-v3-large` in the catalog, and closed the fold they were standing
+// in (issue #1022). So an open fold gets the tokens first, and only a query that
+// matches none of its machines falls through to the models.
+//
+// IT IS THE SAME MATCHER AND NOT A SECOND ONE ([tokenScore], every token ANDed),
+// so `cloud fl` finds Cloudflare in a fold exactly as it finds a model in the
+// list, and a lane term (`@name`, `<1s`) is left to the list because those are
+// questions about which MODELS to keep.
+func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now time.Time) bool {
+	if model == "" || len(tokens) == 0 || len(terms) > 0 {
+		return false
+	}
+	at := -1
+	for i, hit := range p.all {
+		if hit.ID == model {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return false
+	}
+	views := laneViews(model, now)
+	matched := make([]scoredLane, 0, len(views))
+	for _, view := range views {
+		if total, hit := queryScore(strings.ToLower(view.Name), tokens); hit {
+			matched = append(matched, scoredLane{view: view, score: total})
+		}
+	}
+	if len(matched) == 0 {
+		return false
+	}
+	// THE MACHINES ARE RANKED THE WAY THE MODELS ARE, by the same rungs: a
+	// prefix first, then a substring by where it starts, then the loose letters
+	// last. `core` matches Cloudflare too — c-l-o-u-d-f-l-a-r-e carries the four
+	// letters in order — and a list that left it on top would put the cursor on
+	// the machine nobody typed for. Ties keep the ledger's own order, which is
+	// the order the fold draws when nothing is typed.
+	sort.SliceStable(matched, func(a, b int) bool { return matched[a].score < matched[b].score })
+	kept := make([]laneView, 0, len(matched))
+	for _, one := range matched {
+		kept = append(kept, one.view)
+	}
+	// The fold's own model is the only hit, so the machines that matched are
+	// drawn under the name they serve and nothing else is on the screen to
+	// wonder about. The `auto` row's prediction is taken over ALL the views: it
+	// is a claim about where the next turn goes and not about what was typed.
+	p.hits = append(p.hits, at)
+	p.unfold, p.lanes, p.first = model, kept, ""
+	p.auto = laneAuto(p.routing, model, views, now)
+	p.relist()
+	p.top = 0
+	// AND THE CURSOR LANDS ON THE FIRST MACHINE THAT MATCHED rather than on the
+	// `auto` row above them, because the machines are what was asked for and
+	// enter is what happens next.
+	for i, row := range p.list {
+		if row.lane >= 0 {
+			p.cursor = i
+			break
+		}
+	}
+	p.follow(pickerRows)
+	return true
+}
+
+// scoredLane is one machine of an open fold beside how well the filter box
+// matched its name, so the two can be sorted together.
+type scoredLane struct {
+	view  laneView
+	score int
+}
+
+// queryScore is [tokenScore] over a whole query: every token has to match and
+// the rungs are summed, which is exactly what [picker.rank] does to a model id.
+func queryScore(text string, tokens []string) (int, bool) {
+	total := 0
+	for _, token := range tokens {
+		score, hit := tokenScore(text, token)
+		if !hit {
+			return 0, false
+		}
+		total += score
+	}
+	return total, true
 }
 
 // splitQuery divides what is typed into the words that rank and the terms that
@@ -544,7 +650,7 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 			views = lifted
 		}
 	}
-	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(model.ID, views, now)
+	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(p.routing, model.ID, views, now)
 	return true
 }
 
@@ -1359,24 +1465,28 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
-// row that names none — which is both `auto` and `openrouter`.
+// row that names none — `auto`, `openrouter`, and a pairing the wire has retired.
 //
 // It exists because [picker.pin] is the settings row VERBATIM, which is what
 // [picker.marked] needs to tell the three rungs of the fold apart, and is
 // exactly the wrong thing to hand to anything that draws a lane's name: the row
 // reading `auto` drew a model whose speed came `via auto`, a machine no router
-// has ever heard of.
-func (p *picker) pinnedLane() string {
-	switch strings.ToLower(strings.TrimSpace(p.pin)) {
-	case "", config.LaneAuto, config.LaneOpenRouter:
-		return ""
-	}
-	return p.pin
-}
+// has ever heard of. It is [picker.force] and not that row for the second half
+// of the same rule — a name may be drawn only while a request would demand it
+// (lanes.go's [laneInForce]).
+func (p *picker) pinnedLane() string { return p.force }
 
 // marked is the row an overlay's chosen band belongs to: the model in use, and
 // — inside an open fold — the lane this conversation is actually held to, which
-// is the pin when there is one and the `auto` row when there is not.
+// is the machine the next request would demand when there is one and the `auto`
+// row when there is not.
+//
+// THE MACHINE ROWS ARE MARKED AGAINST WHAT THE WIRE WOULD DEMAND and the two
+// answers that name no machine against the ROW, because those two are the only
+// thing the row says that the wire cannot: `auto` and `openrouter` both send no
+// lane, and only the row knows which of them a person wrote. So a pin the wire
+// has retired marks `auto` — the requests are going there — while the row itself
+// still reads `pinned: morph` on the panel that owns it.
 func (p *picker) marked(at int) bool {
 	if p.rowUnavailable(at) {
 		return false
@@ -1389,11 +1499,11 @@ func (p *picker) marked(at int) bool {
 	case model.ID != p.current:
 		return false
 	case row.lane == laneAutoAt:
-		return p.pin == "" || strings.EqualFold(p.pin, config.LaneAuto)
+		return p.force == "" && !strings.EqualFold(p.pin, config.LaneOpenRouter)
 	case row.lane == laneRoutAt:
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
-	return strings.EqualFold(p.pin, p.lanes[row.lane].Name)
+	return p.force != "" && strings.EqualFold(p.force, p.lanes[row.lane].Name)
 }
 
 // groupBefore is the dim service heading before a model row. Folded lane rows
@@ -1445,17 +1555,25 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		// FOR is a thing you read once; which machine it would send you to now
 		// is the thing you came back to look at, so the short spelling keeps the
 		// name and drops the explanation around it.
-		sentence := laneAutoNote
+		//
+		// AND WHAT IT MAY CLAIM AT ALL IS THE ROUTING ROW'S TO SAY, asked once
+		// ([laneAutoSaid]) rather than read off the mode here: under `simple`
+		// nothing on this side chooses, so there is no machine to name and no
+		// rescue to promise.
+		said := laneAutoSaid(p.routing)
+		sentence := said.note
 		short := ""
-		if p.auto != "" {
+		if said.chooses && p.auto != "" {
 			sentence += " — " + strings.ToLower(p.auto) + " now"
 			short = strings.ToLower(p.auto) + " now"
 		}
 		fields := []rowField{rowSay(sentence, short), rowSay("recommended")}
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
 		// speed guard off, a lane that turns slow mid-answer is one you wait
-		// out; that is a fact about this row and it belongs on it.
-		if !p.guard {
+		// out; that is a fact about this row and it belongs on it. Where the
+		// routing runs no rescue in the first place the sentence above has
+		// already said so, and a chip repeating it is the same fact twice.
+		if said.chooses && !p.guard {
 			fields = append(fields, rowSay("no rescue"))
 		}
 		return rowHalves(rowPlan{primary: "  " + p.mark(true) + " auto", fields: fields}, width, 0)
@@ -1490,10 +1608,64 @@ func (p *picker) mark(filled bool) string {
 	return tokens.GlyphStepPending
 }
 
-// laneAutoNote is what the auto row says it does. It is a sentence and not a
-// word because it is the row a person will land on first and the one they will
-// leave alone: what it is FOR has to be on it.
-const laneAutoNote = "weighs speed against price each answer"
+// laneAutoSay is what the `auto` row may honestly claim, as the routing row in
+// force decides it: the sentence saying what leaving the choosing alone DOES,
+// and whether aforge is the one doing any of the choosing.
+type laneAutoSay struct {
+	// note is the sentence on the row. It is a sentence and not a word because
+	// it is the row a person will land on first and the one they will leave
+	// alone: what it is FOR has to be on it.
+	note string
+	// about is the same promise as the settings sheet's `lane` row explains it
+	// ([settingUI], read through [sheet.metaFor]). It is a second wording and
+	// not a second decision: the sheet's row is a paragraph about what the four
+	// answers to "which machine" mean and the picker's row is a label inside
+	// the list, and the two would say different things about `simple` the first
+	// time either was written without the other.
+	about string
+	// chooses is whether aforge chooses anything under this routing row. It
+	// gates the two claims that are only true when it does: the name of the
+	// machine the next turn would go to — which is the CHOOSER'S answer
+	// (lanes.go's [laneAuto]), and a prediction nobody makes where no chooser
+	// runs — and the `no rescue` chip, which is a fact about a speed guard that
+	// has nothing to guard.
+	chooses bool
+}
+
+// laneAutoSaid reads the routing row and answers it once, so that what the row
+// promises is decided in ONE place rather than at each thing the row draws.
+//
+// THE SENTENCE IS A PROMISE AND A PROMISE HAS TO BE KEPT UNDER EVERY ROW. Under
+// `latency` and `price` aforge does take over when the router's answers turn
+// bad, and the row has said so since it was written. Under `simple` it does
+// not: the request goes out with no preference of aforge's own on it and
+// OpenRouter's own default routing answers, which is exactly the row a person
+// chose in order to be left alone — so the row that still said "aforge takes
+// over" would be the surface promising machinery the mode disconnected.
+//
+// An unknown word — an empty one, or a row read before this surface armed
+// anything — is the shipped routing, and the sentence follows it there rather
+// than keeping a favourite of its own: [config.RoutingWord] is the one place
+// that says what an unwritten row is in force as, and the shipped row is
+// `simple`, so a surface that fell through to the takeover sentence would be
+// promising the machinery the shipped row disconnects.
+func laneAutoSaid(routing string) laneAutoSay {
+	if config.RoutingWord(routing) == config.RoutingSimple {
+		return laneAutoSay{
+			note: "openrouter's own routing; aforge stays out",
+			about: "which machine behind your model answers you. routing is simple, so auto " +
+				"sends no choice of ours at all and openrouter's own routing answers; a lane " +
+				"you pin is the whole request. enter opens them all with what has been " +
+				"measured of each.",
+		}
+	}
+	return laneAutoSay{
+		note: "router routes; aforge takes over if answers turn bad",
+		about: "which machine behind your model answers you. auto picks the fastest one " +
+			"each answer; enter opens them all with what has been measured of each.",
+		chooses: true,
+	}
+}
 
 // laneUnmeasured is the one line a fold draws in the machines' place when
 // nothing behind the model has been measured. It is a sentence a person would
@@ -1573,7 +1745,7 @@ func (p *picker) rowFields(model Model, pin string) []rowField {
 	if fields, ok := p.held[model.ID]; ok {
 		return fields
 	}
-	fields := modelFields(model, pin)
+	fields := modelFields(model, pin, p.routing)
 	p.held[model.ID] = fields
 	return fields
 }
@@ -1700,6 +1872,13 @@ const (
 	// pickerKeysFoldTab is the same with characters before the caret, where
 	// `←` edits the box and `tab` is the way out.
 	pickerKeysFoldTab = "enter choose · tab back · esc"
+	// pickerKeysUnpin is the row inside the fold that the requests are ALREADY
+	// going to: the same enter takes the pin off there (lanes.go's
+	// [app.applyLaneChoice]), and the hint is the only place that gesture
+	// announces itself.
+	pickerKeysUnpin = "enter unpin · ← back · esc"
+	// pickerKeysUnpinTab is that row with characters before the caret.
+	pickerKeysUnpinTab = "enter unpin · tab back · esc"
 	// pickerKeysSwitch is a list with no fold at all — a task's model, an
 	// empty result — where the keys are the two every list has.
 	pickerKeysSwitch = "enter switch · esc"
@@ -1720,9 +1899,16 @@ func (p *picker) keysHint() string {
 	if ok {
 		row = p.list[p.cursor]
 	}
+	// AND A MACHINE THAT IS ALREADY THE ANSWER SAYS WHAT ENTER DOES THERE, which
+	// is the one gesture in this fold that is not the same as its neighbours'.
+	unpin := ok && row.lane >= 0 && p.marked(p.cursor)
 	switch {
 	case !ok || p.laneSlot == "":
 		return pickerKeysSwitch
+	case unpin && p.filter.cursor > 0:
+		return pickerKeysUnpinTab
+	case unpin:
+		return pickerKeysUnpin
 	case row.lane != laneNone && p.filter.cursor > 0:
 		return pickerKeysFoldTab
 	case row.lane != laneNone:

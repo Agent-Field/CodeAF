@@ -116,10 +116,7 @@ func AnswerOffer(ask string, yes bool) bool {
 	if ask == "" {
 		return false
 	}
-	offers.mu.Lock()
-	open, found := offers.open[ask]
-	delete(offers.open, ask)
-	offers.mu.Unlock()
+	open, found := takeOffer(ask)
 	if !found {
 		return false
 	}
@@ -129,17 +126,15 @@ func AnswerOffer(ask string, yes bool) bool {
 	return true
 }
 
-// OpenOffer is what is being asked about one request, for a surface that has to
-// draw it: the machine that went quiet and the one a `y` would go to. It is
-// empty when that token names nothing open.
-func OpenOffer(ask string) (lane, alt string, open bool) {
+// takeOffer answers an open offer in one locked step, so two keystrokes can
+// never both fire the same rescue: the offer is deleted by the same critical
+// section that finds it, and the accept it carries runs outside the lock.
+func takeOffer(ask string) (open *offer, found bool) {
 	offers.mu.Lock()
 	defer offers.mu.Unlock()
-	question, found := offers.open[strings.TrimSpace(ask)]
-	if !found {
-		return "", "", false
-	}
-	return question.lane, question.alt, true
+	open, found = offers.open[ask]
+	delete(offers.open, ask)
+	return open, found
 }
 
 // sweepOffers drops what has aged out. It runs with the lock held, on the one

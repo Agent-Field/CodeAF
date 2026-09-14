@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// Threads are sessions, admitted (chat-simplify Part 5). The primitive has been
+// Threads are sessions, admitted (the August 2026 chat-simplification audit,
+// no longer in the tree, Part 5). The primitive has been
 // here all along — a room row, per-room head cursors, delivery routed to the
 // room that commissioned the work — and what was missing was the product's
 // admission that a room is a WORKING CONVERSATION: alive for days, commissioning

@@ -9,17 +9,19 @@ package provider
 // endpoint, and a session that reaches for a general model first pays a
 // multiple of the price for the same sentence.
 //
-// THE WIRE SHAPE IS internal/voice's, MIRRORED RATHER THAN IMPORTED.
-// internal/voice/transcriber.go has been posting to /audio/transcriptions for
-// the microphone since v1 and its request is the one this deployment answers:
-// JSON, not multipart, with the bytes as a base64 `input_audio` object carrying
-// a bare format word. That package is a surface's own client — its own key, its
-// own timeout, its own Usage type — and importing it here would make the media
-// client depend on a TUI's audio stack to reach an endpoint it already knows
-// how to speak to. So the shape is copied and the source is cited, exactly as
-// tools_pdf.go mirrors bare's truncation constants, and it travels through this
-// client's own postJSON so it inherits the bearer key, the attribution headers,
-// the response cap and the cost-header accounting every other media call has.
+// THE WIRE SHAPE CAME FROM v1's MICROPHONE CLIENT, MIRRORED RATHER THAN
+// IMPORTED. That client had been posting to /audio/transcriptions since v1 and
+// its request is the one this deployment answers: JSON, not multipart, with the
+// bytes as a base64 `input_audio` object carrying a bare format word. It was a
+// surface's own client — its own key, its own timeout, its own Usage type — and
+// importing it here would have made the media client depend on a TUI's audio
+// stack to reach an endpoint it already knew how to speak to. So the shape was
+// copied rather than shared, exactly as tools_pdf.go mirrors bare's truncation
+// constants, and it travels through this client's own postJSON so it inherits
+// the bearer key, the attribution headers, the response cap and the cost-header
+// accounting every other media call has. The package it was copied from was
+// removed once no surface imported it; this file is now the only transcription
+// transport, and transcribe_test.go is what pins the shape.
 
 import (
 	"context"
@@ -31,10 +33,10 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// maxTranscriptionBytes is the input ceiling, pinned to internal/voice's
-// MaxAudioBytes so the microphone and a file on disk are accepted or refused
-// the same way. It is also the limit the endpoint itself publishes, so a larger
-// payload buys nothing but a slower 413.
+// maxTranscriptionBytes is the input ceiling, and it is the limit the endpoint
+// itself publishes, so a larger payload buys nothing but a slower 413. It is
+// also the figure v1's microphone client carried, which is why a file on disk
+// and a recording are accepted or refused the same way.
 const maxTranscriptionBytes = 25 << 20
 
 // TranscriptionRequest is one audio file on its way to /audio/transcriptions.

@@ -149,15 +149,21 @@ func (h *HedgeReport) ended(news RescueNews) {
 // tell posts one piece of rescue news outside the lock, so that a slow reader
 // cannot stall the race it is reading about.
 func (h *HedgeReport) tell(news RescueNews) {
-	if h == nil {
-		return
-	}
-	h.mu.Lock()
-	fn := h.onStart
-	h.mu.Unlock()
-	if fn != nil {
+	if fn := h.listener(); fn != nil {
 		fn(news)
 	}
+}
+
+// listener is the registered reader of rescue news, read in its own locked
+// half: the callback it returns runs outside the lock, which is what keeps a
+// slow reader from stalling the race the news is about.
+func (h *HedgeReport) listener() func(RescueNews) {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.onStart
 }
 
 // Reason is the controller's machine word for why something was done.
@@ -313,7 +319,28 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 	// watch's protection; read it before entering this critical section, just as
 	// spend is read after leaving it below.
 	lane := w.race.askedLane(w.arm)
+	facts := w.waitSnapshot(lane)
+	facts.arms, facts.waste, facts.note, facts.refused = w.race.spend(w.arm)
+	facts.hedged = facts.arms > 1
+	// THE LOSER OF A RACE SAYS SO IN WORDS UNTIL THERE IS A FIELD FOR IT. The
+	// recovery design (§7 row R4) wants the outcome itself marked `exhaust`;
+	// the field is internal/calllog's and lands with R0. Meanwhile the row's
+	// own note carries the sentence, which is enough for a census to stop
+	// counting a won race as 1,204 failures — and the note is only written
+	// where the race has nothing else to say, because a race that DID have
+	// something to say about this call is saying the more specific thing.
+	if facts.exhaust && facts.note == "" {
+		facts.note = exhaustNote
+	}
+	return facts, true
+}
+
+// waitSnapshot is this arm's row as its own watch knows it, gathered in one
+// critical section. The race's half — the spend — stays with the caller, for
+// the lock-ordering reason [streamWatch.facts] gives above.
+func (w *streamWatch) waitSnapshot(lane string) waitFacts {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	facts := waitFacts{
 		lane:        lane,
 		deadline:    w.armed,
@@ -329,20 +356,7 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 	if !w.first.IsZero() && !w.began.IsZero() {
 		facts.ttft = w.first.Sub(w.began)
 	}
-	w.mu.Unlock()
-	facts.arms, facts.waste, facts.note, facts.refused = w.race.spend(w.arm)
-	facts.hedged = facts.arms > 1
-	// THE LOSER OF A RACE SAYS SO IN WORDS UNTIL THERE IS A FIELD FOR IT. The
-	// recovery design (§7 row R4) wants the outcome itself marked `exhaust`;
-	// the field is internal/calllog's and lands with R0. Meanwhile the row's
-	// own note carries the sentence, which is enough for a census to stop
-	// counting a won race as 1,204 failures — and the note is only written
-	// where the race has nothing else to say, because a race that DID have
-	// something to say about this call is saying the more specific thing.
-	if facts.exhaust && facts.note == "" {
-		facts.note = exhaustNote
-	}
-	return facts, true
+	return facts
 }
 
 // exhaustNote is what a losing arm's row says about itself. It is a sentence

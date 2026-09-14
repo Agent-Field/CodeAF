@@ -8,7 +8,7 @@ package lane
 // then never gets the evidence that would reverse it, and a ledger that gets
 // faster the more often a lane returns nothing. `bench/lanelab` found both, and
 // the tests here are what they became. The argument is in
-// ideation/provider-routing.md, Part III, and in the doc comments on
+// docs/design/routing/provider-routing.md, Part III, and in the doc comments on
 // [Beta.Upper], [Beta.Toward] and [Ledger.Note].
 
 import (

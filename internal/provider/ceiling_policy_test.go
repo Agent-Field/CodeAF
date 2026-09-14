@@ -37,12 +37,14 @@ func TestADataPolicyRefusalDropsTheCeilingAndTeachesTheLedger(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop",` +
 			`"message":{"role":"assistant","content":"ok"}}]}`))
 	})
-	config := Config{
+	// The ceiling rides the latency ask and only the latency ask, so this rig
+	// says which road it is about ([rankedRoad]).
+	config := rankedRoad(Config{
 		APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
 		HTTPClient: handlerClient(handler), Model: "sim/model",
 		// A known list price is what puts a ceiling on the wire at all.
 		ModelPrice: func(string) (float64, float64, bool) { return 0.66e-6, 1.98e-6, true },
-	}
+	})
 	client, err := NewClient(config)
 	if err != nil {
 		t.Fatal(err)
