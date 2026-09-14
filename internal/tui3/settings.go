@@ -686,7 +686,7 @@ var settingUI = map[string]settingMeta{
 			"answers, and a pinned lane is the whole request; latency asks for the fastest " +
 			"and demotes one that keeps being slow; price asks for the cheapest; off asks " +
 			"for nothing, measures nothing, and leaves the two rows above it with no " +
-			"machine to name.",
+			"machine to name. a change here takes effect on your next message.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
@@ -898,17 +898,29 @@ type sheet struct {
 	conns     Connections
 	modelRows func() []connect.Status
 	sources   modelsource.Set
+	// force is what the wire will do with the `lane` row, asked of the surface
+	// that owns the four states where no machine may be named at all — a hosted
+	// window, routing `off`, no model, a model served direct (lanes.go's
+	// [app.laneForceNow]).
+	//
+	// IT IS A DOOR AND NOT A SNAPSHOT, unlike the two fields under it. The answer
+	// moves inside this panel — a pin written on the row two lines up changes it
+	// in the same keystroke — so a value copied when the panel opened would be
+	// the tail describing the pin before the one a person had just set.
+	force func() laneForce
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
-	// routing is the routing row this session was launched under ([app.routing]),
-	// taken once for the same reason [sheet.sessionModel] is: it is what the
-	// SESSION is routing by, the row itself lands on the next session, and a
-	// panel that re-read it off the disk would explain the `lane` row by a word
-	// nothing is acting on yet.
+	// routing is the routing row in force ([app.routing]), taken when the panel
+	// opens for the same reason [sheet.sessionModel] is — a panel that re-read
+	// the disk on every frame would be a list that moved while somebody looked
+	// at it — and REWRITTEN the moment this panel is the thing that changed it
+	// (lanes.go's [app.routingRowChanged]). The row lands on the next message,
+	// so the sentence explaining the `lane` row under it may not go on
+	// describing the word that was there a keystroke ago.
 	routing string
 	// sessionModel is the model this conversation is on — the FLOOR of every
 	// role's ladder ([roles.Resolve]), and therefore what a role row resolves to
@@ -1202,6 +1214,7 @@ func (a *app) raiseSettings() {
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
 		sources:      a.sources,
+		force:        a.laneForceNow,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
 		routing:      a.routing,
@@ -2185,6 +2198,8 @@ func (a *app) applySetting(item sheetItem, raw string) {
 		a.laneRowChanged()
 	case config.KeyLaneGuard:
 		provider.SetLaneGuard(config.LaneGuardAt(a.profileDir))
+	case config.KeyRouting:
+		a.routingRowChanged()
 	}
 	a.sheet.msg = ""
 	a.sheet.rows = a.sheet.registry.Rows()
@@ -2918,20 +2933,8 @@ func (s *sheet) laneWord(item sheetItem) string {
 	// second time: the two rows are two readings of one fact, and a panel where
 	// they could disagree would be a panel that is wrong about one of them.
 	if row, ok := s.registry.Row(config.LaneSettingKey(talkSlot)); ok {
-		if word := row.Value(); word != "" && !strings.EqualFold(word, config.LaneAuto) {
-			word = strings.ToLower(word)
-			// AND THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE
-			// (issue #433). A base that has answered that it will not carry a
-			// routing preference — a proxy, a mirror, a plain endpoint — leaves
-			// `pinned: cloudflare` standing on the screen as a claim about a
-			// request that did not carry it, which is the silent substitution
-			// this build forbids. The conversation is told once
-			// ([provider.UncarriedPinLine]); this row keeps saying it, because
-			// it is the row somebody comes back to look at.
-			if !provider.BaseTakesLaneChoice() {
-				word += " (not taken on this base)"
-			}
-			return word
+		if tail := laneRowTail(row.Value(), s.laneForce()); tail != "" {
+			return tail
 		}
 	}
 	// AND NAMING THE MACHINE `auto` WOULD USE IS A CLAIM ONLY A CHOOSER CAN
@@ -2947,6 +2950,54 @@ func (s *sheet) laneWord(item sheetItem) string {
 		return "auto (" + strings.ToLower(best.Name) + " now)"
 	}
 	return ""
+}
+
+// laneForce is what the wire will do with the lane row, and the empty answer for
+// a panel nobody handed the door to — a test's bare sheet, which has no surface
+// behind it to ask.
+func (s *sheet) laneForce() laneForce {
+	if s.force == nil {
+		return laneForce{}
+	}
+	return s.force()
+}
+
+// laneRowTail is the model row's machine tail composed from the two facts that
+// decide it: the `lane` row as a person wrote it, and what the wire will do with
+// it ([laneInForce]). Empty means the row names no machine, and the caller falls
+// through to what `auto` may claim.
+//
+// IT IS A FUNCTION OF ITS ARGUMENTS so that every state it has can be read back
+// in one place, and because the three of them are one decision: whether this row
+// may name a machine at all.
+//
+// THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE (issue #433). A base
+// that has answered that it will not carry a routing preference — a proxy, a
+// mirror, a plain endpoint — leaves `pinned: cloudflare` standing on the screen
+// as a claim about a request that did not carry it, which is the silent
+// substitution this build forbids. The conversation is told once
+// ([provider.UncarriedPinLine]); this row keeps saying it, because it is the row
+// somebody comes back to look at.
+//
+// AND A PAIRING THE WIRE HAS RETIRED IS THE SAME SUBSTITUTION ONE STEP LATER
+// (issue #1022). The row on disk still names morph, every request since the
+// refusal has gone out on auto, and a tail reading `pinned: morph` over three
+// such turns is this row claiming a machine nothing asked for. So it says where
+// the requests really go and names whose pin came off, in the sentence's own
+// spelling ([provider.RetiredPinTail]) — while the `lane` row itself is left
+// exactly as the person wrote it, because pinning again puts it straight back.
+func laneRowTail(row string, force laneForce) string {
+	word := strings.ToLower(strings.TrimSpace(row))
+	if word == "" || word == config.LaneAuto {
+		return ""
+	}
+	if stood := force.standDown; stood != "" {
+		return config.LaneAuto + " " + provider.RetiredPinTail(strings.ToLower(stood))
+	}
+	if !provider.BaseTakesLaneChoice() {
+		return word + " (not taken on this base)"
+	}
+	return word
 }
 
 // connBoxRows is the most an open box may take from the list window. Its row

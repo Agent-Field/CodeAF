@@ -848,9 +848,18 @@ func LanePinAt(profileDir, slot string) provider.LanePin {
 // and every client falls to the shipped row together
 // ([provider.DefaultRouting]).
 func InstallLaneRows(profileDir string) {
-	provider.InstallRouting(installedRoutingFor(profileDir))
+	InstallRoutingRow(profileDir)
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+}
+
+// InstallRoutingRow hands the routing row ALONE to the transport, and it is the
+// half of [InstallLaneRows] the settings panel calls by itself: somebody cycles
+// `routing`, the row is written, and the very next request has to go out under
+// it. The lane rows beside it are untouched because nothing about them changed —
+// re-stating a pin here would be a resolver's write nobody asked for.
+func InstallRoutingRow(profileDir string) {
+	provider.InstallRouting(installedRoutingFor(profileDir))
 }
 
 // installedRoutingFor is the routing row as the transport's own vocabulary, and

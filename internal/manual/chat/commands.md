@@ -889,7 +889,8 @@ filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
 and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its lanes.
+model, `enter choose · ← back · esc` inside its lanes — and `enter unpin · ← back · esc`
+on the machine you are already pinned to, where the same key takes the pin off again.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —

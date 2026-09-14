@@ -245,6 +245,22 @@ func InstallRouting(strategy RoutingStrategy) {
 	installedRouting.Store(strategy)
 }
 
+// RoutingNow is the row in force for a caller that hands down none of its own:
+// what this process installed, and [DefaultRouting] where nobody installed
+// anything.
+//
+// It is exported for the gates OUTSIDE this package that have to answer the
+// same question the request path answers ([Client.routingChoice]) — the lane
+// beat in internal/session asks whether the row is `off` before it measures
+// anything. A session that carries no row of its own must read it HERE and not
+// off a field filled in at launch, because the row moves while the process runs:
+// the settings panel writes it and re-installs it in the same keystroke, and a
+// launch snapshot would keep a beat running that a person has just turned off.
+func RoutingNow() RoutingStrategy {
+	strategy, _ := installedRoutingChoice()
+	return strategy
+}
+
 // installedRoutingChoice is the installed row and whether one was installed at
 // all, in the shape [Client.routingChoice] answers in. With none installed the
 // strategy is [DefaultRouting] and the answer to "did somebody choose?" is no,

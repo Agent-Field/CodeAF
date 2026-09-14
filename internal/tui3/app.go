@@ -2281,11 +2281,14 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
-	// routing is the routing row this session was launched under, in the words
-	// the row itself is written in — `latency`, `price`, `simple` or `off`
-	// (internal/config's settings.go). It is read ONCE, here, because that is
-	// when the session reads it — the row lands on the next session — and the
-	// chrome that asks it does so on every frame.
+	// routing is the routing row in force, in the words the row itself is
+	// written in — `latency`, `price`, `simple` or `off` (internal/config's
+	// settings.go). It is read here at launch because the chrome that asks it
+	// does so on every frame and may not read a file to answer, and it is READ
+	// AGAIN the moment this surface writes the row (lanes.go's
+	// [app.routingRowChanged]) — a change lands on the next message, so a field
+	// that only moved at launch would leave the panel explaining `auto` in the
+	// word a person had just replaced.
 	//
 	// THE WHOLE ROW IS KEPT AND NOT ONE READING OF IT. This was a `routingOff
 	// bool`, which answered the only question the surface had while the row had

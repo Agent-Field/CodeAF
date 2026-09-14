@@ -176,14 +176,42 @@ func PersonAtTheDoor() bool { return personAtTheDoor.Load() }
 func readByAPerson(role lanes.Role) bool { return role.Visible() || PersonAtTheDoor() }
 
 func PinnedFor(model string) string {
+	demanded, _ := PinNow(model)
+	return demanded
+}
+
+// PinNow is that answer and the other half of it, read together: the machine a
+// request for model will demand, and the machine a person's row still names
+// after the wire has stopped asking for it ([retirePinnedLane]).
+//
+// TOGETHER FOR [lanePinFor]'s REASON ONE LAYER UP. The two are one fact about
+// one moment — is the row on the wire, and if it is not, whose name is still on
+// the screen — and a surface that asked them as two questions could draw a
+// machine's name beside a sentence saying nothing is asking for that machine,
+// or draw neither.
+//
+// AND IT IS THE ONE DOOR EVERY SURFACE THAT NAMES THE PIN COMES THROUGH
+// (internal/tui3's laneInForce). The chip, the model row's tail and the fold's
+// mark were drawn from the SETTINGS ROW while the wire asked this file, so a
+// pairing the wire retired mid-session left `@morph` on the model word over
+// three turns another machine answered (issue #1022). The model is folded here,
+// by [lanePinFor], under the same normaliser the retirement was written with — a
+// surface folding a spelling of its own would rebuild that disagreement one
+// layer down.
+//
+// A BASE THAT WILL NOT CARRY A LANE CHOICE AT ALL ANSWERS NEITHER, and that is
+// deliberate: no request demands the machine, so nothing may name it, and what
+// a person reads about that is the base's own sentence
+// ([UncarriedPinLine]) rather than this one.
+func PinNow(model string) (demanded, standDown string) {
 	if CurrentLanePin().pinned() == "" || !BaseTakesLaneChoice() {
-		return ""
+		return "", ""
 	}
 	pin, retired := lanePinFor(model)
 	if retired {
-		return ""
+		return "", pin.pinned()
 	}
-	return pin.pinned()
+	return pin.pinned(), ""
 }
 
 // SetLaneGuard turns the speed guard on or off, and it is the ONE switch: it
@@ -395,6 +423,18 @@ const RescueRetired = "retired"
 // otherwise spell one sentence, and a sentence spelled in three places is a
 // sentence that gets reworded in one.
 func RetiredPinLine(lane string) string { return retiredPinLine(lane) }
+
+// RetiredPinTail is the same fact in the room a SETTINGS ROW has for it:
+// `(morph cannot serve this model)`, drawn after the word `auto` on the row
+// whose machine is no longer being asked for (internal/tui3's laneWord).
+//
+// IT IS A THIRD GRAIN OF ONE FACT AND NOT A THIRD CLAIM, which is the same
+// licence the rider and the parked line already take ([retirePinnedLane]): the
+// sentence a person reads in the conversation says what happened and what
+// happens next, and a row they come back to look at has one line to say why the
+// machine they wrote down is not the machine answering. It is spelled here so
+// that all three move together the day the wording moves.
+func RetiredPinTail(lane string) string { return "(" + lane + " cannot serve this model)" }
 
 func retiredPinLine(lane string) string {
 	return lane + " cannot serve this model; routing on auto for this model until you pin again"

@@ -512,9 +512,17 @@ type v3HostChoice struct {
 	// surprise — but it joins one that is already there, so a scripted message
 	// lands in the conversation a person is actually in.
 	once bool
-	// debug is --debug: the model-call record is written by the process that
-	// makes the calls, and over a socket that process is the host, which was
-	// never told to record. So the flag keeps the launch here, where it is real.
+	// debug is THE RECORD'S SWITCH and not the flag alone ([trace.Enabled]): the
+	// model-call record is written by the process that makes the calls, and over
+	// a socket that process is the host, which was never told to record. So a
+	// run that is recording keeps its launch here, where the calls are real.
+	//
+	// IT IS THE SWITCH BECAUSE THE SWITCH HAS THREE DOORS AND THE FLAG IS ONE.
+	// Reading the flag alone meant `AFORGE_DEBUG=1 aforge` took the host road,
+	// and four launches wrote a folder holding run.json and not one request body
+	// — the header written by this process, the calls made by another — while
+	// `aforge chat --debug` wrote them all (issue #1022). The manual advertises
+	// the environment pin for exactly this, so it reaches the same door.
 	debug bool
 	// setup says this machine may still have to be set up — no key it can find —
 	// and setting one up is a conversation with the person at this terminal
