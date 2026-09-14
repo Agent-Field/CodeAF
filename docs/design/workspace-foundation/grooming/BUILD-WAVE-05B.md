@@ -51,9 +51,16 @@ report section and the change entry say so.
 | --- | --- | --- | --- | --- | --- |
 | live 3 | `76f92b88d` | 18:56:23–19:00:38 | **34/35, EXIT 1**. Failed: `nested-file-woke-a-run-and-reached-the-report`. The run did wake on `inbox/clients/acme.md`, and was withheld `unopened-report` (G3). | $0.0383 | [log](validation/w05b-live-journey-run03.log) |
 | live 4 | `8ca78e406` | 19:06:34–19:18:09 | **36/37, EXIT 1**. Failed: `the-reply-explains`, a driver false failure over an honest reply. All tree, relocation, replacement, broadening and setup checks passed, and G3's report published. | $0.0414 | [log](validation/w05b-live-journey-run04.log) |
-| live 5 | `0ad0ccea7` | started 19:18:31 | See *Live 5* below. It is the last retry this round allows. | — | `/tmp/af-pai-next-0914/live/logs/journey-run05.log` |
+| live 5 | `0ad0ccea7` | 19:18:31–19:23:36 | **21/37, EXIT 1**. It was the last retry this round allows. | $0.0306 | [log](validation/w05b-live-journey-run05.log) |
 
-Spend through live 4 was $0.1666 against the $0.50 wave limit.
+Total spend for the wave is **$0.1972** against the $0.50 limit.
+
+**Live 5: why it failed, and the blockers that remain.** The combined journey is **NOT DONE**.
+1. **Runs looped to their step limit (product and model).** Each of runs 000001–000004 was withheld `at-a-limit` with nothing published. Run 000001 made 20 tool calls, repeating `ls inbox` 6 times, `read inbox/a.md` 5 times and `ls reports` 3 times, and never replied with a report. The withholding is truthful: the previous report stayed, and the code was recorded. But a digest of one file should not take 20 steps. Live 1–4 at the same model had no such loop. The cause is not diagnosed: this chat's instructions ("Read all files in inbox/ recursively. If none exist, skip. …"), the step limit it ran under, or model variance. That is the next investigation, not a fix made here.
+2. **The rename was an instructions edit, not a report edit (G2 not reliably closed).** "rename the digest file: keep it at reports/weekly-digest.md" revised the instructions to mention `reports/weekly-digest.md` while `does.report` stayed `reports/digest.md` (spec 3). The schema text fixed live 2's case in one sample, and live 5 shows it does not hold. A structural seam is needed, and none is chosen here: for example, the named-report refusal that already reads the person's sentence for a file could also apply to an edit whose sentence names a new report path.
+3. **Driver cascade (a driver defect).** When the rename failed, the driver's terminal `standing add --report reports/weekly-digest.md` probe (meant to be refused) succeeded. It created a live item, and every later step judged that item: pause, stop, broadening and setup checks. The driver must stop any item its own probe created and keep judging the chat's item. So in live 5, the checks after the rename step are not evidence either way.
+
+Live 5's second-folder turn left the project tree untouched and made no replacement of the chat's item. The `no-covert-broader-watch` and `existing-setup-kept-…` failures are the cascade's item, not the chat's.
 
 **Acceptance reviews (independent, read-only Opus, no compiles).**
 - **Of `76f92b88d`: not fit.** The one blocker was that a model's `ask` goes to question watchers, never the turn stream, so an `Interactive` turn would wait out its 5-minute limit. There were also five should-fix items: the Priya fact alone proves nothing; relocation is evadable by copy or link; the reply check was trivial; approval ignored subfolders; the picker could choose a move. All were fixed in `8ca78e406`.

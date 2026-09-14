@@ -17,8 +17,10 @@ when each was written; the current source and this section are authoritative.
     assert no relocation, broadening, replacement or unapproved workaround in the
     second-folder turn. Live 3 34/35 at `76f92b88d` (a product failure, G3, fixed) and live 4
     36/37 at `8ca78e406` (a driver false failure over an honest reply, corrected) both exit 1
-    and stay failed. Live 5 at `0ad0ccea7` is the last allowed retry: tick this only on its
-    exit-0 receipt (BUILD-WAVE-05B.md, *Round 2*). Spend $0.1666 through live 4.
+    and stay failed. Live 5 at `0ad0ccea7`, the last allowed retry, came to **21/37, EXIT 1**. Three
+    blockers remain (BUILD-WAVE-05B.md, *Live 5*): runs looping to their step limit; a rename
+    edited the instructions and not `does.report`, so G2 is not reliably closed; and a driver
+    cascade after the probe add. Wave spend $0.1972.
   - [x] A report opening tag glued to its first line opens the report (G3; regression fails at
     `a3252e8f3`).
   - [x] A file watch's `when ·` line is said by its pattern on every surface (G1; regression
