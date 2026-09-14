@@ -6,9 +6,9 @@ import (
 )
 
 // ReadOnly reports whether a call can change nothing: a look at a file, a
-// listing, a search, a tasks look, or `git status`. It is the other half of
-// [AlwaysAsks] — that floor holds a prompt under a blanket allow; this one
-// lifts a default prompt off a call that cannot mutate anything.
+// listing, a search, a tasks look, an accounts listing, or `git status`. It is
+// the other half of [AlwaysAsks] — that floor holds a prompt under a blanket
+// allow; this one lifts a default prompt off a call that cannot mutate anything.
 //
 // IT IS NOT A LICENCE TO IGNORE A RULE SOMEBODY WROTE. [Policy.Check] consults
 // it only when the blanket default is prompt and no tool rule or bash pattern
@@ -24,6 +24,8 @@ func ReadOnly(tool string, args json.RawMessage) bool {
 	switch tool {
 	case "read", "ls", "grep", "find":
 		return true
+	case "services":
+		return true
 	case "tasks":
 		return readOnlyTasks(args)
 	case ToolBash:
@@ -34,6 +36,15 @@ func ReadOnly(tool string, args json.RawMessage) bool {
 	}
 }
 
+// asksForItself reports the tool whose own question is the consent for what it
+// does. `use_service` may write an account credential, so it is not read-only;
+// its connect card is the one question about that write, and every tool it
+// brings is still judged on its own call. Asking for permission to reach that
+// card would put a duplicate question in front of the person.
+func asksForItself(tool string) bool {
+	return strings.TrimSpace(tool) == "use_service"
+}
+
 // maybeAllowReadOnly turns a default prompt into an allow for a call that
 // cannot change anything. An explicit tool rule still wins: someone who wrote
 // `read:prompt` asked to be asked.
@@ -42,6 +53,15 @@ func (p Policy) maybeAllowReadOnly(tool string, args json.RawMessage, decision D
 		return decision
 	}
 	return Decision{Action: ActionAllow, Rule: "read-only"}
+}
+
+// maybeAllowSelfAsking lifts only the shipped blanket prompt. A rule naming
+// `use_service` still wins, just as a rule naming a read-only tool does.
+func (p Policy) maybeAllowSelfAsking(tool string, decision Decision) Decision {
+	if decision.Action != ActionPrompt || !p.liftsReadOnly(tool) || !asksForItself(tool) {
+		return decision
+	}
+	return Decision{Action: ActionAllow, Rule: "the tool asks for itself"}
 }
 
 // liftsReadOnly is the gate on the lift: only the shipped default (an
