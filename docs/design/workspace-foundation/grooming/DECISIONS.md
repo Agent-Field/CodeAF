@@ -196,3 +196,15 @@ analysis run through Claude Code Opus on Spark. Do not silently fall back to Cod
 coding if Opus is slow or unavailable. Report an actual access blocker. Claude Code
 availability and an authenticated Claude subscription were checked on Spark on
 2026-09-10. C25 Spark-only compilation/testing and C21 expensive-test deferral remain.
+
+C27 (2026-09-14, confirmed by the user during TUI checkpoint 2: "we cant use commercial
+models only opensource so use glm5.3 flash instead for instance"): aforge product runs,
+validation and demonstrations use open-weight models only. Claude Code Opus remains the
+explicitly requested implementation and review worker; it is not an aforge product model.
+Earlier Haiku exploration stays as historical evidence and is not acceptance. The named
+example resolved exactly to OpenRouter `z-ai/glm-5.3-flash` (Hugging Face
+`zai-org/GLM-5.3-Flash`, MIT, not gated, tools on every listed endpoint, catalog fetched
+2026-09-14T21:17Z). What is decided is the constraint and the example model; the other
+fixture rows (DeepSeek V4/V4.1 Flash MIT, Qwen3.8-27B and Mistral-Nemo Apache-2.0) are the
+coordinator's choice under it, and no product-wide gate enforces the constraint yet — the
+making verbs and listening/watching still resolve from the catalog (BUILD-TUI-02.md).

@@ -395,3 +395,27 @@ records, expose pause/resume/stop through the standing owner's existing verbs on
 observe a file change reach state, report and cause after an explicit check. Report-path
 edits stay on the chat card and are not promised (W5-B G2 remains unreliable).
 
+
+## Checkpoint 2 — continuing work in the same fixture (2026-09-14)
+
+**Confirmed by the user during this checkpoint:** aforge product runs, validation and demos
+use open-weight models only (DECISIONS C27; example `z-ai/glm-5.3-flash`). The earlier
+DeepSeek failure was diagnosed from tool calls and results, not model reasoning: the model
+ran was DeepSeek V4 Flash 0731 behind a floating alias (not V4.1 Flash), `stand` was on its
+belt and in its prompt, and it looped on listing and reading instead of proposing — a model
+limitation, so no product change was made for it.
+
+**What a person can now do** ([BUILD-TUI-02.md](BUILD-TUI-02.md)): in the Product reports
+chat, which is filed and placed in Product, say "keep reports/product-digest.md current
+whenever a file in product/ changes"; answer the card, which shows Product's rule reaching
+the work; select the work in `folders` and read what its owner recorded — last run, the
+file that caused it, the rule it was held to by id, what was published and its receipt, how
+checks happen on this machine; pause, start again and stop with `p`/`s`; and change the
+instructions with `e`, which opens the same chat and applies the change only on its card.
+Accepted in a real terminal on GLM-5.3-Flash with Qwen3.8-27B checking the rule, every
+model call open-weight, about $0.03.
+
+**Recommendations, not decisions:** make the open-weight constraint a product gate rather
+than a fixture's rows (the making verbs are still unpinned); say the stored per-day limit on
+the card when the person named none; word the edit card's yes as a change. Checkpoint 3
+(guidance and the Product → Marketing watch) stays next.

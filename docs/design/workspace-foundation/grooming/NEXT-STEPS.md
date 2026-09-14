@@ -17,9 +17,18 @@ fixture.
   `bin/aforge` in tmux on Spark, wide and narrow, keyboard and mouse, 48/48 checks.
   Stable demo: `/home/santosh/src/af-pai-demo-36922486c` + `/home/santosh/aforge-pai-demo-36922486c`.
 - [ ] The person tries checkpoint 1; record friction in PRODUCT-EXPERIENCE-PATH.
-- [ ] TUI checkpoint 2 — continuing work: owner-backed work inspector, pause/resume/stop
-  through the standing owner's existing verbs, a file change observed after an explicit
-  check. Report-path edits not promised while W5-B G2 is open.
+- [x] **TUI checkpoint 2 — continuing work.** `9d9beebc3` on the same lane; record
+  [BUILD-TUI-02.md](BUILD-TUI-02.md). Set up through the Product reports chat, Folders
+  inspector from the owner's records, `p`/`s` through the standing seam, `e` into the
+  setup chat's edit card; real `bin/aforge` in tmux on Spark against an isolated profile:
+  run on change, pause ⇒ no run, resume ⇒ pending change observed, edit ⇒ v2, stop ⇒ no
+  run or restart. Open-weight models only (DECISIONS C27: `z-ai/glm-5.3-flash`), no closed
+  model in the call log; checkpoint-2 spend ≈ $0.18 incl. retained exploration. Report-path
+  renames still not promised (W5-B G2).
+- [ ] Make open-weight-only a product gate (making verbs and listening/watching still
+  resolve from the catalog); fix `find` on a belt with no `fd`; v1 `aforge models` ignores
+  `model.talk`. Recommendations from checkpoint 2, not scheduled.
+- [ ] TUI checkpoint 3 — guidance and the Product → Marketing explicit watch.
 - [ ] Full tui3 and cmd/aforge suites and the tagged E2E package were not run for checkpoint 1. Each usable demo will pin its source
 and profile independently of further development. Product recommendations not
 explicitly settled remain recommendations. No dev import or quarantined changes
