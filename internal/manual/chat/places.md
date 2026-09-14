@@ -595,7 +595,7 @@ offer them.`
 
 **Every one of the eight words is still on the bar at 60 columns.** What a narrow frame
 gives up is the *air around the words*, not a place. The eight words with the padding each
-chip carries are 66 cells and the spaces between them are seven more, so from 66 to 72
+chip carries fill 67 columns and the spaces between them are seven more, so from 67 to 73
 columns the spaces go and every word keeps its padding. Below that the words nobody is
 standing on give up their padding too, and one space separates them; only the word wearing
 the band keeps its cells. A 60-column split pane standing on home draws
@@ -607,7 +607,7 @@ the band keeps its cells. A 60-column split pane standing on home draws
 Nothing else changes: the band under the word you are standing in, the counts, `tab`, `←`
 `→` and `alt+1`…`alt+8` mean what they mean on a wide screen.
 
-**Under about 58 columns the bar carries what it can and counts the rest.** It keeps the
+**Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
 place you are standing in, the word the cursor is on, and any place wearing a count, then
 fills in the bar's own order until the row is full and ends with a dim `▸ 3` — the number of
 places that are not on the row:

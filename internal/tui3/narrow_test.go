@@ -587,3 +587,26 @@ func TestAGateCardKeepsTheKeyThatAnswersItAtEveryWidth(t *testing.T) {
 		}
 	}
 }
+
+// THE BARE RUNG DOES NOT MOVE UNDER THE BAR'S CURSOR. Only the place you are
+// standing in keeps its padding there, so walking the cursor along the words
+// leaves every word in the cell it was in — and the cell between two bare words
+// belongs to the word after it, so no click between them lands on nothing.
+func TestTheBareBarHoldsStillWhileItsCursorWalks(t *testing.T) {
+	a := placeApp(t)
+	rest := plain(a.placeTabBar(60, false, a.pal))
+	a.bar.on = true
+	for _, at := range pages() {
+		a.bar.at = at
+		if got := plain(a.placeTabBar(60, false, a.pal)); got != rest {
+			t.Fatalf("with the bar's cursor on %q the bare bar moved:\n\t%q\nfrom\n\t%q", at.word(), got, rest)
+		}
+	}
+	a.bar.on = false
+	a.placeTabBar(60, false, a.pal)
+	for i := 1; i < len(a.tabs); i++ {
+		if a.tabs[i].from != a.tabs[i-1].to {
+			t.Fatalf("a dead cell between %q and %q on the bare bar: %+v", a.tabs[i-1].id.word(), a.tabs[i].id.word(), a.tabs)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
@@ -25,8 +26,8 @@ import (
 // directory, starts work or grants anything — every method is a reading.
 //
 // ADDITIVE, AS THE LATE PLACES ARE. An engine that predates these answers
-// `engine: no such method`, and the surface draws that as a machine whose aforge
-// cannot list folders — never as a machine with none (wire_places.go states the
+// `engine: no such method`, and the surface draws that as `could not read this
+// folder · engine: no such method "Collections.Page"` — never as a machine with none (wire_places.go states the
 // bargain). And a surface over a connection NEVER opens its own database instead:
 // the folders of the laptop are not the folders of the machine running the work.
 const (
@@ -61,6 +62,9 @@ type EngineCollections struct {
 // collectionsOffWord is the refusal for an engine built without the readings.
 const collectionsOffWord = "this engine cannot read its folders"
 
+// collectionsCallTimeout bounds one reading on the engine's side of the wire.
+const collectionsCallTimeout = 15 * time.Second
+
 // collectionsCall answers the three readings, and says whether the method was
 // one of them.
 func (s *server) collectionsCall(call Frame) (json.RawMessage, bool, error) {
@@ -68,7 +72,12 @@ func (s *server) collectionsCall(call Frame) (json.RawMessage, bool, error) {
 	sess.mu.Lock()
 	doors := sess.engine.Collections
 	sess.mu.Unlock()
-	ctx := context.Background()
+	// A SERVER-SIDE BOUND AS WELL AS THE SURFACE'S: calls are answered one at a
+	// time on this connection, so a reading that could not finish must not hold
+	// every later call behind it. The database honours it; the file preview
+	// refuses anything that could block before it opens (workspaceview.Artifact).
+	ctx, cancel := context.WithTimeout(context.Background(), collectionsCallTimeout)
+	defer cancel()
 
 	switch call.Method {
 	case MethodCollectionsPage:

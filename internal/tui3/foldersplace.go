@@ -279,7 +279,7 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 	switch row.Ref.Kind {
 	case workspace.ConversationKind:
 		fact("state", drawableLine(row.State))
-		fact("project", path(row.Location))
+		fact("project", drawableLine(path(row.Location)))
 		if in.chat != nil {
 			fact("spoke", sinceWord(in.chat.At))
 		}
@@ -289,7 +289,7 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 		if in.owner != nil {
 			fact("in chat", drawableLine(in.owner.Title))
 		}
-		fact("where", path(row.Location))
+		fact("where", drawableLine(path(row.Location)))
 	case workspace.StandingKind:
 		if in.item != nil && in.item.Standing != nil {
 			item := in.item.Standing
@@ -306,10 +306,10 @@ func collectionInspectLines(in collectionInspect, width int, pal palette) []stri
 		} else {
 			failed("state", "standing")
 			fact("state", drawableLine(row.State))
-			fact("project", path(row.Location))
+			fact("project", drawableLine(path(row.Location)))
 		}
 	case workspace.ArtifactKind:
-		fact("where", path(row.Location))
+		fact("where", drawableLine(path(row.Location)))
 		if in.size > 0 || !in.modified.IsZero() {
 			fact("size", strings.Trim(sizeWord(in.size)+" · changed "+sinceWord(in.modified), " ·"))
 		}
