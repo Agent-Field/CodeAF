@@ -204,31 +204,16 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 	return folded
 }
 
-// errandPartsFloor is the smallest number of genuinely independent parts a
-// one-shot errand's plan may be admitted with. It is three and not the
-// evidence gate's six because the two gates count different things: the floor
-// counts items enumerated in a brief, and this counts parts a planner has
-// already drawn. The measurement it comes from is issue #1007's live cell:
-// `aforge do` divided a two-file fix into three task nodes, burned its whole
-// token budget and never settled, where one worker did the same job and
-// landed. Below three independent parts a division buys no simultaneity worth
-// what each part costs — a briefing, a working copy and a wait apiece —
-// because two parts is one worker doing them in order however they are drawn.
-const errandPartsFloor = 3
 
 // gateErrandDivision is the smallness gate on the `aforge do` door, and it
 // stands on that door ONLY. A conversation plans wide on purpose — visible
 // fan-out is the product there, and a person is watching — but a one-shot
-// errand is one job with nobody to ask and one budget, and the measured cost
-// of letting its planner divide small work is the whole run spent on
-// coordination. So before any division is admitted here the plan must name at
-// least errandPartsFloor genuinely independent parts; below that the errand
-// runs as one worker, the shape `aforge exec` would have given it.
-//
-// It counts the plan and not the goal's text, which is what splitgate's
-// evidence floor counts. divide_work's own gate reads prose because prose is
-// all a dividing worker holds; here the parts exist, so what each one waits
-// on is read directly rather than guessed out of wording.
+// errand is one job, one budget and nobody to ask. Measured on the 17-minute
+// cell that ran the floor-of-three here: the parts number passes whatever the
+// planner is told to draw, which is all of it, so the counts that pass any
+// floor are the counts that still settle badly. So an errand folds — always —
+// and the claim-time JIT is still in charge,
+// because the one worker on the whole goal may still split at claim time.
 func gateErrandDivision(graph *plan.Graph) int {
 	if graph == nil {
 		return 0
@@ -237,16 +222,10 @@ func gateErrandDivision(graph *plan.Graph) int {
 	if len(leaves) < 2 {
 		return 0
 	}
-	independent := independentParts(graph, leaves)
-	if independent >= errandPartsFloor {
-		return 0
-	}
-	folded := foldPlanToOneLeaf(graph, fmt.Sprintf(
-		"smallness gate: the plan names %d independent parts, under the %d-part floor a one-shot errand divides at — one sitting",
-		independent, errandPartsFloor))
-	log.Printf("smallness gate: collapsed %d leaves to one (plan names %d independent parts, floor %d)",
-		folded, independent, errandPartsFloor)
-	return folded
+	foldPlanToOneLeaf(graph,
+		"smallness gate: a one-shot errand runs as one worker — division is left to the claim-time JIT")
+	log.Printf("smallness gate: collapsed %d leaves to one (errand folds unconditionally)", len(leaves))
+	return len(leaves)
 }
 
 // independentParts counts the planned work nodes that wait on no other work
