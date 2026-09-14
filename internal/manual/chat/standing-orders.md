@@ -864,6 +864,29 @@ after your yes and before the work exists — at the terminal too; if that fails
 is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
 show` says `set up by: person, through the chat`.
 
+## Ongoing work in the folders place — last run, why it ran, where the report went, pause, stop
+
+Select ongoing work in `folders` (`alt+8`) and its details are its owner's own records:
+`state` (`active`, `paused`, `stopped`, or `checking now · since 4s`), `wakes`, `report ·
+reports/x.md · published by aforge`, `last run` (when · how it came out · instructions
+version · cost), `why` (the files that changed), `published` (path · size · when), `held to`
+(the rules check), `checks`, `limits`, `version · instructions v2`, `does`, `on disk` (what
+aforge last put at the report path, with its sha) and `before` (earlier runs).
+
+**How it gets checked is said, never assumed:** `this window's engine checks every 5
+minutes while it is open`, `no background timer for this home` or `a background timer
+checks this home`, and `or run aforge standing check`. Nothing there installs a timer.
+
+**When the report and the words disagree**, a warning says so — `the last report went to
+A; the next goes to B`, or `the instructions also name X; aforge publishes only Y` — and
+nothing is changed.
+
+**Controls:** `→`, then `p pause` or `p start again`, and `s stop` — the same writes as home
+and the standing place; a stopped item offers none (set it up afresh). `e edit in its chat`
+opens the conversation it was set up in with `Change the ongoing work “…”: ` in the box;
+nothing changes until that chat's edit card gets your yes. Renaming or moving the report
+through the chat is not reliable yet: read `report` afterwards.
+
 ## Change ongoing work from the chat — edit what stands, keep what it read and published
 
 Say what is different — "also list who owns each request", "make it every hour" — and

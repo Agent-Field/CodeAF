@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
 )
@@ -42,6 +43,11 @@ type collectionLab struct {
 	opens  []string
 	shared string
 	spec   string
+	// work and facts are what the owner answers for the ongoing row "digest",
+	// and saves the statuses written through the standing seam.
+	work  *standing.Item
+	facts *workspaceview.WorkFacts
+	saves []standing.Status
 }
 
 func newCollectionLab(t *testing.T, width int) *collectionLab {
@@ -111,12 +117,23 @@ func newCollectionLab(t *testing.T, width int) *collectionLab {
 			if ref.ID == collectionLabShared {
 				item.FiledIn = []workspace.Collection{{ID: "product", Name: "Product"}, {ID: "marketing", Name: "Marketing"}}
 			}
+			if ref.ID == "digest" && f.work != nil {
+				work := *f.work
+				item.Standing, item.Work = &work, f.facts
+			}
 			return item, nil
 		},
 		File: func(_ context.Context, path string) (workspaceview.ArtifactPreview, error) {
 			f.files++
 			return workspaceview.ArtifactPreview{Path: path, Size: 40, Text: "# Product spec\n- Offline support: desktop\n"}, nil
 		},
+	}
+	a.stands.Save = func(item standing.Item) error {
+		f.saves = append(f.saves, item.Status)
+		if f.work != nil && item.ID == f.work.ID {
+			f.work.Status = item.Status
+		}
+		return nil
 	}
 	opened := a.open
 	a.open = func(workspace, transcript string) (Conversation, error) {
@@ -442,5 +459,115 @@ func TestABeatDoesNotOutrunAFolderReadingThatIsStillOut(t *testing.T) {
 	}
 	if !(placeFolders{}).tick(f.a, time.Now()) {
 		t.Fatal("once the answer landed the beat did not read the folder again")
+	}
+}
+
+// digestWork is the ongoing row's owner record for the tests below: a watch on
+// product/* keeping reports/product-digest.md, on its second instructions, set
+// up in the roadmap chat, whose last run published to a different path than the
+// one now stored and whose instructions name yet another file.
+func (f *collectionLab) digestWork(now time.Time) {
+	f.work = &standing.Item{
+		ID: "digest", Words: "keep the product digest current", Status: standing.StatusActive,
+		When:         standing.When{Kind: standing.WhenFile, Glob: "product/*"},
+		Does:         standing.Action{Kind: standing.ActionTask, Brief: "rewrite the digest; see reports/old-digest.md", Report: "reports/product-digest.md"},
+		Rails:        standing.Rails{PerRunUSD: 0.05, MaxPerDay: 10},
+		SpecRevision: 2,
+		Origin:       standing.Origin{SessionID: collectionLabRoad},
+	}
+	f.facts = &workspaceview.WorkFacts{
+		Named: []string{"reports/old-digest.md"},
+		Runs: []standing.Occurrence{{
+			Spec: 2, Phase: "finished", Outcome: "landed", USD: 0.012, Finished: now.Add(-2 * time.Minute),
+			Changes:   []standing.Change{{Kind: "modified", Path: "product/spec.md"}},
+			Published: &standing.Publication{Path: "reports/digest.md", Bytes: 412, At: now.Add(-2 * time.Minute)},
+			RuleCheck: &standing.RuleCheck{Rules: []string{"rule1"}, Verdict: "kept"},
+		}},
+		Receipt: &standing.Receipt{Bytes: 412, SHA256: "0123456789abcdef", At: now.Add(-2 * time.Minute)},
+		Checks:  &workspaceview.CheckWays{Window: true, TimerKnown: true},
+	}
+}
+
+// ONGOING WORK IS READ AS ITS OWNER RECORDS IT, AND A DISAGREEMENT IS SAID. The
+// inspector names the trigger, the stored report and who writes it, the limits,
+// the instructions version, the last run's cause, result, publication and rules
+// check, how checks happen here — and, without changing anything, that the last
+// report went somewhere else and that the instructions name another file.
+func TestOngoingWorkShowsItsRunsReportLimitsAndHowItIsChecked(t *testing.T) {
+	f := newCollectionLab(t, 180)
+	f.a.height = 60
+	f.digestWork(time.Now())
+	f.walk(t, "Startup", "Product")
+	f.pick(t, "keep the product digest current")
+	screen := strings.Join(strings.Fields(f.frame()), " ")
+	for _, want := range []string{
+		"when product/* changes", "reports/product-digest.md · published by aforge", "$0.05 a run · 10 runs a day",
+		"instructions v2", "modified product/spec.md", "held to kept · 1 rule", "412 bytes",
+		"the last report went to reports/digest.md; the next goes to reports/product-digest.md",
+		"the instructions also name reports/old-digest.md; aforge publishes only reports/product-digest.md",
+		"no background timer for this home", "or run aforge standing check",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the ongoing work's inspector does not say %q:\n%s", want, f.frame())
+		}
+	}
+}
+
+// ITS CONTROLS ARE ITS OWNER'S, AND ONLY WHILE THE OWNER CAN CARRY THEM OUT.
+// `p` pauses and starts again and `s` stops through the standing seam, the
+// inspector reads the owner again after each, `e` opens the chat the work was set
+// up in with the start of a change in its box and changes nothing itself, and a
+// stopped item offers none of the three.
+func TestOngoingWorkIsPausedStoppedAndEditedOnlyThroughItsOwners(t *testing.T) {
+	f := newCollectionLab(t, 180)
+	f.digestWork(time.Now())
+	f.walk(t, "Startup", "Product")
+	f.pick(t, "keep the product digest current")
+	f.frame()
+	drive(t, f.a, key("right"))
+	strip := f.frame()
+	for _, want := range []string{"p pause", "s stop", "e edit in its chat"} {
+		if !strings.Contains(strip, want) {
+			t.Fatalf("the strip on ongoing work does not offer %q:\n%s", want, strip)
+		}
+	}
+	before := f.items
+	drive(t, f.a, key("p"))
+	if len(f.saves) != 1 || f.saves[0] != standing.StatusPaused || !strings.Contains(f.a.pageMsg, "paused") {
+		t.Fatalf("p wrote %v and said %q", f.saves, f.a.pageMsg)
+	}
+	if f.items == before {
+		t.Fatal("the owner was not read again after the pause")
+	}
+	drive(t, f.a, key("right"))
+	if strip := f.frame(); !strings.Contains(strip, "p "+standResumeWord) {
+		t.Fatalf("a paused item's strip does not offer to start again:\n%s", strip)
+	}
+	drive(t, f.a, key("p"))
+	if f.saves[len(f.saves)-1] != standing.StatusActive {
+		t.Fatalf("the second p wrote %v", f.saves)
+	}
+
+	drive(t, f.a, key("right"), key("e"))
+	if f.a.at(pageFolders) || len(f.opens) == 0 || !strings.HasSuffix(f.opens[len(f.opens)-1], collectionLabRoad+"/transcript.jsonl") {
+		t.Fatalf("e did not open the chat the work was set up in: opens %v", f.opens)
+	}
+	if got := f.a.input.String(); !strings.HasPrefix(got, "Change the ongoing work “keep the product digest current”: ") {
+		t.Fatalf("the box after e reads %q", got)
+	}
+	if len(f.saves) != 2 {
+		t.Fatalf("e wrote to the owner: %v", f.saves)
+	}
+
+	f.work.Status = standing.StatusRetired
+	drive(t, f.a, runCmd(f.a.showPage(pageFolders))...)
+	f.pick(t, "keep the product digest current")
+	f.frame()
+	if verbs := (placeFolders{}).verbs(f.a); len(verbs) != 2 {
+		t.Fatalf("a stopped item still offers controls: %d verbs", len(verbs))
+	}
+	f.pages["product"].Rows[4].State = string(standing.StatusRetired)
+	if screen := f.frame(); !strings.Contains(screen, "ongoing work · stopped") {
+		t.Fatalf("a stopped item's row does not say stopped:\n%s", screen)
 	}
 }

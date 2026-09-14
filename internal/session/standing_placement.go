@@ -624,6 +624,27 @@ func standingNamedReport(parsed standArguments, item standing.Item) string {
 	}
 }
 
+// StandingNamedFiles is the files an item's own words and instructions name
+// that COULD be its report, by the same law the chat's refusal reads a sentence
+// with ([standingNamedReport]), less the report it actually keeps. A surface
+// shows them beside the stored destination so a person can see when the words
+// talk about one file and aforge publishes another — it never changes either.
+func StandingNamedFiles(item standing.Item) []string {
+	var named []string
+	for _, text := range []string{item.Words, item.Does.Brief} {
+		for _, field := range strings.Fields(text) {
+			path := strings.TrimRight(strings.Trim(field, "\"'`“”‘’,;:!?()[]{}<>"), ".")
+			if path == "" || filepath.Clean(path) == filepath.Clean(item.Does.Report) {
+				continue
+			}
+			if standingLooksLikeFile(path) && standingCouldReport(item, path) && !slices.Contains(named, path) {
+				named = append(named, path)
+			}
+		}
+	}
+	return named
+}
+
 // standingCouldReport answers whether path could be this item's report at all,
 // by [standing.Item.Validate] — the report law every door admits an item under:
 // relative, inside the project, outside its own watch and the folders it

@@ -56,11 +56,12 @@ func run(args []string) error {
 	launch := flags.String("launch", "", "an aforge binary to run against the demo home once it is built")
 	reuse := flags.Bool("keep", false, "reuse a directory that already holds a demo home instead of refusing it")
 	personal := flags.Bool("personal", false, "write the small personal fixture into --into, used as AFORGE_HOME (seed_personal.go)")
+	stage := flags.Int("stage", 1, "with --personal: 1 is checkpoint 1's fixture; 2 leaves the report to be set up through a chat")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *personal {
-		return runPersonal(*into, time.Now())
+		return runPersonalStage(*into, time.Now(), *stage)
 	}
 
 	dir, fresh, err := demoDir(*into, *reuse)

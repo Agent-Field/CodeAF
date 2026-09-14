@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/aforge-v2/internal/workspaceview"
 )
@@ -154,6 +155,8 @@ const (
 	foldersMoreWord = "more are in this folder than one page shows"
 	// foldersReadingWord stands in the list until the first answer lands.
 	foldersReadingWord = "reading this folder…"
+	// foldersInspectMoreWord ends an inspector column that could not hold every fact.
+	foldersInspectMoreWord = "▸ more · → d details"
 )
 
 // The verbs on a row's strip and the words of its foot.
@@ -163,6 +166,7 @@ const (
 	foldersDetailWord  = "details"
 	foldersBackWord    = "← back out"
 	foldersPreviewWord = "preview"
+	foldersEditWord    = "edit in its chat"
 )
 
 func (p *foldersPlace) current() string {
@@ -680,6 +684,12 @@ func (p *foldersPlace) body(a *app, width, room int) []placeRow {
 		if _, ok := p.selected(); ok {
 			inspect = collectionInspectLines(p.inspect(a, inspectWidth), inspectWidth, a.pal)
 		}
+		// A COLUMN TOO SHORT FOR EVERY FACT SAYS SO on its last line and names the
+		// page that carries them all, rather than ending mid-record as if that were
+		// everything the owner said.
+		if len(inspect) > listRoom && listRoom > 0 {
+			inspect = append(inspect[:listRoom-1], a.pal.dim(fit(foldersInspectMoreWord, inspectWidth)))
+		}
 	}
 	for i := 0; i < listRoom; i++ {
 		left, at := "", -1
@@ -783,7 +793,7 @@ func (placeFolders) verbs(a *app) []verb {
 	case workspace.ArtifactKind:
 		open = foldersPreviewWord
 	}
-	return []verb{
+	verbs := []verb{
 		{key: 'o', word: open, do: func() tea.Cmd { return p.enter(a) }},
 		{key: 'd', word: foldersDetailWord, do: func() tea.Cmd {
 			p.detail, p.detailTop = true, 0
@@ -791,6 +801,103 @@ func (placeFolders) verbs(a *app) []verb {
 			return nil
 		}},
 	}
+	return append(verbs, p.workVerbs(a, row)...)
+}
+
+// workVerbs are the controls ongoing work carries here, and ONLY THE ONES ITS
+// OWNER CAN CARRY OUT: `p` and `s` are home's and the standing place's own
+// letters and words, written through the same seam ([StandingSeam.Save], which
+// is the store's SetStatus on every road); `e` takes the person to the chat the
+// work was set up in, where a change is made on the existing edit card after a
+// yes. A stopped item offers none of them — a stopped item is set up afresh —
+// and a surface whose door wired no way to write offers no `p` or `s`.
+//
+// THE READING THE LETTERS ACT ON IS THE OWNER'S LATEST, never the page row: the
+// item comes from the close reading of this row, so a state the page drew a beat
+// ago cannot be written back.
+func (p *foldersPlace) workVerbs(a *app, row workspaceview.FolderRow) []verb {
+	if row.Ref.Kind != workspace.StandingKind || p.item == nil || p.item.Standing == nil || p.itemRef != row.Ref {
+		return nil
+	}
+	item := *p.item.Standing
+	if item.Status == standing.StatusRetired {
+		return nil
+	}
+	var verbs []verb
+	if a.stands.Save != nil {
+		word, status := homeItemPauseWord, standing.StatusPaused
+		if item.Status == standing.StatusPaused {
+			word, status = standResumeWord, standing.StatusActive
+		}
+		verbs = append(verbs,
+			verb{key: 'p', word: word, do: func() tea.Cmd { return a.foldersWorkWrite(item, status) }},
+			verb{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.foldersWorkWrite(item, standing.StatusRetired) }},
+		)
+	}
+	if strings.TrimSpace(item.Origin.SessionID) != "" {
+		verbs = append(verbs, verb{key: 'e', word: foldersEditWord, do: func() tea.Cmd { return a.foldersEditInChat(item) }})
+	}
+	return verbs
+}
+
+// foldersWorkWrite is `p` or `s` on ongoing work: the status is written through
+// the owner, what the person sees next is the owner's answer read again, and a
+// refusal is said in the store's own words.
+func (a *app) foldersWorkWrite(item standing.Item, status standing.Status) tea.Cmd {
+	p := &a.browse
+	item.Status = status
+	if status == standing.StatusRetired {
+		item.RetiredWhy = homeStoppedWhy
+	}
+	if err := a.stands.Save(item); err != nil {
+		a.pageMsg = drawableLine(err.Error())
+		a.touch()
+		return nil
+	}
+	receipt := homeItemPaused
+	switch status {
+	case standing.StatusActive:
+		receipt = standResumedWord
+	case standing.StatusRetired:
+		receipt = homeItemStopped
+	}
+	a.pageMsg = receipt + " · " + drawableLine(strings.TrimSpace(item.Title()))
+	a.standRailAt = time.Time{}
+	a.touch()
+	row, ok := p.selected()
+	if !ok {
+		return a.foldersReadPage()
+	}
+	p.itemGen++
+	return tea.Batch(a.foldersReadPage(), a.foldersReadRow(p.itemGen, row.Ref, false))
+}
+
+// foldersEditInChat opens the conversation ongoing work was set up in, with the
+// start of a change in its box. NOTHING IS CHANGED HERE: the words go nowhere
+// until the person finishes and sends them, and the work changes only on the
+// chat's own edit card after a yes.
+func (a *app) foldersEditInChat(item standing.Item) tea.Cmd {
+	p := &a.browse
+	p.world = a.readWorld()
+	chat, found := foldersSession(p.world, item.Origin.SessionID)
+	if !found {
+		a.pageMsg = foldersNoChatWord
+		a.touch()
+		return nil
+	}
+	cmd := a.openConversationRow(chat)
+	if a.at(pageFolders) {
+		// The door refused, and it said why on this page.
+		return cmd
+	}
+	a.input.setText(foldersEditLead(item))
+	return cmd
+}
+
+// foldersEditLead is the start of the sentence the edit verb leaves in the box:
+// the work named by the person's own words, so the chat edits that item.
+func foldersEditLead(item standing.Item) string {
+	return "Change the ongoing work “" + strings.TrimSpace(item.Title()) + "”: "
 }
 
 func (placeFolders) press(a *app, y int) bool {

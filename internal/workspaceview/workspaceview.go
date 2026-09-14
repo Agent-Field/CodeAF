@@ -90,6 +90,10 @@ type Resolver struct {
 	// reference it was asked about — never List, which would read every document
 	// a person owns to answer a question about one.
 	Standing *standing.Store
+	// Checks says how ongoing work is checked on this machine, for a surface
+	// that shows it beside the work. Nil is a reader that cannot say, and then
+	// nothing is claimed.
+	Checks func() CheckWays
 }
 
 // Resolve answers one Record per reference, IN THE ORDER THEY WERE GIVEN.

@@ -214,8 +214,49 @@ type FolderItem struct {
 	// Rules are the rules that reach this record: for ongoing work, the reading
 	// its own run takes ([RulesReaching]); for a folder, the rules scoped to it.
 	Rules []standing.Item `json:"rules,omitempty"`
+	// Work is what the owner of ongoing work says about its runs and its report,
+	// for a standing reference.
+	Work *WorkFacts `json:"work,omitempty"`
 	// Errors names each section that could not be read, with the reason.
 	Errors map[string]string `json:"errors,omitempty"`
+}
+
+// ItemRunLimit is how many of ongoing work's latest runs one selection reads.
+const ItemRunLimit = 3
+
+// WorkFacts is ongoing work as its owner records it, beside the item itself:
+// the latest runs, the receipt at its report path, whether a pass has it in
+// hand this instant, and how checks happen on the machine that keeps it.
+//
+// EVERY FIELD IS THE OWNER'S OWN RECORD, carried whole. Nothing here is inferred
+// from a folder, and nothing a surface does with it writes anything back.
+type WorkFacts struct {
+	// Runs are the latest occurrences, newest first ([standing.Store.Occurrences]).
+	Runs []standing.Occurrence `json:"runs,omitempty"`
+	// ReportPath is the stored destination resolved as the publisher resolves it
+	// ([standing.ReportPath]), and Receipt what aforge last put there, if anything.
+	ReportPath string            `json:"report_path,omitempty"`
+	Receipt    *standing.Receipt `json:"receipt,omitempty"`
+	// Named are files the item's words or instructions name that could be a
+	// report but are not the stored one ([session.StandingNamedFiles]).
+	Named []string `json:"named,omitempty"`
+	// Running is the pass holding the item right now, if one is.
+	Running *standing.RunningMark `json:"running,omitempty"`
+	// Checks is how checks happen here; nil when the reader could not say.
+	Checks *CheckWays `json:"checks,omitempty"`
+}
+
+// CheckWays is how ongoing work gets checked on one machine, as that machine
+// can state it. It is a claim about the machine and never about the item.
+type CheckWays struct {
+	// Window is whether this engine process is running the pass itself, every
+	// [standing.Interval], while it is open.
+	Window bool `json:"window"`
+	// Timer is whether an operating-system timer is installed FOR THIS HOME
+	// ([standing.WatchStatus.Installed] reads the definition's own home), and
+	// TimerKnown whether that could be read at all; unknown claims nothing.
+	Timer      bool `json:"timer,omitempty"`
+	TimerKnown bool `json:"timer_known,omitempty"`
 }
 
 // Item reads one selected record's detail. Nothing is written.
@@ -268,6 +309,7 @@ func (r Resolver) Item(ctx context.Context, s *workspace.Store, ref workspace.Re
 		} else {
 			item.Rules = rules
 		}
+		item.Work = r.work(got, fail)
 	case workspace.CollectionKind:
 		if r.Standing == nil {
 			break
@@ -433,4 +475,28 @@ func previewable(path string, info os.FileInfo) error {
 		return fmt.Errorf("%s is not a plain file, so it is not read", filepath.Base(path))
 	}
 	return nil
+}
+
+// work reads ongoing work's runs, report receipt and running mark from its
+// owner. Each part that fails is named in the item's errors and the rest stand.
+func (r Resolver) work(got standing.Item, fail func(string, error)) *WorkFacts {
+	facts := &WorkFacts{ReportPath: standing.ReportPath(got), Named: session.StandingNamedFiles(got)}
+	runs, err := r.Standing.Occurrences(got.ID, ItemRunLimit)
+	if err != nil {
+		fail("runs", err)
+	}
+	facts.Runs = runs
+	if facts.ReportPath != "" {
+		if facts.Receipt, err = r.Standing.Receipt(facts.ReportPath); err != nil {
+			fail("receipt", err)
+		}
+	}
+	if mark, ok := r.Standing.Running(got.ID); ok {
+		facts.Running = &mark
+	}
+	if r.Checks != nil {
+		ways := r.Checks()
+		facts.Checks = &ways
+	}
+	return facts
 }
