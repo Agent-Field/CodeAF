@@ -14,9 +14,15 @@ line to use is:
 curl -fsSL https://agentfield.ai/get/codeaf | bash
 ```
 
-Add `/dev`, `/staging` or `/rc` to that URL for another channel, and pin one
-complete tag by putting `VERSION=<tag>` before `bash`. That address is a proxy
-for the script kept here, and it is not serving yet either. The script itself is:
+Add `/dev`, `/staging` or `/rc` to that URL for another channel. To pin one
+complete tag, replace the final pipe with `| VERSION=<tag> bash`; for example:
+
+```sh
+curl -fsSL https://agentfield.ai/get/codeaf | VERSION=v0.3.0 bash
+```
+
+That address is a proxy for the script kept here, and it is not serving yet
+either. The script itself is:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash
