@@ -368,7 +368,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	if len(a.hop.rows) != 1 || a.hop.rest != 1 {
 		t.Fatalf("the shut card holds %d rows and folds %d: %+v", len(a.hop.rows), a.hop.rest, a.hop.rows)
 	}
-	if !strings.Contains(plain(a.hopFoot()), "1 more on this machine") {
+	if plain(a.hopFoot()) != hopFoldKeyWord {
 		t.Fatalf("the fold says %q", plain(a.hopFoot()))
 	}
 	// `→` REACHES THEM.
@@ -426,9 +426,9 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	if len(a.hop.rows) != 1 || a.hop.rest != 4 {
 		t.Fatalf("the shut card holds %d rows and folds %d", len(a.hop.rows), a.hop.rest)
 	}
-	// THE FOLD SAYS WHAT OPENING IT WOULD BE WORTH, and names the key.
-	foot := plain(a.hopFoot())
-	if !strings.Contains(foot, "4 more on this machine") || !strings.Contains(foot, hopFoldKeyWord) {
+	// THE FOLD IS ONE INSTRUCTION: the key, and what pressing it does. The count
+	// it used to carry is the head's job and the head is one row above it.
+	if foot := plain(a.hopFoot()); foot != hopFoldKeyWord {
 		t.Fatalf("the fold reads %q", foot)
 	}
 	// AND THE HEAD COUNTS ONLY WHAT IS OPEN, which is what the card is about.
@@ -786,15 +786,43 @@ func TestSwitcherMouseOpensOnlyVisibleRowsAndKeepsSelectionVisible(t *testing.T)
 	}
 }
 
-func TestSwitcherShowsLongSelectedTitleBelowTheList(t *testing.T) {
+// A LONG NAME IS GIVEN ROOM ON ITS OWN ROW AND IS NEVER READ OUT TWICE. The card
+// used to re-wrap the selected row's title in a block under the list — a second
+// reading of the row the cursor was already on, present or absent depending on
+// how long that one name happened to be. The room went to the subject column
+// instead (hop.go's [hopLine]).
+func TestALongNameTakesTheRoomAndIsNotRepeatedUnderTheList(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
 	drive(t, a, key(hopOpenKey))
-	a.hop.rows[0].title = "Investigate the parsing regression in weekly reports"
-	lines := a.hopCardLines(60, 18, a.pal)
-	if !strings.Contains(plain(strings.Join(lines, "\n")), "weekly reports") {
-		t.Fatal("selected title still clipped its distinguishing suffix")
+	long := "Investigate the parsing regression in weekly reports"
+	a.hop.rows[0].title = long
+	a.hop.at = 0
+
+	// ON A WIDE FRAME THE WHOLE NAME IS ON ITS OWN ROW, once.
+	body := plain(strings.Join(a.hopCardLines(140, 18, a.pal), "\n"))
+	if !strings.Contains(body, long) {
+		t.Fatalf("the name did not fit its row on a wide card:\n%s", body)
+	}
+	if strings.Count(body, "weekly reports") != 1 {
+		t.Fatalf("the name is drawn %d times:\n%s", strings.Count(body, "weekly reports"), body)
+	}
+	// AND THE CLAUSE IS STILL A COLUMN BESIDE IT, not a suffix stuck to the name.
+	if strings.Contains(body, "reports"+hopNothingWord) || strings.Contains(body, "reports "+hopNothingWord) {
+		t.Fatalf("the name and the clause ran together:\n%s", body)
+	}
+	// ON A NARROW ONE THE NAME IS CUT AND NOTHING IS DRAWN UNDER THE LIST TO MAKE
+	// UP FOR IT: the rows, the foot, and no second reading.
+	narrow := a.hopCardLines(60, 18, a.pal)
+	rows := 0
+	for _, line := range narrow {
+		if strings.Contains(plain(line), "Investigate") {
+			rows++
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("the cut name appears on %d rows:\n%s", rows, plain(strings.Join(narrow, "\n")))
 	}
 }
 

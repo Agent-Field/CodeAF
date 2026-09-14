@@ -1705,8 +1705,7 @@ selection or switching chats. A small dot marks the pointer even without color.
 The “more conversations” control also highlights; headings and borders do not.
 An outside click dismisses the card without activating anything behind it.
 **Enter opens the highlighted row; clicking a row opens that conversation. Escape or
-a click outside the card cancels.** Long selected titles
-get additional reading space below the rows. A click outside the list acts on nothing.
+a click outside the card cancels.** A click outside the list acts on nothing.
 
 This holds even when the `quick switch` setting is on. That setting applies only to
 `ctrl+tab` on terminals that can send it. Ordinary terminals do not report modifier-key
@@ -1720,32 +1719,12 @@ released Ctrl.
 │  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
 │  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
 │  3 ○ Refactor the rail scope mo…  you are here              aforge-v2   40m  │
-│  ▸ 9 more on this machine · → reach them                                     │
+│  → show closed                                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-Fixed columns — **number, glyph, subject, one clause, project, clock** — which is what
-makes it scan: the subjects form a straight edge you read down. `3 of 12` is how many tabs
-are on the row above, of how many conversations this machine has.
-
-**The rows are in the same order as the tabs above them** — the leftmost tab is the first
-row, so `2` on the card is the second tab on the row. The strip's order is the order you
-first entered each conversation and it never re-sorts itself, which means the card does not
-either: a conversation stays at the number you last saw it at. The one you are in wears
-`you are here` wherever its tab is, rather than being drawn at the end.
-
-**The cursor still opens on the conversation `tab` would go to** — the one you were in
-before this one — which is usually not the first row. That is what keeps the common
-journey two keys: `ctrl+k`, `enter`, and you are back where you just were. `↑↓` from there
-walk the list in the order you see it.
-
-**The list above the fold IS the tab row.** Close a tab — with its `×`, with `ctrl+w` in
-the conversation, or with `ctrl+w` on this card — and the row leaves the list at the same
-moment the tab leaves the strip. The conversation is not closed: it is still held, still
-running, and behind the fold, where `enter` brings it and its tab back.
-
-**Everything else on the machine is behind the fold at the foot.** `→` reaches them and
-`←` puts them away again. Most rows down there are conversations this terminal is not
+**Everything else on the machine is behind the fold at the foot** — `→ show closed` opens
+it and `← hide closed` puts it away again. Most rows down there are conversations this terminal is not
 holding at all; the exception is one whose tab you closed, which is still held and still
 running and is behind the fold because it is not on the row any more. Taking either kind
 puts it in front of you and gives it a tab, exactly as `enter` on home does, and the one
@@ -1790,9 +1769,6 @@ below the fold too, which is opened beside the others and then walked into. The 
 that does not move you is a door that refuses: the place stays up with the refusal on its
 own line, so you can read it.
 
-The cursor opens on the **first row you can actually go to**, never on `you are here`, so
-`ctrl+k` `enter` always lands somewhere.
-
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the legend above the box does not name
 it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
@@ -1804,6 +1780,46 @@ page that shows every conversation you have. Past twelve open, a quiet conversat
 alone for fifteen minutes may be let go of — see *How many conversations can one
 terminal hold* on the home page. Work, a question, a draft or news you have not seen
 keeps it.
+
+## What the switcher's card looks like — its columns, long chat names, and the show closed foot
+
+Six columns — **number, glyph, name, one clause, project, clock** — which is what makes it
+scan: the names all start in the same cell, so you read straight down them. `3 of 12` is
+how many tabs are on the row above, of how many conversations this machine has.
+
+**The name column takes whatever room the frame has spare**, up to about sixty cells, so a
+wide terminal shows long names whole instead of spending the width on `nothing new`. It
+keeps two cells of air before the clause, so a name that fills its column never runs into
+the words beside it. A narrow frame gives up the project first, then shortens the clause,
+then drops the clock, then the clause — the name is the last thing cut, and it is cut with
+a `…` rather than repeated anywhere else.
+
+**The foot is one instruction: `→ show closed`**, and `← hide closed` once the fold is
+open. It is there only while there is something behind the fold.
+
+**A long name is never read out twice.** The card used to re-wrap the highlighted row's
+name in a block under the list; it does not any more. The name gets the room on its own
+row instead.
+
+## Why the switcher lists conversations in that order — tab order, where the cursor starts, a closed tab
+
+**The rows are in the same order as the tabs above them** — the leftmost tab is the first
+row, so `2` on the card is the second tab on the row. The strip's order is the order you
+first entered each conversation and it never re-sorts itself, which means the card does not
+either: a conversation stays at the number you last saw it at. The one you are in wears
+`you are here` wherever its tab is, rather than being drawn at the end.
+
+**The cursor still opens on the conversation `tab` would go to** — the one you were in
+before this one — which is usually not the first row. That is what keeps the common
+journey two keys: `ctrl+k`, `enter`, and you are back where you just were. `↑↓` from there
+walk the list in the order you see it.
+
+**The list above the fold IS the tab row.** Close a tab — with its `×`, with `ctrl+w` in
+the conversation, or with `ctrl+w` on this card — and the row leaves the list at the same
+moment the tab leaves the strip. The conversation is not closed: it is still held, still
+running, and behind the fold, where `enter` brings it and its tab back.
+
+The cursor never opens on `you are here`, so `ctrl+k` `enter` always lands somewhere.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 

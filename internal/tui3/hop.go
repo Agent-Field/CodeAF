@@ -1218,15 +1218,33 @@ const (
 	hopSideInset = 6
 	// hopPad is the air inside the box, between its border and its rows.
 	hopPad = 3
-	// The fixed columns, in cells.
+	// The columns, in cells. THE SUBJECT IS THE ONE THAT GROWS: every other
+	// column holds a phrase of known length, and the names are what a person is
+	// actually reading down the card, so the room a wide terminal has to spare
+	// belongs to them. It used to be the clause that took it, which left
+	// `Investigate the parsing regression…` cut at thirty-four cells beside forty
+	// cells of `nothing new`.
 	hopGlyphCol   = 2
-	hopSubjectCol = 34
+	hopNoteCol    = 32
 	hopProjectCol = 12
 	hopAgeCol     = 5
-	// hopTightSubject is what the subject column narrows to before the tail
-	// columns start being dropped: a name cut to twenty cells is still a name,
-	// and one cut to eight is a shrug.
+	// hopSubjectMax is where the subject stops growing and hands the rest back to
+	// the clause. A name is read in one glance; past about this many cells the
+	// card is a page of sentences and the straight edge stops doing its work.
+	hopSubjectMax = 64
+	// hopTightSubject is the least the subject is cut to while any other column
+	// still has cells to give: a name cut to twenty cells is still a name, and one
+	// cut to eight is a shrug.
 	hopTightSubject = 20
+	// hopTightNote is what the clause narrows to on the way down, which is
+	// `3 tasks running` whole.
+	hopTightNote = 16
+	// hopGutter is the air kept at the right-hand end of the subject column, so a
+	// name that fills its column does not touch the clause beside it. Without it
+	// the two run together as one word — `…parsing regres…nothing new` — which is
+	// the reading the owner reported, and no amount of extra column width fixes
+	// it, because a long enough name fills whatever it is given.
+	hopGutter = 2
 )
 
 // hopMinBody is the shortest body the card will draw itself into: two border
@@ -1311,39 +1329,20 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if footWord != "" {
 		foot++
 	}
-	// The selected title gets its own reading space when columns abbreviate it.
-	// It explains the highlighted choice without switching the chat beneath it.
-	var preview []string
-	if a.hop.at >= 0 && a.hop.at < len(a.hop.rows) {
-		title := a.hop.rows[a.hop.at].title
-		if ansi.StringWidth(title) > min(hopSubjectCol, room-hopGlyphCol-2) {
-			preview = railWrap(title, room)
-			maxLines := min(3, max(0, height-len(lines)-topEdge-foot-2))
-			if len(preview) > maxLines {
-				preview = preview[:maxLines]
-				if maxLines > 0 {
-					preview[maxLines-1] = glyphMore + " " + ansi.Cut(title, max(0, ansi.StringWidth(title)-room+2), ansi.StringWidth(title))
-				}
-			}
-		}
-	}
-	previewHeight := len(preview)
-	if previewHeight > 0 {
-		previewHeight++
-	}
-	available := max(1, height-len(lines)-topEdge-foot-previewHeight)
+	// THERE IS NO SECOND READING OF THE SELECTED TITLE. A block under the rows
+	// used to re-wrap the highlighted row's name whenever the subject column had
+	// abbreviated it — but it only ever repeated the row the cursor was already
+	// on, it appeared on some rows and not others depending on how long that one
+	// name was, and it cost the rows underneath it their places on a short card.
+	// The name is worth more room on the row itself, which is what the subject
+	// column now takes ([hopLine]). Asked for by the owner.
+	available := max(1, height-len(lines)-topEdge-foot)
 	start := max(0, a.hop.at-available+1)
 	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
 		hovered := a.hot.kind == hoverHop && a.hot.index == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
-	}
-	if len(preview) > 0 {
-		lines = append(lines, inside("", false, false))
-		for _, line := range preview {
-			lines = append(lines, inside(pal.ink(line), false, false))
-		}
 	}
 	if footWord != "" && len(lines)+topEdge+1+verticalPad < height {
 		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
@@ -1375,18 +1374,31 @@ func (a *app) hopFoot() string {
 	}
 	switch {
 	case a.hop.all:
-		return tokens.GlyphExpanded + " " + hopShutKeyWord
+		return hopShutKeyWord
 	case a.hop.rest > 0:
-		return tokens.GlyphCollapsed + " " + itoa(a.hop.rest) + " more on this machine · " + hopFoldKeyWord
+		return hopFoldKeyWord
 	}
 	return ""
 }
 
 // The two halves of the fold's own sentence, spelled once and quoted in the
 // manual exactly as they are here.
+//
+// THEY NAME THE KEY AND WHAT IT DOES, AND NOTHING ELSE. This line used to read
+// `▸ 9 more on this machine · → reach them`, which spent a whole row on a figure
+// the head already carries — `3 of 12` says both halves of it — and then said
+// the same thing twice, once in a triangle nobody reads as a verb and once in
+// words. A foot is the one row a person looks at to find out what else they can
+// press; it is worth exactly one instruction. Asked for by the owner.
+//
+// `closed` IS THE WORD FOR WHAT IS DOWN THERE. Every row behind the fold is a
+// conversation with no tab on the row above — one this terminal never opened,
+// or one whose tab was closed ([app.hopTabbed]) — and that is the one thing they
+// have in common. The arrow is the key, so the line names it without a glyph
+// in front of it.
 const (
-	hopFoldKeyWord = "→ reach them"
-	hopShutKeyWord = "← just the open ones"
+	hopFoldKeyWord = "→ show closed"
+	hopShutKeyWord = "← hide closed"
 )
 
 // hopHead is the line above the list: what this card is on the left, and what
@@ -1460,45 +1472,53 @@ func hopLine(row hopRow, at int, sel, hovered bool, width int, pal palette) stri
 	if at < hopDigits {
 		mark = itoa(at+1) + " "
 	}
-	// THE SUBJECT KEEPS ITS COLUMN AND THE TAIL GIVES WAY. Narrowing the subject
-	// first would break the straight edge the whole layout is for, so the
-	// clauses go before it does: the clock last, because it is two cells and is
-	// the one thing every row has.
-	subject, project, age := hopSubjectCol, hopProjectCol, hopAgeCol
-	fixed := func() int { return len(mark) + hopGlyphCol + subject + project + age }
-	for fixed()+2 > width {
-		switch {
-		case project > 0:
-			project = 0
-		case subject > hopTightSubject:
-			subject = max(hopTightSubject, width-len(mark)-hopGlyphCol-age-2)
-		case age > 0:
-			age = 0
-		default:
-			subject = max(4, width-len(mark)-hopGlyphCol)
-		}
-		if project == 0 && age == 0 && subject <= hopTightSubject {
-			break
-		}
+	// THE SUBJECT TAKES WHAT IS LEFT AND THE TAIL GIVES WAY BEFORE IT DOES. The
+	// straight edge the layout is for is the LEFT edge of the names, and that is
+	// fixed by the two columns in front of them; what the name needs is room to
+	// finish, so every cell the frame has to spare is its. On the way down the
+	// columns are given up in the order a person can most afford to lose them —
+	// the project, then the clause's own tail, then the clock, then the clause.
+	room := max(0, width-len(mark)-hopGlyphCol)
+	project, age, note := hopProjectCol, hopAgeCol, hopNoteCol
+	if room-project-age-note < hopTightSubject {
+		project = 0
 	}
-	note := max(0, width-fixed())
+	if room-project-age-note < hopTightSubject {
+		note = hopTightNote
+	}
+	if room-project-age-note < hopTightSubject {
+		age = 0
+	}
+	if room-project-age-note < hopTightSubject {
+		note = 0
+	}
+	subject := max(4, room-project-age-note)
+	if subject > hopSubjectMax {
+		// AND THE CELLS PAST A NAME'S WORTH GO BACK TO THE CLAUSE, so the project
+		// and the clock stay on the frame's own right edge rather than floating in
+		// the middle of a very wide card.
+		note, subject = note+subject-hopSubjectMax, hopSubjectMax
+	}
 	// A ROW WITH NEWS IS AT FULL INK AND A QUIET ONE IS A STEP BACK, which is
 	// what lets the two or three that want you separate from the eight that do
 	// not with no heading saying so (SCREEN 2b's own clause).
-	name := pal.narr(fitPad(row.title, subject))
+	// THE NAME IS CUT SHORT OF ITS OWN COLUMN and then padded out to it, which is
+	// what keeps the clause a column and not a suffix ([hopGutter]).
+	title := fit(row.title, max(1, subject-hopGutter))
+	name := pal.narr(fitPad(title, subject))
 	clause := pal.dim(fitPad(row.note, note))
 	if row.needs || row.moving {
-		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+		name, clause = pal.ink(fitPad(title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if hovered {
-		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+		name, clause = pal.ink(fitPad(title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if sel {
 		// THE ROW THE KEYBOARD IS ON TAKES THE GROUND AND THE WEIGHT. The band is
 		// applied around this line by the card; the subject going bold is the
 		// other half, and the tail steps up with it because dim grey on a raised
 		// ground is grey on grey (switcher.go holds the same rule for home).
-		name, clause = pal.bold(pal.ink(fitPad(row.title, subject))), pal.narr(fitPad(row.note, note))
+		name, clause = pal.bold(pal.ink(fitPad(title, subject))), pal.narr(fitPad(row.note, note))
 	}
 	line := pal.dim(mark) + glyphInk(fitPad(glyph, hopGlyphCol)) + name + clause
 	if project > 0 {
