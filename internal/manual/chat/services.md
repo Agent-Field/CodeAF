@@ -1,8 +1,8 @@
 # Services — the places models come from
 
-## Add a key — connect a service, add a provider, use a different model service
+## Add a key — connect a service, add an api key for another provider, use a different model service
 
-Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
+An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
 connected. Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
