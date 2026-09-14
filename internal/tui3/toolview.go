@@ -436,7 +436,7 @@ func (a *app) toolLineLayoutWithKeep(e *entry, i int, last bool, width int, show
 	// take the phone's shape two cells early.
 	width -= workIndentCols(width)
 	name, fallback := toolWords(e.tool, e.text)
-	target := toolTarget(e.tool, e.detail.Args, e.text)
+	target := a.toolTargetOf(e)
 	if target == "" {
 		target = fallback
 	}
@@ -697,7 +697,13 @@ const elideFloor = 12
 // ./internal/…/tui3` would hide the verb and keep the argument.
 func toolFit(tool, target string, width int) (string, int) {
 	switch tool {
-	case "read", "edit", "write", "ls", "web_fetch":
+	// The two picture hands join this family because their target is a path
+	// too, and because the fact behind it — the image model that drew — is the
+	// one thing on the row a person cannot get back by opening the file
+	// (toolstat.go's [app.pictureTarget]). Cutting the path in the middle and
+	// keeping the qualifier whole is exactly what this branch already does for
+	// a read's line range.
+	case "read", "edit", "write", "ls", "web_fetch", "generate_image", "view_image":
 		// The qualifier keeps its place: it is the line range the path was read
 		// with, and a cut that took it would leave a path claiming it was read
 		// whole (the parameter hierarchy, below, is what paints the two).
@@ -798,7 +804,7 @@ const phoneGutterWidth = 2
 
 func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 	name, fallback := toolWords(e.tool, e.text)
-	target := toolTarget(e.tool, e.detail.Args, e.text)
+	target := a.toolTargetOf(e)
 	if target == "" {
 		target = fallback
 	}
@@ -906,9 +912,11 @@ func phoneTarget(tool, target string) string {
 		pattern, _, _ := strings.Cut(target, " ")
 		return pattern
 
-	case "read", "edit", "write", "ls":
+	case "read", "edit", "write", "ls", "generate_image", "view_image":
 		// The path elided to its tail, and the line range after it dropped: at
 		// this width "120-240" is four files' worth of the name it qualifies.
+		// A picture call sheds its image model here for the same reason and by
+		// the same rule — a qualifier is the first thing this tier gives up.
 		path, _, _ := strings.Cut(target, " ")
 		return pathTail(path)
 	}
@@ -1483,13 +1491,24 @@ func (a *app) paintTarget(e *entry, target string) string {
 		}
 		return a.pal.shell(target)
 
-	case "read", "edit", "write":
+	case "read", "edit", "write", "generate_image", "view_image":
 		// AND THE TARGET IS THE DOOR ITSELF (pathlink.go). This is the one path
 		// on the row that aforge resolved rather than found — it came out of the
 		// call's own arguments — so it is exactly the kind of path that may be
 		// linked, and the shown text may be an ellipsis or a bare basename
 		// without the click losing the file.
 		name := argString(argsOf(e.detail.Args), "path")
+		// A PICTURE CALL MAY HAVE NAMED NO FILE AT ALL and still have written
+		// one: `generate_image` chooses the name when the caller did not, and
+		// [app.picturePath] is the one place that knows the whole rule for
+		// finding it — arguments first, the result second, absolute beating
+		// relative. Asking it here is what makes the row of a picture nobody
+		// named open the file a click.
+		if picturesAFile(e.tool) {
+			if resolved, found := a.picturePath(e); found {
+				name = resolved
+			}
+		}
 		path, rest, found := strings.Cut(target, " ")
 		if !found {
 			return a.pathLink(name, a.pal.ink(target))
@@ -1713,20 +1732,34 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		body, more := a.cap(e, said, bashWindow)
 		return append(head, body...), more
 	case "generate_image":
-		// THE PICTURE IS THE WHOLE ANSWER, and the line under it already says
-		// everything this call's result says — where the file is and how big it
+		// WHAT WAS ASKED FOR, AND THEN WHAT CAME BACK. The prompt and the rest
+		// of the inputs lead, drawn as prose by imagecall.go, because they are
+		// what a person opens this particular row to read — the picture itself
+		// they can already see in the transcript, and the prompt is the part
+		// they would change. Under them the picture, whose own line already says
+		// everything this call's RESULT says: where the file is and how big it
 		// is. Printing the result underneath as well would be the expansion
 		// answering one question twice (imagepreview.go).
+		asked, more := a.imageCallRows(e, width)
 		if picture, drawn := a.pictureRows(e, width); drawn {
-			return picture, 0
+			return append(asked, picture...), more
 		}
 		// AND WHERE NO PICTURE CAN BE DRAWN, THE PATH STILL GOES DOWN WHOLE.
 		// This is the terminal that reached sixteen colours, or the file this
 		// program cannot decode, and it is exactly the case where a person needs
 		// to leave and open the file themselves — so the one thing the fallback
 		// must not do is truncate the only string that would let them.
-		if rows, more, known := a.pictureWords(e, width); known {
-			return rows, more
+		//
+		// The two drops are added rather than chosen between: a prompt folded at
+		// its window and a result folded at its own are both hidden lines, the
+		// foot under them offers to lift the block, and `e.full` lifts both.
+		if rows, dropped, known := a.pictureWords(e, width); known {
+			return append(asked, rows...), more + dropped
+		}
+		// A call with no file to point at yet — one still running, one that
+		// failed before it wrote anything — is still worth what it asked for.
+		if len(asked) > 0 {
+			return asked, more
 		}
 	case "view_image":
 		// A LOOK HAS TWO HALVES and they are both worth the rows: the picture,
@@ -1781,6 +1814,14 @@ func (a *app) liveDetail(e *entry, width int) ([]string, int, bool) {
 	// be the surface taking the screen.
 	if command := a.commandRows(e, width); len(command) > 0 {
 		return append(command, a.livePhrase(e)), 0, true
+	}
+	// A PICTURE'S PROMPT IS READABLE BEFORE THE PICTURE IS, and by the same
+	// argument: the prompt is the whole of what a person opened a running
+	// generation for, and the file it will write does not exist yet. The block
+	// answers only for the hand it is about (imagecall.go), so this stays one
+	// question about the arguments rather than a table of tool names.
+	if asked, _ := a.imageCallRows(e, width); len(asked) > 0 {
+		return append(asked, a.livePhrase(e)), 0, true
 	}
 	return []string{a.livePhrase(e)}, 0, true
 }
