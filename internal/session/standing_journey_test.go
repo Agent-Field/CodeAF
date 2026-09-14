@@ -41,6 +41,8 @@ func (d *chatDoor) editAnswered(t *testing.T, said string, fields map[string]any
 // card draws the path old → new, the yes revises the item in place, the next
 // run publishes at the new path, the file it used to keep is left exactly as it
 // was, and the old path has no owner any more while the new one does.
+//
+// Journey coverage, not a regression: it passes on the head before W5-B too.
 func TestAReportPathChangedInTheChatPublishesThereAndFreesTheOldPath(t *testing.T) {
 	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
 	d.proposeInbox(t, d.yes)
@@ -85,10 +87,11 @@ func TestAReportPathChangedInTheChatPublishesThereAndFreesTheOldPath(t *testing.
 	}
 }
 
-// A WATCH CHANGED IN THE CHAT REACHES WHAT ITS CARD SAYS FROM THE YES. The
-// pattern that stands after the yes reaches the subfolders it was widened to and
-// still reaches what it reached before, and the model is told the card's line.
-func TestAWatchChangedInTheChatReachesItsSubfoldersFromTheYes(t *testing.T) {
+// A WATCH CHANGED IN THE CHAT REACHES WHAT ITS CARD SAYS. The pattern that
+// stands after the yes reaches the subfolders it was widened to and still
+// reaches what it reached before, and the model is told the card's line. It is
+// journey coverage, not a regression: it passes on the head before W5-B too.
+func TestAWatchChangedInTheChatReachesItsSubfolders(t *testing.T) {
 	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
 	d.proposeInbox(t, d.yes)
 	first := d.only(t)
@@ -132,7 +135,7 @@ func TestAFileWatchIsSaidFromItsPatternNotTheModelsWords(t *testing.T) {
 	}
 	// An edit that sends only other words for the same watch changes nothing.
 	edit, _ := json.Marshal(map[string]any{"op": "edit", "id": item.ID, "when_words": "whenever inbox/ or notes/ changes"})
-	if text, failed, err := d.agent.standTool(context.Background(), edit); err != nil || !failed || !strings.Contains(text, "nothing to change") {
+	if text, failed, err := d.agent.standTool(context.Background(), edit); err != nil || !failed || !strings.Contains(text, "a file watch is said by its pattern, so when_words change nothing on it") {
 		t.Fatalf("an edit of a watch's words alone answered %q (failed %v, %v)", text, failed, err)
 	}
 	// A watch made before this, with the model's words on its record, is said

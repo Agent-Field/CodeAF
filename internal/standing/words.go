@@ -323,13 +323,13 @@ func spanWords(span time.Duration) string {
 	return span.String()
 }
 
-// WatchWords is how a file watch's waking is said when nobody said it in their
-// own words: `when inbox/* changes`.
+// WatchWords is how a file watch's waking is said: `when inbox/* changes`.
 //
-// ONE SPELLING FOR BOTH DOORS. `aforge standing add --watch` writes it, and the
-// chat's card falls back to it when the model sent no words of its own — a
-// watch whose card and record said nothing about when it wakes (the chat door's
-// first live run, 2026-09-11) is a watch nobody can check.
+// ONE SPELLING FOR BOTH DOORS. `aforge standing add --watch` writes it, and so
+// does the chat, whatever words the model sent ([When.CardWords]) — a watch
+// whose card and record said nothing about when it wakes (the chat door's
+// first live run, 2026-09-11) is a watch nobody can check, and one said in
+// words its pattern does not keep is worse (W5-B).
 func WatchWords(glob string) string { return "when " + glob + " changes" }
 
 // CardWords is the `when ·` line a card, a list and a record draw for what

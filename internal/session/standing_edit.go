@@ -114,6 +114,11 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		changed = append(changed[:len(changed):len(changed)], standingFolderChange)
 	}
 	if len(changed) == 0 {
+		// Words sent for a file watch change nothing, and a bare "send only what
+		// is different" answers a model that did send something different.
+		if strings.TrimSpace(parsed.WhenWords) != "" && draft.When.Kind == standing.WhenFile {
+			return "nothing to change: a file watch is said by its pattern, so when_words change nothing on it — to change what wakes it, send when.glob" + standingDroppedLine(limits), true, nil
+		}
 		return "nothing to change: send only what is different" + standingDroppedLine(limits), true, nil
 	}
 	found, problem := a.standingEditChecks(current, draft)

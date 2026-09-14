@@ -1701,7 +1701,14 @@ func scenJourney(c *cv) {
 	t = c.say(ch, "the inbox has subfolders now, one per client — make the digest pick up files inside those too")
 	c.flagReply(t)
 	c.note("watch edit cards: %v", termsOf(t))
-	item = edited("J-edit-watch", item)
+	if item.Watches("inbox/clients/acme.md") && len(t.Cards) == 0 {
+		// A watch that already reaches the subfolders needs no change, and
+		// saying so is the truthful answer (W5-B live 2's `inbox/**/*`).
+		c.note("the watch already reached the subfolders; no edit was needed")
+		item = c.item(item.ID)
+	} else {
+		item = edited("J-edit-watch", item)
+	}
 	c.expect([]string{"J-edit-watch"}, "watch-reaches-subfolders-and-still-inbox", item.Watches("inbox/clients/acme.md") && item.Watches("inbox/c.md"), c.describe(item))
 	c.write("inbox/clients/acme.md", "Acme: waiting on the revised quote; Omar owns it.\n")
 	c.check()
