@@ -750,7 +750,7 @@ func (a *app) beginConnectKey(service, name, key string) tea.Cmd {
 	conns, ctx := a.conns, a.ctx
 	return func() tea.Msg {
 		status, err := conns.ConnectKey(ctx, service, key)
-		return connectResultMsg{service: service, name: name, status: status, err: err}
+		return connectResultMsg{service: service, name: name, status: status, keyed: true, err: err}
 	}
 }
 
@@ -833,7 +833,11 @@ func (a *app) adoptConnectResult(msg connectResultMsg) {
 	// that account may do (connectcaps.go).
 	why := ""
 	if msg.err != nil {
-		why = msg.err.Error()
+		if msg.keyed || a.sheet.conn.pendingKey {
+			why = msg.err.Error()
+		} else {
+			why = connect.SignInFailureReason(msg.err)
+		}
 	}
 	a.connTabSettled(msg.service, msg.name, !failed, why)
 }

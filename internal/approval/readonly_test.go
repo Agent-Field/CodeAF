@@ -11,7 +11,8 @@ import (
 // about the looks too.
 
 func TestReadOnlyNamesTheLooks(t *testing.T) {
-	for _, tool := range []string{"read", "ls", "grep", "find"} {
+	// C1: services is part of the shipped default prompt lift.
+	for _, tool := range []string{"read", "ls", "grep", "find", "services"} {
 		if !ReadOnly(tool, json.RawMessage(`{"path":"x"}`)) {
 			t.Errorf("%s is not read-only", tool)
 		}
@@ -43,6 +44,11 @@ func TestReadOnlyLeavesWritesAlone(t *testing.T) {
 	if ReadOnly("propose_task", json.RawMessage(`{"title":"t","brief":"b","acceptance":"a"}`)) {
 		t.Error("propose_task was called read-only")
 	}
+	// C1: use_service earns its lift from its own connect question, not from
+	// being classified as an immutable call.
+	if ReadOnly("use_service", json.RawMessage(`{"service":"slack"}`)) {
+		t.Error("use_service was called read-only — its own question, not immutability, lifts the default prompt")
+	}
 	if ReadOnly("tasks", json.RawMessage(`{"id":1,"say":"steer"}`)) {
 		t.Error("tasks say was called read-only")
 	}
@@ -66,6 +72,37 @@ func TestReadOnlyLeavesWritesAlone(t *testing.T) {
 	}
 	if ReadOnly(ToolBash, bashArgs("git status\x1b[2Aallow?")) {
 		t.Error("git status with an escape was called read-only")
+	}
+}
+
+// C1: The accounts listing and the tool whose own card asks for consent run on
+// the shipped default without duplicate approval questions; a named rule and a
+// deny blanket still win.
+func TestConnectToolsLiftOnlyTheShippedBlanketPrompt(t *testing.T) {
+	for _, tool := range []string{"services", "use_service"} {
+		t.Run(tool, func(t *testing.T) {
+			shipped := Policy{Default: ActionPrompt}
+			if decision := shipped.Check(tool, json.RawMessage(`{"service":"slack"}`)); decision.Action != ActionAllow {
+				t.Fatalf("shipped default Check(%s) = %+v, want allow", tool, decision)
+			}
+
+			named := Policy{Default: ActionPrompt, Tools: map[string]Action{tool: ActionPrompt}}
+			if decision := named.Check(tool, nil); decision.Action != ActionPrompt || decision.Rule != `tool "`+tool+`"` {
+				t.Errorf("named prompt Check(%s) = %+v, want the named rule", tool, decision)
+			}
+
+			denied := Policy{Default: ActionDeny}
+			if decision := denied.Check(tool, nil); decision.Action != ActionDeny {
+				t.Errorf("deny blanket Check(%s) = %+v, want deny", tool, decision)
+			}
+		})
+	}
+
+	// The new lift never weakens either existing floor.
+	for _, tool := range []string{"gmail_send", "calendar_create", "slack_send"} {
+		if !AlwaysAsks(tool, nil) {
+			t.Errorf("AlwaysAsks(%s) stopped holding", tool)
+		}
 	}
 }
 

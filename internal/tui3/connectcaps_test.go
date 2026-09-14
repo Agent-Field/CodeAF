@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -364,6 +365,29 @@ func TestAnUnconnectedRowStartsTheSignInInPlace(t *testing.T) {
 	}
 	if capRowAt(a, "slack", "post") < 0 {
 		t.Fatalf("the account it just connected did not open:\n%s", screen)
+	}
+}
+
+// R2: A browser return lands through adoptConnectResult for both /connect and
+// this tab. The message drawn on the tab comes from the shared connect-package
+// boundary, so deleting that call exposes the recognizable nonce here.
+func TestABadBrowserReturnOnTheConnectionsTabHidesExchangeWords(t *testing.T) {
+	const nonce = "STATE-NONCE-DO-NOT-DRAW"
+	a, _ := capsApp(t, twoAccounts)
+	a.sheet.conn.pending = "slack"
+	drive(t, a, connectResultMsg{
+		service: "slack",
+		name:    "Slack",
+		err:     errors.New("authorization error: state does not match (wants " + nonce + " but got bogus)"),
+	})
+
+	screen := strings.Join(sheetLabels(a), "\n")
+	lower := strings.ToLower(screen)
+	if !strings.Contains(screen, "the sign-in came back wrong and nothing was connected") {
+		t.Fatalf("the tab did not draw the honest failure:\n%s", screen)
+	}
+	if strings.Contains(screen, nonce) || strings.Contains(lower, "authorization error") || strings.Contains(lower, "state does not match") {
+		t.Fatalf("the tab drew the browser exchange:\n%s", screen)
 	}
 }
 

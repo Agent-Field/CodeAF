@@ -277,13 +277,27 @@ type connectAsk struct {
 	secret bool
 }
 
+// connectAnswerKind keeps the three ways an account was left unconnected
+// distinct. The model has to answer each one differently, and collapsing them
+// is how typed instructions were swallowed as though the person had refused.
+type connectAnswerKind uint8
+
+const (
+	connectRefused connectAnswerKind = iota
+	connectSilent
+	connectMovedOn
+)
+
 // connectAnswer is what a person said. Approved with no key is a yes to an
 // ordinary browser trip; approved with a typed answer is a key, or the one
-// thing the service's address is missing; not approved is a no, however it was
-// said.
+// thing the service's address is missing. A negative answer carries how it
+// happened, and only a non-secret browser question may carry the person's
+// words.
 type connectAnswer struct {
 	approved bool
 	key      string
+	kind     connectAnswerKind
+	words    string
 }
 
 // ResolveConnect answers one EventConnectAsk. A surface hands back the id the
@@ -309,7 +323,7 @@ func (a *Agent) ResolveConnect(id string, approve bool) {
 	}
 	// Buffered to one and read at most once, so this never blocks and never
 	// needs the lock held across it.
-	ask.answers <- connectAnswer{approved: approve}
+	ask.answers <- connectAnswer{approved: approve, kind: connectRefused}
 }
 
 // ResolveConnectKey answers one EventConnectAsk that carried NeedsKey with the
@@ -329,11 +343,19 @@ func (a *Agent) ResolveConnectKey(id string, key string) {
 		return
 	}
 	if !ask.needsKey {
-		ask.answers <- connectAnswer{}
+		// Words at an ordinary browser offer are the person moving the turn on,
+		// not a credential and not a refusal. They travel verbatim to the tool
+		// result so the model can do what was asked instead of swallowing them.
+		words := key
+		kind := connectMovedOn
+		if strings.TrimSpace(words) == "" {
+			kind = connectRefused
+		}
+		ask.answers <- connectAnswer{kind: kind, words: words}
 		return
 	}
 	key = strings.TrimSpace(key)
-	ask.answers <- connectAnswer{approved: key != "", key: key}
+	ask.answers <- connectAnswer{approved: key != "", key: key, kind: connectRefused}
 }
 
 // claimConnect takes one waiting question off the map, so that two answers to
@@ -349,9 +371,10 @@ func (a *Agent) claimConnect(id string) (connectAsk, bool) {
 }
 
 // askConnect emits one question and waits for the person, the clock, or the end
-// of the turn. Not approved is a no in all three cases, and the error is set
-// only when there is nobody to ask at all. The key is empty except when the
-// question wanted a typed answer and the person gave it.
+// of the turn. A negative answer records whether the person refused, never
+// answered, or moved on, and the error is set only when there is nobody to ask
+// at all. The key is empty except when the question wanted a typed answer and
+// the person gave it.
 func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
@@ -405,11 +428,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	case answer := <-ask.answers:
 		return answer, nil
 	case <-timer.C:
-		a.forgetConnect(id)
-		// SILENCE IS A NO. Nothing is connected, and the model is told the
-		// person did not answer rather than told they refused — those are
-		// different sentences and only one of them is true.
-		return connectAnswer{}, nil
+		return a.expireConnect(id, ask), nil
 	case <-ctx.Done():
 		a.forgetConnect(id)
 		return connectAnswer{}, ctx.Err()
@@ -418,11 +437,31 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 
 // forgetConnect drops a question nobody will answer, so a late resolve does not
 // deliver into a channel with no reader and the map does not grow for the life
-// of the session.
-func (a *Agent) forgetConnect(id string) {
+// of the session. Its answer says whether this call removed the question,
+// because the clock must distinguish its own win from a resolver that already
+// claimed the question and has an answer in flight.
+func (a *Agent) forgetConnect(id string) bool {
 	a.mu.Lock()
-	delete(a.connectAsks, id)
-	a.mu.Unlock()
+	defer a.mu.Unlock()
+	_, waiting := a.connectAsks[id]
+	if waiting {
+		delete(a.connectAsks, id)
+	}
+	return waiting
+}
+
+// expireConnect settles the timer's side of the one atomic claim. If the ask
+// was still registered, the clock won and the empty answer channel makes
+// silence true. If it was already gone, a resolver won and its buffered send
+// is either present or in flight, so that real answer must be returned.
+func (a *Agent) expireConnect(id string, ask connectAsk) connectAnswer {
+	if a.forgetConnect(id) {
+		// SILENCE CONNECTS NOTHING, BUT IT IS NOT A REFUSAL. The model is told
+		// the person did not answer rather than told they refused — those are
+		// different sentences and only one of them is true.
+		return connectAnswer{kind: connectSilent}
+	}
+	return <-ask.answers
 }
 
 // PendingConnect lists the connect questions still waiting for an answer, oldest

@@ -219,6 +219,42 @@ func beltShapeAgent(t *testing.T, shape beltShape) mintedShape {
 	}
 }
 
+// C8: The account cue exists only beside the account tools, fits in one short
+// sentence, and tells the model to look before denying access and to carry on
+// inside the same turn.
+func TestTheAccountBeltFactTeachesConnectOnDemandOnlyWithAHub(t *testing.T) {
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	withHub := renderSystemAt(Config{connectHub: &fakeHub{}}, now)
+	var fact string
+	for _, line := range strings.Split(withHub, "\n") {
+		if strings.Contains(line, "The person has accounts you can act in") {
+			fact = line
+			break
+		}
+	}
+	if fact == "" {
+		t.Fatal("a session with a hub is not told that the person has accounts")
+	}
+	for _, want := range []string{
+		"NEVER answer \"I don't have access to your X\" before calling `services`",
+		"not connected yet", "through `use_service`", "next request of this same turn",
+	} {
+		if !strings.Contains(fact, want) {
+			t.Errorf("the account fact does not say %q: %s", want, fact)
+		}
+	}
+	if len(fact) > 420 {
+		t.Errorf("the account fact is %d bytes, want at most 420: %s", len(fact), fact)
+	}
+
+	withoutHub := renderSystemAt(Config{}, now)
+	for _, absent := range []string{"The person has accounts you can act in", "`services`", "`use_service`"} {
+		if strings.Contains(withoutHub, absent) {
+			t.Errorf("a session without a hub is told about accounts through %q", absent)
+		}
+	}
+}
+
 // backtickedName finds every `identifier` the page spells. The page's own
 // convention is that a tool is named in backticks, which is why it is the thing
 // a lane writing a sentence reaches for and the thing this can read.
