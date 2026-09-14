@@ -297,8 +297,9 @@ has a drawn way to it as well.
 
 **The font.** aforge is drawn for **JetBrains Mono, regular and bold** — 14px at 21px line
 height is the size the design was cut at. Any monospace font with the block and
-box-drawing ranges works, and no patched nerd-font is needed anywhere: every mark on home
-and the places is a standard Unicode character. Set it in iTerm2 under Profiles → Text →
+box-drawing ranges works; the default `auto` icons use standard Unicode symbols.
+Nerd Font icons are optional: select a patched font and then choose `rich` under
+`/settings` → Display → **step icons**. Set it in iTerm2 under Profiles → Text →
 Font, in Terminal.app under Profiles → Text → Font → Change…, and in kitty, alacritty and
 ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
 files.

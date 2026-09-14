@@ -2168,18 +2168,22 @@ shift as steps arrive.
 words; the newest is at ordinary reading strength. The gutter is never brighter
 than the sentence it belongs to.
 
-## Proper icons, missing icons, empty boxes, Nerd Font and the step icons setting
+## Proper icons, missing icons, empty boxes or boxed question marks in iTerm2 — Nerd Font and the step icons setting
 
-The normal view uses the Font Awesome icons included in Nerd Fonts. Under
-`/settings` → Display → **step icons** (`ui.icons`), `auto` chooses those icons
-unless terminal detection calls for plain symbols. Known console and locale
-limitations fall back; colour depth alone does not remove icons.
+Nerd Font icons are optional. Under `/settings` → Display → **step icons**
+(`ui.icons`), the default `auto` uses standard Unicode symbols. Font coverage
+is unknown: there is no reliable cross-terminal query that proves the active
+font can draw the icons. Naming iTerm2, Kitty or another terminal does not prove
+it, and a cursor-width probe cannot distinguish an icon from a missing-glyph box.
+This build therefore never automatically enables Nerd Font icons.
 
-A terminal cannot report which font it uses. If you see empty boxes, select
-`plain`, or select a Nerd Font in your terminal. Choose `rich` to use a patched
-font on a conservatively detected terminal. The setting takes effect immediately.
+Choose `rich` only after selecting a Nerd Font in your terminal; it uses the
+Font Awesome icons included in that font. Choose `plain` to always use standard
+symbols. Despite its label, **step icons** controls icons across the surface,
+including task states, navigation and files, and changes take effect immediately.
+If icons look like empty boxes or boxed question marks, choose `auto` or `plain`.
 No font is installed or changed automatically. Screen-reader and ASCII modes
-keep simple one-character marks with the same fixed gutter.
+keep simple one-character marks even when `rich` is selected.
 
 ## Where the marks come from — can the model choose the wrong icon
 
@@ -2758,9 +2762,11 @@ for one tier.** There is no third weight and no second size, because a terminal 
 neither. Where something needs to stand out past bold, aforge uses brightness, case, indent
 or a blank line instead.
 
-Every character aforge draws on home and the places is from a standard Unicode range —
-`?` `◐` `○` `✓` `✕` `▸` `›` `·`, the box-drawing rail, the block characters in a bar chart.
-**Nothing is from a nerd-font private-use area**, so no patched font is needed anywhere.
+With the default `auto` icons, aforge draws standard Unicode symbols on home and the
+places — `?` `◐` `○` `✓` `✕` `▸` `›` `·`, the box-drawing rail and the block characters
+in a bar chart. No patched font is needed for this default. Optional `rich` icons use
+Nerd Font private-use characters and require a patched font selected in the terminal;
+`/settings` → Display → **step icons** chooses between them.
 
 Where the font setting lives, per terminal:
 
@@ -2773,9 +2779,11 @@ Where the font setting lives, per terminal:
 | ghostty | `font-family = JetBrains Mono` in `~/.config/ghostty/config` |
 | WezTerm | `font = wezterm.font("JetBrains Mono")` in `~/.wezterm.lua` |
 
-If characters come out as boxes or as `?`, the font is missing those ranges — pick another
-monospace, or start aforge with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
-back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
+If icons come out as boxes or boxed `?`, choose `auto` or `plain` under **step icons**.
+If ordinary Unicode symbols still do not draw, select a font with those ranges.
+In iTerm2, check **Use a different font for non-ASCII text** on the same Text panel:
+when enabled, that font is used for the icons instead of the main font. `NO_COLOR`
+changes colours, not font coverage.
 
 ## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
 

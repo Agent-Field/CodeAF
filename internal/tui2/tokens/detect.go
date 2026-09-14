@@ -2,20 +2,17 @@ package tokens
 
 import "strings"
 
-// Glyph tier detection (12.7 E.2).
+// Glyph tier detection is conservative: UNKNOWN FONT SUPPORT MEANS PLAIN.
+// Terminal identity, colour depth and locale cannot establish that the active
+// font contains the private-use characters in our vocabulary. Cursor-position
+// probes cannot establish it either: a missing-glyph box can occupy the same
+// one cell as the icon it replaced. There is no portable terminal query for
+// glyph coverage, so auto never enables Nerd Font icons on those signals.
+// A person who has selected a patched font can opt in through Display's rich
+// setting; the surface folds that explicit choice over this default.
 //
-// The honest headline first: **no terminal reliably reports its font.** There
-// is no standard escape sequence that answers "are you patched"; iTerm2's OSC
-// 1337 and kitty's remote-control protocol are proprietary, opt-in, and answer
-// a different question. So detection here may only VETO, never confirm, and the
-// default is on — which is a choice that has to be paid for, and is: by a real
-// opt-out at three doors, and by the plain tier being a designed floor rather
-// than a degradation (12.7 E.5).
-//
-// [DetectGlyphSet] follows [DetectProfile]'s exact shape — a pure function over
-// an [Env] closure, so its decision table is a table test rather than a fixture
-// — and returns the reason beside the tier, so the chat.log records WHY a
-// terminal is drawing what it is drawing.
+// Detection stays a pure function over Env, with a reason for the log. Known
+// terminal limitations remain distinguishable from unknown font coverage.
 
 // Reason strings are values rather than prose built at the call site, so the
 // log line and the settings sheet say the same sentence about the same cause.
@@ -26,52 +23,13 @@ const (
 	glyphReasonAppleTerm   = "TERM_PROGRAM=Apple_Terminal: Terminal.app ships SF Mono and Menlo, neither of which carries private use"
 	glyphReasonCJKLocale   = "an East-Asian locale is set: all private use is East_Asian_Width=Ambiguous, so ambiguous-wide would draw every icon at two cells and tier width parity would break"
 	glyphReasonLegacyConIn = "a legacy Windows console: its font fallback for private use is unreliable"
-	glyphReasonDefault     = "no veto signal: on by default"
+	glyphReasonDefault     = "font coverage is unknown: plain symbols until rich is explicitly selected"
 )
 
-// DetectGlyphSet returns the tier a terminal should start in and the reason,
-// for the log line. It never confirms — a positive signal cannot exist — so the
-// answer is [NerdFont] unless one of the vetoes below fires.
-//
-// The vetoes, and what each costs when it is wrong:
-//
-//  1. TERM unset or dumb. No capability claim at all; already the NoColor
-//     floor. Costs nothing.
-//  2. TERM=linux. The Linux console runs a 256/512-glyph bitmap font and
-//     CANNOT render private use. This one is certain.
-//  3. TERM_PROGRAM=Apple_Terminal. Terminal.app ships SF Mono and Menlo, and
-//     its users are the population least likely to have patched a font.
-//     [DetectProfile] already special-cases it for colour. The cost is a false
-//     negative for the rare Terminal.app user who did patch one; they set the
-//     flag once.
-//  4. An East-Asian locale in LC_ALL, LC_CTYPE or LANG. All of private use is
-//     East_Asian_Width=Ambiguous (12.7 B.3), so a terminal running
-//     ambiguous-wide draws every icon at two cells while the plain tier draws
-//     several of them at one: width parity holds under both rulers we ship
-//     against and breaks there. The cost is a false negative for a CJK-locale
-//     user whose terminal does not run ambiguous-wide; they set the flag once.
-//  5. A legacy Windows console. Its font fallback for private use is
-//     unreliable. Windows Terminal (WT_SESSION) and ConEmu say so themselves
-//     and are not vetoed.
-//
-// Two things that are deliberately NOT vetoes, and one that is deliberately not
-// a confirmation:
-//
-//   - tmux and screen pass the font straight through, because the font belongs
-//     to the outer terminal. This differs from COLORTERM, which inside a
-//     multiplexer is the multiplexer's claim about itself (10.1.2): the colour
-//     ladder caps under a multiplexer and the glyph ladder must not.
-//   - NO_COLOR is about colour. A user who wants no colour has said nothing
-//     about their font, and reading it as a glyph veto would be this package
-//     inventing a meaning for somebody else's convention.
-//   - TERM_PROGRAM ∈ {WezTerm, ghostty, iTerm.app, WarpTerminal},
-//     KITTY_WINDOW_ID, WEZTERM_EXECUTABLE, GHOSTTY_RESOURCES_DIR,
-//     ALACRITTY_WINDOW_ID and LC_TERMINAL each say which TERMINAL is running
-//     and nothing about which font it was configured with. A WezTerm user on
-//     stock JetBrains Mono is a false positive, and false positives are
-//     precisely the tofu case. Since the default is already on, a positive
-//     signal buys nothing anyway — which is the tidy argument for never reading
-//     them at all.
+// DetectGlyphSet returns the safe starting tier and its reason. A terminal
+// name is never evidence of a patched font, including over tmux or SSH, where
+// the font belongs to the terminal at the other end of the connection.
+// NO_COLOR remains a colour preference and has no bearing on this decision.
 func DetectGlyphSet(env Env) (GlyphSet, string) {
 	if env == nil {
 		return Plain, glyphReasonNoEnv
@@ -93,7 +51,7 @@ func DetectGlyphSet(env Env) (GlyphSet, string) {
 	if legacyWindowsConsole(env) {
 		return Plain, glyphReasonLegacyConIn
 	}
-	return NerdFont, glyphReasonDefault
+	return Plain, glyphReasonDefault
 }
 
 // eastAsianLocale reads the locale the way POSIX resolves it — LC_ALL, then the

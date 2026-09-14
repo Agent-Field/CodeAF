@@ -36,7 +36,7 @@ import (
 //     setting, and a single real `alt+` chord retires it for the session.
 //
 // WHY THE CAPABILITY QUESTION IS NOT AN ENVIRONMENT TABLE. tui2's
-// [tokens.DetectGlyphSet] may only VETO, because no terminal reports its font;
+// [tokens.DetectGlyphSet] keeps unknown font coverage plain;
 // here a terminal DOES report whether it disambiguates, Bubble Tea asks on
 // every frame, and bargein.go already spends that answer on `shift+enter` for
 // this exact reason. A veto table over TERM_PROGRAM would be this file guessing

@@ -2069,7 +2069,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyIcons, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "step icons", Choices: IconModes,
-			Hint:  "auto uses rich icons, with plain symbols on terminals that need them. rich requires a Nerd Font. Choose plain if your font shows empty boxes. The change applies immediately.",
+			Hint:  "auto uses plain symbols because terminal font support cannot be reliably detected. Choose rich only with a Nerd Font, or plain to always use standard symbols. This changes icons across the surface immediately.",
 			read:  func() string { return IconsAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
 		},

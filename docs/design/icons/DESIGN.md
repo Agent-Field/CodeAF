@@ -54,10 +54,13 @@ list now, and a fifth surface joins the law by being added to that list.
    hourglasses, and the powerline separators. A rune not on the list still has
    to pass the ruler.
 7. **The tier is chosen once, and one terminal shows one tier everywhere.**
-   `tokens.DetectGlyphSet` vetoes the terminals and locales that cannot be
-   trusted with private use — no `TERM`, `TERM=linux`, Apple Terminal, a CJK
-   locale, legacy conhost — and the Display row (`step icons`: `auto` · `rich` ·
-   `plain`, read with `config.IconsAt`) is the person's own say. Every surface
+   **Unknown font coverage means plain** (owner ruling 2026-09-14).
+   `tokens.DetectGlyphSet` keeps `auto` plain: terminal identity, colour depth
+   and a cursor-width probe cannot prove that the active font draws an icon
+   instead of a missing-glyph box. There is no portable glyph-coverage query,
+   and this build performs no automatic promotion to Nerd Font. The Display
+   row (`step icons`: `auto` · `rich` · `plain`, read with `config.IconsAt`)
+   keeps `rich` as the person's explicit opt-in for a patched font. Every surface
    folds the same two facts the same way:
 
    | Surface | Folds them in | Draws through | Detects at |
@@ -69,9 +72,9 @@ list now, and a fifth surface joins the law by being added to that list.
    option; v1 has no linear option, so it resolves `Plain` or `NerdFont` and the
    third tier reaches it the day it grows one. v1 detects **at the door that
    opens a real terminal** rather than at construction, so a window an embedder
-   or a test builds keeps the designed plain floor — the tier is on by default
-   for anything `DetectGlyphSet` cannot rule out, and a suite that detected would
-   assert against private-use codepoints it cannot print.
+   or a test builds keeps the designed plain floor. Ordinary launches keep it
+   too unless the person explicitly selects `rich`. A terminal's name alone
+   must never enable private-use icons.
    `internal/head` and `internal/resident` draw no marks of their own at all
    (their one `⚑` is the protocol byte above), so they hold no tier: they are on
    the law's list to keep it that way.

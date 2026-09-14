@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -480,42 +481,60 @@ func TestAFinishedTurnKeepsNoMarks(t *testing.T) {
 	}
 }
 
-// Normal terminals get the real icon set; fallback must not silently become
-// the primary design. Colour depth is deliberately absent from this table.
-func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
+// Unknown font coverage keeps every terminal plain, and rich stays an explicit
+// choice. Neither colour support nor terminal identity proves glyph coverage.
+func TestActionIconsStayPlainUntilRichIsChosen(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  map[string]string
-		rich bool
 	}{
-		{"modern", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app", "LANG": "en_US.UTF-8"}, true},
-		{"no-colour", map[string]string{"TERM": "xterm-256color", "NO_COLOR": "1"}, true},
-		{"linux-console", map[string]string{"TERM": "linux"}, false},
-		{"stock-terminal", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"}, false},
-		{"wide-locale", map[string]string{"TERM": "xterm-256color", "LANG": "ja_JP.UTF-8"}, false},
+		{"modern", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app", "LANG": "en_US.UTF-8"}},
+		{"no-colour", map[string]string{"TERM": "xterm-256color", "NO_COLOR": "1"}},
+		{"linux-console", map[string]string{"TERM": "linux"}},
+		{"stock-terminal", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"}},
+		{"wide-locale", map[string]string{"TERM": "xterm-256color", "LANG": "ja_JP.UTF-8"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a := newTestApp(&fakeAgent{model: "m"})
-			a.actionAuto, _ = tokens.DetectGlyphSet(envOf(tc.env))
-			a.iconMode = config.IconsAuto
-			a.settleIcons()
-			run := actionMarks[session.ActionRun]
-			want := tokens.Plain.Glyph(run)
-			if tc.rich {
-				want = tokens.NerdFont.Glyph(run)
+			// Use the production constructor: newTestApp pins the palette and
+			// would conceal a regression in startup's automatic choice.
+			a := newApp(context.Background(), Options{
+				Agent: &fakeAgent{model: "m"}, Workspace: t.TempDir(),
+				ProfileDir: t.TempDir(), UsageLedger: labLedger(), Env: envOf(tc.env),
+			})
+			if a.pal.icons != tokens.Plain {
+				t.Fatal("startup enabled Nerd Font without font coverage")
 			}
+			floor := tokens.Plain
+			if a.pal.ascii {
+				floor = tokens.ASCII
+			}
+			for _, binding := range tokens.Vocabulary() {
+				want := floor.Glyph(binding.ID)
+				if got := a.icon(binding.ID); got != want {
+					t.Fatalf("startup %s = %q, want %q", binding.Name, got, want)
+				}
+				if got := a.pal.glyph(binding.ID); got != want {
+					t.Fatalf("startup palette %s = %q, want %q", binding.Name, got, want)
+				}
+			}
+			run := actionMarks[session.ActionRun]
+			want := floor.Glyph(run)
 			if got := a.actionMarkFor(session.ActionRun); got != want {
 				t.Fatalf("auto=%q want %q", got, want)
 			}
 			a.iconMode = config.IconsPlain
 			a.settleIcons()
-			if got := a.actionMarkFor(session.ActionRun); got != tokens.Plain.Glyph(run) {
+			if got := a.actionMarkFor(session.ActionRun); got != floor.Glyph(run) {
 				t.Fatal("plain override ignored")
 			}
 			a.iconMode = config.IconsRich
 			a.settleIcons()
-			if got := a.actionMarkFor(session.ActionRun); got != tokens.NerdFont.Glyph(run) {
-				t.Fatal("rich override ignored")
+			rich := tokens.NerdFont
+			if a.pal.ascii {
+				rich = tokens.ASCII
+			}
+			if got := a.actionMarkFor(session.ActionRun); got != rich.Glyph(run) {
+				t.Fatal("rich override ignored or displaced the ASCII floor")
 			}
 			a.linear = true
 			if got := a.actionMarkFor(session.ActionRun); got != tokens.ASCII.Glyph(run) {
@@ -528,7 +547,7 @@ func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
 func TestTheStepIconSettingChangesTheLiveGutterAndPersists(t *testing.T) {
 	a := liveStepsApp(t)
 	a.profileDir = t.TempDir()
-	a.actionAuto = tokens.NerdFont
+	a.actionAuto, _ = tokens.DetectGlyphSet(envOf(map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"}))
 	a.iconMode = config.IconsAuto
 	a.settleIcons()
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir})
@@ -543,9 +562,9 @@ func TestTheStepIconSettingChangesTheLiveGutterAndPersists(t *testing.T) {
 		if !a.dirty || a.iconMode != mode || config.IconsAt(a.profileDir) != mode {
 			t.Fatalf("mode %q did not update live and saved state", mode)
 		}
-		want := tokens.NerdFont.Glyph(actionMarks[session.ActionRun])
-		if mode == config.IconsPlain {
-			want = tokens.Plain.Glyph(actionMarks[session.ActionRun])
+		want := tokens.Plain.Glyph(actionMarks[session.ActionRun])
+		if mode == config.IconsRich {
+			want = tokens.NerdFont.Glyph(actionMarks[session.ActionRun])
 		}
 		if got := a.actionMarkFor(session.ActionRun); got != want {
 			t.Fatalf("mode %q paints %q want %q", mode, got, want)

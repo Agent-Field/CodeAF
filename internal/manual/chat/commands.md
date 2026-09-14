@@ -1684,9 +1684,11 @@ off.
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "task column", "hints" — the one-line tips above the
 message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
-"mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
-need no patched font anywhere on this surface, and the accessible single-column rendering
-is the `--linear` flag at launch rather than a persisted setting.
+"mouse", "timestamps", "turn work", "step icons". **step icons** controls icons across
+the surface: `auto` uses plain symbols because font coverage cannot be reliably detected,
+`rich` opts into Nerd Font icons, and `plain` always uses standard symbols. No patched
+font is needed for the default. There is no "linear mode" row: the accessible
+single-column rendering is the `--linear` flag at launch rather than a persisted setting.
 
 **Providers** — which model answers what. It leads with the **Models section**, in this
 order:

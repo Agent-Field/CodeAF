@@ -1069,6 +1069,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the symbol in front of a step mean", "screen"},
 		{"what is the pencil next to the progress line", "screen"},
 		{"do I need a nerd font for the icons", "screen"},
+		{"why are there boxed question marks in iTerm2", "screen"},
+		{"can aforge detect my Nerd Font automatically", "screen"},
 		{"can the icon beside a step be wrong", "screen"},
 		{"how do I copy text out", "keys"},
 		// The pointer gestures themselves: the one everybody already owns, and

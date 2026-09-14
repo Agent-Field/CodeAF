@@ -45,8 +45,9 @@ nothing else, so the three cards that are not waiting on anybody do not wear it 
 a squiggle or a tick in the attention colour would be the screen asking you for
 something it has just said it does not need.
 
-On a terminal with a patched font these are drawn as icons instead of as shapes;
-`/settings` → **step icons** → `plain` puts the characters above back.
+These shapes are the default. With a patched font, `/settings` → Display →
+**step icons** → `rich` opts into icons instead; `auto` or `plain` restores the
+characters above.
 
 ## The kinds of question
 

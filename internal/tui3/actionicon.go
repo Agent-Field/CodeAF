@@ -49,12 +49,10 @@ import (
 // reader can name — are that table's (docs/design/icons/DESIGN.md). This file
 // holds the map from a family of work to a slot, and nothing else.
 //
-// FALLBACK IS A CAPABILITY DECISION, NOT THE DESIGN BASELINE. The existing
-// tokens.DetectGlyphSet vetoes terminals and locales that need plain symbols;
-// colour remains independent. A terminal cannot report its configured font,
-// so Display's step icons row offers plain for missing glyphs and rich for a
-// patched font on a conservatively detected terminal. Linear and ASCII modes
-// keep their accessible spelling even when rich is selected.
+// UNKNOWN FONT SUPPORT MEANS PLAIN. tokens.DetectGlyphSet never infers font
+// coverage from terminal identity; Display's step icons row offers rich as an
+// explicit opt-in for a patched font. Colour remains independent. Linear and
+// ASCII modes keep their accessible spelling even when rich is selected.
 
 // iconSet is WHERE THE TIER IS DECIDED, and it is decided once: the Display
 // setting when a person has said something, and [tokens.DetectGlyphSet]'s

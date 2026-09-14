@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// TestDetectGlyphSet is the veto ladder as a table, mirroring TestDetectProfile
+// TestDetectGlyphSet is the safe starting repertoire as a table, mirroring TestDetectProfile
 // — which is the whole reason detection is a pure function over an [Env]
 // closure rather than something that reads the process environment.
 func TestDetectGlyphSet(t *testing.T) {
@@ -31,33 +31,39 @@ func TestDetectGlyphSet(t *testing.T) {
 		{"a Korean locale in LC_CTYPE",
 			map[string]string{"TERM": "xterm-256color", "LC_CTYPE": "ko_KR.UTF-8"}, Plain, glyphReasonCJKLocale},
 		{"LC_ALL wins the locale ladder, so a C override lifts the veto",
-			map[string]string{"TERM": "xterm-256color", "LC_ALL": "C", "LANG": "ja_JP.UTF-8"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "LC_ALL": "C", "LANG": "ja_JP.UTF-8"}, Plain, glyphReasonDefault},
 		{"a legacy Windows console",
 			map[string]string{"TERM": "xterm", "MSYSTEM": "MINGW64"}, Plain, glyphReasonLegacyConIn},
 		{"Windows Terminal says so itself and is not vetoed",
-			map[string]string{"TERM": "xterm-256color", "MSYSTEM": "MINGW64", "WT_SESSION": "abc"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "MSYSTEM": "MINGW64", "WT_SESSION": "abc"}, Plain, glyphReasonDefault},
 		{"ConEmu says so itself and is not vetoed",
-			map[string]string{"TERM": "xterm-256color", "MSYSTEM": "MINGW64", "ConEmuANSI": "ON"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "MSYSTEM": "MINGW64", "ConEmuANSI": "ON"}, Plain, glyphReasonDefault},
 
 		// The non-vetoes, each stated as a case so a future edit has to argue
 		// with a test rather than with a comment.
 		{"tmux is NOT a veto: the font belongs to the outer terminal",
-			map[string]string{"TERM": "tmux-256color", "TMUX": "/tmp/tmux-1000/default"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "tmux-256color", "TMUX": "/tmp/tmux-1000/default"}, Plain, glyphReasonDefault},
 		{"screen is NOT a veto either",
-			map[string]string{"TERM": "screen-256color"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "screen-256color"}, Plain, glyphReasonDefault},
 		{"NO_COLOR is about colour and says nothing about a font",
-			map[string]string{"TERM": "xterm-256color", "NO_COLOR": "1"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "NO_COLOR": "1"}, Plain, glyphReasonDefault},
 		{"an English locale is not a veto",
-			map[string]string{"TERM": "xterm-256color", "LANG": "en_US.UTF-8"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "LANG": "en_US.UTF-8"}, Plain, glyphReasonDefault},
 		{"a Japanese-looking prefix on another language is not a veto",
-			map[string]string{"TERM": "xterm-256color", "LANG": "jam_NG"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "LANG": "jam_NG"}, Plain, glyphReasonDefault},
 
-		// The weak positives buy nothing, because the default is already on.
+		// Terminal identity cannot establish font coverage.
 		{"WezTerm names a terminal, never a font",
-			map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "WezTerm"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "WezTerm"}, Plain, glyphReasonDefault},
 		{"kitty names a terminal, never a font",
-			map[string]string{"TERM": "xterm-kitty", "KITTY_WINDOW_ID": "1"}, NerdFont, glyphReasonDefault},
-		{"the plain case", map[string]string{"TERM": "xterm-256color"}, NerdFont, glyphReasonDefault},
+			map[string]string{"TERM": "xterm-kitty", "KITTY_WINDOW_ID": "1"}, Plain, glyphReasonDefault},
+		{"iTerm2 does not report its active font through TERM_PROGRAM",
+			map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app", "LANG": "en_US.UTF-8"}, Plain, glyphReasonDefault},
+		{"Ghostty names a terminal, never a font",
+			map[string]string{"TERM": "xterm-ghostty", "TERM_PROGRAM": "ghostty"}, Plain, glyphReasonDefault},
+		{"SSH does not reveal the remote viewer's font",
+			map[string]string{"TERM": "xterm-256color", "SSH_CONNECTION": "client 1 server 2"}, Plain, glyphReasonDefault},
+		{"the plain case", map[string]string{"TERM": "xterm-256color"}, Plain, glyphReasonDefault},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,24 +82,21 @@ func TestDetectGlyphSet(t *testing.T) {
 	}
 }
 
-// TestDetectionOnlyVetoes is the law stated as a test rather than as a comment:
-// no environment may TURN THE TIER ON, because no environment can see a font. A
-// signal that flipped Plain to NerdFont would be this package claiming to know
-// something it cannot know, and the failure mode of that claim is tofu on a
-// user's screen.
-func TestDetectionOnlyVetoes(t *testing.T) {
-	vetoed := map[string]string{"TERM": "linux"}
+// TestTerminalIdentityNeverProvesFontCoverage keeps the unknown case safe too:
+// checking only the Linux console would miss an optimistic default on iTerm2.
+func TestTerminalIdentityNeverProvesFontCoverage(t *testing.T) {
+	unknown := map[string]string{"TERM": "xterm-256color"}
 	for _, positive := range []string{
 		"TERM_PROGRAM", "KITTY_WINDOW_ID", "WEZTERM_EXECUTABLE",
 		"GHOSTTY_RESOURCES_DIR", "ALACRITTY_WINDOW_ID", "LC_TERMINAL", "COLORTERM",
 	} {
 		envs := map[string]string{}
-		for k, v := range vetoed {
+		for k, v := range unknown {
 			envs[k] = v
 		}
 		envs[positive] = "WezTerm"
 		if got, why := DetectGlyphSet(env(envs)); got != Plain {
-			t.Errorf("%s lifted a veto (%s): detection may only veto, never confirm", positive, why)
+			t.Errorf("%s enabled icons without font coverage (%s)", positive, why)
 		}
 	}
 }

@@ -1687,11 +1687,11 @@ word, because the reason is the half you can act on: `waiting on task 4`,
 
 A run that is standing at its spend gate wears `=` in front of its tier glyph.
 
-**On a terminal with a patched font you get icons rather than shapes.** Every mark above
-is a slot in one vocabulary with three spellings — a Font Awesome icon, the geometric
-character shown here, and one ASCII letter for a screen reader — and aforge picks the tier
-for your terminal. `/settings` → **step icons** is where you choose `plain` if the icons
-draw badly in your font. The state a mark means never changes with the tier.
+**Shapes are the default; Nerd Font icons are optional.** Every mark above is a slot in
+one vocabulary with three spellings — a Font Awesome icon, the geometric character shown
+here, and one ASCII letter for a screen reader. `/settings` → Display → **step icons**
+uses the shapes under `auto` or `plain`; choose `rich` only with a patched font selected
+in your terminal. The state a mark means never changes with the tier.
 
 These are the exact words on screen.
 

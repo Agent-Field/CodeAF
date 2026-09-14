@@ -777,11 +777,9 @@ func newTestApp(agent Agent) *app {
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	// AND IT PINS THE GLYPH REPERTOIRE, for the fifth time for the same reason.
-	// [tokens.DetectGlyphSet] turns the nerd-font tier ON for any terminal it
-	// cannot rule out, and the pinned TERM above is one of those — so every mark
-	// in the suite would be a private-use codepoint, invisible in the frames
-	// these tests log and impossible to write down in an assertion. The plain
-	// floor is what the suite asserts against; the tests that are ABOUT the tier
+	// The plain repertoire is both the safe runtime default and what the suite
+	// asserts against. Keep it explicit so a future capability probe cannot
+	// change unrelated frame expectations; the tests that are ABOUT the tier
 	// set [app.actionAuto] themselves and call [app.settleIcons]
 	// (actionicon_test.go).
 	a.actionAuto = tokens.Plain
