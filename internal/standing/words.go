@@ -323,13 +323,13 @@ func spanWords(span time.Duration) string {
 	return span.String()
 }
 
-// WatchWords is how a file watch's waking is said when nobody said it in their
-// own words: `when inbox/* changes`.
+// WatchWords is how a file watch's waking is said: `when inbox/* changes`.
 //
-// ONE SPELLING FOR BOTH DOORS. `aforge standing add --watch` writes it, and the
-// chat's card falls back to it when the model sent no words of its own — a
-// watch whose card and record said nothing about when it wakes (the chat door's
-// first live run, 2026-09-11) is a watch nobody can check.
+// ONE SPELLING FOR BOTH DOORS. `aforge standing add --watch` writes it, and so
+// does the chat, whatever words the model sent ([When.CardWords]) — a watch
+// whose card and record said nothing about when it wakes (the chat door's
+// first live run, 2026-09-11) is a watch nobody can check, and one said in
+// words its pattern does not keep is worse (W5-B).
 func WatchWords(glob string) string { return "when " + glob + " changes" }
 
 // CardWords is the `when ·` line a card, a list and a record draw for what
@@ -343,10 +343,20 @@ func WatchWords(glob string) string { return "when " + glob + " changes" }
 // changes" on a watch that runs only when a condition says yes is the card the
 // nested case drew (chat scoreboard, 2026-09-11): a promise the item does not
 // keep. The condition is what decides, so the card names it.
+//
+// A WATCH WITH NO CONDITION IS SAID FROM ITS PATTERN TOO, as the terminal
+// writes it ([WatchWords]). One order watches one pattern, and a model asked to
+// keep an eye on two folders sent `inbox/*` with the words "whenever something
+// lands in inbox/ or notes/": the card drew those words, and the person said yes
+// to a watch on notes/ that never wakes for it (W5-B). A watch recorded with a
+// model's words before this reads from its pattern as well.
 func (w When) CardWords() string {
-	condition := conditionWords(w.Hint)
-	if w.Kind != WhenFile || condition == "" {
+	if w.Kind != WhenFile {
 		return strings.TrimSpace(w.Words)
+	}
+	condition := conditionWords(w.Hint)
+	if condition == "" {
+		return WatchWords(w.Glob)
 	}
 	return "whenever " + watchSubject(w.Glob) + ", only when: " + condition
 }

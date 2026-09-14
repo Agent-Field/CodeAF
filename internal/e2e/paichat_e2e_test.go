@@ -34,8 +34,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -108,6 +110,20 @@ type cv struct {
 	notes   []string
 	// answer is how the person answers a standing card; the default is yes.
 	answer func(session.StandingNotice) session.StandingAnswer
+	// allow is how the person answers a consent; the default allows it.
+	allow func(tool, hint string) bool
+	// interactive opens conversations as the TUI does (Config.Interactive),
+	// so a model's ask reaches the person through question instead of being
+	// decided by its own default. Only the acceptance journey sets it.
+	interactive bool
+	// question answers a model's ask as the person would. It is read by the
+	// question watcher an interactive conversation holds, so it is guarded.
+	question func(*session.Question) session.Answer
+	askMu    sync.Mutex
+	asked    []string
+	// acceptance makes any failed check fail the Go test (the journey);
+	// exploratory scenarios only report.
+	acceptance bool
 }
 
 func TestPAIChat(t *testing.T) {
@@ -142,6 +158,7 @@ func TestPAIChat(t *testing.T) {
 	}
 	c := &cv{t: t, scen: scen, binary: binary, home: home, project: project, env: env, key: key}
 	c.answer = func(session.StandingNotice) session.StandingAnswer { return session.StandingAnswer{Approved: true} }
+	c.allow = func(string, string) bool { return true }
 	defer c.finish()
 	fn(c)
 }
@@ -165,11 +182,74 @@ func (c *cv) chat(id string) *cvChat {
 		AskConsent:   true,
 		Standing:     &session.Standing{Store: store},
 		Organization: &session.Organization{Path: filepath.Join(c.home, "v3", "collections.db")},
+		Interactive:  c.interactive,
 	})
 	must(c.t, err)
 	c.t.Cleanup(func() { _ = agent.Close() })
+	if c.interactive {
+		// A MODEL'S ASK IS NOT ON THE TURN STREAM: it goes to question
+		// watchers, as the TUI holds one. The person answers each ask here.
+		questions, stop := agent.WatchQuestions()
+		c.t.Cleanup(stop)
+		go func() {
+			for event := range questions {
+				if event.Kind != session.EventQuestion || event.Question == nil || event.Question.Kind != session.QuestionAsk {
+					continue
+				}
+				c.askMu.Lock()
+				answerer := c.question
+				c.askMu.Unlock()
+				if answerer == nil {
+					answerer = personAsksToDoWhatTheySaid
+				}
+				answer := answerer(event.Question)
+				err := agent.ResolveQuestion(answer)
+				line := fmt.Sprintf("%s · %s → key=%q change=%q reframe=%q (by the person; err=%v)", event.Question.Ask, event.Question.Head, answer.Key, answer.Change, answer.Reframe, err)
+				c.askMu.Lock()
+				c.asked = append(c.asked, line)
+				c.askMu.Unlock()
+				c.t.Logf("QUESTION %s", line)
+			}
+		}()
+	}
 	return &cvChat{id: id, agent: agent, dir: place.Dir}
 }
+
+// personAsksToDoWhatTheySaid is how the person answers an ask outside a turn
+// that sets its own answer: never the model's pick, but their own sentence
+// back, which returns the question to the model.
+func personAsksToDoWhatTheySaid(q *session.Question) session.Answer {
+	return session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, DecidedBy: session.DecidedByPerson,
+		Reframe: "do exactly what I asked in my last message, nothing more"}
+}
+
+// treeSnapshot is every path under root with its kind and, for a file, its
+// sha256: what a turn that must move and write nothing may not change.
+func treeSnapshot(root string) map[string]string {
+	out := map[string]string{}
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || path == root {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, path)
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, _ := os.Readlink(path)
+			out[rel] = "link " + target
+		case info.IsDir():
+			out[rel] = "dir"
+		default:
+			raw, _ := os.ReadFile(path)
+			sum := sha256.Sum256(raw)
+			out[rel] = hex.EncodeToString(sum[:])
+		}
+		return nil
+	})
+	return out
+}
+
+// ownWord is "own" as a word about owners, never inside "markdown" or "known".
+var ownWord = regexp.MustCompile(`(?i)\b(own|owns|owner|owners|owned|ownership)\b`)
 
 var paiTurnLimit = 5 * time.Minute
 
@@ -201,9 +281,10 @@ func (c *cv) say(ch *cvChat, words string) cvTurn {
 		case session.EventStandingUpdate:
 			turn.News = append(turn.News, event.Standing.Update+" · "+event.Standing.Text)
 		case session.EventConsentRequest:
-			turn.Consents = append(turn.Consents, event.Tool+" · "+event.Hint+" · "+event.Rule)
-			c.t.Logf("CONSENT asked: %s %s (%s) — allowed", event.Tool, event.Hint, event.Rule)
-			ch.agent.ResolveConsent(event.ID, true)
+			allowed := c.allow(event.Tool, event.Hint)
+			turn.Consents = append(turn.Consents, fmt.Sprintf("%s · %s · %s · allowed=%v", event.Tool, event.Hint, event.Rule, allowed))
+			c.t.Logf("CONSENT asked: %s %s (%s) — allowed=%v", event.Tool, event.Hint, event.Rule, allowed)
+			ch.agent.ResolveConsent(event.ID, allowed)
 		case session.EventTaskProposal:
 			title := ""
 			if event.Task != nil {
@@ -656,6 +737,12 @@ func (c *cv) finish() {
 		}
 	}
 	c.t.Logf("CHATRESULT %s passed=%d/%d failed=[%s] spend=%s", c.scen, len(c.checks)-len(failed), len(c.checks), strings.Join(failed, ","), ledgerSpend(c.home))
+	// AN ACCEPTANCE RUN THAT FAILED A CHECK IS A FAILED RUN. The exploratory
+	// scenarios are read by a person and exit 0 whatever they found; the
+	// journey is acceptance, so its Go test, and the runner's exit, say so.
+	if c.acceptance && len(failed) > 0 {
+		c.t.Errorf("acceptance journey: %d of %d checks failed: %s", len(failed), len(c.checks), strings.Join(failed, ", "))
+	}
 }
 
 // deliveries is every note an unattended firing left for a conversation or
@@ -693,6 +780,7 @@ var paiScenarios = map[string]func(c *cv){
 	"policy":      scenPolicy,
 	"probe":       scenProbe,
 	"permission":  scenPermission,
+	"journey":     scenJourney,
 }
 
 // firstWork is the one piece of running work the chat set up, or a failed
@@ -1600,4 +1688,348 @@ func scenPermission(c *cv) {
 		}
 		return "none"
 	}()))
+}
+
+// scenJourney is THE CHAT-DRIVEN LOCAL-FILE JOURNEY in one conversation, the
+// slice W5-B validates end to end: work set up in a folder the conversation is
+// placed in; its instructions, its watch and its report path each changed by
+// a sentence; a second folder asked into the same report; a pause, a resume and
+// a stop. Every change must be the SAME item one version on, and every run is
+// read off the shipped binary's own records.
+//
+// AUTHORITY COMES FROM THE PLACEMENT, NEVER FROM A REFERENCE. The conversation
+// is placed in Launch, whose rule every report must keep; the work is then
+// filed under Archive as a reference, whose rule must never reach it.
+//
+// THE SECOND FOLDER HAS TWO ACCEPTABLE ENDINGS, AND THE PERSON SAYS WHICH. The
+// sentence asks for notes/ in the same digest AND says "leave both folders where
+// they are; if this cannot be watched as requested, explain and keep the existing
+// setup". So either the one order's watch really reaches inbox/ and notes/ (and
+// nothing else) on a card the person approves, or the setup is left exactly as it
+// was with the reply explaining. The person answers as that sentence reads: a
+// card is approved only if its watch reaches both folders and nothing unrelated;
+// a question is answered with the option that changes nothing (else the words of
+// the sentence); a consent in that turn is declined. Never acceptable: a folder
+// moved, a watch covertly broader than asked, a replacement item, a workaround
+// the person did not approve, or a card claiming notes/ its watch does not reach.
+//
+// IT IS ACCEPTANCE, SO IT FAILS. Any failed check fails the Go test and the
+// runner's exit ([cv.acceptance]); the other scenarios stay exploratory.
+//
+// Driver corrections after live 1 and live 2 (BUILD-WAVE-05B.md, "Acceptance
+// driver"): the instructions edit is judged on the fixture's fact (the digest's
+// venue line names Priya) rather than a literal "owner" word nobody asked for; a
+// watch that already reaches the subfolders is a truthful no-op needing no new
+// version, but the nested file must still wake a run that names it; the model's
+// questions reach the person instead of the default dial.
+func scenJourney(c *cv) {
+	c.acceptance, c.interactive = true, true
+	launch, archive := c.folder("Launch"), c.folder("Archive")
+	c.rule(launch, "Every Launch digest ends with the line LAUNCH-CHECKED.", false)
+	c.rule(archive, "Every Archive report includes the line MARK-ARCHIVE.", false)
+	ch := c.chat("chat-journey")
+	c.placeChat(launch, ch)
+	c.mkdir("inbox")
+	c.mkdir("notes")
+	c.mkdir("unrelated")
+
+	// ── set up ───────────────────────────────────────────────────────────
+	t := c.say(ch, "keep an eye on inbox/ and keep reports/digest.md current with a short digest of the decisions and requests that come in")
+	c.flagReply(t)
+	item, ok := c.firstWork([]string{"J-create"}, t)
+	if !ok {
+		return
+	}
+	terms := termsOf(t)
+	c.expect([]string{"J-create", "J-authority"}, "card-names-report-folder-and-rule", has(terms, "reports/digest.md", "folder · launch", "launch-checked"), terms)
+	c.expect([]string{"J-create"}, "item-keeps-the-digest", item.Does.Report == "reports/digest.md" && item.Watches("inbox/a.md"), c.describe(item))
+	c.ok("collections", "add", archive, "standing", item.ID)
+	show := c.ok("standing", "show", item.ID)
+	c.t.Logf("SHOW after setup:\n%s", show)
+	archived := c.folderHolds(archive)
+	c.expect([]string{"J-authority"}, "reference-is-not-a-placement", archived.references(workspace.StandingKind, item.ID) && !archived.places(item.ID) && has(show, "launch (placed directly)") && !has(show, "archive (placed directly)"), fmt.Sprintf("references=%v placed=%v", archived.References, archived.Placed))
+
+	c.check()
+	c.write("inbox/a.md", "Request: Sam to send the Q3 numbers by Monday.\nDecision: the offsite moves to Lisbon.\n")
+	c.check()
+	runs := c.logRuns(item.ID)
+	okp, why := false, fmt.Sprintf("runs=%d", len(runs))
+	if len(runs) == 1 {
+		okp, why = c.published(runs[0], "reports/digest.md")
+	}
+	digest := c.read("reports/digest.md")
+	c.t.Logf("DIGEST 1:\n%s", digest)
+	c.expect([]string{"J-create"}, "first-change-published", okp && has(digest, "lisbon"), why)
+	c.expect([]string{"J-authority"}, "placement-rule-kept-reference-rule-absent", has(digest, "LAUNCH-CHECKED") && !has(digest, "MARK-ARCHIVE"), "")
+
+	// edited follows the item after a sentence meant to change it: the same id
+	// one version on is the pass; a stop and a new card is followed, so the
+	// later steps still judge the work that runs.
+	edited := func(step string, before standing.Item) standing.Item {
+		now := c.item(before.ID)
+		c.expect([]string{step}, "same-item-one-version-on", now.Status == standing.StatusActive && now.SpecRevision > before.SpecRevision, c.describe(now))
+		if now.Status != standing.StatusActive {
+			// A stop and a new card may change the report too, so the work
+			// that runs now is the newest active chat work, whatever it keeps.
+			for _, it := range c.work() {
+				if it.Status == standing.StatusActive && it.ID != before.ID {
+					now = it
+				}
+			}
+			if now.ID != before.ID {
+				c.note("%s made a new item %s; later steps follow it", step, now.ID)
+			}
+		}
+		return now
+	}
+
+	// ── edit the instructions ────────────────────────────────────────────
+	t = c.say(ch, "actually, in that digest also list who owns each request")
+	c.flagReply(t)
+	item = edited("J-edit-instructions", item)
+	c.write("inbox/b.md", "Request: book the venue for the offsite. Owner: Priya.\n")
+	c.check()
+	runs = c.logRuns(item.ID)
+	digest = c.read("reports/digest.md")
+	c.t.Logf("DIGEST 2:\n%s", digest)
+	okp, why = false, "no runs"
+	if len(runs) > 0 {
+		okp, why = c.published(runs[0], "reports/digest.md")
+	}
+	// THE FIXTURE'S FACT, NOT A LABEL. The person asked who owns each request,
+	// not for an "owner" field: the digest line about the venue names Priya.
+	// The fixture says who owns it, so the digest alone cannot prove the edit:
+	// the instructions (or acceptance) that stand must ask for owners too.
+	venueOwned := false
+	digestLines := strings.Split(digest, "\n")
+	for at, line := range digestLines {
+		near := line
+		if at+1 < len(digestLines) {
+			near += " " + digestLines[at+1]
+		}
+		if has(line, "venue") && has(near, "priya") {
+			venueOwned = true
+		}
+	}
+	c.expect([]string{"J-edit-instructions"}, "instructions-ask-for-owners", ownWord.MatchString(item.Does.Brief+" "+item.Does.Acceptance), c.describe(item))
+	c.expect([]string{"J-edit-instructions"}, "edit-reached-next-report-venue-owned-by-priya", okp && venueOwned, why)
+
+	// ── edit the watch ───────────────────────────────────────────────────
+	t = c.say(ch, "the inbox has subfolders now, one per client — make the digest pick up files inside those too")
+	c.flagReply(t)
+	c.note("watch edit cards: %v", termsOf(t))
+	if item.Watches("inbox/clients/acme.md") && len(t.Cards) == 0 {
+		// A watch that already reaches the subfolders needs no change, and
+		// saying so is the truthful answer (W5-B live 2's `inbox/**/*`): no new
+		// version is required, and nothing may have changed.
+		now := c.item(item.ID)
+		c.expect([]string{"J-edit-watch"}, "already-recursive-watch-left-unchanged", now.ID == item.ID && now.Status == standing.StatusActive && now.SpecRevision == item.SpecRevision && now.When.Glob == item.When.Glob, c.describe(now))
+		item = now
+	} else {
+		item = edited("J-edit-watch", item)
+	}
+	c.expect([]string{"J-edit-watch"}, "watch-reaches-subfolders-and-still-inbox", item.Watches("inbox/clients/acme.md") && item.Watches("inbox/c.md"), c.describe(item))
+	c.write("inbox/clients/acme.md", "Acme: waiting on the revised quote; Omar owns it.\n")
+	c.check()
+	runs = c.logRuns(item.ID)
+	digest = c.read("reports/digest.md")
+	c.t.Logf("DIGEST 3:\n%s", digest)
+	okp, why = false, "no runs"
+	if len(runs) > 0 {
+		okp, why = c.published(runs[0], "reports/digest.md")
+	}
+	nested := false
+	if len(runs) > 0 {
+		for _, x := range runs[0].Changes {
+			nested = nested || x.Path == "inbox/clients/acme.md"
+		}
+	}
+	c.expect([]string{"J-edit-watch"}, "nested-file-woke-a-run-and-reached-the-report", okp && nested && has(digest, "acme"), why)
+
+	// ── edit the report path ─────────────────────────────────────────────
+	oldSHA := c.sha("reports/digest.md")
+	t = c.say(ch, "rename the digest file: keep it at reports/weekly-digest.md from now on")
+	c.flagReply(t)
+	c.note("report edit cards: %v", termsOf(t))
+	item = edited("J-edit-report", item)
+	c.expect([]string{"J-edit-report"}, "report-path-moved", item.Does.Report == "reports/weekly-digest.md", c.describe(item))
+	c.write("inbox/d.md", "Decision: legal review happens Tuesday.\n")
+	c.check()
+	runs = c.logRuns(item.ID)
+	weekly := c.read("reports/weekly-digest.md")
+	c.t.Logf("WEEKLY 1:\n%s", weekly)
+	okp, why = false, "no runs"
+	if len(runs) > 0 {
+		okp, why = c.published(runs[0], "reports/weekly-digest.md")
+	}
+	c.expect([]string{"J-edit-report"}, "next-run-publishes-at-the-new-path", okp && has(weekly, "legal"), why)
+	c.expect([]string{"J-edit-report"}, "old-report-left-as-it-was", c.sha("reports/digest.md") == oldSHA, "")
+	// The path it left has no owner any more, and the one it moved to does.
+	out, code := c.aforge(time.Minute, "standing", "add", "--words", "keep the old digest path from unrelated/",
+		"--instructions", "Summarise the changed files in unrelated/.", "--watch", "unrelated/*.md", "--report", "reports/digest.md")
+	c.expect([]string{"J-edit-report"}, "old-path-released", code == 0, fmt.Sprintf("exit=%d %s", code, pclip(out, 300)))
+	for _, it := range c.items() {
+		if it.Status != standing.StatusRetired && it.Does.Report == "reports/digest.md" && it.ID != item.ID {
+			c.ok("standing", "stop", it.ID)
+		}
+	}
+	out, code = c.aforge(time.Minute, "standing", "add", "--words", "a second keeper of the weekly digest",
+		"--instructions", "Summarise the changed files in unrelated/.", "--watch", "unrelated/*.md", "--report", "reports/weekly-digest.md")
+	c.expect([]string{"J-edit-report", "J-one-owner"}, "new-path-owned", code != 0 && has(out, "is already the report of"), fmt.Sprintf("exit=%d %s", code, pclip(out, 300)))
+
+	// ── a second folder into the one report ──────────────────────────────
+	before := c.item(item.ID)
+	c.write("notes/keep.md", "Note: this folder stays where it is.\n")
+	keepSHA := c.sha("notes/keep.md")
+	itemsBefore := len(c.items())
+	treeBefore := treeSnapshot(c.project)
+	c.askMu.Lock()
+	askedBefore := len(c.asked)
+	c.askMu.Unlock()
+	const secondFolder = "also keep an eye on notes/ and put what lands there into the same weekly digest — leave both folders where they are; if this cannot be watched as requested, explain and keep the existing setup"
+	// The person answers as that sentence reads, for this turn only.
+	c.answer = func(n session.StandingNotice) session.StandingAnswer {
+		ok := n.Item.Watches("notes/n.md") && n.Item.Watches("inbox/e.md") && n.Item.Watches("inbox/clients/acme.md") && !n.Item.Watches("unrelated/u.md") && n.Item.Does.Report == "reports/weekly-digest.md"
+		c.t.Logf("PERSON answers the card: approved=%v (watch %q reaches notes=%v inbox=%v unrelated=%v)", ok, n.Item.When.Glob, n.Item.Watches("notes/n.md"), n.Item.Watches("inbox/e.md"), n.Item.Watches("unrelated/u.md"))
+		return session.StandingAnswer{Approved: ok}
+	}
+	c.allow = func(string, string) bool { return false }
+	secondQuestion := func(q *session.Question) session.Answer {
+		answer := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, DecidedBy: session.DecidedByPerson}
+		for _, option := range q.Options {
+			words := option.Label + " " + option.Body + " " + option.Consequence
+			if hasAny(words, "move", "copy", "link", "root", "everything", "relocat", "restructur", "whole project", "broader", "second order", "new order") {
+				continue
+			}
+			if option.Safe || hasAny(words, "keep the existing", "keep existing", "keep the current", "change nothing", "no change", "cancel", "leave it") {
+				answer.Key, answer.Picked = option.Key, []string{option.Key}
+				break
+			}
+		}
+		if answer.Key == "" {
+			answer.Reframe = "leave both folders where they are; if this cannot be watched as requested, explain and keep the existing setup"
+		} else {
+			answer.Change = "leave both folders where they are and keep the existing setup"
+		}
+		return answer
+	}
+	c.askMu.Lock()
+	c.question = secondQuestion
+	c.askMu.Unlock()
+	t = c.say(ch, secondFolder)
+	c.answer = func(session.StandingNotice) session.StandingAnswer { return session.StandingAnswer{Approved: true} }
+	c.allow = func(string, string) bool { return true }
+	c.askMu.Lock()
+	c.question = nil
+	askedInTurn := append([]string(nil), c.asked[askedBefore:]...)
+	c.askMu.Unlock()
+	c.flagReply(t)
+	c.note("second-folder cards: %v", termsOf(t))
+	c.note("second-folder failed tools: %v", t.Failed)
+	c.note("second-folder asks answered by the person: %v consents: %v tools: %v", askedInTurn, t.Consents, t.Tools)
+	treeAfter := treeSnapshot(c.project)
+	var moved []string
+	for path, kind := range treeBefore {
+		if treeAfter[path] != kind {
+			moved = append(moved, "changed or gone: "+path)
+		}
+	}
+	for path := range treeAfter {
+		if _, was := treeBefore[path]; !was {
+			moved = append(moved, "new: "+path)
+		}
+	}
+	sort.Strings(moved)
+	c.expect([]string{"J-two-folders"}, "project-tree-untouched-by-the-turn", len(moved) == 0, strings.Join(moved, " | "))
+	var keepers []standing.Item
+	for _, it := range c.items() {
+		if it.Status != standing.StatusRetired && it.Does.Report == "reports/weekly-digest.md" {
+			keepers = append(keepers, it)
+			c.note("  keeps the weekly digest: %s", c.describe(it))
+		}
+	}
+	c.expect([]string{"J-two-folders", "J-one-owner"}, "one-live-owner-of-the-report", len(keepers) == 1, fmt.Sprintf("live keepers=%d", len(keepers)))
+	_, statErr := os.Stat(filepath.Join(c.project, "inbox", "notes"))
+	c.expect([]string{"J-two-folders"}, "no-folder-relocated", c.sha("notes/keep.md") == keepSHA && os.IsNotExist(statErr), fmt.Sprintf("notes/keep.md sha=%s inbox/notes stat=%v", c.sha("notes/keep.md"), statErr))
+	c.expect([]string{"J-two-folders"}, "no-replacement-item", len(c.items()) == itemsBefore && c.item(before.ID).Status == standing.StatusActive, fmt.Sprintf("items before=%d after=%d; %s", itemsBefore, len(c.items()), c.describe(c.item(before.ID))))
+	if len(keepers) == 0 {
+		return
+	}
+	keeper := keepers[0]
+	reachesNotes, reachesInbox := keeper.Watches("notes/n.md"), keeper.Watches("inbox/e.md")
+	broadened := keeper.Watches("unrelated/u.md")
+	var claimed []string
+	for _, card := range t.Cards {
+		if hasAny(card.When, "notes") {
+			claimed = append(claimed, card.When)
+		}
+	}
+	c.note("second folder: reachesNotes=%v reachesInbox=%v reachesUnrelated=%v glob=%q when.words=%q", reachesNotes, reachesInbox, broadened, keeper.When.Glob, keeper.When.Words)
+	c.expect([]string{"J-two-folders"}, "no-card-claims-notes-the-watch-does-not-reach", reachesNotes || len(claimed) == 0, strings.Join(claimed, " | "))
+	c.expect([]string{"J-two-folders"}, "no-covert-broader-watch", keeper.ID == before.ID && reachesInbox && keeper.Watches("inbox/clients/acme.md") && !broadened, c.describe(keeper))
+	if reachesNotes {
+		c.expect([]string{"J-two-folders"}, "widened-on-an-approved-card", len(t.Cards) > 0 && keeper.SpecRevision > before.SpecRevision, c.describe(keeper))
+	} else {
+		// NOT WATCHED AS REQUESTED, so the setup must be exactly as it was: no
+		// new version and no instructions that read notes/ (a workaround the
+		// person did not approve), and a reply that explains, judged by a person.
+		c.expect([]string{"J-two-folders"}, "existing-setup-kept-no-unapproved-workaround", keeper.ID == before.ID && keeper.SpecRevision == before.SpecRevision && keeper.When.Glob == before.When.Glob && keeper.Does.Brief == before.Does.Brief, c.describe(keeper))
+		// A reply is judged by a person; the machine check is only that the
+		// turn ended with words about the unsupported request (notes/, or the
+		// two folders) — the tree, version and watch checks above are what
+		// catch a workaround.
+		c.expect([]string{"J-two-folders"}, "the-reply-explains", t.Err == "" && hasAny(t.Reply, "notes", "two folders", "both folders") && hasAny(t.Reply, "can't", "cannot", "can not", "not ", "n't", "unable", "instead", "unwatched", "only", "as it was", "left", "kept", "no "), pclip(t.Reply, 300))
+		c.note("the second folder was not watched — judge the explanation: %q", pclip(t.Reply, 800))
+	}
+	item = keeper
+	c.write("notes/n.md", "Note: the press kit is due Friday.\n")
+	c.write("inbox/e.md", "Request: Lena to confirm the caterer.\n")
+	c.check()
+	runs = c.logRuns(item.ID)
+	var changed []string
+	if len(runs) > 0 {
+		for _, x := range runs[0].Changes {
+			changed = append(changed, x.Path)
+		}
+	}
+	c.expect([]string{"J-two-folders"}, "the-run-reads-what-the-watch-reaches", len(runs) > 0 && slices.Contains(changed, "notes/n.md") == reachesNotes && slices.Contains(changed, "inbox/e.md") == reachesInbox, fmt.Sprintf("changes=%v", changed))
+
+	// ── pause, a change while paused, resume ────────────────────────────
+	t = c.say(ch, "pause the weekly digest for now")
+	c.flagReply(t)
+	c.expect([]string{"J-pause"}, "paused-in-chat", c.item(item.ID).Status == standing.StatusPaused, string(c.item(item.ID).Status))
+	ran := len(c.runs(item.ID))
+	c.write("inbox/f.md", "Decision: the budget is capped at 5k.\n")
+	c.check()
+	c.expect([]string{"J-pause"}, "paused-runs-nothing", len(c.runs(item.ID)) == ran, fmt.Sprintf("runs=%d before=%d", len(c.runs(item.ID)), ran))
+	t = c.say(ch, "ok, start the weekly digest again")
+	c.flagReply(t)
+	c.expect([]string{"J-resume"}, "resumed-in-chat", c.item(item.ID).Status == standing.StatusActive, string(c.item(item.ID).Status))
+	c.check()
+	runs = c.logRuns(item.ID)
+	weekly = c.read("reports/weekly-digest.md")
+	c.t.Logf("WEEKLY after resume:\n%s", weekly)
+	okp, why = false, fmt.Sprintf("runs=%d before=%d", len(runs), ran)
+	if len(runs) == ran+1 {
+		okp, why = c.published(runs[0], "reports/weekly-digest.md")
+	}
+	c.expect([]string{"J-resume"}, "resume-catches-up-once-and-publishes", okp && has(weekly, "5k"), why)
+	c.expect([]string{"J-authority"}, "every-report-kept-the-placement-rule", has(weekly, "LAUNCH-CHECKED") && !has(weekly, "MARK-ARCHIVE"), "")
+
+	// ── stop ─────────────────────────────────────────────────────────────
+	t = c.say(ch, "stop the weekly digest, I don't need it any more")
+	c.flagReply(t)
+	c.expect([]string{"J-stop"}, "stopped-in-chat", c.item(item.ID).Status == standing.StatusRetired, string(c.item(item.ID).Status))
+	kept, stopped := c.sha("reports/weekly-digest.md"), len(c.runs(item.ID))
+	c.write("inbox/g.md", "Decision: nothing after stop.\n")
+	c.check()
+	c.expect([]string{"J-stop"}, "stopped-runs-nothing", len(c.runs(item.ID)) == stopped && c.sha("reports/weekly-digest.md") == kept, "")
+	var others []string
+	for _, it := range c.items() {
+		if it.Status == standing.StatusActive && it.When.Kind != standing.WhenHold {
+			others = append(others, c.describe(it))
+		}
+	}
+	c.expect([]string{"J-stop"}, "nothing-else-still-running", len(others) == 0, strings.Join(others, " | "))
+	c.t.Logf("SHOW at the end:\n%s", c.ok("standing", "show", item.ID))
 }

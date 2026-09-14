@@ -118,7 +118,9 @@ carries the card's own `when ·`, `rule ·`, `costs ·`, `report ·` and `folder
 so what it tells you and what you answered cannot differ. Everything that wakes has a
 `when ·` line: when the model sent no words for it, the card says the timing the item
 holds — `every 30 minutes`, `when inbox/* changes`, `when this machine has been quiet
-for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`.
+for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`. A file
+watch's `when ·` line is never the model's words for it: with no condition it shows the
+glob (`when inbox/* changes`), with one the folder and the condition.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
@@ -786,7 +788,9 @@ missing the run is told the changes are unknown, never that nothing changed.
 report, and aforge — not the run — writes it there, replacing the previous version
 unless you changed it; the run is told where it is so it can carry things forward. The run is
 asked to put the report between a line `<report>` and a line `</report>` — whole lines,
-outside any fenced code block — and only what is between them is published. An answer
+outside any fenced code block — and only what is between them is published. A `<report>`
+that starts a line with the report's first line glued after it (`<report># Digest`) opens
+it too; one later in a sentence does not, and `</report>` must be a line of its own. An answer
 with neither line is published whole; one with a `</report>` line but no `<report>`
 line is not published, since nobody can tell where its report began. **Only a run that
 came back clean publishes** — the next section lists every reason a report is not.
@@ -929,6 +933,18 @@ Two orders that already shared a file are not left to take turns replacing each 
 report: the one that last published keeps it, and the other's runs are held with the
 code `report-owned` and its draft kept, until one of them is stopped or edited to
 another file.
+
+**Renaming or moving the report is an edit, not a stop.** "Put the digest at
+reports/weekly.md from now on" draws `report · reports/digest.md … → reports/weekly.md …`;
+after the yes the same order publishes to the new path on its next run, and the old one
+is left untouched and free for another order.
+
+**Two folders into one report.** One order watches one pattern, and there are no braces,
+so "also keep an eye on notes/ in the same digest" works only as a pattern that really
+reaches both — a folder they are both under, when the report is not inside it (a pattern
+reaching the report's own folder is refused). Otherwise the chat asks you. An order may
+be told to read notes/ on each run, but a change there alone wakes nothing: the `when ·`
+line is the whole of what wakes it.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 
