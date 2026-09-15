@@ -19,15 +19,16 @@ gh api repos/Agent-Field/codeaf/rulesets --jq '.[] | "\(.id)\t\(.name)"'
 gh api -X PUT repos/Agent-Field/codeaf/rulesets/<id> --input .github/rulesets/dev.json
 ```
 
-## They do not work yet
+## When they can be applied
 
-`Agent-Field` is on the **free** plan and this repository is **private**, and
-that combination has no branch rules at all — both the rulesets API and the
-older protection API answer `403 Upgrade to GitHub Pro`. Until the org moves to
-**GitHub Team**, everything in `docs/rules/` is convention that a careless
-`git push --force` can undo without being asked a question.
+While `Agent-Field` is on the **free** plan and this repository is **private**,
+that combination has no branch rules at all — both the rulesets API and the older
+protection API answer `403 Upgrade to GitHub Pro`. Until the org moves to **GitHub
+Team** or the repository is **public**, everything in `docs/rules/` is convention
+that a careless `git push --force` can undo without being asked a question.
 
-Check whether it has started working:
+Apply both rulesets with the commands above the day the repository goes public.
+Until then, check whether the API has started working:
 
 ```sh
 gh api repos/Agent-Field/codeaf/rulesets
