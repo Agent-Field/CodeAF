@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE APPROVAL QUESTION ───────────────────────────────────────────────────
@@ -203,7 +203,7 @@ const consentExpiredWord = "denied · no answer"
 // under a countdown into a permanent refusal would be writing policy out of
 // impatience.
 //
-// A FAILED WRITE IS DROPPED, exactly as the rail's is (cmd/aforge's
+// A FAILED WRITE IS DROPPED, exactly as the rail's is (cmd/codeaf's
 // chatv2_rail.go states the reasoning): the answer has already been given, the
 // session already stops asking, and an unwritable profile directory must not put
 // a config error on a line in the middle of somebody's work. What it costs is

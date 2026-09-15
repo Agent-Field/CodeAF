@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // ── THE ONE PIECE OF ARITHMETIC THIS WAVE SHIPPED ───────────────────────────
@@ -282,7 +282,7 @@ func TestAWatchWithoutAVerdictStillWatches(t *testing.T) {
 func TestASwappedSeamIsPutBack(t *testing.T) {
 	// A HOME OF ITS OWN, because the default registry is the one a real session
 	// reads: a test that swaps a seam on it and lets a belief settle would write
-	// its invented lanes into somebody's `~/.aforge/v3/lanes.json`. See
+	// its invented lanes into somebody's `~/.codeaf/v3/lanes.json`. See
 	// [TestNoTestWritesTheRealHome].
 	t.Setenv(home.EnvVar, t.TempDir())
 	registry := Default()

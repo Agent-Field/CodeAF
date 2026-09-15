@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // STEERING A TASK, END TO END, AGAINST A SCRIPTED MODEL.
@@ -73,15 +73,15 @@ func TestARoomSteerIsAnElbowAndTheRecordKeepsIt(t *testing.T) {
 		"setup_seen_at": time.Now().UTC().Format(time.RFC3339),
 		// AND THE COLUMN IS PINNED OPEN. [newHome] copies the person's own profile,
 		// and whether the roster column stands is one of the rows it carries — so a
-		// developer who had pressed ctrl+g in their own aforge made this scenario
+		// developer who had pressed ctrl+g in their own codeaf made this scenario
 		// wait for a row on a column that was not drawn.
 		"ui.task_column": true,
 	})
 	ws := newWorkspace(t, "steerws", false)
 	r := startWithEnv(t, []string{
 		"OPENROUTER_API_KEY=stub-key-not-a-secret",
-		"AFORGE_BASE_URL=" + brain.server.URL + "/api/v1",
-		"AFORGE_PROFILE_DIR=",
+		"CODEAF_BASE_URL=" + brain.server.URL + "/api/v1",
+		"CODEAF_PROFILE_DIR=",
 	}, "afe2e_roomsteer", home, ws, tuiPlain, 44)
 
 	// The first launch on a state root built one minute ago sets itself up before

@@ -14,14 +14,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
 //
-// This file is everything the local half of `aforge chat --host devbox` needs:
+// This file is everything the local half of `codeaf chat --host devbox` needs:
 // a [Client] over the ssh process's pipes, and an [Agent] that satisfies
 // internal/tui3's own Agent interface so the surface cannot tell the difference.
 // The surface calls methods; this turns them into lines; the engine answers.
@@ -95,7 +95,7 @@ type Client struct {
 	lines *json.Decoder
 
 	// welcome is what the engine said at the door, and what the door in
-	// cmd/aforge reads its Options out of.
+	// cmd/codeaf reads its Options out of.
 	mu      sync.Mutex
 	welcome Welcome
 
@@ -236,7 +236,7 @@ type result struct {
 
 // Dial performs the handshake on an already-open pipe pair and returns the live
 // client. It is separate from spawning ssh on purpose: the spawning belongs to
-// the door (cmd/aforge, which owns processes and flags), and a test drives this
+// the door (cmd/codeaf, which owns processes and flags), and a test drives this
 // over an io.Pipe with no ssh anywhere.
 //
 // IT BLOCKS UNTIL THE ENGINE HAS ANSWERED, and that is the whole point of the
@@ -325,9 +325,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// THE REFUSAL IS AT THE DOOR, which is what wire.go's Version says. Two
 	// builds that might disagree about a frame must not find that out three
 	// turns into a conversation, and the sentence names the fix — one machine
-	// has an older aforge on it, and the person knows which machine is which.
+	// has an older codeaf on it, and the person knows which machine is which.
 	if welcome.Version != Version {
-		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())}
+		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol", c.where())}
 	}
 	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
@@ -439,7 +439,7 @@ func (c *Client) Host() string { return c.host }
 // IT IS A FACT A PERSON MUST BE ABLE TO LEARN. Two windows on one conversation
 // — two people, or one person and their own forgotten laptop — is a thing that
 // changes what typing into it means, and a screen that hid it would be the one
-// place aforge kept a secret about who is in the room. Zero draws nothing, by
+// place codeaf kept a secret about who is in the room. Zero draws nothing, by
 // the emptiness law.
 func (c *Client) Attached() int { return c.Welcome().Attached }
 
@@ -1145,7 +1145,7 @@ func (c *Client) forget(id uint64) {
 // /resume picker's rows.
 //
 // AN ERROR IS AN EMPTY LIST, which is what the local door does with an
-// unreadable session directory (cmd/aforge's v3RecentSessions says why): this
+// unreadable session directory (cmd/codeaf's v3RecentSessions says why): this
 // answers a list a person may never look at, and the one thing it must not do
 // is take a keystroke away.
 func (c *Client) Recent() []session.Summary {
@@ -1177,7 +1177,7 @@ func (c *Client) OpenSession(path string) (Welcome, error) {
 
 // StandingItems is the engine machine's standing items for one workspace: the
 // far half of what a local surface reads straight off its own disk
-// (cmd/aforge's [v3StandingSeam]).
+// (cmd/codeaf's [v3StandingSeam]).
 //
 // IT ANSWERS AN ERROR RATHER THAN AN EMPTY LIST, which is the one place it
 // differs from [Client.Recent], and the difference is what the caller does with
@@ -1195,7 +1195,7 @@ func (c *Client) OpenSession(path string) (Welcome, error) {
 // every place on the surface saying this machine has nothing on it — so the
 // caller has to be able to tell "the engine has no world door" and "the call
 // failed" from "there is genuinely nothing there", and only an error can carry
-// the first two (cmd/aforge's [hostWorld] is what does the telling).
+// the first two (cmd/codeaf's [hostWorld] is what does the telling).
 func (c *Client) World() (session.World, error) {
 	payload, err := c.call(nil, MethodPlacesWorld, nil)
 	if err != nil {
@@ -1700,7 +1700,7 @@ func (a *Agent) Compact(ctx context.Context) error {
 // are holding before asking for the next one (internal/tui3's app.go and
 // welcome.go), and a Close that hung up the ssh process would make the second
 // conversation impossible. The connection is the DOOR; the session is what is
-// behind it, and only cmd/aforge shuts the door.
+// behind it, and only cmd/codeaf shuts the door.
 func (a *Agent) Close() error {
 	_, err := a.c.call(nil, MethodClose, nil)
 	return err

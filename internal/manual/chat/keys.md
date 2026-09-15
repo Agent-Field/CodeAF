@@ -32,7 +32,7 @@ While a turn is running, plain `enter` **steers**: it stops the model's current
 reply where it is, keeps what has arrived, and sends your words into the same turn.
 See "Typing while an answer is still coming" below. `ctrl+q` instead queues a fresh
 turn to run after the current one; an empty box does nothing. Until its turn starts,
-a dim row above the box reads `  after yield · N`. If queueing fails, aforge notes
+a dim row above the box reads `  after yield · N`. If queueing fails, codeaf notes
 `follow-up failed: <error>`.
 
 ## Typing while an answer is still coming — interrupting and steering
@@ -44,13 +44,13 @@ own in the transcript. A short dim clause beneath says where they landed, such a
 `stopped the reply here`, `kept running as job 3`, `took this instead of the question`,
 or `waiting for the running step`.
 
-If text or reasoning is streaming, aforge cancels that one model request, keeps the
+If text or reasoning is streaming, codeaf cancels that one model request, keeps the
 partial answer it actually received, and continues the **same turn** with your words
 as the next user message. An incomplete tool call is dropped because a provider
 cannot accept a tool call with no result.
 
-If a short tool is running, aforge lets it finish and lands your words at that
-boundary. If a bash command has already been running for 3 seconds, aforge keeps it
+If a short tool is running, codeaf lets it finish and lands your words at that
+boundary. If a bash command has already been running for 3 seconds, codeaf keeps it
 alive as a job and lands your steer immediately. The clause names the job and
 `jobs output N` shows its output. A command that is still YOUNGER than 3 seconds when
 you steer is given those few seconds to finish on its own; if it is still running when
@@ -96,7 +96,7 @@ task's page as a `└ ` elbow where you said it, with a short `· delivered` cla
 fades away.
 
 **Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
-The current generation is itself made into a legal boundary: aforge keeps its partial
+The current generation is itself made into a legal boundary: codeaf keeps its partial
 assistant message without incomplete tool calls, writes your user message after it,
 and asks the model again. A steer that races with a turn already sealing still lifts
 to the follow-up queue, so the words are never dropped.
@@ -186,7 +186,7 @@ kitty, WezTerm and recent iTerm2 profiles all do; a plain Terminal.app does not.
 Where it cannot be spelled, the key arrives as ordinary `enter` and therefore
 **steers**. Use `ctrl+q` if you need a guaranteed fresh turn on such a terminal.
 
-On those terminals aforge never advertises the chord. The line under the box still
+On those terminals codeaf never advertises the chord. The line under the box still
 begins `enter steers it in`, because plain enter works everywhere, and ends with the
 stop clause that works in the current state.
 
@@ -194,7 +194,7 @@ stop clause that works in the current state.
 
 ## What cmd+enter is called on your keyboard — super+enter off a Mac
 
-It is one keystroke with two names, and aforge spells it for the keyboard you are on.
+It is one keystroke with two names, and codeaf spells it for the keyboard you are on.
 
 | Where you are | What `/help` and this page's key sheet draw | What the terminal sends |
 | --- | --- | --- |
@@ -202,7 +202,7 @@ It is one keystroke with two names, and aforge spells it for the keyboard you ar
 | Linux, Windows, WSL | `super+enter` | `super+enter` or `meta+enter` |
 
 `super` is the key with the diamond, the Windows logo, or the command symbol on it,
-depending on whose keyboard it is. aforge binds **both** names the terminals send, because
+depending on whose keyboard it is. codeaf binds **both** names the terminals send, because
 which one arrives is a fact about the road the bytes took rather than about your hand.
 
 This page writes it `cmd+enter` throughout, which is the name it was chosen under; the key
@@ -214,7 +214,7 @@ does for `alt+`/`⌥`.
 `ctrl+r` appears twice on the `/help` sheet, and the two are not the same key doing two
 jobs at random — each is scoped, and each row says its scope:
 
-- `ctrl+r` **over a draft** spells the draft out: aforge says back what it takes the
+- `ctrl+r` **over a draft** spells the draft out: codeaf says back what it takes the
   sentence to mean, and `enter` adds that to what you are saying. It is offered only while
   the hint slot says `ctrl+r spell it out`, and it does nothing at all otherwise.
 - `ctrl+r` **in `/files`** reveals the folder a landed file is in, with `ctrl+y` beside it
@@ -261,7 +261,7 @@ happened: the partial answer, the `interrupted` note, then your message.
 with — from your side you have said the thing. Attachments in the tray go with it.
 
 **What it does not do.** A `/`-command is run at once and the turn is **left running** —
-a slash command is something you said to aforge rather than to the model, so there is
+a slash command is something you said to codeaf rather than to the model, so there is
 nothing to interrupt for. The same is true of a live `/task` or `/stand` tag, of a picked
 harness, and of a refusal. The rule is simple: the turn is stopped only if the key
 actually queued a message.
@@ -279,7 +279,7 @@ of ending work is `x` and a card that asks first. The chord is ignored there.
 **Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
-and your message **steers** instead. On those terminals aforge never advertises the
+and your message **steers** instead. On those terminals codeaf never advertises the
 chord. Use `esc` to stop the whole turn, then send the next message normally.
 
 **The line that teaches it.** While a turn is running and you have typed something, the
@@ -304,7 +304,7 @@ spell the secondary chord. With neither words nor a picture, the line is simply
 
 No. Every road ends in an answer.
 
-**If you pressed `enter`**, aforge stops the current model request, keeps its partial
+**If you pressed `enter`**, codeaf stops the current model request, keeps its partial
 reply, draws your words immediately, and continues the same turn from them.
 
 **If you pressed `cmd+enter`**, the message is held above the box for the next turn.
@@ -313,12 +313,12 @@ Pressing `→` over that waiting message steers it in instead.
 
 **If there was no step left** — the turn's last request had already gone out, or it
 finished a moment later — your words are not dropped and not pretended about. They become
-an ordinary message waiting for a turn of its own, the screen says so, and aforge answers
+an ordinary message waiting for a turn of its own, the screen says so, and codeaf answers
 them in the next turn. You see your line, a pause, and then a reply. You do not have to
 type it again.
 
 The same is true of a task or a background job that finishes in that window: its
-note lands and aforge speaks about it rather than leaving it sitting there.
+note lands and codeaf speaks about it rather than leaving it sitting there.
 
 The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
@@ -334,7 +334,7 @@ What happens:
 1. The session is told to stop, and a note `stopped` is added to the conversation.
 2. The screen stops on the key: every spinner goes, and every call that was running keeps
    the time it ran until you stopped it.
-3. Any queued follow-ups are dropped, and aforge says so — `1 queued message
+3. Any queued follow-ups are dropped, and codeaf says so — `1 queued message
    dropped`, or `N queued messages dropped`.
 4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
    status word until the next turn starts.
@@ -342,7 +342,7 @@ What happens:
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
-**The words aforge uses for one stop.** They are five slots and one key press, so they
+**The words codeaf uses for one stop.** They are five slots and one key press, so they
 are worth reading together: `stopping` is the status word while the turn is being let go,
 `stopping · detaching in 7s` is that same word once the 10-second bound is counting down,
 `interrupted` is the status word once it is over, `· stopped` is the note left in the
@@ -374,12 +374,12 @@ past, and any open list or overlay takes the key before the message box sees it.
 **Mid-turn `ctrl+c` only ever interrupts — it never leaves.** Pressing it a second
 time straight away does not quit either: the press that stopped the turn does not
 arm the door, so the second press only arms it and a third one is needed to leave.
-See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
+See "Quitting codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
 ## Esc is not stopping it — why the turn is still finishing, how long stopping takes, and what happens if it will not let go
 
 **I pressed escape and it is still running.** That is this section: escape is not being
-ignored, the turn is being let go of, and if it will not let go aforge ends it for you
+ignored, the turn is being let go of, and if it will not let go codeaf ends it for you
 after ten seconds.
 
 `esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
@@ -407,9 +407,9 @@ what the turn spent is still counted.
 **No key makes it stop harder, because the second stage is a clock and not a key.** A
 second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit arm, so
 neither is free — and you do not need one. The `esc` you already pressed started the
-10-second window, and when it runs out aforge stops waiting on its own.
+10-second window, and when it runs out codeaf stops waiting on its own.
 
-**What happens at 10 seconds.** aforge detaches from the turn: the waits aforge holds are
+**What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
 being cancelled — a command whose output a grandchild is still holding, say — may run on
 behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
@@ -422,7 +422,7 @@ figure, and a turn that spent nothing says nothing about money at all.
 **Nothing is silently orphaned.** A turn that had to be detached is written into the
 conversation's own journal file as `abandoned`, with the tokens and the money it had spent
 by then, so a turn nobody waited for is never a turn nobody can account for. What it cost
-is already on your spending page either way: aforge counts money as each request is
+is already on your spending page either way: codeaf counts money as each request is
 answered rather than when a turn ends.
 
 **You should almost never see this.** Ten seconds is well above the longest ordinary
@@ -430,7 +430,7 @@ letting-go, so the deadline only fires on a turn that was genuinely not going to
 something is wedged even further down, `ctrl+c` twice still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
 
-## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
+## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
 
 **`ctrl+c` twice.** One press does not leave. The first press *arms* the door and the
 right end of the row under the message box reads exactly:
@@ -439,7 +439,7 @@ right end of the row under the message box reads exactly:
 ctrl+c again to quit
 ```
 
-Press `ctrl+c` again within **1.5 seconds** and aforge exits. Anything else — any
+Press `ctrl+c` again within **1.5 seconds** and codeaf exits. Anything else — any
 other key, or letting the 1.5 seconds lapse — puts the door back and the hint leaves
 the screen. Press it once more and you get the same arm again.
 
@@ -460,7 +460,7 @@ ctrl+c again to quit · 2 tasks and a job will stop
 ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 ```
 
-**The verb is the truth about where the work is.** A conversation this machine's aforge
+**The verb is the truth about where the work is.** A conversation this machine's codeaf
 service is running keeps going after the window closes, so the line says `keeps running`
 and leaving costs nothing. A conversation running inside this terminal — `--no-host`, or a
 host that could not be reached — stops with the window, and the line says `will stop`. A
@@ -505,7 +505,7 @@ running.
 **Limits.**
 
 - **`/quit` closes one conversation, not the program.** It is typed out on purpose, so it
-  is not asked twice — but what it closes is the conversation in front, and aforge stays up
+  is not asked twice — but what it closes is the conversation in front, and codeaf stays up
   with the previous one forward when this terminal is holding another. It leaves only when
   that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
   are the same command.
@@ -520,24 +520,24 @@ running.
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
 **A hosted conversation keeps working.** Closing the window, `ctrl+c` twice, `kill -HUP`
-and a terminal that went away all detach: the task goes on running in this machine's aforge
+and a terminal that went away all detach: the task goes on running in this machine's codeaf
 service, its questions stay waiting for you, and you rejoin it by opening the same
 workspace again. The armed line says `keeps running` when that is what will happen.
 
 **A conversation running inside this terminal stops with it.** That is `--no-host`, and a
 launch where no host could be reached. Every task the session is running is stopped when it
-closes and aforge waits for all of them before it leaves; a task that was only just admitted
+closes and codeaf waits for all of them before it leaves; a task that was only just admitted
 is stopped before it opens anything — no worktree, no log, no model call for a session that
 has left. Nothing can start in it afterwards: `this session has closed; nothing new starts
 in it`. Background jobs go the same way, a moment later.
 
 Either way, what a task wrote is on its branch and stays there; a stop is an interruption
-and never a finding about the work. A headless `aforge chat --once` leaves by the closing
+and never a finding about the work. A headless `codeaf chat --once` leaves by the closing
 road: the turn stops, the session closes, and the process exits cleanly.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
-This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
+This page is about **the keys you press**. Every key, chord and keyboard shortcut codeaf
 listens for is on this page, in the tables below.
 
 If you came here looking for a different kind of key, it is somewhere else:
@@ -545,7 +545,7 @@ If you came here looking for a different kind of key, it is somewhere else:
 - an **API key** for a model — see *Models and cost* and *Connected accounts*
 - a **device key** or a **pairing code** for reaching another machine — see
   *Reaching a machine with a pairing code*
-- an **ssh key** — that is your own ssh setup, and aforge runs your `ssh` unchanged; see
+- an **ssh key** — that is your own ssh setup, and codeaf runs your `ssh` unchanged; see
   *Running on another machine*
 
 ## Keys in the message box: sending, stopping, and queueing
@@ -555,7 +555,7 @@ These apply with no overlay up, no room open, and no mode on.
 | Chord | What it does |
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
-| `ctrl+enter` | Send it as something to **keep true** — aforge shapes it into a standing order's card instead of doing it once. See the standing orders page |
+| `ctrl+enter` | Send it as something to **keep true** — codeaf shapes it into a standing order's card instead of doing it once. See the standing orders page |
 | `alt+enter` | Open a new line in the message |
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
@@ -685,8 +685,8 @@ undo. Ghostty, kitty and WezTerm report it; older terminals do not. There is no 
 redo chord — `ctrl+y` already copies a path on home and in `/files`, and taking a working
 key away would be the worse trade.
 
-**`ctrl+z` does not suspend aforge.** In an ordinary shell that chord stops the program
-and hands you back the prompt; aforge runs the terminal in raw mode, so the key arrives
+**`ctrl+z` does not suspend codeaf.** In an ordinary shell that chord stops the program
+and hands you back the prompt; codeaf runs the terminal in raw mode, so the key arrives
 as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c` twice.
 
 ## Click to move the cursor — clicking the message box places the caret
@@ -707,16 +707,16 @@ move that box's caret; those are typed at and filtered, not edited by pointer.
 ## Why option+left or cmd+left does nothing — word jump and line jump on a Mac
 
 **On a Mac, `option+←` / `option+→` are the word jumps and `cmd+←` / `cmd+→` are
-the line's ends, in every box aforge has.** They work in the message box, in
+the line's ends, in every box codeaf has.** They work in the message box, in
 home's box at the foot of the screen, in the errand pane, and in every filter and
 search box on every place and panel.
 
 They work because of what the terminal sends, and a Mac terminal sends them one
-of two ways — aforge answers both:
+of two ways — codeaf answers both:
 
 - **iTerm2's Natural Text Editing key mappings** (the preset most people have)
   send `esc b` for `option+←`, `esc f` for `option+→`, the byte `0x01` for
-  `cmd+←` and `0x05` for `cmd+→`. Those reach aforge as `alt+b`, `alt+f`,
+  `cmd+←` and `0x05` for `cmd+→`. Those reach codeaf as `alt+b`, `alt+f`,
   `ctrl+a` and `ctrl+e`, and all four are bound. **This works with the option key
   set to *Normal*** — the mappings do the work, so nothing has to be turned on.
 - **Terminals that keep option a modifier** — Ghostty, Kitty, WezTerm, and iTerm2
@@ -733,7 +733,7 @@ them for Mission Control's "Move left/right a space" before any terminal sees th
 keystroke. They are the Windows and Linux spelling of the word jump and they work
 there. On a Mac, to get them you would have to turn those two shortcuts off in
 **System Settings → Keyboard → Keyboard Shortcuts → Mission Control** — there is
-nothing aforge can do about it from inside.
+nothing codeaf can do about it from inside.
 
 **`ctrl+a` and `ctrl+e` are the spellings that work on every terminal there is**,
 and they are the same two jumps. If you would rather not depend on any of the
@@ -807,7 +807,7 @@ at and filtered, not edited by pointer.
 | `ctrl+w` | **Not a deletion here.** It closes the tab in front and keeps its draft — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
-The kills above work the same way in **every** box aforge has, not only the
+The kills above work the same way in **every** box codeaf has, not only the
 message box: the model picker, the sessions roster, the deliverables list, the
 connect key box and panel, the memory panel, the settings filter and its value
 editor, and the task page's filter. In those boxes `ctrl+w` is a word kill too —
@@ -829,7 +829,7 @@ Closing an inactive tab does not switch the current conversation.
 
 Conversations keep working when another tab is selected, over every door: the ordinary
 engine-backed chat, `--host` and `--at` each hold **one connection per conversation**, and
-`aforge chat --no-host` holds them in this process. Selecting another tab ends nothing and
+`codeaf chat --no-host` holds them in this process. Selecting another tab ends nothing and
 sends no Stop or Close to either side of the switch. Closing the final tab only opens Home
 and leaves that conversation behind it.
 
@@ -844,35 +844,35 @@ gesture aimed at a row on the `ctrl+k` card instead of at the tab in front.
 
 The trade is that `ctrl+w` no longer deletes a word in the message box.
 **`alt+backspace` and `ctrl+backspace` still do**, and one of the two reaches
-aforge on every terminal.
+codeaf on every terminal.
 
 ## Why cmd+backspace does nothing — which terminal you are in decides
 
-`cmd+delete` is bound. aforge answers it under the name `super+backspace`, and it
+`cmd+delete` is bound. codeaf answers it under the name `super+backspace`, and it
 deletes to the start of the line, exactly as `ctrl+u` does. When it does nothing
-at all, the key never reached aforge: **your terminal decides whether cmd
+at all, the key never reached codeaf: **your terminal decides whether cmd
 combinations are sent to the program at all**, and several do not send them.
 
-| Terminal | Does `cmd+delete` reach aforge? |
+| Terminal | Does `cmd+delete` reach codeaf? |
 |---|---|
 | Ghostty | Yes |
 | Kitty | Yes |
 | WezTerm | Yes |
-| iTerm2 | Yes with the **Natural Text Editing** preset, which maps `⌘⌫` to the byte `0x15` — that reaches aforge as `ctrl+u`, the same deletion. Load it at **Settings → Profiles → Keys → Presets**. Without a mapping iTerm2 does not forward `cmd+delete` at all; you can also add one by hand at **Key Mappings**: `⌘⌫`, action *Send Escape Sequence*, `[127;9u` |
+| iTerm2 | Yes with the **Natural Text Editing** preset, which maps `⌘⌫` to the byte `0x15` — that reaches codeaf as `ctrl+u`, the same deletion. Load it at **Settings → Profiles → Keys → Presets**. Without a mapping iTerm2 does not forward `cmd+delete` at all; you can also add one by hand at **Key Mappings**: `⌘⌫`, action *Send Escape Sequence*, `[127;9u` |
 | Terminal.app | No, and it cannot be made to. It does not speak the keyboard protocol that carries modifiers like `cmd` |
 | Anything over `ssh` or `tmux` | Only if the outer terminal is one of the first three, and tmux is passing the protocol through |
 
 **`ctrl+u` is the spelling that works everywhere**, on every terminal on every
 machine, and it is the same deletion. If `cmd+delete` does nothing where you are
 sitting, that is the key to use instead — nothing is missing and there is nothing
-to turn on inside aforge.
+to turn on inside codeaf.
 
 The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
 between the two of them every terminal sends one — which is what makes it safe
 for `ctrl+w`, their old third spelling, to close the tab instead. On iTerm2's
 Natural Text Editing preset
 `⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
-aforge does not detect what your terminal sends and cannot tell you which of
+codeaf does not detect what your terminal sends and cannot tell you which of
 these it will deliver; the only test is pressing it.
 
 ## The message box itself
@@ -906,7 +906,7 @@ different from ordinary text and a typo like `/tsak` does not. The highlight is 
 your sent message too. It adds no characters and no cells; see "Slash commands are drawn
 as chips" in the commands page for the whole of it.
 
-**A key chord is never given that background.** Where aforge names a key — the hint slot
+**A key chord is never given that background.** Where codeaf names a key — the hint slot
 on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
 help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
@@ -929,7 +929,7 @@ still holds the text.
 
 ## Make my prompt better — spell it out with `ctrl+r`
 
-Type what you want and press **`ctrl+r`**. aforge reads the sentence sitting in the box
+Type what you want and press **`ctrl+r`**. codeaf reads the sentence sitting in the box
 and writes, in dim text under it, what it takes that sentence to mean:
 
 ```
@@ -952,7 +952,7 @@ only where a wrong guess would waste the work; the rest takes a default in silen
 It is one small model call on your cheap tier, made **only** when you press the chord. It
 never runs on its own, it never sends anything, and nothing about it goes into the
 conversation. It is added to what this session has spent, the way the session's own name
-and other calls aforge makes for itself are, and it does not count as a turn.
+and other calls codeaf makes for itself are, and it does not count as a turn.
 
 If it fails or takes longer than 10 seconds you get **nothing** — no error line, no note.
 The hint under the box simply comes back, and your draft has not been touched.
@@ -1047,7 +1047,7 @@ that has moved on. There is nothing to press; it is automatic.
 - **Anything still waiting for an answer is folded in on quit.** A message you parked
   with `enter` while a turn was running (see "Typing while the model is still
   answering") is written into the draft file underneath your unsent sentence, each on
-  its own line, so it comes back the next time you open aforge here instead of
+  its own line, so it comes back the next time you open codeaf here instead of
   vanishing with the session.
 - It is cleared **only** when you send it, or queue it as a follow-up. `/new` does
   **not** clear it.
@@ -1059,14 +1059,14 @@ that has moved on. There is nothing to press; it is automatic.
   looked empty, was not, and refused `space space` for home.
 - The file is keyed by the directory plus this process's id, and is written with mode
   0600.
-- At startup, if this window's own draft file is missing, aforge takes the newest
+- At startup, if this window's own draft file is missing, codeaf takes the newest
   draft in the same directory whose process is no longer running, moves it into this
   window's name, and loads it. Files belonging to a process that is still alive are
   never touched, and older orphans are left where they are. An empty orphan is
-  deleted. A process id that cannot be checked is treated as still alive — aforge
+  deleted. A process id that cannot be checked is treated as still alive — codeaf
   errs toward leaving your sentence on disk.
 - CR and CRLF in a restored draft are normalised to LF.
-- No draft is kept at all if aforge was started without a draft file.
+- No draft is kept at all if codeaf was started without a draft file.
 
 ## What a crash does to your draft — what is saved, what comes back, what it will not send
 
@@ -1109,7 +1109,7 @@ file you can read sits beside it.
   model the tag instead of the document, and deleting the tag would send a different
   message from the one on your screen. Paste the block again, or delete the tag.
 - **If it cannot be written, you are told**: `this draft could not be saved`, with the
-  reason. A record aforge cannot read — a later build's, or a half-finished write — is
+  reason. A record codeaf cannot read — a later build's, or a half-finished write — is
   never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
   the new one written in its place.
 - **A task page's line follows its conversation, not the window.** Open that
@@ -1118,7 +1118,7 @@ file you can read sits beside it.
 - **Only the newest record for a conversation is read.** If two windows each left
   one — two crashes — the later one wins outright, so a box you emptied is not
   refilled by the earlier one. The earlier record is left on disk untouched rather
-  than merged or deleted; nothing in aforge offers it back to you.
+  than merged or deleted; nothing in codeaf offers it back to you.
 
 ## Getting back something you typed before
 
@@ -1200,7 +1200,7 @@ about, and the click walks it.
 What it changes and what it does not:
 
 - It sets **this conversation's** rung. It is sticky — kept in this session's own
-  `meta.json` — so it is still there after you close aforge and come back.
+  `meta.json` — so it is still there after you close codeaf and come back.
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
   row in `/settings`, which ships at `auto` (the provider default).
@@ -1214,7 +1214,7 @@ What it changes and what it does not:
 
 **When the rung will not move.** A thinking level dialled onto the model itself — the
 model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
-`ctrl+v` there and aforge says so in a note, naming the model and pointing at `ctrl+t`:
+`ctrl+v` there and codeaf says so in a note, naming the model and pointing at `ctrl+t`:
 *thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
 /model changes it*. Clear that level and the rung moves again.
 
@@ -1227,7 +1227,7 @@ decides*.
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 
 `⠿ auto` on the line above the message box means **nobody has asked this conversation to
-think any particular amount**. aforge sends no reasoning field on the request at all, and
+think any particular amount**. codeaf sends no reasoning field on the request at all, and
 the model thinks however it thinks — its own published default. It is not "think as little
 as possible": that is a different request, and `low` is the rung for it.
 
@@ -1244,7 +1244,7 @@ a decision rather than something a wheel should do on its way past.
 
 Clearing it does not always change the word on the line. If a level is dialled onto the
 model itself (`ctrl+t` in `/model`, or `--reasoning` at launch), that level wins and the
-cell keeps saying it — aforge says so in a note naming the model and the key that moves it.
+cell keeps saying it — codeaf says so in a note naming the model and the key that moves it.
 
 Until 2026-09-09 there was **no cell at all** on a conversation nobody had dialled, which
 on a shipped install meant every conversation — so the dial was invisible to anyone who
@@ -1260,7 +1260,7 @@ There are three ways in.
 
 1. **Drag a file in, or paste one.** Drop a screenshot on the terminal — or copy a
    file in Finder or your file manager and press `cmd+v` / `ctrl+shift+v` — and
-   aforge attaches it. See "Dragging or pasting a screenshot in" below, which is
+   codeaf attaches it. See "Dragging or pasting a screenshot in" below, which is
    the way most people do this.
 2. **`/image <path>`.** `~` becomes your home directory, a relative path is resolved
    against the conversation's directory — or against **your own machine's** working
@@ -1273,12 +1273,12 @@ Typing out an `@` path to an image by hand does not attach — attaching happens
 you choose the completion row.
 
 **What is accepted:** `.png`, `.jpg`, `.jpeg`, `.webp` and `.gif`, case-insensitive.
-Those five are exactly what aforge will send. The ceiling is **10 MB per picture**,
+Those five are exactly what codeaf will send. The ceiling is **10 MB per picture**,
 checked against the file's size first and again against the bytes actually read. The
 same path attached twice is one chip.
 
 **You do not always have to attach.** A file already on the machine can be looked
-at without the tray: ask aforge to look at it by path and it uses its `view_image`
+at without the tray: ask codeaf to look at it by path and it uses its `view_image`
 tool, which opens the picture with the **looking model** — the same one model that
 answers every picture question here, whether you attached the file or not.
 Attaching is for a picture you are handing over as part of what you are saying.
@@ -1293,11 +1293,11 @@ stay true.
 
 ## Dragging or pasting a screenshot in
 
-**Drag a picture onto the terminal, or paste one you copied as a file, and aforge
+**Drag a picture onto the terminal, or paste one you copied as a file, and codeaf
 attaches it.** What the terminal actually hands over is the file's *path* as pasted
 text — `/var/folders/.../Screenshot 2026-08-21 at 5.21.40 PM.png`, usually with its
 spaces backslashed, sometimes quoted, sometimes as a `file://` URL, and sometimes with
-raw spaces or `%20` escapes. aforge reads every shape, including the narrow no-break
+raw spaces or `%20` escapes. codeaf reads every shape, including the narrow no-break
 space in a macOS screenshot name, and reads several files dropped at once, separated by
 spaces or by newlines.
 
@@ -1305,8 +1305,8 @@ spaces or by newlines.
 short token takes its place in the message box, numbered in the order the pictures
 were attached. It is ordinary text: type around it, delete it, move it. And it is
 what you say out loud — "what font is image #1", "compare image #1 with image #2" —
-because **the token goes to aforge inside your message, in the position you left it,
-and the picture itself travels with it.** aforge is told that `[image #1]` marks the
+because **the token goes to codeaf inside your message, in the position you left it,
+and the picture itself travels with it.** codeaf is told that `[image #1]` marks the
 first picture in the message, so the number you read is the picture it is looking at.
 
 **A picture attached by `/image` or the `@` completion gets its token too**, appended
@@ -1324,7 +1324,7 @@ A paste over a line that starts with `/` is left as text too, so `/image ` and
 a screenshot tool — as *pixels* rather than as a file — pastes nothing here. Save it to
 a file first, then drag that in, or use `/image <path>`.
 
-## What aforge says when a picture is refused
+## What codeaf says when a picture is refused
 
 | Situation | Exact text |
 |---|---|
@@ -1339,7 +1339,7 @@ a file first, then drag that in, or use `/image <path>`.
 A dragged or pasted picture is measured **at the moment you drop it**, and one over the
 ceiling is refused there rather than attached and refused later. Nothing is lost when
 that happens: the path stays in your message box as the text it arrived as, so you can
-still ask aforge to look at the file where it lies. Pressing `enter` on that retained
+still ask codeaf to look at the file where it lies. Pressing `enter` on that retained
 absolute path repeats the attachment refusal; it is not treated as an unknown slash
 command and the path remains in the box.
 
@@ -1359,7 +1359,7 @@ names in dim square brackets, numbered to match:
 `› what is wrong with this [image #1]  [#1 chart.png]`. A message with pictures and no
 words is still a message; it goes out as its tokens alone.
 
-**aforge really sees the picture.** It does not receive the path and go and open it:
+**codeaf really sees the picture.** It does not receive the path and go and open it:
 the bytes travel inside the message as the picture itself, base64-encoded, beside your
 words, which is why the path is rooted on your **local** machine even on a remote
 session. If the model you are talking to cannot see, the picture is shown to a model
@@ -1394,7 +1394,7 @@ the original**. Replaying a conversation starts its attachments collapsed again.
 
 ## Completing a path with `@`
 
-Type `@` and aforge offers **tasks first, then files and folders**, in one list under
+Type `@` and codeaf offers **tasks first, then files and folders**, in one list under
 the message box. It opens on the bare `@` — you do not have to type a letter first. It
 closes on `esc`, on committing, or when the token stops being one.
 
@@ -1429,7 +1429,7 @@ reads `  no file matches`. Only the file half waits — the task index lands fir
 
 - **A file:** the path replaces what you typed after the `@`, and **the `@` stays**.
   Nothing is read at this point. `@internal/session/agent.go` is sent exactly as it
-  stands, and aforge's read tool resolves it if it wants to.
+  stands, and codeaf's read tool resolves it if it wants to.
 - **A folder:** the same thing, with the trailing slash kept — `@internal/tui3/`.
 - **An image:** the whole half-typed `@token` is removed and the file is attached
   instead.
@@ -1438,7 +1438,7 @@ reads `  no file matches`. Only the file half waits — the task index lands fir
 - **Under a command's path argument:** the path replaces the argument whole, with no
   `@` in front, and an image is written into the line like any other file.
 
-**When you send,** every `@<slug>` that names a task aforge already knows about grows
+**When you send,** every `@<slug>` that names a task codeaf already knows about grows
 a pointer-block footnote after the message — one block per task, in token order,
 deduplicated. Unknown tokens are left alone in silence. This resolves against the
 snapshot already in memory and never touches the disk, so a slug pasted whole and
@@ -1501,9 +1501,9 @@ first letter you type lands in the box, which is drawn inside the greeting until
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
-seconds quits aforge with the picker still up.
+seconds quits codeaf with the picker still up.
 
-## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
+## Keys when codeaf asks you a question — what key answers switch to auto, and the other offers
 
 **An approval question:** `1` allow once · `2` always — not drawn and inert when it
 would do nothing · `3` deny · `c` answer in words · `esc` **later**, which folds the
@@ -1583,7 +1583,7 @@ verbs, and this place has one: `s stop it`, over a task this conversation is hol
 still queued or running. Its foot is assembled from what is true of the row under the
 cursor — `enter open its room · → verbs: stop it · alt+s sort · type to filter` over a task this
 window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
-and one of three clauses on a task another aforge **window** is running:
+and one of three clauses on a task another codeaf **window** is running:
 `enter go to that conversation` when this terminal is holding that conversation, which
 switches to it standing in that task's room; `enter read it as it runs` when the engine is
 running it and this window can join, which opens that task's own live transcript, read-only;
@@ -1656,7 +1656,7 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the panel — it arms the door, and a second press within 1.5
-seconds quits aforge.
+seconds quits codeaf.
 
 ## Go back to the last conversation — tab
 
@@ -1717,9 +1717,9 @@ released Ctrl.
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │  open              3 of 12 · enter open · esc cancel · ↑↓ choose   │
 │                                                                              │
-│  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
+│  1 ? harness dry run on one pub…  asking you something      codeaf    4m  │
 │  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
-│  3 ○ Refactor the rail scope mo…  you are here              aforge-v2   40m  │
+│  3 ○ Refactor the rail scope mo…  you are here              codeaf   40m  │
 │  ▸ 9 more on this machine · → reach them                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -1732,7 +1732,7 @@ open, of how many this machine has.
 `←` puts them away again. A conversation below the fold is not open in this terminal;
 taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
 you are in keeps running — over the ordinary engine socket, over `--host`, over `--at` and
-under `aforge chat --no-host` alike. Each conversation holds its own connection, so
+under `codeaf chat --no-host` alike. Each conversation holds its own connection, so
 opening a second, third or fourth closes nothing and cancels nothing.
 
 It works from the **first** session: on a fresh launch you hold one conversation, the card
@@ -1825,11 +1825,11 @@ available consistently across terminals, so there is no release-to-commit behavi
 
 `ctrl+tab` has no distinct encoding in an ordinary terminal: it arrives as a plain `tab` and
 is indistinguishable from it. Only a terminal that speaks the kitty keyboard protocol sends
-it as itself, and aforge asks yours on every frame — where the answer is yes, `ctrl+tab`
+it as itself, and codeaf asks yours on every frame — where the answer is yes, `ctrl+tab`
 opens the switcher and `ctrl+shift+tab` walks it back. Where the answer is no, the chord is
-not bound and is never named, because a key aforge tells you about is a key that works.
+not bound and is never named, because a key codeaf tells you about is a key that works.
 Two popular terminals — WezTerm and Windows Terminal — also spend `ctrl+tab` on their own
-tabs by default, so it would never reach aforge there.
+tabs by default, so it would never reach codeaf there.
 
 `alt+tab` is not available at any price: the window manager takes it on Windows and on most
 Linux desktops.
@@ -1861,7 +1861,7 @@ ends nothing. Closing the final tab opens Home, leaving that conversation behind
 terminal is not holding it.
 
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
-the conversation in front — leaving aforge when it was the last one this terminal held.
+the conversation in front — leaving codeaf when it was the last one this terminal held.
 
 `ctrl+w` is never about making room — it is about what you want on the row. A quiet
 conversation left alone can be let go of on its own; this key is you putting one away.
@@ -1889,7 +1889,7 @@ appear under it. The places page has the layer in full; these are its keys.
 | Key | What it does |
 | --- | --- |
 | `alt+enter` | first press opens the layer; second press sends the task off |
-| `alt+w` | move the task to the next project aforge knows, and round again |
+| `alt+w` | move the task to the next project codeaf knows, and round again |
 | `alt+o` | open the model list for the **execution** slot — what the work runs on |
 | a digit, or `.` | type the spend cap; the figure changes as you type |
 | `backspace` | take one character off the cap |
@@ -1915,15 +1915,15 @@ the tab bar — `home  tasks  spend  settings` — and each answers to its posit
 `alt+1` through `alt+4`. **`alt+5`, `alt+6` and `alt+7` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
 doing nothing; `alt+.` draws all seven with their numbers. Hold
-`alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
+`alt` and press the digit. On macOS codeaf draws the modifier as `⌥` because that is what the
 keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
-`alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
+`alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
 **`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
-sends exactly the keys that scheme cannot spell, and it tells aforge it does. Where that
+sends exactly the keys that scheme cannot spell, and it tells codeaf it does. Where that
 report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
 map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
@@ -2049,7 +2049,7 @@ there is no hover on glass. Home's own page has the whole shape.
 
 The box row reads `› say what you want done`. **The rule above it is a legend on home and
 nowhere else**, and it says what the box is a draft *for*:
-`─ → new conversation in ~/aforge-v2 · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─`
+`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─`
 — the folder the next conversation opens in, the model it will answer on, and the two chords
 that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
 opens the model list in home's own body; pressing either label does the same as its chord.
@@ -2082,7 +2082,7 @@ keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab 
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
-seconds quits aforge.
+seconds quits codeaf.
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
@@ -2336,7 +2336,7 @@ stopped run keep.
 ## Deciding about a landed task from the keyboard — accept, not right, tell it
 
 A landing that reads **your call** is a question, and it is put to you on the **question
-block** above the message box — the same block every other decision in aforge arrives on —
+block** above the message box — the same block every other decision in codeaf arrives on —
 so the letters below work wherever you are standing: the conversation, the task's own room,
 the `/tasks` page. **Any landing that is your call, at any depth** — a task you asked for,
 or a part of one it handed out itself:
@@ -2355,18 +2355,18 @@ does, because its `[a]` moves files of yours — `d you decide` is on it. The st
 choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
 letter that hands one landing over changes nothing about the next one.
 
-While `task.settle` is `auto` the reason row also reads `aforge is deciding`; the answers
+While `task.settle` is `auto` the reason row also reads `codeaf is deciding`; the answers
 stay drawn, and pressing one yourself is how you take the question back.
 
 **The words on `a` and `n` change with the question and the keys never do.** A card whose
 branch clashed with yours reads `a resolve it · n drop it`; one the check did not pass
 reads `a accept anyway`. There is always a third column, `s tell it`.
 
-**`check again` is not offered.** aforge retries a check that never answered by itself,
+**`check again` is not offered.** codeaf retries a check that never answered by itself,
 on another model, before the card ever appears — so there is nothing left for you to
 spend a round on. `l` does nothing here now.
 
-**A key that is not drawn does nothing.** If aforge has no way to spend an answer — no
+**A key that is not drawn does nothing.** If codeaf has no way to spend an answer — no
 merge round behind `resolve it`, for instance — that chip is absent rather than present
 and failing, and its letter is absent with it.
 
@@ -2380,7 +2380,7 @@ Once answered the letters go away and the receipt every question leaves takes th
 words (`accept`, `not right`, `resolve it`, `drop it`), who decided and when (the questions
 page has the shape). The task's report then leads `you took this as done` or
 `incomplete — you said it is not finished`. `d` decides nothing yet: the answers stay drawn
-and the reason row reads `aforge is deciding`. The same columns are clickable on the card.
+and the reason row reads `codeaf is deciding`. The same columns are clickable on the card.
 See the tasks page for what each answer does to the work.
 
 **Inside the task's room the same keys need no selection.** The room is the task, so
@@ -2397,7 +2397,7 @@ there is one card behind all three.
 
 ## The mouse: what you can click
 
-aforge owns the pointer by default, using all-motion tracking so hover works.
+codeaf owns the pointer by default, using all-motion tracking so hover works.
 
 Only the left button acts. A press is resolved in this order:
 
@@ -2466,7 +2466,7 @@ Only the left button acts. A press is resolved in this order:
    press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click
-aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
+codeaf itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
 `write` row, under a picture — is a **terminal hyperlink**, so your terminal answers it,
 usually on **cmd+click** (ctrl+click on Linux). The underline is how you can tell it
 works. See "click a file path to open it" on the "what is on the screen" page for which
@@ -2591,9 +2591,9 @@ sweep. The cost of the tolerance is one gesture: you cannot select exactly two a
 rows by dragging down exactly one row — sweep past them and come back, or sweep sideways
 within a single row to select that one row.
 
-aforge still owns the pointer by default — that is what makes wheel scrolling,
+codeaf still owns the pointer by default — that is what makes wheel scrolling,
 clickable paths and pressable rows work — and there is no scrollback to fall back on,
-because aforge runs in the alternate screen. Two further doors remain for when you
+because codeaf runs in the alternate screen. Two further doors remain for when you
 want your terminal's own selection:
 
 **`ctrl+s` hands the pointer back** so a drag selects text the way it does everywhere
@@ -2618,13 +2618,13 @@ Five things stop a click, and only one of them is a setting.
 
 **You pressed `ctrl+s`.** That hands the pointer to your terminal so you can drag-select,
 and it is a **toggle** — it is the one key excepted from the automatic handback, so if you
-press it and then only touch the mouse, nothing aforge draws will answer a click until you
+press it and then only touch the mouse, nothing codeaf draws will answer a click until you
 press a key or press `ctrl+s` again. While the pointer is out, the row under the message
 box reads exactly `drag to select · any key ends it`. That line is how you tell this apart
 from everything else here.
 
 **The `ui.mouse` setting is off.** It is **on** by default — `/settings`, the Display
-section, the row labelled `mouse`. With it off, aforge never asks your terminal to report
+section, the row labelled `mouse`. With it off, codeaf never asks your terminal to report
 the pointer at all: no hover, no click, no wheel, and your terminal keeps drag-select
 permanently. `/select` then says `your terminal already has the pointer — drag to select.`
 
@@ -2643,7 +2643,7 @@ as the frame narrows, and at its narrowest it carries only the place you are sta
 so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
 and `alt+1`…`alt+7` still go everywhere.
 
-**A file path is your terminal's click, not aforge's** — usually **cmd+click**
+**A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
 
 ## Copy mode: taking text out of the conversation
@@ -2820,7 +2820,7 @@ task page, and in the compact header and roster figures when there is room. An i
 `/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
 
 **On a task it lands on the next call, not this one.** A worker already running keeps the
-rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
+rung it started with, so the line codeaf writes says so: `task 7 · thinking · high · its
 next call takes it`. On an ordinary task that has finished, it instead saves
 the choice for the next continuation. The completed attempt stays unchanged.
 
@@ -2840,7 +2840,7 @@ answer:
 | `ctrl+d` | Not bound |
 | `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
-| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
+| `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it`, which the foot names where `→` crosses columns). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
@@ -2864,7 +2864,7 @@ This is the key for the moment you realise `go test ./...` is going to take nine
 minutes. The alternatives are `esc`, which stops the turn and throws the run
 away, and waiting.
 
-Afterwards it is an ordinary job: ask aforge to list them, tail one, or kill one,
+Afterwards it is an ordinary job: ask codeaf to list them, tail one, or kill one,
 and it is killed with everything else when the session closes. The command's log
 file is named in the call's own result, and on the job's page — not on the row.
 
@@ -2896,7 +2896,7 @@ and the consent countdown.
 So if you turn the mouse off, or turn timestamps on, mid-turn, the change takes hold
 **one turn later**. Nothing is wrong; the surface has not re-read the setting yet.
 
-This holds however the row was changed — in the panel, or by asking aforge to do it with
+This holds however the row was changed — in the panel, or by asking codeaf to do it with
 `change_setting`. The row is written straight away and the transcript says so; the screen
 picks it up when the turn ends.
 
@@ -2933,7 +2933,7 @@ count is an estimate at 4 bytes per token.
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.
 
-## Why did aforge add a [silent] note while tools were running?
+## Why did codeaf add a [silent] note while tools were running?
 
 The chat loop watches for a model that keeps calling tools without putting any visible
 words between the calls. After **6 consecutive tool-using replies with no visible assistant
@@ -2959,7 +2959,7 @@ different from how it found it. That last one is why a commit-and-push run is no
 for being quiet — landing work is work, whatever verb it is spelled with. Each rung is
 issued once in one silent stretch; after a reset, a later silent stretch begins again at 6.
 
-## Why did aforge stop running tool calls, and what is a [held] answer?
+## Why did codeaf stop running tool calls, and what is a [held] answer?
 
 Because the note it asked for twice was never written. The `[silent]` note at 6 replies is
 advice. The one at 12 is the last, and it says outright `from here your tool calls are
@@ -2970,7 +2970,7 @@ runs as soon as it is there.
 
 **A rule the loop can enforce is not a suggestion.** The reasoning between steps is not
 saved anywhere — a task's room, its checker, its parent and you all read what was written
-down — so past a certain amount of silence aforge stops asking and starts holding.
+down — so past a certain amount of silence codeaf stops asking and starts holding.
 
 **Writing anything visible clears it immediately** and the loop is back to normal, at the
 first rung again. A reply that carries both a note and tool calls was never held in the
@@ -3002,7 +3002,7 @@ failure three times**, **the same argument refused twice**, and **five rounds th
 nothing new**. They share one warning limit. After two `[stuck]` notes, a third such signal
 ends the turn instead of adding a third ineffective note.
 
-In an interactive conversation, aforge uses the same checkpoint hand-off as any other
+In an interactive conversation, codeaf uses the same checkpoint hand-off as any other
 overlong turn and moves the remains to a watched task. If that hand-off cannot be made —
 for example inside a task or without a consent surface — it ends the turn with
 `this turn is going in circles · stopping here with anything remaining left undone`.
@@ -3019,7 +3019,7 @@ get there.
 
 ## What does the indented part mean?
 
-Flush-left text is said to you: your messages and aforge's trailing answer. Text with a
+Flush-left text is said to you: your messages and codeaf's trailing answer. Text with a
 two-column gutter is work done on your behalf: thinking, tool calls and their details or
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
@@ -3028,9 +3028,9 @@ Indented reply text is also **greyer** than the answer, and carries no markdown 
 bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
 the actual answer" on the screen page.
 
-## How do I see what aforge did — see aforge's work and tool calls behind the answer
+## How do I see what codeaf did — see codeaf's work and tool calls behind the answer
 
-This is the answer to "how do I see what aforge did?", "what did aforge just do",
+This is the answer to "how do I see what codeaf did?", "what did codeaf just do",
 "show me the work behind that answer", "see the tool calls it ran", and "what happened
 during that turn" — the finished work is folded, and one gesture opens it.
 
@@ -3043,7 +3043,7 @@ There is a blank row between the chip and the answer under it.
 **A turn you stopped with `esc` says so instead**, and it collapses whole:
 `▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
 A stopped turn never reached an answer, so there is no answer to leave out of the chip —
-that is the point of the wording. aforge's own lines about the stop (`· stopped`, and
+that is the point of the wording. codeaf's own lines about the stop (`· stopped`, and
 what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
@@ -3122,12 +3122,12 @@ What it will not do:
 The window remembers the last **32** tabs you shut, which is as many as the tab row
 itself remembers, and it remembers them only for as long as the window is open.
 
-**Your terminal has to be able to send the key.** aforge answers the event spelled
+**Your terminal has to be able to send the key.** codeaf answers the event spelled
 `ctrl+shift+t`. Whether it arrives distinctly depends on the terminal and its
 keyboard configuration. A terminal that collapses it to `ctrl+t` sends that instead, and **you get a
 new chat** — the plain chord is never read as a reopen, because a key that opened a
 tab on one terminal and reopened another on the next is a key nobody could predict.
-There is nothing to turn on inside aforge, and the only test is pressing it.
+There is nothing to turn on inside codeaf, and the only test is pressing it.
 
 ## Switching chats while an account asks for a key
 

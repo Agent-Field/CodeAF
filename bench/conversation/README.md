@@ -1,6 +1,6 @@
 # Conversation battery
 
-Cross-harness comparison of aforge against omp, pi and opencode on ordinary
+Cross-harness comparison of codeaf against omp, pi and opencode on ordinary
 work **and** on conversation — the parts of using a coding agent that a
 `--print` invocation cannot reach.
 
@@ -16,7 +16,7 @@ they use fake binaries, call no model, and touch no network.
 
 | door | what it is | what it can show |
 |---|---|---|
-| `print` | one message in, one reply out (`aforge chat --once`, `omp -p`, `pi -p`, `opencode run`) | quality, cost and wall clock on a fixed task |
+| `print` | one message in, one reply out (`codeaf chat --once`, `omp -p`, `pi -p`, `opencode run`) | quality, cost and wall clock on a fixed task |
 | `interactive` | the real TUI in a tmux pane: bracketed paste, Enter, and a screen that is watched | everything above, plus what happens when a person types **while work is running** |
 
 A print row is never labelled interactive. An arm with no interactive door this
@@ -30,7 +30,7 @@ from, are in `lib/adapters.sh`:
 
 | arm | interactive door | markers from |
 |---|---|---|
-| aforge | yes | `internal/tui3/render.go` (`stateWord`, `waitingWord`) — the renderer itself, checked against a live pane |
+| codeaf | yes | `internal/tui3/render.go` (`stateWord`, `waitingWord`) — the renderer itself, checked against a live pane |
 | pi | yes | live pane capture on pi 0.84.2 in this lane; the provider segment is derived from the provider in use, not hardcoded |
 | omp | yes | live pane capture on omp 18.1.2 in this lane |
 | opencode | **no** | no calibrated markers — its interactive cells are `unsupported` |
@@ -72,7 +72,7 @@ through a mechanism that CLI actually implements:
 
 | arm | how it is routed | source of that knowledge |
 |---|---|---|
-| aforge | `AFORGE_BASE_URL` | `internal/config/config.go` in this repository |
+| codeaf | `CODEAF_BASE_URL` | `internal/config/config.go` in this repository |
 | pi | a `guard` provider in `$PI_CODING_AGENT_DIR/models.json` | `core/model-runtime.js` loads it from the agent dir |
 | omp | a `guard` provider in the run's own `<profile>/agent/models.yml`, then **verified** by asking omp's catalog whether it loaded | omp disables custom providers wholesale on a validation failure, so writing the file is not evidence it took effect |
 | opencode | not routed | no custom-provider mechanism verified for it — unsupported for live runs |
@@ -81,7 +81,7 @@ through a mechanism that CLI actually implements:
 that talk to nobody. It refuses to run unless the caller sets
 `CONV_FAKE_HARNESS=1`, and it is not a way to run a real harness.
 
-**Configuration is not prevention.** `--one-model` on aforge and
+**Configuration is not prevention.** `--one-model` on codeaf and
 `--smol/--slow/--plan` on omp are still passed, and the role-pin state is still
 recorded on every row — but they are settings, not guarantees. omp alone also
 carries `providers.tinyModel`, `memoryModel`, `autoThinkingModel` and
@@ -115,7 +115,7 @@ asked whether that id exists, in the state root the cell will use — they answe
 differently: on the machine this was built on, pi's default profile lists no
 openrouter models at all while a fresh `PI_CODING_AGENT_DIR` does. The query
 pattern is loose and the match is exact (provider **and** id for pi, the full
-selector for omp). aforge has no offline catalog query, so its pin rests on the
+selector for omp). codeaf has no offline catalog query, so its pin rests on the
 guard in front and the receipts behind.
 
 ## Cost, and what unknown means
@@ -155,7 +155,7 @@ the guard's audit names what was asked for:
 
 | arm | receipt | names the billed model? |
 |---|---|---|
-| aforge | `AFORGE_HOME/v3/usage.jsonl`, one row per call including auxiliary roles | yes |
+| codeaf | `CODEAF_HOME/v3/usage.jsonl`, one row per call including auxiliary roles | yes |
 | pi, omp | the JSON Lines events on stdout under `--mode json` | yes |
 | opencode | `step_finish` events under `--format json` | **no** |
 
@@ -191,7 +191,7 @@ stopped measuring the thing people run.
 |---|---|---|
 | omp 18.1.2 | `--no-skills --no-extensions --no-rules` | third-party discovery disabled in the owned profile through `disabledProviders`; native profile starts empty |
 | pi 0.84.2 | `--no-skills --no-extensions` | — |
-| aforge | nothing needed: `AFORGE_HOME` moves the whole state root, so a cell starts with no ambient skills or extensions | — |
+| codeaf | nothing needed: `CODEAF_HOME` moves the whole state root, so a cell starts with no ambient skills or extensions | — |
 
 Every row records what was turned off and what was not (`ambient`), because it
 is a real difference between the arms and not a footnote.
@@ -199,7 +199,7 @@ is a real difference between the arms and not a footnote.
 ## Effort
 
 Asked of every arm as one rung (`--effort`, default `low` — the only rung
-aforge, omp and pi all have; pi 0.84.2 has no `medium`). An arm without the rung
+codeaf, omp and pi all have; pi 0.84.2 has no `medium`). An arm without the rung
 runs and is marked **not comparable**, with the mismatch on the row. Nothing is
 silently moved to a neighbouring rung: a row that ran a rung above the others is
 the most flattering possible lie about cost.
@@ -218,12 +218,12 @@ basis.
 | `code-fix` | coding | print | a real boundary bug in a Go module: the module's own suite is the judge, and the test file is checksummed so "made the tests agree" fails |
 | `followup-while-working` | conversation | interactive | a second question typed **while** a slow job runs: it must be answered, and the job must still finish |
 | `revision-midwork` | conversation | interactive | the deliverable's shape is changed mid-flight: the revised file must exist, correct, and the superseded one must be gone |
-| `work-result-recalled` | conversation | interactive, aforge only | work is done, and afterwards the person **asks** what it produced: the number on the screen must be the number really in the file |
+| `work-result-recalled` | conversation | interactive, codeaf only | work is done, and afterwards the person **asks** what it produced: the number on the screen must be the number really in the file |
 
 Fixtures are deterministic and offline (`fixtures/`). The interactive ones use a
 script that sleeps, so the busy window costs a sleep rather than tokens.
 
-`work-result-recalled` runs on aforge alone because it is aforge's terminal
+`work-result-recalled` runs on codeaf alone because it is codeaf's terminal
 being examined; on any other arm it is recorded `unsupported`, and no claim is
 made about what those arms can hand off. **It asserts nothing about shape** —
 not how many agents ran, not whether a task was spawned, not that a checkpoint
@@ -244,7 +244,7 @@ and `campaign.py plan` freezes the same six calibration slices. This one is
 asked for by name:
 
 ```sh
-bench/conversation/run.sh --scenarios multi-defect-pipeline --arms aforge,pi,omp
+bench/conversation/run.sh --scenarios multi-defect-pipeline --arms codeaf,pi,omp
 bench/conversation/campaign.py plan /tmp/multi.json --id multi --scenarios multi-defect-pipeline
 ```
 
@@ -462,11 +462,11 @@ results.jsonl     one row per cell, with every assertion and its outcome
 Answer keys live in `judge/`, never in the workspace: a scenario that hands the
 model the file it is being marked against is marking the model on reading.
 
-**The workspace is a real one.** aforge is run the way people run it —
+**The workspace is a real one.** codeaf is run the way people run it —
 conversations are hosted by default, and `--no-host` is not passed, because a
 benchmark that opts out of the product's default is measuring something else.
 Each cell has its own workspace, so the host it starts is its own, and when the
-cell ends that host is stopped by workspace (`aforge engine --workspace <cell>
+cell ends that host is stopped by workspace (`codeaf engine --workspace <cell>
 --stop`) before the guard closes. Nothing global is killed and no other
 session, benchmark or human, is touched.
 
@@ -497,7 +497,7 @@ No interactive cell has yet produced a result this suite is willing to quote:
 the pi cells never reached a composer, and the omp cell's pass rested on an
 assertion too weak to keep.
 
-State is isolated per cell: `AFORGE_HOME` for aforge, `PI_CODING_AGENT_DIR` plus
+State is isolated per cell: `CODEAF_HOME` for codeaf, `PI_CODING_AGENT_DIR` plus
 `--session-dir` for pi, `XDG_*` for opencode (declared, not documented by
 opencode, and recorded as unverified). omp's documented isolation is a named
 profile under `$HOME/.omp/profiles`; this suite creates its own per-cell profile
@@ -571,9 +571,9 @@ harness behaves under a genuinely expensive one. Wall clock carries provider
 latency and queueing; two runs of identical code have come in 60% apart on the
 older batteries in `bench/`.
 
-### Long evidence paths and the hosted Aforge door
+### Long evidence paths and the hosted codeaf door
 
-Aforge's Unix socket path has a platform limit. The rig supplies a short, owned
+codeaf's Unix socket path has a platform limit. The rig supplies a short, owned
 `/tmp/afconv-home.*` alias to the cell's state directory; the journal remains
 inside the evidence folder. Without that alias a long output path can trigger
 the in-process fallback and first-run setup instead of measuring hosted chat.

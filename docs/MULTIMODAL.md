@@ -1,6 +1,6 @@
 # Multimodal — capability for the graph, presence for the chat
 
-Voice, images, and speech enter aforge through two doors that must not be
+Voice, images, and speech enter codeaf through two doors that must not be
 confused: *generation is a graph capability* (tools any leaf can use),
 *perception is a surface affordance* (mic and attachments where you talk).
 The governing decision, per the emergent-capability principle: we ship
@@ -106,7 +106,7 @@ moment it is drawn (talk lists stay chat-only; the drawing slot sees image
 models). Silence gets ONE law everywhere: an unpublished modality list means
 text-in/text-out and NOTHING more — a media capability is never assumed,
 only published, with the id-word marks as the last resort for rows that
-publish nothing. Picker rows and `aforge models` grow a dim modality tail
+publish nothing. Picker rows and `codeaf models` grow a dim modality tail
 ("sees · draws") so a filtered list is explicable, and `/model <slug>` warns
 when a slug cannot hold a conversation instead of silently accepting a
 music model as the talk model.

@@ -8,7 +8,7 @@ forever, and the pin beside it is the auditable thing.
 
 This README is here so the folder exists in a fresh clone. `//go:embed cache`
 needs at least one file it will actually take, so a plain `go build ./...`
-before any fetch compiles against a folder holding only this page — an aforge
+before any fetch compiles against a folder holding only this page — a codeaf
 that carries no furrow, which `Embedded` reports as false and the seam in
 `internal/furrow` treats as "look on PATH instead". `make build` never ships
 that: the fetch runs first and fails loudly rather than quietly producing one.

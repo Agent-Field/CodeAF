@@ -29,7 +29,7 @@ to make their boundaries coherent and remove redundant decisions.
 ## What the evidence establishes
 
 The frozen calibration in `CALIBRATION-20260905.md` contains 36 attempts and only
-two repetitions per cell. Aforge's four small standalone cases all passed, but
+two repetitions per cell. codeaf's four small standalone cases all passed, but
 their mean billed cost was approximately 3.4–7 times Pi's. Interactive follow-up
 and revision each passed once in two attempts. That is diagnostic evidence, not a
 frontier result.
@@ -152,7 +152,7 @@ future issue comments, gold patches or hidden tests. Known historical issues may
 still be in model training; disclose that limitation and include held-out recent
 issues. Never select only cases where our preferred decomposition wins.
 
-Pair Aforge, Pi and OMP on the same base, model, reasoning setting, tool access,
+Pair codeaf, Pi and OMP on the same base, model, reasoning setting, tool access,
 provider-routing condition, deadline and task data. Pin every inference role to
 `deepseek/deepseek-v4-flash-0731`. Use native Claude Code Opus for development only.
 Freeze binaries, adapter versions and manifests. Preserve failures, unknown bills,
@@ -174,7 +174,7 @@ are separately reported.
 Use at least five paired repetitions for diagnostic estimates, then a broader
 predeclared issue set with held-out cases and a precision-driven sample size.
 Five repetitions alone are not strong evidence of quality equivalence. Compare
-serial Aforge, existing fork and revised execution as ablations. Claim improvement
+serial codeaf, existing fork and revised execution as ablations. Claim improvement
 only within the measured task/model/door/conditions. There is no defensible global
 Pareto claim over every possible task.
 

@@ -75,7 +75,7 @@ func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 			}
 			if isAPIKeyAt(call) {
 				t.Errorf("%s:%d calls config.APIKeyAt itself. That is the product's resolver, "+
-					"but lanes here move AFORGE_HOME out from under themselves, so a resolution "+
+					"but lanes here move CODEAF_HOME out from under themselves, so a resolution "+
 					"at the gate answers for the fixture rather than for the machine. Ask liveKey(t) "+
 					"instead, which reads those same three roads once at init (#576).",
 					name, fset.Position(call.Pos()).Line)
@@ -140,7 +140,7 @@ func theDoorStillAsksTheProduct(t *testing.T, dir string) {
 	}
 	if !asksInherited {
 		t.Errorf("internal/e2e/livekey_test.go no longer calls home.InheritedDir. " +
-			"config.ProfileDir() under an empty AFORGE_PROFILE_DIR falls through home.Dir(), " +
+			"config.ProfileDir() under an empty CODEAF_PROFILE_DIR falls through home.Dir(), " +
 			"which a test binary points at a throwaway (#402), so the profile api_key road " +
 			"would read empty on a machine that talks to a model every day (#576).")
 	}
@@ -172,7 +172,7 @@ func keyEnvArgument(argument ast.Expr) (string, bool) {
 }
 
 // isAPIKeyAt reports whether a call is config.APIKeyAt. The product's
-// resolver belongs in [liveKey]; a lane that calls it after AFORGE_HOME has
+// resolver belongs in [liveKey]; a lane that calls it after CODEAF_HOME has
 // moved is answering for the fixture.
 func isAPIKeyAt(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)

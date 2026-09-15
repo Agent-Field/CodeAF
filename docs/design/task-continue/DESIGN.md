@@ -59,10 +59,10 @@ The machine already knows how to do the thing. It does it **once**, for **one**
 ending, **automatically**, and a person cannot ask for it:
 
 - `internal/session/task_store.go:1251` — `interrupt` turns a node that was
-  running when aforge closed back into `TaskQueued` and hands it its own working
+  running when codeaf closed back into `TaskQueued` and hands it its own working
   copy again (`resumeTree`, `task_run.go:4134`); the person reads *"paused — it
   resumes; branch `task/fix-it-9c1a2f` kept"*.
-- `cmd/aforge/chat.go:334` — `ReleaseOrphans` does the same on the resident side,
+- `cmd/codeaf/chat.go:334` — `ReleaseOrphans` does the same on the resident side,
   and says *"picked up %d piece(s) of work that were interrupted — each continues
   from what it had already reached, with the files it had already written still
   where it left them"* (`pickedUpMessage`, `chat.go:2246`).
@@ -95,7 +95,7 @@ per-ending durability is `task_run.go`'s five landing roads plus
 | its world did not match | `failed` · `stale` | the brief and the failed assumptions; nothing ran and nothing was spent | — |
 | could not be saved | `unverified` · merge `aborted` | **the working copy is the only copy there is** (`task_run.go:4237-4243`, #277) | the branch holds nothing |
 | the process died | stays `running` in `tasks.json` | working copy with uncommitted work; the journal; transcript rows to the last batch of 64 (`internal/store/transcript.go:134`) | the node's own settle; **its landing time (#530)** |
-| a headless run, cleanly | exit 0 | the files, edited in place in the working directory | **the whole record** — `keepPrivateStore` deletes the store on a clean run alone (`cmd/aforge/do.go:696-698`) |
+| a headless run, cleanly | exit 0 | the files, edited in place in the working directory | **the whole record** — `keepPrivateStore` deletes the store on a clean run alone (`cmd/codeaf/do.go:696-698`) |
 | a headless run, any other way | exit 1 or 2 | `graph.db` with claims, transcript, usage and node rows, at the path the run printed as `record kept at %s` (`do.go:375`) | nothing |
 
 Two readings fall straight out of this table, and they are the whole design:
@@ -127,9 +127,9 @@ working copy, the journal and the findings all sitting on disk with no verb
 pointed at them.
 
 **Two stores, and they are not the same store.** The chat engine's durable record
-is a JSON checkpoint per conversation (`~/.aforge/v3/projects/<project>/<session>/tasks.json`,
+is a JSON checkpoint per conversation (`~/.codeaf/v3/projects/<project>/<session>/tasks.json`,
 `task_store.go:111`), an append-only project index
-(`~/.aforge/v3/projects/<project>/tasks.jsonl`, `task_index.go:359`) and one JSONL
+(`~/.codeaf/v3/projects/<project>/tasks.jsonl`, `task_index.go:359`) and one JSONL
 journal per node (`task_run.go:5460`). The resident and the headless door use
 `graph.db` (`internal/store`). A continuation must be composed from whichever one
 the ending wrote, and the composer must not know which.
@@ -147,14 +147,14 @@ the ending wrote, and the composer must not know which.
 | one attempt's own turns read back from the store | `internal/resident/bank.go:389` — `BankedRun` |
 | findings a checker already wrote down | `internal/resident/findings.go:98` — `OpenFindings`, `OpenFindingsHeader` |
 | an ending turned back into queued work, with its own tree | `internal/session/task_store.go:1251` — `interrupt`; `task_run.go:4134` — `resumeTree` |
-| the same, on the resident side | `internal/store/lifecycle.go:554` — `ReleaseOrphans`; `cmd/aforge/chat.go:807-820` — the `node.Attempt > 0` bank read |
+| the same, on the resident side | `internal/store/lifecycle.go:554` — `ReleaseOrphans`; `cmd/codeaf/chat.go:807-820` — the `node.Attempt > 0` bank read |
 | a person settling a node the machine could not | `internal/session/task_audit.go:1932` — `ResolveUnverified`, and `TaskResolution` at `task_contract.go:256` |
 | a person moving one node's model without moving the conversation's | `internal/session/task_room.go` — `RetargetTask` |
 | the verb strip on a task row, and its build guard | `internal/tui3/place_tasks.go:1081-1102` — `s stop it` |
 | the settle keychip grammar | `internal/tui3/tasksettle.go:447` — `a accept · l look again · n not right` |
 | the words for every ending | `internal/session/task_run.go:2998` — `taskNote`; `haltedVerb` above it |
 | the words for the bound that fired | `internal/exec/ranoutwords.go:16` — `RanOutSubject` |
-| the grammar for a forecast price | `cmd/aforge/do.go:919` — *"about $%.2f at what work like this has cost here"* |
+| the grammar for a forecast price | `cmd/codeaf/do.go:919` — *"about $%.2f at what work like this has cost here"* |
 | a landing that is idempotent, so a second one lays the whole family | `internal/session/task_ledger.go:54` — `absorbedLedger` |
 | a node journal that already tolerates several runs under one id | `internal/session/task_run.go:5528` — `findTaskJournal` |
 
@@ -339,13 +339,13 @@ none of them is negotiable here. All four are now code as well as design, so the
 citations below are to what the binary does.
 
 **Its §3 makes `a task` a noun and gives it an address.** *"a **task** — one piece
-of work you handed over — `aforge do "<task>"`, `aforge tasks <id>`"*. And its §7
-rename 2 makes `aforge tasks <id>` the read verb for one piece of work. So the
-argument is a **task id**, the same handle `aforge tasks <id>` already takes:
+of work you handed over — `codeaf do "<task>"`, `codeaf tasks <id>`"*. And its §7
+rename 2 makes `codeaf tasks <id>` the read verb for one piece of work. So the
+argument is a **task id**, the same handle `codeaf tasks <id>` already takes:
 
 ```sh
-aforge do --continue <id>              # carry on, with nothing added
-aforge do --continue <id> "also do X"  # carry on, with a finding
+codeaf do --continue <id>              # carry on, with nothing added
+codeaf do --continue <id> "also do X"  # carry on, with a finding
 ```
 
 *Rejected: `--continue <path-to-record>`.* A path is not one of §3's nouns, and
@@ -354,15 +354,15 @@ the noun for a path there is **the store**, which already has a spelling —
 default store is reached the way every other verb reaches one:
 
 ```sh
-aforge tasks --db <store>                       # what ran there
-aforge do --continue <id> --db <store>          # carry one of them on
+codeaf tasks --db <store>                       # what ran there
+codeaf do --continue <id> --db <store>          # carry one of them on
 ```
 
 That is one flag doing one job, and it is why the record must survive a clean run:
 an id nothing can look up is not an address.
 
 **Its §4 fixes the rest of the spelling**, and it shipped: the directory is
-`--dir` with `-w` kept as a hidden shorthand (`cmd/aforge/do.go:208-209`); the wall
+`--dir` with `-w` kept as a hidden shorthand (`cmd/codeaf/do.go:208-209`); the wall
 is `--timeout` taking a duration; the token wall is `--token-budget` and never
 `--budget`, because *budget is a word about money in this product*. `--continue`
 introduces no new concept there — it is a verb's argument, not a wall — but it is
@@ -373,11 +373,11 @@ spellings live.
 **Its §5 puts the record path on stderr.** *"stdout carries the answer and nothing
 else… anything a person reads about the run — the models line, progress, a
 warning, a question, the path a record was kept at — goes to stderr"*, and it names
-`aforge do` as the standard the others already followed. So the closing lines that
+`codeaf do` as the standard the others already followed. So the closing lines that
 make a continuation findable are stderr lines, beside `record kept at %s`:
 
 ```
-record kept at <path> · continue it with: aforge do --continue 7
+record kept at <path> · continue it with: codeaf do --continue 7
 ```
 
 and on a run that finished, the same sentence — because after this design a clean
@@ -386,7 +386,7 @@ nothing wrong to look at.
 
 **Its §5 exit ladder is five rungs, and a continuation reads them.** They are
 constants now — `exitDone`, `exitCannotRun`, `exitIncomplete`, `exitLimit`,
-`exitUnanswered` (`cmd/aforge/envelope.go:48-76`) — with the ladder's own comment
+`exitUnanswered` (`cmd/codeaf/envelope.go:48-76`) — with the ladder's own comment
 saying the numbers are *"ordered by how much the caller has to do about it"*. A
 continuation is worth offering after `2`, `3` and `4`, is a follow-up after `0`,
 and is absent after `1`, whose doc comment is explicit that nothing was attempted
@@ -397,7 +397,7 @@ person's approval or their answer in its own words.
 
 **Its §5 result envelope is one shape across `do`, `exec` and `run`**, and it
 shipped: `ok`, `stop`, `answer`, `files`, `error`, `spend_usd`, `tokens`,
-`seconds`, `model`, `steps` (`cmd/aforge/envelope.go:262-292`), with `settled`
+`seconds`, `model`, `steps` (`cmd/codeaf/envelope.go:262-292`), with `settled`
 gone. A continuation adds **no field** — it reports exactly those, because it *is*
 a run of the same task. The guarantee that a field is never removed and never
 changes meaning within a release is what makes that the right answer rather than
@@ -435,7 +435,7 @@ drop are the ones `bank.go:96` calls the field that makes a restart a resumption
 `internal/manual/chat/running-from-the-terminal.md` exists — #518 wrote it, against
 its own §8 — so **M4 documents `--continue` in that page's existing sections and
 mints no heading of its own.** The same wave extended the build gate over
-`knownCommands` (`cmd/aforge/usage.go`), so a terminal verb without a page fails the
+`knownCommands` (`cmd/codeaf/usage.go`), so a terminal verb without a page fails the
 build the way a slash command already does; `--continue` is a flag rather than a
 verb and is not caught by that gate, which is a reason to write it into the page
 deliberately rather than a reason it does not matter.
@@ -588,9 +588,9 @@ at all.
 | `internal/tui3/place_tasks_test.go:130-153` | `TestTheTasksPlaceNeverNamesRunItAgain` retired in the same commit — it asserts the feature is absent |
 | `internal/tui3/tasksettle.go` | `c continue` in the keychip grammar for an ended task |
 | `internal/tui3/taskcommand.go`, `commands.go` | `/continue`, and its row in the command table |
-| `cmd/aforge/do.go` | `--continue <id>`, resolved through the same lookup `aforge tasks <id>` uses and scoped by `--db`; `keepPrivateStore` splits into *keep the record* (always) and *keep the scratch* (asked, tracing, or the run went wrong); `recordsKeptFor` and the sweep on launch; the stderr line naming the command |
-| `cmd/aforge/tasks.go` | a continued task reads as one task with more than one attempt, not as two rows |
-| `cmd/aforge/envelope.go` | no new field; the continuation's ending maps onto the existing rungs and the existing `stop` words |
+| `cmd/codeaf/do.go` | `--continue <id>`, resolved through the same lookup `codeaf tasks <id>` uses and scoped by `--db`; `keepPrivateStore` splits into *keep the record* (always) and *keep the scratch* (asked, tracing, or the run went wrong); `recordsKeptFor` and the sweep on launch; the stderr line naming the command |
+| `cmd/codeaf/tasks.go` | a continued task reads as one task with more than one attempt, not as two rows |
+| `cmd/codeaf/envelope.go` | no new field; the continuation's ending maps onto the existing rungs and the existing `stop` words |
 | `docs/design/polish/COMMANDS.md` §4 | the `--continue <id>` row — added by this change, so the vocabulary page and this one cannot drift |
 | `internal/manual/chat/running-from-the-terminal.md` | `--continue` in its existing sections |
 | `internal/session/prompts/system.md` | the model is told the verb exists, since it will otherwise deny having it |
@@ -608,7 +608,7 @@ edit. The order is by value, and the first is the smallest.
 | **M1** | **continue after an ending nobody chose** — `wire`, `steps`, `circling`, `blocked`, `notes`, `error`, and a process that died. `internal/carry`, `ContinueTask`, `c continue` on the strip and the page, the kept/left line. | The tree, the branch and the record are all still there and the only door today is to pay for the whole task again. It touches no landing, no gate and no headless door. |
 | **M2** | **continue with your own words** — `/continue <task> [words]`, `ContinueAskedHeader`, the `tasks` tool's fifth verb, the two rewritten refusals. | Turns *"also do X"* from a re-typed brief into a finding. Depends on M1's composer only. |
 | **M3** | **continue a task that finished, and a task that was refused** — the fresh working copy from the ground's tip; the `still open` block from `OpenFindings`; the checker's gap as the finding. | The follow-up case the owner named. Depends on M1; wants #530's landing stamp for the readings, and says nothing about age until it lands. |
-| **M4** | **the same door headless** — `aforge do --continue <record>`, and the closing line that names it. | Independent of M1-M3's surface; depends on M1's `internal/carry`. Wants #502 (a finished leaf's outcome is never journaled) so the continuation reads results rather than the plan as planned. |
+| **M4** | **the same door headless** — `codeaf do --continue <record>`, and the closing line that names it. | Independent of M1-M3's surface; depends on M1's `internal/carry`. Wants #502 (a finished leaf's outcome is never journaled) so the continuation reads results rather than the plan as planned. |
 | **M5** | **a reading that still holds is not taken again** — the inherited acceptance baseline at the gate. | The largest saving and the largest blast radius; last on purpose. Depends on `docs/design/gate/SETTLEMENT.md`'s field-reading being one value, which it is. |
 
 ---
@@ -660,7 +660,7 @@ Probe sentences for `internal/manual/chat_test.go`, in the asker's own words:
 - `how do I continue a task instead of running it again`
 - `what happens to the files a stopped task already wrote`
 - `does continuing a task cost me the whole thing again`
-- `aforge do finished and I want to add one more thing`
+- `codeaf do finished and I want to add one more thing`
 - `is continue the same as resume`
 
 ---
@@ -670,7 +670,7 @@ Probe sentences for `internal/manual/chat_test.go`, in the asker's own words:
 **Deterministic (no model, no key that is ever used). Everything is in the
 repository.** A stub provider that serves two turns and then answers every
 request with a transport error; a task started through the real `Agent` door
-against a temporary `AFORGE_HOME`; the node settles `failed` · `wire` with its
+against a temporary `CODEAF_HOME`; the node settles `failed` · `wire` with its
 branch committed and its report saying `lost the connection`.
 
 Expected today: `internal/session` has no exported door whose name contains
@@ -690,9 +690,9 @@ first one's wrapper.
 
 ```sh
 make build
-export AFORGE_HOME=$(mktemp -d)
+export CODEAF_HOME=$(mktemp -d)
 # point the provider at a port nothing is listening on, mid-run
-bin/aforge do "add a --verbose flag to the sample tool and a test for it" \
+bin/codeaf do "add a --verbose flag to the sample tool and a test for it" \
   --model deepseek/deepseek-v4-flash --timeout 10m --dir "$(mktemp -d)" &
 # ninety seconds in, take the provider away: point OPENROUTER_BASE_URL at a dead
 # port, or drop the route to openrouter.ai
@@ -702,14 +702,14 @@ The run ends on the exit ladder's `2` or `3`, keeps its record (`keepPrivateStor
 `do.go:696`) and prints `record kept at <path>` on **stderr**. Then:
 
 ```sh
-bin/aforge tasks --db <path>/graph.db          # the id, and how it ended
-bin/aforge do --continue <id> --db <path>/graph.db
+bin/codeaf tasks --db <path>/graph.db          # the id, and how it ended
+bin/codeaf do --continue <id> --db <path>/graph.db
 ```
 
 Expected after M4: the second run reports the files the first left, does not
-re-plan the issue, exits `0`, and `aforge tasks` shows one task with two attempts
+re-plan the issue, exits `0`, and `codeaf tasks` shows one task with two attempts
 rather than two tasks. Run the same recipe again **without** killing the provider:
-the run exits `0`, its record is still there, and `aforge do --continue <id> "also
+the run exits `0`, its record is still there, and `codeaf do --continue <id> "also
 add a --quiet flag"` is a follow-up rather than a repeat.
 
 *Owner's forensics, may be gone by the time you read this:* none. This
@@ -734,13 +734,13 @@ replication is deliberately self-contained, because #185's was not.
   it does today — `failed`, `lost the connection`, branch kept — and no
   continuation string appears anywhere on the screen.
 
-- **e2e, headless:** `aforge do --continue <id>` against a kept record from a
+- **e2e, headless:** `codeaf do --continue <id>` against a kept record from a
   killed run exits `0`, its `--json` envelope carries the same field set as a first
   run (no new field), `stop` reads `done`, and the answer does not restate the first
   run's work as new.
 
 - **e2e, headless, the finished case:** a run that exits `0` still has a record;
-  `aforge tasks --db <store>` lists its id; `aforge do --continue <id> "also do X"`
+  `codeaf tasks --db <store>` lists its id; `codeaf do --continue <id> "also do X"`
   runs the follow-up against the files the first run left. Its `graph-scratch/` is
   gone and its `graph.db` is not.
 
@@ -766,7 +766,7 @@ replication is deliberately self-contained, because #185's was not.
 
 - **It does not restore a transcript.** The previous attempt arrives as an
   input, under `ContinuationTranscriptHeader`, exactly as it does for a requeued
-  leaf today (`cmd/aforge/chat.go:326-334`). Rebuilding a message list across a
+  leaf today (`cmd/codeaf/chat.go:326-334`). Rebuilding a message list across a
   model change, a compaction and a tool-belt change is a different problem, and
   the bank is the answer this codebase already measured.
 - **It does not resume a harness design or a subharness run.** `spec.design` and

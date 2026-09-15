@@ -3,14 +3,14 @@
 ## Typing a slash to see the command list
 
 Type `/` and the command list opens under the message box. There is one list of commands
-in aforge: the pop-up you get by typing `/` and the list `/help` prints are drawn from
+in codeaf: the pop-up you get by typing `/` and the list `/help` prints are drawn from
 the same table.
 
 **It opens at a word boundary, and not only at the start of the line.** A `/` typed as
 the first character of the box opens it, and so does a `/` typed after a space or a
 newline — so you can find a command half a sentence in without throwing the sentence
 away. A `/` with anything other than a space in front of it opens nothing at all, which
-is what keeps `cmd/aforge` and `https://example.com` quiet.
+is what keeps `cmd/codeaf` and `https://example.com` quiet.
 
 The list is not modal. You keep typing into the same box and the list narrows under it.
 Only ↑ ↓ enter esc are taken from the editor; every other key types into your draft and
@@ -65,7 +65,7 @@ same three wherever the slash is:
 
 - **A slash needs a space in front of it.** Only the first character of the box, or a
   slash after a space or a newline, is a candidate. So the second slash of
-  `/Users/you` is not one, and neither is the one in `cmd/aforge/main.go` or in
+  `/Users/you` is not one, and neither is the one in `cmd/codeaf/main.go` or in
   `https://`.
 - **A word that matches no command closes the list.** The candidate runs to the next
   space, so the word being matched is `Users/you`, and nothing in the table looks
@@ -79,7 +79,7 @@ never holds itself open.
 
 ## Slash commands are drawn as chips
 
-A command aforge recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
+A command codeaf recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
 and the rest get a **chip**: a tinted background behind exactly the letters of the
 command — the same tint the *chosen* row of a list wears, the one that marks the model in
 use or the conversation you are in — with the accent ink on top.
@@ -115,7 +115,7 @@ tags** anywhere else in a draft:
 Both roads end at something you can see: standing raises its ratification card, and task
 starts one worker in the open — its started row, and its row on the roster, where it can be
 stopped. A pasted tag does not silently do work, because the chip says what enter will do. With no other words, each tag behaves like that command's existing
-bare form. With two live tags aforge sends nothing, leaves the draft in the box, and says
+bare form. With two live tags codeaf sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
 
 Other commands remain ordinary prose away from the start. `later I will run /compact on
@@ -127,7 +127,7 @@ With the caret immediately after a live `/standing`, `/orders`, or `/task` tag, 
 backspace removes its chip but deletes no letter. The word is now plain prose and Enter
 sends it to the conversation normally. A second backspace edits the word as usual.
 
-Editing the demoted word makes aforge recognize its current spelling afresh. Edits before
+Editing the demoted word makes codeaf recognize its current spelling afresh. Edits before
 it merely move the annotation with the text. Emptying or sending the draft forgets all
 demotions.
 
@@ -158,7 +158,7 @@ typing an alias narrows the list to the canonical row, and running it runs the c
 command. Beside each row the list draws the alias tail, like `also /clear /clean /reset`.
 
 A typed word is lower-cased and looked up against the alias lists. An alias may never
-equal a canonical name or another alias; that is checked when aforge starts.
+equal a canonical name or another alias; that is checked when codeaf starts.
 
 A word that is in no list is passed through as typed and gets this answer:
 
@@ -177,7 +177,7 @@ No command is ever hidden from the list or from `/help`. The table is the one pl
 command is written down, and both renderings draw all of it. What varies between states
 is what a command *answers*, not whether you can see it.
 
-## Every command aforge has
+## Every command codeaf has
 
 Canonical word, the other words it answers to, its argument form, and what it does.
 
@@ -222,7 +222,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
 | `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
-| `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
+| `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
 | `/cache` | — | — | how big the shared build cache is, and where |
@@ -235,7 +235,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
-| `/manual` | — | — | every page of aforge's own manual, one per line |
+| `/manual` | — | — | every page of codeaf's own manual, one per line |
 | `/manual` | — | `<page>` | prints that page as it is written |
 | `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
 | `/quit` | `/exit`, `/q` | — | leaves |
@@ -244,7 +244,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 `/help` (or `/?`) prints the whole command table into the conversation, name column
 aligned, each row with its alias tail. The first line is the product's own name,
-`aforge` — the one place inside a conversation it names itself.
+`codeaf` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
 `ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
@@ -277,7 +277,7 @@ Two rows say what their key DOES rather than naming the thing it reaches: `ctrl+
 `open settings`, and `n` on the `/standing` row is `keep it out of here`.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
-has a file**. The path is written against your home — `~/.aforge/v3/…` — so that it fits
+has a file**. The path is written against your home — `~/.codeaf/v3/…` — so that it fits
 on one row and still pastes into a shell; `/status` prints it in full. Over `--host` the
 path is written `machine:/path`.
 
@@ -304,7 +304,7 @@ synchronously first, with any message still waiting for an answer folded in unde
 so nothing typed in the last moment is lost. Then that conversation's running turn is
 interrupted and its agent is closed for real.
 
-**If this terminal is holding another conversation, aforge stays up** and the most recently
+**If this terminal is holding another conversation, codeaf stays up** and the most recently
 open one comes forward, saying `closed · <the name of the one that went>`. `/quit` leaves
 the program only when the conversation it closed was the last one. Home's page has the
 whole arrangement under *Switch between projects without leaving*.
@@ -313,10 +313,10 @@ whole arrangement under *Switch between projects without leaving*.
 the first arms the door and the hint slot reads `ctrl+c again to quit`, with how many
 conversations and what leaving does to the work — `ctrl+c again to quit · 3 conversations ·
 2 tasks and a job will stop` for work running inside this terminal, and `· a task keeps
-running` for work the aforge service is running, which a closed window does not touch. A
+running` for work the codeaf service is running, which a closed window does not touch. A
 second press within 1.5 seconds leaves.
 While a turn is running `ctrl+c` interrupts the turn instead and does not arm anything. The
-keys page has the whole rule under "Quitting aforge".
+keys page has the whole rule under "Quitting codeaf".
 
 ## /new — start another conversation in this project
 
@@ -458,7 +458,7 @@ pointer back so a drag selects text natively. It is the same thing ctrl+s does.
 It toggles. Pressing it again takes the pointer back, and so does the next ordinary
 keystroke.
 
-When aforge never took the mouse in the first place — the `mouse` setting is off — it
+When codeaf never took the mouse in the first place — the `mouse` setting is off — it
 answers out loud, exactly:
 
 ```
@@ -511,7 +511,7 @@ called `conversation.md`.
 With a path, `~` is home, a bare name is under the conversation's directory, and an
 absolute path is left alone. If the path is an existing directory the file goes inside it
 under the derived name. A missing parent directory is created **only** for a path you
-typed yourself; aforge will not create directories under the workspace on its own.
+typed yourself; codeaf will not create directories under the workspace on its own.
 
 Success reads `exported · <short path>`, with ` · on this machine` appended over `--host`.
 
@@ -530,7 +530,7 @@ exists — `/export` never overwrites.
 
 `/export` writes markdown meant to be read by a person who was not there.
 
-The document opens with `# <session name>`. Under it, `## you` and `## aforge` headings
+The document opens with `# <session name>`. Under it, `## you` and `## codeaf` headings
 appear only when the speaker changes, so a run of turns from one side is not chopped up.
 
 Your text and the model's text are kept verbatim as markdown.
@@ -545,7 +545,7 @@ Session "note" entries are skipped. "aside" entries are kept, in italics.
 
 The file is written with permissions 0600, and it is created exclusively — the filesystem
 decides whether the name is free, not a check that could go stale between looking and
-writing. A directory aforge creates for a path you typed is made 0700.
+writing. A directory codeaf creates for a path you typed is made 0700.
 
 ## /files — what has been made for you
 
@@ -600,10 +600,10 @@ workspace it is working in and the session's own folder, and nothing outside tho
 
 `/files <path>` brings **one file** back and opens it the way your desktop would. The path
 is a path on the other machine, relative to that workspace. The bytes are kept here by
-content, under `~/.aforge/v3/remote/`, and a copy under the file's own name is what your
+content, under `~/.codeaf/v3/remote/`, and a copy under the file's own name is what your
 viewer is handed — so the window title says `report.pdf` and not a row of hex. A file the
 model wrote during the turn is usually already here before you ask, so it opens at once:
-aforge quietly fetches a file of 2MB or less as it sees it being written, and says nothing
+codeaf quietly fetches a file of 2MB or less as it sees it being written, and says nothing
 about having done it.
 
 The two open in different places, and that is the difference worth knowing: **a clicked
@@ -697,10 +697,10 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 aligned columns. The labels are the keys, the values are strings, and the keys come in
 the same order `/status` prints them — `session`, `model`, `crew`, `spend`, `context`,
 `place`, `build`, `file` and the rest of the list above. Both forms are built from one
-list inside aforge, so they cannot disagree about a fact.
+list inside codeaf, so they cannot disagree about a fact.
 
 ```
-{"session":"lab","model":"openrouter/deepseek-v4-flash","spend":"$0.31","file":"/tmp/lab/.aforge/sessions/2026-08-17T09-15-02.json"}
+{"session":"lab","model":"openrouter/deepseek-v4-flash","spend":"$0.31","file":"/tmp/lab/.codeaf/sessions/2026-08-17T09-15-02.json"}
 ```
 
 `--json` is spelled exactly that way, and it is the only argument `/status` takes. Any
@@ -805,18 +805,18 @@ limit is not on this machine`.
 
 The `$` is optional, and the amount can be a word — see the next section.
 
-## /cache — the build cache, disk space, and why aforge is using so much disk
+## /cache — the build cache, disk space, and why codeaf is using so much disk
 
 `/cache` prints one line: how big the shared build cache is and where it lives —
-`~/.aforge/cache`. That directory holds the toolchain caches task workers fill as they
+`~/.codeaf/cache`. That directory holds the toolchain caches task workers fill as they
 build — go modules and build outputs, npm, pip, cargo — shared across sessions so the same
 module is downloaded once instead of per task. It can quietly grow to hundreds of
 megabytes; that growth is this cache, not your conversations.
 
-With nothing in it, `/cache` answers `the cache is empty · ~/.aforge/cache`.
+With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
 **The cache is not your conversations.** Conversation history, tasks, settings and
-credentials live elsewhere under `~/.aforge` and no cache command can reach them.
+credentials live elsewhere under `~/.codeaf` and no cache command can reach them.
 
 ## /cache clean — clean the cache, clear the cache, free disk space
 
@@ -841,9 +841,9 @@ the cache is already empty — nothing to delete.
 A word after `/cache` that is not `clean` changes nothing and answers
 `/cache takes clean, or nothing · /cache shows what it holds`.
 
-From the terminal the same pair is `aforge cache` and `aforge cache clean` — the latter
+From the terminal the same pair is `codeaf cache` and `codeaf cache clean` — the latter
 prints the same size-and-path warning and asks you to type the word `clean` before it
-deletes anything; `aforge cache clean --yes` skips the question for scripts.
+deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
@@ -894,7 +894,7 @@ on the provider you are already pinned to, where the same key takes the pin off 
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
-notes `model · <model>`, and writes the choice into your profile, so the next `aforge`
+notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
 opens on it. Over `--host` the switch takes for the session and is not written down: the
 model a remote session opens on is that machine's to resolve.
 
@@ -905,7 +905,7 @@ The picker **never fetches on its own** — it fetches only when you ask, with `
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
-2. `~/.aforge/v3/models.json`,
+2. `~/.codeaf/v3/models.json`,
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
@@ -953,8 +953,8 @@ most fifteen seconds.
 When it lands, the list is filtered again by what you typed, the cursor goes back to the
 model in use, and the conversation gets one note: `models · 612 · 9 new ·` and up to three
 of the new ids, or `models · 612 · nothing new`. A model that left the list is not
-mentioned. The new list is saved (`~/.aforge/v3/models.json`), so the next `aforge` opens on
-it. From a terminal, `aforge models --refresh` does the same.
+mentioned. The new list is saved (`~/.codeaf/v3/models.json`), so the next `codeaf` opens on
+it. From a terminal, `codeaf models --refresh` does the same.
 
 If it fails, the list stays exactly as it was and the note says why in one line —
 `could not fetch the model list · dial tcp: lookup openrouter.ai: no such host` — and
@@ -968,7 +968,7 @@ machine, whose list of names the picker shows.
 ## /resume — open an earlier conversation
 
 `/resume` (or `/sessions`) opens the picker of earlier conversations. It is the same
-surface `aforge resume` opens on. The list is resolved at that keystroke, so a
+surface `codeaf resume` opens on. The list is resolved at that keystroke, so a
 conversation you had in another terminal since is in it.
 
 A filter box takes the input line's place. Type to filter, ↑↓ to move, pgup/pgdown by 10.
@@ -1007,7 +1007,7 @@ Refusals, exactly as written:
 
 ```
 resuming is unavailable here
-No sessions yet — start one with aforge chat
+No sessions yet — start one with codeaf chat
 already here · <name>
 open in another window — go there, or start a new conversation here
 resume failed: <error>
@@ -1030,10 +1030,10 @@ at once, and every conversation in all of them, the command is `/home`.
 conversation in them**, which is the one thing `/resume` cannot show you: `/resume` is
 "which conversation, here", and this is "what is there at all".
 
-**It is also what a bare `aforge` opens on.** The conversation the launch picked is loaded
+**It is also what a bare `codeaf` opens on.** The conversation the launch picked is loaded
 underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
 conversation — drops into it. Home stays out of the way when you named a conversation
-(`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
+(`--session`, `codeaf resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
 greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
 box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
@@ -1215,7 +1215,7 @@ The tag form works in the middle or at the end too: `always run the tests /stand
 `always /orders run the tests` hand the remaining sentence through the same door. Press
 backspace immediately after the tag to make it plain words instead.
 
-They go through the same deliberate door `ctrl+enter` opens: aforge is told to shape the
+They go through the same deliberate door `ctrl+enter` opens: codeaf is told to shape the
 sentence into a standing order's card — when it wakes, what it does, how far it reaches —
 and it never carries the sentence out as one-off work as well. Nothing stands until you
 answer the card. A sentence that cannot stand at all gets one short line saying so and
@@ -1353,7 +1353,7 @@ answers "what did we do about this last week" — the roster's column beside the
 is built from this session's own work, and carries only a short dulled note of the rest.
 
 **It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
-mean *give aforge work*; this page starts none, so it does not share their word. Typing
+mean *give codeaf work*; this page starts none, so it does not share their word. Typing
 `/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
 bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
 command.
@@ -1373,7 +1373,7 @@ its room, and a task another conversation ran goes into your message box as
 `@its-name` — that conversation is closed, so there is no room to open, and the mention is
 what carries its outcome and its transcript to the model when you send.
 
-Its `running` section also carries **a row for each task every other aforge window open on
+Its `running` section also carries **a row for each task every other codeaf window open on
 this directory has out right now**, marked `another window` on the right. Those rows take
 no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
 a mention to point at. They are how you find out that the directory is busy somewhere else.
@@ -1382,11 +1382,11 @@ On a project that has never run a task the page opens on its heading and one lin
 `work you send off with /task lands here, and its record stays`. The tasks pages describe the
 page in full.
 
-## /crew — the five models aforge uses on its own behalf, read beside the one you talk to
+## /crew — the five models codeaf uses on its own behalf, read beside the one you talk to
 
-aforge runs **six model seats**. Seat one is the model you talk to, and `/model` is what
+codeaf runs **six model seats**. Seat one is the model you talk to, and `/model` is what
 moves it. The other five — reflex, small work, worker, careful work, mastermind — are the
-models aforge uses on its own behalf, for the calls you did not type and for the work
+models codeaf uses on its own behalf, for the calls you did not type and for the work
 inside every task. `/crew` reads all six and sets the five in one word. **It never moves
 seat one.**
 
@@ -1397,7 +1397,7 @@ seat one.**
 opens the six-seat reading, bottom-anchored like the model picker. From the top:
 
 ```
-the five models aforge uses on its own behalf — not the one you chat with
+the five models codeaf uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   frugal — deepseek works, glm-flash thinks · pennies a day
     reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash
@@ -1446,7 +1446,7 @@ against the line over your own prompt. `/crew` never changes that model and neve
 `/model` does. When the session has no model yet the clause reads
 `the model you talk to is untouched — /model changes that`.
 
-**The change is live.** The next call aforge makes on its own uses the new crew — no
+**The change is live.** The next call codeaf makes on its own uses the new crew — no
 relaunch, and no waiting for the next session. To read the crew back afterwards: the live
 `/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
 `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
@@ -1494,7 +1494,7 @@ surface from `/connect`, not a second copy of it.
 ## Which machine's settings are these — /settings, /set, /config over --host
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
-aforge settings, plus a tab of connected accounts. It was the first of the three fullscreen
+codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
 pages here — the others are `/history` (the task page, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
@@ -1531,20 +1531,20 @@ A terminal too short to draw the whole panel keeps its head and its foot.
 Every change made in the settings panel goes through the settings registry and is
 **saved to your global profile**.
 
-So does a change you ask aforge for. There are **two doors onto one file**: the panel,
-and the `change_setting` tool aforge reaches when you say "set my daily budget to 5" or
+So does a change you ask codeaf for. There are **two doors onto one file**: the panel,
+and the `change_setting` tool codeaf reaches when you say "set my daily budget to 5" or
 "use a different model for planning". Both go through the same registry, take the same
 validation, refuse in the same words, and land in the same `config.json` — so a row you
 change by asking is a row you find changed in the panel, and the reverse. `settings` is
 the read beside it, listing every row by the key `change_setting` names. Which rows
-aforge refuses to change for you, and why, is on the permissions page.
+codeaf refuses to change for you, and why, is on the permissions page.
 
-The project layer, `<workspace>/.aforge-v3/config.json`, is deliberately not writable from
+The project layer, `<workspace>/.codeaf/config.json`, is deliberately not writable from
 the panel — or from `change_setting`, which writes your profile only. The foot line says
 so:
 
 ```
-saved to your profile · a project's own .aforge-v3/config.json is a hand edit
+saved to your profile · a project's own .codeaf/config.json is a hand edit
 ```
 
 So a value set here follows you between projects, and a value a project sets for itself
@@ -1602,7 +1602,7 @@ Every one of them lands on the next launch rather than on the conversation in fr
 you, so they are a fact about this machine and not about this session. Nothing you saved
 moved: the keys they are stored under are unchanged.
 
-The five models aforge uses on your behalf are **not** here — they are on Providers, with
+The five models codeaf uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
 errands on two screens. Neither is the conversation's own money limit here any more: it is
@@ -1618,14 +1618,14 @@ quotes the exact `Search failed (exa): no API key` answer; a configured pin
 reads `exa, with your key`. Provider and key changes land on the next search in
 the conversation already open.
 
-**Workspace** — this machine and this project: what aforge does with its own time here, and
+**Workspace** — this machine and this project: what codeaf does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
 "tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
 secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
 missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
 moved to Spending.
 
-The ssh rows are here because "what may aforge reach on your behalf" is this tab's own
+The ssh rows are here because "what may codeaf reach on your behalf" is this tab's own
 question, and a link to another machine is that question asked about a machine rather
 than about a service. They are not on the tab named **Connections**: that one is the
 catalog of third-party accounts you sign in to, and it is built from the account list
@@ -1640,7 +1640,7 @@ and nothing standing is lost — see *Keeping an eye on things* for the whole of
 and "practice". `/budget` and `/limits` open it. *Models, context, and what it costs* has
 every row and every door onto them.
 
-**Safety** — what aforge may do without asking you first. Rows: "ask before running",
+**Safety** — what codeaf may do without asking you first. Rows: "ask before running",
 "tool exceptions", "shell command rules", "guardian", "approval countdown", "background
 after", "task countdown", "who settles work that needs a look".
 
@@ -1699,12 +1699,12 @@ order:
 3. **speed guard** — whether an answer slow to start is asked of the next-best provider as
    well.
 4. **routing** — what every request prefers among the providers, and it cycles
-   `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: aforge sends no
+   `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: codeaf sends no
    preference of its own, a provider you pinned goes out as the whole request, and with no pin
    the router's own default routing answers. `latency` asks for the fastest provider and
    `price` for the cheapest, on every call. With `off` nothing is measured, so the two rows
    above it have no provider to name.
-5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
+5. **prompt profile** — how much codeaf tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).
 6. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
@@ -1715,7 +1715,7 @@ order:
 10. **careful work** — `careful · checks what must not be wrong — audits, briefs, vision`
 11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
 12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
-    aforge makes for itself, grouped under its class. Those rows come from the running binary
+    codeaf makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
@@ -1786,7 +1786,7 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one call aforge makes outside a turn — `title`, `guardian`, `auditor`,
+one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
@@ -1815,14 +1815,14 @@ in the models page.
 
 Each of those is one row on the **Providers** tab, and the row is the front door: the model
 you pick there is the model that runs. A blank row reads `automatic`, which is not "off" —
-it means aforge picks one for you.
+it means codeaf picks one for you.
 
 Choosing is resolved at the moment something is actually drawn, spoken or looked at, down
 one order:
 
 1. the row you set here (an environment variable of the same name still wins over it —
-   `AFORGE_IMAGE_MODEL`, `AFORGE_SPEECH_MODEL`, `AFORGE_MUSIC_MODEL`, `AFORGE_VIDEO_MODEL`,
-   `AFORGE_VOICE_MODEL`, `AFORGE_VISION_MODEL`);
+   `CODEAF_IMAGE_MODEL`, `CODEAF_SPEECH_MODEL`, `CODEAF_MUSIC_MODEL`, `CODEAF_VIDEO_MODEL`,
+   `CODEAF_VOICE_MODEL`, `CODEAF_VISION_MODEL`);
 2. a role pinned in "pinned roles" — `imagegen`, `speech`, `video`, `vision`;
 3. the best model the catalog advertises that publishes the capability;
 4. a name this build remembers.
@@ -1858,7 +1858,7 @@ A change here lands on the **next** picture, sentence or film — not on the nex
 
 ## /manual — how do I read the manual, is there a help page, show me the page about X
 
-`/manual` is aforge's own manual, printed into the conversation. It is the same writing
+`/manual` is codeaf's own manual, printed into the conversation. It is the same writing
 the chat reads to answer questions about itself, and it arrives **as it is written** —
 nothing is retold, summarized or shortened on the way to you.
 
@@ -1876,44 +1876,44 @@ a thing is written on before you can ask about it. The label over each answer �
 `[permissions · What runs without asking]` — is the page you can open next with
 `/manual <name>`.
 
-Nothing here costs anything. The pages are inside aforge; reading them makes no model
+Nothing here costs anything. The pages are inside codeaf; reading them makes no model
 call, so `/manual` spends nothing and works with no key set up and with no connection.
 
-## aforge manual — reading the manual from the terminal, without a key and without spending anything
+## codeaf manual — reading the manual from the terminal, without a key and without spending anything
 
 The same manual is a command line, for the questions people ask **before** they have set
 anything up:
 
 ```
-aforge manual                          every page, one per line, with what each is about
-aforge manual permissions              that page, printed as it is written
-aforge manual "who can see my files"   the sections that answer it, labelled with page and heading
+codeaf manual                          every page, one per line, with what each is about
+codeaf manual permissions              that page, printed as it is written
+codeaf manual "who can see my files"   the sections that answer it, labelled with page and heading
 ```
 
 It needs no API key, makes no model call, opens nothing and spends nothing — so
 `what is this`, `what does it cost` and `who can see my files` are all answerable on a
-machine where you have not decided yet whether to set aforge up. Quote a question so your
+machine where you have not decided yet whether to set codeaf up. Quote a question so your
 shell hands it over as one piece.
 
 **Nothing is cut.** A page printed here is the whole page, however long it is — the limits
 the chat reads under are about what a model can be handed at once, and a terminal has no
-such limit. If a page is longer than your screen, pipe it: `aforge manual keys | less`.
+such limit. If a page is longer than your screen, pipe it: `codeaf manual keys | less`.
 
-`aforge --help` lists it beside the other commands.
+`codeaf --help` lists it beside the other commands.
 
-## aforge <command> --help — asking one command what it takes, which is not a failure
+## codeaf <command> --help — asking one command what it takes, which is not a failure
 
 Every command in the terminal answers `--help` (and `-h`) with its own usage: the line
 that names its shape and its flags, then its flags one to a row, then
 
 ```
-run `aforge --help` for every command and the environment table.
+run `codeaf --help` for every command and the environment table.
 ```
 
 It goes to **standard output** and the command leaves with **0**. Asking a program what
-it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
+it takes is not a failure, so a Makefile or a CI step that runs `codeaf do --help` to
 check the binary is healthy reads a command that worked. This includes the commands that take
-no flags at all — `aforge show --help` and `aforge cache --help` answer the same way
+no flags at all — `codeaf show --help` and `codeaf cache --help` answer the same way
 rather than reading `--help` as a filename or ignoring it.
 
 **A flag that does not exist is still a refusal**, and it is said once, on the **error
@@ -1921,14 +1921,14 @@ stream**, and leaves with **1**:
 
 ```
 error: flag provided but not defined: -nosuchflag
-  aforge do   "<task>" [-w dir] [--json] [-o file] ...
+  codeaf do   "<task>" [-w dir] [--json] [-o file] ...
 ```
 
 — the sentence, then that command's same usage, so the fix is on the screen beside the
 complaint. Nothing goes to standard output, so a script reading the answer never sees a
 refusal mixed into it.
 
-The usage one command prints is **read out of the table** `aforge --help` prints, not
+The usage one command prints is **read out of the table** `codeaf --help` prints, not
 typed out a second time beside the flags, so the two can never disagree about what a
 command takes or what its codes mean.
 
@@ -1937,37 +1937,37 @@ command takes or what its codes mean.
 A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
 never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
 says there is no page by that name and prints the list of pages there are, and changes
-nothing. From the terminal `aforge manual no-such-page` does the same and **exits
+nothing. From the terminal `codeaf manual no-such-page` does the same and **exits
 non-zero**, so a script can tell a missing page from a page it just read.
 
 A **question** the manual has nothing on is a different thing, and it is an answer rather
 than a failure: you are told
 
 ```
-the manual has nothing on that, which usually means aforge does not do it
+the manual has nothing on that, which usually means codeaf does not do it
 ```
 
 followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
-aforge does not do that" is a fact about aforge, not a broken command.
+codeaf does not do that" is a fact about codeaf, not a broken command.
 
 The manual describes **this** conversation surface. It has no pages about anything else,
 and it will not answer out of what the model remembers about other programs.
 
-## aforge --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
+## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
-`aforge --help` prints every command, what each is for, and the environment table under
+`codeaf --help` prints every command, what each is for, and the environment table under
 them. **Any single command answers for itself the same way:**
 
 ```
-aforge do --help
-aforge logs --help
-aforge exec --help
+codeaf do --help
+codeaf logs --help
+codeaf exec --help
 ```
 
 Each one prints that command's own line — the shape it is called with, and what its exit
 codes mean where it has any — then its flags, one to a line, with what each does and what
 it defaults to. It goes to **standard output** and the command **exits 0**: asking for help
-is not a failure, so `aforge do --help` inside a Makefile or a health check reads as a
+is not a failure, so `codeaf do --help` inside a Makefile or a health check reads as a
 command that worked. `-h` says the same thing.
 
 A flag that does not exist is the other answer: the refusal said once, then that same usage,
@@ -1978,20 +1978,20 @@ Flags are written with two dashes for a word and one for a single letter — `--
 
 ## A command name I typed wrong, and a command I gave nothing to
 
-A word aforge does not have is answered with the nearest one it does:
+A word codeaf does not have is answered with the nearest one it does:
 
 ```
-there is no `aforge lgos`. did you mean `aforge logs`?
-run `aforge --help` for every command
+there is no `codeaf lgos`. did you mean `codeaf logs`?
+run `codeaf --help` for every command
 ```
 
-Two lines, not the whole book — the command list is behind `aforge --help`, and the
+Two lines, not the whole book — the command list is behind `codeaf --help`, and the
 environment table behind `help env` on the same door, where either can be read without the
 answer scrolling off the top.
 
-`aforge do` and `aforge plan new` with nothing after them say `no goal given` and print
+`codeaf do` and `codeaf plan new` with nothing after them say `no goal given` and print
 **that command's** line, not every command's. Pipe the task in instead if it is long:
-`echo "the task" | aforge do`.
+`echo "the task" | codeaf do`.
 
 ## Reopening a closed chat is a key rather than a command
 

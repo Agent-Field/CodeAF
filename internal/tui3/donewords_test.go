@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ONE SEPARATOR MEANS ONE THING ON THE ROW. The span used to be joined to the

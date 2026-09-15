@@ -1,6 +1,6 @@
 # Benchmarks
 
-Measured comparisons of aforge against two other coding harnesses, pi and
+Measured comparisons of codeaf against two other coding harnesses, pi and
 opencode. The protocol is in [`bench/README.md`](bench/README.md); this file is
 the record of what came back.
 
@@ -13,7 +13,7 @@ before generalising from any of it.
 
 Four real open issues. Each harness got the issue text and nothing else, worked
 in a fresh clone, and was judged by the repository's own pytest suite run
-afterwards. aforge ran as a one-node graph — one agent, one leaf, no planning
+afterwards. codeaf ran as a one-node graph — one agent, one leaf, no planning
 call — because pi and opencode are also single agents and that is the
 like-for-like shape.
 
@@ -25,17 +25,17 @@ tests.
 
 | harness  | tests passing | wall clock | cost           |
 | -------- | ------------- | ---------- | -------------- |
-| aforge   | 529–554       | 5m56s      | $0.10–$0.19    |
+| codeaf   | 529–554       | 5m56s      | $0.10–$0.19    |
 | pi       | 548           | 12m15s     | $0.174 *       |
 | opencode | 539           | 23m35s     | $0.349 *       |
 
-aforge is quoted as a range across two configurations run as a controlled
+codeaf is quoted as a range across two configurations run as a controlled
 ablation: with a generated per-leaf contract it finished at 529 passing, and
 without one at 554 — both with zero failures, both in 5m56s. The contract
 halved turns (45 vs 81) and cost ($0.104 vs $0.185) at a small test-count
 price. It was roughly twice as
 fast as pi and four times as fast as opencode, at a comparable or better
-outcome, but it did not lead on tests passing — pi's 548 sits inside aforge's
+outcome, but it did not lead on tests passing — pi's 548 sits inside codeaf's
 range and above its lower end.
 
 \* Starred cost figures come from account-level readings and are unreliable —
@@ -45,11 +45,11 @@ see the caveats.
 
 | harness  | tests passing | wall clock | cost        |
 | -------- | ------------- | ---------- | ----------- |
-| aforge   | 558           | 9m49s      | ~$0.17–0.24 |
+| codeaf   | 558           | 9m49s      | ~$0.17–0.24 |
 | pi       | 580           | 10m56s     | not measured |
 | opencode | DNF           | 40m (cap)  | not measured |
 
-pi produced the better result here: 580 passing against aforge's 558, in
+pi produced the better result here: 580 passing against codeaf's 558, in
 comparable time. opencode did not finish. It hit the 40-minute cap having
 changed zero files, while continuing to spend — this cell is the one that made
 the shared-key cost problem impossible to ignore.
@@ -58,7 +58,7 @@ the shared-key cost problem impossible to ignore.
 
 | harness  | tests passing | wall clock | cost         |
 | -------- | ------------- | ---------- | ------------ |
-| aforge   | 321           | 1m52s      | $0.014       |
+| codeaf   | 321           | 1m52s      | $0.014       |
 | pi       | 324           | 2m37s      | not measured |
 | opencode | 321           | 3m30s      | not measured |
 
@@ -70,13 +70,13 @@ the harnesses when the task is small enough that nothing has to be planned.
 
 | harness  | result             | wall clock | cost         |
 | -------- | ------------------ | ---------- | ------------ |
-| aforge   | workflow added     | 1m25s      | $0.005       |
+| codeaf   | workflow added     | 1m25s      | $0.005       |
 | pi       | workflow + tests   | 3m0s       | not measured |
 | opencode | workflow added     | 1m2s       | not measured |
 
 No test-count column: the issue asks for a CI workflow file, so the suite is not
 the judge. pi did the most here — it added tests alongside the workflow, which
-the issue did not ask for and which is more than aforge or opencode produced.
+the issue did not ask for and which is more than codeaf or opencode produced.
 opencode was fastest.
 
 ## 2. PR review
@@ -92,10 +92,10 @@ fact.
 
 | harness                   | verified defects | false positives | wall clock | cost         |
 | ------------------------- | ---------------- | --------------- | ---------- | ------------ |
-| aforge, one node          | 4                | 0               | 10m42s     | $0.18        |
-| aforge, parallel pipeline | 8                | —               | 19m28s     | $0.41        |
-| aforge, parallel pipeline (2026-08-05 re-run) | **INVALID** | — | 19m43s | — |
-| aforge, parallel pipeline (2026-08-05, all fixes) | 8 | 0 observed | ~29m17s¹ | $0.32 |
+| codeaf, one node          | 4                | 0               | 10m42s     | $0.18        |
+| codeaf, parallel pipeline | 8                | —               | 19m28s     | $0.41        |
+| codeaf, parallel pipeline (2026-08-05 re-run) | **INVALID** | — | 19m43s | — |
+| codeaf, parallel pipeline (2026-08-05, all fixes) | 8 | 0 observed | ~29m17s¹ | $0.32 |
 | pi                        | 0 (timed out)    | —               | 40m (cap)  | not measured |
 | opencode                  | 0 (timed out)    | —               | 40m (cap)  | not measured |
 
@@ -136,14 +136,14 @@ the largest gap in either benchmark.
 
 ## 3. Model routing — single model against a routed panel
 
-A different question again: not how aforge compares to another harness, but
+A different question again: not how codeaf compares to another harness, but
 whether sending every call to one model is leaving anything on the table. The
 protocol is in [`bench/ab-routing/DESIGN.md`](bench/ab-routing/DESIGN.md), the
 panel and its measurements in `bench/ab-routing/panel.json`, and the full write
 up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md) and
 [`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). Arm A is today's
 shipped configuration with no environment overrides; arm B is the same harness
-with `AFORGE_MODELS` naming a five-model panel.
+with `CODEAF_MODELS` naming a five-model panel.
 
 Three tasks, run end to end through the CLI, n=3, every one graded by code with
 no LLM judge anywhere.
@@ -169,7 +169,7 @@ to agree with itself was correct in every run.
 improved on its own ensemble members, removing contradictions they had invented.
 But the planner drew **5 nodes and 26 nodes for the same brief**, at 5.4x the
 cost, for the same perfect score — and on t3 the cheapest 3-node plan scored
-*higher* than the 8-node one. A large part of aforge's run-to-run cost variance
+*higher* than the 8-node one. A large part of codeaf's run-to-run cost variance
 is the plan it happens to draw, which is worth knowing before attributing a cost
 change to anything else.
 
@@ -180,7 +180,7 @@ rather than a discriminator.
 ### Arm B — the routed panel
 
 The router (`internal/router/`) over the five-model panel, same three tasks, same
-n=3, `AFORGE_MODELS` pointing at `bench/ab-routing/panel.json`.
+n=3, `CODEAF_MODELS` pointing at `bench/ab-routing/panel.json`.
 
 | task | A success | B success | A score | B score | A $ mean | B $ mean |
 | ---- | --------- | --------- | ------- | ------- | -------- | -------- |
@@ -204,7 +204,7 @@ scored 0.000 on t2 and t3 where the control's run 3 scored 1.000 and 0.857.
 The mechanism is worth recording here because it is a property of the harness
 rather than of the router. Of 108 settled `exec.leaf` verdicts, 103 were
 `unverified_success` — a finished leaf is not checked by anything, since the
-graders run after `aforge run` exits — so the leaf rating was fitted to the five
+graders run after `codeaf run` exits — so the leaf rating was fitted to the five
 that were graded, all of them budget stops from one task. `exec.leaf` is a single
 global class, so that lesson was applied to every leaf of every other task.
 
@@ -231,7 +231,7 @@ ledger. Every panel member was exercised; `moonshotai/kimi-k2.6` was called 36
 times, all of them leaf escalations, all upward.
 
 **The collapse cannot be reproduced.** Replaying t2 against the preserved ledger
-that produced 0.000 in arm B now scores 1.000, twice. `aforge models` shows why:
+that produced 0.000 in arm B now scores 1.000, twice. `codeaf models` shows why:
 the poisoned rating still reads -0.98 and now carries "under the gate — ordering
 uses the prior until n=8".
 
@@ -257,7 +257,7 @@ instrument for it.
 > not kept.
 
 The first measurement of the swe subharness: the same
-four issues, three aforge shapes, every cell pinned to base `6c978ff` — the
+four issues, three codeaf shapes, every cell pinned to base `6c978ff` — the
 last commit with all four issues open, because the repository has since merged
 fixes for #23 and #21 and an unpinned clone passes the suite before any
 harness arrives. Suite baseline at the pin: 317 passing. The pi and opencode
@@ -271,7 +271,7 @@ refused every finished change over clause-coverage matrices while build,
 tests, and lint were green; two runs died at a 30-minute watchdog with their
 suites already grown to 572 and 598 passing. Real work — 9 to 13 files
 committed per issue — landed as failures. Three knobs came out of it: the
-inner auditor yields to aforge's own delivery gate (mechanical verification
+inner auditor yields to codeaf's own delivery gate (mechanical verification
 stays on), the deadline floor is the hour the anchors promise, and the
 choice prior licenses swe for *discovered* work, not every coding issue.
 
@@ -284,7 +284,7 @@ choice prior licenses swe for *discovered* work, not every coding issue.
 | #22 | 2m07s · $0.027 · 317 | 5m46s · $0.21 · **543** | 36m · $1.29 · **564** | 10m56s · 580 | 40m DNF |
 | #23 | 1m37s · $0.009 | 2m57s · $0.11 · pass | 12m24s · $0.81 | 2m37s · 324 | 3m30s · 321 |
 
-Counts are tests passing after the run; every aforge cell finished with zero
+Counts are tests passing after the run; every codeaf cell finished with zero
 failures and its work committed (the engine commits, so `git status` reads
 clean — the change accounting is `git diff` against the pin).
 
@@ -322,7 +322,7 @@ the failing suite; FEATURE: add a bulk discount with tests; REPORT: six
 fictional vendor briefs evaluated into report.md), three replicates each,
 `deepseek/deepseek-v4-flash`, all nine cells of an arm run CONCURRENTLY (the
 only serializer is the provider rate limit). pi is 0.82.1 pinned side-by-side.
-Costs are `normcost.py` (0423 price sheet) for aforge; pi is `picost.py`
+Costs are `normcost.py` (0423 price sheet) for codeaf; pi is `picost.py`
 recomputed-at-list in parentheses. Quality: pytest for BUG/FEATURE
 (17 / 20 passes is the fixture bar), report.md presence and six-vendor
 coverage for REPORT.
@@ -353,7 +353,7 @@ What the campaign learned, in the order the evidence forced it:
   state handover now land both); prefix-stability is now property-tested.
 - **The residual gap (6.3x cost, 1.9–3.4x wall) is architectural, not a
   missing mechanism.** pi runs a minimal loop: 8–14 calls and ~13.5KB of
-  total tool output per cell. aforge pays a planning layer, per-node
+  total tool output per cell. codeaf pays a planning layer, per-node
   orientation, and engine turns of ~7.7k tokens each. On one-sitting tasks
   that envelope dominates; on the section-1 issues the same machinery is what
   wins (section 4's grid). Routing cannot see it pre-execution: the sizing
@@ -376,9 +376,9 @@ multi-tier model pools; hard mode.
 
 ## 7. `do` against `chat --once` — 2026-08-21 (chat-v3-task)
 
-The two headless doors on the same four issues: `aforge do` with nothing forced
-(`AFORGE_MODE=select`) against `aforge chat --once --yolo --one-model`
-(`AFORGE_MODE=chat`). Same pin, same model, same pre-built venv, same pytest
+The two headless doors on the same four issues: `codeaf do` with nothing forced
+(`CODEAF_MODE=select`) against `codeaf chat --once --yolo --one-model`
+(`CODEAF_MODE=chat`). Same pin, same model, same pre-built venv, same pytest
 judge. Both grids ran four cells in parallel (`bench/parallel/`).
 
 **Read section 5.1 before reading the table. One of these four issues does not
@@ -483,7 +483,7 @@ Neither has been done; every number in this section predates both.
 table are account-level credit readings taken around the runs. The API key is
 shared, and the measurement window contained up to $116 of unrelated and runaway
 traffic. Those numbers therefore include spend that has nothing to do with the
-cell being timed and should not be quoted as the cost of a run. aforge's figures
+cell being timed and should not be quoted as the cost of a run. codeaf's figures
 come from its own per-run usage accounting and are not affected. Neither pi nor
 opencode self-reports usage, so getting a real cost for either requires a key
 isolated to a single run; that has not been done. Every "not measured" cell in
@@ -494,7 +494,7 @@ bambara-text-normalization on `deepseek/deepseek-v4-flash-0731`. Nothing
 establishes that the ordering holds on another codebase, another language, or a
 stronger model. Cells were run once each except where a range is given.
 
-**aforge ran in a specific configuration:** executor reasoning off, per-leaf
+**codeaf ran in a specific configuration:** executor reasoning off, per-leaf
 contracts on. Both are knobs, both change the results, and neither was swept.
 
 **The test suite is a proxy for correctness, not correctness.** A test-count

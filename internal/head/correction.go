@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // "That's wrong" is the strongest quality signal a person ever emits, and it

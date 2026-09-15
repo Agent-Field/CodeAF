@@ -31,7 +31,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // folderLander is the session's landing seam, asserted rather than required of
@@ -192,7 +192,7 @@ func landed(landing session.FolderLanding, err error) string {
 	}
 	count := itoa(len(landing.Files)) + " " + plural("file", len(landing.Files))
 	// A POLICY KEEP IS NOT A FAILURE AND MUST NOT BORROW ONE'S WORDS. The
-	// landing did everything it was asked to; aforge declined to write a
+	// landing did everything it was asked to; codeaf declined to write a
 	// protected checkout, which is the whole point of the road. The note is
 	// already the complete sentence — it names the branch, the reason, and the
 	// one command that takes the work — so it is said on its own.

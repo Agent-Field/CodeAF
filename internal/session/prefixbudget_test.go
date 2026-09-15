@@ -42,8 +42,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
@@ -126,7 +126,7 @@ import (
 // and 20,185 of tool block, down from 37,285 and 32,097. Of what remains, 6,551
 // bytes are the seven tools this belt takes VERBATIM from pi (internal/exec's
 // bare package): they are the lean baseline the diet was measured against and
-// are not aforge's to trim. The other 35,133 bytes are aforge's own words, down
+// are not codeaf's to trim. The other 35,133 bytes are codeaf's own words, down
 // from 62,810 — and that is the half of the bill a lane adding a sentence is
 // adding to. The budget is that measurement plus a tenth.
 // WHAT HAS BEEN SPENT AND WHAT PAID FOR IT. The working discipline moved into
@@ -315,7 +315,7 @@ import (
 // 39,720 — 8,280 under.
 // ATTRIBUTION COST 863 BYTES AND 333 OF THEM ARE THE FEATURE (2026-09-10). Lane
 // I of the prompt diet gave the chat the law the resident has had all along, and
-// a third case with it: aforge signs the git work it does in somebody's name —
+// a third case with it: codeaf signs the git work it does in somebody's name —
 // one trailer on a commit, one footer line on a pull request or issue body, and
 // one small `<sub>` line on the FIRST comment it leaves in a thread and no later
 // one. It is a law this page did not state at all, so nothing was deleted for it;
@@ -516,7 +516,7 @@ const (
 // Every figure above is real and every one of them was measured against
 // [leanShapedAgent], which built a conversation with NO memory store, NO
 // accounts hub, NO standing items and NO saved programs — sixteen tools. A
-// person on a small window who has finished setting aforge up carries `stand`
+// person on a small window who has finished setting codeaf up carries `stand`
 // (9,607 bytes by itself), `remember` and `search_conversations`, none of which
 // [Config.leanCapabilityGroups] shelves, and their prefix is 44,989 bytes.
 //

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // laneAgent is a [fakeAgent] carrying the two subscriptions a real session
@@ -234,7 +234,7 @@ func TestALaneEndsWhenTheConnectionDoes(t *testing.T) {
 	waitFor(t, "the engine let go of the subscription", func() bool { return far.holding(laneDesign) == 0 })
 }
 
-// THE WIRE STATES WHAT IT CARRIES, and cmd/aforge builds its hosted
+// THE WIRE STATES WHAT IT CARRIES, and cmd/codeaf builds its hosted
 // conversations on that statement. The harness lane is complete; the adaptive
 // run lane is NOT claimed, and lanes.go lists exactly what is left — a session
 // lane with no replay and a run page whose journal door answers a path on the

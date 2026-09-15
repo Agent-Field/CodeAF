@@ -41,9 +41,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (
@@ -131,7 +131,7 @@ echo "%s"
 }
 
 // jobParkConfig is what the v3 door wires for work, with this scenario's one
-// row moved: everything here is read the way cmd/aforge reads it
+// row moved: everything here is read the way cmd/codeaf reads it
 // (chatv3.go's applyV3Governance).
 func jobParkConfig(w *world) func(*session.Config) {
 	profile := w.settings.ProfileDir

@@ -55,7 +55,7 @@ one with a semicolon: what it was, and what it is now.
 | --- | --- |
 | `branch names` | `The trunk was `chat-v3-task`. It no longer exists on origin; work goes to `dev`.` |
 | `changed the step default` | ``propose_task``'s step default was 40 in the schema and 200 in the executor. Both are 200.` |
-| `image generation` | `The manual said aforge cannot generate images. It can: `generate_image` is on the belt.` |
+| `image generation` | `The manual said codeaf cannot generate images. It can: `generate_image` is on the belt.` |
 
 The tool refuses a line that does not end in a full stop or is under 25
 characters, which catches labels. It cannot catch a full sentence that says
@@ -79,7 +79,7 @@ it.
 When the finer grain genuinely matters, lanes may each add an entry inside the
 feature branch — the gate does not run there — and the pull request into `dev`
 carries them all. The test is always the same question at any height: **whose
-beliefs changed, and at what height were they held?** A reader believes "aforge
+beliefs changed, and at what height were they held?** A reader believes "codeaf
 cannot ground a task in another repository" at feature height; almost nobody
 holds a belief at the height of one lane's diff.
 

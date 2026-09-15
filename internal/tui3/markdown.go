@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/prose"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/prose"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // Markdown on this surface is internal/tui2/prose, unchanged.
@@ -99,7 +99,7 @@ func stylerFor(env func(string) string) *tokens.Styler {
 // wants to see what a 256-colour terminal gets has to be able to say so rather
 // than race the once.
 //
-// The profile comes from [tokens.DetectProfile], the same door cmd/aforge opens
+// The profile comes from [tokens.DetectProfile], the same door cmd/codeaf opens
 // for the v2 surface, so both surfaces answer "what can this terminal say" from
 // one decision table rather than from two guesses. The glyph tier stays
 // [tokens.Plain]: that axis is opt-out-able elsewhere in the tree by a flag this

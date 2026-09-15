@@ -39,7 +39,7 @@ func TestAPatchNamingAProgramThisMachineLacksIsNeverOffered(t *testing.T) {
 	store := testStore(t, time.Now())
 	signature, _ := fixSignature("bash", "ld: symbol(s) not found for architecture arm64")
 	for i := 0; i < 9; i++ {
-		store.confirmAdvised(signature, "aforge-no-such-program-9f3c rebuild")
+		store.confirmAdvised(signature, "codeaf-no-such-program-9f3c rebuild")
 	}
 	if found := store.consult(signature); len(found) != 0 {
 		t.Fatalf("nothing this machine could run; it offered %q", found[0].Fix)
@@ -100,7 +100,7 @@ func TestAPatchThatHasWorkedIsOfferedOnItsFirstSighting(t *testing.T) {
 // measured entry by the back door and asks the belt.
 func TestAStoreAlreadyFullOfJunkStopsSayingIt(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 	broken := "npm error Missing script: build"
 	signature, _ := fixSignature("bash", broken)
@@ -156,7 +156,7 @@ func TestARemedyIsACommandThisMachineHas(t *testing.T) {
 		"--stdio",
 		"",
 		"   ",
-		"aforge-no-such-program-9f3c",
+		"codeaf-no-such-program-9f3c",
 	} {
 		if fixRunnableRemedy(junk) {
 			t.Errorf("%q is not a command this machine can run", junk)

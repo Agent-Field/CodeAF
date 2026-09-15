@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the onboarding journey from the REAL bin/aforge, in a real 120x24
+# Record the onboarding journey from the REAL bin/codeaf, in a real 120x24
 # terminal, and render it to a GIF.
 #
 # It is a recording of the real binary and nothing else: no mock, no
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-BIN="$REPO/bin/aforge"
+BIN="$REPO/bin/codeaf"
 OUT="${OUT:-/tmp/onb-rec}"
 LAB="${LAB:-$OUT/home/src/parser}"
 SESSION="${SESSION:-onbrec}"
@@ -33,10 +33,10 @@ for tool in tmux asciinema agg python3; do
   command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }
 done
 
-# A THROWAWAY HOME AND A THROWAWAY PROJECT. Nothing here touches ~/.aforge.
+# A THROWAWAY HOME AND A THROWAWAY PROJECT. Nothing here touches ~/.codeaf.
 #
 # IT IS A REAL PROJECT AND NOT AN EMPTY DIRECTORY, because those are two
-# different screens: bare `aforge` outside a project opens a workspace of its own
+# different screens: bare `codeaf` outside a project opens a workspace of its own
 # and the first conversation says so, and inside one it names the folder. The
 # recording shows the ordinary case.
 rm -rf "$OUT/home"
@@ -55,7 +55,7 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 # pane; the pty asciinema opens is exactly 120x24 and that is what is recorded.
 tmux -f /dev/null new-session -d -s "$SESSION" -c "$LAB" \
   "asciinema rec --cols 120 --rows 24 --overwrite --quiet -c \
-   'env AFORGE_HOME=$OUT/home HOME=$OUT/home OPENROUTER_API_KEY= OPENAI_API_KEY= $BIN chat --no-host' \
+   'env CODEAF_HOME=$OUT/home HOME=$OUT/home OPENROUTER_API_KEY= OPENAI_API_KEY= $BIN chat --no-host' \
    $OUT/onboarding.cast"
 tmux resize-window -t "$SESSION" -x 130 -y 32
 
@@ -106,7 +106,7 @@ say C-c; sleep 0.4; say C-c; sleep 2
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# THE RECORDING STOPS WHERE THE APPLICATION DOES. Everything after aforge gives
+# THE RECORDING STOPS WHERE THE APPLICATION DOES. Everything after codeaf gives
 # the screen back is the shell it was started from — a log line, a prompt — and
 # it is cut rather than shown as though it were part of the journey. This is a
 # trim of the tail: no frame is edited, reordered or invented.
@@ -126,7 +126,7 @@ NARROW="${NARROW:-$REPO/docs/design/onboarding/onboarding-40x16.png}"
 tmux kill-session -t "$SESSION-narrow" 2>/dev/null || true
 tmux -f /dev/null new-session -d -s "$SESSION-narrow" -c "$LAB" \
   "asciinema rec --cols 40 --rows 16 --overwrite --quiet -c \
-   'env AFORGE_HOME=$OUT/home-narrow HOME=$OUT/home-narrow OPENROUTER_API_KEY= OPENAI_API_KEY= $BIN chat --no-host' \
+   'env CODEAF_HOME=$OUT/home-narrow HOME=$OUT/home-narrow OPENROUTER_API_KEY= OPENAI_API_KEY= $BIN chat --no-host' \
    $OUT/narrow.cast"
 tmux resize-window -t "$SESSION-narrow" -x 60 -y 24
 sayn() { tmux send-keys -t "$SESSION-narrow" "$@"; }

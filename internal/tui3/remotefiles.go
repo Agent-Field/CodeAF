@@ -9,11 +9,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/cas"
-	"github.com/Agent-Field/aforge-v2/internal/filedoor"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/filedoor"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE FILES ON THE OTHER MACHINE, AS THINGS THIS ONE CAN OPEN.
@@ -1158,7 +1158,7 @@ func (a *app) openBrowse() {
 // in, once.
 //
 // IT IS ROOTED WHERE EVERY OTHER CAS IN THIS TREE IS ROOTED: a `cas` directory
-// under the state root aforge owns (internal/home, and internal/store's own
+// under the state root codeaf owns (internal/home, and internal/store's own
 // cas.New(filepath.Join(dir, "cas"))). It is under `v3/remote/` rather than
 // beside the session store because these blobs are not this machine's work —
 // they are copies of somebody else's disk, kept so a click does not become a

@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE QUESTION BLOCK ──────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ import (
 // then the answers row:
 //
 //	? wants to start a task: rewrite the packer
-//	  it will run on its own branch and open a pull request · aforge
+//	  it will run on its own branch and open a pull request · codeaf
 //	    1  start it        on a branch of its own
 //	  ▸ 2  not now         nothing runs
 //	    3  change it first
@@ -145,11 +145,11 @@ type questionResolver interface {
 // IT IS EXPORTED FOR [DrawsTasks]'S REASON, AND FOR THE SAME DEFECT. internal/remote
 // implements this surface's agent over a wire and cannot import this package to
 // check that it kept up, so the door that wires the two together asserts it
-// instead (cmd/aforge). The seam is ALL-OR-NOTHING — [app.questionDoors] is one
+// instead (cmd/codeaf). The seam is ALL-OR-NOTHING — [app.questionDoors] is one
 // type assertion — so a single method missing on the far half is not a question
 // drawn smaller, it is a question that never reaches a screen at all. That is
 // exactly what happened: the wire carried ResolveQuestion and neither
-// WatchQuestions nor OpenQuestions, and on the road a plain `aforge` takes every
+// WatchQuestions nor OpenQuestions, and on the road a plain `codeaf` takes every
 // `ask` stopped the turn with nothing on any screen.
 func DrawsQuestions(agent Agent) bool {
 	_, ok := agent.(questionAgent)

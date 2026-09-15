@@ -12,7 +12,7 @@
 // where one long turn evicts the failure the person came for.
 //
 // So: ONE SWITCH, ONE FOLDER PER RUN, AND NOTHING WRITTEN WHEN IT IS OFF. The
-// switch has three doors — the environment pin AFORGE_DEBUG, a --debug flag on
+// switch has three doors — the environment pin CODEAF_DEBUG, a --debug flag on
 // chat, do and exec, and /debug inside a conversation — and when none of them
 // was used, [For] returns nil after two atomic loads and every method on that
 // nil recorder is a no-op. A feeder site therefore costs one call and one nil
@@ -57,26 +57,27 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 const (
 	// EnvVar is the switch's spelling in a shell. It is exported so the manual,
 	// the settings footer and the doors all say the word the code reads.
-	EnvVar = "AFORGE_DEBUG"
+	EnvVar = "CODEAF_DEBUG"
 	// BodiesEnvVar is the switch's OLD name — the pin that used to put request
 	// and response bodies on every line of the model-call log. It means the
 	// same thing as EnvVar for one release, so a person with the old word in a
 	// shell history gets the record rather than silence.
-	BodiesEnvVar = "AFORGE_CALL_LOG_BODIES"
+	BodiesEnvVar = "CODEAF_CALL_LOG_BODIES"
 	// MaxMBEnvVar and KeepEnvVar move the two ceilings below. They are pins
 	// rather than settings rows for the reason the bodies pin was: they are
 	// turned for one investigation, in a shell, on purpose.
-	MaxMBEnvVar = "AFORGE_TRACE_MAX_MB"
-	KeepEnvVar  = "AFORGE_TRACE_KEEP"
+	MaxMBEnvVar = "CODEAF_TRACE_MAX_MB"
+	KeepEnvVar  = "CODEAF_TRACE_KEEP"
 
 	// DirName and TraceDirName put the record beside the model-call log rather
-	// than under it, because "where does aforge keep what it wrote down" has
+	// than under it, because "where does codeaf keep what it wrote down" has
 	// one answer and this is the second thing in it.
 	DirName      = "logs"
 	TraceDirName = "trace"
@@ -113,7 +114,7 @@ const (
 var on atomic.Bool
 
 func init() {
-	if envEnabled(os.Getenv) {
+	if envEnabled(env.Get) {
 		on.Store(true)
 	}
 }
@@ -286,12 +287,12 @@ func NodeFrom(ctx context.Context) string {
 // IT IS THE FALLBACK AND NOT THE SOURCE. The run id belongs on the context and
 // every feeder reads it from there; this exists because a door mints the id at
 // the top of a process whose deeper layers still start from
-// context.Background() — `aforge do` threads no context into its errand at all
+// context.Background() — `codeaf do` threads no context into its errand at all
 // — and a record written under no id is a record nothing can be joined to.
 //
 // THE FALLBACK NAMES THE FIRST RUN THIS PROCESS BEGAN, AND ONLY WHILE IT IS THE
 // ONLY ONE. That is the whole law, and the second half of it is the important
-// half. A process with one run — `aforge chat --once`, `do`, `exec` — has
+// half. A process with one run — `codeaf chat --once`, `do`, `exec` — has
 // exactly one honest answer to "whose record is this?", and the fallback gives
 // it. A process holding SEVERAL runs has none: a contextless record could have
 // come from either conversation, and guessing puts one person's prompts and
@@ -417,7 +418,7 @@ func For(ctx context.Context) *Recorder {
 	if recorder, ok := runs.by[run]; ok {
 		return recorder
 	}
-	recorder := &Recorder{run: run, dir: Dir(run), max: maxRunBytes(os.Getenv), keep: keepRuns(os.Getenv)}
+	recorder := &Recorder{run: run, dir: Dir(run), max: maxRunBytes(env.Get), keep: keepRuns(env.Get)}
 	runs.by[run] = recorder
 	return recorder
 }

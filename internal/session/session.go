@@ -25,20 +25,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/offpath"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/search"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/offpath"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // Completer is the narrow slice of provider.Client the loop needs. It is an
@@ -1139,7 +1139,7 @@ type Config struct {
 	// Place is the session folder and everything inside it (place.go,
 	// Decision 26). The zero Place is the legacy flat layout: sidecar paths
 	// keep deriving from SessionFile, droppings keep landing in the
-	// workspace's .aforge-v3, and nothing changes for a caller that has not
+	// workspace's .codeaf, and nothing changes for a caller that has not
 	// adopted the folder. When set, SessionFile and Place.Transcript() name
 	// the same file.
 	Place Place
@@ -1152,8 +1152,8 @@ type Config struct {
 	//
 	// It is the caller's path rather than one this package derives, for the
 	// reason SessionFile is: where a person's state lives is the surface's
-	// decision. The surface's answer is ~/.aforge/v3/artifacts.jsonl, resolved
-	// through internal/home so AFORGE_HOME moves it with everything else.
+	// decision. The surface's answer is ~/.codeaf/v3/artifacts.jsonl, resolved
+	// through internal/home so CODEAF_HOME moves it with everything else.
 	ArtifactsIndex string
 
 	// Memory is the brain this session remembers into (memory.go): the store's
@@ -1235,7 +1235,7 @@ type Config struct {
 	// over a connection it does exactly when that wire carries the lane AND the
 	// answer the card asks for (internal/remote's standinglane.go, version 11 —
 	// before it, neither crossed and a card raised over a wire expired unseen).
-	// The one place that decides it for every door is cmd/aforge's
+	// The one place that decides it for every door is cmd/codeaf's
 	// chatv3_lanes.go, which fills this field and HarnessStore together for the
 	// lane's two cards ([Agent.canProposeSubharness] and harness_build.go).
 	//
@@ -1258,7 +1258,7 @@ type Config struct {
 	Guardian  bool
 
 	// Attribution is the person's `attribution` row (internal/config's
-	// KeyAttribution, env AFORGE_ATTRIBUTION), and it says whether aforge signs
+	// KeyAttribution, env CODEAF_ATTRIBUTION), and it says whether codeaf signs
 	// the git work it does in their name: one trailer on a commit, one footer
 	// line on a pull request or an issue. It reaches both readers there are —
 	// the belt fact the model is told (beltfacts.go's [Config.signsGitWork]) and
@@ -1325,7 +1325,7 @@ type Config struct {
 	//
 	// It is the caller's path rather than one this package derives, for the
 	// reason SessionFile is: where a person's state lives is the surface's
-	// decision, and a package that resolved ~/.aforge itself would write there
+	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
 
@@ -1419,7 +1419,7 @@ type Config struct {
 	// The whole registry is handed over rather than a path to it for the reason
 	// SessionFile is a path and not a directory this package picks: where the
 	// entries come from is the surface's business, and a package that read
-	// ~/.aforge/harnesses itself would read it from a test and from a task
+	// ~/.codeaf/harnesses itself would read it from a test and from a task
 	// node's own agent too.
 	Harnesses []subharness.Entry
 
@@ -1465,7 +1465,7 @@ type Config struct {
 	//
 	// It is the STORE and not a path for the reason Harnesses is a slice: where
 	// the registry lives is the surface's decision, and a package that opened
-	// ~/.aforge/harnesses itself would open it from a test and from a task node's
+	// ~/.codeaf/harnesses itself would open it from a test and from a task node's
 	// own agent too.
 	HarnessStore *subharness.Store
 
@@ -1484,7 +1484,7 @@ type Config struct {
 	// (docs/SUBHARNESS-CONTRACT.md). It is the registry itself rather than a
 	// path for the same reason HarnessStore is a store — where the bundles live
 	// is the surface's decision, and a package that opened
-	// ~/.aforge/subharnesses itself would open it from a test and from a task
+	// ~/.codeaf/subharnesses itself would open it from a test and from a task
 	// node's own agent too.
 	//
 	// NIL IS SUBHARNESSES OFF, on exactly the terms RunHarness is detection off.
@@ -1503,7 +1503,7 @@ type Config struct {
 	// answer for a door with nothing behind it. It is a SEAM the store lane
 	// fills, on the terms Subharnesses is one: where a bundle's memory lives is
 	// the surface's decision, and a package that opened
-	// ~/.aforge/subharnesses itself would open it from a test too.
+	// ~/.codeaf/subharnesses itself would open it from a test too.
 	SubharnessMemory SubharnessMemory
 
 	// SubharnessLastRun is the dim note under one row of the `/subharness` list:
@@ -1566,7 +1566,7 @@ type Config struct {
 	// NIL MEANS THE CHOICE DOES NOT EXIST: the making verbs advertise no
 	// `model` argument at all, by the same absence law as the verbs themselves
 	// — a knob with nothing behind it is left off the schema rather than
-	// present and refused. The surface that wires it (cmd/aforge's
+	// present and refused. The surface that wires it (cmd/codeaf's
 	// chatv3_media.go) answers from the same catalog the defaults ladder
 	// reads, so a picked model is capability-checked exactly as a default is.
 	MediaPick func(modality, word string) (string, error)
@@ -1776,7 +1776,7 @@ type Config struct {
 	// (task_pressure.go's ONE ACCOUNT FOR THE WHOLE PROCESS, #907).
 	//
 	// The process's own door sets it once and hands the same pointer to every
-	// conversation (cmd/aforge). Left nil, a graph is ALONE IN ITS PROCESS and
+	// conversation (cmd/codeaf). Left nil, a graph is ALONE IN ITS PROCESS and
 	// keeps an account of its own — which is the truth for an embedder with one
 	// conversation, and for every scripted graph in the tests.
 	TaskLanes *TaskLanes
@@ -1811,7 +1811,7 @@ type Config struct {
 	crewRole roles.Role
 
 	// Errand marks this agent as the short exchange behind home's `ask here`
-	// (cmd/aforge's chatv3_exchange.go) rather than a conversation somebody
+	// (cmd/codeaf's chatv3_exchange.go) rather than a conversation somebody
 	// sits in. It is a conversation in every other way — a real model, a real
 	// transcript, a card it can answer — so InTask would be a lie about it.
 	//
@@ -1931,7 +1931,7 @@ type Config struct {
 	taskDepth int
 
 	// Divide arms the division road for the tasks this session admits
-	// (task_divide.go). ON is what the v3 door wires (cmd/aforge's chatv3.go,
+	// (task_divide.go). ON is what the v3 door wires (cmd/codeaf's chatv3.go,
 	// from internal/config's Swarm, default true); the zero value is off, which
 	// is what keeps every scripted agent in this package's tests exactly as it
 	// was.
@@ -2020,7 +2020,7 @@ type Config struct {
 	Budget Budget
 
 	// newerBuild is the cheap process-local reading that says this running
-	// aforge has been replaced on disk. It is private because the session owns
+	// codeaf has been replaced on disk. It is private because the session owns
 	// when the reading reaches a turn; tests replace only the reading itself.
 	newerBuild func() string
 

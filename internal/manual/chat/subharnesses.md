@@ -13,15 +13,15 @@ Three things follow from that, and they are the whole feature:
 - **You settle the input before it runs.** That is the intake card (below): every field of
   the schema, the answered ones stated, the required blanks marked.
 - **They come from three places and nothing on screen says which is which.** Some are
-  bundles under `~/.aforge/subharnesses`; some are bundles committed into the project you
-  are working in; and some are the pages a design wrote when you asked aforge to build you
-  one, under `~/.aforge/harnesses`. The mark on a row reads `yours` or `from this project`,
+  bundles under `~/.codeaf/subharnesses`; some are bundles committed into the project you
+  are working in; and some are the pages a design wrote when you asked codeaf to build you
+  one, under `~/.codeaf/harnesses`. The mark on a row reads `yours` or `from this project`,
   and that is where it was found, not what language it is in or which door built it.
 - **A run is a task.** It gets a roster row, a room, a journal and a `Stop`, like every other
   piece of work you can walk away from.
 
 **A harness is a subharness.** One system, one name for it, several doors onto it. What you
-get by asking aforge to build you one — "make me a harness for the weekly marketing images"
+get by asking codeaf to build you one — "make me a harness for the weekly marketing images"
 — is saved as a page and is on this list from the moment it is saved, marked `yours` like
 anything else of yours. `/harness` and `/harnesses` are the other door onto those, with a
 picker and a typed request instead of a card; the *Saved shapes of work* page describes
@@ -97,7 +97,7 @@ command line, which is why this command takes one where `/harness` does not.
 
 ## The harness I just had built — how an approved design reaches this list, and how to run it
 
-You asked aforge to build you a harness, you approved the card, and the design settled with
+You asked codeaf to build you a harness, you approved the card, and the design settled with
 two lines:
 
 ```
@@ -129,10 +129,10 @@ The row draws no time and the card promises no shape: a page states neither, and
 either would be a claim the design never made. From `run it` it is a task like every other
 run — a roster row, a room where its steps land as they happen, a journal, and a `Stop`.
 
-## When aforge offers one — the card it raises by itself
+## When codeaf offers one — the card it raises by itself
 
 You do not have to go looking. When what you are asking for is the shape of work a saved
-program already does, aforge offers it — and the offer is **this same intake card**, raised
+program already does, codeaf offers it — and the offer is **this same intake card**, raised
 in front of you with a line saying why:
 
 ```
@@ -144,7 +144,7 @@ this looks like flake-triage: the brief and a failing test name are both here
   it runs as a task beside this conversation — you can watch it, answer it, stop it
 ```
 
-**The reason line is aforge's own**, in your terms and about what matched — not a
+**The reason line is codeaf's own**, in your terms and about what matched — not a
 description of the program, which you can read on the line above it.
 
 **The fields arrive already filled in** from what has been said. What was read out of the
@@ -159,7 +159,7 @@ saying what the answer under the cursor will actually do:
 - on `run it`: `it runs as a task beside this conversation — you can watch it, answer it, stop it`
 - on `no`: `nothing runs, and we carry on here`
 
-**Nothing runs because aforge suggested it.** There is no countdown that says yes for you,
+**Nothing runs because codeaf suggested it.** There is no countdown that says yes for you,
 no default and no "you did not object": the only thing that starts a run is you answering
 `run it`.
 
@@ -167,7 +167,7 @@ While the card is up, the status line reads `waiting · your call`. Every other 
 this machine, and `/home`, sees this conversation as `waiting on you`, with the line
 `wants to run <name>` under it.
 
-## Keys on the card aforge raised
+## Keys on the card codeaf raised
 
 | Key | What it does |
 | --- | --- |
@@ -195,13 +195,13 @@ conversation and is there again when you come back to it, filled in as it was ra
 conversation waiting on one shows `waiting on you` on `/home` and in every other window
 meanwhile.
 
-**aforge offers at most one at a time, and stays quiet when it is unsure.** An offer is
+**codeaf offers at most one at a time, and stays quiet when it is unsure.** An offer is
 only raised when the program's own name or one of its cues actually appears in what has
 been said; a weak match raises nothing at all, because a suggestion you have to swat away
 costs more than one you never got.
 
 **There are no offers where the card cannot be drawn.** Over `--host`, in a headless
-`--once` run, and inside a task, aforge is not given the ability at all rather than
+`--once` run, and inside a task, codeaf is not given the ability at all rather than
 offering something nobody could answer.
 
 ## The intake card — filling in what a subharness needs
@@ -229,7 +229,7 @@ Each field's tail is one of three things, in this order:
 A field with none of the three draws nothing at all.
 
 **`▲` marks a required field nobody has answered.** It is the same mark a person being
-waited on wears everywhere else in aforge. A field that is answered, or that you do not
+waited on wears everywhere else in codeaf. A field that is answered, or that you do not
 have to answer, has no mark — so the card's marks are exactly the list of what is still
 needed.
 
@@ -246,7 +246,7 @@ nothing to answer.
 | `esc` | back to the list, or close the card when it was opened by name |
 
 `enter` means "act on the row under the cursor", which is what it means everywhere else in
-aforge. There is no separate key for starting the run — `run it` is a row.
+codeaf. There is no separate key for starting the run — `run it` is a row.
 
 While a field's box is open it takes the message box's place, with the placeholder
 `the value · enter keeps it · esc`. `enter` keeps what you typed; `esc` leaves the field
@@ -288,14 +288,14 @@ Stated plainly, because the surface is finished before everything behind it is.
   in this conversation, so a card opened before anything relevant has been said — or one
   whose required fields nothing answers — opens with those fields marked `▲` and waiting
   for you. That is the honest card, not a fault.
-- **An offer cannot reach you everywhere.** aforge offering one by itself is the card
+- **An offer cannot reach you everywhere.** codeaf offering one by itself is the card
   described above, and it is raised only where a window can draw it: not over `--host`,
   not in a headless `--once` run, not inside a task. In those places the ability is absent
   rather than present and failing.
 - **No subharness list over `--host`.** The registry lives on the far machine and this
   build has no door onto it. The command answers `<machine> owns subharnesses ·
   change it on that machine` and opens nothing; it does not report that registry empty.
-- **Writing a bundle is not a command.** Asking aforge to build you one is: say so in the
+- **Writing a bundle is not a command.** Asking codeaf to build you one is: say so in the
   conversation and a design is started, and the page it saves is on this list. What you
   cannot do from here is write the *bundle* form — the one with a schema of several fields —
   which is a file you put on disk yourself.

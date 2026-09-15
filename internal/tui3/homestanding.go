@@ -10,9 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE AMBIENT BAND ON HOME: WHAT IS KEEPING AN EYE ON THINGS, UNDER THE PROJECT
@@ -592,7 +592,7 @@ func standFoldWord(count int, folded bool) string {
 //
 //	every Monday at 9, draft the weekly update
 //
-//	aforge-v2 · ~/src/aforge-v2
+//	codeaf · ~/src/codeaf
 //
 //	Mondays at 9am
 //	last went off Mon · the weekly update is in notes/week-34.md

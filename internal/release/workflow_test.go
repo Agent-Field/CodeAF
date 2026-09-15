@@ -43,15 +43,15 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		t.Fatalf("cancel-in-progress must name only dev:\n%s", cancellation)
 	}
 	for _, command := range []string{
-		"go run ./cmd/aforge-release next",
-		"go run ./cmd/aforge-release prune",
+		"go run ./cmd/codeaf-release next",
+		"go run ./cmd/codeaf-release prune",
 	} {
 		if !strings.Contains(workflow, command) {
 			t.Errorf("workflow does not run %q", command)
 		}
 	}
 	if strings.Contains(workflow, "40") {
-		t.Fatal("the retention count was copied into the workflow instead of read from aforge-release")
+		t.Fatal("the retention count was copied into the workflow instead of read from codeaf-release")
 	}
 	// `test` is skipped on every dev build, and GitHub skips any job whose
 	// dependency chain holds a skipped job unless that job's own condition says
@@ -70,7 +70,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	if strings.Contains(workflow, `--is-ancestor "$GITHUB_SHA"`) || strings.Count(workflow, `--is-ancestor "$sha"`) != 2 {
 		t.Fatal("the release order guards must check the resolved source commit")
 	}
-	if !strings.Contains(workflow, `go run ./cmd/aforge-release kind "$tag"`) {
+	if !strings.Contains(workflow, `go run ./cmd/codeaf-release kind "$tag"`) {
 		t.Fatal("an existing release tag is not classified before its channel marks are applied")
 	}
 	if !strings.Contains(workflow, `gh release view "$TAG"`) {
@@ -86,7 +86,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		}
 	}
 	for _, source := range []string{
-		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"`,
+		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"`,
 		`test_args=()`,
 		`go test "${test_args[@]}"`,
 	} {

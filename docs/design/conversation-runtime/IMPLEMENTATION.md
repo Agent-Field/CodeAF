@@ -94,7 +94,7 @@ repetitions to support a claim either way.
 
 The interactive comparison records peer and candidate outcomes, including failures.
 Both peers passed the initial mid-work revision case; both failed the first follow-up
-case. Aforge's early candidate failed both. Further live diagnostics separated model
+case. codeaf's early candidate failed both. Further live diagnostics separated model
 quality, display grouping and frozen-goal reruns. See `VALIDATION.md` for the tested
 revisions and final checks. One repetition with differing context sizes, caching and
 provider variability cannot establish a frontier in any direction.

@@ -3,7 +3,7 @@ package tui3
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // nextPanel is `next up`: the reminders and routines this machine will act on,

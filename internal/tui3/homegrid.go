@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE GRID ────────────────────────────────────────────────────────────────
@@ -410,7 +410,7 @@ type homeCell struct {
 	// bold is this window's own conversation.
 	bold bool
 	// path says the title is a folder's path, which is cut FROM THE LEFT —
-	// `…/code/aforge-v2` — so the folder's own name and the facts beside it
+	// `…/code/codeaf` — so the folder's own name and the facts beside it
 	// stay on the row ([homeCellPathTitle]).
 	path bool
 	// hold says the right-hand word is a fact about the DOOR — `folder gone`,

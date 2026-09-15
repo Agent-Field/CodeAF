@@ -9,7 +9,7 @@ invalidates:
 Local lane note; root folds this behaviour into its own 653 entry. No pull
 request has been opened for it.
 
-calibration-02 cell 018-revision-midwork-aforge: the write seam fired after
+calibration-02 cell 018-revision-midwork-codeaf: the write seam fired after
 report.csv was written and report.md removed, the mark reader drew `(waiting)`,
 and task 2 was admitted to wait for `./slow-build.sh` — which woke the
 conversation with the right answer 42 seconds later anyway. The task spawned a

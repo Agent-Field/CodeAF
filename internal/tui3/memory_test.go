@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // rememberingAgent is a fakeAgent that also has a brain — the optional
@@ -529,7 +529,7 @@ func TestAFailureIsReportedAndNotSwallowed(t *testing.T) {
 
 // `enter` ON A LINE IS `ask me about it` (SCREEN 1f / FIDELITY item 5).
 //
-// A line here is something aforge believes about you, and the useful thing to do
+// A line here is something codeaf believes about you, and the useful thing to do
 // with one is to talk about it. It used to open the card in place — the thing
 // the design moved onto the row's `→` strip — and the foot said `enter open a
 // shelf` over every row, so on a line it named a key and described something

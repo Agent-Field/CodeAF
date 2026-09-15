@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── WHAT A KEY AND A POINTER ON HOME MAY COST ───────────────────────────────
@@ -29,7 +29,7 @@ import (
 //     [app.homeHover] to hit-test against, and one for the repaint it asked for.
 //
 // Measured on a lab of eight repositories that answer `git status` in ten
-// milliseconds each, which is what a real worktree costs (aforge's own is 7.7ms
+// milliseconds each, which is what a real worktree costs (codeaf's own is 7.7ms
 // warm) and a tenth of what a cold or mounted one costs:
 //
 //	                    before          after

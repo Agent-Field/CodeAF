@@ -1,4 +1,4 @@
-// Package video is the LOCAL half of aforge's video work: the things done to
+// Package video is the LOCAL half of codeaf's video work: the things done to
 // files that already exist, on this machine, with ffmpeg — as against the
 // renders bought from a provider a clip at a time
 // (internal/session/tools_video.go).
@@ -11,7 +11,7 @@
 // one of those four operations is a local, free, deterministic thing that ffmpeg
 // has done for twenty years.
 //
-// Until this package, aforge did them by writing ffmpeg command lines into the
+// Until this package, codeaf did them by writing ffmpeg command lines into the
 // shell, and the manual said so in as many words. That has two costs and the
 // second one is the expensive one:
 //
@@ -85,7 +85,7 @@ var ErrMissing = errors.New("ffmpeg and ffprobe are not on this machine")
 // Missing names the binary this machine has not got, and "" when it has both.
 // It looks the binaries up LIVE rather than caching the answer: the lookup is a
 // few stats against PATH, it is asked once per belt build and never in a loop,
-// and a cached "no" would outlive an ffmpeg installed while aforge was running.
+// and a cached "no" would outlive an ffmpeg installed while codeaf was running.
 func Missing() string {
 	for _, binary := range []string{ffmpegBinary, ffprobeBinary} {
 		if _, err := exec.LookPath(binary); err != nil {

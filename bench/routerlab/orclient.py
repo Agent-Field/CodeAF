@@ -40,8 +40,8 @@ def _headers():
     return {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Agent-Field/aforge-v2",
-        "X-Title": "aforge routerlab",
+        "HTTP-Referer": "https://github.com/Agent-Field/codeaf",
+        "X-Title": "codeaf routerlab",
     }
 
 
@@ -57,7 +57,7 @@ async def chat(client, model, messages, *, price_in=0.0, price_out=0.0,
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     if reasoning_off:
-        # aforge runs with reasoning off in production (see config.go); the
+        # codeaf runs with reasoning off in production (see config.go); the
         # panel is measured the way the harness would actually call it.
         body["reasoning"] = {"enabled": False}
 

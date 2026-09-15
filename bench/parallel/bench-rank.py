@@ -4,7 +4,7 @@ import csv, glob, os, sys
 
 root = open(os.path.expanduser('~/af-v3/.bench-par-root')).read().strip()
 
-# Master's recorded numbers, BENCHMARKS.md, AFORGE_MODE=node, same model+judge.
+# Master's recorded numbers, BENCHMARKS.md, CODEAF_MODE=node, same model+judge.
 MASTER = {
     '20': dict(sec=85,  passed=None, cost=0.005, note='workflow added'),
     '21': dict(sec=356, passed=554,  cost=0.185, note='529-554 range; 554 = no contract'),
@@ -17,7 +17,7 @@ rows = []
 for f in sorted(glob.glob(os.path.join(root, 'issue-*/results.csv'))):
     with open(f) as fh:
         for r in csv.DictReader(fh):
-            if r.get('harness') == 'aforge':
+            if r.get('harness') == 'codeaf':
                 rows.append(r)
 
 if not rows:
@@ -32,7 +32,7 @@ def mmss(s):
     return f'{int(s)//60}m{int(s)%60:02d}s'
 
 print(f'ROOT: {root}\n')
-print('## v3 `aforge do` — raw cells\n')
+print('## v3 `codeaf do` — raw cells\n')
 hdr = f"{'issue':<6}{'exit':<6}{'files':<7}{'pass':<7}{'fail':<6}{'time':<9}{'cost':<10}{'nodes_failed'}"
 print(hdr); print('-'*len(hdr))
 tot_cost = 0.0; tot_sec = 0
@@ -72,7 +72,7 @@ print(f'cost     : v3 cheaper on {cheaper}/{len(rows)} cells | total v3 ${tot_co
 print('\n## model audit — every model id recorded in each cell store\n')
 import subprocess, re
 for i in ['20','21','22','23']:
-    db = os.path.join(root, f'issue-{i}/aforge-{i}/store/graph.db')
+    db = os.path.join(root, f'issue-{i}/codeaf-{i}/store/graph.db')
     if not os.path.exists(db):
         print(f'#{i}: no store'); continue
     out = subprocess.run(['strings', db], capture_output=True, text=True).stdout

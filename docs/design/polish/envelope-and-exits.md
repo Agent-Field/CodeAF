@@ -1,10 +1,10 @@
 # One result envelope and one exit ladder
 
-`aforge do`, `aforge exec` and `aforge run subharness` are the three headless verbs.
+`codeaf do`, `codeaf exec` and `codeaf run subharness` are the three headless verbs.
 Before this change they had **three exit-code tables and two `--json` shapes**, written
 where each command was, and nothing anywhere put them side by side. Two of the tables
 meant opposite things by the same number. This puts all three on one table and one
-object, both defined in `cmd/aforge/envelope.go` and read from nowhere else.
+object, both defined in `cmd/codeaf/envelope.go` and read from nowhere else.
 
 **This changes what existing scripts see.** Everything below is the whole of what moved.
 
@@ -12,11 +12,11 @@ object, both defined in `cmd/aforge/envelope.go` and read from nowhere else.
 
 ## The paragraph to read if you have a script in production
 
-Exit codes moved on all three commands. `aforge exec` moved the most: it used to return
+Exit codes moved on all three commands. `codeaf exec` moved the most: it used to return
 2, 3, 4, 5 and 6 and never 1, and now it returns 0, 1, 2 and 3 like everything else —
-`AFORGE_EXIT_CODES=legacy` puts its old numbers back **for one release** and changes
-nothing else, so a script can keep running today and be fixed on its own clock. `aforge
-do` splits its old 1 into 1, 2, 3 and 4 and its old 2 into 2 and 3; `aforge run
+`CODEAF_EXIT_CODES=legacy` puts its old numbers back **for one release** and changes
+nothing else, so a script can keep running today and be fixed on its own clock. `codeaf
+do` splits its old 1 into 1, 2, 3 and 4 and its old 2 into 2 and 3; `codeaf run
 subharness` keeps 0, 1 and 2 with the meanings it already had. **No `--json` field was
 removed or renamed away**: every old field name is still printed, beside its new
 spelling, for one release. The one thing that genuinely broke is a caller that tested
@@ -39,7 +39,7 @@ The ladder, as it now stands for all three verbs:
 | 3 | a limit you set stopped it — the wall, the token budget, the turn cap, the price |
 | 4 | it needs an answer from you and nobody was there |
 
-### `aforge do`
+### `codeaf do`
 
 | what happened | before | after |
 | --- | --- | --- |
@@ -53,9 +53,9 @@ The ladder, as it now stands for all three verbs:
 | it stopped to ask, and nobody was there | 1 | **4** |
 | the wall arrived with a question standing behind it | 2 | **4** |
 
-### `aforge exec`
+### `codeaf exec`
 
-| what happened | before | after | under `AFORGE_EXIT_CODES=legacy` |
+| what happened | before | after | under `CODEAF_EXIT_CODES=legacy` |
 | --- | --- | --- | --- |
 | the model answered | 0 | 0 | 0 |
 | the token budget ran out | 2 | **3** | 2 |
@@ -69,7 +69,7 @@ The ladder, as it now stands for all three verbs:
 `exec` never returned 1 before, and 1 is what every other command in the binary returns
 for "could not be run at all". That is the whole reason its numbers moved.
 
-### `aforge run subharness`
+### `codeaf run subharness`
 
 | what happened | before | after |
 | --- | --- | --- |
@@ -175,12 +175,12 @@ work was done about a run with nothing to show — so it was not preserved.
 ## The escape hatch
 
 ```
-AFORGE_EXIT_CODES=legacy aforge exec "…"
+CODEAF_EXIT_CODES=legacy codeaf exec "…"
 ```
 
-Restores `aforge exec`'s old 2/3/4/5/6 **for one release** and changes nothing else: not
+Restores `codeaf exec`'s old 2/3/4/5/6 **for one release** and changes nothing else: not
 `do`, not `run`, not one field of the envelope, not one word on stderr. It is one line
-of code (`legacyExitCodes`, `cmd/aforge/envelope.go`), one line in `aforge --help`'s
+of code (`legacyExitCodes`, `cmd/codeaf/envelope.go`), one line in `codeaf --help`'s
 environment table, and one section in the manual. It is not a general compatibility mode
 and must not become one.
 
@@ -188,10 +188,10 @@ and must not become one.
 
 ## Where it lives, and what holds it
 
-- `cmd/aforge/envelope.go` — the ladder (`exitLadder`), the stop vocabulary, the
+- `cmd/codeaf/envelope.go` — the ladder (`exitLadder`), the stop vocabulary, the
   envelope, the one builder (`buildResultEnvelope`), the hatch, and the per-verb old
   spellings. Nothing else in the binary writes an exit number or an envelope field.
-- `cmd/aforge/envelope_test.go`:
+- `cmd/codeaf/envelope_test.go`:
   - `TestTheExitLadderIsOneTable` — every rung, its number, the condition that produces
     it, and each of the three verbs' own endings mapped onto it. A change to any verb
     that disagrees fails here by the name of the row it broke.
@@ -200,17 +200,17 @@ and must not become one.
     spellings are still there, and that `ok` is not `settled`.
   - `TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse` — the hatch restores exactly
     the old numbers and touches nothing else.
-- `cmd/aforge/exec_test.go` — `TestExecLegacyExitCodeIsTheOldTable` pins the old table
+- `cmd/codeaf/exec_test.go` — `TestExecLegacyExitCodeIsTheOldTable` pins the old table
   itself, so the hatch cannot quietly stop being the old numbers.
 - `internal/manual/chat/running-from-the-terminal.md` — the exit codes, the envelope, the
   old field names, and the hatch, as the chat answers them.
 - `internal/manual/chat/saved-programs.md` — `run subharness`'s endings, now the same
   numbers as everything else, and its `--json`.
 
-- `internal/config/settings.go` — `AFORGE_EXIT_CODES` is registered in
+- `internal/config/settings.go` — `CODEAF_EXIT_CODES` is registered in
   `OperatorEnvPins` (the read-only environment footer), not as a settings row. The
   argument is in the comment beside it and is the one already written three times in that
-  file for `AFORGE_SWARM`, `AFORGE_SPLITGATE` and `AFORGE_GROWTH_GATE`: a hatch that lives
+  file for `CODEAF_SWARM`, `CODEAF_SPLITGATE` and `CODEAF_GROWTH_GATE`: a hatch that lives
   for one release and then goes has exactly the lifetime a persisted setting must not
   have — and a person who once chose `legacy` in a preference sheet would have their exit
   codes silently rolled back on a machine where the variable is nowhere in sight, which is
@@ -229,17 +229,17 @@ contract; JSON objects are unordered and nothing reads them positionally.
 `invalidates:` lines this change needs, written as statements somebody now believes
 wrongly:
 
-- `aforge exec` exits 2/3/4/5/6 and never 1 — it now uses the same 0/1/2/3 ladder as
-  every other headless verb, and `AFORGE_EXIT_CODES=legacy` restores the old numbers for
+- `codeaf exec` exits 2/3/4/5/6 and never 1 — it now uses the same 0/1/2/3 ladder as
+  every other headless verb, and `CODEAF_EXIT_CODES=legacy` restores the old numbers for
   one release.
-- `aforge do` exit 1 means "nothing usable came back" and exit 2 means "partial" — 1 now
+- `codeaf do` exit 1 means "nothing usable came back" and exit 2 means "partial" — 1 now
   means only "it could not be run at all", 2 is "it ran and part of it does not stand", 3
   is "a limit you set stopped it" (the wall, the price) and 4 is "it needed an answer and
   nobody was there".
 - `do --json` and `exec --json` are two different objects — they are one, with `ok`,
   `stop`, `answer`, `files`, `error`, `spend_usd`, `tokens`, `seconds`, `model`, `steps`;
   the old field names are printed beside the new ones for one release.
-- `aforge run subharness` has no `--json` — it does, and it prints the same object.
+- `codeaf run subharness` has no `--json` — it does, and it prints the same object.
 - `do --json` omits `error` on a run that worked — it is always present, and empty.
 
 ---
@@ -251,10 +251,10 @@ TYPES rather than what it reads.** It is written here rather than only in
 `audit-commands.md` because a person with a harness in production needs both halves in
 one place: the numbers and fields changed under them, and so did four of the words.
 
-`aforge run` used to be two unrelated commands wearing one verb — `aforge run
-<graph.json>` drove the static pipeline, `aforge run subharness <name>` ran a saved
-program — and the code admitted it: `cmd/aforge/usage.go` carried a `longerCommands` table
-whose only job was to stop `aforge run --help` printing the wrong synopsis. `run` means
+`codeaf run` used to be two unrelated commands wearing one verb — `codeaf run
+<graph.json>` drove the static pipeline, `codeaf run subharness <name>` ran a saved
+program — and the code admitted it: `cmd/codeaf/usage.go` carried a `longerCommands` table
+whose only job was to stop `codeaf run --help` printing the wrong synopsis. `run` means
 the saved program now, matching `/subharness <name>` in the chat, and the pipeline moved
 under **`plan`**, the noun its four verbs all act on.
 
@@ -262,11 +262,11 @@ under **`plan`**, the noun its four verbs all act on.
 
 | what you used to type | what it is now |
 | --- | --- |
-| `aforge run subharness <name> --input …` | `aforge run <name> --input …` |
-| `aforge run <graph.json>` | `aforge plan run <plan.json>` |
-| `aforge plan "<goal>"` | `aforge plan new "<goal>"` |
-| `aforge show <graph.json>` | `aforge plan show <plan.json>` |
-| `aforge revise <graph.json> "…"` | `aforge plan revise <plan.json> "…"` |
+| `codeaf run subharness <name> --input …` | `codeaf run <name> --input …` |
+| `codeaf run <graph.json>` | `codeaf plan run <plan.json>` |
+| `codeaf plan "<goal>"` | `codeaf plan new "<goal>"` |
+| `codeaf show <graph.json>` | `codeaf plan show <plan.json>` |
+| `codeaf revise <graph.json> "…"` | `codeaf plan revise <plan.json> "…"` |
 
 Today's four pipeline verbs mapped one-to-one onto `new`, `show`, `revise` and `run`, so
 no fifth was needed. `longerCommands` kept only `cache clean` — one noun with two verbs on
@@ -276,7 +276,7 @@ it is a different shape from one word meaning two things.
 
 | what you used to type | on | what it is now | why |
 | --- | --- | --- | --- |
-| `--budget <n>` | `exec`, `plan run` | `--token-budget <n>` | *budget* is a word about **money** everywhere else here — `AFORGE_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
+| `--budget <n>` | `exec`, `plan run` | `--token-budget <n>` | *budget* is a word about **money** everywhere else here — `CODEAF_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
 | `--run-budget <n>` | `plan run` | `--total-token-budget <n>` | the same, for the whole-run wall |
 | `--turns <n>` | `exec`, `plan run` | `--max-turns <n>` | it is a limit, and every other limit says so |
 | `--max-seconds <n>` | `wake` | `--timeout <duration>` | one duration flag on `do`, `exec`, `plan run` and `wake` |
@@ -288,7 +288,7 @@ it is a different shape from one word meaning two things.
 | `-w`, `-o`, `-j` | everywhere | `--dir`, `--out`, `--parallel` | the letters are **shorthands and keep working forever**, silently |
 
 `--db`'s help is one sentence on all seven doors that take it — "the store to work in" —
-and `aforge doctor`'s first row is labelled `store` rather than `brain`. Its third row is
+and `codeaf doctor`'s first row is labelled `store` rather than `brain`. Its third row is
 `background timer` rather than `standing watch`.
 
 ### What a script sees
@@ -297,7 +297,7 @@ and `aforge doctor`'s first row is labelled `store` rather than `brain`. Its thi
 absent from `--help`. Each one prints **one line, on stderr**, the first time it is used:
 
 ```
-note: `aforge run subharness <name>` is now `aforge run <name>` — the old spelling works for one more release.
+note: `codeaf run subharness <name>` is now `codeaf run <name>` — the old spelling works for one more release.
 note: `--budget` is now `--token-budget` — the old spelling works for one more release.
 ```
 
@@ -305,28 +305,28 @@ note: `--budget` is now `--token-budget` — the old spelling works for one more
 parseable object — captured from a real binary in
 `frames/cmd-renames-after.txt`. A single-letter shorthand prints nothing at all, because it
 is not going away; that is the difference between `shorthandFlag` and `renamedFlag` in
-`cmd/aforge/rename.go`.
+`cmd/codeaf/rename.go`.
 
-`aforge run <something>` tells its two old meanings apart by what was named: a first
+`codeaf run <something>` tells its two old meanings apart by what was named: a first
 positional **spelled as a path** — a separator in it, a leading `./`, `../` or `~`, or a
 file extension — is the pipeline spelling, and a bare word is a program. It is the shape of
 the argument and never the contents of the working directory: reading it off `os.Stat` made
-`aforge run formatter` mean the saved program in one folder and `./formatter` as a static
+`codeaf run formatter` mean the saved program in one folder and `./formatter` as a static
 plan in the next. The positional is found through the union of both doors' flag sets
-(`namesAPlanPath`), so `aforge run myprogram --input in.json` is not confused by the input
+(`namesAPlanPath`), so `codeaf run myprogram --input in.json` is not confused by the input
 file named beside it.
 
-An old flag spelling **counts as typed**: `aforge exec --budget 9000` is a decision, and
-`AFORGE_EXEC_BUDGET` does not overrule it — which is the same law the environment
+An old flag spelling **counts as typed**: `codeaf exec --budget 9000` is a decision, and
+`CODEAF_EXEC_BUDGET` does not overrule it — which is the same law the environment
 fallbacks were guarded by all along, read through the aliases.
 
 ### Where it lives, and what holds it
 
-- `cmd/aforge/rename.go` — the notice, its writer, and the two kinds of hidden flag. The
+- `cmd/codeaf/rename.go` — the notice, its writer, and the two kinds of hidden flag. The
   mark is carried in the flag's own (never printed) usage string rather than in a map keyed
   by flag set, so there is no state to clean up.
-- `cmd/aforge/passes.go` — `--passes auto|off|<n>`.
-- `cmd/aforge/vocabulary_test.go`:
+- `cmd/codeaf/passes.go` — `--passes auto|off|<n>`.
+- `cmd/codeaf/vocabulary_test.go`:
   - `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow` — thirteen old spellings, each
     routed, each saying ONE line naming the new spelling and the release it goes in.
   - `TestNoOldSpellingIsPrintedByHelp` — the front page, the environment page and seven
@@ -335,7 +335,7 @@ fallbacks were guarded by all along, read through the aliases.
   - `TestARenameNoticeNeverReachesTheJSONOnStdout` — with `--json` actually on, asserting
     stdout parses and holds not one word of the notice.
   - `TestOneConceptIsSpelledOneWayOnEveryDoor` — reads every flag declaration in
-    `cmd/aforge` with `go/ast`: no retired spelling is a printed flag, no machinery word
+    `cmd/codeaf` with `go/ast`: no retired spelling is a printed flag, no machinery word
     reaches a printed help sentence, and the four concepts that span doors reach for one
     shared constant. That import is what puts it on the pull-request gate.
   - `TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable`,
@@ -351,28 +351,28 @@ fallbacks were guarded by all along, read through the aliases.
 
 `invalidates:` lines, written as statements somebody now believes wrongly:
 
-- `aforge run <graph.json>` runs a task graph and `aforge run subharness <name>` runs a
-  saved program — `aforge run <program>` is the only meaning of `run` now, and the
-  pipeline is `aforge plan new | show | revise | run`. Both old spellings work for one
+- `codeaf run <graph.json>` runs a task graph and `codeaf run subharness <name>` runs a
+  saved program — `codeaf run <program>` is the only meaning of `run` now, and the
+  pipeline is `codeaf plan new | show | revise | run`. Both old spellings work for one
   release and say so on stderr.
-- `aforge plan`, `aforge show` and `aforge revise` are top-level commands — they are
-  `aforge plan new`, `aforge plan show` and `aforge plan revise`; the bare spellings work
+- `codeaf plan`, `codeaf show` and `codeaf revise` are top-level commands — they are
+  `codeaf plan new`, `codeaf plan show` and `codeaf plan revise`; the bare spellings work
   for one release.
-- `--budget` and `--turns` are how `aforge exec` and the plan runner take their token and
+- `--budget` and `--turns` are how `codeaf exec` and the plan runner take their token and
   turn walls — they are `--token-budget` and `--max-turns`; `--run-budget` is
   `--total-token-budget`.
-- `aforge exec --timeout` takes an integer of seconds — it takes a duration, like `do`'s,
-  and a bare number is still seconds. `AFORGE_EXEC_TIMEOUT` reads durations too.
-- `aforge wake --max-seconds` is the wall — it is `--timeout`, and it takes a duration.
-- `aforge plan --ensemble 0|-1|N` and `aforge run --contracts=false` — they are
+- `codeaf exec --timeout` takes an integer of seconds — it takes a duration, like `do`'s,
+  and a bare number is still seconds. `CODEAF_EXEC_TIMEOUT` reads durations too.
+- `codeaf wake --max-seconds` is the wall — it is `--timeout`, and it takes a duration.
+- `codeaf plan --ensemble 0|-1|N` and `codeaf run --contracts=false` — they are
   `--passes auto|off|<n>` and `--no-method`.
-- `aforge exec --plan-model` is accepted for parity — it is off the flag list, still
+- `codeaf exec --plan-model` is accepted for parity — it is off the flag list, still
   parsed, and says `exec does not plan — --plan-model has no effect here`.
 - `-w`, `-o` and `-j` are the only spellings — `--dir`, `--out` and `--parallel` are what
   `--help` prints; the letters keep working forever.
-- `aforge --help` prints the environment table — it prints five headed groups and five
-  examples; the table is `aforge help env`.
-- `aforge doctor` prints a `brain` row and a `standing watch` row — they are `store` and
+- `codeaf --help` prints the environment table — it prints five headed groups and five
+  examples; the table is `codeaf help env`.
+- `codeaf doctor` prints a `brain` row and a `standing watch` row — they are `store` and
   `background timer`.
 - `docs/HEADLESS.md` documents `exec`'s 2/3/4/5/6 and a `text`/`elapsed_ms`/`usage`
   object — it documents the one ladder and the one envelope.
@@ -381,8 +381,8 @@ fallbacks were guarded by all along, read through the aliases.
 
 ## Not in this change
 
-- The verb renames `COMMANDS.md` §7 ranks second — `aforge why self` → `aforge spend` and
-  `aforge why <node-id>` → `aforge tasks <id>` — are a separate row and a separate lane.
+- The verb renames `COMMANDS.md` §7 ranks second — `codeaf why self` → `codeaf spend` and
+  `codeaf why <node-id>` → `codeaf tasks <id>` — are a separate row and a separate lane.
   `why`'s help line lost `leaf` and `<node-id>` here; the verb itself did not move.
 - `seat` reaching a person on stderr (audit row 10) lives in `internal/config/seats.go`,
   outside the rename lane's files.

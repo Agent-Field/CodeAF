@@ -3,12 +3,12 @@
 ## What do I do when it loses connection
 
 Check which connection the message names. `waiting for connection` means a
-model request could not connect before it was sent. aforge checks reachability
+model request could not connect before it was sent. codeaf checks reachability
 and waits for up to two minutes, subject to the request's own deadline. You can
 cancel the wait. When the endpoint becomes reachable, the request continues;
 the outage does not move to another serving machine or teach a slower provider
 speed. This recovery does not replay a request already accepted by the model.
-If the check answers but the request still cannot go out, aforge waits a little
+If the check answers but the request still cannot go out, codeaf waits a little
 longer before each further try and then says `connection is still unavailable;
 try again when connected`. A picture, video, speech or transcription request
 shows `waiting for connection` against the model it asked for, just as a chat
@@ -35,7 +35,7 @@ Over `--host`, the surface redials the machine by itself. You do not have to do 
 
 A conversation opened with `--host` runs on the other machine; the link between the two is
 the only part a café's wifi, a VPN flap or a sleeping laptop can take away. When the link
-dies without a goodbye, aforge opens another one, tells the far machine how far your
+dies without a goodbye, codeaf opens another one, tells the far machine how far your
 screen got, and the reply carries on from there. Text you had already been shown is not
 drawn a second time, even when the far machine sends a little of it again.
 
@@ -63,9 +63,9 @@ machine's disk and the same command opens it again.
 
 What you get back when you return depends on what is running over there. If that machine
 keeps conversations alive between connections, a turn that was in flight is still going
-and you rejoin it part-way through. If it does not — plain `aforge engine` on a pipe, one
+and you rejoin it part-way through. If it does not — plain `codeaf engine` on a pipe, one
 conversation per connection — then the turn ended when the link did, and the reply it
-was part-way through is not coming back. aforge says which of the two happened rather than
+was part-way through is not coming back. codeaf says which of the two happened rather than
 letting you guess; see *why did the reply not finish when it reconnected*.
 
 ## The task column is empty after it reconnected — does the roster come back
@@ -123,7 +123,7 @@ line is saying the same thing at its other end while this is going on; see *how 
 it is reconnecting*.
 
 The redialling lasts 5 minutes. After that the connection is declared gone, in the one
-sentence aforge has always used for that:
+sentence codeaf has always used for that:
 
 ```
 the connection to devbox is gone — run the same command to pick the conversation back up
@@ -198,9 +198,9 @@ than about that one turn, and it is said once and not again:
 devbox does not keep a turn running while nothing is attached, so the turn that was in flight did not survive the drop
 ```
 
-That is the honest half of roaming. A machine running a persistent aforge holds your
+That is the honest half of roaming. A machine running a persistent codeaf holds your
 session between connections, so a redial rejoins the turn where it was. A plain
-`aforge engine` started by ssh for the duration of one connection cannot: when the pipe
+`codeaf engine` started by ssh for the duration of one connection cannot: when the pipe
 died, so did it, and the redial reached a **new** one opened on the same session file.
 
 The conversation itself is intact — the file is the same, everything already said is in
@@ -209,7 +209,7 @@ it, and the new connection works normally. Only the unfinished reply is gone. As
 ## It came back with a different conversation
 
 If the far machine answers a redial with a different session file than the one this window
-was in, aforge does not swap the conversation under you in silence. The turn that was
+was in, codeaf does not swap the conversation under you in silence. The turn that was
 running ends with:
 
 ```
@@ -291,14 +291,14 @@ sitting at, and a hundred of those against a machine that is switched off is you
 working for nothing. A blip is caught by the first retry; a machine that is really gone is
 not worth hammering.
 
-Every call aforge makes over a connection already gives up after 10 seconds, so nothing
+Every call codeaf makes over a connection already gives up after 10 seconds, so nothing
 about a dead link can leave your terminal frozen while this is going on.
 
 ## It said something "fell over once and will be tried again"
 
 That sentence is about one of the readings the surface keeps warm in the background over a
 connection — the places behind home, what has been spent, what is remembered, the standing
-items — and it means exactly what it says: the reading broke once, inside aforge, and it
+items — and it means exactly what it says: the reading broke once, inside codeaf, and it
 will be asked for again on the next beat as if the far machine had simply not answered.
 It is shown once, on the line where the connection's own one-off news appears, and never
 repeated, even if the same reading keeps breaking. The full record of what broke goes to

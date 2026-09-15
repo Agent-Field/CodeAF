@@ -753,7 +753,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	}
 	// Admission control (admission.go). It sits here rather than in the head's
 	// commissioning tool so that every door onto new work — the conversation, a
-	// headless `aforge do`, any surface with its own composer — gets the same
+	// headless `codeaf do`, any surface with its own composer — gets the same
 	// duplicate protection.
 	if command.Kind == CommandSplice && !command.Deliberate {
 		twin, duplicate, err := s.pendingSpliceTwin(command.SessionID, command.Instruction)

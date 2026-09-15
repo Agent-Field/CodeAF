@@ -1,12 +1,12 @@
 # The empty screen — nothing on it, the screen is blank
 
-## What you see when you open aforge — the empty conversation, the greeting, why the screen is blank
+## What you see when you open codeaf — the empty conversation, the greeting, why the screen is blank
 
 A new conversation opens on **one centred group** and nothing else. From the top:
 
 ```
 ┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
-├─┤ ├─  │ │ │   └─┤ ├─          the aforge wordmark
+├─┤ ├─  │ │ │   └─┤ ├─          the codeaf wordmark
 └─┘ │   └─┘ │   └─┘ └─┘
 anthropic/claude-sonnet-4.5 · balanced crew
                                  a blank row
@@ -41,7 +41,7 @@ screen greets you instead, there is no greeting of this kind at all.
 **Your very first conversation on this machine is drawn differently, and it leads with the
 question rather than the logo.** The greeting that follows the first-run setup drops the
 three-row wordmark and the model-and-crew line under it — you chose those on the screen
-behind this one, and the status row still says both — and puts a one-word `aforge`
+behind this one, and the status row still says both — and puts a one-word `codeaf`
 signature there instead. Under it: the heading **What would you like to work on?**, the
 line `Choose a starting point or type your request.`, the folder this conversation is
 standing in (`in ~/src/parser`), and three starting points in place of the usual dim try
@@ -81,7 +81,7 @@ A click on the box leaves the greeting standing — the keyboard is already ther
 click on a recent session opens it; a click on the wordmark or the line of things to
 try dismisses the greeting.
 
-One exception: when something else is holding the message box — `aforge resume` opens
+One exception: when something else is holding the message box — `codeaf resume` opens
 the sessions picker over the greeting, for instance — the group is drawn without the
 box and the picker's filter stays at the foot of the frame where its list is.
 

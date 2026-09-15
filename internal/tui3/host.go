@@ -7,7 +7,7 @@ import (
 
 // ── A SESSION ON ANOTHER MACHINE ────────────────────────────────────────────
 //
-// `aforge chat --host devbox` runs this surface here and the session there. The
+// `codeaf chat --host devbox` runs this surface here and the session there. The
 // conversation is identical — every method of [Agent] travels over the wire
 // (internal/remote) and answers the same way — so almost nothing in this package
 // needs to know. Two things do, and they are the two halves of this file.
@@ -124,7 +124,7 @@ import (
 //	                  remote workspace — see [app.pathRoot].
 //	standing items    ON, and on at both ends. The `stand` tool is on the belt
 //	                  over a connection because the engine keeps its ambient
-//	                  side (cmd/aforge's engine.go), the proposal card crosses as
+//	                  side (cmd/codeaf's engine.go), the proposal card crosses as
 //	                  an ordinary event and the answer crosses back as its own
 //	                  frame (internal/remote's ResolveStanding), so a person
 //	                  sitting here can set something up on the far machine and it
@@ -139,7 +139,7 @@ import (
 //	                  which asks about THIS window's workspace — and over --host
 //	                  that path is the engine's own, so the count is about the
 //	                  right machine. The rows answer from a cache that refreshes
-//	                  behind itself (cmd/aforge's [hostStanding]), because this
+//	                  behind itself (cmd/codeaf's [hostStanding]), because this
 //	                  seam is asked on the frame and a wire call is not.
 //	`keeping watch`   WORKS. Standing.Watch crosses the wire and reads the far
 //	                  machine's scheduler, so /status says installed, absent, or
@@ -261,11 +261,11 @@ func (a *app) hosted() bool { return a.host != "" }
 // ownedWord is what an owned session's place is called instead of its path.
 //
 // It is the product's own name because that is the honest answer to "where am
-// I": nowhere in particular, in aforge's own space. A person who opened a
+// I": nowhere in particular, in codeaf's own space. A person who opened a
 // terminal in a project sees the project; a person who opened one anywhere else
-// used to see ~/.aforge/v3/projects/-home-someone/9f3c…/work, which is a true
+// used to see ~/.codeaf/v3/projects/-home-someone/9f3c…/work, which is a true
 // path and a useless sentence.
-const ownedWord = "aforge"
+const ownedWord = "codeaf"
 
 // placeShown is the whole rule for what the status line calls a conversation's
 // directory, in one function because there are now two moments that ask it: the
@@ -390,7 +390,7 @@ func (a *app) remoteProfileWord(thing string) string {
 // ── THE PLACES AND THE MACHINE THE SESSION IS ON ────────────────────────────
 //
 // A PLACE IS A LISTING OF ONE MACHINE'S DISK. Home lists the conversations under
-// `~/.aforge/v3`; tasks lists the work those conversations ran; spend adds up the
+// `~/.codeaf/v3`; tasks lists the work those conversations ran; spend adds up the
 // ledger every model call on that machine appends to; search reads the index of
 // what was said there; memory reads the store the sessions there remember into;
 // standing lists the documents that machine's timer fires from. Every one of

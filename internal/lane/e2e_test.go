@@ -66,9 +66,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // e2eSpeedup is how much faster the wire runs than the world it describes. A
@@ -269,7 +269,7 @@ func e2ePrimed(t *testing.T) Ledger {
 	t.Helper()
 	// A HOME OF ITS OWN, FIRST. The ledger writes every belief through a store
 	// and reads yesterday's back on its first question, and [StorePath] resolves
-	// under AFORGE_HOME on every call — so a scenario that did not move the
+	// under CODEAF_HOME on every call — so a scenario that did not move the
 	// state root would fold the fake lanes of this file into the belief file of
 	// whoever ran the tests, and then read them back on the next run. That is
 	// two bugs at once: somebody's real router gets an opinion about a lane
@@ -1307,7 +1307,7 @@ func (l *e2eRecordingLedger) Note(sighting Sighting) { l.sightings = append(l.si
 // on the day it was written rather than in the wave it is first needed.
 func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 	// A HOME OF ITS OWN. This drives the DEFAULT registry, whose ledger saves to
-	// `~/.aforge/v3/lanes.json`, and a test that folded its invented lanes into
+	// `~/.codeaf/v3/lanes.json`, and a test that folded its invented lanes into
 	// that file would cost somebody their belief. See [TestNoTestWritesTheRealHome].
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Cleanup(Default().Reset)
@@ -1406,7 +1406,7 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 // THE SCENARIO THAT WOULD HAVE CAUGHT THE 2026-08-30 INCIDENT, written in the
 // order it happened in.
 //
-// A person had two aforge windows open. One of them had been talking to a model
+// A person had two codeaf windows open. One of them had been talking to a model
 // for a while and had two lanes in the file that it had merely SEEN — an id, a
 // moment, and every other field a zero nobody wrote. The other window then
 // fetched that model's seventeen-row sheet and primed every row. A minute later
@@ -1425,7 +1425,7 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 //	unknown is not refused   a lane nobody looked up stays a candidate
 func TestS6TwoProcessesOneFileAndARequestThatCarriesTools(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("AFORGE_HOME", home)
+	t.Setenv("CODEAF_HOME", home)
 	path := filepath.Join(home, "lanes.json")
 	const talking, other = "moonshotai/kimi-k3", "z-ai/glm-5.3"
 	rows := twoProcessRows(talking)

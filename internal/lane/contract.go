@@ -69,9 +69,9 @@ type Ledger interface {
 // a little memory" rather than a claim about a machine that was busy last
 // Tuesday.
 //
-// IT IS TWO FILES AND [Store.Load] IS THE COMPACTED HALF. `~/.aforge/v3/lanes.json`
+// IT IS TWO FILES AND [Store.Load] IS THE COMPACTED HALF. `~/.codeaf/v3/lanes.json`
 // ([StorePath]) holds the state as of the last compaction, and
-// `~/.aforge/v3/lanes.log` (journal.go) holds one appended line per
+// `~/.codeaf/v3/lanes.log` (journal.go) holds one appended line per
 // observation since. Load answers with the state alone; replaying the journal
 // over it is [Journal]'s, and the ledger does both. The split is what lets two
 // processes share an afternoon: last-writer-wins over one file cannot merge the

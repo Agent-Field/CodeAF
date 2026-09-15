@@ -25,7 +25,7 @@ package remote
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The four kinds a [HeldQuestion] can carry, which are the four resolve-doors

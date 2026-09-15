@@ -34,7 +34,7 @@ RESULTS_ROOT = os.path.join(os.path.dirname(HERE), "results")
 ANSWERS = os.path.join(HERE, "answers2.jsonl")
 RESULTS_MD = os.path.join(HERE, "RESULTS-2.md")
 
-CELLS = [f"aforge-final-{fam}-{t}-s1"
+CELLS = [f"codeaf-final-{fam}-{t}-s1"
          for fam in ("crew", "flash")
          for t in ("20", "21", "22", "23", "batch")]
 
@@ -590,7 +590,7 @@ def score():
 
     # ---- the batch digest at round 10, verbatim. One cell: the two batch cells
     # share the same ask verbatim and differ only in the ledger.
-    for cell in ("aforge-final-crew-batch-s1",):
+    for cell in ("codeaf-final-crew-batch-s1",):
         d = dmap.get((cell, 10))
         if not d:
             continue

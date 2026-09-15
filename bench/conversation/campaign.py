@@ -68,15 +68,15 @@ def executable_identity(path):
 def plan(args):
     arms = args.arms.split(",")
     scenarios = args.scenarios.split(",")
-    if len(set(arms)) != len(arms) or not set(arms) <= {"aforge", "pi", "omp"}:
-        raise ValueError("arms must be distinct members of aforge,pi,omp")
+    if len(set(arms)) != len(arms) or not set(arms) <= {"codeaf", "pi", "omp"}:
+        raise ValueError("arms must be distinct members of codeaf,pi,omp")
     if len(arms) < 2 or not scenarios or not set(scenarios) <= SCENARIOS:
         raise ValueError("choose at least two arms and supported comparable scenarios")
     if len(set(scenarios)) != len(scenarios) or args.repeats < 1 or args.cap < 1:
         raise ValueError("scenarios must be distinct; repeats and cap must be positive")
     binaries = {}
     for arm in arms:
-        path = (args.aforge if arm == "aforge" else shutil.which(arm))
+        path = (args.codeaf if arm == "codeaf" else shutil.which(arm))
         if not path or not Path(path).is_file():
             raise ValueError("binary missing: " + arm)
         path = str(Path(path).resolve())
@@ -191,8 +191,8 @@ def build_parser():
     p = sub.add_parser("plan")
     p.add_argument("manifest")
     p.add_argument("--id", required=True)
-    p.add_argument("--aforge", default=str(ROOT.parents[1] / "bin/aforge"))
-    p.add_argument("--arms", default="aforge,pi,omp")
+    p.add_argument("--codeaf", default=str(ROOT.parents[1] / "bin/codeaf"))
+    p.add_argument("--arms", default="codeaf,pi,omp")
     p.add_argument("--scenarios", default=",".join(sorted(CALIBRATION_SCENARIOS)))
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--seed", type=int, default=20260905)

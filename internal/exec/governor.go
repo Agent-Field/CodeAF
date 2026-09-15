@@ -2,7 +2,7 @@ package exec
 
 // The admission doctrine. It used to be one rule for every leaf, and the rule
 // was this machine's load average — which was the wrong question for every leaf
-// aforge runs. A leaf is a goroutine parked on a socket waiting for a model to
+// codeaf runs. A leaf is a goroutine parked on a socket waiting for a model to
 // answer: it costs a goroutine and a file handle, and it contributes essentially
 // nothing to load average. Gating it on load average meant the only leaves that
 // could ever be admitted were the handful a starvation floor guaranteed, because

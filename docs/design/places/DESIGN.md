@@ -7,7 +7,7 @@ different thing that happens to share a word.
 
 ## The problem, in the owner's framing
 
-People open aforge *in general* — one instance, often from `~` or wherever the terminal
+People open codeaf *in general* — one instance, often from `~` or wherever the terminal
 happened to be — and then work on things that live somewhere else: a repo three levels
 down, a folder of notes, two projects at once. Today the program answers that with one
 immutable fact captured at launch (`v3LaunchDir`, `session.Config.Workspace`), and
@@ -104,7 +104,7 @@ stays the only decider; `resolveTaskGround` stays the only place the decision is
 **Where you stand, you write. Where you refer, work is staged and landed.**
 
 - In the standing place, the conversation edits directly, exactly as today. A person who
-  opened aforge inside their project loses nothing and notices nothing.
+  opened codeaf inside their project loses nothing and notices nothing.
 - Aimed at a referred place, writes go through a tree cut ON that place — a worktree off
   its HEAD for a repository, a mirror for a plain folder — and come home through the
   landing that already exists (`comeHome`, `landMirror`). Tasks already work this way;
@@ -245,8 +245,8 @@ a run is out; the standing tree reuses that machinery rather than growing a seco
    "folder"; home already says "place"), or `/place` primary. `/attach` on a directory
    works either way.
 4. **Furrow's seat — RULED (owner, 2026-08-31): furrow is EMBEDDED.** The owner's
-   words: no variance — every aforge is an aforge with furrow, and if the only blocker
-   is size, the limit rises. So furrow ships INSIDE bin/aforge (`go:embed`, gzipped —
+   words: no variance — every codeaf is a codeaf with furrow, and if the only blocker
+   is size, the limit rises. So furrow ships INSIDE bin/codeaf (`go:embed`, gzipped —
    6.0M raw, roughly half that compressed), the SIZE-BUDGET ratchet is raised in the
    same commit that embeds it (PERF.md's law: the cap and the doc move together), and a
    download road exists only as a repair path, never as the plan. What furrow buys, and
@@ -254,24 +254,24 @@ a run is out; the standing tree reuses that machinery rather than growing a seco
    the whole environment (untracked files, .env, the dev database — a git worktree
    carries none of those, so "run the tests in the tree" breaks exactly when it
    matters); plain folders on Linux (clonefile is APFS-only); a workspace-level undo
-   timeline (aforge's rewind deliberately touches nothing on disk); and, later, the far
+   timeline (codeaf's rewind deliberately touches nothing on disk); and, later, the far
    road — synced universes are what a referred place on another machine wants to be.
 
    The embedding's own laws, learned from scars this repo already has:
 
    - **Extraction, never in-place.** At boot (lazily, on first need) the embedded bytes
      are written to a VERSION-STAMPED path under the state root —
-     `~/.aforge/bin/furrow-<version>` — fresh file, then rename; never over a path a
+     `~/.codeaf/bin/furrow-<version>` — fresh file, then rename; never over a path a
      running furrow might occupy (the macOS `Killed: 9` law applies to any binary, not
-     just aforge's own). A hash check decides whether extraction is even needed, so
+     just codeaf's own). A hash check decides whether extraction is even needed, so
      every boot after the first costs one stat.
    - **The build fetches, the repo does not carry.** A 6M binary committed to git would
      bloat every clone forever; instead `make build` (and CI) fetch the PINNED furrow
      release per GOOS/GOARCH by checksum into a cached, gitignored `third_party/`, and
      the pin file (version + per-platform sha256) is what lives in the repo — auditable,
-     and furrow upgrades ride aforge releases in lockstep. A build with no cache and no
+     and furrow upgrades ride codeaf releases in lockstep. A build with no cache and no
      network fails loudly with the fetch command in the message, rather than quietly
-     producing an aforge without furrow — no variance starts at the build.
+     producing a codeaf without furrow — no variance starts at the build.
    - **Failure is honest but tiny.** If extraction itself fails (a read-only state
      root), the furrow tools go absent by the existing seam law — but on an embedded
      build that is a reportable defect, and the one place it is said is `/status`, not a
@@ -285,7 +285,7 @@ a run is out; the standing tree reuses that machinery rather than growing a seco
 
 | Lane | Scope | Ships alone? |
 | --- | --- | --- |
-| P0 furrow embed | pinned furrow fetched at build time per platform (checksummed `third_party/` pin file), `go:embed` gzipped into bin/aforge, version-stamped extraction under the state root on first need, SIZE-BUDGET raised in the same commit, `internal/furrow` untouched as the seam | yes — independent of everything below, and valuable on its own (workspace_restore etc. light up on every machine) |
+| P0 furrow embed | pinned furrow fetched at build time per platform (checksummed `third_party/` pin file), `go:embed` gzipped into bin/codeaf, version-stamped extraction under the state root on first need, SIZE-BUDGET raised in the same commit, `internal/furrow` untouched as the seam | yes — independent of everything below, and valuable on its own (workspace_restore etc. light up on every machine) |
 | P1 picker | the `/folder` palette+columns component, `@` offering directories, `/attach <dir>` door, the chip; forming-card `g` and the two-roots ask rewired onto it | yes — pure surface, immediately useful for `propose_task{ground}` even before places persist |
 | P2 places | `PlaceRef` on `Meta`, accrual (said/kept grounds/drop), the SAID-rung feed, per-place mode words | yes — invisible until P1 draws it |
 | P3 standing tree | conversation writes aimed at a referred place cut and reuse a tree; `/land` and the landing card; the guard sentence for the live-checkout law | the big one; needs P2 |

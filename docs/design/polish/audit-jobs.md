@@ -1,7 +1,7 @@
 # Background jobs, a task room, and work parked on a person — an audit
 
-Captured against `bin/aforge` at `da5d1a37d` on a demo home built by the extended
-seeder (`cmd/aforge-demo-home/seed_room.go`), at 160x50, 120x40, 80x24 and 60x30.
+Captured against `bin/codeaf` at `da5d1a37d` on a demo home built by the extended
+seeder (`cmd/codeaf-demo-home/seed_room.go`), at 160x50, 120x40, 80x24 and 60x30.
 Every row closes on a frame in `docs/design/polish/frames/`, named at the end of
 the row. All frames here are prefixed `seed-`.
 
@@ -24,7 +24,7 @@ first thing these frames found.
 ## What cannot be seeded, and it is the product being right
 
 **No running job and no running task node can be written to disk, because the
-product does not keep one.** A job is a child of the aforge that forked it
+product does not keep one.** A job is a child of the codeaf that forked it
 (`jobrow.go`); a node names a worker in a working copy. So a job's row comes back
 STOPPED (`task_store.go`'s `runRowNotice`) and a node the checkpoint calls running
 comes back queued and paused (`interrupt`). A fixture that wrote either would be
@@ -166,7 +166,7 @@ restore. Today it is not, and here is exactly where it stops:
   is dated the moment of the restore.
 - **`TaskNotice`** (`task_contract.go:335`) carries `Elapsed` and no stamp at all,
   so the surface has nothing to READ even when the engine knows.
-- The demo home reproduces exactly this: `cmd/aforge-demo-home/seed_room.go` writes
+- The demo home reproduces exactly this: `cmd/codeaf-demo-home/seed_room.go` writes
   the session's `tasks.json` with `elapsed_ms` and no index row, which is why all
   four of that family's settled rows now draw with no age.
 
@@ -321,9 +321,9 @@ After: `docs/design/polish/frames/jobpage-hint-after.60x30.txt`
 
 ## fixed — the second pass
 
-Frames prefixed `chat2-` were captured from `bin/aforge` in a real terminal on
+Frames prefixed `chat2-` were captured from `bin/codeaf` in a real terminal on
 socket `polish-chat2`, against a demo home freshly seeded by
-`cmd/aforge-demo-home` (the room fixture, the wide name and all). Both fixes
+`cmd/codeaf-demo-home` (the room fixture, the wide name and all). Both fixes
 below were REVERTED and their tests watched to fail before the fix went back.
 
 **Row 7 — a task's price is drawn twice on one home card.** The NAME ROW keeps
@@ -385,7 +385,7 @@ dollars are byte-identical. It is visible live in
 `frames/chat2-phase-after.120x40.txt`, where a turn's first sub-cent cost reads
 `<$0.0001` on the status line.
 
-**Row 8 — a name's combining accent is dropped. NOT AFORGE'S LINE, and this
+**Row 8 — a name's combining accent is dropped. NOT codeaf'S LINE, and this
 lane found where it is.** Every layer named in the row preserves the mark —
 `listName`, `homeName`, `humanName`, `titleCase`, `raiseFirst`, `unpackName`,
 `fit`, `bandSides` and `switcherSides` all return
@@ -420,8 +420,8 @@ will move it.
 
 ## fixed — the third pass
 
-Frames prefixed `t5-` were captured from `bin/aforge` in a real terminal on
-socket `polish-t5`, against a demo home freshly seeded by `cmd/aforge-demo-home`.
+Frames prefixed `t5-` were captured from `bin/codeaf` in a real terminal on
+socket `polish-t5`, against a demo home freshly seeded by `cmd/codeaf-demo-home`.
 Both changes below were REVERTED and their tests watched to fail before the fix
 went back.
 
@@ -477,7 +477,7 @@ as well, so the row is closed rather than left.
 **Row 8 — a name keeps its combining accent all the way onto the screen.**
 REPRODUCED FIRST, both halves, on one tmux socket: a shell `printf` of
 `the café pricing page` captures back with U+0301 in the bytes, and the same
-name through `bin/aforge` captures back as `the Cafe Pricing Page` with the mark
+name through `bin/codeaf` captures back as `the Cafe Pricing Page` with the mark
 gone. The store is honest — the seeded `meta.json` holds `e` + U+0301 — and so is
 every layer of ours. The loss is BELOW us, and the previous lane named the
 mechanism: bubbletea asks the terminal for mode 2027 at startup and only switches
@@ -520,7 +520,7 @@ Captured at 70 columns with a room open (`j12-room.70x24.txt`), which is the
 width the row complains about:
 
 ```
-aforge-v2 · deepseek-v4-flash-latest
+codeaf · deepseek-v4-flash-latest
           2 open · ◦ keeping an eye on 3 ·    $0.00 · 5.2k/1.3M · idle
 ```
 

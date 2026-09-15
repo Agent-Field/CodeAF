@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── A LEDGER THIS TEST WROTE ────────────────────────────────────────────────
@@ -102,9 +102,9 @@ var laneCatalog = []Model{
 // laneApp is a picker over this lab's ledger, ON THE RANKED ROAD.
 //
 // The shipped routing row is `simple` ([config.DefaultRouting]) and under it
-// nothing on aforge's side chooses a machine — no takeover sentence, no
+// nothing on codeaf's side chooses a machine — no takeover sentence, no
 // `recommended`, no name beside `auto` (palette.go's [laneAutoSaid]). The folds
-// these tests read are about the road where aforge does choose, so the row is
+// these tests read are about the road where codeaf does choose, so the row is
 // written here once rather than at each of them; the test that is about the
 // shipped row writes `simple` into a profile of its own
 // (TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover).
@@ -133,7 +133,7 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	}
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"● auto", "router routes; aforge takes over if answers turn bad", "recommended",
+		"● auto", "router routes; codeaf takes over if answers turn bad", "recommended",
 		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
@@ -453,7 +453,7 @@ func TestSlashModelPinsAndUnpinsTheLane(t *testing.T) {
 }
 
 // AN EMPTY PROFILE PATH IS THE ORDINARY LAUNCH AND NOT THE ABSENCE OF ONE.
-// `AFORGE_PROFILE_DIR` is unset on almost every machine, and internal/config
+// `CODEAF_PROFILE_DIR` is unset on almost every machine, and internal/config
 // resolves the empty string to the default profile for every read and every
 // write in the package. A pin that read it as "nowhere to write" refused on
 // every machine anybody actually runs — while the settings row beside it wrote
@@ -565,7 +565,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	}
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
-		"auto", "router routes; aforge takes over if answers turn bad",
+		"auto", "router routes; codeaf takes over if answers turn bad",
 		"cloudflare", "0.8s", "58 t/s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
 		"openrouter", "let the router balance on price",
@@ -626,7 +626,7 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 // AND THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE.
 //
 // Issue #433. A base that has answered that it does not take a routing
-// preference — a plain endpoint behind AFORGE_BASE_URL, a proxy that strips the
+// preference — a plain endpoint behind CODEAF_BASE_URL, a proxy that strips the
 // field — leaves `pinned: Cloudflare` standing as a claim about a request that
 // did not carry it. The conversation is told once; this row keeps saying it,
 // because it is the row somebody comes back to look at.
@@ -773,7 +773,7 @@ func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
 func TestTheModelRowInSettingsNamesTheLane(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, _ := sheetApp(t)
-	// The tail is a PREDICTION, so it is drawn only where aforge is the one
+	// The tail is a PREDICTION, so it is drawn only where codeaf is the one
 	// choosing — the ranked road, for [laneApp]'s reason.
 	a.routing = config.RoutingLatency
 	a.model = flash

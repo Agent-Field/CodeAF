@@ -7,12 +7,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A SESSION KEEPS WORKING ON A WINDOW NOBODY IS LOOKING AT.
 //
-// The report this file is written from: several aforge windows open on one
+// The report this file is written from: several codeaf windows open on one
 // machine, and whichever one the person walked away from seemed to stop. It
 // was not the picture and it was not the engine — the engine's turn runs in
 // its own goroutine behind an unbounded queue (session's agent.go), and the

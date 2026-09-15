@@ -11,14 +11,14 @@ reviewed in PR #634. `compare-cell.sh` adds the same inference guard used by the
 conversation campaign and grades against an already controlled, frozen image ID.
 It does not add a second model router or a new benchmark verdict implementation.
 
-The pilot has one predeclared pair, Pi then Aforge, with 1,800 seconds per arm,
+The pilot has one predeclared pair, Pi then codeaf, with 1,800 seconds per arm,
 two CPUs and 8 GiB each. Both use `deepseek/deepseek-v4-flash-0731` and low requested
 reasoning effort. All text roles are constrained by a credential-holding guard
 outside the container; candidates receive a sentinel. Pi is pinned to 0.84.2 and
 its custom provider advertises the 1,310,720 context capacity returned by the
 OpenRouter model catalog on September 5. Harness defaults for other settings and
 provider routing remain native, so this is not an isolated tool-loading ablation.
-Aforge also retains a $5 session cap; Pi has the common wall limit only. That
+codeaf also retains a $5 session cap; Pi has the common wall limit only. That
 additional cap must be reported if it binds rather than treated as an equal
 monetary budget.
 

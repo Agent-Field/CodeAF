@@ -9,11 +9,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // Model-service rows share the connection panel's row grammar without sharing
@@ -823,7 +823,7 @@ func modelServiceRows(profileDir string, sources modelsource.Set) []*modelServic
 		}
 		parts = append(parts, "order "+itoa(persisted.Order))
 		if persisted.ID == "z-ai" && service.Door.ID == "coding-plan" {
-			parts = append(parts, "Zhipu lists the tools its plan covers; aforge is not listed, and its request has been drafted but not sent.")
+			parts = append(parts, "Zhipu lists the tools its plan covers; codeaf is not listed, and its request has been drafted but not sent.")
 		}
 		out = append(out, &modelServiceRow{
 			id: persisted.ID, name: service.Source.Written, value: strings.Join(parts, " · "),

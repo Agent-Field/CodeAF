@@ -25,7 +25,7 @@ package tui3
 // argument so it can be tested with no window at all.
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // jobUpdate files one job's news, and reports whether anything actually moved.

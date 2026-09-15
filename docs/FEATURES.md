@@ -1,4 +1,4 @@
-# aforge — everything it can do
+# codeaf — everything it can do
 
 This is the master feature catalog: one entry per capability, each with
 where it lives, how it's used, and the tip-worthy phrasing. It exists to
@@ -22,7 +22,7 @@ ask — scale is read from structure, duration from temporal language.
 **Where**: the chat input, always.
 **How**: "open that file" → instant reflex; "fix the flaky test" → task;
 "whenever a PR opens, review it" → standing-goal ratification card.
-**Tip seed**: You never need to tell aforge how big a job is — say what
+**Tip seed**: You never need to tell codeaf how big a job is — say what
 you want; it decides ceremony, and misreads are corrected by just saying so.
 
 ### The reflex ladder — trivial asks stay trivial
@@ -46,7 +46,7 @@ watching PRs".
 to find an id or a kill switch.
 
 ### Questions come with numbers
-**What**: When aforge needs you, it asks with structured components:
+**What**: When codeaf needs you, it asks with structured components:
 choose (vertical `▸ 1 …` rows with dim hints), confirm (`▸ 1 yes · ▸ 2
 no`, enter accepts the marked default), text (a dim `answering: <prompt>`
 line above the input). Number keys, arrows+enter, click, or free text all
@@ -80,7 +80,7 @@ it, and esc discards only the voice.
 ### Show it images, hand it documents
 **What**: Drag an image or a `.pdf`/`.docx`/`.pptx` into the terminal — the
 path becomes a dim `⌾ name.png ⟨×⟩` (or `▤`) chip above the input. Sending
-copies the file into aforge's own store, so the durable thread holds a copy
+copies the file into codeaf's own store, so the durable thread holds a copy
 rather than a pointer at yours: a retry next week and a follow-up tomorrow
 read exactly what you attached even after you have moved or deleted it.
 Images ride to the talk model when it has vision, and are staged into the
@@ -117,7 +117,7 @@ transcription, lyria-3-pro-preview music, seedance-2.0-mini video) and degrade
 gracefully if a slug disappears. Each slot's picker only lists models
 that can actually do that job.
 **Where**: click any `⌄` model name in the header → type-to-search
-dropdown; env overrides (`AFORGE_IMAGE_MODEL`, …) for headless.
+dropdown; env overrides (`CODEAF_IMAGE_MODEL`, …) for headless.
 **Tip seed**: Click a model name in the header to change it — the list is
 pre-filtered to models capable of that slot's job, so you can't pick wrong.
 
@@ -130,8 +130,8 @@ live — one model does both until you split them. A change lands on the
 very next planning call; the sizing ruler stays keyed to the work model,
 because it measures the executor.
 **Where**: chat: `plan` row in the model palette / settings sheet
-(pick "follow work" to rejoin). Headless: `AFORGE_PLAN_MODEL`, or per
-run `aforge plan|revise|run --model <work> --plan-model <plan>`.
+(pick "follow work" to rejoin). Headless: `CODEAF_PLAN_MODEL`, or per
+run `codeaf plan|revise|run --model <work> --plan-model <plan>`.
 **Tip seed**: Put a frontier model on `plan` and a flash-tier model on
 `work` — the graph, the replans, and the gate get the judgment while the
 leaves stay cheap.
@@ -196,7 +196,7 @@ the goal's line; both end in the same journaled event.
 may propose one charter per reflection — the same ratification card,
 marked `proposed · noticed you ask this most mornings`, default-declined.
 Declining is remembered and never re-asked.
-**Tip seed**: If aforge notices you asking for the same thing most
+**Tip seed**: If codeaf notices you asking for the same thing most
 mornings, it will offer — once — to just do it every morning.
 
 ## 4. Money, not tokens
@@ -208,7 +208,7 @@ the ceiling, work pauses and asks; a raise is a journaled event.
 **Where**: `/budget` shows today (`spent $3.40 of $20 · resets
 midnight`); `/budget 50` raises today; `/budget default 35` persists;
 `/budget unlimited today` uncaps the day. Header shows the running cost.
-Headless: `AFORGE_DAILY_BUDGET`, `--yes-spend` to preauthorize.
+Headless: `CODEAF_DAILY_BUDGET`, `--yes-spend` to preauthorize.
 **Tip seed**: Nothing ever dies from a token limit — if the daily
 dollars run out, work pauses and asks; `/budget 50` resumes it.
 
@@ -217,7 +217,7 @@ dollars run out, work pauses and asks; `/budget 50` resumes it.
 transcription — all draw admission from the same daily rail and record
 real cost from the provider's usage data. Charter firings carry
 per-firing quotes and daily caps on top.
-**Tip seed**: One number governs everything aforge spends today — check
+**Tip seed**: One number governs everything codeaf spends today — check
 it any time with /budget.
 
 ## 5. It gets better as you use it
@@ -227,8 +227,8 @@ it any time with /budget.
 stage of work, consolidated with evidence links, superseded on
 contradiction, aged, and quarantined when poisoned (with injection
 attribution). Wrong beliefs are correctable: "that's wrong, retract it."
-**Where**: automatic; `aforge notebook` inspects; retract works in chat.
-**Tip seed**: If aforge keeps repeating a wrong assumption, tell it to
+**Where**: automatic; `codeaf notebook` inspects; retract works in chat.
+**Tip seed**: If codeaf keeps repeating a wrong assumption, tell it to
 retract that — beliefs are journaled and die on command.
 
 ### The skill forge — tools it builds itself
@@ -236,14 +236,14 @@ retract that — beliefs are journaled and die on command.
 candidate skill; promotion requires the skill's check script to actually
 pass (execution-gated), then it's delivered to future leaves via PATH +
 retrieval. Nothing is hard-coded — capability emerges from use.
-**Tip seed**: Scripts aforge writes twice tend to become tools it owns —
+**Tip seed**: Scripts codeaf writes twice tend to become tools it owns —
 your recurring workflows are being quietly compiled into capability.
 
 ### Experiments over faith
 **What**: When two approaches compete and evidence is thin, the
 disagreement is stored as an *unsettled pair*; future work runs trials
 against it and settles it mechanically, with provenance.
-**Tip seed**: aforge doesn't argue with itself twice — unresolved
+**Tip seed**: codeaf doesn't argue with itself twice — unresolved
 approach debates become experiments the next relevant job runs.
 
 ### Playbooks per scope
@@ -286,9 +286,9 @@ value question — relevance × execution-verifiability × measured learning
 progress — and splices an `origin: self` practice job. Results feed the
 surprise ledger and the skill forge, never your thread. Questions whose
 scope shows no surprise reduction after two rounds retire automatically.
-**Where**: automatic when idle; `AFORGE_PRACTICE_BUDGET` (default $2/day,
-0 disables), `AFORGE_PRACTICE_IDLE` (default 20m).
-**Tip seed**: The quiet hours aren't idle — aforge practices what it got
+**Where**: automatic when idle; `CODEAF_PRACTICE_BUDGET` (default $2/day,
+0 disables), `CODEAF_PRACTICE_IDLE` (default 20m).
+**Tip seed**: The quiet hours aren't idle — codeaf practices what it got
 wrong last week, on its own budget, and stops when practice stops paying.
 
 ### The morning brief — arrival, folded
@@ -297,7 +297,7 @@ thread is one collapsed card: "While you were away — N things done, a
 question, $X." Enter unfolds slim rows (done, failed, fired charters,
 facts learned, spend), each anchored to durable provenance. Short breaks
 stay silent; nothing happened means nothing appears.
-**Where**: automatic on session open; `AFORGE_BRIEF_AFTER` (default 4h,
+**Where**: automatic on session open; `CODEAF_BRIEF_AFTER` (default 4h,
 0 = always).
 **Tip seed**: You don't owe the scrollback anything — the arrival fold is
 the complete account of what happened while you were gone.
@@ -309,7 +309,7 @@ natural moment (arrival, after a delivery). Answering happens inline in
 chat; questions whose originating job settled another way expire with a
 journaled reason.
 **Where**: the dock; answers route through normal chat.
-**Tip seed**: aforge is probably holding questions for you — the `?` row
+**Tip seed**: codeaf is probably holding questions for you — the `?` row
 in the dock is its saved-up 1:1 list, never a popup.
 
 ### Curiosity receipts — self-spend must pay learning rent
@@ -318,9 +318,9 @@ produces a journaled receipt: what it tried, what it cost, what was
 learned (facts, skills, surprise delta) — or explicitly "nothing." Two
 consecutive nothing-receipts on an inquiry line auto-retire it and pause
 its charter, with the reason journaled as self-origin evidence.
-**Where**: `aforge why self` prints today's receipts; surfaces read
+**Where**: `codeaf why self` prints today's receipts; surfaces read
 `SelfSpendToday` as one number.
-**Tip seed**: Ask `aforge why self` — every cent it spent on itself comes
+**Tip seed**: Ask `codeaf why self` — every cent it spent on itself comes
 with a receipt saying what it learned, and freeloading inquiries fire
 themselves.
 
@@ -330,7 +330,7 @@ territories, every scope is classified strong / frontier (the 25–75%
 learnable band) / weak / stale. The head answers "what are you good at?"
 from this evidence, and the frontier list is exactly what the practice
 loop targets.
-**Where**: `aforge competence` for the calm rows; in chat, just ask.
+**Where**: `codeaf competence` for the calm rows; in chat, just ask.
 **Tip seed**: "What are you actually good at now?" gets a measured answer
 — strong scopes, the learning frontier, and where it still struggles.
 
@@ -341,7 +341,7 @@ consecutive approved, green firings promote it — one line in the thread,
 "I'll handle this on my own now" — and it fires autonomously. A failure,
 budget breach, or rejected output demotes it back; two demotions pause it.
 "Always allow" promotes immediately; "never" declines and pauses.
-**Where**: automatic on all charters; `AFORGE_TENURE_AFTER` tunes the
+**Where**: automatic on all charters; `CODEAF_TENURE_AFTER` tunes the
 threshold.
 **Tip seed**: New standing goals ask before acting — approve a few good
 runs and they earn tenure; one bad run and they're back to asking.
@@ -404,74 +404,74 @@ resumes where it left off, saying so once.
 ## 8. Headless — the same power, scripted
 
 > The full contract — every flag, the exit codes, the `--json` schema, the
-> stream discipline, and the rules for measuring aforge — is
+> stream discipline, and the rules for measuring codeaf — is
 > [HEADLESS.md](HEADLESS.md). This section is the catalog entry; that file is
 > what a harness is written against.
 
-### `aforge do` — one errand, the whole living brain
+### `codeaf do` — one errand, the whole living brain
 **What**: The task, done, with nobody watching. Not the static pipeline: this
 is the resident's own brain with the conversation removed, so the contract for
 the work, the delivery gate, the repair a cited gap earns, and the replan when
 a leaf runs out of room are all still there. It works in the directory you're
 standing in and edits it in place.
-**Where**: `aforge do "<task>" [-w dir] [-db path] [--json] [--yes-spend]`
+**Where**: `codeaf do "<task>" [-w dir] [-db path] [--json] [--yes-spend]`
 **How**: The exit code is the verdict — `0` worked, `1` didn't, `2` hit the
 wall with partial work. `--json` prints one object with the deliverable, the
 artifacts, real spend, node count, and `blocked_on` when a question stopped it.
 Share one `-db` across runs and the second run knows what the first learned;
 omit it and the store is private and deleted on the way out.
-**Tip seed**: aforge do runs a whole job from one command — and its exit code
+**Tip seed**: codeaf do runs a whole job from one command — and its exit code
 is honest enough to put in a script.
 
-### `aforge plan` / `aforge run`
+### `codeaf plan` / `codeaf run`
 **What**: The benchmarked, byte-stable CLI path: compile a goal to a
 plan, run it with the atomic linear harness. Learning surfaces
 (anchors, playbooks, router) feed it without changing its contract.
-**Tip seed**: CI and scripts use aforge plan/run — same tools, same
+**Tip seed**: CI and scripts use codeaf plan/run — same tools, same
 rails, no chat needed.
 
-### `aforge wake`
+### `codeaf wake`
 **What**: One watch pass over due charters — evaluate sentinels, fire
 what's due, journal the pass, exit. This is the command the standing
 watch runs for you every five minutes; running it by hand is the same
 pass, now.
-**Tip seed**: aforge wake runs one standing pass right now instead of
+**Tip seed**: codeaf wake runs one standing pass right now instead of
 waiting for the next check.
 
-### `aforge doctor`
+### `codeaf doctor`
 **What**: Five calm rows and nothing else: the brain file and its size,
 who is resident right now, whether the standing watch is on with its last
 wake and next check, today's spend against the rail, and how many goals
 are active with how many questions pending. The same rows ground the
 answer when you ask "who's keeping watch?" in chat.
-**Tip seed**: aforge doctor answers "is it actually running, and what has
+**Tip seed**: codeaf doctor answers "is it actually running, and what has
 it cost me today?" in five lines.
 
-### `aforge competence` / `aforge why self`
+### `codeaf competence` / `codeaf why self`
 **What**: The self-knowledge pair from the CLI: measured per-scope
 competence (strong / frontier / weak / stale), and today's self-spend
 receipts with what each attempt learned.
 **Tip seed**: Two commands answer "is it actually getting better?" —
-aforge competence for the map, aforge why self for the receipts.
+codeaf competence for the map, codeaf why self for the receipts.
 
-### `aforge notebook`
+### `codeaf notebook`
 **What**: Inspect, search, and retract beliefs from the CLI.
-**Tip seed**: aforge notebook shows what it believes — and what evidence
+**Tip seed**: codeaf notebook shows what it believes — and what evidence
 each belief stands on.
 
 ### Environment
-**What**: `AFORGE_DAILY_BUDGET`, `AFORGE_PREAUTHORIZE_SPEND`/`--yes-spend`,
-`AFORGE_PRACTICE_BUDGET`, `AFORGE_PRACTICE_IDLE`, `AFORGE_BRIEF_AFTER`,
-`AFORGE_TENURE_AFTER`, `AFORGE_VOICE_MODEL`, `AFORGE_IMAGE_MODEL`,
-`AFORGE_SPEECH_MODEL`, `AFORGE_MUSIC_MODEL`, `AFORGE_VIDEO_MODEL`,
-profile dir config at `~/.aforge/config.json`.
+**What**: `CODEAF_DAILY_BUDGET`, `CODEAF_PREAUTHORIZE_SPEND`/`--yes-spend`,
+`CODEAF_PRACTICE_BUDGET`, `CODEAF_PRACTICE_IDLE`, `CODEAF_BRIEF_AFTER`,
+`CODEAF_TENURE_AFTER`, `CODEAF_VOICE_MODEL`, `CODEAF_IMAGE_MODEL`,
+`CODEAF_SPEECH_MODEL`, `CODEAF_MUSIC_MODEL`, `CODEAF_VIDEO_MODEL`,
+profile dir config at `~/.codeaf/config.json`.
 
 ---
 
 ## The runtime source of truth is `internal/manual`, not this file
 
 This catalog is a design document: it is on disk, it is written to
-persuade, and it goes stale the moment a build lands. What aforge
+persuade, and it goes stale the moment a build lands. What codeaf
 actually *says* about itself at runtime comes from `internal/manual` — a
 small set of user-voice markdown pages embedded in the binary, searched
 by the `manual` tool on the head's tool belt and injected into the

@@ -1,10 +1,10 @@
-# aforge — the product, the journey, and how we know it works
+# codeaf — the product, the journey, and how we know it works
 
 ## The pitch
 
-aforge is not a coding CLI — it is a **resident**. Session tools (Claude Code,
+codeaf is not a coding CLI — it is a **resident**. Session tools (Claude Code,
 Codex CLI) give you an agent that lives exactly as long as a terminal window
-and forgets when it closes; you fan out terminals to fan out work. aforge
+and forgets when it closes; you fan out terminals to fan out work. codeaf
 inverts every one of those choices. There is one brain, it is always the same
 brain, and it remembers:
 
@@ -35,7 +35,7 @@ thread — silence wearing a message id is the cardinal UX sin.
 
 ## The journey
 
-One window, one conversation, forever. `aforge` opens into the thread you
+One window, one conversation, forever. `codeaf` opens into the thread you
 left (session resumes by default; `/new` starts fresh). Parallelism lives in
 the graph, not in terminal tabs: say five things and five jobs run; the board
 shows them side by side. Additional windows are honest mirrors of the same
@@ -62,7 +62,7 @@ noted. This catalog is the contract the UX tests verify.
 | 10 | Ask about money | "what did that cost?" / header glance | Per-job and windowed spend readable in thread; costs in header |
 | 11 | Ask what it learned | "what did you learn this week?" | Read over the notebook/self — lessons, beliefs, retractions |
 | 12 | Leave and return | close terminal, come back later | Same thread resumes; a brief covers what landed while away; overnight deliverables were announced to whoever was home |
-| 13 | Second window | open aforge elsewhere | "second window" named in header; same thread; promotion on first window's exit; version handover on rebuild |
+| 13 | Second window | open codeaf elsewhere | "second window" named in header; same thread; promotion on first window's exit; version handover on rebuild |
 | 14 | Repeat a workflow | commission similar work again | Craft learned from the first run compiles into the second (visible: craft repo commit, faster/cheaper run) |
 | 15 | Watch it learn on its own | idle time | Practice/curiosity runs appear under territory; self page shows measured self-knowledge, not vibes |
 | 16 | Choose models in words | "use kimi for this" / "boost this" | Model words route; boost lane engages; recorded on usage |
@@ -83,7 +83,7 @@ noted. This catalog is the contract the UX tests verify.
 ## The quick-access answer (taskbar / always-open)
 
 The terminal is the surface today, and the design answer to "I want it one
-keystroke away" is: aforge must be **excellent as a docked, narrow,
+keystroke away" is: codeaf must be **excellent as a docked, narrow,
 always-open pane** — a slim tmux/terminal split kept on the side, where the
 thread stays readable at 60 columns, the header stays honest, and returning
 attention costs zero (attach brief, resumed session, instant launch). A

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // quitStoppingWord is the half of the quit warning about work that ends with the
@@ -233,7 +233,7 @@ func TestASignalStillClosesAnInProcessConversation(t *testing.T) {
 
 // A ONE-SHOT ENGINE ANSWERS THE DETACH SEAM AND ITS WORK STILL STOPS. Reading
 // the seam itself as "this keeps running" would promise survival to exactly the
-// connection that cannot offer it — `aforge engine` on a pipe, and a --host
+// connection that cannot offer it — `codeaf engine` on a pipe, and a --host
 // launch against one — so the warning asks for the lifetime instead of the
 // capability.
 func TestAOneShotRemoteIsWarnedAboutHonestly(t *testing.T) {

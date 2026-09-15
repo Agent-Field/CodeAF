@@ -2,26 +2,26 @@
 
 ## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
 
-When DNS or a connection attempt fails before the request is accepted, aforge
+When DNS or a connection attempt fails before the request is accepted, codeaf
 shows `waiting for connection`. It pauses requests on that client and checks
 whether the configured endpoint is reachable. This is a small request without
 your prompt or API key; it does not ask a model to generate anything.
 
-Waiting calls share a check. After each failed check, aforge waits about one to
+Waiting calls share a check. After each failed check, codeaf waits about one to
 one and a half seconds before checking again. Each check has a two-second limit.
 When the endpoint first answers, your request resumes immediately. If the check
-answers but your request still cannot go out, aforge waits a little longer
+answers but your request still cannot go out, codeaf waits a little longer
 before each further try. A response proves endpoint reachability, not that every
 internet service is healthy. No separate public ping service is involved.
 
 Connection recovery waits up to two minutes, or less if that call already had
 a shorter deadline. Esc or Stop work cancels your call immediately; other calls
-still waiting keep their shared check. If the connection does not return, aforge
+still waiting keep their shared check. If the connection does not return, codeaf
 says `connection is still unavailable; try again when connected`.
 
 A picture, video, speech or transcription request shows `waiting for
 connection` against the model it asked for, just as a chat reply does. If its
-checks answer but the request still cannot go out, aforge eventually gives up
+checks answer but the request still cannot go out, codeaf eventually gives up
 with `connection is still unavailable; try again when connected`.
 
 Chat, auxiliary requests, document parsing and authenticated media requests use
@@ -33,7 +33,7 @@ not repaired by a connection wait.
 
 ## Why a longer conversation does not get a full cache discount
 
-When choosing a provider, aforge can estimate that it still holds some of this
+When choosing a provider, codeaf can estimate that it still holds some of this
 conversation's earlier input. That estimate is capped at the input length the
 provider previously reported receiving for this conversation, and at the current
 request's estimated length. An unknown earlier length earns no discount. Requests
@@ -95,7 +95,7 @@ It depends on one thing only: whether the request in flight has given you anythi
 **Thinking counts as something coming back.** If the model is showing you its thinking —
 the `thought for …` line, or the thought itself open under `ctrl+e` — that is on your
 screen and it is not taken away from you, so your pick rides the next request rather
-than cutting this one. It is the same rule and the same reason: aforge never withdraws
+than cutting this one. It is the same rule and the same reason: codeaf never withdraws
 something you are looking at to obey you faster.
 
 The same rule holds inside a task's room, where it matters most: a task step is one turn
@@ -103,10 +103,10 @@ and can run for twenty minutes, so "the next turn" would mean your pick did noth
 The room tells you which of the two you got — `switching now`, or `the next request takes
 it`. See "Changing the model for one task while it is running" on the tasks page.
 
-**If it was already moving, it moves to yours.** When a model stops answering, aforge
+**If it was already moving, it moves to yours.** When a model stops answering, codeaf
 moves the work to another one on its own — a rescue, not a preference. A model you name
 while that is happening is the head of that chain: the move goes to yours, the line you
-read names yours, and everything after it is read off yours. This holds even when aforge
+read names yours, and everything after it is read off yours. This holds even when codeaf
 has nowhere of its own left to go; naming a model is itself somewhere to go, so the turn
 moves instead of ending on "there is nowhere else to try".
 
@@ -117,15 +117,15 @@ saves the pick for the next run instead. And it is not the same rule as the thin
 level: a level you change lands on the next thing you ask, because setting a level is not
 redirecting work you are watching.
 
-## Does aforge remember the model I picked, or does it go back to the default?
+## Does codeaf remember the model I picked, or does it go back to the default?
 
-**It remembers.** The model you last switched to is the model the next `aforge` opens on,
+**It remembers.** The model you last switched to is the model the next `codeaf` opens on,
 whether you chose it in the picker, typed `/model <slug>`, or set the conversation row in
 `/settings` — all three are the same road.
 
 The order a launch resolves is: `--model <slug>` on the command line beats everything for
-that session alone; then the model you last chose; then `AFORGE_MODEL`; then the built-in
-default. `AFORGE_MODEL` seeds a model for somebody who has never chosen one and does not
+that session alone; then the model you last chose; then `CODEAF_MODEL`; then the built-in
+default. `CODEAF_MODEL` seeds a model for somebody who has never chosen one and does not
 override somebody who has — which is why the settings row stays editable while it is set.
 
 Two things do not persist. Over `--host` the switch takes for the session and is not
@@ -174,7 +174,7 @@ hits sit at the bottom rather than mixed through. Twelve rows show at a time.
 The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
 router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
 the list comes from what is already known, in this order: the
-catalog the door passed in, then `~/.aforge/v3/models.json`, then five names this build
+catalog the door passed in, then `~/.codeaf/v3/models.json`, then five names this build
 remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
@@ -248,7 +248,7 @@ Input words come first, so a model that reads and paints pictures reads `sees ·
 
 **A plain text chat model shows nothing here at all**, and neither does a model that
 published no modalities — silence means text in, text out, and nothing more. The same tail
-appears on `aforge models`.
+appears on `codeaf models`.
 
 ## Switching model by name in one command
 
@@ -261,7 +261,7 @@ The words after `/model` are read for their **shape**, not for a flag:
 | `/model` | the picker opens |
 | `/model deepseek/deepseek-v4-flash` | switches to that slug |
 | `/model @cloudflare` | pins the provider that serves your model — the model does not change |
-| `/model auto` | gives the choice of provider back to aforge |
+| `/model auto` | gives the choice of provider back to codeaf |
 | `/model deepseek <1s` | opens the picker with `deepseek <1s` already in the filter |
 
 Anything with a space in it, and any single word the picker's filter grammar understands
@@ -269,7 +269,7 @@ Anything with a space in it, and any single word the picker's filter grammar und
 narrowed. A slug has no spaces in it, so two words were never a name.
 
 There is one check, and only one. If the slug **is** in the catalog and cannot hold a
-conversation — a drawing model, a speech model, a transcriber — aforge refuses in one line
+conversation — a drawing model, a speech model, a transcriber — codeaf refuses in one line
 and the conversation does not move:
 
 ```
@@ -277,7 +277,7 @@ openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on moonsh
 ```
 
 A slug the catalog has never carried is still **taken at its word**, exactly as before:
-aforge may be offline, or you may be naming a model this build has never listed. In that
+codeaf may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
 ## I changed the model but my task is still on the old one — change the model inside a task
@@ -309,9 +309,9 @@ Changing the conversation model does not move existing tasks. New tasks resolve
 their model from an explicit choice, the task model setting, the crew's worker
 class, then the conversation model when that worker class is blank.
 
-## The crew — which models aforge uses on my behalf, and /crew
+## The crew — which models codeaf uses on my behalf, and /crew
 
-aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
+codeaf makes calls you did not type: naming a session, naming a piece of work on the roster,
 the brief a task opens on, the safety gate, the check on finished task work, the second
 look before a task starts itself, the reading of a task's parts before they are handed out,
 the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
@@ -383,7 +383,7 @@ same near-free models in all three — so `/crew` never names them: the confirma
 the careful class.
 
 `/crew` opens all three as a chooser with yours marked, under a scope line — `the five
-models aforge uses on its own behalf — not the one you chat with` — and a `you talk to ·
+models codeaf uses on its own behalf — not the one you chat with` — and a `you talk to ·
 <model>` line naming the seat the presets do not touch. ↑ / ctrl+p and ↓ / ctrl+n move;
 enter applies and esc cancels. If the five classes make a custom crew, no row is marked and
 the chooser says picking one puts all five back. `/crew max` still sets it directly and
@@ -448,7 +448,7 @@ the answer goes out immediately and the reading happens alongside it. What it dr
 list the work carries on with; the step it lands beside is stopped either way, because the
 decision to stop was taken before it was asked. It used to be awaited, and a measured one held
 the work for 8.1 seconds to decide nothing. **A long answer no longer buys one of these
-every ten rounds**: the two earlier moments cost no call at all now — aforge tells the model
+every ten rounds**: the two earlier moments cost no call at all now — codeaf tells the model
 what its answer has run up and the model decides for itself (*Tasks*, under *An answer that
 runs long is told*). `handoff` writes the instruction the task
 opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
@@ -470,11 +470,11 @@ only thing that moves it is `/model`, the model row in `/settings`, or naming on
 `· you are still talking to deepseek-v4-flash — /model changes that`, and `/status` prints
 `model` and `crew` on neighbouring lines so the two dials read as two.
 
-The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
+The crew is a different dial: the five **classes** codeaf makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
 the work inside every task, checks on finished work, the brief a task is shaped into, adaptive-run
 planners and their nodes, harness pages, and looking at an image. Setting it writes all
-five class rows in one write, and **it is live from that moment**: the next call aforge
+five class rows in one write, and **it is live from that moment**: the next call codeaf
 makes on its own uses the new crew, with no relaunch and no new session. A task already
 running keeps the model it was admitted on.
 
@@ -513,16 +513,16 @@ So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever y
 chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's row on the
 roster, its room's status line and its finished card all name the model it actually ran
 on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
-`aforge do` — one row, every door.
+`codeaf do` — one row, every door.
 
 This is new: until the worker seat existed a task rode the model you were talking to, and
 the crew moved everything about a task except its cost.
 
-## Does my crew reach aforge do, or only this conversation — what models a headless run uses
+## Does my crew reach codeaf do, or only this conversation — what models a headless run uses
 
 **It reaches both.** A crew you set here is the crew a run started from a script or a
-terminal uses — `aforge do`, `aforge exec`, `aforge run`, `aforge plan new`,
-`aforge plan revise` and `aforge plan run`. Set it once with `/crew frugal` and the same policy holds
+terminal uses — `codeaf do`, `codeaf exec`, `codeaf run`, `codeaf plan new`,
+`codeaf plan revise` and `codeaf plan run`. Set it once with `/crew frugal` and the same policy holds
 whether the work is asked for here or run with nobody watching.
 
 Those runs seat two models, and each one is resolved the same way. The first of these that
@@ -530,7 +530,7 @@ answers wins:
 
 1. a model named on the command line — `--model` for the work, `--plan-model` for the
    planning;
-2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
+2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;
 4. **your crew again, through an older class**, when your profile was set before a class
@@ -594,7 +594,7 @@ your crew was set before the work seat existed · it is running on your small wo
 ```
 
 **It is said once per session**, when work actually starts, and never per task or per part.
-Twenty tasks in one sitting is one line. Start aforge again tomorrow with the same profile and
+Twenty tasks in one sitting is one line. Start codeaf again tomorrow with the same profile and
 you get it again — it is true until you answer it.
 
 `/crew` shows the same fact about the row itself, under the three presets:
@@ -617,14 +617,14 @@ Three things this is **not**:
 - It is not a fresh install. A profile that has never named any model runs this build's own
   choice for each class, silently, the way it always has.
 
-The word `inherited` is the same word `aforge do` prints beside the model on its `models:`
+The word `inherited` is the same word `codeaf do` prints beside the model on its `models:`
 line, so the two surfaces are telling you about one thing.
 
 ## What are the six models — the one you talk to and the five crew seats
 
-aforge runs **six model seats**. **Seat one is the model you talk to**: it answers every
+codeaf runs **six model seats**. **Seat one is the model you talk to**: it answers every
 message you type, it is the id written above the message box, and `/model` is the only thing
-that moves it. The other five are the **crew** — the models aforge uses on its own behalf,
+that moves it. The other five are the **crew** — the models codeaf uses on its own behalf,
 for calls you did not type:
 
 | seat | word | what it answers |
@@ -676,7 +676,7 @@ asks for high thinking separately.
 
 - **Any of the five class rows takes one**, though the mastermind is the one it is for. On
   the worker row in a conversation it reaches the one-shot role calls only, never the work
-  inside a task. At a headless door — `aforge do`, `exec`, `plan` or `run` — that row fills
+  inside a task. At a headless door — `codeaf do`, `exec`, `plan` or `run` — that row fills
   a seat instead, and every request the seat sends carries its level.
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
@@ -694,12 +694,12 @@ hold an id with a thinking instruction on it.
 ## Why is my crew thinking at low — the pin is being ignored, effort=low in the log
 
 A level written onto a class value is a pin, and it reaches the wire on **every** request the
-seat that holds it sends — the conversation's one-shot role calls, and every call of an
-`aforge do`, `exec`, `plan` or `run`. It is not a preference something further in gets to
+seat that holds it sends — the conversation's one-shot role calls, and every call of a
+`codeaf do`, `exec`, `plan` or `run`. It is not a preference something further in gets to
 reconsider.
 
 So a row in the model-call log that reads a level you did not ask for has one of two
-explanations, and the row says which. `aforge logs` prints the word that **actually
+explanations, and the row says which. `codeaf logs` prints the word that **actually
 travelled**, and where something overrode the pin it prints `pinned <word>` beside it — the
 level that did not go out. A row with no `pinned` word is a row where the pin travelled, and
 that is almost all of them.
@@ -778,7 +778,7 @@ that row are **the same setting** — a pin you typed by hand shows in the list 
 and pinning from the list rewrites the row without disturbing the other pins in it.
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
-harnesses" is a sentence aforge acts on — it looks the row up with `settings` and writes it
+harnesses" is a sentence codeaf acts on — it looks the row up with `settings` and writes it
 with `change_setting`, into the same `models.roles` row, after asking you. The five class
 rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`, `models.tiers.high`,
 `models.tiers.mastermind`), the crew word (`models.crew`) and the pins are all writable that
@@ -790,17 +790,17 @@ then **the model you are talking to**.
 
 Two things worth knowing:
 
-- **A change is live.** The next call aforge makes on its own uses it — whether you changed
+- **A change is live.** The next call codeaf makes on its own uses it — whether you changed
   it in the panel, with `/crew`, or by asking. It used to land on the next session, and it no
   longer does. A turn already in flight finishes on what it started with: nothing you change
-  lands in the middle of one. The one thing that *can* move a turn mid-flight is aforge
+  lands in the middle of one. The one thing that *can* move a turn mid-flight is codeaf
   rescuing it from a model that has stopped answering — see *The model went quiet*.
 - Naming a model in the sentence outranks all of it for that piece of work. `make a
   harness for triaging flakes with opus` designs on opus. The roles decide only when you
   named nothing. (There is no such sentence for an **adaptive run**: a conversation cannot
   start one at all — see *adaptive runs* — so a run's models are whatever started it.)
 
-## Does aforge learn which model is good at which kind of work — aforge models, ratings, why a part ran on the careful model by itself
+## Does codeaf learn which model is good at which kind of work — codeaf models, ratings, why a part ran on the careful model by itself
 
 Yes, from the checks it was already running. **Every task that settles is written down**:
 the model it ran on, the name the work was given, how it ended in plain words — `landed`,
@@ -810,7 +810,7 @@ said whether it holds, so that answer *is* the grade: **nothing extra is spent, 
 second model is asked to judge anything.** Work nobody could check teaches nothing, which
 is the honest answer rather than a guess.
 
-`aforge models` in a terminal is where you read it back. It prints a row per model per
+`codeaf models` in a terminal is where you read it back. It prints a row per model per
 kind of work, with the rating, the chance of it holding, and how many settled tasks stand
 behind the number — that last column matters, because a rating with two behind it and one
 with two hundred are different claims. A row that is not yet driving anything says so at
@@ -818,7 +818,7 @@ the end of the line: `under the gate — a part moves up once 2 of this kind hav
 Until something has settled at all it says
 `nothing measured yet. Ratings appear once calls have been graded.`
 
-**What aforge does with it** is one thing only: when a task splits itself, a part the
+**What codeaf does with it** is one thing only: when a task splits itself, a part the
 worker called ordinary work is minted on your **careful work** model instead if work
 named like it has been turned down twice or more on the model the task is on. That is the
 whole of it — no model is ever swapped out from under you, your chat model is untouched,
@@ -827,11 +827,11 @@ dearer to lift it to. *Tasks*, under *When a task turns out to be too wide for o
 worker*, has the rest.
 
 The record lives with your settings, in `router-ledger.json` and `router-events.jsonl`.
-Several aforge windows write to it at once and it is kept across restarts.
+Several codeaf windows write to it at once and it is kept across restarts.
 
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 
-The calls aforge makes on its own — the session's name, the two or three words a task is
+The calls codeaf makes on its own — the session's name, the two or three words a task is
 called, the judge that reads a turn, the planner sizing a piece of work — used to be
 abandoned outright when the model the ladder picked could not answer: a role pinned to a
 small model that was down cost you the name and said nothing, while the model you were
@@ -859,10 +859,10 @@ absurd for eight words of title.
 
 ## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
 
-`aforge chat --one-model` and `aforge resume --one-model` run **every text call on the model
+`codeaf chat --one-model` and `codeaf resume --one-model` run **every text call on the model
 you are talking to**, for that session only.
 
-Without it, the calls aforge makes on your behalf go to the crew, which is the point of the
+Without it, the calls codeaf makes on your behalf go to the crew, which is the point of the
 crew — but it means a session started with `--model X` did not spend all of its money on X.
 Measured on one trivial task: 22% of the dollars went to a model the run never named. That is
 correct behaviour and a surprise to anyone reading a bill, so this is the flag for the case
@@ -870,7 +870,7 @@ where **one model has to answer for the whole run** — comparing two models aga
 other, timing a benchmark cell, or attributing a cost.
 
 It settles four things on your model: the five crew classes, any role you pinned, the model
-that work leaving the conversation runs on, and the fallback chain aforge would otherwise
+that work leaving the conversation runs on, and the fallback chain codeaf would otherwise
 move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
@@ -924,16 +924,16 @@ change what runs, so the sentence is not offered, and the `/crew` sheet says not
 inherited work seat either. Without the flag, the same profile draws `crew custom` and says
 that line once, exactly as it always did.
 
-## What temperature does aforge use — sampling settings like temperature, top-p and seed
+## What temperature does codeaf use — sampling settings like temperature, top-p and seed
 
-**None of its own.** No call aforge makes sets `temperature`, `top_p`, `top_k`, a seed
+**None of its own.** No call codeaf makes sets `temperature`, `top_p`, `top_k`, a seed
 or any other sampling knob — the request simply omits them, and the provider's own
 default answers. OpenRouter passes an absent sampling parameter through as absent rather
 than substituting a value of its own, so what you get is whatever the endpoint's model
 ships with.
 
 There is no setting and no flag to change this. If a reply reads as too predictable or
-too wild, the dials aforge does have are the model itself and how hard it thinks (the
+too wild, the dials codeaf does have are the model itself and how hard it thinks (the
 effort rungs below).
 
 ## Reasoning effort — making the model think harder or faster
@@ -961,7 +961,7 @@ use, and all five rungs are reachable here.
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
-`high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
+`high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — codeaf asks
 for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
 `⠿ auto` is what the line above the message box reads until something is dialled; no rung
 is the shipped one.
@@ -978,12 +978,12 @@ Several things can name a rung, and the most specific one wins:
 1. **The level dialled onto the model in use** — the model picker's **ctrl+t**, or
    `--reasoning` on the command line. It beats everything under it.
 2. **This conversation's own rung.** It is sticky: it is kept in the session's own
-   `meta.json`, so it is still there after you close aforge and come back.
+   `meta.json`, so it is still there after you close codeaf and come back.
 3. **The piece of work's own rung** — a task carries one in `tasks.json`, and a standing
    item carries one as its `does.effort`.
 4. **What the call is for.** A standing item's firing and the sentinel check in front of it
    take the item's own rung, and ask for nothing at all when the item has none — nothing
-   else on this machine reaches them. The errands aforge runs beside your turn — naming a
+   else on this machine reaches them. The errands codeaf runs beside your turn — naming a
    conversation, summarising it, judging where a request belongs — ask for nothing whatever
    anybody set. Your own turn, and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
@@ -1028,8 +1028,8 @@ entirely, leaving the selected model's defaults to OpenRouter. It does not disab
 thinking or force a token budget, and the model may still spend time reasoning.
 Existing explicit conversation, task, model and install levels remain in force.
 On the chat dial, the legacy word `off` clears the override just like `auto`.
-The headless environment settings `AFORGE_REASONING=off` and
-`AFORGE_EXEC_REASONING=off` retain their existing meaning: they explicitly ask
+The headless environment settings `CODEAF_REASONING=off` and
+`CODEAF_EXEC_REASONING=off` retain their existing meaning: they explicitly ask
 the provider to disable reasoning.
 
 `--reasoning auto` clears the launch override and inherits the conversation or install
@@ -1063,19 +1063,19 @@ cap, no temperature, no `top_p`, and no reasoning object**. Every one of those i
 optional upstream, and leaving it out is what makes the model answer at its own published
 default rather than at a number this program picked for it.
 
-That is true of the headless doors too (`aforge run`, `aforge do`), which used to impose
+That is true of the headless doors too (`codeaf run`, `codeaf do`), which used to impose
 a 32,768-token output ceiling and send `reasoning: off` on planning and execution.
 Neither happens now.
 
 What still travels is what somebody asked for: a level you dialled, an explicit
-`--reasoning` level, `AFORGE_REASONING` and `AFORGE_EXEC_REASONING` at a headless
+`--reasoning` level, `CODEAF_REASONING` and `CODEAF_EXEC_REASONING` at a headless
 door, a crew class value like `moonshotai/kimi-k3:high`, and a rung on a task or
 a standing card. `off` on the headless environment settings really does send the
 disable; `off` on the chat dial is the legacy spelling of `auto`. Errands the
 session runs for itself — naming a conversation, judging a route — still ask for
 nothing, because your dial is not spent on a title.
 
-Aforge also leaves generation defaults alone on its own auxiliary calls: task and
+codeaf also leaves generation defaults alone on its own auxiliary calls: task and
 conversation names, reflex sorting, memory upkeep, task planning and checks, standing
 work, document parsing, saved harness execution, and resident work all omit output and
 sampling controls unless an operator-facing option supplied one. Context reserves,
@@ -1115,7 +1115,7 @@ token of thinking, a piece of a tool call.
 | The clock | How long | What it catches |
 | --- | --- | --- |
 | first word | **1m30s** | accepted the request and never started |
-| a gap mid-reply | **45s** on an endpoint aforge has not timed, less on one it has | started writing and stopped |
+| a gap mid-reply | **45s** on an endpoint codeaf has not timed, less on one it has | started writing and stopped |
 
 There is a third clock for the opposite problem — a reply that keeps writing and never
 finishes. It is not a fixed number, so it has its own section below: *A reply that never
@@ -1126,8 +1126,8 @@ thinks for a minute before its first token, and cutting a request that was about
 costs the whole prompt again. The second is shorter because the question is different — a
 model that has started writing has finished deciding.
 
-**And the second one gets shorter still on an endpoint aforge has measured.** Forty-five
-seconds is what a stranger gets. Once aforge knows how fast an endpoint writes — the
+**And the second one gets shorter still on an endpoint codeaf has measured.** Forty-five
+seconds is what a stranger gets. Once codeaf knows how fast an endpoint writes — the
 `t/s` figure the status line shows you beside the state word while a turn writes — the gap it will sit through is how long *that*
 endpoint would take to write about three and a half thousand tokens: roughly **15 seconds**
 on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
@@ -1152,7 +1152,7 @@ screen*), and a dim row lands in the conversation saying which — `nothing came
 the model · asking again · 2 of 3`, or `the model went quiet mid-reply · asking again ·
 2 of 3`.
 
-**If all three attempts come back with nothing, aforge finishes the reply on another
+**If all three attempts come back with nothing, codeaf finishes the reply on another
 model** — the next one in your `fallback models` row, or the nearest same-class model in
 the catalog when you have written no row. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
@@ -1184,20 +1184,20 @@ error: nothing came back from the model in 1m30s, three times. openai/gpt-5-mini
 These retries are **their own budget**, and they are the only count left in the request
 path. A request nobody answered is not evidence that the endpoint is failing, so it does
 not spend the patience a real provider error gets — which is a length of time rather than a
-number of tries (see *How long aforge keeps trying*).
+number of tries (see *How long codeaf keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
 which endpoint served it, or you have set `routing` to `off` or `simple` on the **Providers** tab, then
 nothing is being routed around and the next attempt lands in exactly the same place — so
-aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
+codeaf stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
 Yes, a provider may still charge for the prompt and the tokens it produced before a stream
-was cut. The last usage block never arrives in that case, so aforge does not guess from the
-text it happened to receive. When the stream named the provider's generation id, aforge asks
+was cut. The last usage block never arrives in that case, so codeaf does not guess from the
+text it happened to receive. When the stream named the provider's generation id, codeaf asks
 for that generation's own receipt in the background. Your reply does not wait for this.
 
 When the receipt arrives, its own cost and token counts move the conversation's meter and add
@@ -1206,17 +1206,17 @@ figures came from the receipt rather than the cut stream. A losing rescue arm is
 hedged waste from its own receipt too; it is real provider money, but it is not added twice.
 
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
-had after the short retry schedule, aforge writes an `unbilled` marker with no invented
+had after the short retry schedule, codeaf writes an `unbilled` marker with no invented
 price or token count. The marker survives a restart. `/cost` counts missing prices for this
 conversation and its tasks; `/spend` counts the markers in its selected time window. Both
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they
 say nothing. Settings→Spending also shows missing receipts learned during this process.
 Receipt workers exit when their queue is empty and start again when another receipt arrives.
 
-## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
+## A reply that never finished — the turn ran for half an hour, codeaf looked frozen, nothing happened for ages, the model kept writing and never stopped
 
 The two clocks above are both about **silence**. A reply that keeps producing a token every
-few seconds resets both of them forever, and for a long time nothing in aforge ended a
+few seconds resets both of them forever, and for a long time nothing in codeaf ended a
 request like that: a turn could sit there for half an hour with the reply still technically
 arriving, and the session log recorded nothing at all while it did.
 
@@ -1230,12 +1230,12 @@ than **2m30s** and never more than **20 minutes**. Two endpoints serving the sam
 therefore get two different walls, and one that routinely writes long answers earns a
 longer one by writing them.
 
-**When a reply reaches the wall, aforge checks its speed before it cuts.** If the reply
+**When a reply reaches the wall, codeaf checks its speed before it cuts.** If the reply
 wrote at least a fifth of what that endpoint normally writes in the same time, it is a long
 answer and not a stuck one, and it gets another wall's worth of time. It is checked again at
 the end of that, and again, up to **20 minutes**, which is the one limit nothing extends. A
 reply that is dripping — a token every few seconds from an endpoint that writes forty a
-second — is cut at the first wall. The speed of an endpoint aforge has not timed yet is
+second — is cut at the first wall. The speed of an endpoint codeaf has not timed yet is
 taken as 30 tokens a second, so the check is six a second.
 
 **A long file write is a long reply like any other.** A tool call that writes a whole file
@@ -1245,13 +1245,13 @@ turns was cut at 2m30s every time, on every retry, while it wrote at full speed 
 was too short for the file, and the endpoint could never finish a long reply to earn a
 longer wall.
 
-**A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
+**A model codeaf has not spoken to yet gets 5 minutes**, because there is nothing measured
 to work from. That figure used to be the floor under *everybody*, which meant the
 measurement could never make anything shorter than what a stranger got: an endpoint whose
 longest finished reply was twenty-four seconds still sat there for five whole minutes, and
 two hung streams in one measured run did exactly that. It is the outer bound for a stranger
 now, and an endpoint you have timed is held to its own history instead. The numbers are
-forgotten when aforge closes, so a fresh session starts from the 5-minute bound again.
+forgotten when codeaf closes, so a fresh session starts from the 5-minute bound again.
 
 The lower clamp is 2m30s and not less, because that is the longest an endpoint is allowed to
 go quiet while assembling an answer on its own side (above). A wall shorter than that would
@@ -1286,10 +1286,10 @@ measured instead.
 
 **A reply that is not streamed is held to the same wall once it has been measured.** The
 calls that arrive whole rather than token by token — the headless run's planner and its
-workers, `aforge do` — carry a total deadline sized from the room the reply was given (one
+workers, `codeaf do` — carry a total deadline sized from the room the reply was given (one
 second for every 64 tokens it may write, never less than 5 minutes and never more than 15).
 Once that endpoint has finished a reply for you, the measured wall applies to those calls
-too, and whichever of the two is shorter is the one that cuts. A model aforge has not heard
+too, and whichever of the two is shorter is the one that cuts. A model codeaf has not heard
 back from yet keeps the room-sized deadline, because a first reply from a model that thinks
 at length may need all of it. **That wall is never extended**: a reply that arrives in one
 piece has no speed to check until it is over.
@@ -1297,9 +1297,9 @@ piece has no speed to check until it is over.
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.
 
-## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
+## I keep getting rate limited — 429, "too many requests", the provider telling codeaf to slow down
 
-A provider that answers `429` is pacing aforge, not failing. What happens next depends
+A provider that answers `429` is pacing codeaf, not failing. What happens next depends
 entirely on **who** it says is out of room, and the two answers are different roads.
 
 **A rate limit that names a machine is a move, not a wait.** Routers usually do name one —
@@ -1308,10 +1308,10 @@ the limit is some provider's shared pool rather than your account, and it arrive
 request and another machine serving the same model is asked **at once, with no wait at
 all**, for as long as the turn's own patience lasts — **90 seconds** for a turn you are
 sitting in front of, four and a half minutes for a task's own call, nine for a standing
-pass. There is no count of attempts anywhere in this; see *How long aforge keeps trying*.
+pass. There is no count of attempts anywhere in this; see *How long codeaf keeps trying*.
 
 **A rate limit that names nobody is your whole account**, and there is no machine to step
-around: every machine behind the model is behind the same ceiling. aforge waits **once**,
+around: every machine behind the model is behind the same ceiling. codeaf waits **once**,
 for exactly as long as the answer itself asked for — capped at a minute, so a provider
 naming tomorrow morning does not park your turn, and not at all when it asked for nothing —
 and then moves to another model. A second machine would only spend the same allowance
@@ -1321,7 +1321,7 @@ longer account of both roads.
 
 **And a machine that goes on answering after you have stepped around it ends the walk.**
 When the next request says "not that one" and that one serves it anyway, routing cannot
-help this request, so aforge stops asking and hands the refusal up rather than buying the
+help this request, so codeaf stops asking and hands the refusal up rather than buying the
 same answer a third time.
 
 **When the patience runs out, the refusal goes back to your turn**, which moves to the
@@ -1362,10 +1362,10 @@ a rate limit was the one failure that moved nothing at all, so a pick made over 
 step was read only after something else had already rescued it. See *Can I switch models
 while it is replying* above, and *I changed the model but my task is still on the old one*.
 
-## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
+## The model kept refusing and codeaf moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
 
 Yes. **A model that will not take your request at all is given up on the same way a model
-that goes quiet is: aforge finishes the reply on the next model in your `fallback models`
+that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
 row**, or on the nearest same-class model in the catalog when you have written no row.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
@@ -1377,7 +1377,7 @@ the model would not take the request · asking again · 2 of 4
 ```
 
 **There is no count of tries.** The `2 of 4` is which machine behind your model is being
-asked, out of how many aforge knows of — so it counts down real places left to go, and it
+asked, out of how many codeaf knows of — so it counts down real places left to go, and it
 draws no number at all when nobody has named a set. What bounds the whole thing is the
 give-up above, one deadline in your own time: 90 seconds on a turn you are sitting in front
 of, four and a half minutes for a task's own call. A machine that named a comeback is
@@ -1418,7 +1418,7 @@ that was tried rather than advising a move you have already made:
 error: the model kept turning the request away: deepseek/deepseek-v4.1-flash was asked four times, and openai/gpt-5-mini could not finish it either. /model to pick another one yourself
 ```
 
-## A model with no machines, a key that was not accepted, a conversation too long — what aforge says instead of the router's error
+## A model with no machines, a key that was not accepted, a conversation too long — what codeaf says instead of the router's error
 
 **You never read the router's own sentence about a failed turn.** `API error (404): 0
 endpoints out of 1 requested are available matching your guardrail restrictions and data
@@ -1429,7 +1429,7 @@ on the record for an autopsy.
 
 These are the sentences and what each one means.
 
-| what you read | what happened | what aforge does |
+| what you read | what happened | what codeaf does |
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
 | `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
@@ -1439,7 +1439,7 @@ These are the sentences and what each one means.
 | `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
 
 **A model with no machines costs you nothing to discover twice.** The first turn that meets
-one moves on and aforge remembers it for as long as the program is running, so every later
+one moves on and codeaf remembers it for as long as the program is running, so every later
 turn skips it before a single request goes out and never offers it as a fallback. An answer
 from that model clears the memory again — a model with no machines this afternoon often has
 some next week, and nothing is written to disk.
@@ -1458,7 +1458,7 @@ at once with no retry and no move (see *"Provider returned error"* below).
 
 `Provider returned error` is your router saying that **somebody else refused** — it handed
 your request to one endpoint, that endpoint said no, and the router is passing the refusal
-along. On its own it explains nothing, so aforge now shows what came with it: the name of
+along. On its own it explains nothing, so codeaf now shows what came with it: the name of
 the endpoint that refused, and the first sentence of what *it* said.
 
 ```
@@ -1472,7 +1472,7 @@ three deliveries of the same request to the same endpoint — a measured run los
 to exactly that.
 
 **And a refusal that names no endpoint is not retried at all.** If the router refused on
-its own account, it read the request aforge built and said no to it — every endpoint alive
+its own account, it read the request codeaf built and said no to it — every endpoint alive
 would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
 three times. The turn ends immediately with the refusal instead. That is the whole rule:
 **named an endpoint → try another one; named nobody → stop**. It is not a list of status
@@ -1485,7 +1485,7 @@ turn that died left the file saying only that it had ended.
 
 ## My reply stopped and nothing was retried — a reply that broke is not carried on, and an empty reply is asked again
 
-A reply that ends **because a call failed** is not a reply that stopped early, and aforge no
+A reply that ends **because a call failed** is not a reply that stopped early, and codeaf no
 longer treats it as one. Two endings count as broken: the provider said it stopped on an
 error, and a reply that came back completely empty — no words, no tool call, nothing
 counted.
@@ -1498,7 +1498,7 @@ move. An empty reply is also written down as a **failed request** rather than as
 answer from the model, so what is on the file matches what happened.
 
 **An empty reply is asked again, straight away, and your turn carries on.** An endpoint that
-answers with nothing did not answer, so aforge sends the same request again — up to four
+answers with nothing did not answer, so codeaf sends the same request again — up to four
 tries in all — and there is no pause between them: the endpoint is up and fast and simply
 broken, and waiting eight seconds gets you the same nothing. What helps is being served by a
 different machine, which is what the next try asks for. Only when all four come back empty
@@ -1508,7 +1508,7 @@ stopped eighteen minutes in with hours of budget unspent.
 ## Where do I see that it is asking again — the retry rows in the conversation, gave up, moving to another model, and the request that did not answer in time
 
 **Every failed attempt at a request leaves a row where you are reading**, in the
-dim lane aforge writes everything about itself in. You do not have to be looking
+dim lane codeaf writes everything about itself in. You do not have to be looking
 at the status line at the moment it happens, and you do not lose the story by
 looking away:
 
@@ -1522,7 +1522,7 @@ looking away:
 The first three are **something still being done**. A row is three things: what
 went wrong, what is being done about it, and how far in it is.
 
-- **What went wrong** is aforge's own reading of the failure, in the same words
+- **What went wrong** is codeaf's own reading of the failure, in the same words
   everywhere: `nothing came back from the model`, `the model did not answer in
   time`, `the model went quiet`, `the reply lost its thread`, `the reply stopped
   part-way`, `the connection to the model dropped`, `the model would not take the
@@ -1532,7 +1532,7 @@ went wrong, what is being done about it, and how far in it is.
   another one — a different voice at a different price, which is why it is said
   before the text starts appearing.
 - **`2 of 4`** is which try this is out of how many that model gets. It is the
-  budget the run is actually walking rather than a number aforge holds, so it
+  budget the run is actually walking rather than a number codeaf holds, so it
   moves with your settings and with the kind of failure. **A row that is moving
   to another model carries no count**: the count belonged to the model being
   left, and beside a new name it would read as that new model's.
@@ -1547,7 +1547,7 @@ the next redraw. If nothing is being done any more, a row says so.
 **An error nobody tried again for is still just an error.** A turn that failed
 on its first and only attempt — a request too large for the window, a refusal of
 the request itself — draws `error: <what went wrong>`. "Gave up" is a claim about
-a struggle, and aforge does not make it about a single attempt.
+a struggle, and codeaf does not make it about a single attempt.
 
 **The status line has its own short form of the same event** while a second
 attempt is on the wire, with a count-up beside it — the words are in *The model
@@ -1560,7 +1560,7 @@ whose work keeps failing is not a page that says nothing has arrived yet.
 
 ## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
 
-If a reply ends without arriving, aforge says one sentence about it. There is
+If a reply ends without arriving, codeaf says one sentence about it. There is
 exactly one case where it says nothing, and that is when **you** stopped it: the
 screen already drew your stop, and repeating it back to you would be noise.
 
@@ -1594,7 +1594,7 @@ are gone, because nothing kept them.
 written is in the transcript that arrives with the conversation, and tasks that
 were running land `paused — it resumes` and start again from their checkpoint —
 so nothing is run a second time. This only ever fires on the one shape the
-conversation's own file ends in: your words, and then aforge stopping the turn
+conversation's own file ends in: your words, and then codeaf stopping the turn
 that was answering them with nothing said. A turn **you** stopped is never asked
 again, and neither is one that ended any other way — a conversation you left, a
 window that closed, an engine that was stopped while you were still in it, or a
@@ -1607,7 +1607,7 @@ for the screen: an error line is never replayed into a conversation, so a
 reopened conversation shows what was said and not a note about how the last turn
 ended. The model-call log names it too. A row that used to read `context
 canceled` now reads `context canceled (turn ended: taken over)`, which is the
-one thing an autopsy of a vanished reply needs and did not have. `aforge logs`
+one thing an autopsy of a vanished reply needs and did not have. `codeaf logs`
 is where to look.
 
 **A request cut out from under a turn that is still going is asked again rather
@@ -1630,12 +1630,12 @@ When the unattended door does take a stop, it names the window it believed had g
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
-Three different things used to look the same to aforge: **the connection** failed, **the
+Three different things used to look the same to codeaf: **the connection** failed, **the
 model** was not good enough, or **the work** could not be done. Only the middle one is worth
-paying more for, and aforge now tells them apart before it spends anything.
+paying more for, and codeaf now tells them apart before it spends anything.
 
 - **The connection.** Nobody answered, an endpoint refused, a reply came back empty, or a
-  tool call arrived mangled. aforge asks again on the *same* model and lets the router send
+  tool call arrived mangled. codeaf asks again on the *same* model and lets the router send
   it somewhere else. It never ends your turn and it never buys a dearer model — nothing
   about *who served* a request says anything about *who was asked*.
 - **The model.** The check read the finished work and said something was missing, and the
@@ -1655,7 +1655,7 @@ job. There is also a ceiling of **$2** on what the careful class may spend on on
 it the task comes back to you with its report instead of buying another round.
 
 **Where to read it afterwards.** Every one of these decisions writes a line into the session
-file saying which of the three it was and what aforge did about it, beside the failed
+file saying which of the three it was and what codeaf did about it, beside the failed
 request it was made about.
 
 ## The model was printing garbage — a reply that repeats itself, started repeating the same line over and over, or comes back as gibberish
@@ -1665,11 +1665,11 @@ until the token budget is gone, or words with two and three alphabets inside the
 happens most at long contexts, and it feeds itself — a bad reply goes back into the
 conversation, and the model reads its own nonsense before writing the next one.
 
-So aforge watches the reply as it arrives and cuts it where it went wrong. **None of that
+So codeaf watches the reply as it arrives and cuts it where it went wrong. **None of that
 text is kept**: it is not in the conversation, not in the session file, not sent back to
 the model, and it comes off your screen. A dim line says so —
 `the reply lost its thread · asking again · 2 of 2` — and the same question
-is asked **once** more. If the second reply comes apart too, aforge finishes it on the next
+is asked **once** more. If the second reply comes apart too, codeaf finishes it on the next
 model in your `fallback models` row, saying so first:
 
 ```
@@ -1715,7 +1715,7 @@ kilobyte of it.
 
 **The endpoint that served it loses standing.** A reply that had to be cut — because it lost
 its thread, because it came back as tool markup, or because it went quiet and never came
-back — is recorded against the endpoint that served it as an answer aforge could not use,
+back — is recorded against the endpoint that served it as an answer codeaf could not use,
 and that endpoint drops down the order for the requests that follow. So does an answer that
 came back with nothing in it at all. Its row in the provider fold then reads `bad replies` (see
 *What the note on a provider row means*). It is not a ban: the mark fades on its own over about
@@ -1725,9 +1725,9 @@ serving properly, which is the only evidence there could be.
 **Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
 or `off`, and the default is **on**. Off means you see whatever arrives, and keep whatever
 you stop. You can also just
-ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
+ask codeaf to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading. Setting `routing` to `off` or `simple` on the same tab stops aforge steering between endpoints
+reading. Setting `routing` to `off` or `simple` on the same tab stops codeaf steering between endpoints
 at all, and with it stops any of this being recorded.
 
 ## I stopped a reply and the text is gone — where the reply went after I hit esc, and why pressing escape on a broken reply deletes it
@@ -1748,7 +1748,7 @@ writing anything else — one bad minute from a provider becoming a bad afternoo
 conversation. Stopping it by hand used to hand you the mess as your own kept reply.
 
 **A reply you stopped that was still language is kept**, up to the word it stopped on,
-exactly as it always was. The judgement is the same one aforge makes on its own while a
+exactly as it always was. The judgement is the same one codeaf makes on its own while a
 reply arrives (*The model was printing garbage* above), so only the text that had actually
 stopped being language is dropped — and the line above is the only time you are told, which
 is how you can tell the two apart.
@@ -1765,9 +1765,9 @@ screen before you ask the next thing.
 Some providers serve a model without translating its private tool-calling syntax, and the
 model — asked to use a tool — writes the call as visible text: angle brackets, bars, a tool
 name, a run of JSON, and no answer anywhere in it. The reply is well-formed as far as the
-connection can tell, so without its own guard aforge would show it to you and keep going.
+connection can tell, so without its own guard codeaf would show it to you and keep going.
 
-aforge reads the finished reply's shape — mostly symbols, a tool it was actually offered
+codeaf reads the finished reply's shape — mostly symbols, a tool it was actually offered
 spelled inside the markup, and no real tool call attached — and cuts it. **None of the
 markup is kept**: not in the conversation, not sent back to the model. A dim line says
 
@@ -1892,12 +1892,12 @@ sum over exactly those requests — a smaller count beside it would be a bill di
 wrong number.
 
 **One request is not written down and so is not in either figure**: the one-token
-measurement sent while you are typing. Your provider bills it and aforge does not count
+measurement sent while you are typing. Your provider bills it and codeaf does not count
 it — there is a section on that below, `Spend that /cost does not show`.
 
 `empty reflex answers` appears only when that failure happened. Those requests remain in
 the token, call and spend totals because the provider billed them; the separate count says
-that the money bought no memory decision. aforge retries one such answer with more room,
+that the money bought no memory decision. codeaf retries one such answer with more room,
 then uses the configured low-tier model for the rest of this session if it is still empty.
 
 **Every line is dropped when its figure is absent.** A provider that publishes no cache
@@ -1927,7 +1927,7 @@ Two things follow from that:
 
 - A conversation whose transcript has no such lines yet — one written by an older build, or
   one that has genuinely never spent anything — reports only what has happened **since you
-  reopened it**. There is nothing to rebuild from, and aforge does not invent a figure.
+  reopened it**. There is nothing to rebuild from, and codeaf does not invent a figure.
 - `/new` starts a fresh conversation with a fresh file, so it starts at nothing. Resuming an
   old conversation is the opposite: it picks the old bill back up.
 
@@ -1940,7 +1940,7 @@ Yes — a file on disk, and **the spend place reads it**. Press `alt+3`, or `tab
 other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
-whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
+whole machine, `~/.codeaf/v3/usage.jsonl`, moved by `CODEAF_HOME` like everything else codeaf
 keeps. **One line per model call, written the moment that call's bill comes back** — the
 requests of a turn, and the calls made beside a turn such as naming a session or judging a
 route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
@@ -2147,7 +2147,7 @@ An unknown window has no threshold at all.
 ## The most tokens one request can carry — the model's own window, and the ceiling an endpoint puts on it
 
 **The threshold follows the model's own window.** On a model claiming 1,310,720 tokens,
-compaction fires at **1,114,112** — not at some smaller figure of aforge's choosing. On the
+compaction fires at **1,114,112** — not at some smaller figure of codeaf's choosing. On the
 default 128,000-token window it fires at 108,800. The line is always
 `window − max(15% of window, 16384)`, and `window` is what the model card says.
 
@@ -2157,7 +2157,7 @@ hour run, each at around a hundred thousand tokens, each one throwing the provid
 cache away. That ceiling is gone.
 
 **What can still lower it is an endpoint refusing.** If a provider answers that a request
-would not fit, aforge writes down how big that request was and never trusts that model past
+would not fit, codeaf writes down how big that request was and never trusts that model past
 that size again — in this conversation from the next check onward, and on this machine for
 good, because the note is kept in `model-quirks.json` beside your other settings. That is
 the one thing allowed to contradict a model card, and it is the only thing: a published
@@ -2178,9 +2178,9 @@ pass, this one runs **even when automatic compaction is switched off**. Fitting 
 preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
 `/compact` runs, and every message you typed survives it.
 
-**Accuracy note.** aforge also carries a shared context-budget package with a 60%-fill rule,
+**Accuracy note.** codeaf also carries a shared context-budget package with a 60%-fill rule,
 a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
-consumer is the sub-harness leaf sizing elsewhere in aforge. The chat's own law is the one
+consumer is the sub-harness leaf sizing elsewhere in codeaf. The chat's own law is the one
 above — do not describe this conversation as filling to 60%.
 
 ## A task or a worker on another model gets that model's window
@@ -2201,11 +2201,11 @@ smallest window this surface routes to and the safe direction for a guess to be 
 
 ## What happens before the conversation is compacted
 
-aforge does not jump straight to summarizing. There are rungs before it.
+codeaf does not jump straight to summarizing. There are rungs before it.
 
 **During one long turn, tool output has its own working-set bound.** Once the live request
 estimate crosses **64,000 tokens** — or half the trusted context window when that is smaller
-— aforge replaces already-seen tool results from that turn with the same readable pointer
+— codeaf replaces already-seen tool results from that turn with the same readable pointer
 lines described below. It works in whole tool batches, oldest first, while leaving the
 latest **20,000 tokens** verbatim (capped at a quarter of a smaller window). The result from
 the batch that just ran is never folded before the model has seen it, and neither your
@@ -2231,7 +2231,7 @@ the request is shortened, and only for results the model has already worked from
 batch and everything the running turn has produced go verbatim. A shortened result reads:
 
 ```
-[reduced view: bash · 41208 bytes · full: /home/x/.aforge/v3/projects/-you-work/<session>/logs/stubs/9c2f.txt]
+[reduced view: bash · 41208 bytes · full: /home/x/.codeaf/v3/projects/-you-work/<session>/logs/stubs/9c2f.txt]
 go build ./...
 …[40608 bytes elided]…
 FAIL	./internal/session	0.412s
@@ -2256,7 +2256,7 @@ are too much, the oldest fall back to the same one-line stub described next.
 line naming the tool, its first line, its size and where the whole of it lives:
 
 ```
-[tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.aforge/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
+[tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.codeaf/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
 ```
 
 The bytes are written to disk first, named by their own digest, and the model can `read`
@@ -2265,7 +2265,7 @@ them back at any time.
 project**: a stubbed result is the harness's own droppings, not your work. That holds for a
 task's worker too, however long the files it reads — its stubs are filed with the
 conversation that sent it out, not in the checkout it is working in. Only a conversation
-with no folder at all falls back to `<workspace>/.aforge-v3/stubs/`.
+with no folder at all falls back to `<workspace>/.codeaf/stubs/`.
 **The journal is never stubbed** — the record on disk keeps the whole result. An interrupted
 or failed turn is left alone, and a session with no workspace does nothing here.
 
@@ -2279,7 +2279,7 @@ sitting in a long conversation can stay whole for several turns and then vanish 
 alongside others.
 
 **What changes while you work is kept at the back, for the same arithmetic.** The two short
-notes aforge keeps in front of the model that move as the work moves — `<state>`, what this
+notes codeaf keeps in front of the model that move as the work moves — `<state>`, what this
 conversation is doing, and `<elsewhere>`, what other windows on this project have landed —
 are appended at the *end* of the conversation and never written into the system message,
 because a system message that changed would make every message behind it new again, while a
@@ -2289,16 +2289,16 @@ note at the end costs only the note.
 photographed: rendered verbatim to monospaced page images that the model reads back. No model
 call, nothing paraphrased. This rung is chosen only when you gave `/compact` no focus, there
 is a workspace, there is page budget, and the model in use can read images. Pages are 120
-columns by 64 lines, greyscale, deterministic, footed `<title> | context page 1 of 4`, and
-saved under `<workspace>/.aforge-v3/frames/`. The ceiling is **8 pages**; anything past it is
-folded to a marker after the pages.
+columns by 64 lines, greyscale, deterministic, and footed
+`<title> | context page 1 of 4`. The ceiling is **8 pages**; anything past it is folded to a
+marker after the pages.
 
 **Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
 **assistant** work is replaced by one marker line. It is not a summary: nothing is described
 and nothing is decided.
 
 ```
-[folded 43 messages · grep or read ~/.aforge/v3/projects/-you-work/<session>/journal.jsonl, lines 12..40]
+[folded 43 messages · grep or read ~/.codeaf/v3/projects/-you-work/<session>/journal.jsonl, lines 12..40]
 ```
 
 **Your own words are never folded.** A person's messages are the one thing in a transcript
@@ -2334,9 +2334,9 @@ every original line, and scrolling up above the boundary is given those rather t
 shortened copy — with one dim line, `· above here the model keeps a shortened record — you
 can still read it all`, where the two meet. What shrank is the model's copy, not yours (the
 screen page has the whole of that line's meaning, and the limit: a session compacted by an
-older aforge is still drawn from the shortened copy). The fold marker the model sees names
-that journal as a real path — `[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]`
-— so aforge can open the lines that left the window itself. *Where did the folded messages
+older codeaf is still drawn from the shortened copy). The fold marker the model sees names
+that journal as a real path — `[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]`
+— so codeaf can open the lines that left the window itself. *Where did the folded messages
 go* on the compacting page is the whole of that.
 
 Four ways a pass starts:
@@ -2369,7 +2369,7 @@ role in settings to point at a model for it.
 
 ## Turning automatic compaction off
 
-Launch with `aforge chat --no-compact` or `aforge resume --no-compact`. The flag's own help
+Launch with `codeaf chat --no-compact` or `codeaf resume --no-compact`. The flag's own help
 text reads `never compact automatically`.
 
 What it turns off is exactly the automatic threshold check. Still working:
@@ -2380,9 +2380,9 @@ What it turns off is exactly the automatic threshold check. Still working:
 With a `--host` remote launch the flag is **refused rather than ignored**, because it cannot
 travel to the other machine.
 
-## What am I allowed to spend — the limits aforge ships with, and turning them off
+## What am I allowed to spend — the limits codeaf ships with, and turning them off
 
-Every limit aforge ships with is a **backstop against something going wrong**, not a
+Every limit codeaf ships with is a **backstop against something going wrong**, not a
 budget. Nothing here is a number anybody chose for you, so all of them start large enough
 that ordinary work never reaches them.
 
@@ -2395,7 +2395,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
 | **per task** | `no limit of its own` | nothing of its own; a task spends against the day and this conversation |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
-| **practice** | `$50 of the day` | aforge's practice on itself stops until tomorrow, and your own work is untouched |
+| **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
 Above those six the tab leads with **`today`**, which is a reading and not a setting:
 `$3.42 of $500 · resets at midnight`, or `$3.42 · no limit` on a machine with no daily
@@ -2431,7 +2431,7 @@ Session · Context · Workspace · Display · Spending · Safety · Tasks · Pro
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
-tabs beside it: **Safety** is what aforge may do without asking you first (ask before
+tabs beside it: **Safety** is what codeaf may do without asking you first (ask before
 running, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
@@ -2472,8 +2472,8 @@ each row has a different word because each rail means something different at zer
 That is the emptiness law applied to money: `$0` would read as *zero dollars allowed*,
 which is the exact opposite of what it means on three of these four rows.
 
-**`practice` is the one row where `0` is not "no limit".** Zero turns aforge's
-self-practice **off** rather than uncapping it. Practice is work aforge does while nobody
+**`practice` is the one row where `0` is not "no limit".** Zero turns codeaf's
+self-practice **off** rather than uncapping it. Practice is work codeaf does while nobody
 is watching, so it is the one pocket that always has a bottom — there is no way to ask for
 unbounded practice, on purpose.
 
@@ -2518,7 +2518,7 @@ says the same thing whichever place you are standing on.
 `per plan` is the only money row that **asks rather than stops**, and its value says so:
 it reads `asks first above $100`, not a bare figure.
 
-When a planned job is estimated to cost more than that figure, aforge quotes the step
+When a planned job is estimated to cost more than that figure, codeaf quotes the step
 count and the price and waits for your go-ahead before any of it runs. Nothing has been
 spent at the moment it asks — the question comes before the first worker says a word — so
 holding it costs nothing. Answering it settles that job for good; you are not asked again
@@ -2556,7 +2556,7 @@ command takes. Where you *can* put a figure on one piece of work is the **compos
 `alt+enter` before you send a task, and its third line reads `it may spend up to $100.00
 before it asks`. Type a number there and that errand gets that ceiling — it stops before
 its next turn once it reaches it, and any adaptive run it starts is held to a tank no
-bigger. A task started any other way — `/task <brief>`, a proposal card, aforge's own
+bigger. A task started any other way — `/task <brief>`, a proposal card, codeaf's own
 hands — runs under the day's limit and this conversation's.
 
 `per standing run` beside it is the same kind of reading for a different reason: it reads
@@ -2603,9 +2603,9 @@ colour.
 
 One model id is served by many providers, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no provider is obliged to match it, and the fastest one often does not.
 
-**Left alone, aforge asks for nothing.** The **routing** row on the Providers tab ships as `simple`, and `simple` means the request carries no preference of aforge's own: with no provider pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the provider. Pin a provider and that pin is the whole request — that provider, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
+**Left alone, codeaf asks for nothing.** The **routing** row on the Providers tab ships as `simple`, and `simple` means the request carries no preference of codeaf's own: with no provider pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the provider. Pin a provider and that pin is the whole request — that provider, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
 
-It has not always been this way: until this build the shipped row was `latency`, and aforge asked for the fastest provider on your own turns and the cheapest on work you were not waiting on. That choosing was invisible — the one decision in a turn you could not see being made — so it is now something you turn on rather than something you turn off.
+It has not always been this way: until this build the shipped row was `latency`, and codeaf asked for the fastest provider on your own turns and the cheapest on work you were not waiting on. That choosing was invisible — the one decision in a turn you could not see being made — so it is now something you turn on rather than something you turn off.
 
 Setting **routing** yourself is how you turn it on, and it applies everywhere:
 
@@ -2618,31 +2618,31 @@ A change here takes effect on your **next message** — the row goes straight to
 that sends requests, so nothing waits for a relaunch. The `provider` row under it re-reads what
 `auto` means in the new word on the same frame.
 
-Under `latency` or `price`, where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the provider set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
+Under `latency` or `price`, where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, codeaf first widens the provider set while keeping the cap. Only if that wider request is refused too does codeaf lift the cap rather than fail the turn. Each change has its own attempt line.
 
-**Under `price`, one thing is not quite "speed is worth nothing".** Work you are not watching asks the router for the cheapest provider — but among the providers behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest provider wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
+**Under `price`, one thing is not quite "speed is worth nothing".** Work you are not watching asks the router for the cheapest provider — but among the providers behind that model, codeaf will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest provider wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
 
 **You can also name the provider yourself, under any row.** routing says what a request prefers; the **provider** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above. A pin is the one instruction `simple` sends.
 
 With `routing: off` there is nothing measured, so there is no provider to choose, no sheet of them to open under a model row, and no speed guard.
 
-## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
+## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what codeaf does
 
 On the default service, this sentence means the providers your request was down to were all excluded by your
 OpenRouter account's privacy setting, because their providers may train on prompts. It
 does not mean the model disappeared or that your prompt was rejected. The request can be
-down to one provider because aforge's price cap left only one, because it asked for one
+down to one provider because codeaf's price cap left only one, because it asked for one
 provider by name, or because its list of slow providers covered the rest.
 
-aforge answers it without ending your turn. A provider asked for by name is remembered as
+codeaf answers it without ending your turn. A provider asked for by name is remembered as
 out of reach for your account — for every model, for a day, across restarts — and the
 answer moves to another provider. So is the one provider the price cap left, when the
-router's count and aforge's list of providers agree on which it was. A price cap that only
-out-of-reach providers fit under is not sent at all, so the next turn is not refused. When there is nowhere left to move, aforge relaxes the
+router's count and codeaf's list of providers agree on which it was. A price cap that only
+out-of-reach providers fit under is not sent at all, so the next turn is not refused. When there is nowhere left to move, codeaf relaxes the
 endpoint filter and lets the router choose, then drops the cap and asks again. The attempt
 lines say `relaxed the endpoint filter` and then `dropped the price ceiling`. A rescue
 request or a request pinned to one provider never carries the cap, because that provider has
-already passed aforge's price choice. Once the price rung is reached, the cap stays off
+already passed codeaf's price choice. Once the price rung is reached, the cap stays off
 that model for the rest of this session.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
@@ -2662,7 +2662,7 @@ Some of them will not take a tool call at all; some stop writing at 65,000 token
 serve four-bit weights. Which provider answers you is often a bigger difference than which
 model you picked.
 
-aforge calls one of those a **provider** — older builds called it a *lane*, and the
+codeaf calls one of those a **provider** — older builds called it a *lane*, and the
 setting on disk still does — and you can see them and choose one.
 
 **Three rows on the Providers tab of `/settings` sit directly under **your model**, in
@@ -2682,7 +2682,7 @@ The tail on the model row is the provider **requests are actually going to**:
 your `provider` row is untouched, but nothing is asking for it any more —
 `openrouter` when you have asked for no provider at all, and `auto (cloudflare now)` — a
 prediction of where the next turn would land — only under `latency` or `price`, where
-aforge is the one choosing. Under the shipped `simple` row nobody here is predicting, so
+codeaf is the one choosing. Under the shipped `simple` row nobody here is predicting, so
 there is no tail, and a session that has measured nothing shows the model id alone too.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
@@ -2691,7 +2691,7 @@ provider in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        openrouter's own routing; aforge stays out
+   ● auto        openrouter's own routing; codeaf stays out
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
@@ -2699,7 +2699,7 @@ provider in force (`auto` when nothing is pinned):
 ```
 
 That is the `auto` row under the shipped `simple` row. Set **routing** to `latency` or
-`price` and it reads `router routes; aforge takes over if answers turn bad — cloudflare
+`price` and it reads `router routes; codeaf takes over if answers turn bad — cloudflare
 now · recommended` instead, because there it does.
 
 Each provider row reads, in order: its name, the wait before the first word, how fast it
@@ -2710,8 +2710,8 @@ window gives them up in — the sparkline goes first, and the note about capabil
 the uptime because `no tools` changes the answer you get. `←` or `tab` closes the providers
 again.
 
-`enter` on a provider **pins** it in your home: chat, `aforge do`, `aforge exec`, `aforge
-plan`, `aforge run` and background work all ask for that provider and nowhere else — unless
+`enter` on a provider **pins** it in your home: chat, `codeaf do`, `codeaf exec`, `codeaf
+plan`, `codeaf run` and background work all ask for that provider and nowhere else — unless
 the router says that provider cannot serve that model at all, which is the one thing that ends
 a pin without you. It says so once, in the conversation
 (`coreweave cannot serve this model; routing on auto for this model until you pin again`),
@@ -2728,9 +2728,9 @@ measured it opens all the same, onto the only two honest answers: `auto` and `op
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**Under `routing: simple` — the row aforge ships with — the `auto` row says something
-else, because it does something else.** It reads `openrouter's own routing; aforge stays
-out`, and it names no provider beside it: under that row nothing on aforge's side chooses,
+**Under `routing: simple` — the row codeaf ships with — the `auto` row says something
+else, because it does something else.** It reads `openrouter's own routing; codeaf stays
+out`, and it names no provider beside it: under that row nothing on codeaf's side chooses,
 so there is no provider it could honestly say the next turn will land on, and no `no
 rescue` note either, because there is no rescue running under any setting of the speed
 guard. The fold still opens and `enter` still pins: a pin is the one instruction that row
@@ -2754,7 +2754,7 @@ One note at most, and it is the thing that would spoil the answer soonest:
 
 | Note | What it means |
 |---|---|
-| `bad replies` | enough of its answers came back unusable that aforge would rather ask elsewhere |
+| `bad replies` | enough of its answers came back unusable that codeaf would rather ask elsewhere |
 | `no tools` | the provider does not honour a tool call — a fast wrong answer |
 | `out ≤ 65k` | it stops writing well before other providers do, so a long answer is cut |
 | `fp4` | it serves weights at a lower precision than the others |
@@ -2769,14 +2769,14 @@ about an hour on its own, and every usable answer the provider serves takes it f
 
 ## Where the numbers on a provider row come from — the sheet, and your own answers
 
-Every figure is aforge's own **belief** about that provider, never a raw published number.
+Every figure is codeaf's own **belief** about that provider, never a raw published number.
 It starts from the router's public sheet — first-token and throughput percentiles over
 the last half hour, over everybody's prompts — and every answer you get moves it toward
 what that provider did for **you**, from where you are, with the prompts you send.
 
-The belief also **forgets**: with nothing new arriving, aforge's confidence in it halves
+The belief also **forgets**: with nothing new arriving, codeaf's confidence in it halves
 about every ten minutes, so a provider that misbehaved once at breakfast is not held to it
-all day and there is no penalty box to let anything out of. What aforge believes about a
+all day and there is no penalty box to let anything out of. What codeaf believes about a
 provider's **answers** rather than its speed forgets more slowly — about an hour — because real
 requests are minutes apart and a belief that forgot faster than the evidence arrived would
 never be worth anything.
@@ -2828,7 +2828,7 @@ z-ai` is not a line saying the same thing twice: the model is spelled there as i
 basename, so the vendor half of its address (`z-ai/`) is not on the screen at all. Until
 2026-09-09 the rider was hidden in exactly that case, and what it produced was a name
 that came and went as the router moved between a vendor's own providers and everybody
-else's — which reads as aforge having lost track of who is answering. The `served` row on
+else's — which reads as codeaf having lost track of who is answering. The `served` row on
 `/status` and the phone sheet still leaves it out, because the line above it there is the
 model's whole routing address.
 
@@ -2847,7 +2847,7 @@ which is why no such rate is ever drawn as though it were now.
 
 Those two only appear together, and only when the **speed guard** is on.
 
-When an answer takes much longer to start than that provider normally takes, aforge asks
+When an answer takes much longer to start than that provider normally takes, codeaf asks
 the next-best provider the same question, and you read whichever one replies first.
 
 The moment the second request goes out, the status line says so and says **why**:
@@ -2864,11 +2864,11 @@ either way this is the only place the program calls anything slow, and it says i
 something is already being done about it.
 
 **A provider that REFUSED is not a provider that was slow, and the line says so.** When the
-router answers that the provider aforge asked for is not one that serves this model —
+router answers that the provider codeaf asked for is not one that serves this model —
 `No allowed providers are available for the selected model. … but your request's
 provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That provider is then finished for this model: it is not asked
-again, and it leaves the set aforge chooses from for thirty minutes. If the
+again, and it leaves the set codeaf chooses from for thirty minutes. If the
 provider the answer moved to refuses as well, the promise is withdrawn rather than left on
 the screen, and the row reads `nextbit refused`. If the second provider fails for any other
 reason, or the turn is stopped while it is out, the promise comes off too and the row goes
@@ -2877,7 +2877,7 @@ back to naming the provider that answered last.
 If the second provider wins, the line reads `via coreweave · rescued` for that answer once the
 request has finished, and goes back to normal on the next one.
 
-Whichever way it lands, the loser is cancelled and what it told aforge about that provider
+Whichever way it lands, the loser is cancelled and what it told codeaf about that provider
 is kept, so a rescue is also a free measurement.
 
 ## Speed guard — what it costs and when to turn it off
@@ -2891,18 +2891,18 @@ and nothing while an answer is already flowing normally.
 
 **Under the shipped `routing` row it buys no measurement.** `simple` sends what you asked
 for and nothing else, so the one-token measurement in the next section is not bought at
-all — nothing on aforge's side is choosing a provider for it to inform. Set **routing** to
+all — nothing on codeaf's side is choosing a provider for it to inform. Set **routing** to
 `latency` or `price` and it is bought again.
 
 Turn it off if you are paying for every token and never mind waiting. With it off, the
 `auto` row in the model picker says `no rescue`, so you can see the promise it is making
 — and the measurement described in the next section stops being bought as well. The two
-are one row because they are one promise: aforge may spend a little extra to keep an
+are one row because they are one promise: codeaf may spend a little extra to keep an
 answer moving.
 
-## Does aforge send anything while I am typing — the one-token measurement it sends before you press enter
+## Does codeaf send anything while I am typing — the one-token measurement it sends before you press enter
 
-While you are typing, and before you press enter, aforge sends **one token** to each of
+While you are typing, and before you press enter, codeaf sends **one token** to each of
 the two providers your next message would most likely go to, and times how long the first
 word took to come back. It does that for two reasons: the router's own published figures
 are a half-hour average over everybody's prompts, and this is a measurement of **your**
@@ -2914,10 +2914,10 @@ token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
 type — so a long message buys one, not one per keystroke. **None at all under the shipped
-`routing` row**: `simple` buys no measurements, because nothing on aforge's side is
+`routing` row**: `simple` buys no measurements, because nothing on codeaf's side is
 choosing a provider for them to inform. Also none when the **speed
 guard** is off, when `routing` is `off`, when the provider row says `openrouter`, when the
-pool is already backing off a rate limit, when aforge is still recovering a dropped
+pool is already backing off a rate limit, when codeaf is still recovering a dropped
 connection, or when **nobody is waiting on that model** — a task working on its own and
 an errand buy none, because the measurement exists to shorten a wait somebody is sitting
 through.
@@ -2926,16 +2926,16 @@ through.
 later does not wait on it, and a probe that fails teaches nothing and changes nothing.
 
 **It is not in `/cost`.** It is a real request to a real provider and your provider bills
-you for it, and aforge's own figures do not include it. The next section says why, what
+you for it, and codeaf's own figures do not include it. The next section says why, what
 it adds up to, and where to see it.
 
-## Spend that /cost does not show — why the typing measurement is missing from the figures, and how to stop aforge sending requests you did not ask for
+## Spend that /cost does not show — why the typing measurement is missing from the figures, and how to stop codeaf sending requests you did not ask for
 
-There is exactly one request aforge makes that its own money figures do not count: the
+There is exactly one request codeaf makes that its own money figures do not count: the
 **one-token measurement** it sends while you are typing, to warm the connection and time
 the provider your next message is heading for. Your provider bills you for it. `/cost`,
-the status line, the spend place (`alt+3`) and the total at the end of `aforge do` all
-leave it out, and so do the call-log rows and `aforge-census`.
+the status line, the spend place (`alt+3`) and the total at the end of `codeaf do` all
+leave it out, and so do the call-log rows and `codeaf-census`.
 
 **Why it is missing.** Those figures are all counts of the **call log**, and the
 measurement deliberately writes no row there — it skips the shaping, the retries and the
@@ -2950,7 +2950,7 @@ is actually sitting there waiting. An unbroken hour of typing is a few cents. It
 run in the background, and a task working on its own buys none.
 
 **How to see it anyway.** Every measurement it buys is appended to
-`~/.aforge/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
+`~/.codeaf/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
 probes. That file is the record of what was sent.
 
 **How to make it zero.** It is already zero on a home where nobody has touched
@@ -2974,16 +2974,16 @@ Settings → Providers has two rows under **routing**:
 
 | Value | What it does |
 |---|---|
-| `auto` | the router routes, and aforge takes over choosing the provider if its answers start coming back refused or unusable — handing it back once it has been well for a while |
-| `pinned: cloudflare` | every request goes to that provider and nowhere else, until the router says that provider cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
+| `auto` | the router routes, and codeaf takes over choosing the provider if its answers start coming back refused or unusable — handing it back once it has been well for a while |
+| `pinned: cloudflare` | every request goes to that provider and nowhere else, until the router says that provider cannot serve this model — then this model routes on auto for the rest of the run and codeaf says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
-| `openrouter` | no provider is asked for; the router balances on price, and aforge never takes over |
+| `openrouter` | no provider is asked for; the router balances on price, and codeaf never takes over |
 
-The pinned rungs are missing until aforge has measured something — there is no honest
+The pinned rungs are missing until codeaf has measured something — there is no honest
 provider to name yet, so the walk is `auto` ↔ `openrouter`.
 
 The **your model** row says which provider is answering it beside the model id — `pinned:
-cloudflare` once the choice is yours, and `auto (cloudflare now)` while it is aforge's,
+cloudflare` once the choice is yours, and `auto (cloudflare now)` while it is codeaf's,
 which under the shipped `simple` row it never is.
 `provider` and `routing` are different questions: routing is what every request **prefers**
 (fastest, cheapest, or nothing at all), and provider is which provider requests from your home
@@ -2993,7 +2993,7 @@ simple runs no choosing of its own for a slow answer to borrow. The `switch to a
 question a slow pinned provider raises still has somewhere to send you — it asks whether to
 let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
 the table above is the other rung that reads differently there: under `simple` nothing
-takes over, so the row says `openrouter's own routing; aforge stays out` in the fold and
+takes over, so the row says `openrouter's own routing; codeaf stays out` in the fold and
 the **your model** row drops its `auto (cloudflare now)` tail rather than name a provider
 nobody chose.
 
@@ -3001,9 +3001,9 @@ nobody chose.
 
 Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the provider that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one provider**. An provider that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold provider than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
 
-**This is something aforge does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of aforge's own at all, and asking for last time's provider is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Providers → **routing**.
+**This is something codeaf does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of codeaf's own at all, and asking for last time's provider is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Providers → **routing**.
 
-Under those two rows, aforge remembers which provider answered your last request and **asks for that same provider first on the next one**. It is a preference, not a demand: if that provider is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
+Under those two rows, codeaf remembers which provider answered your last request and **asks for that same provider first on the next one**. It is a preference, not a demand: if that provider is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 
 It moves off that provider when the provider stops earning it:
 
@@ -3022,7 +3022,7 @@ Each of your conversations keeps its own provider, and so does each worker on a 
 
 Some models cannot have their thinking pass switched off at all; the model list says so
 for each one (GLM 5.3, Gemini 3.7 Flash and Grok 4.6 were among them on 2026-08-28).
-Asking such a model to think less does not fail and is not ignored: aforge sends the
+Asking such a model to think less does not fail and is not ignored: codeaf sends the
 lowest thinking level the model offers instead of a switch-off it would refuse. That
 matters more than it sounds. Sent nothing at all, one of these models runs at its own
 published default — for GLM 5.3 that default is "max" — and can spend ten thousand tokens
@@ -3034,20 +3034,20 @@ The reply room is sized to match: thinking tokens count against the same ceiling
 answer, so the ceiling is grown by the share the chosen level takes (roughly a fifth at
 low, half at medium, four fifths at high), and the wait for the reply is sized from that
 same ceiling. If a model's list does not say how much it thinks, the first time an answer
-comes back empty with the whole ceiling spent, aforge remembers that model thinks
+comes back empty with the whole ceiling spent, codeaf remembers that model thinks
 regardless and leaves room from then on; it never remembers it on a guess.
 
-## Where are the logs of what aforge sent the model — the model-call log, and reading it with `aforge logs`
+## Where are the logs of what codeaf sent the model — the model-call log, and reading it with `codeaf logs`
 
-Every call aforge makes to a model writes a line to one file, always, with nothing to
-switch on first. It lives at `~/.aforge/logs/calls.jsonl` — beside the rest of what aforge
-keeps, and under `AFORGE_PROFILE_DIR` when you have moved that. Read it with:
+Every call codeaf makes to a model writes a line to one file, always, with nothing to
+switch on first. It lives at `~/.codeaf/logs/calls.jsonl` — beside the rest of what codeaf
+keeps, and under `CODEAF_PROFILE_DIR` when you have moved that. Read it with:
 
 ```
-aforge logs                 the last 40 calls, newest last
-aforge logs --tail 200      more of them
-aforge logs --follow        keep printing calls as they happen
-aforge logs --path          print the file and nothing else
+codeaf logs                 the last 40 calls, newest last
+codeaf logs --tail 200      more of them
+codeaf logs --follow        keep printing calls as they happen
+codeaf logs --path          print the file and nothing else
 ```
 
 One line per call, and it reads like this:
@@ -3060,7 +3060,7 @@ One line per call, and it reads like this:
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
-`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`, `satisfied`, and the errands aforge runs
+`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`, `satisfied`, and the errands codeaf runs
 for itself — `distill`, `narrate`, `title`, `consolidate`, `reflect`, `sentinel`, `quorum`,
 `morning-brief`, `craft-repair`, `craft-params`), which model was asked, **which endpoint
 was asked for and which one actually answered**, the thinking level and the **ceiling that
@@ -3069,7 +3069,7 @@ given room in front of the answer — how many messages and tools the request ca
 status it came back with, how long it took and **how long the first token took**, the
 deadline the wait was being held against, how it finished, **what it spent in tokens and
 what it cost**, anything that was **done about a silence**, and anything the refusal taught
-aforge about that model.
+codeaf about that model.
 
 **`auto→coreweave` is the router overriding a choice** — the endpoint asked for on the
 left, the one that answered on the right. When they are the same you see one name, and a
@@ -3110,17 +3110,17 @@ measurement nobody made. There is no single unlabelled `tok` figure any more: it
 completion count only, and a number that does not say which half it is cannot be checked
 against a bill or against a context window.
 
-## Find one call in the log — filtering `aforge logs` by run, call, tag, model or node
+## Find one call in the log — filtering `codeaf logs` by run, call, tag, model or node
 
 The filters are exact matches and they combine, so each one you add narrows further:
 
 ```
-aforge logs --tag turn            only the chat's own turns
-aforge logs --model z-ai/glm-5.3  only calls that asked for that model
-aforge logs --node build          only calls belonging to that piece of work
-aforge logs --call 4f2a91c7       one call — both its rows, out and back
-aforge logs --run r-7f3a          one run's calls
-aforge logs --tail 200 --follow --tag leaf    they work with everything else
+codeaf logs --tag turn            only the chat's own turns
+codeaf logs --model z-ai/glm-5.3  only calls that asked for that model
+codeaf logs --node build          only calls belonging to that piece of work
+codeaf logs --call 4f2a91c7       one call — both its rows, out and back
+codeaf logs --run r-7f3a          one run's calls
+codeaf logs --tail 200 --follow --tag leaf    they work with everything else
 ```
 
 `--call` takes the eight-character call id and is the one filter that shows you **both** rows
@@ -3152,9 +3152,9 @@ search came back empty, and only an id you pasted is something you believed was 
 ## Show me the raw rows, and open one call's body
 
 ```
-aforge logs --json                 the matching rows exactly as they are on disk
-aforge logs --json --tag leaf      and only the leaf calls
-aforge logs --body 4f2a91c7        what that call sent and what came back
+codeaf logs --json                 the matching rows exactly as they are on disk
+codeaf logs --json --tag leaf      and only the leaf calls
+codeaf logs --body 4f2a91c7        what that call sent and what came back
 ```
 
 `--json` is a passthrough, not a rendering. It prints the file's own lines, one per line,
@@ -3163,8 +3163,8 @@ it is that another program — `jq`, a script, a spreadsheet — is reading what
 filters apply first, so `--json --tag leaf` is exactly the leaf rows and nothing else.
 
 `--body` takes a call id and prints the request and reply that were recorded for it,
-looking first in the run trace (`~/.aforge/logs/trace/<run>/calls/<id>.json`) and then in
-the kept-failure folder (`~/.aforge/logs/failures/<id>.json`). **Neither is written yet.**
+looking first in the run trace (`~/.codeaf/logs/trace/<run>/calls/<id>.json`) and then in
+the kept-failure folder (`~/.codeaf/logs/failures/<id>.json`). **Neither is written yet.**
 The switch that fills the trace and the always-on keeping of a failed call are both still
 being built, so today `--body` almost always prints:
 
@@ -3173,7 +3173,7 @@ no body recorded for 4f2a91c7
 ```
 
 That is the truthful answer and not a fault. Until those land, the way to get the exact
-bytes is `AFORGE_CALL_LOG_BODIES=1`, described below, which puts them on the log line
+bytes is `CODEAF_CALL_LOG_BODIES=1`, described below, which puts them on the log line
 itself.
 
 **A call still running shows as `⋯ in flight`.** That is the reason a line is written when
@@ -3193,24 +3193,24 @@ to act to" as infinity, which JSON cannot write, so the figure came off the row 
 the sentence explained it. It no longer produces one, and a row that is short of a
 figure now simply says nothing.
 
-**The headless waiting line reads the same record.** When `aforge do` has nothing new to
+**The headless waiting line reads the same record.** When `codeaf do` has nothing new to
 say it prints `still waiting: … · last call <model> <n> ago`, and that `last call` is the
 newest answer this process has heard — the call log's own memory, kept even with the file
 switched off — not the moment the work was booked. A worker ten minutes into its work says
 `last call … 1s ago`, because that is what is true.
 
 The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. With
-`AFORGE_CALL_LOG_BODIES=1` the live file is allowed 256 MB instead — a body-bearing
+`CODEAF_CALL_LOG_BODIES=1` the live file is allowed 256 MB instead — a body-bearing
 line is tens of kilobytes and the ordinary cap would turn over after a few dozen
-calls. `aforge doctor` names the file and its size. Set `AFORGE_CALL_LOG=off` to
-write nothing at all, or `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere
+calls. `codeaf doctor` names the file and its size. Set `CODEAF_CALL_LOG=off` to
+write nothing at all, or `CODEAF_CALL_LOG=/some/path.jsonl` to put it somewhere
 you can watch.
 
 ## A log row says "let go of because you chose another model" — what that row is, did my call fail, was I charged for it
 
 **Nothing failed, and the row is there on purpose.** It is written when you name
 another model while a request is out that had given you nothing back — see *Can I
-switch models while it is replying* above. aforge let that request go and asked the
+switch models while it is replying* above. codeaf let that request go and asked the
 model you chose instead, and the row is the record of the one it let go of:
 
 ```
@@ -3219,18 +3219,18 @@ let go of because you chose another model
 
 - **It is not a failure and nothing is broken.** Your own word is what ended that
   request. The reply you eventually read is on the model you picked.
-- **It is written down because it cost something.** aforge had already reached a
+- **It is written down because it cost something.** codeaf had already reached a
   machine and may have been charged for getting there, and a long step that is later
   read back should show where every second and every cent went — a request that
   simply vanished from the log would make the arithmetic on that step wrong.
-- **It does not say your turn stopped.** Rows that mean *aforge itself ended the
+- **It does not say your turn stopped.** Rows that mean *codeaf itself ended the
   turn* carry a door (`person stopped`, `taken over`); this one carries none,
   because the turn carried on. Anything reading the log to ask "did this turn end"
   will not count it.
 - **You will see one per pick**, so picking twice inside one wait writes two rows and
   each names the request it ended.
 
-## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
+## What does the total at the end of codeaf do include — the last line, and why the printed cost should match the call log
 
 A headless run prints one last line, under the answer and any files or lines it learned:
 
@@ -3248,7 +3248,7 @@ the request, the plan model's reading of what the request states, the planning p
 worker's own calls, and the delivery gate at the end. It is summed out of the run's own
 usage ledger once the work has stopped moving, rather than guessed at from a day's total.
 
-**So it equals the call log's end rows to the cent.** Add up the `$` on the rows in `aforge
+**So it equals the call log's end rows to the cent.** Add up the `$` on the rows in `codeaf
 logs` that came back — the end rows, never the `⋯ in flight` starts, which have no cost
 yet — and you get the printed figure. When the two disagree, the receipt is the one that is
 wrong: a total under its own ledger is worse than no total at all.
@@ -3270,7 +3270,7 @@ When you genuinely need the exact bytes — a request the endpoint refused for a
 nothing else explains, a reply that came back malformed — run one session with:
 
 ```
-AFORGE_CALL_LOG_BODIES=1 aforge
+CODEAF_CALL_LOG_BODIES=1 codeaf
 ```
 
 Every line then also carries `request_body` and `response_body`, whole and unedited: your
@@ -3280,7 +3280,7 @@ itself. The live file is allowed 256 MB with this pin on (32 MB without it), so 
 session keeps the bodies you asked for rather than rotating them away after a few dozen
 calls.
 
-That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
+That pin is also the old spelling of one switch — `CODEAF_DEBUG=1`, `--debug`, or `/debug`
 in a conversation — which keeps the **debug record** of a run in a folder of its own.
 The bodies live there now (each model call under `calls/`, each tool call and each
 choice on `events.jsonl`), so this file can stay small enough to grep and a long run
@@ -3298,7 +3298,7 @@ is five lines rather than one slow one.
 ## Why did a provider error keep the same endpoint?
 
 A provider can accept a request and later end its reply with
-`finish_reason=error`. aforge treats that as a failed request, including when
+`finish_reason=error`. codeaf treats that as a failed request, including when
 the provider sends no separate error message. It releases the automatic cache
 preference, records the failure, and leaves recovery to the existing bounded
 retry policy. That failed generation does not teach a successful provider
@@ -3316,16 +3316,16 @@ speed because the local outage was not time spent generating an answer.
 
 ## Why a small model gets a shorter page and fewer tools — the lean profile
 
-On a model with a small context window, aforge sends a smaller set of
+On a model with a small context window, codeaf sends a smaller set of
 instructions and a smaller tool list. Nobody is asked to choose: the
 `prompt profile` row is `auto` out of the box and works it out. Lean applies in
 exactly three cases, and nothing else:
 
 - the model's context window is under 32,000 tokens — the figure the catalog or
   the endpoint reports, which is what a local runner like llama.cpp, ollama or
-  LM Studio tells aforge about the model it has loaded; or
+  LM Studio tells codeaf about the model it has loaded; or
 - the `prompt profile` row under `models` in `/settings` says `lean`; or
-- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command, which pins it
+- you put `CODEAF_PROMPT_PROFILE=lean` in front of the command, which pins it
   for that one launch and holds the row read-only while it is set.
 
 Lean changes four things:
@@ -3366,10 +3366,10 @@ for the `worker` seat, and including when you then choose that same model in
 chat. Open weights are a licence, not a size.
 
 A model you run yourself usually is small, and it is recognised by the window it
-reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
+reports, not by its name: llama.cpp, ollama and LM Studio all tell codeaf the
 window the loaded model was given.
 
-The `prompt profile` row and `AFORGE_PROMPT_PROFILE` both overrule the window,
+The `prompt profile` row and `CODEAF_PROMPT_PROFILE` both overrule the window,
 in the same three words. The next section says which wins.
 
 ## The prompt profile setting — choosing lean or full yourself
@@ -3383,20 +3383,20 @@ words:
   reports.
 - **`full`** sends everything whatever the model reports.
 
-**A change lands the next time aforge starts.** The profile is settled once when
+**A change lands the next time codeaf starts.** The profile is settled once when
 a conversation opens, because it decides the page and the tool list every
 request in that conversation is sent with.
 
-**`AFORGE_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
-`AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
+**`CODEAF_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
+`CODEAF_PROMPT_PROFILE=lean` or `CODEAF_PROMPT_PROFILE=full` in front of the
 command and that launch uses it; the settings row goes read-only for as long as
 the variable is set and says which variable owns it, exactly as every other
-pinned row does. `AFORGE_PROMPT_PROFILE=auto` puts the window back in charge for
+pinned row does. `CODEAF_PROMPT_PROFILE=auto` puts the window back in charge for
 that launch. Any other value is not a pin at all: your row stands and, if it is
 `auto`, the window decides as usual.
 
 **When to touch it.** Almost never — the window is right almost every time. The
 case it is there for is an endpoint that reports a window its loaded model does
-not really have, which is where `lean` is you telling aforge the truth. `full`
+not really have, which is where `lean` is you telling codeaf the truth. `full`
 is the other direction: a small window you would rather spend on the whole tool
 list than on the conversation.

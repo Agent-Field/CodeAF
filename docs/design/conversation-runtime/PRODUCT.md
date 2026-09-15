@@ -1,4 +1,4 @@
-# Aforge product brief
+# codeaf product brief
 
 This is a proposed product direction, not a description of shipped behavior. It derives from the owner's request on 2026-09-04; the existing branch is evidence about implementation problems, not product authority.
 
@@ -22,7 +22,7 @@ One assistant, several simultaneous threads of work. The user commissions outcom
 
 ## Platform and operating context
 
-The immediate surface is Aforge's terminal chat. The interaction model should also transfer to a graphical client. Closing a client detaches from ongoing work. Running while the machine is powered off requires another execution host and is not promised by local persistence.
+The immediate surface is codeaf's terminal chat. The interaction model should also transfer to a graphical client. Closing a client detaches from ongoing work. Running while the machine is powered off requires another execution host and is not promised by local persistence.
 
 ## Proposed principles
 

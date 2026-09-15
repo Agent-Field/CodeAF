@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── THE FUNNEL LAWS ─────────────────────────────────────────────────────────
@@ -557,7 +557,7 @@ func TestEveryRoleInTheTableHasACallSite(t *testing.T) {
 // otherwise collide, as in this package — and both are the same import, so the
 // alias is read rather than assumed.
 func funnelLaneImport(file *ast.File) string {
-	const path = `"github.com/Agent-Field/aforge-v2/internal/lane"`
+	const path = `"github.com/Agent-Field/codeaf/internal/lane"`
 	for _, imported := range file.Imports {
 		if imported.Path.Value != path {
 			continue

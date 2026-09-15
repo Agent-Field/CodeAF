@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	graphstore "github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	graphstore "github.com/Agent-Field/codeaf/internal/store"
 )
 
 func workspace(t *testing.T) *Workspace {
@@ -137,7 +137,7 @@ func TestRecallSurfacesActiveSkillKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := history.ActivateSkill(candidate.Seq, "/home/test/.aforge/skills/repo-audit"); err != nil {
+	if err := history.ActivateSkill(candidate.Seq, "/home/test/.codeaf/skills/repo-audit"); err != nil {
 		t.Fatal(err)
 	}
 

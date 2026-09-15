@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // commandWall bounds the whole application of one command — every model call
@@ -80,7 +80,7 @@ const stalledReceipt = "I couldn't get this planned — " + ranOutOfTime + " twi
 // it. The same phrase has to appear in the sentences here — the stage note a
 // stalled command shows while it is tried again, and the receipt it ends on —
 // and in every planning fault a person reads on the way there
-// ([pool.CauseInWords], which cmd/aforge's plan notes go through). Two constants
+// ([pool.CauseInWords], which cmd/codeaf's plan notes go through). Two constants
 // saying the same thing would drift the day one of them was reworded.
 const ranOutOfTime = pool.RanOutOfTime
 

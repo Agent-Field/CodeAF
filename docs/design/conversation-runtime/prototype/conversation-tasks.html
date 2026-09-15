@@ -1,4 +1,4 @@
-<div id="af-conversation-tasks" aria-label="Aforge conversation and tasks prototype">
+<div id="af-conversation-tasks" aria-label="codeaf conversation and tasks prototype">
   <style>
     #af-conversation-tasks { --af-bg:light-dark(#f8f9fb,#171a20); --af-surface:light-dark(#eef1f5,#1e222a); --af-ink:light-dark(#303b4c,#c6cdda); --af-dim:light-dark(#526178,#a0aabd); --af-line:light-dark(#cbd2dc,#39414e); --af-accent:light-dark(#315d87,#9dc3e6); --af-ok:light-dark(#42602e,#a3be8c); --af-ask:light-dark(#73439a,#c6a1e6); color:var(--af-ink); font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; }
     #af-conversation-tasks * { box-sizing:border-box }
@@ -75,7 +75,7 @@
   </style>
   <div class="af-demo"><span>Interactive concept · simulated work</span><button type="button" data-action="advance">Advance demo task</button></div>
   <div class="af-window">
-    <header class="af-top"><span class="af-brand">aforge <span class="af-project">/ acme-api</span></span><button class="af-mobile-tasks" type="button" data-action="toggle-tasks" aria-expanded="false">Tasks · 2</button><span class="af-project">Conversation + tasks</span></header>
+    <header class="af-top"><span class="af-brand">codeaf <span class="af-project">/ acme-api</span></span><button class="af-mobile-tasks" type="button" data-action="toggle-tasks" aria-expanded="false">Tasks · 2</button><span class="af-project">Conversation + tasks</span></header>
     <div class="af-layout">
       <main class="af-main"><nav class="af-crumb" aria-label="Current conversation"></nav><div class="af-content"></div><form class="af-compose"><label for="af-task-message"></label><select aria-label="Message recipient"></select><textarea id="af-task-message" rows="2" placeholder="Keep thinking here…"></textarea><div class="af-actions"><button type="button" data-action="offload">Run as task</button><button type="button" data-action="send" class="af-primary">Send</button></div><div class="af-live" role="status" aria-live="polite"></div></form></main>
       <aside class="af-rail" aria-label="Tasks in this conversation"><h3>Tasks <span class="af-meta af-count"></span></h3><div class="af-task-list"></div><p class="af-rail-note">Work continues while you’re in the conversation.</p></aside>
@@ -88,10 +88,10 @@
     const $=selector=>root.querySelector(selector);
     const state={view:'main',recipient:'main',drafts:{main:''},expanded:{},mobile:false,nextId:3,layout:'rail'};
     const tasks=[
-      {id:'auth',title:'Fix authentication retry',state:'running',phase:'Checking refresh-token behavior',revision:1,assignment:'Fix refresh-token retries. Keep the change on a branch.',branch:'fix/auth-retry',messages:[{who:'Aforge',text:'I reproduced a retry that refreshes the token twice. I’m checking the behavior for existing clients before changing it.'}],activity:['Reproduced duplicate refresh requests','Traced retry handling through the session client'],result:false},
-      {id:'docs',title:'Update setup documentation',state:'done',phase:'2 files changed',revision:1,assignment:'Update local setup instructions and commit them on a feature branch.',branch:'docs/local-setup',messages:[{who:'Aforge',text:'Updated the local setup instructions and checked both example commands.'}],activity:['Updated README.md and docs/setup.md','Checked both example commands'],result:true}
+      {id:'auth',title:'Fix authentication retry',state:'running',phase:'Checking refresh-token behavior',revision:1,assignment:'Fix refresh-token retries. Keep the change on a branch.',branch:'fix/auth-retry',messages:[{who:'codeaf',text:'I reproduced a retry that refreshes the token twice. I’m checking the behavior for existing clients before changing it.'}],activity:['Reproduced duplicate refresh requests','Traced retry handling through the session client'],result:false},
+      {id:'docs',title:'Update setup documentation',state:'done',phase:'2 files changed',revision:1,assignment:'Update local setup instructions and commit them on a feature branch.',branch:'docs/local-setup',messages:[{who:'codeaf',text:'Updated the local setup instructions and checked both example commands.'}],activity:['Updated README.md and docs/setup.md','Checked both example commands'],result:true}
     ];
-    const conversation=[{who:'You',text:'Fix refresh-token retries. Keep the change on a branch.'},{task:'auth'},{who:'You',text:'While that runs, how should session expiry work?'},{who:'Aforge',text:'We can keep the session policy separate from retry behavior. The task is handling the retry fix; we can decide here when a session should expire.'}];
+    const conversation=[{who:'You',text:'Fix refresh-token retries. Keep the change on a branch.'},{task:'auth'},{who:'You',text:'While that runs, how should session expiry work?'},{who:'codeaf',text:'We can keep the session policy separate from retry behavior. The task is handling the retry fix; we can decide here when a session should expire.'}];
     const task=id=>tasks.find(t=>t.id===id);
     const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const target=()=>state.view==='main'?state.recipient:state.view;
@@ -146,16 +146,16 @@
       if(!text){say(asTask?'Describe the work to start a task.':'Write a message first.');$('textarea').focus();return;}
       state.drafts[id]='';
       if(asTask){
-        const newId='work'+state.nextId++;tasks.push({id:newId,title:text.length>58?text.slice(0,55)+'…':text,state:'running',phase:'Working through the assignment',revision:1,assignment:text,branch:'task/'+newId,messages:[{who:'Aforge',text:'The assignment is here. You can keep talking in the conversation while this task runs.'}],activity:['Assignment received'],result:false});
+        const newId='work'+state.nextId++;tasks.push({id:newId,title:text.length>58?text.slice(0,55)+'…':text,state:'running',phase:'Working through the assignment',revision:1,assignment:text,branch:'task/'+newId,messages:[{who:'codeaf',text:'The assignment is here. You can keep talking in the conversation while this task runs.'}],activity:['Assignment received'],result:false});
         conversation.push({who:'You',text},{task:newId});render();say('Task started. You are still in the conversation.');
       }else if(id==='main'){
-        conversation.push({who:'You',text},{who:'Aforge',text:'Added to our conversation. Your tasks continue alongside it.'});render();say('Sent to conversation.');
+        conversation.push({who:'You',text},{who:'codeaf',text:'Added to our conversation. Your tasks continue alongside it.'});render();say('Sent to conversation.');
       }else{
         const t=task(id);t.messages.push({who:'You',text});
         if(t.state==='done'){t.pendingDirection=text;t.activity.push('Follow-up saved');}
         else{t.revision++;t.assignment+='\n\nDirection: '+text;t.activity.push('Direction received · revision '+t.revision);}
         if(t.state==='needs-input'){t.state='running';t.phase='Applying your direction';}
-        t.messages.push({who:'Aforge',text:t.state==='stopped'?'Direction saved. This task is still stopped.':t.state==='done'?'Follow-up saved with the result. Continue work to start another execution.':'Direction received. I’ll carry it into the remaining work.'});
+        t.messages.push({who:'codeaf',text:t.state==='stopped'?'Direction saved. This task is still stopped.':t.state==='done'?'Follow-up saved with the result. Continue work to start another execution.':'Direction received. I’ll carry it into the remaining work.'});
         render();say(`Sent to ${t.title} · received`);
       }
       $('textarea').focus();
@@ -170,7 +170,7 @@
       if(action==='toggle-tasks'){state.mobile=!state.mobile;render();return;}
       if(action==='stop'){t.pausedState=t.state;t.state='stopped';t.phase='Stopped · work and conversation kept';t.activity.push('Stopped at your request');render();say('Task stopped. Its work is kept.');return;}
       if(action==='resume'){const prior=t.state;t.state=prior==='stopped'?(t.pausedState||'running'):'running';t.phase=t.state==='needs-input'?'Compatibility decision needed':'Continuing from saved work';if(prior==='done'){t.revision++;if(t.pendingDirection){t.assignment+='\n\nDirection: '+t.pendingDirection;t.pendingDirection='';}t.result=false;}t.activity.push('Execution resumed');render();say(t.state==='needs-input'?'Task resumed; your decision is still needed.':'Task resumed.');return;}
-      if(action==='answer'){t.compatibility=b.dataset.answer.startsWith('Keep');t.messages.push({who:'You',text:b.dataset.answer},{who:'Aforge',text:'Decision received. I’ll continue with that direction.'});t.assignment+='\n\nDecision: '+b.dataset.answer;t.revision++;t.state='running';t.phase='Checking the agreed behavior';t.activity.push('Your decision was received');render();say('Decision received. Task resumed.');return;}
+      if(action==='answer'){t.compatibility=b.dataset.answer.startsWith('Keep');t.messages.push({who:'You',text:b.dataset.answer},{who:'codeaf',text:'Decision received. I’ll continue with that direction.'});t.assignment+='\n\nDecision: '+b.dataset.answer;t.revision++;t.state='running';t.phase='Checking the agreed behavior';t.activity.push('Your decision was received');render();say('Decision received. Task resumed.');return;}
       if(action==='advance'){
         const current=task(state.view);const next=current&&current.state==='running'?current:tasks.find(x=>x.state==='running');if(!next)return;
         if(next.id==='auth'&&next.revision===1){next.state='needs-input';next.phase='Compatibility decision needed';next.activity.push('Paused for your compatibility decision');}

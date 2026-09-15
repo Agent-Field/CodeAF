@@ -37,7 +37,7 @@ package tui3
 // still names the key, because the key still works: it is how a person gets OFF
 // absence.
 
-import "github.com/Agent-Field/aforge-v2/internal/effort"
+import "github.com/Agent-Field/codeaf/internal/effort"
 
 func init() {
 	registerHomeBand(homeBand{

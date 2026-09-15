@@ -32,7 +32,7 @@ func anotherWindow(t *testing.T, root string) string {
 			StartedAt: started, Files: []string{"notes/" + intToString(id) + ".md"},
 		})
 	}
-	return machineSession(t, root, "here", "theirs", "docs pass", "/work/aforge", 4242, time.Second, parts...)
+	return machineSession(t, root, "here", "theirs", "docs pass", "/work/codeaf", 4242, time.Second, parts...)
 }
 
 func intToString(n int) string {
@@ -52,9 +52,9 @@ func intToString(n int) string {
 // of its own for any part. Asserted on the exact string of the tool's answer.
 func TestTheTasksToolFoldsAnotherWindowsPartsOntoTheirHead(t *testing.T) {
 	root := t.TempDir()
-	mine := machineSession(t, root, "here", "mine", "this chat", "/work/aforge", 4242, time.Second)
+	mine := machineSession(t, root, "here", "mine", "this chat", "/work/codeaf", 4242, time.Second)
 	anotherWindow(t, root)
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 
 	answer, _, err := agent.tasksTool().Execute(t.Context(), nil)
 	if err != nil {

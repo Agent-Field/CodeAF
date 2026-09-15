@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/profile"
 )
 
 // The floor is what a piece costs before it does any work, and it is quoted to

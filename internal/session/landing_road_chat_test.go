@@ -252,7 +252,7 @@ func TestAChatsWakeForALandedTaskCarriesTheMergeOutcome(t *testing.T) {
 		title:   "port the parser",
 		report:  "ported it and the tests pass",
 		changed: []string{"parser.go", "parser_test.go"},
-		branch:  "aforge/task-1-port-the-parser",
+		branch:  "codeaf/task-1-port-the-parser",
 		merge:   mergeMerged,
 	})
 
@@ -262,7 +262,7 @@ func TestAChatsWakeForALandedTaskCarriesTheMergeOutcome(t *testing.T) {
 		for _, want := range []string{
 			"task 1 done: port the parser",
 			"changed: parser.go, parser_test.go",
-			"its branch aforge/task-1-port-the-parser merged into yours",
+			"its branch codeaf/task-1-port-the-parser merged into yours",
 		} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("the woken turn cannot say what landed — it does not carry %q:\n%s", want, text)
@@ -293,7 +293,7 @@ func TestAChatsWakeForAYourCallLandingAsksForTheDecision(t *testing.T) {
 		title:   "port the parser",
 		report:  "ported it; the check could not be run",
 		changed: []string{"parser.go"},
-		branch:  "aforge/task-1-port-the-parser",
+		branch:  "codeaf/task-1-port-the-parser",
 		merge:   mergeKept,
 		state:   TaskUnverified,
 	})

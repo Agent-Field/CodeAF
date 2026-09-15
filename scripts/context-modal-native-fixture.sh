@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a deterministic context-browser tree and emit genuine terminal mouse reports.
-# This script never launches aforge, changes an existing profile, or contacts an engine.
+# This script never launches codeaf, changes an existing profile, or contacts an engine.
 set -euo pipefail
 
 usage() {

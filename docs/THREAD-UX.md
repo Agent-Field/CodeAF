@@ -121,7 +121,7 @@ becomes where you go when a card invites you deeper.
   subtree, both existing queries.
 - The head's snapshot doctrine is unchanged — cards are the *user's* read
   of the workforce; the head keeps its own.
-- Attach/replay: because cards are derived, `aforge attach` and any future
+- Attach/replay: because cards are derived, `codeaf attach` and any future
   web lens render the same thread-with-cards from the same journal. The
   TUI is one renderer of a store-shaped truth, which is what keeps this
   Apple-like instead of Apple-themed: the polish is in the model, so every

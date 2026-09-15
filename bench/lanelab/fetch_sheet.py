@@ -56,8 +56,8 @@ def fetch(model):
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {key}",
         "Accept": "application/json",
-        "HTTP-Referer": "https://github.com/Agent-Field/aforge-v2",
-        "X-Title": "aforge lanelab",
+        "HTTP-Referer": "https://github.com/Agent-Field/codeaf",
+        "X-Title": "codeaf lanelab",
     })
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:

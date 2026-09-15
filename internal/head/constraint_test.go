@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // The instruction #427 was measured on, verbatim.
@@ -47,7 +47,7 @@ func TestOnlyAConstraintThePersonWroteSurvivesTheCompile(t *testing.T) {
 	}
 }
 
-// A CONSTRAINT MUST NEVER LIVE ONLY IN ASSUMPTIONS. `aforge do` discards them —
+// A CONSTRAINT MUST NEVER LIVE ONLY IN ASSUMPTIONS. `codeaf do` discards them —
 // the one-shot surface's law is that the caller's sentence is the specification
 // and the compiler's own decisions are not (resident.keepTheAskVerbatim) — so a
 // rule duplicated into that field is a rule that surface silently drops.

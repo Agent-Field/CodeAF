@@ -1,11 +1,11 @@
-//go:build aforge_packed_manual
+//go:build codeaf_packed_manual
 
 package manual
 
 import (
 	_ "embed"
 
-	"github.com/Agent-Field/aforge-v2/internal/packed"
+	"github.com/Agent-Field/codeaf/internal/packed"
 )
 
 // The shipped binary carries the generated archives, not the raw Markdown.

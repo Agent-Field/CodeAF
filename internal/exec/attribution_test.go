@@ -12,7 +12,7 @@ import (
 // footer that lost a utm parameter cannot be counted — either would pass a test
 // that only looked for the word "attribution".
 var attributionStrings = []string{
-	"Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>",
+	"Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>",
 	"Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author",
 	"Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author",
 	// THE COMMENT LINE IS PINNED THE HARDEST OF THE FOUR, because every part of

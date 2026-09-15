@@ -1,5 +1,45 @@
 # Working in this repo
 
+## The name
+
+The product is `codeaf`, lowercase, and has had that one spelling since
+2026-09-14 — sentence starts, titles, release names, the wordmark and `--help`
+included. `CodeAF`, `Codeaf` and `CODEAF` outside an environment variable's name
+are not spellings of it.
+
+`internal/namelaw` is the gate. It reads every Go source under `cmd`, `internal`
+and `bench`, the build and workflow and script surfaces, both manual corpora,
+the session prompts and the documents an agent is pointed at, and it fails the
+pull request naming the file and the line that brought a retired spelling back.
+
+## The old name, and the three places it is still allowed
+
+codeaf was called `aforge` until 2026-09-14, in a repository named `aforge-v2`;
+`openaf` was a planned name that never shipped and never named a release. A
+memory older than that date will spell both, and so will a machine that has been
+running this program for a while.
+
+Three places may still say them, and nothing else may:
+
+- **The record.** `CHANGELOG.md`, `docs/changes/`, `docs/design/`, the captured
+  screen frames, `bench-results/`, `audit-notes/` and everything under a
+  `testdata` directory say what was true on the day they were written.
+- **The compatibility seams.** On first start codeaf tries to adopt `~/.aforge`
+  into `~/.codeaf` and leave a link behind; if the move itself fails, it carries
+  on reading the old folder. An `AFORGE_*` variable is still read when its
+  `CODEAF_*` spelling is unset or empty, and `.aforge-v3/config.json` in a
+  repository is still read. Persisted and on-the-wire identifiers permanently
+  keep their former bytes so old and new builds continue to communicate. Every line
+  that has to spell the old name for one of those reasons carries the marker
+  comment `legacy-name`, which is the ONLY way a live Go or shell line is
+  allowed to say it.
+- **The one page that explains it.** A Markdown section whose `## ` heading
+  contains the words *old name* — `internal/manual/chat/starting-codeaf.md` has
+  it — is where a person who asks "what happened to aforge?" is answered.
+
+A `CodeAF` in this org's Slack and benchmarks is a DIFFERENT PROGRAM (the
+swe-pro coding harness, whose variables carry `KNOB`); ours never do.
+
 ## Which surface is which
 
 One chat surface lives here, beside the resident that shares its binary and the
@@ -8,7 +48,7 @@ before you read.
 
 | Path | What it is |
 | --- | --- |
-| `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
+| `internal/tui3` | **v3 — the live surface.** Entry `cmd/codeaf/chatv3.go`. Bare `codeaf` and `codeaf chat` both open it. |
 | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
 | `internal/tui2` | REMOVED as a surface on 2026-08-31, and its compositor, its `blocks` engine and its model picker followed. What remains (`tokens`, `prose`, `reltime`, and `modelui`'s model words) is the shared component library v3 draws with. |
 | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
@@ -75,11 +115,11 @@ convention. `.github/rulesets/` holds the rules ready to apply.
 
 ## Build and ship — the owner's standing orders
 
-- **Always build with `make build`**, which writes `bin/aforge`. Never a bare
-  `go build -o` to some other path: `bin/aforge` is the ONE binary the owner
+- **Always build with `make build`**, which writes `bin/codeaf`. Never a bare
+  `go build -o` to some other path: `bin/codeaf` is the ONE binary the owner
   runs, and every stray copy becomes a shadow that rolls them back silently
-  (the root `./aforge` did it once, `~/.agentfield/bin/aforge` did it again on
-  2026-08-24 — if a shipped feature "stopped working", run `which -a aforge`
+  (the root `./codeaf` did it once, `~/.agentfield/bin/codeaf` did it again on
+  2026-08-24 — if a shipped feature "stopped working", run `which -a codeaf`
   and `shasum` before debugging anything).
 - Rebuild after every merge. Never `cp` over a binary that may be running —
   `rm` first, then install — or the next launch dies with `Killed: 9`.
@@ -105,16 +145,16 @@ and the rule that changing any cap changes the doc in the same commit — are in
 
 `make demo-home` builds a **throwaway home with something on every place** — three
 projects, twelve conversations, standing orders, memories, a fourteen-day spending
-ledger — and opens `bin/aforge` against it with `HOME` pointed there. Use it when you
-want to SEE a page full: on a machine that has just started using aforge the standing,
+ledger — and opens `bin/codeaf` against it with `HOME` pointed there. Use it when you
+want to SEE a page full: on a machine that has just started using codeaf the standing,
 memory and spend pages correctly draw nothing, which is indistinguishable from a page
-that is broken. It never touches `~/.aforge`. The seeder is `cmd/aforge-demo-home` and
+that is broken. It never touches `~/.codeaf`. The seeder is `cmd/codeaf-demo-home` and
 `docs/design/home-rethink/HANDOFF.md` says what is in the fixture and how to add to it.
 
 ```sh
 make demo-home                                       # a fresh one, in a temp directory
-make demo-home DEMO_HOME=/tmp/aforge-demo            # somewhere you can name
-make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is already there
+make demo-home DEMO_HOME=/tmp/codeaf-demo            # somewhere you can name
+make demo-home DEMO_HOME=/tmp/codeaf-demo KEEP=1     # open the one that is already there
 ```
 
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
@@ -122,7 +162,7 @@ make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is alre
 `internal/manual/chat/` is v3's own account of itself, compiled into the binary. The
 running chat reads it with the `manual` tool to answer "what can you do?", "what does this
 key do?", "why did you just do that?". It is the **only** authoritative source about
-aforge for the model: its training data does not contain this program, so anything not in
+codeaf for the model: its training data does not contain this program, so anything not in
 those pages is something the chat will either improvise or deny having.
 
 **So: if you add, change, or remove a feature, you update the pages in the same change.**
@@ -162,7 +202,7 @@ Rules for the pages themselves:
   on the page. Never describe half-built machinery as though it worked.
 - **When you make something possible, hunt down the page that says it isn't.** The gates
   check that a name is *mentioned*, never that the claim around it is true — a tool named
-  in a "what aforge cannot do" section satisfies them perfectly while lying. So a lane that
+  in a "what codeaf cannot do" section satisfies them perfectly while lying. So a lane that
   lands a capability greps the corpus for the old denial and removes it in the same change.
   `generate_image` was documented as impossible right up until the wave that shipped it.
 - The chat's corpus may not use resident vocabulary (`alt+1`, the board, the self page,
@@ -305,7 +345,7 @@ about **seventeen minutes** (most of it one subtest waiting out a five-minute
 standing pass). The whole tagged package does not fit in forty minutes —
 ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
 budget — so `make test-e2e` gives it two hours. It SKIPS
-rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
+rather than fails with no key, no tmux or no `bin/codeaf`, so run `make build`
 first. **The key is resolved the way the product resolves one** — `liveKey` in
 `internal/e2e/livekey_test.go` goes through `config.APIKeyAt`, so
 `OPENROUTER_API_KEY`, `OPENAI_API_KEY` and the profile's own `api_key` row all
@@ -337,7 +377,7 @@ vetoes cover all of them — and asserts the router refuses that at most once. O
 2026-09-03 against `deepseek/deepseek-v4-flash` and its sixteen machines, dev
 `713945e3b` paid 8 refusals over 36 calls and the fix paid 1 over 23 (#586). It
 SKIPS green without `OPENROUTER_API_KEY`; the package's `TestMain` re-roots
-`AFORGE_HOME`, so the profile's key is not found and the variable is the way in.
+`CODEAF_HOME`, so the profile's key is not found and the variable is the way in.
 `internal/lane` has the sibling live test, `-run TestReal`.
 
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:

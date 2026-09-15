@@ -20,7 +20,7 @@ const (
 	// would throw away a leaf already running.
 	//
 	// IT IS A LOSS GATE AND NOT A SPEND RAIL — it asks before work is thrown
-	// away, never before work is bought — so raising it makes aforge ask LESS.
+	// away, never before work is bought — so raising it makes codeaf ask LESS.
 	// A quarter of a dollar was under the price of a single turn, which made
 	// every cancellation a confirmation, and a confirmation that always appears
 	// is one nobody reads. Five dollars is where the work being discarded is

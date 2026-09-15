@@ -131,8 +131,8 @@ func TestCleanCaptionKeepsTokenPunctuationAndSentenceBoundaries(t *testing.T) {
 		},
 		{
 			name: "dot inside a path without a sentence end",
-			line: "searching ~/.aforge/v3/projects for the transcript",
-			want: "searching ~/.aforge/v3/projects for the transcript",
+			line: "searching ~/.codeaf/v3/projects for the transcript",
+			want: "searching ~/.codeaf/v3/projects for the transcript",
 		},
 		{
 			name: "real sentence boundary",

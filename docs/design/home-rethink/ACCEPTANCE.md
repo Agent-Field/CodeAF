@@ -1,8 +1,8 @@
 # Acceptance — the home rethink, walked on a machine with things on it
 
 2026-08-25, lane OPENS-acceptance. Every block below is `tmux capture-pane -p`, verbatim,
-from `bin/aforge` built by `make build` at this branch's tip and run against a **throwaway
-fixture home** — never the owner's `~/.aforge`. Long runs of blank frame rows are collapsed
+from `bin/codeaf` built by `make build` at this branch's tip and run against a **throwaway
+fixture home** — never the owner's `~/.codeaf`. Long runs of blank frame rows are collapsed
 to `… N blank rows …` and nothing else is edited.
 
 ## The fixture this was walked on
@@ -13,12 +13,12 @@ what the surface read is what the product's own writers produce.
 
 | What | How much |
 | --- | --- |
-| projects | 3 — `~/aforge-v2`, `~/pricing-site`, `~/infra` |
+| projects | 3 — `~/codeaf`, `~/pricing-site`, `~/infra` |
 | conversations | 12, three of them archived; one stopped on a question in its `presence.json`, one holding a running task |
 | task index | 7 rows across the three buckets — one running, four landed, one failed 8 days back, two landed today |
-| standing orders | 4 in `~/.aforge/v3/standing/*.json` — one on `asks first`, one fired today with a check line and `earning trust 3/5`, one paused, one rule (`holds`) |
-| memory | 10 memories over the three shelves, in `~/.aforge/graph.db`, with every conversation's turns in the searchable index |
-| usage ledger | 42 lines over 14 days across three models and four roles, in `~/.aforge/v3/usage.jsonl` |
+| standing orders | 4 in `~/.codeaf/v3/standing/*.json` — one on `asks first`, one fired today with a check line and `earning trust 3/5`, one paused, one rule (`holds`) |
+| memory | 10 memories over the three shelves, in `~/.codeaf/graph.db`, with every conversation's turns in the searchable index |
+| usage ledger | 42 lines over 14 days across three models and four roles, in `~/.codeaf/v3/usage.jsonl` |
 
 One thing the fixture had to learn: **a project under `/tmp` is litter to the launch sweep**
 (`internal/session/sweep.go`'s `sweepTTL`), so the first build lost its two oldest archived
@@ -34,7 +34,7 @@ holding, and a **file a conversation left behind** in the artifacts index. Their
 below are that walk's captures and replace the first walk's; every other screen's block is
 the first walk's, untouched.
 
-A second thing that fixture had to learn: **the projects root is `<aforge home>/v3/projects`**
+A second thing that fixture had to learn: **the projects root is `<codeaf home>/v3/projects`**
 (`internal/session/sweep.go`'s `placesDirName`), not `v3/places`. A fixture written to the
 wrong folder opens on a home with one row on it — the conversation the launch itself made —
 and looks exactly like a surface that cannot read the disk.
@@ -59,23 +59,23 @@ and looks exactly like a surface that cannot read the disk.
 ## 1a · the flat list, 120 columns
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ codeaf                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 10 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
-? The Tab Bar's Counts                                      aforge-v2 asks: which of the two folds should stay open? 40m
+? The Tab Bar's Counts                                      codeaf asks: which of the two folds should stay open? 40m
 ⠸ The Certificate Rotation                                                                      infra 1 task running 20m
-○ Porting the Picker                                                                                        aforge-v2 2m
-○ Why the Frame Jumps                                                                                       aforge-v2 3h
+○ Porting the Picker                                                                                        codeaf 2m
+○ Why the Frame Jumps                                                                                       codeaf 3h
 ○ Pricing Research                                                                                       pricing-site 3h
 ○ The Annual Toggle                                                                                      pricing-site 5h
-○ Reading the Ledger                                                                                        aforge-v2 1d
+○ Reading the Ledger                                                                                        codeaf 1d
 ○ What the Discount Means                                                                                pricing-site 1d
 ▸ 2 more, quiet since aug 23
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+ › say what you want done                                                                              here ~/codeaf
  type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
@@ -91,46 +91,46 @@ Captured with the two live conversations' presence files allowed to go stale, wh
 a machine looks like when nothing is running and nothing is asking.
 
 ```
- aforge                                            $2.60 / $20.00 · tue 10:48pm
+ codeaf                                            $2.60 / $20.00 · tue 10:48pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────
 
-○ Porting the Picker                                                aforge-v2 4m
+○ Porting the Picker                                                codeaf 4m
 ○ The Certificate Rotation                                             infra 22m
-○ The Tab Bar's Counts                                             aforge-v2 42m
-○ Why the Frame Jumps                                               aforge-v2 3h
+○ The Tab Bar's Counts                                             codeaf 42m
+○ Why the Frame Jumps                                               codeaf 3h
 ○ Pricing Research                                               pricing-site 3h
 ○ The Annual Toggle                                              pricing-site 5h
-○ Reading the Ledger                                                aforge-v2 1d
+○ Reading the Ledger                                                codeaf 1d
 ○ What the Discount Means                                        pricing-site 1d
 ▸ 2 more, quiet since aug 23
         … 8 blank rows …
 ────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                      here ~/aforge-v2
+ › say what you want done                                      here ~/codeaf
  type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
 **Matches.** No ledger, no accent, no headings, no `want you` or `moving` clause — every
 row is `○`, and eight rows plus a fold is the whole screen. The money segment survives
 because this fixture HAS spent money today; on a machine that has spent nothing the clause
-is absent and the line is `aforge` and the clock, which is what 1c draws.
+is absent and the line is `codeaf` and the clock, which is what 1c draws.
 
 ## 1d · 200 columns, the card
 
 ```
- aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
+ codeaf                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 11 chats · what wants you first                                                                   alt+g group by project · alt+q hide the quiet ones    The Tab Bar's Counts
-? The Tab Bar's Counts                 aforge-v2 wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
+? The Tab Bar's Counts                 codeaf wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
 ⠙ The Certificate Rotation                                                                                                  infra 1 task running 20m    …ge-v2 · open in another window · waiting on you
-○ Porting the Picker                                                                                                                    aforge-v2 2m
-○ Why the Frame Jumps                                                                                                                   aforge-v2 3h    it is stopped on you
+○ Porting the Picker                                                                                                                    codeaf 2m
+○ Why the Frame Jumps                                                                                                                   codeaf 3h    it is stopped on you
 ○ Pricing Research                                                                                                                   pricing-site 3h    Add a --report-only mode so the report can be
-○ Standing Up the Watches                                                                                                               aforge-v2 5h    regenerated without re-running the sweep?
+○ Standing Up the Watches                                                                                                               codeaf 5h    regenerated without re-running the sweep?
 ○ The Annual Toggle                                                                                                                  pricing-site 5h    1 allow once · 2 always · 3 deny
-○ Reading the Ledger                                                                                                                    aforge-v2 1d    enter open and talk
+○ Reading the Ledger                                                                                                                    codeaf 1d    enter open and talk
 ▸ 3 more, quiet since aug 24
                                                                                                                                                         work
                                                                                                                                                         ✓ count the tabs                           $0.42
@@ -143,7 +143,7 @@ is absent and the line is `aforge` and the clock, which is what 1c draws.
                                                                                                                                                         → verbs: allow once, always, put it away, new c…
         … 18 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
 › Add a --report-only mode so the report can be regenerated without re-running the sweep?                                                                               1 allow once · 2 always · 3 deny
  type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
@@ -171,11 +171,11 @@ The card column is narrower than the design's, so its longest lines cut with `�
 ## 1e · tasks
 
 ```
- aforge                                                                                                     tue 10:46pm
+ codeaf                                                                                                     tue 10:46pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-work aforge ran on its own. 7 since aug 12, $2.98 of it.
+work codeaf ran on its own. 7 since aug 12, $2.98 of it.
 
 running
 › ◐ rotate the staging certificate                                                          the certificate rotation now
@@ -192,18 +192,18 @@ earlier
         … 18 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  1 running · 3 done today · 3 earlier
- › say what you want done                                                                              here ~/aforge-v2
+ › say what you want done                                                                              here ~/codeaf
  enter go inside it · type to filter · tab next place
 ```
 
 At 80 columns the middle clause gives way and the money and age stay:
 
 ```
- aforge                                                             tue 10:47pm
+ codeaf                                                             tue 10:47pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────
 
-work aforge ran on its own. 7 since aug 12, $2.98 of it.
+work codeaf ran on its own. 7 since aug 12, $2.98 of it.
 
 running
 › ◐ rotate the staging certificate                  the certificate rotation now
@@ -220,18 +220,18 @@ earlier
         … 18 blank rows …
 ────────────────────────────────────────────────────────────────────────────────
  1 running · 3 done today · 3 earlier
- › say what you want done                                      here ~/aforge-v2
+ › say what you want done                                      here ~/codeaf
  enter go inside it · type to filter · tab next place
 ```
 
 **Matches.** Grouped by what you do next, the section words are the design's
 (`running`, `done today`, `earlier`), the failed row wears `✕` and `gave up, said why`, the
-head sentence is 1e's (`work aforge ran on its own. 7 since aug 12, $2.98 of it.`) and the
+head sentence is 1e's (`work codeaf ran on its own. 7 since aug 12, $2.98 of it.`) and the
 count line sits just above the composer.
 
 > **The head line changed under 3d.** The window's edge is now said ONCE per frame: where the
 > frame has room for the control, the span sits between its arrows and the sentence reads
-> `work aforge ran on its own. 7, $2.98 of it.`; where it does not, the sentence keeps its
+> `work codeaf ran on its own. 7, $2.98 of it.`; where it does not, the sentence keeps its
 > `since aug 12` clause. The capture above is the first walk's and predates it — 3d's block
 > has the current one.
 
@@ -244,7 +244,7 @@ conversation holds, and a foot may not name a key that does nothing.
 ## 1g · typing offers places
 
 ```
- aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
+ codeaf                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
         … 23 blank rows …
@@ -256,7 +256,7 @@ conversation holds, and a foot may not name a key that does nothing.
   infra
   ⠦ The Certificate Rotation                                                                                                         1 running · 20m
 
-  aforge-v2
+  codeaf
   ? The Tab Bar's Counts                                                                                                        waiting on you · 40m
   ○ Standing Up the Watches                                                                                                                       5h
 
@@ -265,7 +265,7 @@ conversation holds, and a foot may not name a key that does nothing.
 › + start a new conversation: "sta"
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › sta                                                                                                                                                                             here ~/a/w/aforge-v2
+ › sta                                                                                                                                                                             here ~/a/w/codeaf
  enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · tab next place · esc clear
 ```
 
@@ -294,11 +294,11 @@ on it draws no clause at all, and a day nothing fired drops the firing half.
 The chip is on the box row of every place, and it says where what you type will land. On
 home it is the project the cursor is standing on; everywhere else it is this window's own.
 
-On home the box row reads `› say what you want done` … `here ~/aforge-v2`. On spend, with
+On home the box row reads `› say what you want done` … `here ~/codeaf`. On spend, with
 something typed into it:
 
 ```
- aforge                                                                                                     tue 10:47pm
+ codeaf                                                                                                     tue 10:47pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -322,7 +322,7 @@ what ran it · by the model, and the role it named
 · anthropic/claude-sonnet-4-5 · title █████ 6 calls · 77.4k                                                        $0.30
         … 15 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › cut the opus                                                                                        here ~/aforge-v2
+ › cut the opus                                                                                        here ~/codeaf
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
@@ -334,19 +334,19 @@ what ran it · by the model, and the role it named
 **Matches.** **Fixed in this lane:** home's chip drew the raw absolute path
 (`here <repo>`) while every other place drew the short form, so
 one fact was spelled two ways on two frames a `tab` apart. Home now shortens it the way
-`app.placePath` already did, and both read `here ~/aforge-v2` — the design's own spelling.
+`app.placePath` already did, and both read `here ~/codeaf` — the design's own spelling.
 
 **What is NOT built is SCREEN 2e**, and the capture above is the evidence: typing on spend
 gives you the composer with its chip, and none of 2e's layer — the page behind does not dim,
 there is no `it will run on its own and tell you when it lands` lead with `a task`
-right-flushed, none of the three facts (`· in ~/aforge-v2, on master`, `· execution runs on
+right-flushed, none of the three facts (`· in ~/codeaf, on master`, `· execution runs on
 opus 4.1`, `· it may spend up to $2.00 before it asks`), and the foot is the router's line
 rather than `alt+enter send it off · enter talk about it first · esc back to spend`.
 
 ## 2c · spend
 
 ```
- aforge                                                                                                                                                                                      wed 2:08am
+ codeaf                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -363,11 +363,11 @@ what ran it · by the model, and the role it was bound to
 what it was for
 · check the release feed every morning · standing · 45 firings                                                                                                                                     $0.85
 · price-the-tiers · pricing-site · a task                                                                                                                                                          $0.82
-· porting the picker · aforge-v2 · a conversation                                                                                                                                                  $0.79
+· porting the picker · codeaf · a conversation                                                                                                                                                  $0.79
 ▸ 1 more
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
@@ -411,7 +411,7 @@ change is under 3d below.
 ## 2d · memory
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ codeaf                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -427,7 +427,7 @@ shelves · biggest first                              fact 4 · preference 3 · 
 ▸ this machine · 3  mostly facts · 3 new today                                                                       now
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+ › say what you want done                                                                              here ~/codeaf
  enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc close
 ```
 
@@ -457,13 +457,13 @@ absent because the store has no workspace column; the three shelves here are `yo
 ## 2f · standing
 
 ```
- aforge                                                                                                     tue 10:46pm
+ codeaf                                                                                                     tue 10:46pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   standing orders                                                                                       shift+← aug 25 →
   for this project
-› ◦ tell me when CI goes red on aforge-v2                                              asks first · every twenty minutes
+› ◦ tell me when CI goes red on codeaf                                              asks first · every twenty minutes
   everywhere
   ◦ always run gofmt before you say a change is done                                                               holds
   in other projects
@@ -471,7 +471,7 @@ absent because the store has no workspace column; the three shelves here are `yo
   ∙ remind me to write the weekly update                                                             asks first · paused
         … 25 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+ › say what you want done                                                                              here ~/codeaf
  enter open where it was asked · → pause · stop · not here · tab next place · esc
 ```
 
@@ -484,23 +484,23 @@ own flagged deviation and CLAUDE.md's product-wall rule.
 ## 3b · the map
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ codeaf                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
   1 home   2 tasks   3 standing   4 memory   5 spend   6 search   7 settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 10 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
-? The Tab Bar's Counts                                      aforge-v2 asks: which of the two folds should stay open? 40m
+? The Tab Bar's Counts                                      codeaf asks: which of the two folds should stay open? 40m
 ⠧ The Certificate Rotation                                                                      infra 1 task running 20m
-○ Porting the Picker                                                                                        aforge-v2 2m
-○ Why the Frame Jumps                                                                                       aforge-v2 3h
+○ Porting the Picker                                                                                        codeaf 2m
+○ Why the Frame Jumps                                                                                       codeaf 3h
 ○ Pricing Research                                                                                       pricing-site 3h
 ○ The Annual Toggle                                                                                      pricing-site 5h
-○ Reading the Ledger                                                                                        aforge-v2 1d
+○ Reading the Ledger                                                                                        codeaf 1d
 ○ What the Discount Means                                                                                pricing-site 1d
 ▸ 2 more, quiet since aug 23
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                              here ~/aforge-v2
+ › say what you want done                                                                              here ~/codeaf
  alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close
 ```
 
@@ -511,20 +511,20 @@ their digits in the cells they were already in, and the hint line becomes the ch
 ## 3c · the verb strip
 
 ```
- aforge                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
+ codeaf                                                                                                                                             1 want you · 1 moving · $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 11 chats · what wants you first                                                                   alt+g group by project · alt+q hide the quiet ones    The Certificate Rotation
-? The Tab Bar's Counts                 aforge-v2 wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
+? The Tab Bar's Counts                 codeaf wants to Add a --report-only mode so the report can be regenerated without re-running the sweep 40m
 ⠦ The Certificate Rotation                                                                                                  infra 1 task running 20m    …e/work/infra · open in another window · working
  a put it away   t new chat here   o open folder   c copy path
-○ Porting the Picker                                                                                                                    aforge-v2 2m
-○ Why the Frame Jumps                                                                                                                   aforge-v2 3h    work
+○ Porting the Picker                                                                                                                    codeaf 2m
+○ Why the Frame Jumps                                                                                                                   codeaf 3h    work
 ○ Pricing Research                                                                                                                   pricing-site 3h    ⠦ rotate the staging certificate
-○ Standing Up the Watches                                                                                                               aforge-v2 5h      ◐ running
+○ Standing Up the Watches                                                                                                               codeaf 5h      ◐ running
 ○ The Annual Toggle                                                                                                                  pricing-site 5h
-○ Reading the Ledger                                                                                                                    aforge-v2 1d    last active 20m
+○ Reading the Ledger                                                                                                                    codeaf 1d    last active 20m
 ▸ 3 more, quiet since aug 24
                                                                                                                                                         → verbs: put it away, new chat here, open folde…
         … 26 blank rows …
@@ -569,11 +569,11 @@ has room.
 The tasks place, with its control:
 
 ```
- aforge                                                                                                                                                                                      wed 2:08am
+ codeaf                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-work aforge ran on its own. 7, $2.98 of it.                                                                                                                   shift+← aug 13 – aug 26 →  shift+↑ coarser
+work codeaf ran on its own. 7, $2.98 of it.                                                                                                                   shift+← aug 13 – aug 26 →  shift+↑ coarser
 
 done today
 › ✓ port the picker                                                                                                             porting the picker 7 files · the picker reads the registry now $1.63 30m
@@ -588,21 +588,21 @@ earlier
         … 25 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  1 done today · 6 earlier
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  enter go inside it · type to filter · tab next place
 ```
 
 `shift+←` there pages back a fortnight, and the head line keeps its place:
 
 ```
- aforge                                                                                                                                                                                      wed 2:08am
+ codeaf                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-work aforge ran on its own. nothing.                                                                                                                          shift+← jul 30 – aug 12 →  shift+↑ coarser
+work codeaf ran on its own. nothing.                                                                                                                          shift+← jul 30 – aug 12 →  shift+↑ coarser
         … 37 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  type to filter · tab next place
 ```
 
@@ -611,7 +611,7 @@ to lead BOTH halves of this row, so the label a person moves and the label they 
 two runs of one line:
 
 ```
- aforge                                                                                                                                                                                      wed 2:08am
+ codeaf                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -628,11 +628,11 @@ what ran it · by the model, and the role it was bound to
 what it was for
 · check the release feed every morning · standing · 45 firings                                                                                                                                     $0.85
 · price-the-tiers · pricing-site · a task                                                                                                                                                          $0.82
-· porting the picker · aforge-v2 · a conversation                                                                                                                                                  $0.79
+· porting the picker · codeaf · a conversation                                                                                                                                                  $0.79
 ▸ 1 more
         … 23 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
@@ -643,27 +643,27 @@ page back was off the screen. The place tells the two apart now (`spendPage.held
 as the tasks place already did:
 
 ```
- aforge                                                                                                                                                                                      wed 2:08am
+ codeaf                                                                                                                                                                                      wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 nothing spent                                                                                                                                                 shift+← jul 30 – aug 12 →  shift+↑ coarser
         … 37 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
 And standing, whose header is the one this helper was generalised from:
 
 ```
- aforge                                                                                                                                                                     $1.63 / $20.00 · wed 2:08am
+ codeaf                                                                                                                                                                     $1.63 / $20.00 · wed 2:08am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   standing orders                                                                                                                                                      shift+← aug 26 →  shift+↑ coarser
   for this project
-› ◦ tell me when CI goes red on aforge-v2                                                                                                                              asks first · every twenty minutes
+› ◦ tell me when CI goes red on codeaf                                                                                                                              asks first · every twenty minutes
   everywhere
   ◦ always run gofmt before you say a change is done                                                                                                                                               holds
   in other projects
@@ -671,7 +671,7 @@ And standing, whose header is the one this helper was generalised from:
   ∙ remind me to write the weekly update                                                                                                                                             asks first · paused
         … 30 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › say what you want done                                                                                                                                                          here ~/a/w/aforge-v2
+ › say what you want done                                                                                                                                                          here ~/a/w/codeaf
  enter open where it was asked · → pause · stop · not here · tab next place · esc
 ```
 
@@ -693,7 +693,7 @@ of any place overflows its frame at any of the three. The fold ladder in
 80 columns:
 
 ```
- aforge                    1 want you · 1 moving · $2.60 / $20.00 · tue 10:47pm
+ codeaf                    1 want you · 1 moving · $2.60 / $20.00 · tue 10:47pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -721,8 +721,8 @@ of any place overflows its frame at any of the three. The fold ladder in
   fallback models                                         nearest in the catalog
         … 10 blank rows …
 ────────────────────────────────────────────────────────────────────────────────
- saved to your profile · a project's own .aforge-v3/config.json is a hand edit
- › say what you want done                                      here ~/aforge-v2
+ saved to your profile · a project's own .codeaf-v3/config.json is a hand edit
+ › say what you want done                                      here ~/codeaf
  ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close
 ```
 
@@ -743,12 +743,12 @@ On the fixture above every one of the seven opens with its data:
 And search, with something typed into it:
 
 ```
- aforge                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
+ codeaf                                                            1 want you · 1 moving · $2.60 / $20.00 · tue 10:46pm
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-aforge-v2 5 · pricing-site 4 · infra 3
-› reading the ledger · I looked at the ledger and the fold in reading the ledger, and the registry is t… aforge-v2 · now
+codeaf 5 · pricing-site 4 · infra 3
+› reading the ledger · I looked at the ledger and the fold in reading the ledger, and the registry is t… codeaf · now
 › an old dns wobble · I read the ledger and the numbers do not add up · 3 more in this chat                  infra · now
 › moving the runner pool · I read the ledger and the numbers do not add up · 3 more in this chat             infra · now
 › the certificate rotation · I read the ledger and the numbers do not add up · 3 more in this chat           infra · now
@@ -756,13 +756,13 @@ aforge-v2 5 · pricing-site 4 · infra 3
 › copy for the hero · I read the ledger and the numbers do not add up · 3 more in this chat           pricing-site · now
 › the annual toggle · I read the ledger and the numbers do not add up · 3 more in this chat           pricing-site · now
 › pricing research · I read the ledger and the numbers do not add up · 3 more in this chat            pricing-site · now
-› an old spike on folds · I read the ledger and the numbers do not add up · 3 more in this chat          aforge-v2 · now
-› why the frame jumps · I read the ledger and the numbers do not add up · 3 more in this chat            aforge-v2 · now
-› the tab bar's counts · I read the ledger and the numbers do not add up · 3 more in this chat           aforge-v2 · now
-› porting the picker · I read the ledger and the numbers do not add up · 3 more in this chat             aforge-v2 · now
+› an old spike on folds · I read the ledger and the numbers do not add up · 3 more in this chat          codeaf · now
+› why the frame jumps · I read the ledger and the numbers do not add up · 3 more in this chat            codeaf · now
+› the tab bar's counts · I read the ledger and the numbers do not add up · 3 more in this chat           codeaf · now
+› porting the picker · I read the ledger and the numbers do not add up · 3 more in this chat             codeaf · now
         … 20 blank rows …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- › ledger                                                                                              here ~/aforge-v2
+ › ledger                                                                                              here ~/codeaf
  enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place
 ```
 
@@ -778,7 +778,7 @@ not fold — never a redesign:
 
 | Where | What it was | What it is |
 | --- | --- | --- |
-| `pages.go` `app.scopeChip` | home drew `here /home/…/aforge-v2` while every other place drew the short form — one fact spelled two ways, one `tab` apart | both read `here ~/aforge-v2`, the design's own spelling |
+| `pages.go` `app.scopeChip` | home drew `here /home/…/codeaf` while every other place drew the short form — one fact spelled two ways, one `tab` apart | both read `here ~/codeaf`, the design's own spelling |
 | `memoryplace.go` the memory row | the kind ran into the title: `· not tabscorrection` | the kind takes the shelf row's two-cell lead: `· not tabs  correction` |
 | `memoryplace.go` `memoryTypeWord` | the store's fifth kind drew as `project_state`, a column name on a person's screen | it reads `project state`, on the row and in the legend |
 | `tasksplace.go`, `place_tasks.go` | an empty time WINDOW drew the teaching prose that belongs to an empty MACHINE, taking the count line — the only thing naming the window — with it | the two are told apart (`tasksReading.held`); the head line stays and says `nothing since jul 29.`, in words rather than as a `0` |

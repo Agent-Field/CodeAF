@@ -5,7 +5,7 @@
 // It sits here, in its own package, on purpose, and the reason is a law about
 // laws: A LAW ABOUT A PROJECT'S OWN VERIFICATION THAT ONLY ONE CALLER CAN REACH
 // IS A LAW EVERY OTHER CALLER SILENTLY DOES WITHOUT. When this code was
-// unexported inside a package the plain `aforge do` path could not import, the
+// unexported inside a package the plain `codeaf do` path could not import, the
 // repository was never photographed, two readings of it were never compared,
 // and patches shipped that deleted attributes the repository already had while
 // their own narrow tests stayed green (docs/design/gate/SETTLEMENT.md §4).

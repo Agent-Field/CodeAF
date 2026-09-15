@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // CompetenceClass is the current evidence-backed posture of one scope.

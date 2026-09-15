@@ -112,7 +112,7 @@ const sheetTTL = 5 * time.Minute
 // A ROUTER IS RECOGNISABLE BY WHAT IT ANSWERS AND NEVER BY A SUBSTRING OF WHERE
 // IT LIVES. This build used to decide whether to fetch an endpoints page at all
 // by testing the base URL for `openrouter.ai`, so a binary driven through
-// AFORGE_BASE_URL at a proxy, a mirror, a self-hosted router or a router
+// CODEAF_BASE_URL at a proxy, a mirror, a self-hosted router or a router
 // reached by its IP silently got no sheet, an empty frontier and no lane
 // behaviour whatever — nothing errored, nothing logged a refusal, the feature
 // was simply absent (issue #373).
@@ -1131,7 +1131,7 @@ func primeFrom(s Sheet, model string) {
 		return
 	}
 	beliefs := Default().Ledger()
-	// AND THE FILE IS READ BACK FIRST. Another aforge may have been running the
+	// AND THE FILE IS READ BACK FIRST. Another codeaf may have been running the
 	// whole time this one was, learning about models this session has never
 	// mentioned; priming over a ledger that has not looked since it opened is
 	// how a save deletes them (store.go, "two processes, one file"). The beat is
@@ -1275,7 +1275,7 @@ func (s *sheet) cachePath(model string) string {
 	return cachePathIn(dir, model)
 }
 
-// cachePathIn names one model's cache file, `~/.aforge/v3/lanes/{model}.json`
+// cachePathIn names one model's cache file, `~/.codeaf/v3/lanes/{model}.json`
 // under the home this process was pointed at, with the slash in a model id
 // escaped so that "deepseek/deepseek-v4-flash" is one file and not a directory
 // nobody meant to make.

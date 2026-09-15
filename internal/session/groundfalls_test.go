@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // installRefusingFurrow is a furrow that attaches like the real one and REFUSES

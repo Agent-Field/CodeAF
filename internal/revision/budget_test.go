@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // scriptedJudge is one judge with its answers written down, and a record of the
@@ -126,11 +126,11 @@ func TestAVerdictsCapIsAFractionOfTheReserveAndNeverTheOldLiterals(t *testing.T)
 	}
 	// A reserve set small enough that the share falls under the floor gets the
 	// floor, and a reserve smaller than the floor is still the operator's word.
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "8000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "8000")
 	if got := verdictRoom(); got != 4096 {
 		t.Fatalf("verdict cap = %d under a small reserve, want the floor", got)
 	}
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "1000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "1000")
 	if got := verdictRoom(); got != 1000 {
 		t.Fatalf("verdict cap = %d, want the stated reserve of 1000", got)
 	}

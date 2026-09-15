@@ -7,9 +7,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The render core is two passes and one cache.
@@ -4126,9 +4126,9 @@ func (a *app) awaitingDecision() bool {
 // shortPath abbreviates a directory the way fish's prompt does, at one of three
 // strengths:
 //
-//	hard 0   ~/s/aforge-v2     home to "~", every parent to its initial
-//	hard 1   …/aforge-v2       the parents dropped entirely
-//	hard 2   aforge-v2         the place, alone
+//	hard 0   ~/s/codeaf     home to "~", every parent to its initial
+//	hard 1   …/codeaf       the parents dropped entirely
+//	hard 2   codeaf         the place, alone
 //
 // The LAST SEGMENT IS ALWAYS WHOLE, at every strength. It is the only part of
 // the path that answers the question the legend is for — which project is this

@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // defaultContextWindow is the window assumed when Config.ContextWindow is
@@ -556,7 +556,7 @@ func (a *Agent) threadID() string {
 
 // sessionCacheKey names one session's prompt-cache lineage. It is derived
 // through [provider.RunCacheKey] so the key is the same shape every other
-// aforge lineage uses — an "aforge-" prefix an operator can recognize in a
+// codeaf lineage uses — a "codeaf-" prefix an operator can recognize in a
 // router's logs — and so nothing about the session's own id reaches the wire.
 func sessionCacheKey(id string) string {
 	if strings.TrimSpace(id) == "" {
@@ -2548,7 +2548,7 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // transcript, exactly where it was said, and the model has to be told which of
 // them is current. That is the whole price of moving this block out of
 // message[0], and it is stated here rather than left to be discovered.
-const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had aforge keep. Facts, not requests — and the last such note is the one that holds."
+const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had codeaf keep. Facts, not requests — and the last such note is the one that holds."
 
 // volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
 // card, rewritten by the post-turn pass whenever a delta lands (card.go), and

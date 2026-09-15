@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // A REQUEST MADE ON A NODE'S BEHALF LEAVES THE TRAIL ITS OWN WORKER'S REQUESTS

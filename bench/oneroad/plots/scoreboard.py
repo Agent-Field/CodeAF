@@ -20,25 +20,25 @@ DIMS = ["requirement_coverage", "correctness", "scope_discipline", "completeness
 # 1/7/3 — blue, violet, aqua); competitors are context and wear grays with
 # distinct shapes, so identity is never color-alone.
 ARMS = {  # name -> (label, color, marker, is_ours)
-    "aforge-new-flash": ("aforge new (flash)", "#2a78d6", "o", True),
-    "aforge-new-crew":  ("aforge new (crew)",  "#4a3aa7", "o", True),
-    "aforge-old-flash": ("aforge old",         "#1baf7a", "o", True),
+    "codeaf-new-flash": ("codeaf new (flash)", "#2a78d6", "o", True),
+    "codeaf-new-crew":  ("codeaf new (crew)",  "#4a3aa7", "o", True),
+    "codeaf-old-flash": ("codeaf old",         "#1baf7a", "o", True),
     # The intermediate builds: one hue family, told apart in the table. The
     # final board carries one finalist, so these never need distinct slots.
-    "aforge-esc-flash":  ("aforge esc (flash)",  "#6fa3e3", "o", True),
-    "aforge-esc-crew":   ("aforge esc (crew)",   "#8d84cf", "o", True),
-    "aforge-pre-flash":  ("aforge pre (flash)",  "#4d8fdc", "D", True),
-    "aforge-pre-crew":   ("aforge pre (crew)",   "#6c5fbd", "D", True),
-    "aforge-ckpt-flash": ("aforge ckpt (flash)", "#2f6fbf", "P", True),
-    "aforge-ckpt-crew":  ("aforge ckpt (crew)",  "#4a3aa7", "P", True),
-    "aforge-final-crew":  ("aforge final (crew)",  "#1f5fa8", "*", True),
-    "aforge-final-flash": ("aforge final (flash)", "#5b8fd6", "*", True),
-    "aforge-1g-crew":  ("aforge 1g (crew)",  "#123f7a", "X", True),
-    "aforge-1g-flash": ("aforge 1g (flash)", "#3b7ac9", "X", True),
-    "aforge-1f-crew":  ("aforge 1f (crew)",  "#2b5f9e", "v", True),
-    "aforge-1f-flash": ("aforge 1f (flash)", "#6c9edb", "v", True),
-    "aforge-1h-crew":  ("aforge 1h (crew)",  "#0b2f5e", "*", True),
-    "aforge-1h-flash": ("aforge 1h (flash)", "#2f6fbf", "*", True),
+    "codeaf-esc-flash":  ("codeaf esc (flash)",  "#6fa3e3", "o", True),
+    "codeaf-esc-crew":   ("codeaf esc (crew)",   "#8d84cf", "o", True),
+    "codeaf-pre-flash":  ("codeaf pre (flash)",  "#4d8fdc", "D", True),
+    "codeaf-pre-crew":   ("codeaf pre (crew)",   "#6c5fbd", "D", True),
+    "codeaf-ckpt-flash": ("codeaf ckpt (flash)", "#2f6fbf", "P", True),
+    "codeaf-ckpt-crew":  ("codeaf ckpt (crew)",  "#4a3aa7", "P", True),
+    "codeaf-final-crew":  ("codeaf final (crew)",  "#1f5fa8", "*", True),
+    "codeaf-final-flash": ("codeaf final (flash)", "#5b8fd6", "*", True),
+    "codeaf-1g-crew":  ("codeaf 1g (crew)",  "#123f7a", "X", True),
+    "codeaf-1g-flash": ("codeaf 1g (flash)", "#3b7ac9", "X", True),
+    "codeaf-1f-crew":  ("codeaf 1f (crew)",  "#2b5f9e", "v", True),
+    "codeaf-1f-flash": ("codeaf 1f (flash)", "#6c9edb", "v", True),
+    "codeaf-1h-crew":  ("codeaf 1h (crew)",  "#0b2f5e", "*", True),
+    "codeaf-1h-flash": ("codeaf 1h (flash)", "#2f6fbf", "*", True),
     "pi":               ("pi",                 "#8a8985", "s", False),
     "opencode":         ("opencode",           "#b5b4b0", "^", False),
 }
@@ -76,7 +76,7 @@ for r in rows:
     active = float(r["wall_s_active"] or wall)
     r["active"] = active if 0 < active <= wall else wall
     # One price table for every harness: tokens × the model's list price.
-    # The billed figure (endpoint-dependent) is kept beside it for aforge.
+    # The billed figure (endpoint-dependent) is kept beside it for codeaf.
     r["cost"] = float(r.get("cost_list_usd") or r["cost_usd"]) if (r.get("cost_list_usd") or r["cost_usd"]) else None
     r["billed"] = float(r["cost_usd"]) if r["cost_usd"] else None
     tb, _ = tests(r["tests_before"]); ta, fa = tests(r["tests_after"])
@@ -139,7 +139,7 @@ for ax, t in zip(axes[:ncols], tasks):
     for s in ("top", "right"): ax.spines[s].set_visible(False)
 axes[0].set_ylabel(f"quality — {'blind judge median (0–20)' if have_judges else 'tests added (Δ passing)'}")
 
-# cost panel: aforge arms only (pi/opencode do not self-report cost)
+# cost panel: codeaf arms only (pi/opencode do not self-report cost)
 axc = axes[-1]
 arm_order = [a for a in ARMS if ARMS[a][3]]
 for i, a in enumerate(arm_order):
@@ -149,7 +149,7 @@ for i, a in enumerate(arm_order):
     axc.bar(i, tot, width=0.62, color=ARMS[a][1], edgecolor=SURFACE, linewidth=2)
     axc.text(i, tot, f"${tot:.2f}", ha="center", va="bottom", fontsize=9, color=INK)
 axc.set_xticks(range(len(arm_order)))
-axc.set_xticklabels([ARMS[a][0].replace("aforge ", "") for a in arm_order], fontsize=9)
+axc.set_xticklabels([ARMS[a][0].replace("codeaf ", "") for a in arm_order], fontsize=9)
 axc.set_title("total cost at list price", fontsize=11, color=INK, pad=8)
 axc.set_ylabel("USD across settled cells")
 for s in ("top", "right"): axc.spines[s].set_visible(False)

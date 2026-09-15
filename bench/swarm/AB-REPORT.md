@@ -1,8 +1,8 @@
 # Swarm A/B Report — cooperative decomposition vs refusal-first
 
-**Configuration:** `aforge do`, model `~deepseek/deepseek-v4-flash-latest`, fresh
+**Configuration:** `codeaf do`, model `~deepseek/deepseek-v4-flash-latest`, fresh
 store per cell, n=1 per (task × arm), sequential cells (JOBS=1 timing-clean).
-Arms: `AFORGE_SWARM=0` (refusal-first pipeline) vs `AFORGE_SWARM=1`
+Arms: `CODEAF_SWARM=0` (refusal-first pipeline) vs `CODEAF_SWARM=1`
 (cooperative claim-time split + measured-capacity fold).
 Source: `/tmp/ab/{small,medium,large}-{off,on}/`, journal `usage` table for cost.
 

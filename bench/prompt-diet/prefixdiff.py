@@ -45,7 +45,7 @@ Usage:
 
 `<run-dir>` is a `run.sh` evidence tree (`~/bench-diet-out/<label>/`). Only the
 call log can answer this: the guard deliberately keeps no bodies, so the run
-must have been made with AFORGE_CALL_LOG_BODIES=1, which `run.sh` sets.
+must have been made with CODEAF_CALL_LOG_BODIES=1, which `run.sh` sets.
 """
 
 import argparse
@@ -437,7 +437,7 @@ def main():
         results = analyse(root, belt_only=not args.all)
         if not results:
             print(f"### {label}\n\nNo request bodies in {root} — the run needs "
-                  f"AFORGE_CALL_LOG_BODIES=1.\n")
+                  f"CODEAF_CALL_LOG_BODIES=1.\n")
             continue
         print(table(label, results, belt_only=not args.all))
         for row in results:

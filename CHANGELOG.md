@@ -16,7 +16,7 @@ Unreleased work lives as one file per pull request in
 a version is cut. [`docs/rules/changelog.md`](docs/rules/changelog.md) is the
 rule.
 
-<!-- aforge-changes inserts new versions directly below this line -->
+<!-- codeaf-changes inserts new versions directly below this line -->
 
 ## v0.1.0 — 2026-08-17
 

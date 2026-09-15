@@ -24,7 +24,7 @@ Five measurements, in increasing order of how much they would mean:
      run 1 vs run 3. Learning that moves none of them is bookkeeping.
 
 The fresh-ledger control is what separates learning from run-to-run variance:
-aforge samples the spine three times and leaf order varies, so a run-1/run-3
+codeaf samples the spine three times and leaf order varies, so a run-1/run-3
 difference means nothing on its own. Without a control this script says so
 rather than implying a result it cannot support.
 
@@ -195,7 +195,7 @@ def report(rows, label):
     print(f"  -> ledger grew between run {first} and run {last}: {moved}")
     if not moved:
         print("  !! a shared-ledger arm whose ledger did not grow is a plumbing "
-              "bug, not a null result — check AFORGE_PROFILE_DIR is shared")
+              "bug, not a null result — check CODEAF_PROFILE_DIR is shared")
 
     # 2. the rung order — the decision the ledger exists to move
     print("\n--- 2. rung order (the `candidates` list at decision time) ---")
@@ -273,7 +273,7 @@ def main():
 
     if not args.control:
         print("\n!! no fresh-ledger control supplied. Any difference above is "
-              "confounded with ordinary run-to-run variance — aforge samples the "
+              "confounded with ordinary run-to-run variance — codeaf samples the "
               "spine three times and leaf order varies. Run\n"
               "     ARM=b LEDGER_MODE=fresh JSONL=results-armB-fresh.jsonl ./run-arm.sh\n"
               "   and pass it with --control before claiming learning.")

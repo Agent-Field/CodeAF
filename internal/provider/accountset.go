@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── A CEILING ONLY AN EXCLUDED MACHINE FITS UNDER ───────────────────────────

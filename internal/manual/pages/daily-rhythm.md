@@ -1,23 +1,23 @@
 # The daily rhythm: what happens every day while you are gone
 
-You are not the only reason aforge is awake. Between the moment you close the
+You are not the only reason codeaf is awake. Between the moment you close the
 terminal and the moment you come back, it keeps a small, budgeted, honest
 routine. Nothing here spends without a ceiling, and nothing here is hidden from
 you — every piece of it leaves a line you can read.
 
 ## The standing watch: a quiet check every few minutes
 
-If you said yes when it offered to keep watch, aforge installs a timer with your
+If you said yes when it offered to keep watch, codeaf installs a timer with your
 operating system — a launchd agent on macOS, a systemd user timer on Linux —
-that runs `aforge wake` **every 5 minutes**, with no terminal open.
+that runs `codeaf wake` **every 5 minutes**, with no terminal open.
 
 A wake pass is a real, bounded shift: at most **120 seconds** and at most **32
 passes** of the reconciler, stopping early the moment a pass produces nothing
-new. If a live aforge already holds the lease, the wake refuses and exits, so
+new. If a live codeaf already holds the lease, the wake refuses and exits, so
 the two never run at once.
 
 For those checks to reach a provider with no shell environment, your API key is
-copied once into your profile config, written so only you can read it. Aforge
+copied once into your profile config, written so only you can read it. codeaf
 tells you when it does that.
 
 Ask "who's keeping watch?" or "when was the last wake?" and you get the real
@@ -45,7 +45,7 @@ per-firing budget — puts it back on probation.
 ## The practice loop in idle time
 
 When you have been idle — no work of yours pending or running, and at least
-**20 minutes** since you last spliced anything — aforge may practice.
+**20 minutes** since you last spliced anything — codeaf may practice.
 
 It picks one measured knowledge gap where it has actually been surprised
 before, and only in areas a machine can check itself on: it must write or find
@@ -56,24 +56,24 @@ It has its own money, separate from yours: **$2.00 a day**, spent as at most
 **2 firings of $1.00**. When that is gone, practice simply stops for the day. It
 never asks you to raise a rail on its own behalf.
 
-Only the resident practices. A one-shot `aforge do` errand never schedules
+Only the resident practices. A one-shot `codeaf do` errand never schedules
 practice, even when it is pointed at your own store with `--db` — it does the
 one job it was given and leaves nothing behind for later.
 
 ## Belief aging: what it stops believing
 
-About once a minute, aforge scores everything in its notebook by how recently
+About once a minute, codeaf scores everything in its notebook by how recently
 and how often that belief has actually been used. A belief that has fallen below
 the retention threshold is **quarantined** — it leaves the notebook and stops
 shaping answers.
 
 Nothing is deleted. A quarantined belief stays in the record and can be restored
-with `aforge notebook restore <seq>`. You see it happen as a `· let go —` line.
+with `codeaf notebook restore <seq>`. You see it happen as a `· let go —` line.
 
 ## The retrospective
 
 At most every **30 minutes**, and only once at least **3** jobs have settled with
-at least one new since last time, aforge reads back over its most recent **12**
+at least one new since last time, codeaf reads back over its most recent **12**
 settled jobs and asks what they taught it. It records at most **4** durable
 facts per pass, and it says nothing at all when a pass produced no real change.
 
@@ -86,7 +86,7 @@ ceilings.
 ## The arrival brief
 
 When you come back after **4 hours or more away**, and something actually
-happened in that gap, aforge posts one card. It always opens **"While you were
+happened in that gap, codeaf posts one card. It always opens **"While you were
 away"** and it folds the whole absence into one reading:
 
 - what finished, what failed, what was cancelled

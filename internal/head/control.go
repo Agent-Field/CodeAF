@@ -3,7 +3,7 @@ package head
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // What is left of the control loop.
@@ -90,12 +90,12 @@ func controlStatusCued(message string) bool {
 	return weak && asked
 }
 
-// The second arm. Everything above is about work; this is about aforge. A
+// The second arm. Everything above is about work; this is about codeaf. A
 // person learning what their employee can do asks in the same register they ask
 // for work in — "can you look at images?", "what happens overnight?" — and the
-// only reliable difference is that one points at aforge and the other points at
+// only reliable difference is that one points at codeaf and the other points at
 // a deliverable. So the trigger reads shape rather than topic: a question, aimed
-// at aforge or at something the manual is titled after, and not carrying a verb
+// at codeaf or at something the manual is titled after, and not carrying a verb
 // that means "go do this". A false negative costs nothing but today's routing,
 // which is why every clause here is a reason NOT to open.
 
@@ -104,7 +104,7 @@ func controlStatusCued(message string) bool {
 // test because they are already unambiguous.
 var selfQuestionPhrases = []string{
 	"what can you do", "what do you do", "what are you", "who are you",
-	"how do you work", "how does aforge work", "what is aforge",
+	"how do you work", "how does codeaf work", "what is codeaf",
 	"what happens when i'm gone", "what happens when i am gone",
 	"while i'm gone", "while i am gone", "what happens overnight",
 	"what happens every day", "what do you do all day",
@@ -126,7 +126,7 @@ var selfQuestionLeads = map[string]bool{
 
 // selfReferenceWords are the ways a person names their employee.
 var selfReferenceWords = map[string]bool{
-	"you": true, "your": true, "yours": true, "yourself": true, "aforge": true,
+	"you": true, "your": true, "yours": true, "yourself": true, "codeaf": true,
 }
 
 // selfQuestionVetoes are the verbs that mean the sentence is an assignment,

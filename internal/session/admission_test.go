@@ -698,7 +698,7 @@ func TestCompactedTurnsKeepTheOrderTheyWereHeardIn(t *testing.T) {
 // model that counted only text and speaker would promise a bound it does not
 // keep.
 func TestTheRenderedContextStaysInsideItsBudget(t *testing.T) {
-	record := "/very/long/path/to/a/workspace/that/somebody/really/has/.aforge/v3/sessions/" +
+	record := "/very/long/path/to/a/workspace/that/somebody/really/has/.codeaf/v3/sessions/" +
 		strings.Repeat("deep/", 12) + "session.jsonl"
 	turns := saidTurns(func() []string {
 		texts := make([]string, 0, admissionTurnsRemembered)

@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // ── the scripted program ────────────────────────────────────────────────────
@@ -796,7 +796,7 @@ func TestTheProposeVerbIsAbsentWithNobodyToAnswerTheCard(t *testing.T) {
 	// AND A SURFACE THAT ANSWERS THE TURN'S QUESTIONS IS STILL NOT A SURFACE
 	// THAT DRAWS THIS CARD. A conversation held over a connection sets
 	// AskConsent — an approval crosses that wire — and holds no harness lane,
-	// which is the road the intake card travels (cmd/aforge's engine.go).
+	// which is the road the intake card travels (cmd/codeaf's engine.go).
 	remote, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Subharnesses = registry
 		config.AskConsent = true

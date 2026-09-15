@@ -8,7 +8,7 @@ import (
 )
 
 func TestCompletedTurnCarriesANewerBuildNotice(t *testing.T) {
-	const notice = "a newer aforge was built at 13:28 — restart to use it"
+	const notice = "a newer codeaf was built at 13:28 — restart to use it"
 	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse("done"), nil

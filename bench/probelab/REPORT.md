@@ -24,7 +24,7 @@ failure**, at any failure cost or task size. Probing is worth paying for only wh
 | `qwen/qwen3-30b-a3b-instruct-2507` | qwen3-30b-a3b | 0.048 | 0.193 | yes | **yes** |
 | `z-ai/glm-4.7` | glm-4.7 | 0.40 | 1.75 | yes | yes (only with reasoning disabled) |
 
-All three are open-weight and <= $2/M output. `~deepseek/deepseek-v4-flash-latest` is aforge's
+All three are open-weight and <= $2/M output. `~deepseek/deepseek-v4-flash-latest` is codeaf's
 current default; the `~` alias resolves to the pinned `deepseek-v4-flash-0731`.
 
 > **Deployability finding #1.** All three models list `logprobs` in `supported_parameters`,
@@ -328,7 +328,7 @@ over-eager, which is the right direction for safety but expensive.
 
 ---
 
-## 8. Recommendation for the aforge router
+## 8. Recommendation for the codeaf router
 
 ### What to compute before each call
 
@@ -408,7 +408,7 @@ new model at this suite's prices: **well under $0.01**.
 - **6.9% label noise** caps achievable AUROC; the 0.865 best classifier is closer to the
   ceiling than it looks.
 - **One task suite**, skewed toward short, self-contained, deterministically-gradeable
-  problems. Real aforge tasks are long, multi-turn, and tool-using, where probe overhead as a
+  problems. Real codeaf tasks are long, multi-turn, and tool-using, where probe overhead as a
   fraction of attempt cost would be far lower (GLM's 7.2% is the closest analogue) and the
   economics could plausibly flip.
 - The **escalation target was weak** (deepseek-v4-flash, 83.3%). A frontier escalation target

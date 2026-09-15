@@ -2,14 +2,14 @@
 
 Measured 2026-08-24, `spark` → `mac-engine`, over a Tailscale tailnet link over a direct WireGuard path between two machines on the public internet — not a local network.
 
-- **surface** — this machine, linux/arm64, running the local half in-process: `internal/remote`'s client, dialled exactly as `aforge chat --host` dials it.
-- **engine** — `mac-engine`, Darwin arm64, running `aforge engine --no-host --workspace 'af-files-e2e'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `~/af-files-e2e`.
+- **surface** — this machine, linux/arm64, running the local half in-process: `internal/remote`'s client, dialled exactly as `codeaf chat --host` dials it.
+- **engine** — `mac-engine`, Darwin arm64, running `codeaf engine --no-host --workspace 'af-files-e2e'` under `ssh -T`, which is the shape that serves the pipe and ends with it. Workspace as the engine resolved it: `~/af-files-e2e`.
 - **wire** — v3 on both ends. The handshake refuses a mismatch at the door, so every number below is one protocol talking to itself.
 
-Reproduce, with a seeded workspace on the far machine (`note.txt`, `sub/inner.txt`, `five-mb.bin`, `twenty-mb.bin`) and an aforge from this branch on its PATH:
+Reproduce, with a seeded workspace on the far machine (`note.txt`, `sub/inner.txt`, `five-mb.bin`, `twenty-mb.bin`) and a codeaf from this branch on its PATH:
 
 ```
-AFORGE_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
+CODEAF_BENCH_HOST=mac-engine go test -tags ssh_bench -run TestRemoteBench -v ./internal/e2e/
 ```
 
 Every figure is the **median of the whole run** — no best-of, no discarded repetitions — and every fetch's sha256 was checked against the seeded file before its time was counted.
@@ -18,7 +18,7 @@ Every figure is the **median of the whole run** — no best-of, no discarded rep
 | --- | --- | --- | --- | --- |
 | round trip, smallest useful call (`StatPaths` on one path) | 50 | 7.2 ms | 9.9 ms | the floor under every other number here |
 | one fresh ssh connection (`ssh <host> true`) | 5 | 313.2 ms | 334.5 ms | what every `scp` pays and an established wire does not |
-| cold dial — ssh, `aforge engine` starting over there, handshake | 3 | 424.0 ms | 446.9 ms | paid once when a session opens, and again by every redial |
+| cold dial — ssh, `codeaf engine` starting over there, handshake | 3 | 424.0 ms | 446.9 ms | paid once when a session opens, and again by every redial |
 | `ListDir` of the seeded workspace (4 rows) | 20 | 7.6 ms | 9.5 ms | a listing this small is a round trip and nothing else |
 | `ListDir` of a 1000-entry directory | 10 | 27.5 ms | 109.1 ms | under the engine's 2000-row ceiling, so nothing is cut |
 | `FetchFile` of five-mb.bin (5242880 bytes) | 10 | 526.6 ms | 705.1 ms | 9.5 MB/s over the wire, sha256 checked every time |
@@ -38,7 +38,7 @@ Every figure is the **median of the whole run** — no best-of, no discarded rep
 
 **The dedup path is the real speed-up, and it is a hash comparison.** A file already held is not fetched again: the surface asks whether the path is still there and compares the digest it already has (`FetchedFile.Hash`, the CAS's own key). None of the file's 5242880 bytes cross — the difference between those two rows is the difference between a question and a transfer.
 
-**The transfer survives the cut.** The measurement is literal: two 5MB fetches complete, this harness kills its own ssh child by its process handle, and the clock runs until a fetch succeeds again AND verifies. In the gap calls are refused rather than queued — `reconnecting to mac-engine — try that again in a moment` — and internal/remote's reader goroutine opens the next ssh itself. The gap is not mysterious once the cold-dial row is beside it: one second of first backoff (redial.go's `firstBackoff`), then a whole cold dial (424.0 ms here — ssh, plus `aforge engine` starting over there), and the fetch that follows takes what a fetch takes. A persistent engine host, which is the door's default shape, replaces the boot with a socket attach and is the faster of the two.
+**The transfer survives the cut.** The measurement is literal: two 5MB fetches complete, this harness kills its own ssh child by its process handle, and the clock runs until a fetch succeeds again AND verifies. In the gap calls are refused rather than queued — `reconnecting to mac-engine — try that again in a moment` — and internal/remote's reader goroutine opens the next ssh itself. The gap is not mysterious once the cold-dial row is beside it: one second of first backoff (redial.go's `firstBackoff`), then a whole cold dial (424.0 ms here — ssh, plus `codeaf engine` starting over there), and the fetch that follows takes what a fetch takes. A persistent engine host, which is the door's default shape, replaces the boot with a socket attach and is the faster of the two.
 
 **The refusal is fast.** A file over the 16MB ceiling is refused from its SIZE on the far disk, before a byte is read, so the no comes back at round-trip speed rather than after 20MB of transfer: `engine: twenty-mb.bin is 20MB and the most one file may cross this connection is 16MB`.
 

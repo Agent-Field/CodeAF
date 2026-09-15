@@ -9,7 +9,7 @@ import (
 //
 // This guard used to live in the head's spawn tool, which meant it protected
 // exactly one caller: the conversation. Everything else that can commission
-// work — `aforge do` running headless, a question answered into a continuation,
+// work — `codeaf do` running headless, a question answered into a continuation,
 // a surface with its own composer — journaled twins freely, and the person paid
 // for both. The funnel is the one seam between asking for work and getting it
 // (the August 2026 chat-simplification audit, no longer in the tree, §2.5), so

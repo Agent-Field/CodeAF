@@ -15,7 +15,7 @@ func TestAFolderSessionIsNamedByItsOwnTitle(t *testing.T) {
 	row := Session{
 		Title:   "port the resume picker",
 		Opening: "please port the resume picker to tui3",
-		File:    "/home/p/.aforge/v3/projects/lab/0123456789abcdef/transcript.jsonl",
+		File:    "/home/p/.codeaf/v3/projects/lab/0123456789abcdef/transcript.jsonl",
 		At:      time.Now().Add(-2 * time.Hour),
 	}
 	if got, want := humanName(row), "Port the Resume Picker"; got != want {
@@ -27,7 +27,7 @@ func TestAFolderSessionIsNamedByItsOwnTitle(t *testing.T) {
 // FILE. Every folder session's transcript is called the same thing, so the old
 // last rung would have called every unnamed conversation "Transcript".
 func TestAnUnnamedFolderSessionFallsBackToItsFolder(t *testing.T) {
-	row := Session{File: "/home/p/.aforge/v3/projects/lab/0123456789abcdef/transcript.jsonl"}
+	row := Session{File: "/home/p/.codeaf/v3/projects/lab/0123456789abcdef/transcript.jsonl"}
 	name := humanName(row)
 	if strings.Contains(strings.ToLower(name), "transcript") {
 		t.Fatalf("the row is called %q — the file's name identifies nothing", name)
@@ -42,7 +42,7 @@ func TestAnUnnamedFolderSessionFallsBackToItsFolder(t *testing.T) {
 // rows would be a picker that lost somebody their work on the day they
 // upgraded.
 func TestALegacySessionRowIsUnchanged(t *testing.T) {
-	flat := "/home/p/.aforge/v3/sessions/lab/20260816-150405_a3f2.jsonl"
+	flat := "/home/p/.codeaf/v3/sessions/lab/20260816-150405_a3f2.jsonl"
 	if got, want := humanName(Session{File: flat}), "20260816 150405 A3f2"; got != want {
 		t.Fatalf("the legacy row is called %q, want %q", got, want)
 	}
@@ -59,7 +59,7 @@ func TestASessionRowDrawsItsAge(t *testing.T) {
 	row := Session{
 		Title: "port the resume picker",
 		Last:  "now run the migration",
-		File:  "/home/p/.aforge/v3/projects/lab/0123456789abcdef/transcript.jsonl",
+		File:  "/home/p/.codeaf/v3/projects/lab/0123456789abcdef/transcript.jsonl",
 		At:    time.Now().Add(-2 * time.Hour),
 	}
 	note := sessionNote(row, 100, humanName(row))

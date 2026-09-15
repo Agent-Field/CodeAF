@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/craft"
+	"github.com/Agent-Field/codeaf/internal/craft"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // jargonWords is docs/JOURNEY.md's design filter as something a test can run:

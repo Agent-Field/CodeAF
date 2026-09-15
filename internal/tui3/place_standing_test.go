@@ -9,8 +9,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // THE STANDING PLACE, DRIVEN AS A PERSON DRIVES IT: /standing typed into a real
@@ -121,7 +121,7 @@ func TestAnOrderInAnotherProjectReachesTheStandingPage(t *testing.T) {
 		standWaitGlyph + " watch the release feed",
 		standWaitGlyph + " keep the changelog index fresh",
 		// THE ROW IS DRAWN IN THE SAME GRAMMAR AS EVERY OTHER ROW: the mark every
-		// aforge screen agrees on, and home's own clause ([standRollup]) — not a
+		// codeaf screen agrees on, and home's own clause ([standRollup]) — not a
 		// second derivation of the same record in a second set of words.
 		"Mondays at 9am",
 	} {
@@ -354,7 +354,7 @@ func TestAStandingRowsTailIsHomesOwnClause(t *testing.T) {
 	}
 }
 
-// AND ITS MARK IS THE ONE EVERY AFORGE SCREEN AGREES ON — the store's own
+// AND ITS MARK IS THE ONE EVERY codeaf SCREEN AGREES ON — the store's own
 // answer ([standing.Item.Glyph]), so that a row on this shelf and the same row
 // on home cannot lead with two different characters.
 func TestTheMachinesShelfWearsTheStoresOwnMarks(t *testing.T) {
@@ -392,7 +392,7 @@ func TestTheMachinesShelfKeepsHomesTriageOrder(t *testing.T) {
 
 // THE ONE HEADING COUNTS NOTHING.
 //
-// The page said "things aforge does without being asked. 7 standing, 1 waiting
+// The page said "things codeaf does without being asked. 7 standing, 1 waiting
 // to be stood up." — a screen counting what a person can see, and counting it
 // beside a list they are about to scroll. The heading names the page and the
 // rows say the rest.

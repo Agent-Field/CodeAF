@@ -14,7 +14,7 @@ open-model policy holds through three different CLIs at once.
 
 | arm | wall | reported cost | tokens in/out |
 |---|---|---|---|
-| aforge | 9s | $0.00170041956 | 32724 / 649 |
+| codeaf | 9s | $0.00170041956 | 32724 / 649 |
 | pi | 7s | **$0.0 — not usable** | 16325 / 637 |
 | omp | 9s | $0.00378749 | 49514 / 886 |
 
@@ -40,7 +40,7 @@ As a backstop, a self-reported `$0` beside a non-zero token count is now
 recorded as **unknown** rather than zero, and the cell is marked not comparable.
 The selftest exercises exactly that case.
 
-The aforge and omp figures above are internally plausible but were produced the
+The codeaf and omp figures above are internally plausible but were produced the
 same way — from each harness's own price table, not from the provider — so this
 pilot supports **no cost comparison at all** between the three arms. It supports
 the quality result, the wall clocks, and the model-policy result. The first

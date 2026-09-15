@@ -85,7 +85,7 @@ async def call(session, model, prompt, *, temperature, max_tokens, logprobs=Fals
         body["top_logprobs"] = 5
 
     headers = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json",
-               "HTTP-Referer": "https://github.com/aforge/probelab", "X-Title": "probelab"}
+               "HTTP-Referer": "https://github.com/codeaf/probelab", "X-Title": "probelab"}
     last = None
     t0 = time.time()
     for attempt in range(6):

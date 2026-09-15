@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/orientation"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/orientation"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // systemPrompt sets the contract the whole roll-up depends on.
@@ -216,7 +216,7 @@ the file holds the evidence, the detail and the reasoning behind them.`
 // The attribution law. It is provenance — who did the typing — rather than
 // advertising, so it lives in exactly three places a reader already looks for
 // provenance: the trailer block of a commit, the last line of a pull request or
-// issue body, and the last line of a comment aforge left. Everywhere else it is
+// issue body, and the last line of a comment codeaf left. Everywhere else it is
 // noise on the user's own work, which is why the paragraph names the places it
 // must never appear.
 //
@@ -225,14 +225,14 @@ the file holds the evidence, the detail and the reasoning behind them.`
 // parameter cannot be counted. Tests pin them so a prompt edit cannot quietly
 // reword one.
 
-// AttributionTrailer is the commit trailer, and the only place aforge may sign
+// AttributionTrailer is the commit trailer, and the only place codeaf may sign
 // a commit it wrote for the user.
-const AttributionTrailer = "Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>"
+const AttributionTrailer = "Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>"
 
 // AttributionSeparator is the em-dash line that opens the body footer.
 const AttributionSeparator = "—"
 
-// AttributionPullFooter is the one footer line on a pull request aforge opens.
+// AttributionPullFooter is the one footer line on a pull request codeaf opens.
 const AttributionPullFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
 
 // AttributionIssueFooter is the same line for an issue; only the medium differs.
@@ -254,13 +254,13 @@ const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.
 // person did not ask for.
 //
 // AT MOST ONCE PER THREAD, which is the part that keeps it from becoming
-// advertising. The first comment aforge leaves in a thread carries the line and
+// advertising. The first comment codeaf leaves in a thread carries the line and
 // every later one carries nothing: the reader has been told, and telling them
 // again on the fourth reply is the behaviour that makes people turn a setting
 // off. [attributionPrompt] and the chat's belt fact both state that bound, and
 // the three cases it is never right for at all — a one-line reply, anything
 // inside a code or suggestion block, and words the person dictated, which are
-// theirs and not aforge's to sign.
+// theirs and not codeaf's to sign.
 const AttributionCommentFooter = "<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
 
 // AttributionLaw IS THE ONE WORDING, AND IT IS ONE BECAUSE TWO SURFACES SAY IT.
@@ -343,7 +343,7 @@ type Linear struct {
 	// could say; see observationWindow, which has a default for exactly that.
 	contextTokens int
 	// swarm arms the cooperative division tool. Off — the default, and the
-	// whole product until somebody sets AFORGE_SWARM — the leaf does not have
+	// whole product until somebody sets CODEAF_SWARM — the leaf does not have
 	// the verb, which is this codebase's rule for a capability with no path
 	// behind it: absent, never present and refused.
 	swarm bool
@@ -435,7 +435,7 @@ type Completer interface {
 // is working at all. See PERF.md, "A leaf's bounds", and meter.go's
 // reuseCeiling for the arithmetic.
 //
-// IT IS ONE NUMBER AND EVERY DOOR READS IT FROM HERE. `aforge exec`, `aforge
+// IT IS ONE NUMBER AND EVERY DOOR READS IT FROM HERE. `codeaf exec`, `codeaf
 // run` and the chat surface each spelled 150_000 of their own, and chat's
 // constant carried a comment promising it "mirrors the headless run defaults
 // exactly" — an intention where the repository's one-source-of-truth law wants
@@ -459,7 +459,7 @@ type Completer interface {
 //	Answer remaining offenders     14   268,971   211,852
 //
 // (A grant above this constant is this constant plus the dependency term
-// gatheringGrant adds — it is cmd/aforge's, in subharness.go, which this package
+// gatheringGrant adds — it is cmd/codeaf's, in subharness.go, which this package
 // cannot link to; the overshoot past each is the landing reserve doing its job
 // at landingTokenShare of the grant.) The run then re-planned around every
 // landing — five rounds and seven nodes for one issue, 43 minutes, $2.11, and a
@@ -510,8 +510,8 @@ type Completer interface {
 // wide, with a measurement under it and two invariants over it, and moving it
 // again means re-running the sweep in #920's replication and rewriting this
 // comment, PERF.md and the manual page that quotes it. A lane that needs a
-// bigger grant for one run passes `--token-budget` to `aforge exec` or
-// `aforge run` rather than editing this.
+// bigger grant for one run passes `--token-budget` to `codeaf exec` or
+// `codeaf run` rather than editing this.
 const DefaultLeafTokens = 220_000
 
 // rawTokenCeilingMultiple WAS the leaf's second bound and is now pressure on

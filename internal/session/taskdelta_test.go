@@ -183,7 +183,7 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	appendTaskIndex(filepath.Join(bucket, taskIndexName),
 		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
 
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 	// A READING OWES ITS STAMP BEHIND THE PATH, so the fixture that owns this
 	// agent settles it — the same contract [Agent.Close] meets for a real
 	// session (placemeta.go's [Agent.SettleWrites]). A hand-built agent nothing
@@ -427,7 +427,7 @@ func TestTheTasksToolShowsTheOtherWindowsRunningWork(t *testing.T) {
 	}}
 	out := taskElsewhereText(rows, "", time.Now())
 	for _, want := range []string{
-		"running in other aforge windows on this project:",
+		"running in other codeaf windows on this project:",
 		"another window · Sweep the call sites · running · running for 4m",
 		`  in the window called "docs pass"`,
 		"  files so far: internal/session/agent.go, internal/session/task.go",
@@ -439,7 +439,7 @@ func TestTheTasksToolShowsTheOtherWindowsRunningWork(t *testing.T) {
 	}
 	// IT CARRIES NO ID. Ids restart with every conversation, so a row leading
 	// with one would invite `tasks id 4` and reach this project's task four.
-	if strings.HasPrefix(strings.TrimPrefix(out, "running in other aforge windows on this project:\n"), "4 ·") {
+	if strings.HasPrefix(strings.TrimPrefix(out, "running in other codeaf windows on this project:\n"), "4 ·") {
 		t.Fatalf("the row leads with another conversation's id:\n%s", out)
 	}
 	// The query narrows it, exactly as the search half is narrowed.

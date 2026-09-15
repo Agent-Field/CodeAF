@@ -2,11 +2,11 @@
 
 ## Three places
 
-Aforge has three, and only three, top-level places. Switch with the header, or:
+codeaf has three, and only three, top-level places. Switch with the header, or:
 
 - **thread** — `alt+1` — the conversation, receipts, and results
 - **board** — `alt+2` — live jobs and running services
-- **self** — `alt+3` — everything aforge does when you are not asking
+- **self** — `alt+3` — everything codeaf does when you are not asking
 
 `‹` and `esc` walk back out of whatever is layered on top.
 
@@ -14,7 +14,7 @@ Aforge has three, and only three, top-level places. Switch with the header, or:
 
 Self opens as one calm list, the way a settings app does. The top line is
 today — what it cost, what it learned, how long it practised — and under it one
-row per thing aforge does on its own. Each row says how many there are and, in
+row per thing codeaf does on its own. Each row says how many there are and, in
 its own words, what they are:
 
 | row | what it holds |
@@ -85,9 +85,9 @@ cursor is not in the input. It is a single column of grouped rows: **models**
 carve-out, the quiet period before practice), **rhythm** (how long an absence
 earns an arrival brief, how many clean firings earn a charter tenure),
 **learning** (how much practice follows measured demand rather than curiosity,
-and whether aforge may propose new skills), **documents & vision** (the reading
+and whether codeaf may propose new skills), **documents & vision** (the reading
 rung and the model that looks at images), **sharing** (attribution — whether
-aforge signs the commits and pull requests it writes for you), and
+codeaf signs the commits and pull requests it writes for you), and
 **appearance** (the chat/rail split).
 
 `↑/↓` or `j/k` move, enter changes the focused row, `esc` closes an open editor
@@ -97,7 +97,7 @@ models door opens. Nothing is posted to the thread when you change something —
 the row showing its new value is the receipt.
 
 Anything pinned in your environment stays pinned: that row reads dim, says
-`pinned by AFORGE_…`, and refuses to be edited rather than writing a value the
+`pinned by CODEAF_…`, and refuses to be edited rather than writing a value the
 shell would keep overriding. The footer lists the operator plumbing that is
 set — base URL, profile directory, panel, reasoning — read-only, because those
 are the machine's settings, not yours.
@@ -139,9 +139,9 @@ locally.
 
 ## From a shell, without the chat
 
-- `aforge` — open the resident chat. A second instance opens as a read-only
+- `codeaf` — open the resident chat. A second instance opens as a read-only
   visitor rather than fighting over the same brain.
-- `aforge do "<task>"` — one errand, start to finish, with nobody watching. It
+- `codeaf do "<task>"` — one errand, start to finish, with nobody watching. It
   is the same brain the chat runs with the conversation removed: the same
   planning, the same contracts, the same delivery gate, the same repair when a
   gap is found. It works in the directory you are standing in and edits what is
@@ -154,49 +154,49 @@ locally.
   run actually produced, not every path it mentioned. It is a one-shot and
   schedules nothing for later: an errand never practices, whatever store it is
   pointed at with `--db`. Without `--db` it works in a private store of its
-  own under `runs/` in the state root — `~/.aforge/runs/`, or wherever
-  `AFORGE_HOME` points, never the machine's temporary directory. It is deleted
+  own under `runs/` in the state root — `~/.codeaf/runs/`, or wherever
+  `CODEAF_HOME` points, never the machine's temporary directory. It is deleted
   when the run leaves with 0 and **kept when it does not**, including a run you
   stop with Ctrl+C: the last line on the error stream is `record kept at
   <path>`, and that directory holds the whole record as `graph.db`. `--keep`
-  keeps it whatever happened, and so does `AFORGE_DEBUG` set to anything but
+  keeps it whatever happened, and so does `CODEAF_DEBUG` set to anything but
   `0`, `false` or `off`. It runs on this profile's crew unless `--model`,
   `--plan-model` or the matching variables name something else, and it opens by
   saying which of those chose its two models.
-- `aforge wake` — run one bounded pass and exit. This is what the standing watch
+- `codeaf wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
-- `aforge doctor` — the brain's path and size, whether a resident is alive, the
+- `codeaf doctor` — the brain's path and size, whether a resident is alive, the
   standing watch, today's spend against the rail, active charters, and pending
   questions.
-- `aforge notebook` / `notebook retract <seq>` / `notebook restore <seq>`
-- `aforge competence` — the measured competence map
-- `aforge services` / `services stop <name>`
-- `aforge models` — the router ledger: ratings and how many observations back
+- `codeaf notebook` / `notebook retract <seq>` / `notebook restore <seq>`
+- `codeaf competence` — the measured competence map
+- `codeaf services` / `services stop <name>`
+- `codeaf models` — the router ledger: ratings and how many observations back
   each one
-- `aforge why self` — today's self-spend, itemized
-- `aforge why <node-id>` — what one piece of work actually did: its turns, the
+- `codeaf why self` — today's self-spend, itemized
+- `codeaf why <node-id>` — what one piece of work actually did: its turns, the
   tools it called with what arguments, what came back, how long each took, and
   how it ended. It answers from the record the worker wrote while it ran, so it
   still answers after the job's working directory is gone. A node whose worker
   keeps no record says so rather than printing nothing.
-- `aforge plan new "<goal>"`, `aforge plan show`, `aforge plan revise`,
-  `aforge plan run` — the static pipeline: build a plan to a file, read it,
+- `codeaf plan new "<goal>"`, `codeaf plan show`, `codeaf plan revise`,
+  `codeaf plan run` — the static pipeline: build a plan to a file, read it,
   re-plan it from what happened, execute exactly what the file says. Reach for
-  these to read or hand-edit a plan. To *do* a job, `aforge do` is the one that
+  these to read or hand-edit a plan. To *do* a job, `codeaf do` is the one that
   thinks while it works. The four used to be top-level verbs — `plan`, `show`,
   `revise` and `run` — and those spellings still work for one release, printing
   one line that names the new one.
-- `aforge run <program> --input <file.json>` — run one saved program on typed
-  input. It was `aforge run subharness <name>`; `run` used to name this and the
+- `codeaf run <program> --input <file.json>` — run one saved program on typed
+  input. It was `codeaf run subharness <name>`; `run` used to name this and the
   pipeline both.
 
-## Writing the task for `aforge do`
+## Writing the task for `codeaf do`
 
 The task is whatever you pass, byte for byte, and it may begin with anything.
 A brief written as a bullet list is a brief:
 
 ```
-aforge do "- Update the display style property
+codeaf do "- Update the display style property
 - Keep the grid measurable"
 ```
 
@@ -205,8 +205,8 @@ your own words is your own words. A misspelling is still refused — `--dbb` is 
 error rather than part of the task — and `--` ends the flags if you ever need a
 task that is one dashed word.
 
-You can also hand it the task on standard input: `aforge do -` reads it, and so
-does `aforge do` with something piped in. `aforge do` with nothing piped and
+You can also hand it the task on standard input: `codeaf do -` reads it, and so
+does `codeaf do` with something piped in. `codeaf do` with nothing piped and
 nothing typed prints the usage instead of waiting.
 
 ## When a run says `✗ … the call was retried`
@@ -307,6 +307,6 @@ over. That is a real answer, not a refusal.
 
 ## There is no web surface
 
-Everything is the terminal chat and these commands. If you want aforge running
+Everything is the terminal chat and these commands. If you want codeaf running
 somewhere you are not sitting, the shape is the standing watch — an OS timer
-running `aforge wake` against the same durable brain — not a server.
+running `codeaf wake` against the same durable brain — not a server.

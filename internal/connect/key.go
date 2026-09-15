@@ -2,7 +2,7 @@ package connect
 
 // The other way an account is connected: a key the person already holds.
 //
-// Google's way is a trip through a browser and a set of keys aforge renews for
+// Google's way is a trip through a browser and a set of keys codeaf renews for
 // itself. This way has no trip, no renewal and no expiry — the person pastes a
 // key once, it is written to the same file beside everything else, and it is
 // exactly as good tomorrow as it was today. What differs between one such

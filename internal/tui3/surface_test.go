@@ -9,9 +9,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/history"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/history"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The wave-2 surface: what a resumed session shows, what ctrl+c means, how a
@@ -676,7 +676,7 @@ func TestAtOpensTheFileListImmediatelyAndInsertsThePath(t *testing.T) {
 	a := completionApp(t,
 		"internal/tui3/app.go",
 		"internal/tui3/appendix/notes.md",
-		"cmd/aforge/main.go",
+		"cmd/codeaf/main.go",
 		".git/config",
 		"vendor/foo/app.go",
 	)
@@ -765,7 +765,7 @@ func TestPathRankingIsPrefixThenSubstringThenSubsequence(t *testing.T) {
 	if near >= far {
 		t.Fatalf("the shorter, earlier match has to lead (%d vs %d)", near, far)
 	}
-	if _, ok := pathScore("cmd/aforge/main.go", "zzz"); ok {
+	if _, ok := pathScore("cmd/codeaf/main.go", "zzz"); ok {
 		t.Fatal("nothing must match zzz")
 	}
 }

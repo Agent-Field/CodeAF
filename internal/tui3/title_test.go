@@ -10,11 +10,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// THE TERMINAL'S TAB SAYS WHERE A PERSON IS INSIDE AFORGE.
+// THE TERMINAL'S TAB SAYS WHERE A PERSON IS INSIDE codeaf.
 //
 // Each row below opens the surface somewhere a person can stand and reads the
 // sentence the tab would be sent, spelled exactly. The rows are the ruling's own
@@ -27,18 +27,18 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 		open  func(t *testing.T) *app
 		want  string
 	}{
-		{"home, nothing waiting", func(t *testing.T) *app { return homeWanting(t, 0) }, "aforge"},
-		{"home, three waiting", func(t *testing.T) *app { return homeWanting(t, 3) }, "3 want you · aforge"},
+		{"home, nothing waiting", func(t *testing.T) *app { return homeWanting(t, 0) }, "codeaf"},
+		{"home, three waiting", func(t *testing.T) *app { return homeWanting(t, 3) }, "3 want you · codeaf"},
 		{"a conversation", func(t *testing.T) *app {
 			_, a := wired()
 			a.title, a.shortTitle = "counting the tokens in a transcript", "Token counter"
 			return a
-		}, "Token counter · aforge"},
+		}, "Token counter · codeaf"},
 		{"a conversation with no name yet", func(t *testing.T) *app {
 			_, a := wired()
 			return a
-		}, "new conversation · aforge"},
-		{"a conversation waiting on you", titleAsking, "? Token counter · aforge"},
+		}, "new conversation · codeaf"},
+		{"a conversation waiting on you", titleAsking, "? Token counter · codeaf"},
 		{"a task room", func(t *testing.T) *app {
 			a, _, _ := roomApp(t)
 			clickRail(t, a, 0)
@@ -46,12 +46,12 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 				t.Fatal("the task room never opened")
 			}
 			return a
-		}, "Fix the nil-map crash · task · aforge"},
+		}, "Fix the nil-map crash · task · codeaf"},
 		{"over --host", func(t *testing.T) *app {
 			_, a := wired()
 			a.shortTitle, a.host = "Token counter", "devbox"
 			return a
-		}, "Token counter @ devbox · aforge"},
+		}, "Token counter @ devbox · codeaf"},
 	}
 	for _, row := range rows {
 		t.Run(row.where, func(t *testing.T) {
@@ -70,12 +70,12 @@ func TestTheTerminalTitleSaysWhereYouAre(t *testing.T) {
 // here is a row this test names rather than one it silently skips.
 func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 	want := map[page]string{
-		pageTasks:    "tasks · aforge",
-		pageStanding: "standing · aforge",
-		pageMemory:   "memory · aforge",
-		pageSpend:    "spend · aforge",
-		pageSearch:   "search · aforge",
-		pageSettings: "settings · aforge",
+		pageTasks:    "tasks · codeaf",
+		pageStanding: "standing · codeaf",
+		pageMemory:   "memory · codeaf",
+		pageSpend:    "spend · codeaf",
+		pageSearch:   "search · codeaf",
+		pageSettings: "settings · codeaf",
 	}
 	for _, place := range everyPlaceTable() {
 		if place.id == pageHome {
@@ -95,13 +95,13 @@ func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 }
 
 // THE NAME IS CUT, NEVER THE SUFFIX. A tab truncates from the right, so what is
-// sent is already short enough to keep ` · aforge` — the one part that tells an
-// aforge tab from a shell's.
+// sent is already short enough to keep ` · codeaf` — the one part that tells a
+// codeaf tab from a shell's.
 func TestALongNameIsCutBeforeTheSuffix(t *testing.T) {
 	_, a := wired()
 	a.shortTitle = strings.Repeat("a very long conversation name ", 6)
 	got := terminalTitle(a)
-	if !strings.HasSuffix(got, " · aforge") {
+	if !strings.HasSuffix(got, " · codeaf") {
 		t.Fatalf("the suffix was cut: %q", got)
 	}
 	if width := len([]rune(got)); width > titleMax {
@@ -132,7 +132,7 @@ func TestANameCannotCarryAnEscapeIntoTheTitle(t *testing.T) {
 	a.shortTitle = "evil\x1b]2;pwned\a name tail"
 	got := terminalTitle(a)
 	titleIsPlainText(t, got)
-	if got != "evil]2pwned name tail · aforge" {
+	if got != "evil]2pwned name tail · codeaf" {
 		t.Fatalf("the sanitized title = %q", got)
 	}
 }
@@ -141,13 +141,13 @@ func TestANameCannotCarryAnEscapeIntoTheTitle(t *testing.T) {
 // the tab's: both are the one sentence last sent.
 func TestTheTitleIsSentAgainWhenTheNameArrives(t *testing.T) {
 	_, a := wired()
-	if a.titleSent != "new conversation · aforge" {
+	if a.titleSent != "new conversation · codeaf" {
 		t.Fatalf("the surface opened on %q", a.titleSent)
 	}
 	a.Update(titleEventMsg{gen: a.titleGen, ev: session.Event{
 		Kind: session.EventTitleChanged, Text: "counting the tokens in a transcript", ShortTitle: "Token counter",
 	}})
-	if a.titleSent != "Token counter · aforge" {
+	if a.titleSent != "Token counter · codeaf" {
 		t.Fatalf("after the name arrived the tab was sent %q", a.titleSent)
 	}
 	if got := a.View().WindowTitle; got != a.titleSent {
@@ -167,7 +167,7 @@ func TestAnUnchangedTitleIsNotSentTwice(t *testing.T) {
 	if first == nil {
 		t.Fatal("a changed title was not sent")
 	}
-	if got := first(); got != (tea.RawMsg{Msg: "\x1b]1;Token counter · aforge\a"}) {
+	if got := first(); got != (tea.RawMsg{Msg: "\x1b]1;Token counter · codeaf\a"}) {
 		t.Fatalf("the tab was sent %#v, want OSC 1 with the sentence", got)
 	}
 	if again := a.retitle(); again != nil {
@@ -198,7 +198,7 @@ func TestQuittingHandsTheTabBackEmpty(t *testing.T) {
 		})
 	}()
 	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), " · aforge\a") && !strings.Contains(out.String(), "\x1b]1;aforge\a") {
+	for !strings.Contains(out.String(), " · codeaf\a") && !strings.Contains(out.String(), "\x1b]1;codeaf\a") {
 		if time.Now().After(deadline) {
 			t.Fatalf("the surface never sent its title:\n%q", out.String())
 		}

@@ -33,11 +33,11 @@ def read(path, cap=None):
 def report_of(cell, meta):
     """What the attempt said it did — and nothing about how it was driven.
 
-    An aforge cell's own words are the session transcript's agent turns plus any
+    A codeaf cell's own words are the session transcript's agent turns plus any
     task report on the checkpoint. A peer arm's are its stdout. Both are the
     attempt's account of itself, which is what report_honesty grades.
     """
-    if meta.get("harness", "").startswith("aforge"):
+    if meta.get("harness", "").startswith("codeaf"):
         pieces = []
         for session in glob.glob(os.path.join(cell, "store/v3/projects/*/*")):
             for line in read(os.path.join(session, "transcript.jsonl")).splitlines():

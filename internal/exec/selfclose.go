@@ -46,7 +46,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The four findings a leaf can raise against ITSELF, spelled once. They are the

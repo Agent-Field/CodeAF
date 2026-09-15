@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 func TestTheBeltsCapsFollowTheWindow(t *testing.T) {
@@ -39,7 +39,7 @@ func TestTheBeltsCapsFollowTheWindow(t *testing.T) {
 		t.Fatalf("a 16k window got %+v, which is no smaller than pi's", caps)
 	}
 	// Every hand that cuts a result quotes the pair it is cutting at. read and
-	// bash are pi's own; read_document is aforge's and mirrors the same law on
+	// bash are pi's own; read_document is codeaf's and mirrors the same law on
 	// extracted text, which is what makes the offset it hands back usable.
 	for _, name := range []string{"read", "bash", "read_document"} {
 		description := beltTool(t, small, name).Description

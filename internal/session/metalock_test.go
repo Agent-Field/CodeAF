@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 func metaLockAgent(t *testing.T, dir string) *Agent {
@@ -100,9 +100,9 @@ func TestTwoWindowsOnOneConversationFolderNeverOverwriteEachOthersIdentity(t *te
 }
 
 const (
-	metaLockProcessRoleEnv    = "AFORGE_META_LOCK_TEST_ROLE"
-	metaLockProcessDirEnv     = "AFORGE_META_LOCK_TEST_DIR"
-	metaLockProcessBarrierEnv = "AFORGE_META_LOCK_TEST_BARRIER"
+	metaLockProcessRoleEnv    = "CODEAF_META_LOCK_TEST_ROLE"
+	metaLockProcessDirEnv     = "CODEAF_META_LOCK_TEST_DIR"
+	metaLockProcessBarrierEnv = "CODEAF_META_LOCK_TEST_BARRIER"
 	metaLockProcessRounds     = 60
 )
 

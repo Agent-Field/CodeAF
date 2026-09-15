@@ -168,18 +168,18 @@ func TestReuseCeilingIsTakenOfTheWorkingSetAndGoesInertWhenUnknown(t *testing.T)
 // Both new knobs resolve the same way everything else here does, and the reuse
 // clamp refuses to become a refusal.
 func TestWorkingSetAndReuseEnvOverrides(t *testing.T) {
-	t.Setenv("AFORGE_WORKING_SET", "48000")
+	t.Setenv("CODEAF_WORKING_SET", "48000")
 	if got := WorkingSetCeiling(); got != 48_000 {
 		t.Fatalf("working set = %d, want 48000", got)
 	}
 	if got := For(200_000).WithinWorkingSet().ContextTokens; got != 48_000 {
 		t.Fatalf("the pinned ceiling did not reach the budget: %d tokens", got)
 	}
-	t.Setenv("AFORGE_CONTEXT_REUSE_PCT", "40")
+	t.Setenv("CODEAF_CONTEXT_REUSE_PCT", "40")
 	if got := ReusePercent(); got != 100 {
 		t.Fatalf("reuse = %d, want the 100%% clamp — a loop must be able to send its context once", got)
 	}
-	t.Setenv("AFORGE_CONTEXT_REUSE_PCT", "400")
+	t.Setenv("CODEAF_CONTEXT_REUSE_PCT", "400")
 	if got := ReusePercent(); got != 400 {
 		t.Fatalf("reuse = %d, want 400", got)
 	}
@@ -204,15 +204,15 @@ func TestConfigureCarriesTheWholeLaw(t *testing.T) {
 }
 
 func TestEnvOverrides(t *testing.T) {
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "95")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "95")
 	if got := FillPercent(); got != 90 {
 		t.Fatalf("fill clamp = %d, want 90", got)
 	}
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "5")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "5")
 	if got := FillPercent(); got != 10 {
 		t.Fatalf("fill clamp = %d, want 10", got)
 	}
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "100000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "100000")
 	if got := CompletionReserve(); got != 100000 {
 		t.Fatalf("reserve = %d, want 100000", got)
 	}

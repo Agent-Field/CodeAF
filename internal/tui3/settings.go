@@ -10,13 +10,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the three fullscreen
@@ -28,7 +28,7 @@ import (
 // them take the frame WHOLE, and this file is where the grammar for doing that
 // was written down.
 //
-// It is omp's INTERACTIONS sheet over aforge's own registry, and the whole of
+// It is omp's INTERACTIONS sheet over codeaf's own registry, and the whole of
 // what this file adds to that registry is a UI SKIN: which tab a row belongs
 // under, what it is called there, the one line it says about itself, and which
 // widget answers it. NOT ONE SETTING IS DECLARED HERE. Every row comes from
@@ -55,7 +55,7 @@ import (
 //     draws one and takes keys for the other.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
-//     (<workspace>/.aforge-v3/config.json) is deliberately not writable from here:
+//     (<workspace>/.codeaf/config.json) is deliberately not writable from here:
 //     it is a file a repository commits, and a panel that edited it would be
 //     this surface committing to somebody's repository on their behalf.
 //   - A refusal is SHOWN, never swallowed. A pinned row, a seam the door did
@@ -76,7 +76,7 @@ const (
 	tabSession = "Session"
 	// tabContext is what a model carries — the context law, whole.
 	tabContext = "Context"
-	// tabWorkspace is this machine and this project: what aforge does with its
+	// tabWorkspace is this machine and this project: what codeaf does with its
 	// own time here, and what it may reach on your behalf — a service it signs
 	// in to, and the ssh link it reaches another machine over. It is NOT where
 	// money lives any more, and that is the whole of
@@ -87,13 +87,13 @@ const (
 	// tabDisplay is how the surface draws itself and what it remembers of your
 	// typing.
 	tabDisplay = "Display"
-	// tabSpending is MONEY AND NOTHING ELSE: what aforge may spend, per day, per
+	// tabSpending is MONEY AND NOTHING ELSE: what codeaf may spend, per day, per
 	// conversation, per plan, and on its own practice — with what the day has
 	// actually cost at the top of it. It is the one editor money has, and every
 	// door on this surface that names a rail lands on one of its rows
 	// (settingspend.go).
 	tabSpending = "Spending"
-	// tabSafety is what aforge may do without asking you first: the gate, its
+	// tabSafety is what codeaf may do without asking you first: the gate, its
 	// exceptions, the model that answers for you, and the two clocks that answer
 	// when nobody does.
 	tabSafety = "Safety"
@@ -235,7 +235,7 @@ var settingUI = map[string]settingMeta{
 	// them is about the conversation in front of the reader at all. What a
 	// person is actually looking for when their `--host` link keeps dropping is
 	// "how does this machine reach that one", and this tab is already the one
-	// that answers what aforge may reach on your behalf: the Google and Slack
+	// that answers what codeaf may reach on your behalf: the Google and Slack
 	// sign-in rows below are the same question asked about a service.
 	//
 	// THE TAB LITERALLY NAMED `Connections` COULD NOT TAKE THEM. It builds its
@@ -405,7 +405,7 @@ var settingUI = map[string]settingMeta{
 			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
 	},
 	// It sits with the model rows and not with the approval ones because the
-	// question it answers is about a MODEL'S OUTPUT rather than about what aforge
+	// question it answers is about a MODEL'S OUTPUT rather than about what codeaf
 	// is allowed to do on your behalf: the row decides what happens when the
 	// model on the row above stops writing language.
 	config.KeyReplyGuard: {
@@ -422,7 +422,7 @@ var settingUI = map[string]settingMeta{
 	// three decide what a call carries when it is.
 	config.KeyContextFill: {
 		tab: tabContext, label: "compact at", widget: widgetText,
-		about: "how much of the model's window aforge fills before it compacts, " +
+		about: "how much of the model's window codeaf fills before it compacts, " +
 			"as a percent. The rest stays as thinking and answer room.",
 	},
 	config.KeyCompletionReserve: {
@@ -447,7 +447,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyContextReuse: {
 		tab: tabContext, label: "context reuse", widget: widgetText,
 		about: "how many times over one piece of work may re-send its whole " +
-			"context before aforge tells it to land: 100 is once, 250 is two and " +
+			"context before codeaf tells it to land: 100 is once, 250 is two and " +
 			"a half times. At least 100.",
 	},
 	// Search is a context row for the reason the four above it are: it decides
@@ -462,7 +462,7 @@ var settingUI = map[string]settingMeta{
 	// (firstrun.go), and remains the replacement door after that.
 	config.KeyAPIKey: {
 		tab: tabProviders, label: "openrouter key", widget: widgetText,
-		about: "the key aforge talks to models with. A missing default key opens " +
+		about: "the key codeaf talks to models with. A missing default key opens " +
 			"connect openrouter in your browser; paste a replacement here if needed. " +
 			"A change lands on this conversation at once.",
 	},
@@ -497,7 +497,7 @@ var settingUI = map[string]settingMeta{
 	// the registry's own hint says the same thing at more length.
 	config.KeyDailyBudget: {
 		tab: tabSpending, label: "per day", widget: widgetText,
-		about: "what aforge may spend on your work in a day. When the day's calls " +
+		about: "what codeaf may spend on your work in a day. When the day's calls " +
 			"reach it, new work waits for midnight or for you to raise it here. " +
 			"none removes the limit.",
 	},
@@ -509,7 +509,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyPracticeBudget: {
 		tab: tabSpending, label: "practice", widget: widgetText,
-		about: "the slice of the day aforge may spend practicing on itself. When " +
+		about: "the slice of the day codeaf may spend practicing on itself. When " +
 			"it is gone practice stops until tomorrow and your own work is " +
 			"untouched. 0 here turns practice off rather than uncapping it.",
 	},
@@ -526,15 +526,15 @@ var settingUI = map[string]settingMeta{
 
 	// ── Workspace ───────────────────────────────────────────────────────────
 	//
-	// This machine and this project: what aforge does with its own time here,
+	// This machine and this project: what codeaf does with its own time here,
 	// and what it may reach on your behalf.
 	config.KeyPracticeIdle: {
 		tab: tabWorkspace, label: "quiet before practice", widget: widgetText,
-		about: "how long the room stays quiet before aforge starts practicing.",
+		about: "how long the room stays quiet before codeaf starts practicing.",
 	},
 	config.KeyBriefAfter: {
 		tab: tabWorkspace, label: "arrival brief after", widget: widgetText,
-		about: "how long you have to be away before aforge greets you with a " +
+		about: "how long you have to be away before codeaf greets you with a " +
 			"summary. 0 always briefs.",
 	},
 	config.KeyTenureAfter: {
@@ -555,22 +555,22 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyAttribution: {
 		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
-		about: "signs the commits and PRs aforge writes for you — one trailer, " +
+		about: "signs the commits and PRs codeaf writes for you — one trailer, " +
 			"one footer line.",
 	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
-	// what: they are about what aforge may REACH on your behalf, which is the
+	// what: they are about what codeaf may REACH on your behalf, which is the
 	// question this tab already holds.
 	//
 	// Neither of them is where a person connects an account — /connect is, and it
 	// asks nothing but a keypress. These are for somebody signing in through
-	// their own Google or Slack application rather than the ones aforge ships
+	// their own Google or Slack application rather than the ones codeaf ships
 	// with, which is a setting and not a step.
 	config.KeyGoogleOAuthClient: {
 		tab: tabWorkspace, label: "google sign-in id", widget: widgetText,
-		about: "identifies aforge to Google when you connect an account. Blank " +
-			"uses the one aforge ships with.",
+		about: "identifies codeaf to Google when you connect an account. Blank " +
+			"uses the one codeaf ships with.",
 	},
 	config.KeyGoogleOAuthSecret: {
 		tab: tabWorkspace, label: "google sign-in secret", widget: widgetText,
@@ -578,8 +578,8 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeySlackOAuthClient: {
 		tab: tabWorkspace, label: "slack sign-in id", widget: widgetText,
-		about: "identifies aforge to Slack when you connect a workspace. Blank uses " +
-			"the one aforge ships with.",
+		about: "identifies codeaf to Slack when you connect a workspace. Blank uses " +
+			"the one codeaf ships with.",
 	},
 
 	// ── Display ─────────────────────────────────────────────────────────────
@@ -709,7 +709,7 @@ var settingUI = map[string]settingMeta{
 	// model — how much room it has — rather than about this conversation.
 	config.KeyPromptProfile: {
 		tab: tabProviders, label: "prompt profile", widget: widgetCycle,
-		about: "how much aforge tells the model before you type. auto reads the model's " +
+		about: "how much codeaf tells the model before you type. auto reads the model's " +
 			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
 			"for a provider that reports a window its model does not really have.",
 	},
@@ -723,7 +723,7 @@ func init() {
 	}
 	// AND THE ONE SLOT THAT IS NOT A SLOT TO A READER. The registry calls it
 	// "conversation", which is what it binds; a person opening this tab reads a
-	// list of models aforge uses and wants to know which one is theirs. It is the
+	// list of models codeaf uses and wants to know which one is theirs. It is the
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
 	crew := settingUI[config.KeyCrew]
@@ -732,7 +732,7 @@ func init() {
 
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
 	talk.label = "your model"
-	talk.about = "the model you are talking to. Everything below it is a model aforge " +
+	talk.about = "the model you are talking to. Everything below it is a model codeaf " +
 		"uses on your behalf."
 	settingUI[config.ModelSettingKey(talkSlot)] = talk
 }
@@ -772,7 +772,7 @@ var modelsSection = modelsSectionOrder()
 func modelsSectionOrder() []string {
 	// THE MACHINE COMES DIRECTLY UNDER THE MODEL, and that is the whole of why
 	// this list exists at all. In registry order these three sat at the FOOT of
-	// the tab, under the crew, the four classes and every role aforge has —
+	// the tab, under the crew, the four classes and every role codeaf has —
 	// forty rows below the one they are about — so a person who changed their
 	// model never met the row saying which endpoint would serve it. They read
 	// narrowest first: which machine answers THIS conversation, what `auto` may
@@ -1078,7 +1078,7 @@ func (s *sheetSelect) choice() (string, bool) {
 // registry built over it reads every row's built-in default — which is exactly
 // the comparison the changed-mark needs, without this package having to know
 // what any default IS or where the file lives.
-var pristineProfile = filepath.Join(os.TempDir(), "openaf-settings-defaults-do-not-create")
+var pristineProfile = filepath.Join(os.TempDir(), "codeaf-settings-defaults-do-not-create")
 
 // settingDefaults is every row as a profile nobody has touched reads it.
 func settingDefaults() map[string]string {
@@ -1404,7 +1404,7 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
 	}
 	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
-	// a different promise under `simple` than under the row aforge ships with —
+	// a different promise under `simple` than under the row codeaf ships with —
 	// the same one door the picker's own `auto` row reads (palette.go's
 	// [laneAutoSaid]), so the panel and the list cannot say different things
 	// about one routing.
@@ -1549,7 +1549,7 @@ func (s *sheet) changed(item sheetItem) bool {
 
 // ── the roles ───────────────────────────────────────────────────────────────
 
-// THE ROLES SECTION: one row per auxiliary call aforge makes on its own, and
+// THE ROLES SECTION: one row per auxiliary call codeaf makes on its own, and
 // which model is answering it today.
 //
 // The four class rows above it are the setting; this is the READING of them. Before
@@ -1658,7 +1658,7 @@ func roleMatches(row *roleRow, query string) bool {
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
 // the four class rows and the pins in "pinned roles".
 //
-// The door builds one of these at boot (cmd/aforge's v3RolesSource) and that is
+// The door builds one of these at boot (cmd/codeaf's v3RolesSource) and that is
 // the one a running session's calls go through. This one exists because they
 // answer different questions: the session's is what is running now, and a
 // settings panel showing that while somebody edits the row above it would be
@@ -2839,7 +2839,7 @@ const changedMark = "•"
 
 // rowLines is one setting: its name, and the value it is at. The two share a
 // line on any frame with room for both and split at [tierPhone], where a value
-// like "anthropic/claude-sonnet-4.5  set by AFORGE_MODEL" is the whole of what
+// like "anthropic/claude-sonnet-4.5  set by CODEAF_MODEL" is the whole of what
 // the row is about and the first thing a narrow row used to cut (palette.go's
 // [overlayLines]). The pair stays ONE item to the pointer and to the cursor —
 // [sheet.listLines] hands both lines the same owner.
@@ -2923,7 +2923,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 // laneWord is the tail on the conversation's model row: `auto (cloudflare now)`
 // when the lane is being chosen for you, `pinned: cloudflare` when it is not.
 //
-// It is only ever on THAT row. The other model rows are slots aforge fills on
+// It is only ever on THAT row. The other model rows are slots codeaf fills on
 // your behalf, and a lane pinned for the conversation is not a claim about them.
 func (s *sheet) laneWord(item sheetItem) string {
 	if item.row.Key != config.ModelSettingKey(talkSlot) {

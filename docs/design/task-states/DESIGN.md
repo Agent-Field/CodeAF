@@ -93,7 +93,7 @@ internal/session/task_branch_protection.go): the checkout is on a protected
 name — `main`, `master`, `dev`, `staging`, `trunk`, `production`, `release` and
 the rest of that one list, plus whatever a remote calls its default — the
 checkout is not on a branch at all, or the branch has moved since the work was
-cut and the movement was not aforge's own. Every one of those is the engine
+cut and the movement was not codeaf's own. Every one of those is the engine
 behaving, and the card's own report says WHICH: `its branch task/parser was
 kept: your checkout is on main, which tasks do not merge into automatically`.
 
@@ -147,14 +147,14 @@ the check itself (below). The engine verb stays for the model.
 disguised as an answer and it is why the owner found a card with no choices and
 no explanation. In its place:
 
-- a one-time `[d] let aforge decide this one` drawn dimmer than the three
+- a one-time `[d] let codeaf decide this one` drawn dimmer than the three
   columns, which hands THIS card to the model and changes no setting;
 - the standing `task.settle` setting lives in `/settings` only.
 
 ### the auto-settle floor
 
 `task.settle = auto` stays. When it is the reason a card has no chips, the card
-must say so on the reason line: `nobody could check it · aforge is deciding ·
+must say so on the reason line: `nobody could check it · codeaf is deciding ·
 [t] take it back`. Pressing `t` draws the chips and resolves nothing.
 
 **A task never stays unowned past the end of a turn.** If the model's turn ends
@@ -172,7 +172,7 @@ person as the checkpoint is read** (`TaskGraph.handBackOnLoad`, out of
 `rehydrate`), before the frontier turns, before anything is drawn, and before
 the checkpoint is rewritten, so the file stops saying it too. That covers the
 restart, the re-attach and the engine that died mid-turn, and it is what makes
-the shape testable at all: a fixture can now seed a card aforge was deciding,
+the shape testable at all: a fixture can now seed a card codeaf was deciding,
 which is why the acceptance could not provoke this shape before.
 
 `readsTheDecisionLocked`'s question — is this the turn the decision was handed
@@ -181,7 +181,7 @@ holding anything died with the process.
 
 **The project index deliberately does not carry the decider.** That file is what
 work *came to*, appended once and never rewritten, and who holds a question
-lasts at most one turn — a row on disk saying `aforge is deciding` about a
+lasts at most one turn — a row on disk saying `codeaf is deciding` about a
 conversation that closed hours ago is a claim nothing can correct. It is
 `TaskIndexEntry.Activity`'s rule about a present that ends seconds after it is
 recorded, said about a second momentary fact.
@@ -252,7 +252,7 @@ The landing card is three rows at most and every row has one job.
 ```
 ? ◆ Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
   nobody could check it — the checker never answered
-  [a] accept · [n] not right · [s] tell it · [d] let aforge decide this one
+  [a] accept · [n] not right · [s] tell it · [d] let codeaf decide this one
 ```
 
 ```

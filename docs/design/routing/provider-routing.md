@@ -21,7 +21,7 @@ choice that samples, a watch that hedges, and a picker that shows the lane.**
 - **Belief** — per `(model, lane)` a two-state Kalman filter in the log domain
   (ln TTFT, ln tok/s) with process noise tuned to a ~10-minute half-life. It
   replaces the 2-strike/3-strike/5-minute constants. Persisted to
-  `~/.aforge/v3/lanes.json`.
+  `~/.codeaf/v3/lanes.json`.
 - **Choice** — capability gate, then Thompson sampling over *time-to-answer*
   with a tail term and a price penalty. Sends `provider.order` = top-3,
   `allow_fallbacks: true`. A pin sends `provider.only`.
@@ -101,7 +101,7 @@ Fireworks and ~20 more.
 `internal/provider/lanesheet.go`. On a background beat (every 5 min while a
 session is open, and once at open if the cache is older than 5 min) fetch
 `GET /models/{id}/endpoints` for each model in use, decode row-by-row like the
-catalog does, write `~/.aforge/v3/lanes/{model}.json`. **Never on the input or
+catalog does, write `~/.codeaf/v3/lanes/{model}.json`. **Never on the input or
 send path** — the send path reads the in-memory copy; a missing sheet means
 "no prior, use the belief alone", never a fetch. (The home-lag lesson of
 2026-08-30 applies: one reading per beat, re-parsed only on stat change.)
@@ -138,7 +138,7 @@ update on a sighting z = ln(observed):
 - Every sheet refresh is fed as a *pseudo-observation* with `R = σ₀²·k`,
   `k ≈ 4` (worth a quarter of a real sighting) so the public number keeps
   pulling the belief toward reality without drowning our own measurements.
-- Persist `{x, P, at}` per filter in `~/.aforge/v3/lanes.json` on every
+- Persist `{x, P, at}` per filter in `~/.codeaf/v3/lanes.json` on every
   update (small, atomic write). A new process starts from yesterday's belief
   aged by `Δt` — which is exactly "mostly the prior, a little memory".
 
@@ -311,7 +311,7 @@ is shown is when the system is already doing something about it.
 
 `usage.jsonl` rows gain `lane`, `ttft_ms`, `tps`, `hedged` (bool),
 `hedge_waste_usd`. The session journal already carries `endpoint`. The
-call log (`AFORGE_CALL_LOG`) gains `ttft_ms` and `deadline_ms`.
+call log (`CODEAF_CALL_LOG`) gains `ttft_ms` and `deadline_ms`.
 
 ## Algorithm notes, for the reviewer
 
@@ -373,7 +373,7 @@ L1 starts.
   with L2.
 - No fetch, no exec, no walk on the input or send path.
 - No racing of all lanes; no hedge without a budget.
-- No lane names in prompts, manuals or laws — aforge names *lanes*, the sheet
+- No lane names in prompts, manuals or laws — codeaf names *lanes*, the sheet
   names vendors.
 
 ---
@@ -416,7 +416,7 @@ Five mechanisms, ranked by leverage:
 
 ## 1. λ — the price of a second, per request
 
-Three questions, each answerable from state aforge already holds:
+Three questions, each answerable from state codeaf already holds:
 
 | question | source | effect on λ |
 |---|---|---|
@@ -778,7 +778,7 @@ The law, stated once in the ledger and held by two tests:
 ## And one bug in the instrument
 
 The acceptance scenarios in `internal/lane/e2e_test.go` primed a ledger that
-writes through a store, and `StorePath` resolves under `AFORGE_HOME` on every
+writes through a store, and `StorePath` resolves under `CODEAF_HOME` on every
 call. They did not move the state root. So every run folded this file's INVENTED
 lanes into the belief file of whoever ran the tests, and read them back on the
 next run — a real router given an opinion about a lane that does not exist, and
@@ -856,7 +856,7 @@ changed is the CLAIM; no constant was tuned to rescue the old one.
 `internal/provider`'s own suite had the same disease as the acceptance
 scenarios, one layer out: its tests stream simulated answers through a real
 client, every finished stream teaches the process-wide lane ledger, and that
-ledger writes through a store under `AFORGE_HOME`. So the suite folded lanes
+ledger writes through a store under `CODEAF_HOME`. So the suite folded lanes
 called "quicksilver" into the belief file of whoever ran it, read them back on
 the next run, and then failed on a first request arriving with an `order` it
 could not have learned. The velocity ledger it was all written around is per

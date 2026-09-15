@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE AMBIENT BAND ON HOME ────────────────────────────────────────────────
@@ -892,7 +892,7 @@ func TestTheBandsListRulesAfterEverythingWithATime(t *testing.T) {
 //
 // THE HOLE THIS PINS WAS FOUND ON A REAL SCREEN. internal/e2e's
 // `the_firing_reaches_the_person` stands `remind me in 1 minute`, shuts every
-// window, fires it with `aforge tick` and comes back — and home drew no block at
+// window, fires it with `codeaf tick` and comes back — and home drew no block at
 // all. internal/standing's tick.go stamps LastFired and then retires a one-off in
 // the same pass, [app.standItems] drops every retired item because a thing that
 // is over is not keeping an eye on anything, and switcher.go's ledger walked the

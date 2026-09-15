@@ -17,7 +17,7 @@ package connect
 // and reading a calendar is not putting a meeting on somebody else's.
 //
 // Not two, because "Gmail" and "Calendar" would put a search and a send behind
-// one control, and the person who wants aforge to read their mail without ever
+// one control, and the person who wants codeaf to read their mail without ever
 // writing from their address would have nothing to click. Not five, because
 // gmail_search and gmail_read are one sentence — nobody wants a program that may
 // list their mail but not open it, and a row nobody would ever set differently

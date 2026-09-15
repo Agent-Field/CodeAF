@@ -1,6 +1,6 @@
 package pair
 
-// `aforge serve`: the machine that owns the work, holding one outbound
+// `codeaf serve`: the machine that owns the work, holding one outbound
 // connection open and answering the devices that arrive on it.
 //
 // IT LISTENS FOR NOTHING. There is no port, no inbound rule, no certificate and
@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 // Host is the machine side.
@@ -80,9 +80,9 @@ func (h *Host) Run(ctx context.Context) error {
 		case errors.Is(err, relay.ErrNameTaken):
 			// RULE THREE OF THE NAME POLICY, MET FROM THIS SIDE. Something is
 			// already connected under this machine's name, which in practice
-			// means a second `aforge serve` on this same machine. Trying again
+			// means a second `codeaf serve` on this same machine. Trying again
 			// forever would be two processes fighting over one name.
-			return fmt.Errorf("this machine is already connected to the relay as %s — there is only one of it, so close the other `aforge serve`", h.Device.Name())
+			return fmt.Errorf("this machine is already connected to the relay as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
 				return Unreachable(h.Service)

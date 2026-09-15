@@ -17,9 +17,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // scriptedMedia is the whole [MediaGenerator] without a socket. It records what
@@ -327,7 +327,7 @@ func TestGenerateMusicComposesOnItsOwnLaneAndNeverThroughSpeak(t *testing.T) {
 	if !notesContain(agent, "composed by compose/model") {
 		t.Fatalf("the note does not say who composed it; notes = %v", sessionNotes(agent))
 	}
-	directory := filepath.Join(workspace, ".aforge-v3", "music")
+	directory := filepath.Join(workspace, ".codeaf", "music")
 	entries, err := os.ReadDir(directory)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("%s holds %v (%v), want one file", directory, entries, err)

@@ -159,7 +159,7 @@ func (s *Store) OpenOrReuseSession(id, surface string) (Session, bool, error) {
 //
 // The delete is journaled rather than performed quietly, because the sessions
 // table is a projection: a bare DELETE would be undone by the next
-// `aforge rebuild`, and a projection that disagrees with the journal is the one
+// `codeaf rebuild`, and a projection that disagrees with the journal is the one
 // thing this store does not have. A discarded room replays as discarded.
 func (s *Store) ReapEmptySessions(keep string) ([]string, error) {
 	keep = strings.TrimSpace(keep)

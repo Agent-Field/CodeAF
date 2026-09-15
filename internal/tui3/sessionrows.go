@@ -3,7 +3,7 @@ package tui3
 import (
 	"path/filepath"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE NAME A SESSION FALLS BACK TO, NOW THAT A SESSION IS A FOLDER.

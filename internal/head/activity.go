@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // What the turn is DOING, said out loud while it does it.
@@ -100,7 +100,7 @@ func toolGloss(name, arguments string) string {
 		if page := glossArg(args, "page"); page != "" {
 			return "reading the manual on " + quoteGloss(page)
 		}
-		return "reading aforge's own manual"
+		return "reading codeaf's own manual"
 	case beltToolResult:
 		// The subject rides at the END of every gloss here, and it is a grammar
 		// rule rather than a preference: the summary row downstream says what

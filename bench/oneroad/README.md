@@ -17,7 +17,7 @@ what is different here.
 
 ## Every cell is driven through chat
 
-The aforge arm is driven **through a real TUI over tmux**, never `aforge do`.
+The codeaf arm is driven **through a real TUI over tmux**, never `codeaf do`.
 The question is what the chat surface decides, and a headless entry point
 answers a different question — it is handed the shape instead of choosing it.
 `bench/e2e/` already drives the TUI this way and its lib is what these cells

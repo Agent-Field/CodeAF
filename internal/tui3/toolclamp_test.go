@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── A TOOL CALL IS ONE ROW UNTIL SOMEBODY OPENS IT ──────────────────────────
@@ -45,7 +45,7 @@ func clampArgs(field, value string) string {
 }
 
 // The command from the owner's report, which is the length this is all about.
-const clampCommand = `gh api "search/issues?q=repo:Agent-Field/aforge-v2+commenter:AbirAbbas&sort=created&order=desc&per_page=30" -q '.items[] | .number'`
+const clampCommand = `gh api "search/issues?q=repo:Agent-Field/codeaf+commenter:AbirAbbas&sort=created&order=desc&per_page=30" -q '.items[] | .number'`
 
 // callRowsOf is every row the transcript draws for a tool call — the line and
 // whatever it hangs — plain.

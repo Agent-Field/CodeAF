@@ -20,7 +20,7 @@ SCENARIO_WORKLOAD="conversation"
 SCENARIO_DOOR="interactive"
 # opencode is absent because this suite has no calibrated screen markers for its
 # TUI; its cells are recorded `unsupported` rather than run through another door.
-SCENARIO_ARMS="aforge omp pi"
+SCENARIO_ARMS="codeaf omp pi"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-420}"
 SCENARIO_GUARDS="a second question answered while the first job is still running"
 

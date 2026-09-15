@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // restoredJob is one job as the engine replays it out of a checkpoint: settled,
@@ -32,7 +32,7 @@ func restoredJob(id int, name, command string, state session.JobState) session.J
 		Command: command,
 		Kind:    session.JobKindCommand,
 		State:   state,
-		LogPath: "/tmp/aforge/jobs/" + name + ".log",
+		LogPath: "/tmp/codeaf/jobs/" + name + ".log",
 		Started: started,
 		Elapsed: 9 * time.Minute,
 	}

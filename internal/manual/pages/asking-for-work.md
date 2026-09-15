@@ -1,4 +1,4 @@
-# Asking aforge to do something
+# Asking codeaf to do something
 
 There is no syntax. You write what you want the way you would write it to a
 colleague, and the front desk decides where it goes.
@@ -9,7 +9,7 @@ colleague, and the front desk decides where it goes.
 
 ## Reflex or compiled
 
-Two shapes of work exist, and aforge chooses between them for you.
+Two shapes of work exist, and codeaf chooses between them for you.
 
 A **reflex** is one obvious, reversible, seconds-scale action. It skips
 compilation, planning and delivery review, gets four turns and a **90-second**
@@ -39,7 +39,7 @@ workspace.
 
 ## The compile receipt: assumptions you can revise
 
-Aforge does not stall your work with a questionnaire. It assumes sensible
+codeaf does not stall your work with a questionnaire. It assumes sensible
 defaults — scope, audience, format, quality bar, evidence, timing — and then
 declares every one of them back to you. That list is a receipt, not a decision
 you are stuck with. Read it, and if one is wrong, say so and the plan is edited.
@@ -59,14 +59,14 @@ It asks in exactly two situations, and it asks once:
 Questions arrive as cards you can answer with `1`–`9`, arrows, or free text.
 
 Over time it asks less: once you have accepted a category's default enough
-times, aforge stops asking it and simply declares the assumption instead. The
+times, codeaf stops asking it and simply declares the assumption instead. The
 questions that carry consent — ratifying a standing goal, raising your budget,
 keeping a server alive — are never silenced this way.
 
 ## Attachments, images, documents
 
 Drag a file path into the input to attach it. Attaching copies the file: the
-bytes are kept where aforge lives, so a retry next week and a follow-up
+bytes are kept where codeaf lives, so a retry next week and a follow-up
 tomorrow read exactly what you attached even after you have moved, renamed, or
 deleted your own copy. Your file is read once and never written to.
 
@@ -85,10 +85,10 @@ deleted your own copy. Your file is read once and never written to.
   rungs are PDF-only, so `.docx` and `.pptx` are read remotely, and asking for
   a page range only means something for a PDF.
 
-## Attribution: how aforge signs git work
+## Attribution: how codeaf signs git work
 
 When a worker makes git commits for you, it adds one trailer at the end of the
-commit message — `Co-Authored-By: aforge` — and nothing in the subject or the
+commit message — `Co-Authored-By: codeaf` — and nothing in the subject or the
 body. When it opens a pull request or an issue, it ends the body with an
 em-dash line and one sentence: *Drafted with agentfield ai · reviewed and owned
 by the author*, linking to `agentfield.ai/github`.
@@ -100,13 +100,13 @@ deliverable like a deck or a report. A repository that forbids AI trailers wins
 signature out.
 
 Turn it off in the settings sheet under **sharing**, or pin it from your shell
-with `AFORGE_ATTRIBUTION`. Off means the worker is never told to sign at all.
+with `CODEAF_ATTRIBUTION`. Off means the worker is never told to sign at all.
 
 ## Where a coding worker actually works, and what happens to work that was not brought back
 
 A coding worker that shares a directory with other workers, or that is pointed at
 a repository of yours, is given a **checkout of its own** — a git worktree under
-aforge's own state, on a branch named `aforge/leaf/<the part's id>`. It edits
+codeaf's own state, on a branch named `codeaf/leaf/<the part's id>`. It edits
 there, runs the project's own checks there against a tree no sibling can move
 under it, and when it succeeds its branch is squashed back into your workspace as
 **one commit** with a real message. Your directory is never worked in directly.
@@ -118,7 +118,7 @@ put into a tree other work is being checked against. What you get instead is one
 sentence, on the result and in the running output, saying where it is:
 
 ```
-This work is written and it is not in your workspace: 4 file(s) are in <the checkout>, on branch aforge/leaf/<id> — `git merge aforge/leaf/<id>` brings it over.
+This work is written and it is not in your workspace: 4 file(s) are in <the checkout>, on branch codeaf/leaf/<id> — `git merge codeaf/leaf/<id>` brings it over.
 ```
 
 The checkout and the branch are both kept for **seven days**, so the sentence is
@@ -126,7 +126,7 @@ still true when you come back to it on Monday. Whether that work belongs in your
 repository is a decision for you and not for the run.
 
 That sentence is written from **git**, never from what the worker said about
-itself: aforge reads the checkout's own status and the commits on its branch. A
+itself: codeaf reads the checkout's own status and the commits on its branch. A
 worker that reports having written everything and a worker that reports having
 written nothing are equally unreliable about it.
 

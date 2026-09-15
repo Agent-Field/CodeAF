@@ -43,11 +43,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // SubharnessMemory is where a subharness keeps what it has learned about its own
@@ -417,7 +417,7 @@ func (e *subharnessEnv) onBelt(name string) bool { return e.agent.ToolOnBelt(nam
 // tool exists" — and the runtime checks it before spending anything
 // (internal/jsrun's `Look`). The runtime is handed that question by the surface
 // at load time, before this agent exists, so the surface holds one indirection
-// and fills it with this method the moment it does (cmd/aforge's beltWatch).
+// and fills it with this method the moment it does (cmd/codeaf's beltWatch).
 //
 // IT ASKS THE BELT ITSELF RATHER THAN A LIST, so a tool armed for an account
 // this conversation connected five minutes ago is found (connect.go's

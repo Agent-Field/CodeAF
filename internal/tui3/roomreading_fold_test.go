@@ -3,7 +3,7 @@ package tui3
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 func readingFoldJournal(t *testing.T, earlierPhase, laterTurn bool) string {

@@ -8,7 +8,7 @@
 
 SCENARIO_WORKLOAD="coding"
 SCENARIO_DOOR="print"
-SCENARIO_ARMS="aforge omp pi opencode"
+SCENARIO_ARMS="codeaf omp pi opencode"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-600}"
 SCENARIO_GUARDS="a failing suite made green without weakening it"
 

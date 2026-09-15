@@ -3,10 +3,10 @@
 ## Current measured candidate
 
 The later candidate `ec9f5a0c2` passed the full repository check and completed a
-frozen 36-cell Aforge/Pi/OMP calibration on the exact DeepSeek model. The detailed
+frozen 36-cell codeaf/Pi/OMP calibration on the exact DeepSeek model. The detailed
 protocol, failures, costs and next decisions are in
 [CALIBRATION-20260905.md](CALIBRATION-20260905.md). Small print requests all passed,
-but Aforge cost more than Pi on every observed print slice. Aforge passed one of
+but codeaf cost more than Pi on every observed print slice. codeaf passed one of
 two side-question cases and one of two revision cases; the other revision timed
 out. Steering handoff improved, but a Pareto or production-reliability claim is
 not established. The sections below retain the earlier wave's evidence.
@@ -65,7 +65,7 @@ requirement. The guard recorded interrupted and unresolved calls, so a complete 
 for this diagnostic run is unknown.
 
 The first integrated paired-run attempt was invalid: a long evidence path exceeded
-Aforge's Unix socket path limit, causing in-process fallback and setup. The rig now
+codeaf's Unix socket path limit, causing in-process fallback and setup. The rig now
 uses a short owned alias to the same cell state. Those two unsupported cells are not
 product failures or successful tests.
 
@@ -85,7 +85,7 @@ These facts are observations, not a ranking of the harnesses in general.
 ## Corrected hosted comparison, candidate 0c76ea5ca
 
 The corrected run used the short state alias, the same 60-second fixture and the
-same exact DeepSeek model as the peers. Both Aforge cells failed. Follow-up: 86s total,
+same exact DeepSeek model as the peers. Both codeaf cells failed. Follow-up: 86s total,
 incorrect `RABBANIC` in the model response and no build-result narration on screen.
 Revision: 183s, valid CSV produced but superseded Markdown also left behind. The
 fixed session goal was visibly trying to restore the Markdown requirement after the
@@ -179,7 +179,7 @@ as did causal-wake and prefix regressions (10.353s). The unchanged fixed-prefix
 budget remains 48,000 bytes.
 
 Work is integrated locally on `santosh/conversation-runtime` in
-`/private/tmp/af-conversation`, with its own `bin/aforge`. The original QA checkout
+`/private/tmp/af-conversation`, with its own `bin/codeaf`. The original QA checkout
 and shared `dev` were not modified by this wave. Owned merged delegate worktrees,
 CLI profile and GLM forwarding process were removed; raw evidence and its short
 state aliases are retained. The binary's dirty marker reflects an unrelated tracked

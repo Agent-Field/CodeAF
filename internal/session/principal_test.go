@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── the fixtures, one per ending this road has ──────────────────────────────
@@ -648,7 +648,7 @@ func TestTheBaselineSharesOneWindowAndRefusesAMutatingCheck(t *testing.T) {
 	agent.readBaseline(context.Background(), []string{
 		"printf after > keep.txt",
 		"exit 1",
-		"aforge-no-such-command-anywhere",
+		"codeaf-no-such-command-anywhere",
 	})
 
 	red, unread, read := agent.baselineRedChecks()

@@ -2,7 +2,7 @@
 
 ## The daily rail
 
-Aforge spends real money, so it works against a ceiling: **$500.00 a day** by
+codeaf spends real money, so it works against a ceiling: **$500.00 a day** by
 default, resetting at your local midnight. The ceiling counts everything —
 your jobs, charter firings, media, document OCR, its own practice.
 
@@ -48,7 +48,7 @@ precise figure, so a board figure and a result figure can differ by a few cents.
 
 ## Pause and ask, never spend on
 
-When the day's spend reaches the ceiling, aforge does not stop mid-thought and
+When the day's spend reaches the ceiling, codeaf does not stop mid-thought and
 it does not quietly keep going. It stops *claiming new work* and posts one
 question:
 
@@ -70,14 +70,14 @@ not once per attempt.
 | `/budget unlimited today` | no ceiling until local midnight; the default is untouched |
 
 The header meter is the same day on a smaller surface: `$3.40 today`, plus what
-aforge has spent on itself today beside it. It counts from your local midnight,
+codeaf has spent on itself today beside it. It counts from your local midnight,
 exactly as the rail does. In a narrow window it keeps the figure and drops the
 word, so the money is still there in a docked pane.
 
 ## Asking about money in words
 
 Ask for any stretch of time — "what has this month cost?", "how much did last
-week come to?", "what's been expensive lately?" — and aforge reads its own
+week come to?", "what's been expensive lately?" — and codeaf reads its own
 ledger for that window: the total, and the jobs the money went on, named the way
 you named them and priced heaviest first. Those job figures do not add up to the
 window's total, and it will say so: planning, answering and its own upkeep
@@ -229,19 +229,19 @@ file.
 
 ## The practice carve-out
 
-Aforge's own practice has its own pocket: **$50.00 a day**, spent as at most two
+codeaf's own practice has its own pocket: **$50.00 a day**, spent as at most two
 firings of half of it. When that is gone, practice stops for the day. It never
 asks you to raise a rail on its own behalf — it just defers. The daily rail
 still applies on top.
 
 **This is the one pocket where `0` does not mean "no limit".** Zero turns
 practice off, and the row says so: it reads `practice off`. Practice is work
-aforge does while nobody is watching, so there is no way to ask for it unbounded,
+codeaf does while nobody is watching, so there is no way to ask for it unbounded,
 on purpose.
 
 ## The provider rate limiter
 
-Aforge shares one account across everything it does, so it shares one limiter.
+codeaf shares one account across everything it does, so it shares one limiter.
 When a provider throttles it, capacity is **halved**; after a run of clean
 calls, capacity climbs back one slot at a time, up to 64 in flight. There is no
 fixed concurrency setting to tune — under pressure the fleet converges on the
@@ -265,12 +265,12 @@ back while the machine is loaded or short of memory. Those are yours to set.
 
 ## Background shells yield the machine
 
-Any shell aforge backgrounds is reniced to **+10** as a whole process group, so
+Any shell codeaf backgrounds is reniced to **+10** as a whole process group, so
 a long build in the background loses CPU to you rather than the reverse. The
 foreground shell of a task keeps normal priority — it is on the critical path.
 
 ## Headless spending
 
-`aforge run` accepts `--yes-spend`, and `AFORGE_PREAUTHORIZE_SPEND=1` does the
+`codeaf run` accepts `--yes-spend`, and `CODEAF_PREAUTHORIZE_SPEND=1` does the
 same, for runs with nobody there to answer the question. Both are journaled, so
 a preauthorized raise is still visible afterwards as a decision that was made.

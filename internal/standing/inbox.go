@@ -118,7 +118,7 @@ const projectsDirName = "projects"
 
 // ProjectKey is the one name a workspace has under [projectsDirName]: the path
 // with its separators turned to dashes, exactly the dumb one-way spelling
-// cmd/aforge gives a session bucket under v3/projects, so a person who goes
+// cmd/codeaf gives a session bucket under v3/projects, so a person who goes
 // looking recognises the folder names from the ones they already know.
 //
 // IT IS NEVER DECODED AND NEVER JOINED TO A BUCKET. Decoding would be guessing

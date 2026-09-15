@@ -1,12 +1,12 @@
 # The tasks place, the task page, and the jobs view — an audit
 
-Captured against `bin/aforge` at `7f0aaf4b4` on the seeded demo home, at 160x50,
+Captured against `bin/codeaf` at `7f0aaf4b4` on the seeded demo home, at 160x50,
 120x40, 80x24 and 60x30. Every row below closes on a frame in
 `docs/design/polish/frames/`, named at the end of the row.
 
 ## What could not be captured, and why
 
-The demo home (`cmd/aforge-demo-home`) seeds **no background jobs and no live
+The demo home (`cmd/codeaf-demo-home`) seeds **no background jobs and no live
 task**. So the jobs section in the column, the job page, and a task ROOM
 (`room.go`, a task still running) have no frame here — rows 11, 15 and 16 are
 read from the source and say so. Anyone extending the seeder with one running
@@ -41,13 +41,13 @@ is a colour row.
 
 2. Sections named by time hold rows in no time order — `internal/tui3/tasksplace.go:151` (`readTasks` builds `order` from the world scan and never sorts it; `:238` appends each section in that order) — under "done today" the ages read `2h, 50m, 5h, 5h` and under "earlier" they read `8d, now, 2d`, so the one question the headings promise to answer — what happened most recently — cannot be answered by reading down, and a person looking for "the thing I ran just before lunch" has to read all ten rows and sort them in their head; the order is inherited from home's, which sorts PROJECTS by when somebody was last in a conversation (`internal/session/world.go:511`) — a fact about conversations, not about work — `fix shape`: sort each section by `tasksEntryAt(item.entry, now)` descending after the family pass at `:238`, keeping families contiguous under their root (sort roots, then sort each root's children); it is one `sort.SliceStable` and it makes the row order a function of the thing the heading names — sev: high — frames: docs/design/polish/frames/task-list.120x40.txt, task-list.160x50.txt
 
-3. A filter that matches nothing makes the page state a falsehood about the machine — `internal/tui3/tasksplace.go:591` and `:609`, fed the filtered reading by `place_tasks.go:376`+`:855` — typing `zzz` draws `work aforge ran on its own. nothing.` across the top of a machine that has run ten tasks worth $2.21; the head sentence is a claim about the PLACE and the filter is a property of the QUERY, and `head()` computes both from `len(r.items)` after `tasksFiltered` has already replaced `r.items` with the survivors — a person who typed a word they half-remembered is told their history is empty; `fix shape`: `head()` must read the unfiltered reading — `r.held` is already the untouched count (`:225`) — or the place must pass `p.reading` rather than `a.tasksFiltered()` to the head line; the "nothing matches" news already has its correct home on the note line (`taskSheetFilterLine`) — sev: high — frames: docs/design/polish/frames/task-filter-none.120x40.txt
+3. A filter that matches nothing makes the page state a falsehood about the machine — `internal/tui3/tasksplace.go:591` and `:609`, fed the filtered reading by `place_tasks.go:376`+`:855` — typing `zzz` draws `work codeaf ran on its own. nothing.` across the top of a machine that has run ten tasks worth $2.21; the head sentence is a claim about the PLACE and the filter is a property of the QUERY, and `head()` computes both from `len(r.items)` after `tasksFiltered` has already replaced `r.items` with the survivors — a person who typed a word they half-remembered is told their history is empty; `fix shape`: `head()` must read the unfiltered reading — `r.held` is already the untouched count (`:225`) — or the place must pass `p.reading` rather than `a.tasksFiltered()` to the head line; the "nothing matches" news already has its correct home on the note line (`taskSheetFilterLine`) — sev: high — frames: docs/design/polish/frames/task-filter-none.120x40.txt
 
 4. Every fact on a task row is joined to the next by a bare space, so the tail reads as one run-on phrase — `internal/tui3/tasksplace.go:738` (`b.WriteByte(' ')`) — `The Certificate Rotation incomplete now` is three separate facts (which conversation / what state / how long ago) that a reader has to re-parse into three, and `The Annual Toggle 2 files · Annual is the default and the monthly price stays visible beside it. $0.27 5h` mixes a real ` · ` inside one fact with bare spaces between facts, so the only separator on the row means two different things; every other list on this surface joins facts with `rowSep`/`railSep` (` · `), including this task's own PAGE one keypress away (`taskrecord.go:552`, `anthropic/claude-sonnet-4 · $0.31 · 38.4k tok`) — `fix shape`: falls out of row 1 — `rowTail` joins with `rowSep` and nothing else has to change — sev: high — frames: docs/design/polish/frames/task-list.120x40.txt, task-list.80x24.txt, task-list.160x50.txt
 
 5. 24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom — `internal/tui3/place_tasks.go:938` and `internal/tui3/pages.go:966` for the list; `internal/tui3/taskrecord.go:430`+`:437` for the page — the task page is the worse of the two: a six-line card is padded to fifty rows, so the reader's eye has to travel the whole frame to find a foot that says `esc back` when everything on the page ended at line 9, and the emptiness the law forbids in a figure is drawn here as thirty rows of it; `fix shape`: both fillers pad to a fixed `room` — let the frame's rule and foot ride under the last drawn row when the content is shorter than the room (the composer and the place strip keep their positions; only the rule moves up), and keep the pad only where the body scrolls — sev: high — frames: docs/design/polish/frames/task-page-done.160x50.txt, task-page-done.120x40.txt, task-list.160x50.txt
 
-6. The header says `work aforge ran on its own. 10, $2.21 of it.` — a bare count with no noun after it — `internal/tui3/tasksplace.go:609` — "10," is a number a reader has to guess the unit of, and the comma splices two clauses that are not a sentence; the 60-cell spelling (`10 since aug 20, $2.21 of it.`) is worse, because "10 since aug 20" reads as if 10 were a sum of money; `fix shape`: give the figure its noun and make it one clause — `10 pieces of work since aug 20, $2.21 between them.` — with the noun coming from the same `plural` helper the rest of the file uses, so `1 piece of work` is right too; the emptiness branch above it (`nothing`) is already correct and should keep its shape — sev: med — frames: docs/design/polish/frames/task-list.120x40.txt, task-list.60x30.txt
+6. The header says `work codeaf ran on its own. 10, $2.21 of it.` — a bare count with no noun after it — `internal/tui3/tasksplace.go:609` — "10," is a number a reader has to guess the unit of, and the comma splices two clauses that are not a sentence; the 60-cell spelling (`10 since aug 20, $2.21 of it.`) is worse, because "10 since aug 20" reads as if 10 were a sum of money; `fix shape`: give the figure its noun and make it one clause — `10 pieces of work since aug 20, $2.21 between them.` — with the noun coming from the same `plural` helper the rest of the file uses, so `1 piece of work` is right too; the emptiness branch above it (`nothing`) is already correct and should keep its shape — sev: med — frames: docs/design/polish/frames/task-list.120x40.txt, task-list.60x30.txt
 
 7. A task the record still calls running, with nobody behind it, is dated `now` forever — `internal/tui3/tasksplace.go:844` (`tasksEntryAt` returns `now` for any `entry.Live()`) with the note from `:793` — the row draws `· Rotate the wildcard certificate … The Certificate Rotation incomplete now`, in which the note says the window that was running this is gone and the age says it is happening this second; the two halves of the same row contradict each other, and the age is the half a person believes because ages are what they scan; `fix shape`: `tasksEntryAt` is right for a genuinely live row and wrong for a stopped one — split the case that `tasksNote` already distinguishes (`entry.Live() && !item.runs`) and date a stopped row from `entry.StartedAt`, drawing `incomplete · started 3d ago`; where nothing dated it at all, draw the note and no age (the emptiness law) rather than an age that means "the moment you looked" — sev: med — frames: docs/design/polish/frames/task-list.120x40.txt, task-list.80x24.txt, task-page-incomplete.120x40.txt
 
@@ -110,7 +110,7 @@ frames: `task-list.120x40.txt` → `task-list-after.120x40.txt`, `task-fold-open
 
 **Row 3 — a filter that matches nothing no longer makes the page lie.**
 `tasksReading` carries `whole`/`wholeCost`, counted in `readTasks` before any
-query, and `head` reads those. Typing `zzz` still draws `work aforge ran on its
+query, and `head` reads those. Typing `zzz` still draws `work codeaf ran on its
 own. 10 pieces of work, $2.21 between them.`; the news that nothing matches stays
 on the note line.
 files: `internal/tui3/tasksplace.go`
@@ -118,7 +118,7 @@ test: `TestAFilterThatMatchesNothingStillCountsThePlace`
 frames: `task-filter-none.120x40.txt` → `task-filter-none-after.120x40.txt`
 
 **Row 6 and the fold's count — both figures said in words.** The head is
-`work aforge ran on its own. 10 pieces of work since aug 20, $2.21 between
+`work codeaf ran on its own. 10 pieces of work since aug 20, $2.21 between
 them.`, with the noun from the same `plural` helper and `1 piece of work` right
 too; a frame too narrow for the whole sentence drops the spend clause rather than
 letting the line be cut mid-figure. `+3 under` is now `holds 3 more`, and it
@@ -197,8 +197,8 @@ the page), the card's source line and the `landed`/`stopped` verb.
 
 ## fixed — the second pass
 
-The `t5-` frames were captured from `bin/aforge` in a real terminal on socket
-`polish-t5`, against a demo home freshly seeded by `cmd/aforge-demo-home` (the
+The `t5-` frames were captured from `bin/codeaf` in a real terminal on socket
+`polish-t5`, against a demo home freshly seeded by `cmd/codeaf-demo-home` (the
 room fixture, three background jobs, the 101-character title). **Every fix below
 was REVERTED and its test watched to fail before the fix went back**, and the
 revert used is named on each row.
@@ -317,8 +317,8 @@ ending), `internal/manual/chat/keys.md` (the card's foot) and
 
 ## fixed — the count and the rows
 
-The `km-` frames were captured from `bin/aforge` in a real terminal on socket
-`polish-km`, against a demo home freshly seeded by `cmd/aforge-demo-home`. The
+The `km-` frames were captured from `bin/codeaf` in a real terminal on socket
+`polish-km`, against a demo home freshly seeded by `cmd/codeaf-demo-home`. The
 fix was REVERTED and its test watched to fail before it went back.
 
 **Row 13 — the count and the rows it counts agree on one frame, and the

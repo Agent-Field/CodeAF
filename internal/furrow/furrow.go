@@ -1,4 +1,4 @@
-// Package furrow is aforge's seam onto `furrow`, a separate program aforge
+// Package furrow is codeaf's seam onto `furrow`, a separate program codeaf
 // carries inside itself (Agent-Field, Apache-2.0,
 // https://github.com/Agent-Field/furrow).
 //
@@ -6,11 +6,11 @@
 // the dev database, git's own mutable state — into byte-exact universes in
 // about a second, seals that workspace continuously into an immutable
 // content-addressed timeline, and syncs it between machines encrypted below the
-// transport. It is Rust and aforge is Go, so THE ONLY INTEGRATION IS THE CLI —
+// transport. It is Rust and codeaf is Go, so THE ONLY INTEGRATION IS THE CLI —
 // which is fine, because the CLI is furrow's declared API: `--json` everywhere,
 // stable IDs, and destructive operations gated on an explicit ID plus `--yes`.
 //
-// EVERY AFORGE IS AN AFORGE WITH FURROW. The binary rides inside this one and
+// EVERY codeaf IS A codeaf WITH FURROW. The binary rides inside this one and
 // is written out on first need (internal/furrowbin), so the half of the answer
 // that used to vary by machine — is furrow installed — no longer does. What
 // still varies is the half a person controls per project: a folder nobody ran
@@ -20,7 +20,7 @@
 // THAT CANNOT WORK IS ABSENT, NOT BROKEN. A folder furrow was never pointed at
 // — or the rare machine where the binary could not be written out at all — and
 // [Tools] returns nothing at all: the model is never handed a verb whose every
-// call would be a refusal, and no other part of aforge notices this package
+// call would be a refusal, and no other part of codeaf notices this package
 // exists. Everything here hangs off [Detect], which is why [Detect] is the
 // first thing in the file and the most carefully cached: it is asked far more
 // often than anything else is done.
@@ -47,17 +47,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/env"
+
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // Binary is the program this package shells out to. It is normally the copy
-// aforge carries and writes out itself; PATH is the fall-back, and
-// AFORGE_FURROW overrides both for somebody who means a particular binary —
-// their own build, or a newer furrow than this aforge is pinned to.
+// codeaf carries and writes out itself; PATH is the fall-back, and
+// CODEAF_FURROW overrides both for somebody who means a particular binary —
+// their own build, or a newer furrow than this codeaf is pinned to.
 // [lookBinary] has the order and the reason for it.
 const (
 	Binary       = "furrow"
-	BinaryEnvVar = "AFORGE_FURROW"
+	BinaryEnvVar = "CODEAF_FURROW"
 )
 
 // detectTimeout bounds the two cheap calls [Detect] makes. Detection sits in
@@ -240,7 +242,7 @@ func detect(ctx context.Context, root string) Presence {
 		// Attached stays false: an unreadable status is a furrow whose other
 		// answers this package cannot trust either, and a belt built on that
 		// would be a belt of tools that fail in a way nobody can explain.
-		presence.Reason = "furrow answered in a shape aforge does not understand"
+		presence.Reason = "furrow answered in a shape codeaf does not understand"
 		return presence
 	}
 	presence.Attached = true
@@ -251,22 +253,22 @@ func detect(ctx context.Context, root string) Presence {
 	return presence
 }
 
-// embedded is the road to the furrow aforge carries inside itself, and it is a
+// embedded is the road to the furrow codeaf carries inside itself, and it is a
 // variable for exactly one reason: the tests in this package have to be able to
 // say "a machine with no furrow at all", which on a shipped build is a state
 // that no longer exists. Nothing in the product reassigns it.
 var embedded = furrowbin.Ensure
 
 // lookBinary finds furrow. Three roads, in this order: the path somebody
-// configured, the copy aforge carries, then PATH.
+// configured, the copy codeaf carries, then PATH.
 //
-// AFORGE_FURROW stays first because it is the only one a person chose. An
-// AFORGE_FURROW that names something missing is an error and not a quiet fall
+// CODEAF_FURROW stays first because it is the only one a person chose. An
+// CODEAF_FURROW that names something missing is an error and not a quiet fall
 // back to the others: somebody who set that variable meant that binary, and
 // silently running a different one is the kind of help nobody asked for.
 //
 // THE EMBEDDED COPY COMES BEFORE PATH, AND THAT IS THE NO-VARIANCE RULING. The
-// version riding inside this binary is the one this aforge was built and tested
+// version riding inside this binary is the one this codeaf was built and tested
 // against; whatever a machine happens to have on its PATH is a different
 // program with the same name, possibly older, possibly newer than the JSON the
 // decoders here were written for. PATH remains as the fall-back for a build
@@ -275,7 +277,7 @@ var embedded = furrowbin.Ensure
 // road not taken, and if none of them answer the seam is absent exactly as it
 // always was.
 func lookBinary() (string, error) {
-	if configured := strings.TrimSpace(os.Getenv(BinaryEnvVar)); configured != "" {
+	if configured := strings.TrimSpace(env.Get(BinaryEnvVar)); configured != "" {
 		info, err := os.Stat(configured)
 		if err != nil {
 			return "", err
@@ -319,7 +321,7 @@ func Open(ctx context.Context, root string) *Workspace {
 // rather than furrow's. Attaching a workspace reads every file in it once to
 // seal the first snapshot, and forking one seals the workspace as it stands
 // before it copies it, so both are one read of the whole folder; a minute is
-// generous for the repositories aforge works in and short enough that a task
+// generous for the repositories codeaf works in and short enough that a task
 // waiting on either is never waiting on a hang.
 //
 // IT IS ONE NUMBER FOR BOTH because they are one cost. The fork had no bound at
@@ -341,7 +343,7 @@ var ErrNotHere = errors.New("furrow is not on this machine")
 //
 // IT EXISTS FOR A CALLER THAT REMEMBERS WHAT FURROW DID. A furrow that could not
 // make something for a folder yesterday may be able to today, and the thing
-// that changed is nearly always the program: an aforge carrying a newer pin
+// that changed is nearly always the program: a codeaf carrying a newer pin
 // writes a newer binary under a newer name ([furrowbin]), and a person who
 // points [BinaryEnvVar] at their own build has changed it too. A memory keyed on
 // this string forgets itself the moment either happens.
@@ -359,11 +361,11 @@ func Program() string {
 
 // Attach is [Open] for a caller that is willing to ATTACH THE FOLDER ITSELF.
 //
-// THE RULING BEHIND IT: every aforge carries furrow, so a capability that only
+// THE RULING BEHIND IT: every codeaf carries furrow, so a capability that only
 // engages when somebody remembered to type `furrow watch` is a capability the
 // binary has and never uses — which is this codebase's absent-not-broken law
-// running in the bad direction. A folder aforge is about to write in is a folder
-// aforge may attach, on the same consent as the write; nothing here reaches a
+// running in the bad direction. A folder codeaf is about to write in is a folder
+// codeaf may attach, on the same consent as the write; nothing here reaches a
 // folder that was not already going to be worked in.
 //
 // It attaches WITHOUT LEAVING A WATCHER RUNNING (`--no-daemon`). What the
@@ -422,7 +424,7 @@ func Attach(ctx context.Context, root string) (*Workspace, error) {
 // ErrUnreadable says furrow answered in a shape this package could not decode.
 // It is a sentinel because it is the one failure a caller may want to word
 // differently from every other: the rest mean furrow said no, this one means
-// aforge and furrow disagree about what furrow says, and only the second is
+// codeaf and furrow disagree about what furrow says, and only the second is
 // worth quoting a version at somebody over.
 var ErrUnreadable = errors.New("furrow: unreadable answer")
 
@@ -465,7 +467,7 @@ func runBinary(ctx context.Context, binary, root string, args ...string) ([]byte
 	command.Stderr = &errOut
 	// furrow's own law is that a prompt in machine mode is an error and not a
 	// hang, and its rewind honours that by refusing without --yes when stdin is
-	// not a terminal. Handing it a closed stdin is aforge agreeing to that
+	// not a terminal. Handing it a closed stdin is codeaf agreeing to that
 	// contract from its side rather than relying on how a session happened to
 	// be launched.
 	command.Stdin = nil

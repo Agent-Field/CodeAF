@@ -12,8 +12,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE AMBIENT SIDE, AS A PERSON MEETS IT ──────────────────────────────────
@@ -493,7 +493,7 @@ func standReminder() standing.Item {
 //
 // Written from a person's transcript: they asked for a one-minute reminder, met
 // three chips, pressed `3` because it was the answer that committed to nothing,
-// and were told aforge could not hold a one-minute timer. It can; a standing
+// and were told codeaf could not hold a one-minute timer. It can; a standing
 // one-off IS the timer. The chip was the defect.
 func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	a, agent, tick := standApp(t)

@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Agent-Field/aforge-v2/internal/packed"
+	"github.com/Agent-Field/codeaf/internal/packed"
 )
 
 func main() {

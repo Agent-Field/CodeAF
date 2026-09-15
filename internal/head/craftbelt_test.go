@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // forgeCraft records that this brain has learned a way of working by that name.
@@ -117,7 +117,7 @@ func TestAnUnknownNameIsRefusedNamingEverywhereItLooked(t *testing.T) {
 // just quiet the belief that names it — a belief that went silent while its
 // command stayed on the person's PATH is a half-done retirement, and the
 // command kind is what does both halves in one place.
-func TestForgettingAForgedToolRetiresTheToolRatherThanOnlyTheBelief(t *testing.T) {
+func TestForgettingAToolThatWasForgedRetiresTheToolRatherThanOnlyTheBelief(t *testing.T) {
 	graph := openHeadStore(t)
 	skill, err := graph.RecordSkillCandidate(store.RootID, "tool:imgshrink",
 		"imgshrink squeezes screenshots", t.TempDir())

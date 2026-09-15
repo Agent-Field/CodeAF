@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // weekly is the bundle most of these tests mint: a manifest that validates, a
@@ -552,8 +552,8 @@ func TestAMintRefusesRatherThanWaitForAGateSomebodyElseHolds(t *testing.T) {
 	}
 }
 
-// The store moves wholesale with AFORGE_HOME, through the one package that reads
-// that variable, like everything else durable aforge writes.
+// The store moves wholesale with CODEAF_HOME, through the one package that reads
+// that variable, like everything else durable codeaf writes.
 func TestTheHomeStoreFollowsTheStateRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)
@@ -580,6 +580,29 @@ func TestTheHomeStoreFollowsTheStateRoot(t *testing.T) {
 	t.Setenv(home.EnvVar, root)
 	if names, _ := Home().Names(); len(names) != 1 || names[0] != "weekly-marketing" {
 		t.Fatalf("coming back, the store sees %v", names)
+	}
+}
+
+// H4: project bundle reads prefer the current directory, fall back to the
+// legacy directory, and the write name remains current regardless.
+func TestH4ProjectStoreReadFallbackAndWriteName(t *testing.T) {
+	repository := t.TempDir()
+	current := ProjectDir(repository)
+	legacy := filepath.Join(repository, ".aforge", Root) // legacy-name
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectReadDir(repository); got != legacy {
+		t.Fatalf("legacy-only project store = %q, want %q", got, legacy)
+	}
+	if got := ProjectDir(repository); got != current {
+		t.Fatalf("write store = %q, want %q", got, current)
+	}
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectReadDir(repository); got != current {
+		t.Fatalf("current project store = %q, want %q", got, current)
 	}
 }
 

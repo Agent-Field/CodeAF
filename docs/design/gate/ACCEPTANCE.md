@@ -460,7 +460,7 @@ different evidence, that closes only when a check exists.
 > a later verdict overturned.** The last line names the count:
 > `partial — 2 behaviours the request states have no check`.
 
-`cmd/aforge/do.go`'s `gateStanding` leads with that count rather than with the
+`cmd/codeaf/do.go`'s `gateStanding` leads with that count rather than with the
 gate's prose wherever the verdict itself settled — otherwise the line would name
 the finding that LOST as the reason the run is short.
 

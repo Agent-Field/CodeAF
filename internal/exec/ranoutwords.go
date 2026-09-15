@@ -5,7 +5,7 @@ package exec
 //
 // It lives beside [StopReason.OutOfRoom] and for the same reason: the answer
 // travels. The record and the headless stream say it at the moment the leaf
-// stops (cmd/aforge's exhaustionWords), and the scheduler says it again on the
+// stops (cmd/codeaf's exhaustionWords), and the scheduler says it again on the
 // other side of the seam when it hands the node back to the queue
 // (resident.outOfRoomClaimReason) — and for as long as each of them kept its own
 // table, one sentence could name the bound that fired while the other named only

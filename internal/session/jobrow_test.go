@@ -10,7 +10,7 @@ package session
 // WHAT THEY WAIT FOR IS AN [EventJobUpdate] AND NOT A TASK ROW. A job used to be
 // announced as a [TaskNotice] of a `job` kind, and these cases waited on that;
 // the row is still what the CHECKPOINT keeps, because a file already written is
-// read by the aforge that opens it next, but nothing is drawn from it any more.
+// read by the codeaf that opens it next, but nothing is drawn from it any more.
 // A job that arrived on the roster's lane would be one piece of work counted
 // twice — once in the jobs section and once among the task families.
 
@@ -258,11 +258,11 @@ func TestAReattachedLaneIsHandedTheJobsAlreadyRunning(t *testing.T) {
 
 // A JOB STILL MOVING WHEN THE FILE WAS WRITTEN COMES BACK STOPPED AND KEEPS ITS
 // LOG. This is the commonest job in anybody's history — a server or a build that
-// was still going when aforge closed is exactly the one somebody reopens the
+// was still going when codeaf closed is exactly the one somebody reopens the
 // conversation to look at — and it used to come back with no path at all.
 //
 // THE SENTENCE THAT REPLACED IT WAS WRITTEN FOR A ROW THAT NO LONGER EXISTS.
-// `it ended when aforge closed; its log is kept` read well beside a job's row on
+// `it ended when codeaf closed; its log is kept` read well beside a job's row on
 // the task column; with the row gone, nothing drew it, and the field it was
 // written into is the one carrying the path (task_store.go's [runRowNotice]). So
 // a sentence nobody read was deleting the only thing a finished job leaves.
@@ -293,7 +293,7 @@ func TestAJobStillMovingComesBackStoppedAndKeepsItsLog(t *testing.T) {
 }
 
 // A CHECKPOINTED ROW IS READ BACK AS THE JOB IT WAS. The store keeps a task row
-// because that is what older aforges wrote, and the packed `job 3 · log /…`
+// because that is what older codeafs wrote, and the packed `job 3 · log /…`
 // sentence inside it is parsed exactly once, here at the edge — so everything
 // above gets an id and a path in fields of their own (jobnotice.go).
 func TestACheckpointedRowIsReadBackAsTheJobItWas(t *testing.T) {

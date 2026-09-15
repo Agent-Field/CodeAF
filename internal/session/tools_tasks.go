@@ -37,7 +37,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // AND THE POLLING SENTENCE IS PAID FOR RATHER THAN ADDED. `Never to WAIT for
@@ -230,7 +230,7 @@ func (a *Agent) tasksTool() bare.Tool {
 }
 
 // taskSearchText is the no-id answer: this project's own rows, and under them
-// the work every OTHER aforge window on this project has out right now.
+// the work every OTHER codeaf window on this project has out right now.
 //
 // THE SECOND HALF IS WHY THIS FUNCTION EXISTS. The index is what work CAME TO,
 // and an ordinary task writes no row into it until it lands (taskelsewhere.go's
@@ -325,7 +325,7 @@ func taskElsewhereText(rows []ElsewhereTask, query string, now time.Time) string
 		families = families[:taskSearchLimit]
 	}
 	var out strings.Builder
-	out.WriteString("running in other aforge windows on this project:\n")
+	out.WriteString("running in other codeaf windows on this project:\n")
 	for _, family := range families {
 		taskAwayFamilyRow(&out, "", "another window", family, now)
 	}

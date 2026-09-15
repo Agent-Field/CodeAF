@@ -15,7 +15,7 @@ import (
 func fixTestLane(t *testing.T) (*episode, string) {
 	t.Helper()
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.fixesDir = bucket
@@ -226,7 +226,7 @@ func TestAHandWhoseArgumentIsAPatternKeepsNoLane(t *testing.T) {
 // saw. A fix credited across half an hour and four subjects is not evidence.
 func TestTheLaneDoesNotOutliveItsTurn(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.fixesDir = bucket
@@ -266,7 +266,7 @@ func TestAHandWhoseArgumentIsAPathKeepsNoLane(t *testing.T) {
 // path rather than through the shelf alone.
 func TestTheLiveLoopConsultsTheProjectBeforeTheMachine(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 	broken := "ld: symbol(s) not found for architecture arm64"
 	signature, _ := fixSignature("bash", broken)
@@ -317,7 +317,7 @@ func TestAConfirmationLandsInBothFiles(t *testing.T) {
 // annotation would pass just as well if nothing ever called it.
 func TestTheChokepointLearnsFromARealToolCall(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.fixesDir = bucket
@@ -445,7 +445,7 @@ func TestAGenuineFailureFollowedByTheCommandThatEndedItIsStillLearned(t *testing
 // wrote it however much the store knows about that signature.
 func TestARefusalIsNeverAnsweredWithAdvice(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	bucket := filepath.Join(root, "v3", "projects", "ws")
 
 	refusal, _ := auditRefusal("bash run_tests.sh", auditReadCommands)

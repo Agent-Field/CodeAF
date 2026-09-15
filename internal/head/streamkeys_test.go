@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // WHICH OF THE HEAD'S TURNS STREAM, AND UNDER WHAT KEY.
@@ -82,7 +82,7 @@ func (probe *streamProbe) keys() []string {
 }
 
 // watched installs the surface's observer on a context, exactly as
-// cmd/aforge/chat.go's serveHead does for the life of a window.
+// cmd/codeaf/chat.go's serveHead does for the life of a window.
 func (probe *streamProbe) watched(ctx context.Context) context.Context {
 	return provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
 		probe.mutex.Lock()

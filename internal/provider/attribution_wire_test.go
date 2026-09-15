@@ -63,7 +63,7 @@ func TestAttributionOnTheWire(t *testing.T) {
 // request carrying all four headers is therefore proof that the request was
 // made by this package rather than delegated.
 
-// attributed is what every aforge-owned request must carry.
+// attributed is what every codeaf-owned request must carry.
 func assertAttributed(t *testing.T, header http.Header, where string) {
 	t.Helper()
 	for name, want := range map[string]string{
@@ -145,7 +145,7 @@ func TestOwnClientRunsTheToolCallLoop(t *testing.T) {
 			return
 		}
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop",` +
-			`"message":{"role":"assistant","content":"module aforge"}}],` +
+			`"message":{"role":"assistant","content":"module codeaf"}}],` +
 			`"usage":{"prompt_tokens":20,"completion_tokens":4,"total_tokens":24}}`))
 	})
 	client, err := NewClient(attributedConfig(handler))
@@ -157,7 +157,7 @@ func TestOwnClientRunsTheToolCallLoop(t *testing.T) {
 	var dispatchedArgs map[string]interface{}
 	dispatch := func(_ context.Context, target string, input map[string]interface{}) (map[string]interface{}, error) {
 		dispatchedName, dispatchedArgs = target, input
-		return map[string]interface{}{"text": "module aforge"}, nil
+		return map[string]interface{}{"text": "module codeaf"}, nil
 	}
 	tools := []ai.ToolDefinition{{Type: "function", Function: ai.ToolFunction{Name: "repo__read"}}}
 
@@ -179,7 +179,7 @@ func TestOwnClientRunsTheToolCallLoop(t *testing.T) {
 	if path, _ := dispatchedArgs["path"].(string); path != "go.mod" {
 		t.Fatalf("dispatched arguments = %#v", dispatchedArgs)
 	}
-	if response.Text() != "module aforge" || trace.FinalResponse != "module aforge" {
+	if response.Text() != "module codeaf" || trace.FinalResponse != "module codeaf" {
 		t.Fatalf("answer = %q, trace = %q", response.Text(), trace.FinalResponse)
 	}
 	if trace.TotalTurns != 2 || trace.TotalToolCalls != 1 || len(trace.Calls) != 1 {
@@ -212,7 +212,7 @@ func TestOwnClientRunsTheToolCallLoop(t *testing.T) {
 	if err := json.Unmarshal([]byte(result["content"].(string)), &returned); err != nil {
 		t.Fatal(err)
 	}
-	if returned["text"] != "module aforge" {
+	if returned["text"] != "module codeaf" {
 		t.Fatalf("tool result content = %#v", returned)
 	}
 }

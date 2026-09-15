@@ -1,6 +1,6 @@
-# Learning that compounds — where aforge stands, what the field knows, what to build
+# Learning that compounds — where codeaf stands, what the field knows, what to build
 
-This document does three things: states honestly where aforge's learning
+This document does three things: states honestly where codeaf's learning
 machinery is today (verified against the code, file:line), condenses what the
 2023–2026 academic literature has actually established about agents that
 improve from experience, and derives the architecture moves — tailored to what
@@ -13,9 +13,9 @@ already exists here, and to one governing principle:
 
 ---
 
-## Part 1 — Where aforge stands: excellent write path, open loops
+## Part 1 — Where codeaf stands: excellent write path, open loops
 
-The honest audit: aforge has unusually thoughtful *instrumentation* — the
+The honest audit: codeaf has unusually thoughtful *instrumentation* — the
 verdict taxonomy separating control flow from evidence (`provider/verdict.go`),
 the Rasch ledger with every brake justified by a measured collapse
 (`router/ledger.go:61-86`), the recalibration guard that refuses to learn when
@@ -28,7 +28,7 @@ is not architectural — it is wiring. The six open circuits, each with its
 consuming machinery already built:
 
 1. **The ruler is recalibrated and never installed.** `plan.UseAnchors` is
-   called at exactly one line (`cmd/aforge/main.go:117`, the `plan`
+   called at exactly one line (`cmd/codeaf/main.go:117`, the `plan`
    subcommand). Both `run` and `chat` compute and save new anchors and then
    size every future plan against the built-in prior.
 2. **The retrospective latches shut.** `settledJobSketches` caps at 12
@@ -98,7 +98,7 @@ Tsinghua / UBC work. Five load-bearing, replicated results:
 4. **Incremental delta updates, never monolithic rewrites.** ACE names the
    failure modes: *brevity bias* and *context collapse* — letting a model
    re-summarize the whole memory each cycle destroys it. Winners maintain
-   itemized entries with add/update/supersede operations. (aforge's
+   itemized entries with add/update/supersede operations. (codeaf's
    scope-bucketed consolidation with `replaces` is already this shape.)
 5. **Retrieval scoring beyond similarity wins.** Recency + importance +
    relevance (Generative Agents), graph-associative retrieval (HippoRAG,
@@ -118,7 +118,7 @@ Five measured warnings:
 - **Prompt/memory-space forgetting is real**: self-evolving agents show
   capability regression as new memories crowd out old ones
   (LifelongAgentBench line); nobody has a principled consolidation theory —
-  aforge's evidence-linked audit is *ahead* of published art here.
+  codeaf's evidence-linked audit is *ahead* of published art here.
 - **Self-proposed curricula drift without external anchors** (Absolute Zero's
   "uh-oh moment"); generated practice tasks must carry their own verification
   (Self-Challenging's Code-as-Task: instruction + verifier + solution +
@@ -127,13 +127,13 @@ Five measured warnings:
   ground truth. Learning from a single-shot, unlabeled, heterogeneous real
   job stream is the field's named open problem.
 
-Where aforge is already past the frontier — worth knowing, because it means
+Where codeaf is already past the frontier — worth knowing, because it means
 there is no paper to copy: a **live capability/cost model of one's own
 execution** (the profile + ledger) and **an agent running controlled
 experiments on its own strategies over a real task stream** are both
 explicitly identified as open problems with no top-venue treatment.
 Evidence-linked belief revision is a 2026 arXiv frontier with no replicated
-winner. These three are aforge's chances to define the art, not follow it.
+winner. These three are codeaf's chances to define the art, not follow it.
 
 ---
 
@@ -157,7 +157,7 @@ existing design, finished.
 ### 3.1 The Skill Forge — one mechanism, emergent tools
 
 This is the emergent-capability principle made concrete, and it is the
-literature's strongest line (Voyager/AWM/TroVE) fused with machinery aforge
+literature's strongest line (Voyager/AWM/TroVE) fused with machinery codeaf
 already has.
 
 **A skill is a fold that executes.** Concretely: a directory in the CAS —
@@ -183,7 +183,7 @@ being dead code; this is what it was for.
   failure as evidence. **The evaluator is execution, never self-judgment.**
 
 **How skills are used — generically:** active skills matching a leaf's scope
-cues are surfaced two ways, both content-free: `~/.aforge/skills/bin` goes on
+cues are surfaced two ways, both content-free: `~/.codeaf/skills/bin` goes on
 the `sh` tool's PATH, and the contract writer sees the matching skills' doc
 lines ("this shelf exists; use it if it fits"). No skill is ever named in
 prompt doctrine; retrieval decides.
@@ -245,7 +245,7 @@ three readers.
 
 The self-curriculum recipe is now well-replicated (WebRL, Absolute Zero,
 Self-Challenging): generate tasks at the frontier of ability, from your own
-failures, each carrying its own verifier. aforge's version, gated on M3's
+failures, each carrying its own verifier. codeaf's version, gated on M3's
 rails existing (a self-firing loop without rails is the hazard the
 architecture doc already refuses):
 
@@ -298,7 +298,7 @@ ambition:
   spends its calls on what is genuinely new instead of re-deriving a known
   decomposition. Templates are skills for the planner: execution-verified
   (they ran), evidence-linked (the jobs that taught them), retired by the
-  same aging machinery. `aforge adopt` (shareable routines, PRODUCT.md)
+  same aging machinery. `codeaf adopt` (shareable routines, PRODUCT.md)
   falls out of this for free — a template is exactly the shareable unit.
 - **Standing goals become learned, not declared.** Once M3 lands, a
   recurring template + a recurring trigger pattern in the retrospective is a
@@ -329,12 +329,12 @@ inter-task communication? **No, and no — with reasons worth recording.**
   moment tasks message each other directly, provenance breaks and the
   journal stops being the truth; that trade buys nothing the pull model
   lacks.
-- **The two-surface covenant, restated as law.** Headless (`aforge plan|run`)
+- **The two-surface covenant, restated as law.** Headless (`codeaf plan|run`)
   is the benchmarked, atomic, linear-harness path and stays byte-for-byte
   first-class: learning features specialize it **by addition only** (a
   recall input, an extra tool, a better ruler) — the generic loop is the
   completion floor, and mis-specialization must degrade to baseline, never
-  to failure. The resident surface (`aforge chat`) is where the personal,
+  to failure. The resident surface (`codeaf chat`) is where the personal,
   continually-learning system lives: notebook, folds, skills, templates,
   retrospective, practice. One store, one set of loops — two doors.
 
@@ -359,7 +359,7 @@ A memory that only accumulates is a memory that can be poisoned — by a wrong
 lesson confidently distilled, by a user's offhand remark captured as law, by
 a stale claim that keeps outranking fresh evidence. The literature's warning
 is blunt (self-curated memories entrench errors; nobody has a validated
-deletion rule). aforge already has the right half: supersession instead of
+deletion rule). codeaf already has the right half: supersession instead of
 deletion, evidence links, aging by claim type, consolidation that drops
 claims their own evidence does not support. What is missing is the *feedback*
 half — beliefs are never scored against what they did to the work. Three
@@ -382,7 +382,7 @@ additions, in order of leverage:
   must be a first-class head verb: the head already captures (`remember`);
   it gains `retract` — supersede the named belief on the spot, scoped as
   narrowly as the capture was. And the notebook must be *inspectable*: a
-  lens (`aforge notebook` / a TUI pane) listing beliefs with age, uses,
+  lens (`codeaf notebook` / a TUI pane) listing beliefs with age, uses,
   evidence pointers, and one-keystroke retraction — the file-is-truth
   philosophy applied to the agent's own head. Trust in a learning system
   comes from being able to see and veto what it learned.
@@ -408,7 +408,7 @@ The load-bearing decisions:
 
 - **The graph stays the truth at every rung.** A reflex is not "outside the
   system" — it is one node journaled like any other, so learning still
-  captures it, `aforge why` still answers, and cost is still attributed.
+  captures it, `codeaf why` still answers, and cost is still attributed.
   What the ladder removes is ceremony (three LLM calls and a receipt), not
   provenance. The UX cost of "open a file" was never the node; it was the
   compile/plan/gate calls around it.
@@ -465,7 +465,7 @@ inline", "answers in Portuguese"). Close the loop:
 Borrowed from predictive processing (the free-energy view of cognition:
 systems learn by minimizing prediction error, and attention goes where
 surprise is largest) and from the psychometrics already in the router
-(Rasch residuals *are* surprises). aforge makes predictions constantly —
+(Rasch residuals *are* surprises). codeaf makes predictions constantly —
 the ruler predicts size, the compiler predicts budget, the profile predicts
 tokens and turns, the quote predicts cost — and today it throws the
 *residuals* away, learning from outcomes but not from **how wrong its

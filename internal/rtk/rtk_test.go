@@ -30,7 +30,7 @@ func TestResolutionOrderPrefersTheStatedChoice(t *testing.T) {
 	chosen := stub(t, filepath.Join(t.TempDir(), "chosen"))
 	onPath := stub(t, filepath.Join(t.TempDir(), "onpath"))
 	home := t.TempDir()
-	managed := stub(t, filepath.Join(home, ".aforge", "bin"))
+	managed := stub(t, filepath.Join(home, ".codeaf", "bin"))
 
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", filepath.Dir(onPath))
@@ -162,7 +162,7 @@ func TestBanStopsRetryingABrokenRewrite(t *testing.T) {
 func TestOffMeansOffEverywhere(t *testing.T) {
 	// The stub is on PATH and in the managed directory; nothing may resolve.
 	home := t.TempDir()
-	stub(t, filepath.Join(home, ".aforge", "bin"))
+	stub(t, filepath.Join(home, ".codeaf", "bin"))
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", filepath.Dir(stub(t, t.TempDir())))
 	t.Setenv(EnvBinary, Off)
@@ -174,7 +174,7 @@ func TestOffMeansOffEverywhere(t *testing.T) {
 	// network in tests, the proof is that it returns at once and installs
 	// nothing.
 	Bootstrap(context.Background())
-	if _, err := os.Stat(filepath.Join(home, ".aforge", "bin", "rtk.new")); err == nil {
+	if _, err := os.Stat(filepath.Join(home, ".codeaf", "bin", "rtk.new")); err == nil {
 		t.Fatal("Bootstrap wrote something with rtk turned off")
 	}
 }
@@ -221,7 +221,7 @@ func TestEveryReleaseTargetIsNamedForAPlatformGoKnows(t *testing.T) {
 			t.Errorf("target %q is not a Rust triple", target)
 		}
 	}
-	// The platform this test runs on is one aforge is built for, so a missing
+	// The platform this test runs on is one codeaf is built for, so a missing
 	// entry here would be a silent loss of the whole feature.
 	if _, ok := targets[runtime.GOOS+"/"+runtime.GOARCH]; !ok {
 		t.Errorf("no rtk release target for %s/%s", runtime.GOOS, runtime.GOARCH)

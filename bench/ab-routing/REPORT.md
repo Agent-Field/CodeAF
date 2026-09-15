@@ -108,7 +108,7 @@ budget_stop        :   5    (graded negative)
 
 A leaf that finishes returns `unverified_success`, because the harness has no
 grader in the loop — the deterministic graders in this experiment run *after*
-`aforge run` exits. So the only leaf outcomes that ever reach the ledger are the
+`codeaf run` exits. So the only leaf outcomes that ever reach the ledger are the
 failures. Flash's `exec.leaf` rating was therefore fitted to a sample that is
 **100% negative**, and finished at:
 

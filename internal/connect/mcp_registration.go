@@ -12,14 +12,14 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// RegistrationFileName is the file aforge's own identity with each tool server
+// RegistrationFileName is the file codeaf's own identity with each tool server
 // lives in, named here so that a doctor screen and a "where are my things"
 // answer can say the same word the code reads.
 //
 // ── WHY IT IS NOT credentials.json ──
 //
 // What is in credentials.json is one person's keys. What is in here is the
-// APPLICATION's: the identity a tool server issued to this copy of aforge when
+// APPLICATION's: the identity a tool server issued to this copy of codeaf when
 // it introduced itself, plus the two addresses that sign-in used. For every
 // other browser service that identity comes from configuration and is the same
 // for everybody running the same build; for these it is minted per machine, so
@@ -39,7 +39,7 @@ import (
 const RegistrationFileName = "toolservers.json"
 
 // mcpRegistration is everything a later start needs to go on using a connection
-// this build's sign-in made: who aforge is to that service, where the renewal
+// this build's sign-in made: who codeaf is to that service, where the renewal
 // goes, and what the whole thing was bound to.
 //
 // NO PERSON'S KEY IS IN HERE. The access and refresh keys live with every other
@@ -58,17 +58,17 @@ type mcpRegistration struct {
 	// the service's own name for itself, which travels with every request for
 	// them so that keys minted for one service cannot be spent at another.
 	Resource string `json:"resource"`
-	// ClientID is aforge's identity with this sign-in.
+	// ClientID is codeaf's identity with this sign-in.
 	ClientID string `json:"client_id"`
 	// ClientSecret is the matching secret, when the sign-in issued one. A
-	// sign-in that treats aforge as a public program issues none and this is
+	// sign-in that treats codeaf as a public program issues none and this is
 	// empty, which is the better outcome and not an error.
 	ClientSecret string `json:"client_secret,omitempty"`
 	// Authorize and Token are where the browser trip goes and where the
 	// exchange and every later renewal land.
 	Authorize string `json:"authorize"`
 	Token     string `json:"token"`
-	// Style is how the sign-in wants aforge to identify itself on a request to
+	// Style is how the sign-in wants codeaf to identify itself on a request to
 	// the token address, as [oauth2.AuthStyle] spells it.
 	Style int `json:"style,omitempty"`
 	// Redirects are the loopback addresses this identity was registered with.

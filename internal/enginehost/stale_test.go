@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 // liveHost stands a host up on its socket and hands back the workspace it holds.
@@ -167,7 +167,7 @@ func TestAHostIsNotRetiredOutFromUnderAnAttachedSurface(t *testing.T) {
 }
 
 // A person who has been told what is running and says stop anyway is obeyed.
-// That is what `aforge engine --stop` is, and the turn it catches stops where
+// That is what `codeaf engine --stop` is, and the turn it catches stops where
 // it is and keeps its partial reply — the same thing ctrl+c does locally.
 func TestStopEndsAHostEvenWithASurfaceOnIt(t *testing.T) {
 	shortHome(t)
@@ -214,7 +214,7 @@ func TestStopFindsNothingToStopAndSaysSo(t *testing.T) {
 
 func TestABinaryRemovedAndRebuiltIsNotTheBinaryThatStarted(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "aforge")
+	path := filepath.Join(dir, "codeaf")
 	if err := os.WriteFile(path, []byte("first"), 0o755); err != nil {
 		t.Fatalf("write the binary: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestAHostWhoseBinaryWasReplacedStaysWhileItIsHoldingWork(t *testing.T) {
 // simplest true version of "this is not the build that is on disk now".
 func replacedBinary(t *testing.T) hostBinary {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "aforge")
+	path := filepath.Join(t.TempDir(), "codeaf")
 	if err := os.WriteFile(path, []byte("gone in a moment"), 0o755); err != nil {
 		t.Fatalf("write the binary: %v", err)
 	}

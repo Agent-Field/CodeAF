@@ -16,7 +16,7 @@ import (
 // implies.
 //
 // THE BUDGET IS ATTACHED BY THE WALL, SO A PLANNING CALL MUST GO THROUGH ONE.
-// The structuring slot the resident and `aforge do` hand this package is walled
+// The structuring slot the resident and `codeaf do` hand this package is walled
 // (internal/provider/pool), and the wall is what tells the model how long it
 // may think and keeps what it thought if it runs out. That guarantee holds for
 // every pass here only while no pass can reach a model any other way — so this
@@ -48,9 +48,9 @@ func TestPlanningReachesAModelOnlyThroughTheClientItIsHanded(t *testing.T) {
 	// Each of these hands out a model client: the configuration's own
 	// constructors, the pooled slots, and the router over them.
 	builders := map[string]bool{
-		"github.com/Agent-Field/aforge-v2/internal/config":        true,
-		"github.com/Agent-Field/aforge-v2/internal/provider/pool": true,
-		"github.com/Agent-Field/aforge-v2/internal/router":        true,
+		"github.com/Agent-Field/codeaf/internal/config":        true,
+		"github.com/Agent-Field/codeaf/internal/provider/pool": true,
+		"github.com/Agent-Field/codeaf/internal/router":        true,
 	}
 	fileset := token.NewFileSet()
 	for _, name := range files {

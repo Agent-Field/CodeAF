@@ -1,6 +1,6 @@
 # The chat surface — polish audit
 
-Captured from `bin/aforge` in a real terminal on socket `polish-chat`, against the
+Captured from `bin/codeaf` in a real terminal on socket `polish-chat`, against the
 demo home, at 160x50 / 120x40 / 80x24 / 60x30. Frames are in
 `docs/design/polish/frames/chat-*`. Three fixtures were seeded into the demo home to
 reach shapes the stock seed never draws: `Wrapping Torture` (markdown, URLs, a fence,
@@ -60,7 +60,7 @@ marks all measure correctly.
 ## fixed
 
 Nine rows, in the order they were worked. Every fix carries a named test in
-`internal/tui3`; the frames below were captured from `bin/aforge` in a real
+`internal/tui3`; the frames below were captured from `bin/codeaf` in a real
 terminal on socket `polish-fixchat`, against the same demo home, with an
 `-after` suffix so the before frames stand beside them.
 
@@ -140,7 +140,7 @@ before: `frames/chat-md.60x30.txt` · after: `frames/chat-md-after.60x30.txt`,
 
 **bonus, found by 10** — widening the hint slot showed it promising a key the
 block above it had already refused: a stuck question (`Memo` false) is asked
-with a scope aforge cannot save, the offer leaves `[a]` off, and the slot said
+with a scope codeaf cannot save, the offer leaves `[a]` off, and the slot said
 `a always` anyway. It now reads the same field the offer reads. Nobody had seen
 it because the slot was silent at the only width that question is met at.
 files: `internal/tui3/render.go` (`hintWord`), `internal/manual/chat/screen.md`
@@ -168,7 +168,7 @@ test: `TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct` (`internal/tui3/chat
 
 ## fixed — the second pass
 
-Frames prefixed `chat2-` were captured from `bin/aforge` in a real terminal on
+Frames prefixed `chat2-` were captured from `bin/codeaf` in a real terminal on
 socket `polish-chat2`, against the same demo home (and, for the home card, a
 freshly seeded one carrying the room fixture). Every fix below was REVERTED and
 its test watched to fail before the fix was put back.
@@ -312,8 +312,8 @@ the second names `"│"` as the spawn tree's trunk.
 
 ## fixed — the width, the gutter, the link and the bill
 
-Frames prefixed `km-` were captured from `bin/aforge` in a real terminal on socket
-`polish-km`, against a demo home freshly seeded by `cmd/aforge-demo-home` — the
+Frames prefixed `km-` were captured from `bin/codeaf` in a real terminal on socket
+`polish-km`, against a demo home freshly seeded by `cmd/codeaf-demo-home` — the
 seeder gained the fixture these rows need, so every frame below is reproducible
 from a clean checkout rather than from a home somebody built by hand. **Every fix
 was REVERTED and its test watched to fail before the fix went back**, and the
@@ -478,7 +478,7 @@ package that `ansi.StringWidth` decides a layout, `render.go`'s own `wrap` and
 bent line. A named test wants the sequences in the table above and must assert by
 display cell.
 
-**And the fixture is now in the tree.** `cmd/aforge-demo-home/seed_talk.go` seeds
+**And the fixture is now in the tree.** `cmd/codeaf-demo-home/seed_talk.go` seeds
 a ZWJ family, a VS16 pair, a flag pair, a CJK run and a combining acute one to a
 line under a plain ASCII control line, plus an unbreakable link and path and a
 question tuned to fill the column at 120 AND at 160. `frames/km-widths-*` are

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // The four verbs furrow puts on the belt, and the one line that decides whether
@@ -15,7 +15,7 @@ import (
 //
 // THEY ARE CONDITIONAL ON SOMETHING NO CONFIGURATION CAN FIX: whether this
 // folder has been attached with `furrow watch`. The binary itself is no longer
-// in question — aforge carries furrow inside it (internal/furrowbin) — so the
+// in question — codeaf carries furrow inside it (internal/furrowbin) — so the
 // half that used to vary by machine does not, and the half that remains is the
 // one a person decides per project. A belt is a promise, though: every tool on
 // it is something the model has been told it can do, and a `workspace_restore`
@@ -25,7 +25,7 @@ import (
 // true and free.
 //
 // The names all begin `workspace_` for a second reason, and it is not tidiness.
-// aforge already has a rewind, and it is an edit of the CONVERSATION that
+// codeaf already has a rewind, and it is an edit of the CONVERSATION that
 // deliberately touches nothing on disk (internal/session/rewind.go). These move
 // the folder. A model holding both must never confuse them, so the two families
 // do not share a word: one is rewind, the other is workspace_restore.
@@ -72,7 +72,7 @@ func (w *Workspace) Tools() []bare.Tool {
 
 // The descriptions say what furrow is, once, because the model has never heard
 // of it: its training data does not contain this program any more than it
-// contains aforge. They also say plainly which of these change the folder and
+// contains codeaf. They also say plainly which of these change the folder and
 // which do not, since that distinction is the only one that can hurt somebody.
 
 var snapshotsDescription = fmt.Sprintf("List the workspace restore points: moments the whole folder — files, dependencies, .env, the dev database, git's own mutable state — was sealed and can be put back to exactly. This is a separate history from git and it holds everything git does not: uncommitted edits, ignored files, local state. Newest first, with the id workspace_restore takes, when it was sealed, and what it was called. Reads only; changes nothing. Default %d restore points, at most %d.", snapshotsDefault, snapshotsMax)
