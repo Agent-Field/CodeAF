@@ -814,18 +814,28 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
-	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
+	stop := a.spendStopAt(a.spend.cursor)
+	switch {
+	case stop.fold:
 		parts = append(parts, foldEnterWord(a.spend.unfolded))
-	} else if stop.slice {
+	case stop.slice:
 		// THE FOOT NAMES THE CUT THE ARROWS LEAD TO, not the one already on the
 		// frame. A control with two positions has one useful thing to say about
 		// itself, and it is where the key goes.
 		parts = append(parts, spendSliceWord+a.spend.slice.step(1).word())
-	} else if stop.ok {
+	case stop.rails || stop.subject.Kind != "":
+		// AND `enter` IS NAMED ONLY ON A ROW IT OPENS SOMETHING FROM. The rows of
+		// `by model` are stops so that a long table scrolls under the cursor
+		// ([spendReading.paint]), and they open nothing — a model is not a thing
+		// money was spent on — so a foot promising a door there would be this
+		// surface advertising a key that does nothing.
 		parts = append(parts, spendEnterWord)
-		for _, v := range (placeSpend{}).verbs(a) {
-			parts = append(parts, spendVerbLead+v.word)
-		}
+	}
+	// AND THE LIMITS ARE OFFERED ON EVERY ROW THAT HAS THEM, which is every row
+	// of this place that is not the fold or the cut's own control: every row here
+	// is about money ([placeSpend.verbs]).
+	for _, v := range (placeSpend{}).verbs(a) {
+		parts = append(parts, spendVerbLead+v.word)
 	}
 	width, _ := a.size()
 	if arrows, _ := placeWindowFits(width, a.spend.reading.headWords(width), a.spend.win); arrows {

@@ -409,6 +409,11 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	// two ways, every dollar under one heading also a dollar under the other — so
 	// the page asked a person to read one bill twice.
 	cut := -1
+	// walk is every row the cursor may stand on that opens nothing: the models
+	// and the unbound slots. They are stops so that the body's window follows a
+	// person down a long table, and doors would be a promise this page cannot
+	// keep — a model is not a thing money was spent on.
+	var walk []int
 	// THE CONTROL'S ROW IS TAKEN AFTER THE SECTION IS OPENED AND NOT BEFORE.
 	// [appendPlaceSection] eats a trailing blank and writes its own, so the row
 	// the heading lands on is not the row the caller was standing at — and a cut
@@ -428,6 +433,13 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		// disagree with the row above it about where the table's own columns are.
 		fields, table := r.modelTable(inner, rule)
 		for at, model := range r.models {
+			// EVERY ROW OF THIS TABLE IS A ROW THE CURSOR CAN STAND ON, and that
+			// is what makes it scroll: the body's window follows the cursor
+			// ([placeSpend.body]), so a table whose rows nothing could stop on was
+			// a table a person could not read past the fold of their terminal.
+			// They open nothing — a model is not a thing money was spent ON — and
+			// the foot says so by not offering a key ([placeSpend.hint]).
+			walk = append(walk, len(out))
 			out = append(out, placeLead+r.modelRow(model, fields[at], table, inner, pal))
 		}
 		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
@@ -436,6 +448,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		// this column must not give, because "planning costs nothing" and "nothing
 		// is bound to planning" are opposite facts about the same blank.
 		for _, slot := range r.crew.unbound {
+			walk = append(walk, len(out))
 			out = append(out, placeLead+spendUnboundRow(slot, inner, pal))
 		}
 	case r.slice == spendByTopic && len(r.subjects) > 0:
@@ -488,6 +501,9 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	}
 	if fold >= 0 {
 		stops[fold] = spendStop{ok: true, fold: true}
+	}
+	for _, at := range walk {
+		stops[at] = spendStop{ok: true}
 	}
 	if cut >= 0 {
 		stops[cut] = spendStop{ok: true, slice: true}
@@ -967,15 +983,19 @@ const spendSubjectsWord = "by topic"
 // IT WEARS ITS ARROWS ONLY WHILE THE CURSOR IS ON IT ([spendSliceBack]). A key
 // is drawn where it is bound, and `→` on every other row of this place opens
 // that row's verbs — so the cycle is the heading's key and the arrows are the
-// heading's ink. Under the band the whole control comes up to the reading tier,
-// which is how every other row of every place answers the cursor.
+// heading's ink.
+//
+// AND IT KEEPS THE HEADING INK IN BOTH STATES. It came up to the reading tier
+// under the band for one build, which made the cursor land on a row that changed
+// colour as well as gaining arrows — two signals for one fact, and the colour was
+// the one that stopped it reading as a heading. THE BAND IS WHAT SAYS THE CURSOR
+// IS HERE, on this row exactly as on every other row of every place
+// ([placeSpend.body] draws it); what the arrows add is what the KEYS do, which
+// the band cannot say.
 func (r spendReading) sliceHeading(width int, lit bool, pal palette) string {
 	said := r.slice.word()
 	if lit {
 		said = spendSliceBack + said + spendSliceOn
-	}
-	if lit {
-		return pal.ink(fit(said, width))
 	}
 	return placeHeading(fit(said, width), pal)
 }

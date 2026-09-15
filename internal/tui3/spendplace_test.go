@@ -1342,3 +1342,78 @@ func TestTheSpendPromisesRideWithTheTopicCut(t *testing.T) {
 		t.Fatalf("`by model` drew the promises:\n%s", got)
 	}
 }
+
+// THE `by model` TABLE WALKS AND THEREFORE SCROLLS, and its rows open nothing.
+//
+// The body's window follows the cursor ([placeSpend.body]), so a table whose
+// rows nothing could stop on was a table a person could not read past the fold
+// of their terminal — and this one is long on a working machine, which is
+// exactly where it matters.
+func TestTheSpendModelRowsWalkAndOpenNothing(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.stepSpendSlice(1)
+	if a.spend.slice != spendByModel {
+		t.Fatalf("the page is on %q", a.spend.slice.word())
+	}
+	// EVERY MODEL HAS A ROW THE CURSOR CAN STAND ON.
+	walked := map[int]bool{}
+	for range len(a.spend.reading.models) + 1 {
+		a.moveSpend(1)
+		walked[a.spend.cursor] = true
+	}
+	if len(walked) <= 1 {
+		t.Fatalf("the cursor did not walk the table: it stopped on %v", walked)
+	}
+	// AND THOSE ROWS OPEN NOTHING, because a model is not a thing money was spent
+	// ON — so the foot keeps the limits and never promises a door.
+	for at, stop := range a.spend.stops {
+		if !stop.ok || stop.rails || stop.slice || stop.fold {
+			continue
+		}
+		if stop.subject.Kind != "" {
+			t.Fatalf("row %d of `by model` claims to be a %s", at, stop.subject.Kind)
+		}
+		a.spend.cursor = at
+		foot := (placeSpend{}).hint(a)
+		if strings.Contains(foot, spendEnterWord) {
+			t.Fatalf("the foot over a model row promises a door: %q", foot)
+		}
+		if !strings.Contains(foot, spendVerbLead+"the limits") {
+			t.Fatalf("the foot over a model row lost the limits: %q", foot)
+		}
+	}
+}
+
+// AND THE CUT'S HEADING IS ONE COLOUR IN BOTH STATES.
+//
+// It came up to the reading tier under the band for one build, so the cursor
+// landing on it changed its colour as well as giving it arrows — two signals for
+// one fact, and the colour was the one that stopped it reading as a heading. The
+// band is what says the cursor is here, on this row exactly as on every other row
+// of every place; the arrows say what the keys do, which the band cannot.
+func TestTheSpendCutsHeadingKeepsItsHeadingInkUnderTheBand(t *testing.T) {
+	r := spendTestReading()
+	pal := newPalette(tokens.ANSI256, false)
+	head := -1
+	_, stops := r.body(120, pal)
+	for at, stop := range stops {
+		if stop.slice {
+			head = at
+		}
+	}
+	if head < 0 {
+		t.Fatal("no row of the page is the cut's control")
+	}
+	rest, _ := r.paint(120, pal, nil)
+	lit, _ := r.paint(120, pal, func(i int) bool { return i == head })
+	ink := func(row string) string {
+		painted, _, _ := strings.Cut(strings.TrimPrefix(row, placeLead), "m")
+		return painted
+	}
+	if got, want := ink(lit[head]), ink(rest[head]); got != want {
+		t.Fatalf("the control is painted %q under the band and %q at rest", got, want)
+	}
+	if !strings.Contains(plain(lit[head]), spendSliceBack) || strings.Contains(plain(rest[head]), spendSliceBack) {
+		t.Fatalf("the arrows are not the thing that changes: %q then %q", plain(lit[head]), plain(rest[head]))
+	}
+}

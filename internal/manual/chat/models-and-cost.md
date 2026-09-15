@@ -2022,8 +2022,11 @@ same three-second beat every place runs on, and it draws three things:
   **`←`, `→` and `enter` all step it**, and the ring wraps, so neither arrow is ever a key
   that does nothing. The arrows are drawn only while the cursor is on that row, because `→`
   on every other row of this place opens that row's verbs — a key is drawn where it is
-  bound. The foot names the cut the arrows lead to;
-- **by model**, dearest first, each row carrying **the role it is bound to**, its call
+  bound — and the heading keeps its own colour in both states: the **band** is what says the
+  cursor is there, and the arrows say what the keys do. The foot names the cut the arrows
+  lead to;
+- **by model**, dearest first and **walkable like any list here**, each row carrying
+  **the role it is bound to**, its call
   count, its token volume and what it cost. The role stands **first after the name**,
   because what a model *is* on this machine reads with the name it follows, while the
   calls, the tokens and the money are three readings of one quantity and belong together.
@@ -2032,7 +2035,9 @@ same three-second beat every place runs on, and it draws three things:
   one call gave itself. That is the point of the column: seeing that execution is most of
   the bill sends you to the one row that changes it. A model that is on the bill and is
   bound to nothing today draws **no role word at all**, and a model bound to two slots says
-  both. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
+  both. The rows **open nothing** — a model is not a thing money was spent *on* — so the
+  foot over one keeps `→ the limits` and never promises `enter`; they are stops so that a
+  long table scrolls under the cursor. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
   `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
   status line all use;
 - **a role slot with nothing bound to it** gets a row of its own under the models —

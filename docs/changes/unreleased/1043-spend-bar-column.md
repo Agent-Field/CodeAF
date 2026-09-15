@@ -13,6 +13,18 @@ invalidates:
     narrower one and is one keystroke away. The promises ride with `by topic`: a
     promise is one of the things money was FOR, so `by standing order` is a third
     heading and not a third cut."
+  - "THE ROWS OF `by model` ARE STOPS, so the table walks and therefore scrolls:
+    the body's window follows the cursor, and a table whose rows nothing could
+    stop on could not be read past the fold of a terminal. They open NOTHING — a
+    model is not a thing money was spent on — so the foot over one keeps
+    `→ the limits` and drops `enter opens what spent it` rather than naming a key
+    that does nothing."
+  - "The cut's heading keeps the heading ink under the band. It came up to the
+    reading tier for one build, so landing on it changed its colour as well as
+    giving it arrows: two signals for one fact, and the colour was the one that
+    stopped it reading as a heading. The band says the cursor is there — on this
+    row exactly as on every other row of every place — and the arrows say what
+    the keys do, which the band cannot."
   - "The cut's heading is a cursor stop, and `←`, `→` and `enter` all step it.
     The ring wraps, so neither arrow is ever a key that does nothing. It wears its
     arrows — `← by topic →` — ONLY while the cursor is on it: `→` on every other
