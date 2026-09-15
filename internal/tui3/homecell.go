@@ -147,14 +147,24 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 
 // homeDescNote is one row's note as the lines it takes.
 //
-// THE SELECTED ROW'S IS WRAPPED AND A PERMANENT ONE IS NOT. The row a person is
-// on is the one they are reading, and it gets the room; a `needs you` question
-// standing over other rows keeps the one line it had under its row, cut the way
-// the row cut it, with its key at the right where the row put it.
+// THE KEYS ARE THE SELECTED ROW'S AND NOBODY ELSE'S. A permanent note — a
+// `needs you` question standing over rows the cursor is not on — is the sentence
+// alone: `enter` beside a row a person is not standing on is a key that would do
+// something else if they pressed it, and the surface may never advertise one of
+// those (law 7 draws a row's answers so the key is never a guess). The moment the
+// row IS the one being read, its keys join it at the right of its own line, in
+// the one place they have ever been.
+//
+// AND A PERMANENT NOTE IS ONE LINE, SELECTED OR NOT. It shares the column with
+// rows above and below it and may not grow into them; only a note that is there
+// BECAUSE it is selected has the column to itself and wraps.
 func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
 	room := max(1, width-homeGridLead)
-	answers := strings.TrimSpace(a.homeRowAnswers(line, at))
-	if !selected {
+	answers := ""
+	if selected {
+		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
+	}
+	if line.cell.alwaysSaid() {
 		return []string{homeCellLeadBlank + switcherSides(room, said, answers, pal.dim, pal.muted)}
 	}
 	var out []string

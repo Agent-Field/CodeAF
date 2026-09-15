@@ -561,11 +561,15 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	a.openHome()
 	a.home.pointItemForTest("one")
 	drive(t, a, key("enter"))
-	if a.home.msg != homeItemNoDoor {
-		t.Fatalf("an item made at home said %q, want %q", a.home.msg, homeItemNoDoor)
+	// AN ITEM MADE AT HOME OPENS ON STANDING, which is where it lives. It used to
+	// refuse in a sentence and leave the cursor where it was, which is the worst
+	// of both — nothing happens AND the screen explains why on the row a person
+	// is trying to leave (owner, 2026-09-15).
+	if a.at(pageHome) {
+		t.Fatalf("enter on an item made at home stayed on home, saying %q", a.home.msg)
 	}
-	if !a.at(pageHome) {
-		t.Fatal("home closed on a door that goes nowhere")
+	if !a.at(pageStanding) {
+		t.Fatal("enter on an item made at home did not open the standing place")
 	}
 }
 

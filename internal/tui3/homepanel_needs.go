@@ -53,6 +53,10 @@ const (
 	// which is the emptiness law rather than an instruction repeated on every
 	// row. enter still opens the record ([app.homeLandOnTask]).
 	needsOpenWord = "enter"
+	// needsStandingWord is the same key on a watch with no conversation behind
+	// it: `enter` opens the item on the standing place, which is where an item
+	// made at home lives.
+	needsStandingWord = "enter on standing"
 	// needsAnswersCap is how many of a question's answers fit on its row. A
 	// question with more draws the first ones and then [needsOpenWord], because
 	// every answer is still one enter away.
@@ -155,16 +159,15 @@ func needsAsked(in *homeGridInput) []needsItem {
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
-			// AND A WATCH HAS ONE ONLY WHERE IT WAS ASKED FOR IN A CONVERSATION.
-			// An item made from home's own box keeps its exchange under the item's
-			// folder rather than as a session ([standing.Origin.Exchange]), and
-			// [app.homeItemEnter] opens a TRANSCRIPT — so it answers `made from
-			// home — no conversation to open`, and a row that drew `enter` beside
-			// that sentence was promising a key it had already decided against.
-			// It is the legend's law on the row itself ([drawKeysBand]): NAME
-			// ONLY KEYS THAT WORK.
-			if strings.TrimSpace(row.item.Item.Origin.Transcript) != "" {
-				cell.subRight = needsOpenWord
+			// AND THE KEY SAYS WHICH DOOR IT IS. A watch asked for in a
+			// conversation opens that conversation; one made from home's own box
+			// has none — its exchange is kept under the item's folder rather than
+			// as a session ([standing.Origin.Exchange]) — and `enter` opens the
+			// item where it does live, on standing ([app.homeItemEnter]). Two
+			// doors, two words, and neither row advertises the other's.
+			cell.subRight = needsOpenWord
+			if strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
+				cell.subRight = needsStandingWord
 			}
 		}
 		item.line = switcherRowLine(row, cell)

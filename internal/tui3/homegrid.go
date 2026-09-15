@@ -1483,13 +1483,6 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
 	}
-	// AND THE TAIL OF THE ROW BEING READ, for the description column. One peek
-	// per conversation a person actually stops on, cached for the life of the
-	// window like every other — a screen that read all forty journals to fill a
-	// column about one row would be paying for thirty-nine nobody looked at.
-	if line, ok := a.home.previewLine(); ok && line.kind == homeSession {
-		asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
-	}
 	return tea.Batch(asked...)
 }
 

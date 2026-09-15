@@ -79,6 +79,9 @@ const (
 	// line from the verbs the row under the cursor actually has and needs this
 	// half without the other two ([standingPlace.hint]).
 	homeItemEnterWord = "enter open where it was asked"
+	// homeItemStandingWord is the same key on an item made at home, which has no
+	// conversation behind it to open ([app.homeItemEnter]).
+	homeItemStandingWord = "enter open it on standing"
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is
@@ -736,8 +739,15 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	h := &a.home
 	transcript := strings.TrimSpace(line.item.Origin.Transcript)
 	if transcript == "" {
-		h.say(homeItemNoDoor, "")
-		return nil
+		// AN ITEM MADE AT HOME HAS NO CONVERSATION TO OPEN, and the standing
+		// place is where it does live — so `enter` goes there rather than
+		// refusing. It was a dead key with a sentence beside it, which is the
+		// worst of both: nothing happens AND the screen explains why on the row
+		// a person is trying to leave. The item's own page is the honest answer
+		// to "show me this thing", and it is the same door a `next up` row takes
+		// ([app.homeLedgerEnter]).
+		a.closeHome()
+		return a.showPage(pageStanding)
 	}
 	// THE CAPABILITY IS ASKED THROUGH THE ONE PREDICATE, never off a single seam:
 	// a door may answer the whole conversation ([Options.Open]) rather than the

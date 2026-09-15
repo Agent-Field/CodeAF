@@ -43,9 +43,11 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		// already decided it does not have — which is this legend's own law, said
 		// three paragraphs up about a conversation whose folder is gone, and the
 		// design's: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN.
-		if strings.TrimSpace(ctx.subject.item.Item.Origin.Transcript) != "" {
-			clauses = append([]string{homeItemEnterWord}, clauses...)
+		open := homeItemEnterWord
+		if strings.TrimSpace(ctx.subject.item.Item.Origin.Transcript) == "" {
+			open = homeItemStandingWord
 		}
+		clauses = append([]string{open}, clauses...)
 		// AND THE RUNG'S CHORD ONLY WHERE THERE IS A DOOR TO MOVE IT THROUGH,
 		// which is the same rule the three above are drawn under — a read-only
 		// window keeps every key that asks nothing of the disk and loses the ones

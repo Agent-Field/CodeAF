@@ -67,16 +67,31 @@ func (a *app) refreshHomeCard(now time.Time) tea.Cmd {
 	if !a.at(pageHome) {
 		return nil
 	}
-	// THE GRID HAS NO CARD, and what it reads is about the rows it draws rather
-	// than about the one under the cursor — so a key or a pointer asks for
-	// nothing, and the beat and the open ask for the grid's readings
-	// (homegrid.go's [app.refreshGridReadings]).
-	if a.home.gridOn() {
-		return nil
-	}
 	line, ok := a.home.previewLine()
 	if !ok {
 		return nil
+	}
+	// THE GRID HAS NO CARD, but it has the DESCRIPTION COLUMN, which is about the
+	// row under the cursor and nothing else ([homeDescLines]) — so the one
+	// reading that column needs is asked for here, on the key that moved the
+	// cursor, rather than waiting for the next beat. It is the same peek, behind
+	// the same cache: a conversation is read once for the life of the window and
+	// a second ask costs a map lookup ([app.askHomeLeftOff]).
+	//
+	// EVERYTHING ELSE THE GRID DRAWS IS ABOUT THE ROWS RATHER THAN THE CURSOR and
+	// is still asked for on the beat and at the open (homegrid.go's
+	// [app.refreshGridReadings]). Reading every conversation on the screen up
+	// front to fill this column would be a dozen whole-transcript scans — 33ms
+	// each — for the one row somebody is looking at.
+	if a.home.gridOn() {
+		// AND ONLY ON A FRAME THAT HAS THE COLUMN. Narrower than three columns
+		// there is nowhere to draw the sentence, so asking for it would be a
+		// whole-transcript scan for nothing — and the rebuild its arrival
+		// triggers would drop the pick off the row a person just walked onto.
+		if !homeDescOn(a.home.cols) || line.kind != homeSession {
+			return nil
+		}
+		return a.askHomeLeftOff(line.row.Transcript)
 	}
 	var asked []tea.Cmd
 	switch {
