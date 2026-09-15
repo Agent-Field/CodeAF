@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE KEEPER: conversations this process holds and is not drawing.
@@ -187,7 +185,7 @@ func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 	}
 }
 
-// ctrl+c twice ends every in-process conversation, and leaving is idempotent.
+// ctrl+c ends every in-process conversation, and leaving is idempotent.
 func TestQuittingClosesEveryConversation(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
@@ -203,31 +201,6 @@ func TestQuittingClosesEveryConversation(t *testing.T) {
 	}
 	if len(a.behind) != 0 || len(a.prev) != 0 {
 		t.Fatal("the keeper survived the quit")
-	}
-}
-
-// The armed line counts conversations before it counts work: a person who has
-// forgotten they left something open in another project needs the first number
-// before the second one means anything.
-func TestTheArmedLineCountsAcrossEveryConversation(t *testing.T) {
-	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
-	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan behindStirMsg, stirDepth)
-
-	// A quiet single conversation reads exactly the bare sentence.
-	if got := a.quitHint(); got != quitArmWord {
-		t.Fatalf("a quiet single conversation armed %q", got)
-	}
-
-	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/two/transcript.jsonl")
-	if got := a.quitHint(); got != quitArmWord+" · 2 conversations" {
-		t.Fatalf("two open armed %q", got)
-	}
-
-	a.tasks = map[uint64]*taskNode{7: {id: 7, state: session.TaskRunning}}
-	a.taskOrder = []uint64{7}
-	if got := a.quitHint(); got != quitArmWord+" · 2 conversations · a task will stop" {
-		t.Fatalf("two open with work armed %q", got)
 	}
 }
 
