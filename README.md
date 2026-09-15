@@ -11,6 +11,7 @@
 
 <p>
 <a href="#install">Install</a> ·
+<a href="#one-window-for-every-project">One window</a> ·
 <a href="#what-a-factory-is">What a factory is</a> ·
 <a href="#benchmarks">Benchmarks</a> ·
 <a href="#headless-is-the-other-front-door">Headless</a> ·
@@ -20,11 +21,12 @@
 
 </div>
 
-CodeAF is an open-source software factory for your terminal. You describe the
-work and decide what lands. It plans, runs, checks and merges, on the model
-you choose for each call, and comes back only when it needs you. One binary, no
-account, no service to run. Built for open models, and any other model you point it at. Apache 2.0. By
-[AgentField AI](https://agentfield.ai).
+CodeAF is an open-source software factory for your terminal. You talk through
+the work. It becomes tasks that run, check and land on their own, across every
+project on the machine, from one window. You decide only what needs you. One
+binary, built for open models. Apache 2.0. By [AgentField AI](https://agentfield.ai).
+
+<img src="assets/readme/screens/overview.jpg" alt="You talk. It becomes tasks. You decide what lands. Three panels: a conversation that handed out four fixes, the tree of tasks it became, and home showing the two questions that need you and the work waiting to be checked" width="100%">
 
 ## Install
 
@@ -39,66 +41,65 @@ build it yourself: `git clone`, `make build`, `bin/codeaf`
 pinning are on the [releases page](https://github.com/Agent-Field/codeaf/releases).
 
 On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
-Qwen. Point it at Ollama and it needs no key.
-
-Everything is in the one binary: the tools, tasks, standing orders, memory,
-spend, search, remote access, the headless commands and a manual about itself.
+Qwen. Ollama needs none.
 
 <!-- TODO: binary size, cold start, idle memory. -->
 
-## Hand it work
+## One window for every project
 
-Start it inside a repository. Give it something that takes longer than you
-want to watch.
+An agent that lives in one folder means a terminal per repository, and a tmux
+layout to remember which is which. CodeAF is one window.
+
+`home` lists every project and conversation on the machine. `enter` opens any
+of them in a tab, and the one you left keeps streaming with its tasks still
+running. `tab` flips back. `ctrl+k` jumps to any conversation, open or closed.
+Each keeps its own approval rules, models and spend limit.
+
+<img src="assets/readme/screens/projects.jpg" alt="One window, every project: conversations from three projects open as tabs in one terminal, with the ctrl+k switcher listing them" width="100%">
+
+`home` answers what needs you, what to check, what is running and what it
+cost, for all of them at once. A digit answers a question from its row.
+
+<img src="assets/readme/screens/home.jpg" alt="Home in two columns: needs you, to check and where you were on the left; running, since you left and spend on the right" width="100%">
+
+## Talk, and it becomes tasks
+
+Say what is wrong the way you would to a colleague. Name three things in one
+message and each can become its own task, in its own copy of the repository, on
+its own branch. The conversation stays yours while they run, and the rail beside it
+shows every task and its subtasks.
 
 ```text
- › /task move the retry logic out of the three clients into one place, keep the
-   per-client backoff numbers, and make the tests pass
+ › three more while you are on it: the retry test fails one run in five on CI,
+   the pricing page wraps mid word on phones, and the deploy key expires friday
 ```
-
-The task exists when you press enter. It works in its own copy, on its own
-branch, and the conversation is yours again. Say it in plain words instead and
-CodeAF offers the task on a card, or starts it and tells you in one line.
-
-Work that passes its check lands on your branch by itself, never on `main`,
-`dev` or a release branch. Work nothing could check waits on `home` under
-`to check`: `1` accept, `2` not right.
 
 <!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
      lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
 <img src="assets/readme/screens/conversation.jpg" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
 
-Every turn ends with its price.
+Work that passes its check lands on your branch by itself, never on `main`,
+`dev` or a release branch. Work nothing could check waits under `to check`:
+`1` accept, `2` not right.
 
-```text
-                                          · 19:31 · 3.2s · 1 tool call · $0.0008 · ❮
- $0.0008 · ⟲ saved $0.0005 · 45% cached   15.6k/1.3M · 1%                        idle
-```
+<img src="assets/readme/screens/tasks-tree.jpg" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
 
 ## What a factory is
 
-If you have three terminals open with three agents and a merge waiting, you
-already run a factory, by hand. The agents got fast. The scheduling, the
-checking and the merging stayed with you, and every task starts with you and
-ends with you.
+Three terminals, three agents and a merge waiting is a factory run by hand.
+The agents got fast. The scheduling, checking and merging stayed with you.
 
 <img src="assets/readme/how-work-changes.png" alt="one agent: one line on you, you wait. several agents by hand: ten lines on you, you schedule, merge and check. a factory: one line out, one line back." width="100%">
 
-Count the lines that touch the person. A factory is the third picture: one
-line out, one line back. What makes that possible:
+A factory is the third picture: one line out, one line back.
 
-- **The factory does the middle.** It sizes the work, splits it when one
-  worker is not enough, runs the parts where they cannot collide, tests what
-  came back, and merges what passed. What nothing could check waits for your
-  call.
-- **It asks only when it must.** A question a person has to answer waits under
-  `needs you` on `home`. Everything else it decides, records the decision, and
-  carries on.
-- **Specialist tasks check themselves.** Work that comes round in the same
-  shape (review this pull request, chase this flaky test, audit these
-  dependencies) runs as a saved program with typed input and typed output. It
-  either produces what it promised or is marked incomplete. Those are the tasks
-  in the benchmark below.
+- **It does the middle.** It sizes the work, splits it, runs the parts where
+  they cannot collide, tests what came back and merges what passed.
+- **It asks only when it must.** A question waits under `needs you`, from every
+  project. Everything else it decides, writes down, and carries on.
+- **Repeat work checks itself.** Review this pull request, chase this flaky
+  test: a saved program with typed input and output that delivers what it
+  promised or is marked incomplete. These run the benchmark below.
 
 <img src="assets/readme/screens/question.jpg" alt="It asks only when it must: a question panel asking which store the spend ledger should sit on, three options, SQLite recommended with the reason" width="100%">
 
@@ -127,9 +128,8 @@ repository with `bench/` and send us the numbers.
 
 ## The right model for each call
 
-CodeAF runs six model seats, and picks the seat per call, not per session.
-Seat one is the model you talk to. The other five are the crew, for the calls
-you did not type:
+One session, many models. The model you talk to is one seat. Five more, the
+crew, take the calls you did not type:
 
 | seat | what it answers |
 | --- | --- |
@@ -139,8 +139,8 @@ you did not type:
 | careful work | checks on finished work, the brief a task is shaped into, vision |
 | mastermind | plans runs and designs specialist tasks |
 
-Three presets ship, all on open weights. `/crew frugal`, `balanced` or `max`
-sets the five in one word; any seat can be pinned to its own model.
+`/crew frugal`, `balanced` or `max` sets all five in one word. Any seat can be
+pinned.
 
 | preset | worker | careful work | mastermind |
 | --- | --- | --- | --- |
@@ -148,65 +148,38 @@ sets the five in one word; any seat can be pinned to its own model.
 | balanced | glm-5.3-flash | qwen3.8-27b | glm-5.3 |
 | max | glm-5.3 | kimi-k3 | kimi-k3 |
 
-Under that, the provider is chosen per request from what has finished fastest
-for this kind of call, and every settled task is graded by the check it already
-had to pass, so work that keeps failing on the worker seat is lifted to careful
-work on its own. `codeaf models` prints the ratings. Reasoning effort is a
-ladder, `low` to `max`, per seat.
+Every finished task is graded by the check it already had to pass. Work that
+keeps failing on the worker seat moves up to careful work on its own, and each
+request goes to the provider that has been fastest for that kind of call.
+`codeaf models` prints the ratings.
 
 <img src="assets/readme/screens/models.jpg" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
 Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
-any OpenAI-compatible endpoint. Set a daily limit on first start; `spend`
-shows where it went.
-
-## Home is the control room
-
-A factory that runs without you needs one screen that answers, in order: what
-needs me, what is running, what happened while I was away, and what did it
-cost. That is `home`, and it is what a bare `codeaf` opens once the machine has
-work on it.
-
-<img src="assets/readme/screens/home.jpg" alt="The control room for your factory: home in two columns, needs you, to check and where you were on the left, running, since you left and spend on the right" width="100%">
-
-Every project on the machine is here, not only this folder. A digit answers a
-question from its row. `enter` opens a landed task with its diff, test run and
-cost.
-
-Six more places, one key each: `tasks`, `spend`, `settings`, `standing`,
-`memory` and `search`. Everything is written to disk as it happens, so a crash
-loses nothing, and `/rewind` takes a conversation back to any earlier message.
-
-<img src="assets/readme/screens/tasks-tree.jpg" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
+any OpenAI-compatible endpoint.
 
 ## Standing orders
 
-Say "always run the tests before you land" or "every morning, check the
-release radar". CodeAF asks whether you mean once or from now on, and it
-becomes a standing order: a timer, a budget, and the same review as everything
-else.
+Rules, reminders and watches are one thing, and you set them up by saying them.
+"Never commit straight to main here." "Every Monday, draft the weekly update."
+"Tell me when CI goes red." A card asks once; `1` and it stands, in this project
+or everywhere, on the same daily spend limit as the rest.
 
-<img src="assets/readme/screens/standing.png" alt="the standing place: four orders, when they fired, what they cost" width="100%">
+<img src="assets/readme/screens/standing.jpg" alt="The standing place: orders, reminders and watches for this project and others, when each last woke and what it cost" width="100%">
 
 ## Headless is the other front door
 
-The factory has two doors. The conversation is one. The other is a command
-that runs the same brain with the conversation removed, for CI, a cron job, a
-script, or a benchmark harness.
+The same factory, with the conversation removed, for CI, cron, scripts and
+benchmark harnesses.
 
 ```bash
 codeaf do "bump every dependency whose changelog is worth reading" --timeout 30m --json
 ```
 
-`do` takes your brief byte for byte, plans it, runs it, checks it, and prints
-one JSON object and an exit code. Nothing that exists for a person watching is
-paid for: no title, no memory reflex, no screen. Where the conversation would
-stop to ask, `do` takes the best answer it has, records that it assumed, and
-carries on. `exec` runs one worker with no plan; `run` executes a plan you
-have read and edited. The exit code says how much is wrong; the `stop` field
-says what. [The contract](docs/HEADLESS.md).
-
-<!-- TODO: confirm "no title, no memory reflex" against the code. -->
+`do` takes your brief byte for byte, plans, runs and checks it, and prints one
+JSON object and an exit code. Where the conversation would ask, it takes its
+best answer and records the assumption. `exec` runs one worker with no plan;
+`run` executes a plan you edited. [The contract](docs/HEADLESS.md).
 
 ## Run it on your dev box, drive it from anywhere
 
@@ -243,17 +216,14 @@ hosted relay. [How it works](docs/REMOTE.md).
 
 ## What it is allowed to touch
 
-A task writes on its own branch and nowhere else. In the conversation, a
-command the rules do not already allow is held up and shown to you first:
-`1` allow once, `2` always this command, `3` deny. `--yolo` turns the asking
-off for a session and says so on the status line. Nothing leaves your machine
-except the model calls you configured.
+A task writes in its own copy, on its own branch, and lands only on a branch
+that is not protected. Nothing leaves your machine except the model calls you
+configured.
 
 <!-- TODO: confirm the telemetry sentence against the code before publishing. -->
 
-Open source under Apache 2.0, all of it, including the runtime and the
-specialist tasks. You are giving a program write access to your repositories.
-You should be able to read every line of it.
+Apache 2.0, all of it. A program with write access to your repositories should
+be one you can read.
 
 ## What a copilot does, and what CodeAF does
 
@@ -264,14 +234,18 @@ You should be able to read every line of it.
 | what runs | one model, one thread | six seats, chosen per call, on open weights |
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
-| what you pay | a seat | the tokens, priced on every turn, under a daily limit you set |
 
 ## Switching from opencode, pi or aider
 
-Your keys and providers carry over. The conversation works the same way.
-Everything around it is new: a control room across projects, tasks that wait
-for your call, a crew of models chosen per call, standing orders, a headless
-door, and a session you can reach over ssh or from a phone.
+Your keys and providers carry over, and the conversation feels familiar. What
+changes is around it:
+
+- one window for every project, instead of a terminal per folder
+- what you ask for becomes tasks that land themselves, and only the unchecked
+  ones wait for you
+- a model per call, not per session
+- rules and reminders you say once
+- the session lives on your dev box, and the screen stays where you are
 
 ## Roadmap
 
