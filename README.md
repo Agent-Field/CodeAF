@@ -41,6 +41,10 @@ Written in Go as one small binary, with nothing else to install or run. Apache
 
 <img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
 
+<img src="assets/readme/demo.webp" alt="CodeAF running, recorded live: home with every project, a message typed on home that opens a conversation, its steps scrolling as it reads the code, two tasks appearing in the rail, home showing them running, a bigger conversation's task tree, a task opened, and ctrl+k switching chats before returning home" width="100%">
+
+<sub>Recorded live on DeepSeek V4 Flash and GLM 5.3 Flash, with the waits sped up.</sub>
+
 ## Install
 
 ```bash
@@ -87,8 +91,6 @@ shows every task and its subtasks.
    the pricing page wraps mid word on phones, and the deploy key expires friday
 ```
 
-<!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
-     lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
 <img src="assets/readme/screens/conversation.webp" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
 
 Work that passes its check lands on your branch by itself, never on `main`,
