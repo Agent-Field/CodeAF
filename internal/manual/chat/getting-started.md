@@ -1,18 +1,18 @@
 # Getting started — the first-time setup
 
-## I just installed it — what is the first thing to do after installing aforge
+## I just installed it — what is the first thing to do after installing codeaf
 
-Run `aforge`. That is the whole of it: the installer leaves the program at
-`~/.aforge/bin/aforge` and asks nothing else of you, and the setup described below is the
+Run `codeaf`. That is the whole of it: the installer leaves the program at
+`~/.codeaf/bin/codeaf` and asks nothing else of you, and the setup described below is the
 only setup there is. It opens by itself the first time, so there is no command to go
 looking for and nothing to configure by hand first.
 
 The install line itself — and updating to a newer build — is on the *running from the
-terminal* page, under *How do I install or update aforge*.
+terminal* page, under *How do I install or update codeaf*.
 
-## Getting started — first time setup, what happens the first time I run aforge
+## Getting started — first time setup, what happens the first time I run codeaf
 
-The first time `aforge` opens on a profile with nothing in it, the chat does not open on
+The first time `codeaf` opens on a profile with nothing in it, the chat does not open on
 an empty prompt and a provider error. It opens in the chat itself, on **two screens** —
 under a minute, nothing else on the frame:
 
@@ -29,13 +29,13 @@ screen. Its heading is `Models and spending` and the line under it is
 again. `esc` on the controls screen goes **back** to the connection when there is one
 behind it, and skips when the controls are the whole of the setup. A skip leaves one dim
 line naming the doors onto what it walked past: `still yours to set · /budget sets what
-aforge may spend · /model and /crew pick the models`. If the default OpenRouter service is
+codeaf may spend · /model and /crew pick the models`. If the default OpenRouter service is
 still not connected and the conversation is using one of its models, its one-step screen
 returns on the next local interactive launch because that model cannot work without it. A
 conversation on a connected direct service's model does not owe OpenRouter a key, so that
 step stays away.
 
-The header reads `aforge` on the left and `setup · 2 of 2` on the right; with only one
+The header reads `codeaf` on the left and `setup · 2 of 2` on the right; with only one
 screen to show there is no count at all. The foot names the keys that work on the row you
 are standing on — `tab` walks the rows, `?` opens a control's detail — and on a narrow
 window it is cut by whole clauses rather than mid-word.
@@ -47,11 +47,11 @@ can answer and leave.
 
 ## Set up my api key — the default service's openrouter key step, and what happens with no key
 
-On a local interactive launch using aforge's built-in default model service, the first step reads
-*connect openrouter*. Press `enter`: aforge opens OpenRouter in your browser, waits on a
+On a local interactive launch using codeaf's built-in default model service, the first step reads
+*connect openrouter*. Press `enter`: codeaf opens OpenRouter in your browser, waits on a
 random return address bound only to `127.0.0.1`, and uses an S256 proof key for the trip.
 After you sign in and approve it, OpenRouter makes a user-controlled API key for the default service in this
-profile and sends the browser back to aforge. The browser says it is connected, the screen
+profile and sends the browser back to codeaf. The browser says it is connected, the screen
 continues, and the running conversation can use the key immediately. No prompt is sent and
 no model is called during the connection.
 
@@ -70,13 +70,13 @@ anything you typed:
 | the browser sign-in never started | `could not reach openrouter to start the sign-in — check the network, or paste a key instead` |
 | your browser would not open | `could not open your browser · open the link above` |
 | the sign-in started and never came back | `the browser sign-in did not finish — enter tries again, or paste a key instead` |
-| the answer could not be written down | `could not save that — the folder aforge keeps your settings in is not writable` |
+| the answer could not be written down | `could not save that — the folder codeaf keeps your settings in is not writable` |
 
 Anything you typed that a setting refuses keeps that setting's own wording — `that's not a
 dollar amount — a number, or none for no limit` on the rails step, or
 `not the shape of an openrouter key — they start with sk-or-` on the key step — because
 those are written for you to read. What is never shown is the operating system's version of
-a failure: a path inside aforge's own storage with an errno after it tells you nothing you
+a failure: a path inside codeaf's own storage with an errno after it tells you nothing you
 can act on.
 
 ## Paste an existing OpenRouter API key for the default service instead of connecting in the browser
@@ -90,7 +90,7 @@ not accept is discovered by the first message you send. One that fails the shape
 leaves this line under the box and stays on the step:
 `not the shape of an openrouter key — they start with sk-or-`.
 
-What it writes for the default service: the `api_key` field of your profile's `config.json` (under `~/.aforge`),
+What it writes for the default service: the `api_key` field of your profile's `config.json` (under `~/.codeaf`),
 owner-readable only. That is the same field the **openrouter key** row on the settings
 panel's Providers tab writes, and the one every later launch reads. The running
 conversation takes it at once — the next message rides it, no restart.
@@ -112,39 +112,39 @@ This default-service step also opens over an existing or resumed conversation an
 whose first-run setup was already shown. It appears whenever all of these are true: the
 launch is local and interactive, the built-in OpenRouter endpoint is still the model
 provider for the conversation's model, and neither the shell nor the profile holds a key.
-A connected direct service carrying the conversation, a custom `AFORGE_BASE_URL`, a
+A connected direct service carrying the conversation, a custom `CODEAF_BASE_URL`, a
 `--host` session, and a headless `--once` run are not offered an OpenRouter browser trip.
-For a headless run using the default service, start bare `aforge` once to connect in a terminal, or export
+For a headless run using the default service, start bare `codeaf` once to connect in a terminal, or export
 `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`) before running it.
 
 **If the default service's `OPENROUTER_API_KEY` is already set in your shell, this step is not shown at all.**
 The environment outranks the file, always; the setup only asks for what nothing else has
 answered.
 
-## The daily limit on the setup screen — what may aforge spend in a day
+## The daily limit on the setup screen — what may codeaf spend in a day
 
 The first control is **Daily limit**, and it opens on the amount that is actually in
 force — `$500` on a profile that has never chosen one, or your own figure if you have.
 Its one line reads:
 
-> When aforge's spending today reaches this amount, new work waits until midnight or you
+> When codeaf's spending today reaches this amount, new work waits until midnight or you
 > raise it.
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
 `?` on the row adds the part that matters when the bill arrives: *it counts spending
-aforge records here. Calls already running can carry it a little past. Your provider
+codeaf records here. Calls already running can carry it a little past. Your provider
 account has its own controls.* It is a backstop against a runaway, not a promise about
 your whole bill. Something that is not a dollar amount is refused in the settings row's
 own words — `that's not a dollar amount — a number, or none for no limit` — and the
 screen stays.
 
-`$500` is **the amount aforge has always shipped** and this screen did not change it.
+`$500` is **the amount codeaf has always shipped** and this screen did not change it.
 
 What it writes: `daily_budget_usd` in your profile's `config.json`, through **the same
 settings row** the Spending tab and `/budget` write, so what this screen lands is
-byte-for-byte what a settings edit lands. If `AFORGE_DAILY_BUDGET` is set in your shell it
-owns the row: the value is shown with `set by AFORGE_DAILY_BUDGET` beside it and nothing
+byte-for-byte what a settings edit lands. If `CODEAF_DAILY_BUDGET` is set in your shell it
+owns the row: the value is shown with `set by CODEAF_DAILY_BUDGET` beside it and nothing
 is written over it.
 
 The **per-plan approval amount** and the **per-conversation ceiling** are no longer asked
@@ -164,7 +164,7 @@ The model you are already on is always on that list and the cursor opens on it, 
 no catalog yet, so accepting confirms rather than changes. Choosing one goes through the
 same settings row `/model` writes and is kept for the next launch.
 
-**Work crew** is the five models aforge uses on its own behalf — *Models used to plan,
+**Work crew** is the five models codeaf uses on its own behalf — *Models used to plan,
 run, and check tasks.* Opening it draws the three presets — `Frugal`, `Balanced` and
 `Max` — each with a whole one-line description of **the choice** (how much model goes on
 the work), never a price: this screen makes no claim about what anything will cost you.
@@ -189,7 +189,7 @@ dial that is disconnected.
 
 At **112 columns and wider** a bordered panel stands beside these rows, labelled
 `○ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
-only bordered surface aforge draws, so it cannot be read as more form. It holds one
+only bordered surface codeaf draws, so it cannot be read as more form. It holds one
 request you could type and what it leads to, and follows the row you are on: beside the
 crew it shows `/task Fix the failing tests and explain the changes.` That request **types
 itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
@@ -214,12 +214,12 @@ That prerequisite is only for the default service during first run. A second ser
 not required; add one later through `/connect`, as described on the
 [services page](services.md).
 
-The once-only controls screen stays away from `--session <path>`, `aforge
+The once-only controls screen stays away from `--session <path>`, `codeaf
 resume`, `--once`, `--host`, pipes, existing conversations, and profiles that have already
 seen them. If every answer already exists, the marker is written silently.
 
 The default service's OpenRouter prerequisite follows a narrower rule of its own. A missing connection is
-shown for local interactive `--session <path>` and `aforge resume` launches too, because
+shown for local interactive `--session <path>` and `codeaf resume` launches too, because
 those conversations still need a model. It stays away from `--once`, `--host`, pipes,
 custom endpoints, and profiles whose shell or profile already supplies a key.
 
@@ -239,18 +239,18 @@ Every answer went through a settings row, so every answer has a door:
 | --- | --- |
 | the default service's openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
 | the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
-| the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `AFORGE_DAILY_BUDGET` in your shell outranks the row |
+| the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
 | memory, permissions, the task countdown | `/settings`; the setup screen only shows them, under `Other settings` |
 
 A credential changed in the settings row reaches the running conversation at once,
 exactly as the setup's does. The crew and the budget are read live too: the next call
-aforge makes on its own behalf uses the new crew, and the rail is checked against the
+codeaf makes on its own behalf uses the new crew, and the rail is checked against the
 new ceiling.
 
 **The setup asks about three things and no more.** Memory stays on, tool approvals keep
 prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
-question there, because none can be answered usefully before you have seen aforge do
+question there, because none can be answered usefully before you have seen codeaf do
 anything. They are taught where they happen: the countdown is on the task card, and the
 first permission question explains the actual tool that asked for something.
 
@@ -275,7 +275,7 @@ asked about at the moment they matter rather than before you have started.
 
 A first run opens on this build's default unless you picked something else on the setup
 screen's **Chat model** row, and `/model` is the door that moves it afterwards. If that first prompt's provider
-goes quiet before a word arrives, aforge does not sit silent until the ninety-second
+goes quiet before a word arrives, codeaf does not sit silent until the ninety-second
 cut: it tries another provider and says so, naming the door —
 
 ```
@@ -289,13 +289,13 @@ out. When no replacement request can start, the message instead says
 It does not claim to switch. If the default keeps stalling, `/model` is how you
 move for good.
 
-## Set your terminal up for aforge — the font, and Option on macOS
+## Set your terminal up for codeaf — the font, and Option on macOS
 
-Two settings live in your terminal rather than in aforge, and both are worth the minute.
-Neither is required: aforge draws a correct screen without them, and everything they buy
+Two settings live in your terminal rather than in codeaf, and both are worth the minute.
+Neither is required: codeaf draws a correct screen without them, and everything they buy
 has a drawn way to it as well.
 
-**The font.** aforge is drawn for **JetBrains Mono, regular and bold** — 14px at 21px line
+**The font.** codeaf is drawn for **JetBrains Mono, regular and bold** — 14px at 21px line
 height is the size the design was cut at. Any monospace font with the block and
 box-drawing ranges works, and no patched nerd-font is needed anywhere: every mark on home
 and the places is a standard Unicode character. Set it in iTerm2 under Profiles → Text →
@@ -303,7 +303,7 @@ Font, in Terminal.app under Profiles → Text → Font → Change…, and in kit
 ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
 files.
 
-**Option as meta, on macOS.** Every chord aforge binds is the option key, and on a Mac it is
+**Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
 drawn the way the keycap spells it — `⌥enter` to send what you typed off as a task, `⌥1`…`⌥7`
 to jump to a place, `⌥.` for the map. (On Linux and Windows the same chords are drawn
 `alt+enter`, `alt+1`…`alt+7`, `alt+.`; this manual names both spellings together.) Most Mac
@@ -329,6 +329,6 @@ terminals report that they run the kitty keyboard protocol, and where that repor
 own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live.
 
 On Linux and on Windows terminals, Alt is already meta and there is nothing to set. The
-whole of this is also in *Screen* — see *The font aforge is drawn for*, *alt or option or ⌥ —
+whole of this is also in *Screen* — see *The font codeaf is drawn for*, *alt or option or ⌥ —
 how the chords are spelled on a Mac, on Linux and on Windows*, and *Why my option key types
 ¡ ™ £ instead of jumping*.

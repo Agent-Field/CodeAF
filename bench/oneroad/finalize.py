@@ -104,7 +104,7 @@ def main():
                 break
 
         columns = {}
-        if arm.startswith("aforge") and session:
+        if arm.startswith("codeaf") and session:
             out = subprocess.run(
                 [sys.executable, os.path.join(ROOT, "lib", "road.py"), session,
                  "--timeline", os.path.join(cell, "timeline.json")],
@@ -129,7 +129,7 @@ def main():
                 meta["wall_source"] = "store-span (driver wrote no settle line)"
         if wall is not None and not existing.get("wall_s"):
             meta["wall_s"] = wall
-        if arm.startswith("aforge"):
+        if arm.startswith("codeaf"):
             for key in ("road", "armed", "parts", "peak_workers", "refused",
                         "escalated", "route", "chat_tool_calls", "pre_turn_line",
                         "checkpoint_marks", "calls", "cost_usd_calls", "endpoint_mix",

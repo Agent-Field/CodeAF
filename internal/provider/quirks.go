@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // Quirks are the request-shape facts a provider will not publish and only a
@@ -121,8 +121,8 @@ var quirks = &quirksStore{
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
-// later discoveries are written to. Empty dir means ~/.aforge, which is where
-// every other durable Aforge fact lives.
+// later discoveries are written to. Empty dir means ~/.codeaf, which is where
+// every other durable codeaf fact lives.
 //
 // It is called once at startup, before any request is shaped. Calling it twice
 // re-reads the file, which is harmless: the memo only ever grows, and a fact

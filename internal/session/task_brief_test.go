@@ -196,14 +196,14 @@ func TestASubTaskInheritsTheSentenceThatStartedTheFamily(t *testing.T) {
 // last: an address after the contract, never a second brief. An empty origin
 // draws nothing — the emptiness law, applied to a pointer.
 func TestTheOriginSectionNamesTheJournalPathAndLine(t *testing.T) {
-	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	origin := taskOrigin{journal: "/home/x/.codeaf/v3/sessions/abc.jsonl", line: 12}
 	opening := composeBrief(briefWhole,
 		"make the pricing page match the new tiers",
 		"edit docs/pricing.md",
 		"docs/pricing.md, one table",
 		"the page names all four tiers", "", AdmissionContext{}, origin, taskCopy{})
 
-	pointer := "grep or read /home/x/.aforge/v3/sessions/abc.jsonl, line 12"
+	pointer := "grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, line 12"
 	for _, want := range []string{
 		briefAskHeading, "make the pricing page match the new tiers",
 		briefWorkHeading, "edit docs/pricing.md",
@@ -249,7 +249,7 @@ func TestANestedTaskInheritsTheHumansOrigin(t *testing.T) {
 	graph := conversation.graph()
 	graph.run = func(*TaskNode) {}
 	parent := graph.reserve()
-	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	origin := taskOrigin{journal: "/home/x/.codeaf/v3/sessions/abc.jsonl", line: 12}
 	graph.admit(parent, taskSpec{
 		title: "t", request: "port the whole client to v2", brief: "b", acceptance: "a",
 		origin: origin,

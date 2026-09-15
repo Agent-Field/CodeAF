@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // lawClass is the delivery class from the diet's taxonomy
@@ -173,7 +173,7 @@ var lawRegistry = []lawUnit{
 	{id: "bash.waits", class: lawCore, key: "finishes or its armed bound"},
 	{id: "files.absolute-paths", class: lawCore, key: "EVERY file you name carries its FULL ABSOLUTE PATH"},
 	{id: "images.travel-with-the-message", class: lawCore, key: "ATTACHED PICTURES TRAVEL IN THE MESSAGE WITH YOU"},
-	{id: "elsewhere.other-windows", class: lawCore, key: "OTHER AFORGE WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"},
+	{id: "elsewhere.other-windows", class: lawCore, key: "OTHER codeaf WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"},
 
 	// ── the routing triggers, which are the page's own and nobody else's. A
 	// description says what a verb DOES; it cannot say when to reach for it
@@ -184,9 +184,9 @@ var lawRegistry = []lawUnit{
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
 	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
 	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
-	// ── the mark aforge leaves on work it did in somebody's name. It is core
+	// ── the mark codeaf leaves on work it did in somebody's name. It is core
 	// rather than verb: `bash` is where it happens, but `bash` is pi's own
-	// description and this law is aforge's, and it is stated in ONE place for
+	// description and this law is codeaf's, and it is stated in ONE place for
 	// both surfaces there are — the leaf loop's contract and this page read the
 	// same constant (internal/exec's [exec.AttributionLaw]).
 	{id: "attribution.sign-git-work", class: lawCore, key: "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE."},

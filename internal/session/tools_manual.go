@@ -7,7 +7,7 @@ package session
 // none of the others have. Asked "can you read a PDF?" or "what does rewind
 // undo?", a model will always produce a fluent answer, and a fluent answer
 // about the product is indistinguishable from a remembered one right up until
-// the person acts on it. A WRONG ANSWER ABOUT AFORGE IS WORSE THAN NO ANSWER,
+// the person acts on it. A WRONG ANSWER ABOUT codeaf IS WORSE THAN NO ANSWER,
 // because the person cannot check it against anything: they asked precisely
 // because they did not know.
 //
@@ -25,8 +25,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // manualSections is how much of the manual one read returns. It is the same
@@ -49,7 +49,7 @@ const manualSections = 4
 // model what a cut page hands back, so the examples paid for it: "what a command
 // or key does" was a word-for-word copy of prompts/system.md's Tool Policy line
 // for this tool, and the routing rule belongs in one place.
-const manualDescription = "Read aforge's own manual: what it does, how a mechanism works. THE ONLY AUTHORITATIVE SOURCE about it: your training data lacks this program, so memory produces fiction. Look it up and say you did."
+const manualDescription = "Read codeaf's own manual: what it does, how a mechanism works. THE ONLY AUTHORITATIVE SOURCE about it: your training data lacks this program, so memory produces fiction. Look it up and say you did."
 
 const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A page by name instead of searching; a long one comes back cut, listing its headings"},"section":{"type":"string","description":"One of those headings, returned whole"}}}`
 
@@ -119,15 +119,15 @@ func (a *Agent) manualTool() bare.Tool {
 			// sitting in a worktree, the sentence that started the family IS
 			// the person's own words for every node of it, and a steer into a
 			// running node is a course correction rather than a question
-			// about aforge.
+			// about codeaf.
 			sections := manual.Chat().SearchBoth(query, a.taskRequest(), manualSections)
 			if len(sections) == 0 {
 				// NOT AN ERROR, and the difference matters: the manual having
-				// nothing on a topic is a fact about aforge worth reporting to
+				// nothing on a topic is a fact about codeaf worth reporting to
 				// the person — it usually means the answer is "no, it does not
 				// do that" — while an error would invite a retry with rephrased
 				// words that will find nothing either.
-				return "The manual has nothing on that, which usually means aforge does not do it. The pages are:" +
+				return "The manual has nothing on that, which usually means codeaf does not do it. The pages are:" +
 					manualPageList(), false, nil
 			}
 			return manual.Render(sections), false, nil

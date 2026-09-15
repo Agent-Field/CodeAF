@@ -2,7 +2,7 @@
 
 ## The eight slots
 
-Aforge does not run on one model. It keeps eight named slots, each filled by a
+codeaf does not run on one model. It keeps eight named slots, each filled by a
 model that can actually do that job:
 
 | slot | what it is for |
@@ -52,7 +52,7 @@ no model gets a vote on which model runs your job.
   the live catalog for the work slot.
 
 If a name matches exactly one model, the receipt says `Running on <model>.` If
-it matches several, aforge asks which you meant — up to four options — and
+it matches several, codeaf asks which you meant — up to four options — and
 splices no work until you answer. If it matches nothing and you clearly said the
 word "model", you get one calm line saying so and the job runs on the usual
 model. If you just said "use gemini" and nothing matched, it stays quiet: a bare
@@ -71,7 +71,7 @@ recognized differently.
 
 ## The vision proxy
 
-If the model currently doing the work cannot see images, aforge does not give
+If the model currently doing the work cannot see images, codeaf does not give
 up and does not pretend. A vision model looks at the file and reports back, and
 the answer is prefixed with **`seen by <model>:`** so the attribution is never
 lost. If no vision-capable model is available at all, it says so plainly rather
@@ -79,17 +79,17 @@ than inventing a description.
 
 ## Which models a run from the shell uses
 
-`aforge do`, `exec`, `plan`, `run`, `revise` and `run subharness` seat two models — one
+`codeaf do`, `exec`, `plan`, `run`, `revise` and `run subharness` seat two models — one
 that works, one that plans — and both resolve the same way. First answer wins:
 
 1. `--model` / `--plan-model` on the command line
-2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment
+2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment
 3. the crew in this profile — the mastermind class plans, the small-work class works
 4. the model this build ships with
 
 The crew is the same one `/crew` sets in the chat, so a machine told `frugal` there runs
 frugal here. It answers only where a crew has actually been set; an untouched profile takes
-the build's default. `AFORGE_HOME` and `AFORGE_PROFILE_DIR` decide which profile is asked.
+the build's default. `CODEAF_HOME` and `CODEAF_PROFILE_DIR` decide which profile is asked.
 
 Every one of those runs opens with a line on stderr naming both seats and what chose each:
 
@@ -97,5 +97,5 @@ Every one of those runs opens with a line on stderr naming both seats and what c
 models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
 ```
 
-`aforge do --json` carries the same four facts as `model`, `plan_model`, `model_source`
+`codeaf do --json` carries the same four facts as `model`, `plan_model`, `model_source`
 and `plan_model_source`.

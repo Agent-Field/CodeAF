@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // oneFigureLab is the run in the issue: a conversation whose own interrupted
@@ -112,7 +112,7 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 
 // THE SAME ONE FIGURE ON THE ENGINE HOST'S DOOR, AFTER A RECEIPT THAT CAME LATE.
 //
-// A bare `aforge` opens a window on the engine host, which reads the ledger
+// A bare `codeaf` opens a window on the engine host, which reads the ledger
 // through a seam and holds no path to it. The route judge the turn finished in
 // front of was cut, the provider's receipt for it was banked under this
 // conversation twenty seconds after the turn ended, and nothing asked the agent

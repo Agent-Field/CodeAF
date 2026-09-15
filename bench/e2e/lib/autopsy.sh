@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # autopsy.sh — reading a finished run out of the store it left behind.
 #
-# `aforge do --keep` prints "store kept at <dir>" on stderr and leaves a SQLite
+# `codeaf do --keep` prints "store kept at <dir>" on stderr and leaves a SQLite
 # journal at <dir>/graph.db. Every question this battery asks about a run's
 # *shape* — how many nodes, which route, did the leaves start together, what did
 # it cost — is answered from that journal rather than from the run's own prose,

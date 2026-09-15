@@ -88,12 +88,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 const (
@@ -113,7 +113,11 @@ const (
 	// path, so repo-local placement was never a constraint — it was only where
 	// the first version happened to put them, and it is litter in somebody
 	// else's repository.
-	tasksDirName = ".aforge-v3/tasks"
+	tasksDirName = ".codeaf/tasks"
+	// legacyTasksDirName is a PERSISTED worktree and lock location. New
+	// repository-local work goes to tasksDirName, but an earlier binary and this
+	// one must still meet on the same registered worktree and repository lock.
+	legacyTasksDirName = ".aforge-v3/tasks" // legacy-name
 
 	// taskReportLines and taskReportLineLimit bound the ordinary report. Two or
 	// three lines is what a person reads off a finished card and what a
@@ -615,7 +619,7 @@ type TaskNode struct {
 	// for it. It used to be kept off the record on the argument that the zero
 	// value read as the person anyway — which was the right answer arrived at by
 	// accident, and it left the floor with nothing to fire on, no fixture able to
-	// seed a card aforge is holding, and an engine that died mid-turn quietly
+	// seed a card codeaf is holding, and an engine that died mid-turn quietly
 	// dropping the hand-back it owed.
 	decider TaskAskOwner
 	started time.Time
@@ -817,7 +821,7 @@ type TaskNode struct {
 	// announcing the end raced past.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and the note that asks it has been
+	// asked codeaf to decide this one card, and the note that asks it has been
 	// put in front of the model. It is not the same fact as [TaskNode.decider]
 	// being the model — a landing under `task.settle = auto` writes that by
 	// policy and presses nothing — and it travels with the owner through
@@ -990,7 +994,7 @@ type TaskGraph struct {
 	seq     uint64
 	running int
 	// lanes is the account of running lanes this graph shares with every other
-	// graph of the same running aforge ([Config.TaskLanes]), written through
+	// graph of the same running codeaf ([Config.TaskLanes]), written through
 	// [TaskGraph.takeLaneLocked] and [TaskGraph.giveLaneLocked]. The governor's
 	// reading is of the whole process tree, so the count it divides that
 	// reading by has to cover the same work (task_pressure.go's ONE ACCOUNT FOR
@@ -1224,8 +1228,8 @@ func (a *Agent) graph() *TaskGraph {
 		// (task_store.go).
 		graph.store = newTaskStore(taskCheckpointPath(a.config.SessionFile))
 		// AND THE RATINGS STORE, WHICH IS THE PERSON'S AND NOT THIS SESSION'S.
-		// It lives beside the settings file, it is the same file `aforge models`
-		// reads, and several aforge processes write to it at once — so what is
+		// It lives beside the settings file, it is the same file `codeaf models`
+		// reads, and several codeaf processes write to it at once — so what is
 		// held here is the path and never a handle (taskgrade.go).
 		graph.grades = newTaskGrades(a.config.ProfileDir)
 		a.tasks = graph
@@ -4391,7 +4395,7 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 // handBackUnsettled is the SECOND HALF OF THE AUTO-SETTLE FLOOR, and the law is
 // one sentence: A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN.
 //
-// `task.settle = auto` and the person's own "let aforge decide this one" both
+// `task.settle = auto` and the person's own "let codeaf decide this one" both
 // hand a landed question to the model, and the model answers it inside a turn or
 // not at all — it has no life between turns, nothing wakes it to finish
 // thinking, and a question it did not spend a verb on is a question nobody now
@@ -6068,7 +6072,7 @@ func releasedKeptSentence(dir, problem string) string {
 // RUNTIME unregistered apart from a folder that was never a repository, and
 // those two must never be answered the same way: the second is a fact about the
 // person's disk that will be true again next time, and the first is a state
-// aforge made and can put back.
+// codeaf made and can put back.
 const releasedRecord = "released.json"
 
 // releasedTree is that record: the branch the node's work is actually on, and
@@ -6096,7 +6100,7 @@ func (t taskTree) branchStandingOn() string {
 }
 
 func rememberReleased(dir, branch, root string) {
-	metadata := filepath.Join(dir, aforgeDroppings)
+	metadata := filepath.Join(dir, codeafDroppings)
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return
 	}
@@ -6110,7 +6114,7 @@ func rememberReleased(dir, branch, root string) {
 // rememberedRelease answers whether this directory is a working copy a settle
 // gave back, and what it was standing on when that happened.
 func rememberedRelease(dir string) (releasedTree, bool) {
-	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, releasedRecord))
+	contents, err := readTaskDropping(dir, releasedRecord)
 	if err != nil {
 		return releasedTree{}, false
 	}
@@ -6124,7 +6128,9 @@ func rememberedRelease(dir string) (releasedTree, bool) {
 // forgetReleased drops the mark once the copy is a registered worktree again,
 // so the record only ever describes the state the directory is actually in.
 func forgetReleased(dir string) {
-	_ = os.Remove(filepath.Join(dir, aforgeDroppings, releasedRecord))
+	for _, dropping := range taskDroppingNames() {
+		_ = os.Remove(filepath.Join(dir, dropping, releasedRecord))
+	}
 }
 
 // branchIsThere asks a repository whether it holds a branch by that name, which
@@ -6189,7 +6195,7 @@ func (t taskTree) releaseIdentity() (releasedTree, bool) {
 	// Older releases wrote only the leavings record. That valid record is also
 	// evidence of runtime cleanup, but cannot recover an unknown renamed branch.
 	if !released && !t.ownRepository() {
-		if data, err := os.ReadFile(filepath.Join(t.dir, aforgeDroppings, leftBehindRecord)); err == nil {
+		if data, err := readTaskDropping(t.dir, leftBehindRecord); err == nil {
 			var paths []string
 			if json.Unmarshal(data, &paths) == nil {
 				mark = releasedTree{Branch: t.branch, Root: t.root}
@@ -6204,7 +6210,7 @@ func (t taskTree) releaseIdentity() (releasedTree, bool) {
 // retained files. Its caller owns the Git root lock; this phase touches only
 // its own temporary pointer and Git's registration, never the saved contents.
 func (t taskTree) restoreReleasedRegistration() string {
-	temp, err := os.MkdirTemp(filepath.Dir(t.dir), ".aforge-reopen-")
+	temp, err := os.MkdirTemp(filepath.Dir(t.dir), ".codeaf-reopen-")
 	if err != nil {
 		return "its working copy could not be prepared: " + err.Error()
 	}
@@ -6576,7 +6582,7 @@ func argField(args, field string) string {
 // "?? marketing/" both times and its second file read as a stall, which is
 // exactly the shape of work that makes many files in one new folder. The
 // exclude drops the harness's own droppings: a background job writes its log
-// under .aforge-v3 while the node works (jobs.go), and a tree that dirties
+// under .codeaf while the node works (jobs.go), and a tree that dirties
 // itself on a timer would make every step look like progress forever — the same
 // exclusion [stageTaskWork] makes for the same reason.
 //
@@ -6590,8 +6596,11 @@ func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(
 // worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
 // have to stop ([treeWatch.close]).
 func worktreeDirtIn(ctx context.Context, dir string) string {
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "--no-optional-locks", "status", "--porcelain",
-		"--untracked-files=all", "--", ".", ":(exclude)"+aforgeDroppings).Output()
+	args := []string{"-C", dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	out, err := exec.CommandContext(ctx, "git", args...).Output()
 	if err != nil {
 		return ""
 	}
@@ -6599,13 +6608,50 @@ func worktreeDirtIn(ctx context.Context, dir string) string {
 	return string(sum[:8])
 }
 
-// aforgeDroppings is the one directory under a node's worktree that is the
+// codeafDroppings is the one directory under a node's worktree that is the
 // harness's and never the node's work: job logs, saved pictures a session keeps
 // for itself, anything this program leaves behind while the node works. Named
 // once because two places have to agree about it — the fingerprint above and
 // the index [stageTaskWork] builds — and a disagreement would mean a node
 // judged as working on files that never reach its branch.
-const aforgeDroppings = ".aforge-v3"
+const codeafDroppings = ".codeaf"
+
+const legacyCodeafDroppings = ".aforge-v3" // legacy-name
+
+// taskDroppingNames is the one list of repository-local task machinery a
+// reader, cleaner or index builder must recognise. Writes keep using
+// codeafDroppings because live worktree registrations cannot be moved.
+func taskDroppingNames() []string {
+	return []string{codeafDroppings, legacyCodeafDroppings}
+}
+
+// readTaskDropping reads current metadata first and consults the former
+// directory only when the current file is absent. A current file that exists
+// but cannot be read is never silently replaced with older state.
+func readTaskDropping(dir, name string) ([]byte, error) {
+	var absent error
+	for _, dropping := range taskDroppingNames() {
+		contents, err := os.ReadFile(filepath.Join(dir, dropping, name))
+		if err == nil {
+			return contents, nil
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		absent = err
+	}
+	return nil, absent
+}
+
+func isTaskDropping(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+	for _, name := range taskDroppingNames() {
+		if clean == name || strings.HasPrefix(clean, name+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // savingTools are the hands that PUT A FILE ON DISK at a path the call itself
 // names. They are the producing half of the belt, and the counterpart to
@@ -7226,7 +7272,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
 		// session and carries no Place — that is deliberate (session.go) — so with
 		// nothing here its job logs and its stubbed tool results landed in
-		// <workspace>/.aforge-v3, and a worker's workspace is the person's
+		// <workspace>/.codeaf, and a worker's workspace is the person's
 		// repository or a worktree of it. landing.go states the law and the
 		// measured failure; this line is the whole of the fix for a task node.
 		droppings: family,
@@ -7378,7 +7424,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER AFORGE SIGNS THE GIT WORK IT DOES IN THEIR NAME.
+		// AND SO DOES WHETHER codeaf SIGNS THE GIT WORK IT DOES IN THEIR NAME.
 		// A node commits — its landing writes one ([commitTaskWorkAs]) and its
 		// worker may write more with `bash` — and the `attribution` row is the
 		// person's answer for their whole machine, not for the window they
@@ -7403,7 +7449,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		taskDepth:                  depth,
 		// AND THE ROAD ITSELF, WITHOUT WHICH IT IS OPEN ON PAPER ONLY. Divide is
 		// the person's own setting for whether wide work may hand its parts out
-		// (cmd/aforge's chatv3.go, config's Swarm), and it is set on the
+		// (cmd/codeaf's chatv3.go, config's Swarm), and it is set on the
 		// CONVERSATION — which can never divide, because [Config.mayDivide] also
 		// wants mayFanOut and a conversation is not in a task. Every agent that
 		// CAN divide is built right here, so a constructor that did not carry the
@@ -7462,7 +7508,7 @@ func (a *Agent) journalID() string {
 // for one check, <when>_<id>-repair1.jsonl for one repair round.
 //
 // THE JOURNAL FOLLOWS THE CONVERSATION THAT COMMISSIONED IT. The legacy answer
-// is the parallel tree ~/.aforge/v3/tasks/<session>/, which is the same names in
+// is the parallel tree ~/.codeaf/v3/tasks/<session>/, which is the same names in
 // a directory nobody deleting a session would think to look in; a session that
 // has a folder keeps its nodes inside it, and the parallel tree dies with the
 // flat layout.
@@ -7541,7 +7587,7 @@ func taskJournalDir(place Place, session string) string {
 		return journals
 	}
 	// The legacy tree, through the one seam: os.UserHomeDir was read directly
-	// here, which is why AFORGE_HOME moved every other v3 file and left a node's
+	// here, which is why CODEAF_HOME moved every other v3 file and left a node's
 	// transcript behind in the real home (Decision 26, "one home, one seam").
 	return filepath.Join(LooseTasksRoot(), session)
 }
@@ -7759,7 +7805,7 @@ func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session stri
 	// AN OWNED CONVERSATION TAKES THE ORDINARY ROAD, and there is no arm here
 	// for it. A conversation opened outside any project has a workspace of its
 	// own — work/, which the door makes into a repository with a first commit
-	// precisely so that tasks get worktrees (cmd/aforge's prepareOwnedWorkspace)
+	// precisely so that tasks get worktrees (cmd/codeaf's prepareOwnedWorkspace)
 	// — so it HAS somewhere to stand and needs nothing said about projects. This
 	// once refused every such task with "this task needs a project", which was a
 	// person being turned away from work that needed no repository at all: file
@@ -7794,6 +7840,11 @@ func taskOwnFolder(place Place, workspace, session string, id uint64) (string, o
 	mode := os.FileMode(0o755)
 	if trees := place.Trees(); trees != "" {
 		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
+	} else if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		former := filepath.Join(workspace, filepath.FromSlash(legacyTasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
+		if _, formerErr := os.Lstat(former); formerErr == nil || !os.IsNotExist(formerErr) {
+			dir = former
+		}
 	}
 	// Git resolves symlinks before it registers a worktree. Record that same
 	// spelling from the start so the checkpoint, cleanup and git all name one
@@ -7872,7 +7923,7 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 	// One live process holds one session id, because the transcript that names it
 	// is flocked while it is open (sessionfile.go), and the id space under it is a
 	// counter this process owns. So the only way to find this directory occupied
-	// is to have been here before and died — a killed aforge, a crash, a resume
+	// is to have been here before and died — a killed codeaf, a crash, a resume
 	// that is re-running a node its checkpoint still calls queued — and reclaiming
 	// after ourselves is the one case where a forced remove destroys nothing
 	// anybody is still using. Before the session was in the path this same code
@@ -8000,7 +8051,7 @@ func mirrorGround(ground, dir string) string {
 			if relative != "" {
 				child = relative + "/" + entry.Name()
 			}
-			if entry.Name() == ".git" || child == aforgeDroppings {
+			if entry.Name() == ".git" || isTaskDropping(child) {
 				continue
 			}
 			if visited++; visited > auditRestoreEntries {
@@ -8120,7 +8171,7 @@ func resolveTaskWhere(where, workspace string) (string, error) {
 // A session with no file on disk still needs a name nobody else will pick, and
 // it cannot borrow the journal's — there isn't one. It gets this process's
 // nonce instead, minted once and used by every unfiled node in it, so the
-// grouping still holds and two unfiled aforges still cannot collide. The one
+// grouping still holds and two unfiled codeafs still cannot collide. The one
 // thing it may NOT be is a constant like "unfiled", which is the bug this
 // function exists to prevent wearing a friendlier name.
 func taskTreeSession(session string) string {
@@ -8232,7 +8283,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 			// work is committed on its branch and the person has been told which
 			// one — a refusal here would put a policy keep on the unsaved road
 			// (task_land_unsaved.go) and offer to try it again, which is the one
-			// thing that must not happen to a checkout aforge will not write.
+			// thing that must not happen to a checkout codeaf will not write.
 			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
 		}
 	}
@@ -8452,8 +8503,11 @@ func leftBehind(dir string) []string {
 			return paths
 		}
 	}
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
-		"--", ".", ":(exclude)"+aforgeDroppings)
+	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	out, err := git(dir, args...)
 	if err != nil {
 		return nil
 	}
@@ -8477,11 +8531,11 @@ func leftBehind(dir string) []string {
 
 const leftBehindRecord = "left-behind.json"
 
-// rememberLeftBehind keeps the answer in aforge's private task metadata before
+// rememberLeftBehind keeps the answer in codeaf's private task metadata before
 // Git forgets the worktree. It writes an empty array too: that distinguishes a
 // task known to have no leavings from an older folder with no snapshot.
 func rememberLeftBehind(dir string, paths []string) {
-	metadata := filepath.Join(dir, aforgeDroppings)
+	metadata := filepath.Join(dir, codeafDroppings)
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return
 	}
@@ -8498,7 +8552,7 @@ func rememberLeftBehind(dir string, paths []string) {
 // rememberedLeftBehind distinguishes no record from a recorded empty answer:
 // nil means the folder predates this cleanup law and should use Git's answer.
 func rememberedLeftBehind(dir string) []string {
-	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, leftBehindRecord))
+	contents, err := readTaskDropping(dir, leftBehindRecord)
 	if err != nil {
 		return nil
 	}
@@ -8620,7 +8674,7 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool) ([]string,
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if out, err := git(dir, append(aforgeGitIdentity(),
+	if out, err := git(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", signed(message, sign))...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
@@ -8652,13 +8706,13 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool) ([]string,
 // block IS, in every version of git there has ever been.
 //
 // AND THE AUTHOR DOES NOT MOVE. These commits stay authored as
-// aforge <aforge@localhost> ([aforgeGitIdentity]) rather than as the person,
+// codeaf <codeaf@localhost> ([codeafGitIdentity]) rather than as the person,
 // because that identity is load-bearing: a sibling landing reads it to tell this
 // harness's own forward progress from a person's intervening work
 // (task_branch_protection.go says so). Attribution is provenance ON TOP of that,
 // not a second answer to the same question — which is why it is a trailer, where
 // a reader already looks for who else had a hand in the commit, and why the
-// address in it is the aforge GitHub account rather than a local one.
+// address in it is the codeaf GitHub account rather than a local one.
 func signed(message string, sign bool) string {
 	if !sign {
 		return message
@@ -8793,7 +8847,7 @@ func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 			problem = firstLine(out)
 		}
 	}
-	if out, err := git(dir, "reset", "--quiet", "--", aforgeDroppings); err != nil && problem == "" {
+	if out, err := git(dir, append([]string{"reset", "--quiet", "--"}, taskDroppingNames()...)...); err != nil && problem == "" {
 		problem = firstLine(out)
 	}
 	if problem == "" {
@@ -8830,7 +8884,7 @@ func stageableWork(dir string, wrote []string) []string {
 		clean = filepath.ToSlash(filepath.Clean(filepath.FromSlash(clean)))
 		switch {
 		case clean == "" || clean == "." || clean == "..", strings.HasPrefix(clean, "../"),
-			clean == aforgeDroppings, strings.HasPrefix(clean, aforgeDroppings+"/"),
+			isTaskDropping(clean),
 			seen[clean]:
 			continue
 		}

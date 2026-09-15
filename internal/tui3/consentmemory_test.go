@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE ALWAYS THAT OUTLIVES THE SESSION.
@@ -18,7 +18,7 @@ import (
 // in a receipt, and never writes a no.
 
 // remembering wires both save seams onto a surface and records what they were
-// handed. It stands in for cmd/aforge's closures over the profile directory.
+// handed. It stands in for cmd/codeaf's closures over the profile directory.
 type remembered struct {
 	tools    []string
 	commands []string

@@ -13,15 +13,15 @@ on it is directly comparable to the seven models already measured. Phase A
 costs this at about $0.02 per model.
 
 Two things are measured here that Phase A did not measure and that Phase B
-cannot ignore, because Phase B runs the *real aforge pipeline* rather than
+cannot ignore, because Phase B runs the *real codeaf pipeline* rather than
 isolated chat completions:
 
-  * **tools + structured_outputs support**, read from the live catalog. aforge's
+  * **tools + structured_outputs support**, read from the live catalog. codeaf's
     executor is a tool-calling loop (internal/exec/tools.go) and its planner
     asks for structured output. A model without both cannot be a panel member
     at any ability, so this is a hard gate applied before any spend.
   * **reasoning on as well as off**. Phase A ran every call with
-    `reasoning: {enabled: false}` because that is aforge production
+    `reasoning: {enabled: false}` because that is codeaf production
     (`DefaultReasoning`/`DefaultExecReasoning` are both EffortOff) and its report
     explicitly flags that this understates reasoning-first models -- glm-5.2 in
     particular. `--reasoning on` re-measures that.
@@ -32,7 +32,7 @@ Usage:
   python3 anchor_battery.py --report
 
 The anchor tasks and their graders come from bench/routerlab; point at it with
---routerlab or $AFORGE_ROUTERLAB (default: ../../routerlab relative to here,
+--routerlab or $CODEAF_ROUTERLAB (default: ../../routerlab relative to here,
 then the repository's bench/routerlab).
 """
 import argparse
@@ -57,12 +57,12 @@ MAX_INFLIGHT = 24
 
 # (slug, label, reasoning_mode, why it is worth measuring)
 #
-# reasoning_mode: "off" matches aforge production; "on" is the fairness re-run
+# reasoning_mode: "off" matches codeaf production; "on" is the fairness re-run
 # Phase A's report asked for. A model listed twice is measured both ways.
 CANDIDATES = [
     # ---- controls: already on the Phase A scale, re-run to detect drift -----
     ("~deepseek/deepseek-v4-flash-latest", "ds-v4-flash", "off",
-     "CONTROL/INCUMBENT: aforge's default; re-run to check the scale has not drifted"),
+     "CONTROL/INCUMBENT: codeaf's default; re-run to check the scale has not drifted"),
     ("moonshotai/kimi-k2.6", "kimi-k2.6", "off",
      "CONTROL: Phase A's only significantly-above-pack model (theta +4.09)"),
 
@@ -130,16 +130,16 @@ def describe(cat, slug):
 def gate(info):
     """The hard gates a Phase B panel member must pass, in order of severity.
 
-    Ability is irrelevant to a model the harness cannot drive: aforge's executor
+    Ability is irrelevant to a model the harness cannot drive: codeaf's executor
     is a tool-calling loop and its planner asks for structured output. A model
     failing either gate is excluded before a cent is spent on measuring it."""
     problems = []
     if info["price_out_per_mtok"] > PRICE_CAP_OUT:
         problems.append(f"${info['price_out_per_mtok']:.2f}/M out over ${PRICE_CAP_OUT:.2f} cap")
     if not info["tools"]:
-        problems.append("no tool-calling: aforge's executor cannot drive it")
+        problems.append("no tool-calling: codeaf's executor cannot drive it")
     if not info["structured_outputs"]:
-        problems.append("no structured_outputs: aforge's planner cannot drive it")
+        problems.append("no structured_outputs: codeaf's planner cannot drive it")
     return problems
 
 
@@ -147,7 +147,7 @@ def gate(info):
 # running
 
 def load_routerlab(path):
-    for candidate in filter(None, [path, os.environ.get("AFORGE_ROUTERLAB"),
+    for candidate in filter(None, [path, os.environ.get("CODEAF_ROUTERLAB"),
                                    os.path.join(HERE, "..", "..", "routerlab"),
                                    os.path.join(HERE, "..", "..", "..", "..", "..",
                                                 "bench", "routerlab")]):
@@ -159,7 +159,7 @@ def load_routerlab(path):
             return routerlab_tasks, orclient, candidate
     raise SystemExit(
         "could not find bench/routerlab (needs tasks.py + orclient.py).\n"
-        "Pass --routerlab PATH or set AFORGE_ROUTERLAB.")
+        "Pass --routerlab PATH or set CODEAF_ROUTERLAB.")
 
 
 async def run_cell(orclient, client, sem, ledger, cand, info, task, rep, out):

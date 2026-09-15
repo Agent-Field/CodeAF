@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 // wordCandidateLimit mirrors the head's ambiguity cap. Config must not import

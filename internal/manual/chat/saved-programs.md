@@ -10,9 +10,9 @@ The point of having one is that the good way of doing something stops depending 
 remembering it. A program that works out why a test is flaky does that the same way every
 time, for the same money, and tells you the same shaped answer at the end.
 
-Some are files on your machine under `~/.aforge/subharnesses`, or in the project you are
-working in. Some are the pages a design wrote when you asked aforge to build you one, under
-`~/.aforge/harnesses`. **They are one list and nothing in it says which is which** beyond
+Some are files on your machine under `~/.codeaf/subharnesses`, or in the project you are
+working in. Some are the pages a design wrote when you asked codeaf to build you one, under
+`~/.codeaf/harnesses`. **They are one list and nothing in it says which is which** beyond
 where each was found.
 
 A **harness** is one of these too, reached by another door: `/harness` picks one and takes
@@ -20,7 +20,7 @@ your request as a sentence, `/subharness` lists it beside everything else and ta
 request as the one field on its card. *Saved shapes of work* is the page about designing
 one.
 
-## How aforge offers to run one — the "this looks like" card
+## How codeaf offers to run one — the "this looks like" card
 
 When what you are asking for is what a saved program does, the chat can offer it. The
 offer names the program and says why it matched, in one line:
@@ -65,7 +65,7 @@ another way of saying no. Under them is a line saying what the answer you are on
 
 ## What running one looks like — it is a task with a number
 
-A run is a **task**, exactly like any other piece of work aforge hands out: a row on the
+A run is a **task**, exactly like any other piece of work codeaf hands out: a row on the
 roster, a number you can say out loud, a room you can walk into and watch, and a ✕.
 
 That is the whole reason it is worth confirming a card and then leaving. The run does not
@@ -184,30 +184,30 @@ nobody has run says nothing there rather than "never run".
 The general worker is not on the list. It is what you get when you pick nothing, not
 something you pick.
 
-## Running one without the chat — aforge run
+## Running one without the chat — codeaf run
 
 ```
-aforge run <name> --input <file.json>
-aforge run <name> --input -          # read the input from a pipe
+codeaf run <name> --input <file.json>
+codeaf run <name> --input -          # read the input from a pipe
 ```
 
-**This was `aforge run subharness <name>`.** `run` used to name two unrelated commands —
+**This was `codeaf run subharness <name>`.** `run` used to name two unrelated commands —
 the saved-program runner and the static plan pipeline — and it names only this one now,
 matching `/subharness <name>` in the chat. The old spelling still works for one release,
 is absent from `--help`, and prints one line on stderr the first time it is used:
-`note: \`aforge run subharness <name>\` is now \`aforge run <name>\` — the old spelling
-works for one more release.` The pipeline is `aforge plan run <plan.json>`.
+`note: \`codeaf run subharness <name>\` is now \`codeaf run <name>\` — the old spelling
+works for one more release.` The pipeline is `codeaf plan run <plan.json>`.
 
-**The name is a bare word, and that is what tells the two apart.** `aforge run formatter`
+**The name is a bare word, and that is what tells the two apart.** `codeaf run formatter`
 runs the saved program `formatter` from any directory, including one with a file of that
 name sitting in it; only an argument spelled as a path — a separator in it, a leading `./`,
 `../` or `~`, or a file extension — is read as a plan file and sent down the retired
-`aforge run <plan.json>` road. It used to be decided by whether the file existed, so the
+`codeaf run <plan.json>` road. It used to be decided by whether the file existed, so the
 same command meant two different things in two different folders.
 
 Optional: `--dir <dir>` for the directory to work in (`-w` still works), `--model <slug>` for the work model,
 `--journal <path>` to append every call the run makes to a file, one JSON object per line,
-and `--json` for the one result object `aforge do` and `aforge exec` also print.
+and `--json` for the one result object `codeaf do` and `codeaf exec` also print.
 
 With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
 and it opens by saying which model it took and what chose it.
@@ -221,7 +221,7 @@ There is no task surface and no card here. What comes back:
 | it did not finish | the reason on stderr, in plain words | 2 |
 | it needed a closer look | the long-way line on stderr, then the general worker's answer | 0 if that finished |
 
-Those numbers are the same table `aforge do` and `aforge exec` leave on — 0 done, 1 it
+Those numbers are the same table `codeaf do` and `codeaf exec` leave on — 0 done, 1 it
 could not be run at all, 2 it ran and did not finish, 3 a limit you set stopped it, 4 it
 needed an answer and nobody was there. *Commands you type in a terminal* has the whole of
 it, and the `--json` object beside it.

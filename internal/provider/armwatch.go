@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
 )
 
 // ── DRIVING ONE ARM'S CONTROLLER FROM THE READ LOOP ─────────────────────────

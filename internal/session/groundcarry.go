@@ -201,7 +201,7 @@ func (t taskTree) carryUntrackedGround(blocked []string) (bool, string, []string
 		return false, said, clashing, refusedByYourFiles
 	}
 	stood = strings.TrimSpace(stood)
-	hold, err := os.MkdirTemp("", "aforge-your-copies-")
+	hold, err := os.MkdirTemp("", "codeaf-your-copies-")
 	if err != nil {
 		said, clashing := t.refuseMerge(blocked, "")
 		return false, said, clashing, refusedByYourFiles
@@ -350,7 +350,7 @@ func stashTop(root string) string {
 // for a checkout with no user.name, which is every hermetic HOME, and without
 // these two flags a clean merge came back as a conflict that never existed.
 func mergeTaskBranch(root, branch string) (string, error) {
-	return git(root, append(aforgeGitIdentity(), "merge", "--no-edit", branch)...)
+	return git(root, append(codeafGitIdentity(), "merge", "--no-edit", branch)...)
 }
 
 // groundStashMessage is what the person reads in `git stash list` if anything
@@ -358,7 +358,7 @@ func mergeTaskBranch(root, branch string) (string, error) {
 // entry nobody can account for is the most alarming thing a landing can leave in
 // somebody's repository.
 func groundStashMessage(branch string) string {
-	return "aforge: your own work, set aside to land " + branch
+	return "codeaf: your own work, set aside to land " + branch
 }
 
 // overwrittenPaths reads the file list out of the merge git REFUSED BEFORE IT

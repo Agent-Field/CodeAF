@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // driverOf is the "driver" frame a link is waiting for. A hand-over is fanned
@@ -105,7 +105,7 @@ func TestTheNewestWindowTakesTheKeyboardAndTheOlderOneIsTold(t *testing.T) {
 
 // Two windows on ONE machine send one name, and that is how the engine can tell
 // the desk across the room from the terminal behind this one. `another window`
-// is the word aforge already uses at home for exactly this.
+// is the word codeaf already uses at home for exactly this.
 func TestASecondWindowOnTheSameMachineReadsAsAnotherWindow(t *testing.T) {
 	agent := &fakeAgent{}
 	sess := heldSession(agent)

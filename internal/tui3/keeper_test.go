@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE KEEPER: conversations this process holds and is not drawing.
@@ -153,7 +153,7 @@ func TestTheKeeperRecordsWhenAConversationWasLeft(t *testing.T) {
 // ── closing, quitting, and the count ────────────────────────────────────────
 
 // /quit closes the conversation in front and brings the previous one forward.
-// aforge leaves only when it was the last one.
+// codeaf leaves only when it was the last one.
 func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
@@ -164,7 +164,7 @@ func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 
 	cmd, more := a.closeFront()
 	if !more {
-		t.Fatal("/quit with two open left aforge")
+		t.Fatal("/quit with two open left codeaf")
 	}
 	drain(t, a, cmd)
 	if !second.closed {

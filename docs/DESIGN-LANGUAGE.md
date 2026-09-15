@@ -1,6 +1,6 @@
 # The design language — what this surface is allowed to look like
 
-*The written contract for aforge's visual surface. `internal/tui3/styles.go` is
+*The written contract for codeaf's visual surface. `internal/tui3/styles.go` is
 the code that holds it and `internal/tui3/designlanguage_test.go` is the part a
 build can fail on; where this doc and the code disagree, the code wins. Written
 after an audit of [basecamp/omarchy](https://github.com/basecamp/omarchy) — the
@@ -595,7 +595,7 @@ the existing ladder fails. A lone call site does not get to mint a rung.
 An audit is only worth as much as the parts of it you decline.
 
 **Borders.** Omarchy's surfaces are separated by hairline borders and small equal
-gaps — a subdivided plane. Aforge is **one continuous surface**: zones are made
+gaps — a subdivided plane. codeaf is **one continuous surface**: zones are made
 of typography, alignment and at most a hairline rule. A border is a claim that
 two regions are different kinds of thing, and on a conversation surface they
 mostly are not. This is also why the emphasis law forbids adding a ring: rings
@@ -629,7 +629,7 @@ it is a straight refusal rather than a trade we tuned differently.
 
 Omarchy accepts a steep learning curve as the price of keyboard speed — *"It's OK
 that it'll take longer to learn. It's OK to have a manual."* That works for a
-system whose users chose it precisely for that. **Aforge is a new interaction
+system whose users chose it precisely for that. **codeaf is a new interaction
 paradigm**, and nobody has intuitions about it yet. A person cannot be expected
 to learn what they cannot see.
 
@@ -656,8 +656,8 @@ consistency is best enforced by refusing to let anything else own a value.
 
 What we did **not** take is any value transplanted by analogy. Their ladder is
 alpha over a background they know; ours is authored, because we do not know
-ours — and every number in the tables above was measured against aforge's own
-assumed grounds, aforge's own ink, and aforge's own xterm-256 fallback, which is
+ours — and every number in the tables above was measured against codeaf's own
+assumed grounds, codeaf's own ink, and codeaf's own xterm-256 fallback, which is
 a rung their compositor does not have. Two of our steps ended up on values this
 file already held, one hue moved five points, and everything else stayed where it
 was. A design language you adopt wholesale is a costume; the parts worth keeping

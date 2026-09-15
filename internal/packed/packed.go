@@ -2,7 +2,7 @@
 // the first read.
 //
 // A folder handed to go:embed lands in the binary verbatim, and prose is the
-// most compressible thing aforge ships: the v3 chat manual alone is a megabyte
+// most compressible thing codeaf ships: the v3 chat manual alone is a megabyte
 // of Markdown that is a megabyte of binary. A folder handed to [Pack] lands as
 // one gzip stream, about a third of that, and the text a caller reads back is
 // identical byte for byte. The raw folder stays in the repository as the source
@@ -16,7 +16,7 @@
 // trade on that when they are adjacent — and these corpora are read whole
 // anyway: a manual is indexed entire, a roster is parsed entire. Declaring a
 // folder reads nothing, so a run that never asks it a question never pays for
-// it; `aforge --version` decompresses none of this.
+// it; `codeaf --version` decompresses none of this.
 //
 // A [Folder] is deliberately not an [io/fs.FS]. An archive has no directories,
 // and a type that half-answers fs.WalkDir is worse than one that never claimed
@@ -56,7 +56,7 @@ var unpacks atomic.Int64
 //
 // IT EXISTS SO THAT "THE LAUNCH READS NONE OF THIS" CAN BE A TEST. The package
 // doc above states that law in prose — declaring a folder reads nothing, and
-// `aforge --version` decompresses none of it — and prose is what a change
+// `codeaf --version` decompresses none of it — and prose is what a change
 // quietly breaks: one manual lookup moved onto the launch path costs a megabyte
 // of gunzip before the first frame, and nothing would say so. A caller takes the
 // reading either side of the construction it is holding to the law and asserts

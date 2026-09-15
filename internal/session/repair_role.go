@@ -48,7 +48,7 @@ package session
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // The hands that fix what the cheap hands got wrong are [roles.RoleRepair] —

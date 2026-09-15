@@ -172,7 +172,7 @@ func (l *learned[T]) catchUp() bool {
 // of them pays about a millisecond every ten seconds against the three hundred
 // and sixty syscalls a second the frame was paying. A model list's is an
 // os.ReadFile and a JSON parse of the whole catalog — tens of kilobytes — and
-// that one rides the beat only because another window running `aforge models
+// that one rides the beat only because another window running `codeaf models
 // --refresh` is the one writer this process cannot be told about; every writer
 // INSIDE it already calls [app.forgetModelList]. A reader more expensive than
 // that does not belong on a memo without a cheaper way to ask whether anything

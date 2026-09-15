@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE COLUMN AND THE PAGE SAY ONE WORD ABOUT HOW A JOB ENDED. `3 · exited 1` in

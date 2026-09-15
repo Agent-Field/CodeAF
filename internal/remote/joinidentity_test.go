@@ -128,7 +128,7 @@ func TestAJoinThatNamesNoConversationIsRefused(t *testing.T) {
 // AND THE ORDINARY JOIN STILL ARRIVES, which is the whole capability this guard
 // must not take away: the conversation named is the conversation open, and the
 // welcome says so in the field the surface checks before it draws a row
-// (cmd/aforge's chatv3_taskowner.go hands [Welcome.SessionFile] back for exactly
+// (cmd/codeaf's chatv3_taskowner.go hands [Welcome.SessionFile] back for exactly
 // that).
 func TestAJoinOntoTheConversationItNamedStillArrives(t *testing.T) {
 	agent := &fakeAgent{model: "a/b", title: "the one being read"}
@@ -154,7 +154,7 @@ func TestAJoinOntoTheConversationItNamedStillArrives(t *testing.T) {
 
 // A PIPE ENGINE HAS NOTHING TO JOIN, AND SAYS SO BEFORE IT BOOTS ANYTHING.
 //
-// `aforge engine` on a pipe opens one conversation for one connection, and that
+// `codeaf engine` on a pipe opens one conversation for one connection, and that
 // conversation is the connection's whole life ([Serve]). Answering a join by
 // booting one would do the two things the flag exists to prevent at once: start
 // a model to answer a question about work somebody believes is already running,
@@ -168,7 +168,7 @@ func TestAPipeEngineRefusesAJoinWithoutBootingAConversation(t *testing.T) {
 
 	frame := l.hello(Hello{
 		Version: Version, Surface: "reader",
-		Session: "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+		Session: "/home/somebody/.codeaf/v3/sessions/-home-somebody-api/one.jsonl",
 		Join:    true, Watch: true,
 	})
 	if frame.Kind != "fatal" {
@@ -189,7 +189,7 @@ func TestAPipeEngineRefusesAJoinWithoutBootingAConversation(t *testing.T) {
 // what the caller claimed — and a caller claiming nothing was answered by the
 // replacement's task of the same number.
 func TestACorrectionIsCheckedAgainstBothTheBindingAndTheClaim(t *testing.T) {
-	const other = "/srv/app/.aforge/two.jsonl"
+	const other = "/srv/app/.codeaf/two.jsonl"
 	for _, c := range []struct {
 		name    string
 		joined  string

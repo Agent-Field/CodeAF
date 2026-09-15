@@ -56,7 +56,7 @@ func TestACheckThatCouldNotBeReadIsCountedNeitherWay(t *testing.T) {
 	}{
 		{
 			name:    "the command would not start",
-			command: func(string) string { return "aforge-command-that-does-not-exist-571" },
+			command: func(string) string { return "codeaf-command-that-does-not-exist-571" },
 			ctx:     func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
 		},
 		{

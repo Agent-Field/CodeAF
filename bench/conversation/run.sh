@@ -20,7 +20,7 @@
 # Usage:
 #   bench/conversation/run.sh --dry-run                compose everything, run nothing
 #   bench/conversation/run.sh --scenarios data-tally   one cell
-#   bench/conversation/run.sh --arms aforge,pi         two arms
+#   bench/conversation/run.sh --arms codeaf,pi         two arms
 #   bench/conversation/run.sh --door print             only the non-interactive door
 set -uo pipefail
 
@@ -44,11 +44,11 @@ source "$CONV_LIB/guarded.sh"
 
 ALL_SCENARIOS="data-tally research-brief writing-memo code-fix followup-while-working revision-midwork work-result-recalled"
 
-ARMS="${CONV_ARMS:-aforge omp pi}"
+ARMS="${CONV_ARMS:-codeaf omp pi}"
 SCENARIOS="$ALL_SCENARIOS"
 DOOR_FILTER=""
 # The effort rung asked of every arm. `low` is the default because it is the
-# only rung all three of aforge, omp and pi actually have (pi has no `medium`),
+# only rung all three of codeaf, omp and pi actually have (pi has no `medium`),
 # and DeepSeek V4 Flash's catalog offers low/high/max. An arm without the rung
 # runs anyway and is marked not-comparable — never silently moved to another one.
 EFFORT="${CONV_EFFORT:-low}"

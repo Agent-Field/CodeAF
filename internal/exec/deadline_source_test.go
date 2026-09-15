@@ -31,7 +31,7 @@ import (
 // called a deadline or a watchdog, sized from a literal or from arithmetic
 // instead of from the table. So `deadline := 900 * time.Second` fails exactly
 // as `15 * time.Minute` does, and `defaultDoWall = 15 * time.Minute` in
-// cmd/aforge passes, because a run's wall is not a leaf's room and no amount of
+// cmd/codeaf passes, because a run's wall is not a leaf's room and no amount of
 // respelling either figure changes which of the two it is. Matching the digits
 // rather than the act got both of those backwards once, and #379 was reverted
 // for the wrong one.
@@ -42,11 +42,11 @@ import (
 //
 // The three trees are the ones a leaf's room is decided in: this package
 // registers the shapes, internal/resident's reaper is measured from them, and
-// cmd/aforge is every surface that dispatches a leaf.
+// cmd/codeaf is every surface that dispatches a leaf.
 var deadlineTrees = map[string]string{
 	".":                "the subharness table is where a worker's budget shape is registered",
 	"../resident":      "the claim reaper's window is measured from the generalist's floor",
-	"../../cmd/aforge": "every surface that dispatches a leaf grants it its room here",
+	"../../cmd/codeaf": "every surface that dispatches a leaf grants it its room here",
 }
 
 // deadlineShapeAuthors are the files allowed to write a leaf's room from

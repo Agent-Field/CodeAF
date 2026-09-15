@@ -58,8 +58,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // The goals, simple → complex. They are held here rather than passed in so that

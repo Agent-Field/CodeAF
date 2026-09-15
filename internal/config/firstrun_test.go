@@ -13,7 +13,7 @@ import (
 func TestAFreshProfileIsMissingAllThreeAndAnAnsweredOneIsNot(t *testing.T) {
 	t.Setenv(APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	dir := t.TempDir()
 
 	if APIKeyConfigured(dir) || CrewConfigured(dir) || DailyBudgetConfigured(dir) {
@@ -53,7 +53,7 @@ func TestAFreshProfileIsMissingAllThreeAndAnAnsweredOneIsNot(t *testing.T) {
 func TestTheEnvironmentAnswersTheKeyAndTheCeiling(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(APIKeyEnv, "sk-or-v1-from-the-shell")
-	t.Setenv("AFORGE_DAILY_BUDGET", "5")
+	t.Setenv("CODEAF_DAILY_BUDGET", "5")
 	if !APIKeyConfigured(dir) || !DailyBudgetConfigured(dir) {
 		t.Fatal("a variable in the shell is an answer")
 	}
@@ -97,7 +97,7 @@ func TestTheKeyShapeCheckRefusesWhatIsNotAKey(t *testing.T) {
 func TestLoadKeylessOpensWhereLoadRefuses(t *testing.T) {
 	t.Setenv(APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), APIKeyEnv) {
 		t.Fatalf("Load with no key must refuse naming the variable, got %v", err)
 	}

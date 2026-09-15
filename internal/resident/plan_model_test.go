@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The plan slot is silent by default and durable when it is not. A split that is

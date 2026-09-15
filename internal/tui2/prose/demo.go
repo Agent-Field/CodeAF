@@ -1,6 +1,6 @@
 package prose
 
-import "github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+import "github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
 // DemoSource exercises every shape this package knows how to draw, in the order
 // a reviewer would want to see them. It is a const so a test can render it at

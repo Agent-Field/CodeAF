@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // modulePath is what `go test` prints beside a package it ran, and what this
 // file has to recognise to know that a package was actually built rather than
 // quietly skipped.
-const modulePath = "github.com/Agent-Field/aforge-v2"
+const modulePath = "github.com/Agent-Field/codeaf"
 
 // theCanaryIsRunning stops the canary from starting a canary. Nothing in the
 // list below is this package, but a list is a thing people add to, and a test
 // that forks the suite it is part of is a bad afternoon.
-const theCanaryIsRunning = "AFORGE_CALL_LOG_CANARY"
+const theCanaryIsRunning = "CODEAF_CALL_LOG_CANARY"
 
 // packagesThatReachAModel is what the canary runs, and it is a WITNESS rather
 // than the guarantee. The guarantee is one gate at the one place a path is
@@ -42,7 +42,7 @@ const cheapestPackageThatReachesAModel = "internal/subharness"
 
 // TestNoTestInTheTreeWritesIntoTheLedgerOfWhoeverRanIt is the run-side law of
 // #286: a person runs the suite — by hand, or through a leaf whose workspace is
-// this repository — and their AFORGE_HOME/logs/calls.jsonl gains nothing.
+// this repository — and their CODEAF_HOME/logs/calls.jsonl gains nothing.
 //
 // It runs the packages as a subprocess with a canary state root, which is the
 // only shape that can prove it: the fiction is written by a test BINARY that
@@ -62,7 +62,7 @@ func TestNoTestInTheTreeWritesIntoTheLedgerOfWhoeverRanIt(t *testing.T) {
 
 	root := moduleRoot(t)
 	// TWO canaries, because a person has two roots and either can be theirs:
-	// the state root, and the profile root AFORGE_PROFILE_DIR moves out from
+	// the state root, and the profile root CODEAF_PROFILE_DIR moves out from
 	// under it. A run that watched only the first would pass while writing into
 	// the second.
 	homeRoot, profileRoot := t.TempDir(), t.TempDir()
@@ -189,7 +189,7 @@ func relativeTo(packages []string) []string {
 	return arguments
 }
 
-// withoutTheLogPin drops AFORGE_CALL_LOG from an environment, so the child
+// withoutTheLogPin drops CODEAF_CALL_LOG from an environment, so the child
 // resolves its log exactly the way a person's own run would rather than
 // inheriting a pin from whoever is running this suite.
 func withoutTheLogPin(environment []string) []string {

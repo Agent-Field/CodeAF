@@ -11,11 +11,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -107,7 +107,7 @@ type picker struct {
 	// person decides whether to leave the choosing to it.
 	guard bool
 	// routing is the routing row this session was launched under ([app.routing]),
-	// and it rides here for the same reason the guard does: under `simple` aforge
+	// and it rides here for the same reason the guard does: under `simple` codeaf
 	// makes no choice of its own at all, so what the `auto` row may honestly say
 	// it does is a question only this row answers ([laneAutoSaid]). A snapshot,
 	// like the rest of them — the row lands on the next session and cannot move
@@ -1610,7 +1610,7 @@ func (p *picker) mark(filled bool) string {
 
 // laneAutoSay is what the `auto` row may honestly claim, as the routing row in
 // force decides it: the sentence saying what leaving the choosing alone DOES,
-// and whether aforge is the one doing any of the choosing.
+// and whether codeaf is the one doing any of the choosing.
 type laneAutoSay struct {
 	// note is the sentence on the row. It is a sentence and not a word because
 	// it is the row a person will land on first and the one they will leave
@@ -1623,7 +1623,7 @@ type laneAutoSay struct {
 	// the list, and the two would say different things about `simple` the first
 	// time either was written without the other.
 	about string
-	// chooses is whether aforge chooses anything under this routing row. It
+	// chooses is whether codeaf chooses anything under this routing row. It
 	// gates the two claims that are only true when it does: the name of the
 	// machine the next turn would go to — which is the CHOOSER'S answer
 	// (lanes.go's [laneAuto]), and a prediction nobody makes where no chooser
@@ -1636,11 +1636,11 @@ type laneAutoSay struct {
 // promises is decided in ONE place rather than at each thing the row draws.
 //
 // THE SENTENCE IS A PROMISE AND A PROMISE HAS TO BE KEPT UNDER EVERY ROW. Under
-// `latency` and `price` aforge does take over when the router's answers turn
+// `latency` and `price` codeaf does take over when the router's answers turn
 // bad, and the row has said so since it was written. Under `simple` it does
-// not: the request goes out with no preference of aforge's own on it and
+// not: the request goes out with no preference of codeaf's own on it and
 // OpenRouter's own default routing answers, which is exactly the row a person
-// chose in order to be left alone — so the row that still said "aforge takes
+// chose in order to be left alone — so the row that still said "codeaf takes
 // over" would be the surface promising machinery the mode disconnected.
 //
 // An unknown word — an empty one, or a row read before this surface armed
@@ -1652,7 +1652,7 @@ type laneAutoSay struct {
 func laneAutoSaid(routing string) laneAutoSay {
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
-			note: "openrouter's own routing; aforge stays out",
+			note: "openrouter's own routing; codeaf stays out",
 			about: "which provider answers your model. routing is simple, so auto " +
 				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
 				"you pin is the whole request. enter opens them all with what has been " +
@@ -1660,7 +1660,7 @@ func laneAutoSaid(routing string) laneAutoSay {
 		}
 	}
 	return laneAutoSay{
-		note: "router routes; aforge takes over if answers turn bad",
+		note: "router routes; codeaf takes over if answers turn bad",
 		about: "which provider answers your model. auto picks the fastest one " +
 			"each answer; enter opens them all with what has been measured of each.",
 		chooses: true,

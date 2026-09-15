@@ -3,7 +3,7 @@ package head
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // What stood here was the single door between a ROUTED decision and the journal:

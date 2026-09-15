@@ -593,7 +593,7 @@ func TestAPartRestoredFromACheckpointStandsInTheFrozenWorld(t *testing.T) {
 // ── the seal underneath, which is still everybody else's road ───────────────
 
 // TWO SEALS AT ONCE BOTH CARRY THE PARENT'S FILE. They used to share ONE staging
-// file — `.git/aforge-ground-index` — and a parent's siblings are carved
+// file — `.git/codeaf-ground-index` — and a parent's siblings are carved
 // concurrently, so one seal removed the index another was writing and the loser
 // answered "nothing uncommitted" and carved its child from HEAD, silently.
 func TestTwoSealsAtOnceBothCarryTheParentsFile(t *testing.T) {
@@ -883,7 +883,7 @@ func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
 	writeFile(t, filepath.Join(repo, furrowMarkerDir, "state.json"), "{}\n")
-	writeFile(t, filepath.Join(repo, aforgeDroppings, "notes.md"), "private\n")
+	writeFile(t, filepath.Join(repo, codeafDroppings, "notes.md"), "private\n")
 	hideFurrowMarker(repo)
 	if held, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude")); !strings.Contains(string(held), furrowMarkerPattern) {
 		t.Fatalf("the marker is not hidden:\n%s", held)
@@ -901,7 +901,7 @@ func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
 		t.Fatalf("the sealed world is missing the parent's file:\n%s", listed)
 	}
 	// AND NEITHER CORNER OF MACHINERY IS IN IT.
-	for _, corner := range []string{furrowMarkerDir, aforgeDroppings} {
+	for _, corner := range []string{furrowMarkerDir, codeafDroppings} {
 		if strings.Contains(listed, corner) {
 			t.Fatalf("%s is in the sealed world:\n%s", corner, listed)
 		}
@@ -920,7 +920,7 @@ func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
 // `commit-tree`) grounded without a word. Both hooks here refuse everything.
 func TestAForkSealsItsWorldPastTheCornerAndThePersonsHooks(t *testing.T) {
 	repo := newTestRepo(t)
-	writeFile(t, filepath.Join(repo, ".gitignore"), aforgeDroppings+"/\n")
+	writeFile(t, filepath.Join(repo, ".gitignore"), codeafDroppings+"/\n")
 	mustGit(t, repo, "add", ".gitignore")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "ignore the corner")
 	for _, hook := range []string{"commit-msg", "pre-commit", "post-checkout"} {
@@ -931,7 +931,7 @@ func TestAForkSealsItsWorldPastTheCornerAndThePersonsHooks(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
-	writeFile(t, filepath.Join(repo, aforgeDroppings, "notes.md"), "private\n")
+	writeFile(t, filepath.Join(repo, codeafDroppings, "notes.md"), "private\n")
 
 	commit, err := sealGroundWork(repo, "the whole job")
 	if err != nil || commit == "" {
@@ -941,7 +941,7 @@ func TestAForkSealsItsWorldPastTheCornerAndThePersonsHooks(t *testing.T) {
 		t.Fatalf("the branch could not be cut at the seal: %v", err)
 	}
 	listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", "task/fork-seal")
-	if !strings.Contains(listed, "wip.txt") || strings.Contains(listed, aforgeDroppings) {
+	if !strings.Contains(listed, "wip.txt") || strings.Contains(listed, codeafDroppings) {
 		t.Fatalf("the sealed world is wrong:\n%s", listed)
 	}
 	if head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); head != "task/fork-seal" {

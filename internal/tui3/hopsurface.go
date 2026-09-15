@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+import "github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
 // hopSurfacePalette keeps the ordinary ladder where it already separates the
 // card and its rows. At black or white the quieter direction runs out of room;

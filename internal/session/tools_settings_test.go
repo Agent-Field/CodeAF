@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // settingsAgent is one conversation with a profile directory of its own and
@@ -73,7 +73,7 @@ func profileJSON(t *testing.T, profile string) map[string]any {
 // The absence law, both halves. A session with no profile has nothing to read or
 // write, and a task node must not be able to change the person's machine at all.
 func TestTheSettingsPairIsAbsentInsideATaskAndPresentWithTheDefaultProfile(t *testing.T) {
-	// AN EMPTY PROFILE DIRECTORY IS THE ORDINARY ONE. AFORGE_PROFILE_DIR is
+	// AN EMPTY PROFILE DIRECTORY IS THE ORDINARY ONE. CODEAF_PROFILE_DIR is
 	// unset on very nearly every machine, and every reader treats "" as the
 	// default location — so a session with no explicit profile is the common
 	// case, not a broken one, and it carries the pair. Gating on it once turned
@@ -305,14 +305,14 @@ func TestChangeSettingRefusesABadValueInTheRegistrysOwnWords(t *testing.T) {
 
 // The environment still outranks everybody, this tool included.
 func TestChangeSettingHonorsAnEnvironmentPin(t *testing.T) {
-	t.Setenv("AFORGE_DRAFT_PERSIST", "0")
+	t.Setenv("CODEAF_DRAFT_PERSIST", "0")
 	agent, profile := settingsAgent(t)
 	_, write := settingsHands(t, agent)
 	text, isError := callSetting(t, write, map[string]string{"key": config.KeyDraftPersist, "value": "on"})
 	if !isError {
 		t.Fatalf("a pinned row was written: %s", text)
 	}
-	if !strings.Contains(text, "AFORGE_DRAFT_PERSIST") {
+	if !strings.Contains(text, "CODEAF_DRAFT_PERSIST") {
 		t.Errorf("the refusal does not name the variable holding the row: %q", text)
 	}
 	if values := profileJSON(t, profile); len(values) != 0 {

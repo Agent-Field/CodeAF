@@ -38,9 +38,9 @@ type Workspace struct {
 	// repair rather than tidiness. It used to be the root itself for every caller
 	// but one, on the reasoning that a directory the harness made for a job may
 	// hold whatever the job needs. What it held was the leaf's own transcript:
-	// `.aforge/trace/` carries the worker's turn-by-turn recorder, its raw event
+	// `.codeaf/trace/` carries the worker's turn-by-turn recorder, its raw event
 	// stream and its patch, in the directory the worker was told to work in,
-	// beside `.obs/` and `.aforge/jobs/`. A measured atomic leaf spent five of its
+	// beside `.obs/` and `.codeaf/jobs/`. A measured atomic leaf spent five of its
 	// eleven turns listing that machinery and reading its OWN trace log back into
 	// its own context — orientation bought at full price, of files it had written
 	// itself a second earlier. The harness it was benchmarked against writes
@@ -113,7 +113,7 @@ func (w *Workspace) WithScratch(dir string) *Workspace {
 }
 
 // OwnedByPerson records that this root is somebody's own directory. It is the
-// one caller whose workspace is not its own — `aforge do -w` edits a person's
+// one caller whose workspace is not its own — `codeaf do -w` edits a person's
 // project in place — and it is said explicitly rather than inferred from where
 // the machinery went, because the machinery now always goes elsewhere.
 func (w *Workspace) OwnedByPerson() *Workspace {
@@ -734,7 +734,7 @@ func boundedPaths(changes map[string]ArtifactChange) []string {
 //
 // What it skips is exactly what the per-command sweep skips, from the same
 // predicate: dot-entries, which are the harness's own machinery (.obs spills,
-// .aforge job logs and traces) and the tooling's (.git, editor state), and the
+// .codeaf job logs and traces) and the tooling's (.git, editor state), and the
 // dependency trees producedSkipDir names — node_modules, vendor, site-packages,
 // __pycache__, bower_components, venv. One predicate rather than two, because
 // two lists of "what is not a deliverable" is two answers to one question.
@@ -865,10 +865,10 @@ const obsDir = ".obs"
 // fixed. There is no listing surface to filter — the leaf reads its workspace
 // with a shell, and any exclusion it could be told about is one it could also
 // ignore. What actually removes a file from reach is not being where the agent
-// was sent. .aforge is where the harness's own bookkeeping already lives (job
+// was sent. .codeaf is where the harness's own bookkeeping already lives (job
 // logs), it is already excluded from a coding worker's diff, and nothing ever
 // hands a leaf a path under this subdirectory of it.
-const traceDir = ".aforge/trace"
+const traceDir = ".codeaf/trace"
 
 var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
 

@@ -170,7 +170,7 @@ func conflictingRepo(t *testing.T, session string, id uint64, title string) (str
 	place, repo := newOwnedPlace(t)
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the original line\n")
 	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the shared file")
+	mustGit(t, repo, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost", "commit", "-m", "the shared file")
 
 	tree, err := prepareTaskTree(place, repo, session, id, title)
 	if err != nil {
@@ -178,11 +178,11 @@ func conflictingRepo(t *testing.T, session string, id uint64, title string) (str
 	}
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the task's line\n")
 	mustGit(t, tree.dir, "add", "-A")
-	mustGit(t, tree.dir, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "task: "+title)
+	mustGit(t, tree.dir, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost", "commit", "-m", "task: "+title)
 
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the other side's line\n")
 	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the other side")
+	mustGit(t, repo, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost", "commit", "-m", "the other side")
 	return repo, tree
 }
 
@@ -478,7 +478,7 @@ func shiftedRepo(t *testing.T, session string, id uint64, title string) (string,
 	place, repo := newOwnedPlace(t)
 	writeFile(t, filepath.Join(repo, "shared.txt"), "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n")
 	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the shared file")
+	mustGit(t, repo, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost", "commit", "-m", "the shared file")
 
 	tree, err := prepareTaskTree(place, repo, session, id, title)
 	if err != nil {
@@ -489,7 +489,7 @@ func shiftedRepo(t *testing.T, session string, id uint64, title string) (string,
 	// And the person's own branch moves under it, at the far end of the same file.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "one\ntwo\nthree\nfour\nfive\nsix\nseven\nthe person's line\n")
 	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the person's own edit")
+	mustGit(t, repo, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost", "commit", "-m", "the person's own edit")
 	return repo, tree
 }
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // BUILDING A SUB-HARNESS, from the three sides a person meets it: the job that

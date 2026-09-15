@@ -1,6 +1,6 @@
 package head
 
-import "github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+import "github.com/Agent-Field/codeaf/internal/ctxbudget"
 
 // One pot, computed once, for a prompt that is built again from nothing every
 // single turn.

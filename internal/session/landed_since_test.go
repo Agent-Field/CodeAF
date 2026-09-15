@@ -36,7 +36,7 @@ func TestArtifactsSinceKeepsOnlyWhatLandedAfterTheLook(t *testing.T) {
 func TestLandedSinceIsTheWorkThatFinishedWhileYouWereAway(t *testing.T) {
 	look := time.Now().Add(-12 * time.Hour)
 	world := &World{Projects: []Project{
-		{Name: "aforge-v2", Sessions: []SessionRow{{ID: "aaaa1111aaaa1111", Title: "Spark fleet", Tasks: TaskRollup{Rows: []TaskIndexEntry{
+		{Name: "codeaf", Sessions: []SessionRow{{ID: "aaaa1111aaaa1111", Title: "Spark fleet", Tasks: TaskRollup{Rows: []TaskIndexEntry{
 			{ID: "1", Title: "Spark fleet ssh audit", Status: string(TaskDone), EndedAt: look.Add(2 * time.Hour)},
 			{ID: "2", Title: "Still going", Status: string(TaskRunning)},
 			{ID: "3", Title: "Seen yesterday", Status: string(TaskDone), EndedAt: look.Add(-time.Hour)},

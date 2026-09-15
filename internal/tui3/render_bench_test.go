@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The surface repaints at 30 Hz for as long as anything is alive on it — a
@@ -252,7 +252,7 @@ func BenchmarkFramePictures(b *testing.B) {
 	a.welcome = welcome{spent: true}
 	a.pal = newPalette(tokens.TrueColor, false)
 	for i := 0; i < 12; i++ {
-		name := fmt.Sprintf(".aforge-v3/images/plate-%d.png", i)
+		name := fmt.Sprintf(".codeaf/images/plate-%d.png", i)
 		writeBenchPicture(b, filepath.Join(dir, name))
 		a.entries = append(a.entries,
 			entry{kind: entryUser, text: fmt.Sprintf("draw plate %d", i)},

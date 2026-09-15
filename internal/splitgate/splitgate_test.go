@@ -141,20 +141,20 @@ func TestTheFloorIsWhereDivisionStartedPaying(t *testing.T) {
 // off, because that is what the switch has always meant and a rollback somebody
 // took must not become a no-op that reads as an arming.
 func TestTheGateIsOffUnlessSomebodyPinnedItOn(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "")
+	t.Setenv("CODEAF_SPLITGATE", "")
 	if Armed() {
 		t.Error("the gate has the last word with nobody having said anything")
 	}
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 	if Armed() {
-		t.Error("AFORGE_SPLITGATE=0 armed the gate")
+		t.Error("CODEAF_SPLITGATE=0 armed the gate")
 	}
-	t.Setenv("AFORGE_SPLITGATE", "1")
+	t.Setenv("CODEAF_SPLITGATE", "1")
 	if !Armed() {
-		t.Error("AFORGE_SPLITGATE=1 did not arm the gate")
+		t.Error("CODEAF_SPLITGATE=1 did not arm the gate")
 	}
-	t.Setenv("AFORGE_SPLITGATE", "judgment")
+	t.Setenv("CODEAF_SPLITGATE", "judgment")
 	if !Armed() {
-		t.Error("AFORGE_SPLITGATE=judgment did not arm the gate")
+		t.Error("CODEAF_SPLITGATE=judgment did not arm the gate")
 	}
 }

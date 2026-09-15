@@ -49,8 +49,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/subharness/prompts"
+	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness/prompts"
 )
 
 // design is what the model must produce: a harness page, plus the two things a

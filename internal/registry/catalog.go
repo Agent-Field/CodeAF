@@ -1,6 +1,6 @@
 package registry
 
-import "github.com/Agent-Field/aforge-v2/internal/store"
+import "github.com/Agent-Field/codeaf/internal/store"
 
 // seedRows is the whole catalog, seeded faithfully from what the surface can
 // already do today rather than from what 5.22 says it should eventually do.
@@ -86,7 +86,7 @@ func slashRows() []Entry {
 			Scope: slashScope, Slash: "new"},
 		{ID: "slash.cancel", Verb: "cancel work", Description: "cancel a piece of work that has not finished",
 			Scope: slashScope, Slash: "cancel", Journal: Journal{Kind: store.CommandCancel}},
-		{ID: "slash.quit", Verb: "quit", Description: "exit aforge cleanly",
+		{ID: "slash.quit", Verb: "quit", Description: "exit codeaf cleanly",
 			Scope: slashScope, Slash: "quit"},
 	}
 }

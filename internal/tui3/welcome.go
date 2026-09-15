@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE WELCOME: the first thing an empty session shows, and the last time it
@@ -450,7 +450,7 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 // is holding, and it is ONE SENTENCE IN ONE PLACE.
 //
 // It replaces the engine's own error, which reads
-// `session file: /Users/…/b9c0d3ad…/transcript.jsonl is open in another aforge`
+// `session file: /Users/…/b9c0d3ad…/transcript.jsonl is open in another codeaf`
 // — a full path, wrapped across two lines of somebody's conversation, naming a
 // directory they have never had a reason to look at and a fact they cannot act
 // on. The path is not the news. The news is that the conversation is open
@@ -555,7 +555,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// CONVERSATION this is, and the path only where there is no name to give
 	// ([app.resumedNote]). This road — the greeting's recent list and /resume —
 	// still spelled the absolute transcript out, so opening a conversation from
-	// the picker put four to six wrapped rows of `.aforge/v3/projects/…` above
+	// the picker put four to six wrapped rows of `.codeaf/v3/projects/…` above
 	// the person's own first message while opening the very same conversation
 	// from the launch line said its name. One sentence, one door.
 	a.note(a.resumedNote())
@@ -638,17 +638,23 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 // which is the whole reason it reads as part of the surface rather than as
 // something pasted onto it.
 var wordmarkGlyphs = map[rune][3]string{
+	// The bowl open on the right, on the stem `f` and `r` are drawn with.
+	'c': {"┌─ ", "│  ", "└─ "},
 	'o': {"┌─┐", "│ │", "└─┘"},
+	// The bowl of an `o` with the ascender on its right, which is the one
+	// letter of this name that rises above the others.
+	'd': {"  │", "┌─┤", "└─┘"},
 	'p': {"┌─┐", "├─┘", "│  "},
-	// THE CROSSBAR ENDS IN A TERMINAL AND NOT IN A BLANK. `e` is the last letter
-	// of [product], so its right column is the right edge of the first thing
-	// anybody sees — and it used to be `├─ `, a blank cell with the bowl's `┐`
-	// directly above it and its `┘` directly below. A hole punched in the edge of
-	// a block of box-drawing between two inked cells does not read as an open
-	// letterform; it reads as a word the terminal cut off, which is what the wave
-	// that found this filed it as. The half-stroke closes the edge while keeping
-	// the aperture a lowercase `e` has and `a` (`├─┤`) has not — the one cell
-	// that tells those two letters apart here.
+	// THE CROSSBAR ENDS IN A TERMINAL AND NOT IN A BLANK. `e` sits between two
+	// closed letterforms, and its right column used to be `├─ `, a blank cell
+	// with the bowl's `┐` directly above it and its `┘` directly below. A hole
+	// punched into a block of box-drawing between two inked cells does not read
+	// as an open letterform; it reads as a word the terminal cut off, which is
+	// what the wave that found this filed it as. The half-stroke closes that
+	// cell while keeping the aperture a lowercase `e` has and `a` (`├─┤`) has
+	// not — the one cell that tells those two letters apart here. `c` and `f`
+	// need no such closing: their right column is blank on all three rows, so
+	// the eye reads a letter that ends rather than a stroke that is missing.
 	'e': {"┌─┐", "├─╴", "└─┘"},
 	'n': {"┌─┐", "│ │", "│ │"},
 	'a': {"┌─┐", "├─┤", "└─┘"},
@@ -751,7 +757,7 @@ const (
 
 // The starter line's three clauses, widest first. Each is true in ANY directory:
 // the example asks about the folder rather than "this repo", because a person
-// who opened aforge in ~/notes must not be promised a repository it cannot see.
+// who opened codeaf in ~/notes must not be promised a repository it cannot see.
 // The narrow ladder drops from the left — the example first, then the task door
 // — and the last thing standing is the slash, which is the one door onto
 // everything else.
@@ -870,7 +876,7 @@ func (a *app) welcomeRowsLeft() int {
 // It is the unit's whole reason and it is still conditional, because the box at
 // the foot is not always the draft: a picker's filter, the sessions roster's,
 // the rewind bar and the rest all stand in its position while they hold the
-// keyboard (input.go's [app.inputBlock]), and `aforge resume` opens the roster
+// keyboard (input.go's [app.inputBlock]), and `codeaf resume` opens the roster
 // over the greeting. A filter box drawn in the middle of the screen beside a
 // list at the bottom would be a box a person cannot find the list for — so
 // while anything else has the box, the unit draws without it and the foot of
@@ -1088,7 +1094,7 @@ func (w *welcome) starterRow(i int, pal palette, unit int) string {
 // nothing has been read, and the greeting does not pretend it has.
 func (a *app) welcomeWhereLine() string {
 	if a.owned {
-		// AN OWNED SESSION HAS NO FOLDER OF YOURS TO NAME, and saying `in aforge`
+		// AN OWNED SESSION HAS NO FOLDER OF YOURS TO NAME, and saying `in codeaf`
 		// would be this line answering with a product name where a person is
 		// looking for a path. [ownedWord] is right for the status line, which has
 		// one word to spend; here there is room to say what it means and to name
@@ -1104,8 +1110,8 @@ func (a *app) welcomeWhereLine() string {
 	return ""
 }
 
-// welcomeOwnedWhereWord is the folder line for a conversation aforge opened a
-// workspace for, which is what bare `aforge` outside a project does. It says the
+// welcomeOwnedWhereWord is the folder line for a conversation codeaf opened a
+// workspace for, which is what bare `codeaf` outside a project does. It says the
 // fact and the door, and it promises nothing about what is in there.
 const welcomeOwnedWhereWord = "in a folder " + product + " keeps for this conversation · /workspace picks another"
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── WHAT THIS CONVERSATION IS SPENDING, INCLUDING THE WORK IT STARTED ────────
@@ -75,7 +75,7 @@ func (a *app) readTreeSpend() {
 // on this disk only where there is none.
 //
 // THE SEAM IS NOT OPTIONAL, AND ITS ABSENCE HERE WAS A WRONG BILL. A window on
-// the engine host — which is what a bare `aforge` opens — carries the seam and
+// the engine host — which is what a bare `codeaf` opens — carries the seam and
 // no ledger path, so this reading used to stop at its first line and the
 // `this one` receipt fell back to the conversation's own books, which learn
 // about a call only when the frame clock asks the agent. A cut errand's
@@ -94,7 +94,7 @@ func (a *app) readTreeSpend() {
 // about the DAY with the word for the conversation. The seam is asked for the
 // spend place's own fortnight instead, because a floor under what it holds makes
 // the link fetch the far machine's whole ledger again on every beat
-// (cmd/aforge's hostLedger). What that costs is stated rather than hidden: over
+// (cmd/codeaf's hostLedger). What that costs is stated rather than hidden: over
 // a connection, a conversation's rows older than [spendWindowDays] are not in
 // the tree, and [app.spendShown]'s maximum leaves such a conversation on its
 // own books.

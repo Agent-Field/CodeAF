@@ -25,7 +25,7 @@ import (
 // is never a diagnosis, it is the diagnoses nobody can now tell apart. So the
 // two facts that were missing are journaled here — an attempt that ran out of
 // its own room, and a claim that picked up work already recorded — and the
-// headless stream reads both (cmd/aforge's narrateOne).
+// headless stream reads both (cmd/codeaf's narrateOne).
 //
 // Neither has a materialized view. Nothing about a node's status changes because
 // an attempt was exhausted — the scheduler decides that, and it usually decides

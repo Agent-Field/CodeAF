@@ -10,7 +10,7 @@ package session
 import (
 	"context"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // MediaGenerator is every media endpoint the belt reaches: still images (with
@@ -60,7 +60,7 @@ const (
 	modalitySpeech = "speech"
 	// modalityMusic is the COMPOSING slot, and it is a word of its own rather
 	// than a second reading of speech: the settings sheet has carried a
-	// "composing" row and an AFORGE_MUSIC_MODEL since long before anything on
+	// "composing" row and a CODEAF_MUSIC_MODEL since long before anything on
 	// this belt read it, and a person who picked Lyria there meant Lyria to make
 	// the music and gpt-4o-mini-tts to keep making the voiceovers. The two share
 	// an ENDPOINT (/audio/speech — internal/exec/media.go's generateMusic has

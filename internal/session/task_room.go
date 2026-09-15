@@ -235,7 +235,7 @@ type SteerSource struct {
 	//
 	// A TASK NUMBER MEANS SOMETHING ONLY INSIDE ONE CONVERSATION, and a surface
 	// can hold a send across a swap — /resume and /new replace the conversation
-	// under a handle that does not change (cmd/aforge's chatv3_host.go keeps the
+	// under a handle that does not change (cmd/codeaf's chatv3_host.go keeps the
 	// same remote agent). Carried here, the claim is checked where the delivery
 	// happens; empty is a caller making no claim, and is checked against nothing.
 	Conversation string

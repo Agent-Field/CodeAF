@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"io"
 	"io/fs"
 	"net/http"
@@ -12,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 // THE LADDER, PINNED RUNG BY RUNG. The bug it exists to prevent is not a wrong
@@ -493,7 +494,7 @@ func TestApplyingACrewLeavesNoSeatToInherit(t *testing.T) {
 // the crew word all resolve a tier row through [TierModelAt], which knew two
 // answers — the row somebody wrote, and this build's choice — so a profile older
 // than the worker seat handed every task started in a conversation to the build's
-// default while the same profile handed `aforge do` the crew's own model. The
+// default while the same profile handed `codeaf do` the crew's own model. The
 // rung is the same rung; what this table pins is that adding it moved NOTHING
 // else: a row written, a row cleared and a profile with no rows at all read
 // exactly what they read before, on every tier.
@@ -667,7 +668,7 @@ func TestEveryReadOfATierRowGoesThroughTheLadder(t *testing.T) {
 	// AND THE CONVERSATION'S OWN ROLE MAP IS ON IT. This is the wiring #312 was
 	// about: the three rows the chat resolves from the profile go through this
 	// package, which is what makes the worker row inherit there too.
-	raw, err := os.ReadFile(filepath.Join(root, "cmd", "aforge", "chatv3.go"))
+	raw, err := os.ReadFile(filepath.Join(root, "cmd", "codeaf", "chatv3.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,8 +717,8 @@ func moduleRoot(t *testing.T) string {
 
 // ── THE INHERITED-SEAT NOTICE ENDED IN A DOOR NOBODY COULD FIND ─────────────
 //
-// The line is printed on four HEADLESS doors — `aforge do`, `aforge plan run`,
-// `aforge exec` and `aforge run` — and it ended `until you pick a crew again`.
+// The line is printed on four HEADLESS doors — `codeaf do`, `codeaf plan run`,
+// `codeaf exec` and `codeaf run` — and it ended `until you pick a crew again`.
 // There is no way to pick a crew from a terminal: a crew is written by `/crew`
 // and by the settings sheet's Providers row, both of which are the
 // conversation, and no flag and no verb in the binary sets one. So the one line
@@ -815,5 +816,28 @@ func TestTheInheritedNoticeNamesTheSeatItBorrowedFromRatherThanDescribingTheMode
 				"and the two lines are about ONE model:\n%s",
 				"deepseek/deepseek-v4-pro", "your "+describes, report)
 		}
+	}
+}
+
+// A person who set the former spelling of the model variable is told that
+// spelling on the receipt, not the current one they never wrote; with both
+// set, the current one answered and is named.
+func TestTheReceiptNamesTheSpellingOfTheVariableThatAnswered(t *testing.T) {
+	dir := t.TempDir()
+	legacy := env.Legacy(ModelEnv) // AFORGE_MODEL — legacy-name
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	t.Setenv(legacy, "vendor/former")
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Source != SeatEnv || seats.Work.Model != "vendor/former" {
+		t.Fatalf("work seat = %q (%s), want the former spelling's value from the env rung", seats.Work.Model, seats.Work.Rung())
+	}
+	if got := seats.Work.Rung(); got != legacy {
+		t.Fatalf("rung = %q, want %q — the receipt must name the variable the person set", got, legacy)
+	}
+	t.Setenv(ModelEnv, "vendor/current")
+	seats = ResolveSeats(dir, "", "")
+	if got := seats.Work.Rung(); got != ModelEnv || seats.Work.Model != "vendor/current" {
+		t.Fatalf("rung = %q model = %q, want %q and its value", got, seats.Work.Model, ModelEnv)
 	}
 }

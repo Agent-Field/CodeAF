@@ -8,14 +8,14 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 
 ```
 /folder            the sheet, opened on the folder this conversation is about
-/folder aforge     …with `aforge` already searched, so the list of known folders is narrowed
+/folder codeaf     …with `codeaf` already searched, so the list of known folders is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
 /attach            the same sheet; over --host it browses the machine you are sitting at
 ```
 
 **Locally, both commands open the same sheet, in the same place, already browsing.** Where
 it opens is the first of these that exists: a folder this conversation has already been
-given, the folder this window is working in, your home directory. aforge's own state folder
+given, the folder this window is working in, your home directory. codeaf's own state folder
 is never where it opens. A brand-new machine that has never chosen a folder gets the same
 sheet as one that has chosen forty. Over `--host`, a bare `/attach` still opens that sheet
 on the machine you are sitting at because files travel; `/folder` refuses because a folder
@@ -41,14 +41,14 @@ always says which:
   the row above your message box, and every later model request carries it. Its contents
   are never pasted anywhere.
 - **A file** goes onto the next message, on the same tray a pasted screenshot lands on. A
-  picture travels as content to be looked at; anything else travels as a path aforge's
+  picture travels as content to be looked at; anything else travels as a path codeaf's
   `read` tool can open.
 
 **Moving the cursor, opening a folder and reading a preview attach nothing at all.** The
 only gestures that choose anything are `alt+m` and the action row.
 
 It opens **instantly**. Nothing is scanned when you press enter on the command: the rows
-come from what aforge has already seen, in layers, best first.
+come from what codeaf has already seen, in layers, best first.
 
 1. the folders **this conversation is already about** — ones you have named here, and ones
    a task's ground resolved to and the conversation wrote down
@@ -72,7 +72,7 @@ instructions, along with its own `AGENTS.md` or `CLAUDE.md` rules if it has any,
 so you never have to say which folder you meant again.
 
 To add a second project, run `/folder` again — what the conversation is about
-grows as you name folders. What does NOT move is where aforge is standing: the
+grows as you name folders. What does NOT move is where codeaf is standing: the
 directory you started it in is the one the status line shows and the one a bare
 `notes.md` means, for the life of the conversation. `## What choosing a folder
 actually does` below has the whole of that distinction.
@@ -84,7 +84,7 @@ screen picks the folder the next one opens in.
 
 Over `--host`, a bare `/attach` opens the add context sheet on the machine you are sitting
 at. It opens already browsing: first a folder the conversation has already been given, then
-the folder this window is working in, then your home directory. aforge's own state folder is
+the folder this window is working in, then your home directory. codeaf's own state folder is
 never where it opens. Files chosen there go onto the tray and their bytes travel with the
 next message to the conversation on the other machine.
 
@@ -138,7 +138,7 @@ It does two jobs, and which job it is doing depends only on the shape of what is
 
 - **A word filters.** `agent`, `tui3`, `notes` — the list narrows with fuzzy
   matching of names and path segments, initials and small spelling slips. For example,
-  `afroge` can find `aforge`; stronger literal matches lead typo matches.
+  `afroge` can find `codeaf`; stronger literal matches lead typo matches.
 - **A path browses.** Anything starting with `/`, `~/`, `./` or `../` — and a bare `~`,
   `.` or `..` — turns the list into **columns**.
 
@@ -160,12 +160,12 @@ projects and the index from inside the sheet: clear the box, then type a word.
 Browsing draws three successive regions, the way a file browser does:
 
 ```
-  ~ › code › aforge-v2 › internal
+  ~ › code › codeaf › internal
   cmd          ›   session/                    1  package session
   docs             tui3/                       2
   internal         agent.go        24.1 KB     3  import (
                    places.go        6.4 KB     4  	"context"
-  add this folder · ~/code/aforge-v2/internal/session   repository · dev · clean
+  add this folder · ~/code/codeaf/internal/session   repository · dev · clean
 ```
 
 - **left** — what is in the folder above, with the one you are standing in a shade brighter,
@@ -253,7 +253,7 @@ The last row of the sheet is the one thing on it that **chooses** anything, and 
 end carries what is known about the **thing under the cursor** — `repository · main · clean`
 or `folder · 214 files` for a directory, and `7.7 KB · changed 3d` for a file. Nothing is
 drawn where the disk had nothing to say, and `changed` is the file's modification time: it
-is not "last opened", which no filesystem here answers honestly and aforge keeps no record
+is not "last opened", which no filesystem here answers honestly and codeaf keeps no record
 of.
 
 The last row of the sheet is the one thing on it that **chooses** anything:
@@ -317,7 +317,7 @@ AGENTS.md
   says `folder` and nothing more — never `0 files`.
 - `AGENTS.md` appears only when that file is really there.
 
-A fact aforge has not established draws nothing at all rather than a blank or a zero. The
+A fact codeaf has not established draws nothing at all rather than a blank or a zero. The
 facts are read in the background as your cursor lands on a row, so a big repository may
 take a beat to say whether it is dirty — the keys never wait for it.
 
@@ -449,7 +449,7 @@ own status line stay exactly as they were.
 
 Two rules, and they are the whole of it.
 
-- **The folder you started aforge in is edited directly.** A write is a write; the file on
+- **The folder you started codeaf in is edited directly.** A write is a write; the file on
   disk changes the moment the model writes it. Nothing about that has changed.
 - **A folder you chose is not.** Edits aimed there are kept for this conversation — you
   see `changes for <name> · 3 files · /land` above the message box — and your own copy of
@@ -508,7 +508,7 @@ agentfield now has the changes · 2 files
 ```
 
 For a repository the work is committed on a branch of its own, and merged into your
-checkout only where aforge is willing to write it — your uncommitted changes are left
+checkout only where codeaf is willing to write it — your uncommitted changes are left
 alone, and if the merge cannot settle you get `could not put it all into agentfield ·` and
 the sentence naming the files that clashed, with the branch kept so nothing is lost.
 
@@ -520,7 +520,7 @@ kept: your checkout is on dev, which tasks do not merge into automatically`
 — and it is not a failure: the work is finished and on that branch, and `git merge` takes
 it whenever you want it. The same keep happens when you are on a different branch than when
 the work was cut, when you moved that branch to another commit yourself after the cut, or
-when you are on no branch at all. Commits written by aforge's own landings do not count as
+when you are on no branch at all. Commits written by codeaf's own landings do not count as
 you moving it. For a plain folder the files are copied back over it by name, **whole or not
 at all**: if any one of them cannot be placed, your folder is
 left exactly as it was and you get `could not put it all into agentfield ·` with the reason.
@@ -553,7 +553,7 @@ they happened, and there is nothing waiting.
 
 Only two things ever change a file on disk without you saying anything more:
 
-- a write in **the folder you started aforge in**, which is direct and always has been;
+- a write in **the folder you started codeaf in**, which is direct and always has been;
 - a `bash` command, which runs there and touches whatever it names.
 
 Everything the model writes for **a folder you chose with `/folder`** is kept aside until
@@ -571,9 +571,9 @@ Work that **already landed**, and changes in the folder you are standing in, are
 different question with a different answer — see
 `## Undo what the agent did to my files — restoring the workspace` on the workspace page.
 
-**Your working directory does not move.** The folder aforge is standing in — the one the
+**Your working directory does not move.** The folder codeaf is standing in — the one the
 status line shows, the one the model's `AGENTS.md` and project settings come from, the one a
-bare `notes.md` in your message means — is the directory you started aforge in, and nothing
+bare `notes.md` in your message means — is the directory you started codeaf in, and nothing
 picks it up and moves it. `/workspace <path>` sets it **once**, for a conversation that never
 had one.
 

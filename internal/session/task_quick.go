@@ -35,8 +35,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word
@@ -218,7 +218,7 @@ func quickWordUnder(graph *TaskGraph, spec *quickTaskSpec) string {
 // needs: it did not finish, and — because it was never in a copy — what it
 // managed is in their own folder rather than anywhere they have to go and find
 // (task_store.go's [interrupt] states why it settles rather than resuming).
-const quickInterruptedReport = "the quick task did not finish before aforge closed; whatever it wrote is in your folder"
+const quickInterruptedReport = "the quick task did not finish before codeaf closed; whatever it wrote is in your folder"
 
 // quickLostReport is what a quick task that was STILL WAITING ITS TURN settles
 // with when the window closed under it. It says the two things that are true of
@@ -229,7 +229,7 @@ const quickInterruptedReport = "the quick task did not finish before aforge clos
 // It is a separate sentence from [quickInterruptedReport] rather than a reuse of
 // it, because that one tells somebody to look in their folder for work this one
 // never did.
-const quickLostReport = "the quick task never started before aforge closed, and it does not resume — ask for it again"
+const quickLostReport = "the quick task never started before codeaf closed, and it does not resume — ask for it again"
 
 // quickReportOnClose is the whole report a quick node caught by the close
 // settles with, and it is the one place that is decided: which of the two

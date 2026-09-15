@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── THE HEADLESS DOOR SENDS WHAT THE CHAT SENDS ─────────────────────────────
@@ -92,7 +92,7 @@ func TestTheDefaultsThemselvesAreAbsenceAndNotAnEconomy(t *testing.T) {
 }
 
 // TestAnOperatorsExplicitReasoningStillReachesTheWire is the escape hatch the
-// old default used to be, and it must keep working: AFORGE_REASONING=off is how
+// old default used to be, and it must keep working: CODEAF_REASONING=off is how
 // somebody asks for the thinking pass to be suppressed outright.
 func TestAnOperatorsExplicitReasoningStillReachesTheWire(t *testing.T) {
 	for _, want := range []struct {

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // abandoningAgent is a [fakeAgent] that also has the second stage's door. The

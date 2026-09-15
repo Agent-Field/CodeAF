@@ -50,7 +50,7 @@ import (
 //
 // internal/pair's ThisMachineLabel reads the same fact for the pairing lane and
 // is deliberately NOT called here: the two packages are siblings glued together
-// by the door in cmd/aforge, neither imports the other, and pairing's label is a
+// by the door in cmd/codeaf, neither imports the other, and pairing's label is a
 // device's durable name where this is one connection's passing one.
 func MachineName() string {
 	name, err := os.Hostname()
@@ -291,7 +291,7 @@ var watcherReads = map[string]bool{
 func watcherMay(method string) bool { return watcherReads[method] }
 
 // notDrivingWord is what a surface without the keyboard is told when it tries to
-// type anyway. `another window` is the word aforge already uses at home for a
+// type anyway. `another window` is the word codeaf already uses at home for a
 // conversation open somewhere else (internal/tui3's home.go), and it is kept
 // here so the two places a person meets this fact sound like one program.
 func notDrivingWord(driver Driver) string {

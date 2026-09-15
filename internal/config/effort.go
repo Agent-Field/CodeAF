@@ -1,6 +1,6 @@
 package config
 
-import "github.com/Agent-Field/aforge-v2/internal/effort"
+import "github.com/Agent-Field/codeaf/internal/effort"
 
 // The install's own rung on the effort ladder, written down.
 //
@@ -12,7 +12,7 @@ import "github.com/Agent-Field/aforge-v2/internal/effort"
 // It lands here, in the profile's config.json, for the reason the conversation
 // model lands here (chatmodel.go): a choice a person makes once and expects to
 // find again is a choice that has to survive the process. There is deliberately
-// no environment variable for it. AFORGE_REASONING already exists and means
+// no environment variable for it. CODEAF_REASONING already exists and means
 // something else — the v1 planning economy (config.go's Reasoning) — and a
 // second variable spelled almost the same would be answered wrong by everyone
 // who met it.

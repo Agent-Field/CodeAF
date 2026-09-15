@@ -9,7 +9,7 @@ import (
 
 func TestPersistedAPIKeyIsTheLastRungOfLoadResolution(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AFORGE_PROFILE_DIR", dir)
+	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 

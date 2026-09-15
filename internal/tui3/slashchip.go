@@ -92,7 +92,7 @@ func knownCommand(word string) bool {
 // That one rule is what keeps a path out of this: "/Users/example" is a single
 // candidate whose word is "Users/santosh" and matches nothing, rather than two
 // candidates one of which might. A slash with a letter in front of it — the one
-// in "http://", the one in "cmd/aforge" — is not a candidate at all.
+// in "http://", the one in "cmd/codeaf" — is not a candidate at all.
 //
 // boundary says whether position 0 of value counts as a word boundary. The
 // composer paints one soft-wrapped ROW at a time, and a row that begins in the

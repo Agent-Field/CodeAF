@@ -7,7 +7,7 @@ package session
 // question, which sat between them with nobody holding it: WHICH FOLDERS IS THIS
 // CONVERSATION ABOUT?
 //
-// People open aforge in general — one window, often from a home directory — and
+// People open codeaf in general — one window, often from a home directory — and
 // then work on things that live somewhere else. The window is where you sat
 // down; the conversation is about places. There are two kinds and they are not
 // the same thing:

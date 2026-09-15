@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── A CAPTION LANDS ON THE STEP IT IS ABOUT, WHENEVER IT ARRIVES ────────────

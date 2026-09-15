@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── a far end the redial loop can reach twice ───────────────────────────────
@@ -373,7 +373,7 @@ func TestARedialOntoAnEngineThatKeepsNothingSaysTheTurnIsGone(t *testing.T) {
 				e.event(1, 1, "half an ")
 			},
 		},
-		// The other honest shape: `aforge engine` on a pipe, which says nothing
+		// The other honest shape: `codeaf engine` on a pipe, which says nothing
 		// about persistence because it has none to claim.
 		script{welcome: Welcome{Version: Version, SessionFile: "/j.jsonl"}},
 	)
@@ -575,7 +575,7 @@ func realFarEnd(boot func(Hello) (*Engine, error)) (io.ReadWriteCloser, func()) 
 	return surface, func() { _ = surface.Close() }
 }
 
-// THE HONEST CASE, END TO END. `aforge engine` on a pipe is a legitimate far end
+// THE HONEST CASE, END TO END. `codeaf engine` on a pipe is a legitimate far end
 // and it keeps nothing: the second dial reaches a second engine, which is a
 // second conversation opened on the same file, and the turn that was in flight
 // when the link died is over. Nothing here pretends otherwise, and the

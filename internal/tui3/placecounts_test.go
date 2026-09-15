@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // THE NUMBER ON A TAB, AS A PERSON MEETS IT.
@@ -172,8 +172,8 @@ func TestTheTabsGoOnCountingInEveryRoom(t *testing.T) {
 			// THE ROOT IS THE TEST'S OWN, AND IT EXISTS. [session.NoteLookAt] refuses
 			// to stamp a root that is not there — creating it for a stamp alone
 			// would invent state the reader then walks — so a lab that left the
-			// root unset was stamping the developer's real ~/.aforge, and passed
-			// only on a machine that had one: with AFORGE_HOME pointed somewhere
+			// root unset was stamping the developer's real ~/.codeaf, and passed
+			// only on a machine that had one: with CODEAF_HOME pointed somewhere
 			// empty the stamp was dropped and the beat counted nothing.
 			a.homeRoot = t.TempDir()
 			session.NoteLookAt(a.placesRoot(), pageMemory.word(), time.Now().Add(-time.Hour))

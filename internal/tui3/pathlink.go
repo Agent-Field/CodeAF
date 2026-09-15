@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // EVERY PATH A PERSON READS ON THIS SURFACE IS A DOOR, AND THE DOOR HAS TO BE
@@ -49,7 +49,7 @@ import (
 // strips every OSC there is, OSC 8 included — a reply carrying its own
 // `\x1b]8;;https://evil.example` gets no hyperlink, and that is deliberate, not
 // incidental. This pass runs AFTER the laundering, on rows the surface itself
-// produced, so the only URIs on screen are ones aforge resolved and checked.
+// produced, so the only URIs on screen are ones codeaf resolved and checked.
 // The target is always a path something confirmed exists — file:// at home, and
 // the file door's own URL over a connection (see the far side's section below).
 //
@@ -425,7 +425,7 @@ func (l linker) locate(name string) string {
 		// CONTAINMENT, and it is not about security — nothing here executes
 		// anything — but about MEANING. A relative name in a reply means "in the
 		// workspace"; one that climbs out of it with `../..` has stopped meaning
-		// that, and the file it lands on is a coincidence of where aforge happens
+		// that, and the file it lands on is a coincidence of where codeaf happens
 		// to have been started.
 		if joined != l.root && !strings.HasPrefix(joined, l.root+string(filepath.Separator)) {
 			return ""
@@ -537,7 +537,7 @@ type wordSpan struct{ from, to int }
 // not a file and some of which is a file only by coincidence, and the reader
 // cannot tell which underline is which. What the surface DOES link in a tool
 // card is the part it wrote itself: the target of a read, a write or an edit,
-// which is a path aforge resolved and not one it found. Chrome, then, and the
+// which is a path codeaf resolved and not one it found. Chrome, then, and the
 // model's prose. Nothing that arrived from a subprocess.
 func (l linker) rows(rows []string) []string {
 	if !l.on || len(rows) == 0 {

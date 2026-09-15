@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // recordingRunner is the host, stood in for. Nothing in these tests touches
@@ -39,7 +42,7 @@ func newTimer(t *testing.T, platform, homeDir, wakeLog string, runner WatchRunne
 		Platform:   platform,
 		HomeDir:    homeDir,
 		Executable: realProgram(t),
-		StateRoot:  filepath.Join(homeDir, ".aforge"),
+		StateRoot:  filepath.Join(homeDir, ".codeaf"),
 		UID:        501,
 		Runner:     runner,
 		WakeLog:    wakeLog,
@@ -65,7 +68,7 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 	}
 
 	unitDir := filepath.Join(homeDir, ".config", "systemd", "user")
-	service, err := os.ReadFile(filepath.Join(unitDir, "aforge-tick.service"))
+	service, err := os.ReadFile(filepath.Join(unitDir, "codeaf-tick.service"))
 	if err != nil {
 		t.Fatalf("no service was written: %v", err)
 	}
@@ -73,12 +76,12 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 		t.Fatalf("the service does not run this build's tick: %q", string(service))
 	}
 	// THE TICK RUNS AGAINST THE HOME THAT INSTALLED IT. A unit that carried no
-	// home ticked the login's default one, whatever AFORGE_HOME the window
+	// home ticked the login's default one, whatever CODEAF_HOME the window
 	// that turned the row on was running under.
-	if !strings.Contains(string(service), `Environment="AFORGE_HOME=`+filepath.Join(homeDir, ".aforge")+`"`) {
+	if !strings.Contains(string(service), `Environment="CODEAF_HOME=`+filepath.Join(homeDir, ".codeaf")+`"`) {
 		t.Fatalf("the service does not carry the home it ticks: %q", string(service))
 	}
-	unit, err := os.ReadFile(filepath.Join(unitDir, "aforge-tick.timer"))
+	unit, err := os.ReadFile(filepath.Join(unitDir, "codeaf-tick.timer"))
 	if err != nil {
 		t.Fatalf("no timer was written: %v", err)
 	}
@@ -88,11 +91,11 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 	if !strings.Contains(string(unit), "Persistent=true") {
 		t.Fatalf("the timer does not catch up after a sleep: %q", string(unit))
 	}
-	if !runner.saw("systemctl --user daemon-reload") || !runner.saw("enable --now aforge-tick.timer") {
+	if !runner.saw("systemctl --user daemon-reload") || !runner.saw("enable --now codeaf-tick.timer") {
 		t.Fatalf("the host was not asked to start it: %v", runner.calls)
 	}
-	// v1's resident owns aforge-wake; this must not have touched it.
-	if runner.saw("aforge-wake") {
+	// v1's resident owns codeaf-wake; this must not have touched it.
+	if runner.saw("codeaf-wake") {
 		t.Fatalf("v3's timer reached into v1's units: %v", runner.calls)
 	}
 
@@ -106,7 +109,7 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 
 	// STATUS IS DERIVED FROM THE BYTES. A definition somebody edited is not
 	// this build's timer any more, whatever the file is called.
-	if err := os.WriteFile(filepath.Join(unitDir, "aforge-tick.timer"), []byte("[Timer]\nOnCalendar=hourly\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(unitDir, "codeaf-tick.timer"), []byte("[Timer]\nOnCalendar=hourly\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if status, err := timer.Status(); err != nil || status.Installed {
@@ -120,7 +123,7 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 	}
 
 	// A service that went missing is the same answer.
-	if err := os.Remove(filepath.Join(unitDir, "aforge-tick.service")); err != nil {
+	if err := os.Remove(filepath.Join(unitDir, "codeaf-tick.service")); err != nil {
 		t.Fatal(err)
 	}
 	if status, err := timer.Status(); err != nil || status.Installed {
@@ -130,10 +133,10 @@ func TestWatchInstallsAndUninstallsOnLinux(t *testing.T) {
 	if err := timer.Uninstall(context.Background()); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(unitDir, "aforge-tick.timer")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(unitDir, "codeaf-tick.timer")); !os.IsNotExist(err) {
 		t.Fatalf("the timer is still on disk: %v", err)
 	}
-	if !runner.saw("disable --now aforge-tick.timer") {
+	if !runner.saw("disable --now codeaf-tick.timer") {
 		t.Fatalf("the host was not asked to stop it: %v", runner.calls)
 	}
 	if status, err := timer.Status(); err != nil || status.Installed {
@@ -158,17 +161,17 @@ func TestWatchInstallsAndUninstallsOnDarwin(t *testing.T) {
 	if err := timer.Install(context.Background()); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	path := filepath.Join(homeDir, "Library", "LaunchAgents", "ai.agentfield.aforge.tick.plist")
+	path := filepath.Join(homeDir, "Library", "LaunchAgents", "ai.agentfield.codeaf.tick.plist")
 	plist, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("no agent was written: %v", err)
 	}
 	for _, want := range []string{
-		"<string>ai.agentfield.aforge.tick</string>",
+		"<string>ai.agentfield.codeaf.tick</string>",
 		"<string>" + timer.executable + "</string>",
 		"<string>tick</string>",
-		"<key>AFORGE_HOME</key>",
-		"<string>" + filepath.Join(homeDir, ".aforge") + "</string>",
+		"<key>CODEAF_HOME</key>",
+		"<string>" + filepath.Join(homeDir, ".codeaf") + "</string>",
 		"<integer>300</integer>",
 	} {
 		if !strings.Contains(string(plist), want) {
@@ -193,6 +196,163 @@ func TestWatchInstallsAndUninstallsOnDarwin(t *testing.T) {
 	}
 	if status, err := timer.Status(); err != nil || status.Installed {
 		t.Fatalf("after uninstalling, status is %+v (%v)", status, err)
+	}
+}
+
+// H6: current units export both HOME spellings, replace former units on
+// install, and the definition reader accepts a former HOME-only unit.
+func TestH6StandingUnitsReplaceLegacyAndCarryBothHomes(t *testing.T) {
+	for _, platform := range []string{"linux", "darwin"} {
+		t.Run(platform, func(t *testing.T) {
+			homeDir := t.TempDir()
+			runner := &recordingRunner{}
+			timer := newTimer(t, platform, homeDir, "", runner, time.Now())
+			var oldPaths []string
+			if platform == "linux" {
+				oldPaths = []string{timer.legacyLinuxTimerPath(), timer.legacyLinuxServicePath()}
+			} else {
+				oldPaths = []string{timer.legacyDarwinPlistPath()}
+			}
+			for _, path := range oldPaths {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("old unit\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range oldPaths {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("former unit remains at %s: %v", path, err)
+				}
+			}
+			if platform == "linux" {
+				if !runner.saw("disable --now " + legacyLinuxTickTimer) {
+					t.Fatalf("former Linux timer was not stopped: %v", runner.calls)
+				}
+				if !runner.saw("stop " + legacyLinuxTickService) {
+					t.Fatalf("former Linux service was not stopped: %v", runner.calls)
+				}
+				content := string(mustRead(t, timer.linuxServicePath()))
+				for _, name := range []string{home.EnvVar, env.Legacy(home.EnvVar)} {
+					if !strings.Contains(content, "Environment=\""+name+"=") {
+						t.Fatalf("service does not export %s: %s", name, content)
+					}
+				}
+				legacyOnly := "ExecStart=\"" + timer.executable + "\" tick\nEnvironment=\"" + env.Legacy(home.EnvVar) + "=" + timer.stateRoot + "\"\n"
+				_, root := definitionPair("linux", legacyOnly)
+				if root != timer.stateRoot {
+					t.Fatalf("former Linux HOME resolved %q, want %q", root, timer.stateRoot)
+				}
+			} else {
+				if !runner.saw("launchctl bootout gui/501 " + oldPaths[0]) {
+					t.Fatalf("former Darwin agent was not stopped: %v", runner.calls)
+				}
+				content := string(mustRead(t, timer.darwinPlistPath()))
+				for _, name := range []string{home.EnvVar, env.Legacy(home.EnvVar)} {
+					if !strings.Contains(content, "<key>"+name+"</key>") {
+						t.Fatalf("plist does not export %s: %s", name, content)
+					}
+				}
+				legacyOnly := "<key>" + env.Legacy(home.EnvVar) + "</key><string>" + timer.stateRoot + "</string>"
+				_, root := definitionPair("darwin", legacyOnly)
+				if root != timer.stateRoot {
+					t.Fatalf("former Darwin HOME resolved %q, want %q", root, timer.stateRoot)
+				}
+			}
+		})
+	}
+}
+
+func TestFormerStandingTimersAreVisibleRepairableAndRemovable(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform+"/old-only-status-and-startup-repair", func(t *testing.T) {
+			homeDir := t.TempDir()
+			runner := &recordingRunner{}
+			timer := newTimer(t, platform, homeDir, "", runner, time.Now())
+			writeFormerStandingDefinitions(t, timer)
+			drift, err := timer.Drift()
+			if err != nil || !drift.Present || !drift.Stale {
+				t.Fatalf("former timer was invisible or not stale: %+v (%v)", drift, err)
+			}
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatalf("startup repair: %v", err)
+			}
+			assertStandingGeneration(t, timer, false, true)
+			if status, err := timer.Status(); err != nil || !status.Installed {
+				t.Fatalf("repaired status = %+v (%v)", status, err)
+			}
+		})
+
+		t.Run(platform+"/old-only-off", func(t *testing.T) {
+			timer := newTimer(t, platform, t.TempDir(), "", &recordingRunner{}, time.Now())
+			writeFormerStandingDefinitions(t, timer)
+			if err := timer.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off former timer: %v", err)
+			}
+			assertStandingGeneration(t, timer, true, true)
+		})
+
+		t.Run(platform+"/both-generations-off", func(t *testing.T) {
+			timer := newTimer(t, platform, t.TempDir(), "", &recordingRunner{}, time.Now())
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			writeFormerStandingDefinitions(t, timer)
+			if err := timer.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off both generations: %v", err)
+			}
+			assertStandingGeneration(t, timer, true, true)
+		})
+	}
+}
+
+func writeFormerStandingDefinitions(t *testing.T, timer *Timer) {
+	t.Helper()
+	primary, service := timer.texts(timer.executable)
+	if timer.platform == "darwin" {
+		primary = strings.ReplaceAll(primary, DarwinTickLabel, legacyDarwinTickLabel)
+		writeStandingFile(t, timer.legacyDarwinPlistPath(), primary)
+		return
+	}
+	writeStandingFile(t, timer.legacyLinuxTimerPath(), primary)
+	writeStandingFile(t, timer.legacyLinuxServicePath(), service)
+}
+
+func writeStandingFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertStandingGeneration(t *testing.T, timer *Timer, currentGone, formerGone bool) {
+	t.Helper()
+	current := []string{timer.primaryPath()}
+	former := []string{timer.legacyDarwinPlistPath()}
+	if timer.platform == "linux" {
+		current = []string{timer.linuxTimerPath(), timer.linuxServicePath()}
+		former = []string{timer.legacyLinuxTimerPath(), timer.legacyLinuxServicePath()}
+	}
+	for _, group := range []struct {
+		paths []string
+		gone  bool
+	}{{current, currentGone}, {former, formerGone}} {
+		for _, path := range group.paths {
+			_, err := os.Stat(path)
+			if group.gone && !os.IsNotExist(err) {
+				t.Fatalf("%s remains: %v", path, err)
+			}
+			if !group.gone && err != nil {
+				t.Fatalf("%s missing: %v", path, err)
+			}
+		}
 	}
 }
 
@@ -232,7 +392,7 @@ func TestWatchStatusReadsTheLastWakeFromTheLog(t *testing.T) {
 }
 
 func TestWatchRefusesAPlatformItCannotKeep(t *testing.T) {
-	if _, err := NewWatch(WatchOptions{Platform: "windows", HomeDir: t.TempDir(), Executable: "aforge"}); err == nil {
+	if _, err := NewWatch(WatchOptions{Platform: "windows", HomeDir: t.TempDir(), Executable: "codeaf"}); err == nil {
 		t.Fatal("a platform with neither launchd nor systemd was accepted")
 	}
 }
@@ -255,7 +415,7 @@ func pairTimer(t *testing.T, platform, homeDir, root, program string) *Timer {
 
 func realProgram(t *testing.T) string {
 	t.Helper()
-	program := filepath.Join(t.TempDir(), "aforge")
+	program := filepath.Join(t.TempDir(), "codeaf")
 	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -263,13 +423,13 @@ func realProgram(t *testing.T) string {
 }
 
 // THE TIMER IS A (HOME, PROGRAM) PAIR AND A LAUNCH SPEAKS ONLY FOR ITS OWN.
-// Another build of aforge that can still run is not drift: the machine has one
+// Another build of codeaf that can still run is not drift: the machine has one
 // timer per login, and two builds taking it from each other on every launch
 // was the flip this law ends. Status agrees — something IS checking this home.
 func TestDriftLeavesATimerRunningAnotherLiveProgramAlone(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		homeDir := t.TempDir()
-		root := filepath.Join(homeDir, ".aforge")
+		root := filepath.Join(homeDir, ".codeaf")
 		first, second := realProgram(t), realProgram(t)
 		one := pairTimer(t, platform, homeDir, root, first)
 		// Nothing installed at all is nothing to repair, and it is not a fault.
@@ -304,7 +464,7 @@ func TestDriftLeavesATimerRunningAnotherLiveProgramAlone(t *testing.T) {
 }
 
 // A TIMER NAMING ANOTHER HOME IS SOMEBODY ELSE'S. A launch under an isolated
-// AFORGE_HOME reads the machine's timer as neither installed for it nor drift,
+// CODEAF_HOME reads the machine's timer as neither installed for it nor drift,
 // so it neither claims it nor rewrites it — and a definition an earlier build
 // wrote, which carries no home at all, ticks the login's default one and reads
 // the same way from anywhere else.
@@ -312,7 +472,7 @@ func TestDriftLeavesAnotherHomesTimerAlone(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		homeDir := t.TempDir()
 		program := realProgram(t)
-		theirs := pairTimer(t, platform, homeDir, filepath.Join(homeDir, ".aforge"), program)
+		theirs := pairTimer(t, platform, homeDir, filepath.Join(homeDir, ".codeaf"), program)
 		if err := theirs.Install(context.Background()); err != nil {
 			t.Fatalf("%s: Install: %v", platform, err)
 		}
@@ -327,7 +487,7 @@ func TestDriftLeavesAnotherHomesTimerAlone(t *testing.T) {
 		if err := os.Remove(program); err != nil {
 			t.Fatal(err)
 		}
-		older := strings.ReplaceAll(string(mustRead(t, theirs.primaryPath())), "<key>AFORGE_HOME</key>", "<key>Unused</key>")
+		older := strings.ReplaceAll(string(mustRead(t, theirs.primaryPath())), "<key>CODEAF_HOME</key>", "<key>Unused</key>")
 		if platform == "linux" {
 			older = strings.ReplaceAll(string(mustRead(t, theirs.linuxServicePath())), "Environment=", "X-Was=")
 			if err := os.WriteFile(theirs.linuxServicePath(), []byte(older), 0o644); err != nil {
@@ -361,7 +521,7 @@ func mustRead(t *testing.T, path string) []byte {
 func TestDriftSeesADefinitionAnOlderBuildWrote(t *testing.T) {
 	homeDir := t.TempDir()
 	program := realProgram(t)
-	timer := pairTimer(t, "linux", homeDir, filepath.Join(homeDir, ".aforge"), program)
+	timer := pairTimer(t, "linux", homeDir, filepath.Join(homeDir, ".codeaf"), program)
 	if err := timer.Install(context.Background()); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -387,7 +547,7 @@ func TestDriftSeesADefinitionAnOlderBuildWrote(t *testing.T) {
 func TestDriftSeesADefinitionWhoseProgramIsGone(t *testing.T) {
 	homeDir := t.TempDir()
 	program := realProgram(t)
-	timer := pairTimer(t, "darwin", homeDir, filepath.Join(homeDir, ".aforge"), program)
+	timer := pairTimer(t, "darwin", homeDir, filepath.Join(homeDir, ".codeaf"), program)
 	if err := timer.Install(context.Background()); err != nil {
 		t.Fatalf("Install: %v", err)
 	}

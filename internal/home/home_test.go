@@ -1,14 +1,196 @@
 package home
 
 import (
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
+
+// H1: root resolution prefers the current directory, falls back to the legacy
+// directory, lets the legacy override move it, and lets CODEAF_HOME win.
+func TestH1StateRootResolutionOrder(t *testing.T) {
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	if err := os.Unsetenv(EnvVar); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Unsetenv(env.Legacy(EnvVar)); err != nil {
+		t.Fatal(err)
+	}
+	legacy := legacyUnder(login)
+	if err := os.Mkdir(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolve(); got != legacy {
+		t.Fatalf("legacy-only root = %q, want %q", got, legacy)
+	}
+	current := DefaultUnder(login)
+	if err := os.Mkdir(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolve(); got != current {
+		t.Fatalf("current root = %q, want %q", got, current)
+	}
+	t.Setenv(env.Legacy(EnvVar), filepath.Join(login, "legacy-override"))
+	if got := resolve(); got != filepath.Join(login, "legacy-override") {
+		t.Fatalf("legacy override = %q", got)
+	}
+	t.Setenv(EnvVar, filepath.Join(login, "current-override"))
+	if got := resolve(); got != filepath.Join(login, "current-override") {
+		t.Fatalf("new override did not win: %q", got)
+	}
+}
+
+// H2: adoption moves the complete legacy tree, leaves a relative compatibility
+// link, and a second call is a no-op.
+func TestH2AdoptionMovesTheTreeAndIsIdempotent(t *testing.T) {
+	login := t.TempDir()
+	oldFile := filepath.Join(legacyUnder(login), "v3", "projects", "one", "state.json")
+	if err := os.MkdirAll(filepath.Dir(oldFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldFile, []byte("intact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	logf := func(format string, args ...any) { logs = append(logs, format) }
+	ops := realAdoptionOS()
+	adopt(login, logf, ops)
+	newFile := filepath.Join(DefaultUnder(login), "v3", "projects", "one", "state.json")
+	if body, err := os.ReadFile(newFile); err != nil || string(body) != "intact" {
+		t.Fatalf("adopted file = %q, %v", body, err)
+	}
+	info, err := os.Lstat(legacyUnder(login))
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("legacy path is not a symlink: %v, %v", info, err)
+	}
+	if target, err := os.Readlink(legacyUnder(login)); err != nil || target != ".codeaf" {
+		t.Fatalf("legacy link = %q, %v", target, err)
+	}
+	before, _ := os.Lstat(DefaultUnder(login))
+	adopt(login, logf, ops)
+	after, _ := os.Lstat(DefaultUnder(login))
+	if !os.SameFile(before, after) || len(logs) != 0 {
+		t.Fatalf("second adoption changed the root or logged: %v", logs)
+	}
+}
+
+// H2: adoption does nothing when the current root exists or the legacy root is
+// a symlink, and the exported door does nothing in a test binary.
+func TestH2AdoptionRefusesExistingAndLinkedRootsAndTests(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		setup func(string) error
+	}{
+		{"current exists", func(base string) error { return os.Mkdir(DefaultUnder(base), 0o700) }},
+		{"legacy is a link", func(base string) error { return os.Symlink("elsewhere", legacyUnder(base)) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			login := t.TempDir()
+			if err := test.setup(login); err != nil {
+				t.Fatal(err)
+			}
+			adopt(login, t.Logf, realAdoptionOS())
+			if _, err := os.Lstat(DefaultUnder(login)); test.name == "legacy is a link" && !os.IsNotExist(err) {
+				t.Fatalf("linked legacy root was moved: %v", err)
+			}
+		})
+	}
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	if err := os.Mkdir(legacyUnder(login), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := Dir(); got == DefaultUnder(login) {
+		t.Fatalf("test Dir unexpectedly resolved an adopted root: %q", got)
+	}
+	if _, err := os.Lstat(DefaultUnder(login)); !os.IsNotExist(err) {
+		t.Fatalf("Dir adopted state in a test binary: %v", err)
+	}
+	Adopt(t.Logf)
+	if _, err := os.Lstat(DefaultUnder(login)); !os.IsNotExist(err) {
+		t.Fatalf("exported Adopt moved state in a test binary: %v", err)
+	}
+}
+
+// H2: either environment spelling suppresses adoption, including an explicitly
+// empty spelling.
+func TestH2AdoptionDoesNotRunWithEitherOverrideSet(t *testing.T) {
+	for _, name := range []string{EnvVar, env.Legacy(EnvVar)} {
+		t.Run(name, func(t *testing.T) {
+			login := t.TempDir()
+			if err := os.Mkdir(legacyUnder(login), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "")
+			if _, set := env.Lookup(EnvVar); !set {
+				t.Fatal("test override is not recorded as set")
+			}
+			t.Setenv("HOME", login)
+			adoptLogin(t.Logf)
+			if _, err := os.Lstat(DefaultUnder(login)); !os.IsNotExist(err) {
+				t.Fatalf("override %s allowed adoption: %v", name, err)
+			}
+		})
+	}
+}
+
+// H2: a failed rename emits exactly one line and leaves resolution on the
+// intact legacy root.
+func TestH2FailedAdoptionLogsOnceAndPreservesFallback(t *testing.T) {
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	if err := os.Mkdir(legacyUnder(login), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ops := realAdoptionOS()
+	ops.rename = func(string, string) error { return errors.New("rename refused") }
+	var logs []string
+	adopt(login, func(format string, args ...any) { logs = append(logs, format) }, ops)
+	if len(logs) != 1 {
+		t.Fatalf("failure logged %d lines, want one: %v", len(logs), logs)
+	}
+	if got := resolve(); got != legacyUnder(login) {
+		t.Fatalf("root after failed adoption = %q, want legacy root", got)
+	}
+}
+
+func TestARegularFileAtTheCurrentNameDoesNotHideFormerState(t *testing.T) {
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	current := DefaultUnder(login)
+	if err := os.WriteFile(current, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacy := legacyUnder(login)
+	if err := os.Mkdir(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	adopt(login, func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}, realAdoptionOS())
+	if got := resolve(); got != legacy {
+		t.Fatalf("state root = %q, want usable former directory %q", got, legacy)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], current) || !strings.Contains(logs[0], "not a directory") {
+		t.Fatalf("unusable current root logged %v", logs)
+	}
+}
+
+func realAdoptionOS() adoptionOS {
+	return adoptionOS{lstat: os.Lstat, stat: os.Stat, rename: os.Rename, symlink: os.Symlink}
+}
 
 func TestDirDefaultsUnderTheUserHome(t *testing.T) {
 	t.Setenv("HOME", "/tmp/pretend-home")
 	t.Setenv(EnvVar, "")
-	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".aforge"); got != want {
+	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".codeaf"); got != want {
 		t.Fatalf("state root: got %q, want %q", got, want)
 	}
 }
@@ -53,7 +235,7 @@ func TestTwoStoresInOneDirectoryNeverShareAWorkspace(t *testing.T) {
 func TestBlankOverrideIsIgnored(t *testing.T) {
 	t.Setenv("HOME", "/tmp/pretend-home")
 	t.Setenv(EnvVar, "   ")
-	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".aforge"); got != want {
+	if got, want := Dir(), filepath.Join("/tmp/pretend-home", ".codeaf"); got != want {
 		t.Fatalf("state root: got %q, want %q", got, want)
 	}
 }

@@ -64,7 +64,7 @@ func machineSession(t *testing.T, root, bucket, id, title, workspace string, pid
 func machine(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	mine := machineSession(t, root, "here", "mine", "this chat", "/work/aforge", os.Getpid(), time.Second)
+	mine := machineSession(t, root, "here", "mine", "this chat", "/work/codeaf", os.Getpid(), time.Second)
 	machineSession(t, root, "wisp", "theirs", "parser work", "/Users/ada/code/wisp", 4242, time.Second,
 		PresenceTask{ID: "4", Title: "Port the parser", State: string(TaskRunning),
 			StartedAt: time.Now().Add(-2 * time.Minute),
@@ -78,7 +78,7 @@ func machine(t *testing.T) string {
 // no heading over it, and no directory read to find out there was one.
 func TestASearchWithNoScopeStaysInsideThisProject(t *testing.T) {
 	mine := machine(t)
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 
 	scope, known := taskScopeWord("")
 	if !known || scope != taskScopeProject {
@@ -94,7 +94,7 @@ func TestASearchWithNoScopeStaysInsideThisProject(t *testing.T) {
 // and says nothing at all about the project that is quiet.
 func TestScopeEverywhereListsTheOtherProjectAndSkipsTheQuietOne(t *testing.T) {
 	mine := machine(t)
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 
 	answer := agent.taskSearchText("", 0, taskScopeEverywhere)
 	for _, want := range []string{
@@ -115,7 +115,7 @@ func TestScopeEverywhereListsTheOtherProjectAndSkipsTheQuietOne(t *testing.T) {
 	}
 	// It is a reading of the OTHER projects: this one is already answered above
 	// it, and a second listing of it would be the same window twice.
-	if strings.Contains(answer, "/work/aforge") {
+	if strings.Contains(answer, "/work/codeaf") {
 		t.Fatalf("this session's own project was listed as another one:\n%s", answer)
 	}
 }
@@ -125,7 +125,7 @@ func TestScopeEverywhereListsTheOtherProjectAndSkipsTheQuietOne(t *testing.T) {
 // that means something else entirely in this project.
 func TestRowsFromAnotherProjectCarryNoIDAndSayWhy(t *testing.T) {
 	mine := machine(t)
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 
 	answer := agent.taskSearchText("", 0, taskScopeEverywhere)
 	const limit = "These have no id in this conversation: work running in another project cannot be read, steered or resolved from here, and it lands where it is running rather than in this conversation."
@@ -144,18 +144,18 @@ func TestRowsFromAnotherProjectCarryNoIDAndSayWhy(t *testing.T) {
 
 // A CLAIM NOBODY HAS REFRESHED IS NOT A CLAIM ABOUT NOW. The rule is world.go's
 // and this only proves it is the one being applied: a window whose presence
-// file is older than the window aforge believes contributes nothing, exactly as
+// file is older than the window codeaf believes contributes nothing, exactly as
 // a window that has closed does.
 func TestAStalePresenceIsNotRunningAnywhere(t *testing.T) {
 	root := t.TempDir()
-	mine := machineSession(t, root, "here", "mine", "this chat", "/work/aforge", os.Getpid(), time.Second)
+	mine := machineSession(t, root, "here", "mine", "this chat", "/work/codeaf", os.Getpid(), time.Second)
 	machineSession(t, root, "wisp", "theirs", "parser work", "/Users/ada/code/wisp", 4242, presenceWindow+time.Minute,
 		PresenceTask{ID: "4", Title: "Port the parser", State: string(TaskRunning), StartedAt: time.Now()})
 
 	if groups := ReadOtherProjects(root, filepath.Join(root, "here"), time.Now(), os.Getpid()); len(groups) != 0 {
 		t.Fatalf("a stale window was believed: %+v", groups)
 	}
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 	if answer := agent.taskSearchText("", 0, taskScopeEverywhere); strings.Contains(answer, "Port the parser") {
 		t.Fatalf("a stale window reached the answer:\n%s", answer)
 	}
@@ -168,11 +168,11 @@ func TestAStalePresenceIsNotRunningAnywhere(t *testing.T) {
 // to stop this build making.
 func TestAConversationThisTerminalHoldsReadsOpenHere(t *testing.T) {
 	root := t.TempDir()
-	mine := machineSession(t, root, "here", "mine", "this chat", "/work/aforge", os.Getpid(), time.Second)
+	mine := machineSession(t, root, "here", "mine", "this chat", "/work/codeaf", os.Getpid(), time.Second)
 	machineSession(t, root, "wisp", "kept", "docs", "/Users/ada/code/wisp", os.Getpid(), time.Second,
 		PresenceTask{ID: "2", Title: "Rewrite the docs", State: string(TaskQueued)})
 
-	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
+	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/codeaf"}}}
 	answer := agent.taskSearchText("", 0, taskScopeEverywhere)
 	if !strings.Contains(answer, "open here · Rewrite the docs · queued") {
 		t.Fatalf("a conversation this terminal holds was not marked open here:\n%s", answer)

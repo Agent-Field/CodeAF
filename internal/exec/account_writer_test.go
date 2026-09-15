@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // THE ONE SEAM DEFERS THE ONE ACCOUNTING, and it is read off the source because
@@ -128,7 +128,7 @@ func TestTheSeamIsReachedOnlyFromTheBeltsOwnLanding(t *testing.T) {
 // `new(Outcome)`, by `var landed Outcome`, and by a helper whose named result is
 // an Outcome it never assigns.
 //
-// cmd/aforge/exec.go builds two of these for a run that NEVER STARTED — a
+// cmd/codeaf/exec.go builds two of these for a run that NEVER STARTED — a
 // workspace that could not be opened, a client that could not be built — and
 // those legitimately carry no account: there is no change to account for. They
 // are in another package and out of this walk deliberately.

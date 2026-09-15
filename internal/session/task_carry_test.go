@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/search"
 )
 
 // pieceOf admits one part under a node and hands back the row. It is the shape

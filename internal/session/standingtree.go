@@ -7,7 +7,7 @@ package session
 // aimed at one of them.
 //
 //   - THE STANDING PLACE ([Config.Workspace]) is edited directly, exactly as it
-//     always was. Somebody who opened aforge inside their project loses nothing
+//     always was. Somebody who opened codeaf inside their project loses nothing
 //     and notices nothing.
 //   - A REFERRED FOLDER gets a working copy of its own, cut LAZILY ON THE FIRST
 //     WRITE and never on referring: a repository gets `git worktree add` off its
@@ -75,8 +75,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/offpath"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/offpath"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // StandingTree is one conversation's own working copy of one referred folder:
@@ -178,7 +178,7 @@ func (l FolderLanding) Kept() bool {
 
 // KeptByPolicy reports the ONE kind of keep that is not a failure: the landing
 // worked exactly as designed and the branch was left alone because writing this
-// checkout is something aforge will not do.
+// checkout is something codeaf will not do.
 //
 // IT EXISTS BECAUSE [FolderLanding.Kept] ANSWERS TWO DIFFERENT QUESTIONS. Every
 // other keep is something that went wrong — a merge git could not settle, a

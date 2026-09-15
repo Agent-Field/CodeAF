@@ -46,12 +46,12 @@ type laidWork struct {
 // the lay's own token after it. It is the harness's own word so that a lay
 // interrupted by a kill leaves something a person can recognise as machinery
 // rather than as their work.
-const layingSuffix = ".aforge-laying-"
+const layingSuffix = ".codeaf-laying-"
 
 // heldSuffix opens the name the person's own file waits under while the ledger
 // goes in, and it is a different word from [layingSuffix] on purpose: one of
 // them is the work arriving and the other is what was already there.
-const heldSuffix = ".aforge-held-"
+const heldSuffix = ".codeaf-held-"
 
 // stageLay copies the whole ledger beside where it is going and reports the
 // first path that could not get there.

@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // refusingCompleter is a provider that must never be reached.
@@ -339,7 +339,7 @@ func foldMarkerTarget(t *testing.T, marker string) (path string, from, to int) {
 // line span, a path alone when the lines cannot be named, and the honest
 // fallback when there is no file at all.
 func TestFoldMarkerNamesAGrepableJournalPath(t *testing.T) {
-	const journal = "/home/x/.aforge/v3/sessions/abc.jsonl"
+	const journal = "/home/x/.codeaf/v3/sessions/abc.jsonl"
 	cases := []struct {
 		journal  string
 		from, to int

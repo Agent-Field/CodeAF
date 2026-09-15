@@ -24,7 +24,7 @@ import (
 )
 
 // ArtifactsIndexName is the file, under the v3 home directory
-// (~/.aforge/v3/artifacts.jsonl). The caller hands the full path in, for
+// (~/.codeaf/v3/artifacts.jsonl). The caller hands the full path in, for
 // SessionFile's reason: where a person's state lives is the surface's
 // decision.
 const ArtifactsIndexName = "artifacts.jsonl"

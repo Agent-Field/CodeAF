@@ -52,10 +52,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (
@@ -88,7 +88,7 @@ const (
 // tiers; this adds the two profile-only tiers, the task row, the role pins and
 // the fallback chain.
 //
-// THE FOUR MEDIA ROLES ARE LEFT ALONE, deliberately, and it is cmd/aforge's own
+// THE FOUR MEDIA ROLES ARE LEFT ALONE, deliberately, and it is cmd/codeaf's own
 // reasoning under `--one-model`: vision, image generation, speech and video are
 // capability-qualified, so pinning them at a text model would not make the run
 // single-model, it would make it broken. Nothing in this file makes media.
@@ -129,7 +129,7 @@ var textRoles = []roles.Role{
 }
 
 // familyConfig is what the v3 door wires for work, applied to a conversation
-// this lane drives directly. Everything here is a row cmd/aforge reads
+// this lane drives directly. Everything here is a row cmd/codeaf reads
 // (chatv3.go's applyV3Governance); the two departures from a person's own
 // launch are named where they are made.
 func familyConfig(w *world) func(*session.Config) {
@@ -323,7 +323,7 @@ func (r *familyRun) waitForRest(ctx context.Context) bool {
 func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 	for {
 		if root, found := r.node(r.root); found && root.Worktree != "" {
-			if _, err := os.Stat(filepath.Join(root.Worktree, aforgeDroppings, groundBaselineRecord)); err == nil {
+			if _, err := os.Stat(filepath.Join(root.Worktree, codeafDroppings, groundBaselineRecord)); err == nil {
 				r.t.Logf("  the family's tree is at %s, with the folder's baseline recorded beside it", root.Worktree)
 				return
 			}
@@ -339,11 +339,11 @@ func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 
 // The family tree's private corner, and the record in it that says what the
 // person's folder held when the copy was taken. Both are internal/session's own
-// (task_run.go's aforgeDroppings, task_mirror_manners.go's
+// (task_run.go's codeafDroppings, task_mirror_manners.go's
 // groundBaselineRecord), spelled again here because they are unexported there
 // and this lane reads the disk rather than the engine.
 const (
-	aforgeDroppings      = ".aforge-v3"
+	codeafDroppings      = ".codeaf"
 	groundBaselineRecord = "ground-baseline.json"
 )
 
@@ -513,13 +513,13 @@ func (r *familyRun) journals() string {
 func TestFamilies(t *testing.T) {
 	w := newWorld(t)
 	pinEveryTextModel(t)
-	// THE WIDTH FLOOR IS OFF FOR THIS LANE, and it is the switch cmd/aforge's own
+	// THE WIDTH FLOOR IS OFF FOR THIS LANE, and it is the switch cmd/codeaf's own
 	// tests use (partsroute_test.go, method_test.go). internal/splitgate refuses a
 	// division whose evidence names fewer than six separate items, which is a
 	// finding about whether handing work out PAYS — a question this lane is not
 	// asking. Three sections and two write-ups are the smallest families that can
 	// prove isolation and landing, and they are deliberately below that floor.
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 
 	t.Run("a three-section report on a folder ground", func(t *testing.T) {
 		threeSectionsOnAFolder(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})

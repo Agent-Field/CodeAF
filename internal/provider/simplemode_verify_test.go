@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/calllog"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // THROWAWAY VERIFICATION for the simple routing mode: what the wire carries
@@ -320,7 +320,7 @@ func TestUnderSimpleOnlyThePersonsOwnTurnCarriesTheTalkPin(t *testing.T) {
 
 	// EVERY ROLE A PERSON IS READING CARRIES THE DEMAND: the conversation's own
 	// turn, a task room somebody is sitting in front of, and the headless
-	// commands they type (cmd/aforge's typedDoorContext, which names the second
+	// commands they type (cmd/codeaf's typedDoorContext, which names the second
 	// of these).
 	for _, watched := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafAttached} {
 		knobs := callKnobs{role: watched}
@@ -406,9 +406,9 @@ func TestTheWidenedRetryOfARetiredPinIsLoggedAsTheBareRequestItIs(t *testing.T) 
 	}
 }
 
-// AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `aforge do`'s first
+// AND INSIDE A COMMAND A PERSON TYPED, EVERY CALL IS THEIRS. `codeaf do`'s first
 // request is its planning pass, in a role nobody reads, and it is still the
-// thing the person at the terminal is waiting on — cmd/aforge's
+// thing the person at the terminal is waiting on — cmd/codeaf's
 // lanepin_doors_test holds that door to the pin on its first request.
 func TestInsideATypedCommandEveryRoleCarriesTheTalkPin(t *testing.T) {
 	client, _, model := stubbedRouter(t)

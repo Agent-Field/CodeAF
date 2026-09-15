@@ -18,12 +18,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
-	"github.com/Agent-Field/aforge-v2/internal/rtk"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/rtk"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The base tool set is five tools, and the count is the design. Pull-only
@@ -363,7 +364,7 @@ type toolBudgets struct {
 //
 // The convergence this introduces is the honest part rather than the cost: past
 // the working set a result cap stops growing because the memory holding it
-// stopped growing. It is a dial and not a belief — AFORGE_WORKING_SET raises
+// stopped growing. It is a dial and not a belief — CODEAF_WORKING_SET raises
 // the window and these four bounds together, which is the only coherent way to
 // raise either.
 func toolBudgetsFor(contextTokens int) toolBudgets {
@@ -1572,16 +1573,18 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
-			environment = replaceEnv(environment, "AFORGE_SKILLS_BIN", bin)
-			command = "export PATH=\"${AFORGE_SKILLS_BIN:?}:$PATH\"\n" + command
+			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
+			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
+			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
 	if rtkBin != "" {
 		if environment == nil {
 			environment = os.Environ()
 		}
-		environment = replaceEnv(environment, "AFORGE_RTK_BIN", filepath.Dir(rtkBin))
-		command = "export PATH=\"${AFORGE_RTK_BIN:?}:$PATH\"\n" + command
+		environment = replaceEnv(environment, "CODEAF_RTK_BIN", filepath.Dir(rtkBin))
+		environment = replaceEnv(environment, env.Legacy("CODEAF_RTK_BIN"), filepath.Dir(rtkBin))
+		command = "export PATH=\"${CODEAF_RTK_BIN:?}:$PATH\"\n" + command
 	}
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)

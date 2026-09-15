@@ -19,7 +19,7 @@ package session
 // nil and this appends nothing. There is no second check to remember and no
 // tool that exists in order to fail.
 //
-// WHY THE NAMES ARE `workspace_` AND NOT `rewind_`. aforge already has a
+// WHY THE NAMES ARE `workspace_` AND NOT `rewind_`. codeaf already has a
 // rewind, and it is an edit of the CONVERSATION that touches no file on disk
 // (rewind.go). These four move bytes. Two families that both meant "put it
 // back how it was" would be one word doing two jobs, and the first person to
@@ -28,8 +28,8 @@ package session
 import (
 	"context"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // workspaceTools is the family, or nothing.

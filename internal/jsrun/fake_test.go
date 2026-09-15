@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // A SCRIPTED ENV AND NOTHING ELSE. Every test in this package runs against this

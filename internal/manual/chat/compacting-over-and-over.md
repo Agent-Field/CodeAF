@@ -39,9 +39,9 @@ you have not set one yourself; the next section is how to set one.
 
 Two things used to make a big model fold like a small one, and both are fixed:
 
-- aforge refused to believe any claim above 256,000 tokens, for every model alike. That
+- codeaf refused to believe any claim above 256,000 tokens, for every model alike. That
   ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
-  for being too long, which aforge writes down and never trusts that model past again.
+  for being too long, which codeaf writes down and never trusts that model past again.
 - work that left the conversation — a task's worker, an adaptive run's worker, the
   reader that checks a task — was handed nothing at all when its model differed from yours,
   and so folded against the conservative 128,000-token default whatever its own model held.
@@ -62,7 +62,7 @@ it that is the line. Three ways say the same thing and all set the same context 
 
 - the `context fill` row on the settings sheet's Models tab (`/settings`), which is
   written down and holds for every later session;
-- `AFORGE_CONTEXT_FILL_PCT` exported in your shell, which holds for every aforge started
+- `CODEAF_CONTEXT_FILL_PCT` exported in your shell, which holds for every codeaf started
   from it;
 - `--context-fill N` on a headless run, which sets that variable for that run.
 
@@ -81,7 +81,7 @@ number nobody chose.
 Both only ever bind at the edges, and between them a fill you set is the line exactly as
 you typed it.
 
-- **The answer room is kept.** The line never rises so far that the reply aforge is
+- **The answer room is kept.** The line never rises so far that the reply codeaf is
   waiting for has nowhere to go — that room is the `answer room` setting, 65,536 tokens by
   default (`--completion-reserve`). On a window under about 437,000 tokens the derived
   line is the higher of the two and becomes the ceiling instead, so asking for 90 on a
@@ -140,11 +140,11 @@ They are still on disk. A fold replaces the oldest assistant work in the model's
 one line such as
 
 ```
-[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
+[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]
 ```
 
 The path is this conversation's own journal — a real file, the one the session is writing —
-and the marker names the two tools that open it, so aforge can go back for the words without
+and the marker names the two tools that open it, so codeaf can go back for the words without
 being told to. The path is its own word and the lines are said after it, because a
 `path:12..40` token is not something either tool takes. The original lines stay above the
 compaction marker in that file, and 12 to 40 is the span the folded run sits on.

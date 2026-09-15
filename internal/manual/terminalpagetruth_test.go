@@ -51,7 +51,7 @@ func TestTheTerminalPageDoesNotSayASavedProgramReportsZeroSteps(t *testing.T) {
 
 // ── EXIT 1 MEANS NOTHING RAN, AND THE PAGE SAYS SO ─────────────────────────
 //
-// `aforge exec` put a mid-run provider failure on exit 1 — the rung whose whole
+// `codeaf exec` put a mid-run provider failure on exit 1 — the rung whose whole
 // meaning is that nothing was attempted — so a script retried a run that had
 // already spent money as though it had never begun. The code now leaves that
 // rung to refusals before any work starts, and a person writing a wrapper finds
@@ -73,7 +73,7 @@ func TestTheTerminalPageSaysARunThatStartedNeverLeavesOnExitOne(t *testing.T) {
 
 // ── THE TERMINAL READER'S OWN EXAMPLES ARE WHAT IT PRINTS ──────────────────
 //
-// The page shows a worked `aforge why` record and a worked `aforge rebuild`
+// The page shows a worked `codeaf why` record and a worked `codeaf rebuild`
 // receipt, and both quoted the machinery vocabulary those commands used to
 // print: a note signed `the harness`, and a count of `nodes`. A page that shows
 // somebody an output line they will never see is worse than one that shows none.
@@ -84,7 +84,7 @@ func TestTheTerminalPageQuotesTheWordsWhyAndRebuildActuallyPrint(t *testing.T) {
 			t.Fatalf("the terminal page shows %q, which is not what the command prints any more", stale)
 		}
 	}
-	for _, want := range []string{"turn 4 · aforge", "rebuilt 128 steps"} {
+	for _, want := range []string{"turn 4 · codeaf", "rebuilt 128 steps"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the terminal page's worked example does not show %q, which is what the command prints", want)
 		}

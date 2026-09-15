@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // machineFacts is the whole of what this machine has to say about itself, as
@@ -222,7 +222,7 @@ func machineDayStart(now time.Time) time.Time {
 
 // machineAllowance is the machine-wide daily allowance everything on it spends
 // against — the person's own daily budget row, which is the rail a firing is
-// held to as well (cmd/aforge's v3StandingDailyRail).
+// held to as well (cmd/codeaf's v3StandingDailyRail).
 //
 // IT IS ONE SETTING READ IN ONE PLACE, and the pulse is the one line that draws
 // it — as the denominator under what has been spent, and only where a machine

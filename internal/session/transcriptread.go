@@ -42,7 +42,7 @@ package session
 //
 // BUT A SHORT READING IS NEVER A SILENT ONE. Two files come back with less than
 // they hold: one whose line this build cannot get past, which answers with
-// EVERYTHING ABOVE THAT LINE, and one written by a NEWER AFORGE, which a resume
+// EVERYTHING ABOVE THAT LINE, and one written by a NEWER codeaf, which a resume
 // refuses outright and which answers here with nothing at all. Returning either
 // as an ordinary short record would be the page saying, in the only way a page
 // can, that this is all the work there ever was. So the reading carries what it
@@ -121,7 +121,7 @@ type Record struct {
 // there when any request is: the newest line is the last one written.
 type RequestBooks struct {
 	// Latest is the prompt the newest request sent, whole — what that request
-	// weighed. The providers aforge speaks to count cached prompt tokens INSIDE
+	// weighed. The providers codeaf speaks to count cached prompt tokens INSIDE
 	// the prompt figure (an OpenAI-shaped usage block, which is what OpenRouter
 	// returns); a line whose cached share is LARGER than its prompt can only
 	// have been counted the other way, and has the two added back together.
@@ -203,7 +203,7 @@ func ReadTranscriptBytes(data []byte) Record {
 // scan just consumed. Nothing here can write: the door was never given a handle.
 //
 // AN ERROR IS A THING TO SAY, NOT A REASON TO SAY NOTHING. The scan refuses a
-// file written by a newer aforge — a build reading it anyway would drop every
+// file written by a newer codeaf — a build reading it anyway would drop every
 // entry type and field it does not know, in silence, and show a shortened copy
 // of somebody's work as though it were the work — and hands back nothing, so the
 // page draws that sentence and no entries, which is the truth about the file.
@@ -253,8 +253,8 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 
 // unreadNewerWord is a file this build has no business reading. It names the
 // remedy by naming the cause: the file is not damaged and nothing is lost — a
-// newer aforge opens it.
-const unreadNewerWord = "this transcript was written by a newer aforge — this build cannot read it"
+// newer codeaf opens it.
+const unreadNewerWord = "this transcript was written by a newer codeaf — this build cannot read it"
 
 // unreadRefusedWord is every other way a reading can come back with nothing. It
 // promises no cause it has not established: whatever went wrong, what a person

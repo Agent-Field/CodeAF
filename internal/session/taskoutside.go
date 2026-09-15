@@ -323,7 +323,7 @@ func forgeWriteHost(words []string) string {
 	}
 	for _, word := range words {
 		host := urlHost(word)
-		if host != "" && hostIsAForge(host) {
+		if host != "" && hostIsCodeaf(host) {
 			return host
 		}
 	}
@@ -359,7 +359,7 @@ var forgeLabels = map[string]bool{
 	"codeberg": true, "forgejo": true, "sourcehut": true, "git": true,
 }
 
-func hostIsAForge(host string) bool {
+func hostIsCodeaf(host string) bool {
 	for _, label := range strings.Split(host, ".") {
 		if forgeLabels[label] {
 			return true

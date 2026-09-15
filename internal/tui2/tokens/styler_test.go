@@ -133,10 +133,10 @@ func TestTierDoesNotChangeTokenPainting(t *testing.T) {
 			plain := NewStylerIn(p, f, Plain)
 			nf := NewStylerIn(p, f, NerdFont)
 			for tok := Token(0); tok < tokenCount; tok++ {
-				if a, b := plain.PaintToken("aforge", tok), nf.PaintToken("aforge", tok); a != b {
+				if a, b := plain.PaintToken("codeaf", tok), nf.PaintToken("codeaf", tok); a != b {
 					t.Fatalf("%v/%v/%v: PaintToken differs between tiers", p, f, tok)
 				}
-				if a, b := plain.PaintOn("aforge", tok, Band), nf.PaintOn("aforge", tok, Band); a != b {
+				if a, b := plain.PaintOn("codeaf", tok, Band), nf.PaintOn("codeaf", tok, Band); a != b {
 					t.Fatalf("%v/%v/%v: PaintOn differs between tiers", p, f, tok)
 				}
 			}

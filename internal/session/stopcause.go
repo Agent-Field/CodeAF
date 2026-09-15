@@ -59,7 +59,7 @@ const (
 	// to it (internal/remote).
 	StopByRetired StopDoor = "session retired"
 	// StopByEngineStopped is the host going away under a window that is still
-	// in the room: `aforge engine --stop`, a signal, a stale build retiring
+	// in the room: `codeaf engine --stop`, a signal, a stale build retiring
 	// itself. It is not the unattended door — somebody was there.
 	StopByEngineStopped StopDoor = "engine stopped"
 )

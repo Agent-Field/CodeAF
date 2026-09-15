@@ -317,7 +317,7 @@ func TestCtrlTIsStillANewChatAndIsNeverReadAsAReopen(t *testing.T) {
 // A MODAL THAT IS LOOKING AT THE PERSON KEEPS THE KEY. The chord is read at
 // [app.closeTabKey]'s rung, under every overlay, so nothing reopens behind one.
 func TestCtrlShiftTUnderAModalReopensNothing(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := reopenApp(t)
 	a.models = func() []Model { return []Model{{ID: "deepseek/deepseek-v4-flash"}} }
 	drive(t, a, key(closeTabChord))

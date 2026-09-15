@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filememo"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 )
 
 // systemPromptSource is omp's normal-chat system prompt, adapted (Decision 2).

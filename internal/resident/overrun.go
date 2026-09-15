@@ -17,9 +17,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
 )
 
 // SpecUnchangedNotice is what a spec says about its own criterion when it is
@@ -521,7 +521,7 @@ func postGovernorNotice(graph *store.Store, node store.Node, cause, body string)
 		// the headless stream, where the reader watching a run needs it most: a
 		// governor stopping work is invisible there otherwise, and "still
 		// waiting" over a job that has quietly stopped growing is the line that
-		// gets a run killed by hand. See narrateOne in cmd/aforge/do.go.
+		// gets a run killed by hand. See narrateOne in cmd/codeaf/do.go.
 		Progress: &store.MessageProgress{Phase: governorPhrase(cause), Latest: body},
 	})
 }

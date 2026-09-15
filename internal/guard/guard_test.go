@@ -124,7 +124,7 @@ func TestNoteBecomesAnErrorTheCallerCanRecord(t *testing.T) {
 func TestFaultWithoutScopeStillReads(t *testing.T) {
 	captureLog(t)
 	err := Note("  ", 42)
-	if err.Error() != "internal fault in aforge: 42" {
+	if err.Error() != "internal fault in codeaf: 42" {
 		t.Fatalf("unexpected text: %s", err.Error())
 	}
 }

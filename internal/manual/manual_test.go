@@ -89,7 +89,7 @@ func TestCuesCoverTheVocabularyAndIgnoreOrdinaryRequests(t *testing.T) {
 		"find out which dependencies changed",
 	} {
 		if Cued(message) {
-			t.Fatalf("%q was read as a question about aforge itself", message)
+			t.Fatalf("%q was read as a question about codeaf itself", message)
 		}
 	}
 }

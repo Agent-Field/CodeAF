@@ -48,7 +48,7 @@ const browseSource = `<!doctype html>
      well as braces now the address holds no token, and the braces the day
      somebody puts one back. -->
 <meta name="referrer" content="no-referrer">
-<title>{{.Host}} — aforge files</title>
+<title>{{.Host}} — codeaf files</title>
 <style>
 :root {
   color-scheme: light dark;

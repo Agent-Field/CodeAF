@@ -105,9 +105,9 @@ func TestTasteShelfLifecycleReplaysThroughRebuild(t *testing.T) {
 
 func TestTasteScopeIsTheShelfIdentity(t *testing.T) {
 	const body = "the user wants written reports kept under a page"
-	scope := TasteScope("repo:/src/aforge", body)
+	scope := TasteScope("repo:/src/codeaf", body)
 	subject, ok := TasteSubject(scope)
-	if !ok || subject != "repo:/src/aforge" {
+	if !ok || subject != "repo:/src/codeaf" {
 		t.Fatalf("subject of %q = (%q, %t)", scope, subject, ok)
 	}
 	if TasteScope("user", body) != TasteScope("user", body) || TasteScope("user", "  ") != "" {

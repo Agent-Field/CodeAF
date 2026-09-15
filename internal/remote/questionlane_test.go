@@ -1,7 +1,7 @@
 package remote
 
 // The bug these pin, and it is the questions wave's headline: since the session
-// host landed, a plain `aforge` in a project is a SURFACE talking to this
+// host landed, a plain `codeaf` in a project is a SURFACE talking to this
 // machine's engine over a unix socket — and this wire carried ResolveQuestion
 // and neither WatchQuestions nor OpenQuestions. internal/tui3 asserts the three
 // as one seam, so the assertion failed, no question was ever drawn, and every
@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // askingAgent is a [fakeAgent] carrying the questions half of a real session
@@ -162,7 +162,7 @@ func wholeQuestion() session.Question {
 
 // A question raised with no turn running reaches a hosted surface WHOLE. Before
 // this lane it reached nothing at all: the event was emitted onto a subscription
-// this wire did not carry, so the road a plain `aforge` takes drew no block, no
+// this wire did not carry, so the road a plain `codeaf` takes drew no block, no
 // chip and no row, and the turn simply stopped.
 func TestAQuestionReachesAHostedSurfaceWhole(t *testing.T) {
 	far := newAskingAgent()

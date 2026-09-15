@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
 )
 
 // ── WHAT IS BELIEVED, AND WHERE IT IS BORROWED FROM ─────────────────────────

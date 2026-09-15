@@ -77,8 +77,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const (
@@ -98,7 +98,7 @@ const (
 // a different extension, beside it in the same directory.
 //
 // PER-JOURNAL, exactly as statePath is (state.go), and for the same reason the
-// FLAT layout's shape demanded: ~/.aforge/v3/sessions/<workspace>/ held every
+// FLAT layout's shape demanded: ~/.codeaf/v3/sessions/<workspace>/ held every
 // session this workspace ever had, so a single tasks.json there would have been
 // every window writing over each other's graphs. A graph belongs to ONE
 // conversation, and the journal is what names one conversation — which is also
@@ -447,7 +447,7 @@ type taskRecord struct {
 	//
 	// AND THE PROJECT INDEX DELIBERATELY DOES NOT CARRY IT. That file is what work
 	// CAME TO, appended once and never rewritten, and who is holding a question
-	// lasts at most one turn — a row on disk saying `aforge is deciding` about a
+	// lasts at most one turn — a row on disk saying `codeaf is deciding` about a
 	// conversation that closed hours ago would be a claim nothing could ever
 	// correct. It is [TaskIndexEntry.Activity]'s rule about a present that ends
 	// seconds after it is recorded, said about a second momentary fact.
@@ -509,7 +509,7 @@ type taskRecord struct {
 	Kind TaskKind `json:"kind,omitempty"`
 
 	// Offer is a finished harness page waiting on the person's answer, carried
-	// whole so that closing aforge under the card does not throw away minutes of
+	// whole so that closing codeaf under the card does not throw away minutes of
 	// finished model work ([harnessOfferRecord]). It is set for exactly as long
 	// as the card is up — written when the page lands, cleared the moment the
 	// wait ends in an answer or a rewrite — so on every other record it is
@@ -1080,7 +1080,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		// of it on the way to a surface).
 		//
 		// OVERWRITING IT LOST THE ONE THING THE WORK LEFT BEHIND, and it lost it
-		// in the commonest case there is: a job still running when aforge closed
+		// in the commonest case there is: a job still running when codeaf closed
 		// is exactly the job somebody reopens the conversation to look at, and it
 		// came back with no path at all. The sentence that replaced it was written
 		// when this row was DRAWN — it read well under a row on the task column —
@@ -1088,7 +1088,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		//
 		// WHAT IT SAID IS STILL SAID, by the state rather than by prose: the job
 		// comes back stopped, which is what the column and the page both show, and
-		// "it ended when aforge closed" is what stopped MEANS for a process that
+		// "it ended when codeaf closed" is what stopped MEANS for a process that
 		// cannot outlive the program that forked it.
 		if record.Kind != TaskKindJob {
 			notice.Report = orchestrateEndedReport
@@ -1098,14 +1098,14 @@ func runRowNotice(record runRecord) TaskNotice {
 }
 
 // A JOB'S OWN VERSION OF THIS SENTENCE IS GONE, AND SO IS THE CHOICE BETWEEN
-// THEM. `it ended when aforge closed; its log is kept` was written for a job's
+// THEM. `it ended when codeaf closed; its log is kept` was written for a job's
 // row on the task column, where it read beside the work it was about. A job has
 // no row there any more, and the field the sentence was written into is the one
 // carrying the log's path — so the sentence had stopped being read and had
 // started deleting the path instead ([runRowNotice] says the rest).
 //
 // orchestrateEndedReport is what a row of an adaptive run says for itself when
-// it was still moving as aforge closed.
+// it was still moving as codeaf closed.
 //
 // IT IS THE SENTENCE AND NOT A STATE WORD, because the state word is already
 // "stopped" and it would be answering the wrong question: a person looking at
@@ -1115,7 +1115,7 @@ func runRowNotice(record runRecord) TaskNotice {
 // (orchestrate.go's orchestrateJournalPath) — and it is the same promise the
 // sibling sentence for a subharness makes (subharness_run.go's
 // subharnessInterruptedReport).
-const orchestrateEndedReport = "it ended when aforge closed; its journal is kept"
+const orchestrateEndedReport = "it ended when codeaf closed; its journal is kept"
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {
@@ -1572,7 +1572,7 @@ func (a *Agent) recoverTasks() {
 	// attached yet on a fresh process and the sends fall on an empty room, which is
 	// correct: what the surface reads then is the roster replay, and these nodes
 	// are in it saying the person is deciding. On a window attaching to a
-	// conversation that is already open, this is the update that takes the `aforge
+	// conversation that is already open, this is the update that takes the `codeaf
 	// is deciding` row off the card.
 	for _, node := range recovery.handedBack {
 		a.emitTaskUpdate(node.notice())
@@ -2001,7 +2001,7 @@ func expectsOwed(record taskRecord) []Expectation {
 // the process ended says for itself. It is the wording a design that ran out of
 // its own clock already uses, because from the person's side the two are one
 // fact: the page was not finished and nothing was kept.
-const harnessInterruptedReport = "the design did not finish before aforge closed; nothing was saved"
+const harnessInterruptedReport = "the design did not finish before codeaf closed; nothing was saved"
 
 // interrupt turns a node that was running into the failed node it became when
 // the process died, and reports which branch — if any — is still on disk for the

@@ -175,7 +175,7 @@ func FrontExecutor(executor Executor, manifest Manifest) (*ExecutorRunner, error
 ```
 
 Registration routes through `LeafManifest`, so `linear` carries the typed front
-door without a caller changing a line. `cmd/aforge`'s
+door without a caller changing a line. `cmd/codeaf`'s
 `registerSubharnessRunners` fronts it from **the same constructor**
 `executorFor` uses, which is what makes the deopt honest: falling back to the
 long way means falling back to the worker the person would otherwise have had.
@@ -188,7 +188,7 @@ report a truncated partial as a finished deliverable.
 
 One Go type is both the host API handed to JS bundles and the interface handed
 to Go runners. The two drifting `Env`s named at
-`cmd/aforge/chatv3_harness.go:41-53` get no third sibling.
+`cmd/codeaf/chatv3_harness.go:41-53` get no third sibling.
 
 ```go
 type Env interface {
@@ -285,9 +285,9 @@ already knows how to open a room on a started task needs no second call site.
 | lane | owns | plugs into |
 | --- | --- | --- |
 | **runtime** | goja, the bundle-parameterized `Runner`, the six host-call bodies, fuel, guards and the deopt, the incremental `Journal` writer | implements `exec.Runner` and `exec.Env`; writes `exec.JournalEntry`; folds `exec.Spend` |
-| **store** | `~/.aforge/subharnesses/` and `.aforge/subharnesses/`, version minting, run journals on disk | implements `exec.BundleSource`; calls `Registry.UseBundles(LayerHome/LayerProject, …)`; fills `SubharnessRow.LastRun` |
+| **store** | `~/.codeaf/subharnesses/` and `.codeaf/subharnesses/`, version minting, run journals on disk | implements `exec.BundleSource`; calls `Registry.UseBundles(LayerHome/LayerProject, …)`; fills `SubharnessRow.LastRun` |
 | **tui** | the `/subharness` list, the intake card, the run view | reads `SubharnessList`, `SubharnessIntake`; calls `SubharnessRun` |
-| **doors** | run-as-task-node, auto-propose behind the consent card, headless `aforge run subharness` | fills `SubharnessRun`; wires `Config.Subharnesses` |
+| **doors** | run-as-task-node, auto-propose behind the consent card, headless `codeaf run subharness` | fills `SubharnessRun`; wires `Config.Subharnesses` |
 
 Not built, on purpose: goja, the store, anything in tui3, the catalog/index
 (Phase 2), the packed trailer (Phase 2 — only the `LayerPacked` constant).
@@ -328,6 +328,6 @@ exempts exactly one name from needing a purpose.
 
 `gofmt -l` clean on every touched file. `go build ./...` clean.
 `go test ./internal/exec/ ./internal/session/ ./internal/subharness/ -count=1`
-green, as are `./cmd/aforge/` and `./internal/resident/`. No manual page yet:
+green, as are `./cmd/codeaf/` and `./internal/resident/`. No manual page yet:
 this lane landed no slash command, no belt verb and no person-facing surface —
 the pages come with the surfaces, per the manual law.

@@ -1,6 +1,6 @@
 package head
 
-import "github.com/Agent-Field/aforge-v2/internal/provider"
+import "github.com/Agent-Field/codeaf/internal/provider"
 
 // decodeJSONObject reads a structured reply from a model. The tolerance it
 // applies — a code fence, a sentence wrapped around the object — belongs to the

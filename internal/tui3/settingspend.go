@@ -8,9 +8,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE SPENDING TAB ────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ type railReading struct {
 
 // spendingOrder is the four registry rows of this tab, in READING order: the
 // day (the bill), this conversation (the window in front of you), the plan (the
-// question), and aforge's own slice. Not alphabetical, not registry order, not
+// question), and codeaf's own slice. Not alphabetical, not registry order, not
 // by key — by how often a person worries about each one.
 var spendingOrder = []string{
 	config.KeyDailyBudget,

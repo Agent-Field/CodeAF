@@ -13,7 +13,7 @@
 # every row.
 #
 #   arm       version seen   print door             interactive door
-#   aforge    (this build)   chat --once            TUI over tmux
+#   codeaf    (this build)   chat --once            TUI over tmux
 #   omp       18.1.2         -p --mode json         TUI over tmux
 #   pi        0.84.2         -p --mode json         TUI over tmux
 #   opencode  1.17.15        run --format json      none this suite drives
@@ -32,27 +32,27 @@
 
 CONV_ADAPTERS_LIB="${CONV_ADAPTERS_LIB:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
-AFORGE_BIN="${AFORGE_BIN:-}"
-if [ -z "$AFORGE_BIN" ]; then
-  if [ -x "$CONV_REPO_ROOT/bin/aforge" ]; then
-    AFORGE_BIN="$CONV_REPO_ROOT/bin/aforge"
+CODEAF_BIN="${CODEAF_BIN:-}"
+if [ -z "$CODEAF_BIN" ]; then
+  if [ -x "$CONV_REPO_ROOT/bin/codeaf" ]; then
+    CODEAF_BIN="$CONV_REPO_ROOT/bin/codeaf"
   else
-    AFORGE_BIN="$(command -v aforge || echo "$CONV_REPO_ROOT/bin/aforge")"
+    CODEAF_BIN="$(command -v codeaf || echo "$CONV_REPO_ROOT/bin/codeaf")"
   fi
 fi
 OMP_BIN="${OMP_BIN:-omp}"
 PI_BIN="${PI_BIN:-pi}"
 OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
 
-CONV_ALL_ARMS="aforge omp pi opencode"
+CONV_ALL_ARMS="codeaf omp pi opencode"
 
 arm_known() {
-  case "$1" in aforge|omp|pi|opencode) return 0 ;; *) return 1 ;; esac
+  case "$1" in codeaf|omp|pi|opencode) return 0 ;; *) return 1 ;; esac
 }
 
 arm_bin() {
   case "$1" in
-    aforge)   [ -x "$AFORGE_BIN" ] && printf '%s' "$AFORGE_BIN" ;;
+    codeaf)   [ -x "$CODEAF_BIN" ] && printf '%s' "$CODEAF_BIN" ;;
     omp)      command -v "$OMP_BIN" 2>/dev/null ;;
     pi)       command -v "$PI_BIN" 2>/dev/null ;;
     opencode) command -v "$OPENCODE_BIN" 2>/dev/null ;;
@@ -66,7 +66,7 @@ arm_version() {
   bin="$(arm_bin "$arm")" || true
   [ -n "$bin" ] || { printf 'not-installed'; return; }
   case "$arm" in
-    aforge)   "$bin" --version 2>/dev/null | head -1 ;;
+    codeaf)   "$bin" --version 2>/dev/null | head -1 ;;
     omp)      "$bin" --version 2>/dev/null | head -1 ;;
     pi)       "$bin" --version 2>/dev/null | tail -1 ;;
     opencode) "$bin" --version 2>/dev/null | tail -1 ;;
@@ -80,7 +80,7 @@ arm_version() {
 # is how a grid ends up comparing two models.
 arm_model_arg() {
   case "$1" in
-    aforge|pi)    printf '%s' "$CONV_MODEL" ;;
+    codeaf|pi)    printf '%s' "$CONV_MODEL" ;;
     omp)          [ "${ARM_GUARD:-no}" = "yes" ] && printf 'guard/%s' "$CONV_MODEL" \
                                                  || printf 'openrouter/%s' "$CONV_MODEL" ;;
     opencode)     printf 'openrouter/%s' "$CONV_MODEL" ;;
@@ -156,13 +156,13 @@ sys.exit(1)
       ARM_PIN_NOTE="omp cannot pin $(arm_model_arg omp) exactly"
       return 1
       ;;
-    aforge)
-      # aforge resolves its own catalog at call time and has no offline
+    codeaf)
+      # codeaf resolves its own catalog at call time and has no offline
       # "does this id exist" query that costs nothing. The pin is therefore
       # enforced after the fact instead, on the ids in the run's own receipts
       # (allowlist.sh), which is the stronger check anyway: it sees the roles
       # and the fallbacks, and a catalog query never does.
-      ARM_PIN_NOTE="aforge: pin enforced on receipts, not by catalog query"
+      ARM_PIN_NOTE="codeaf: pin enforced on receipts, not by catalog query"
       return 0
       ;;
     opencode)
@@ -181,7 +181,7 @@ sys.exit(1)
 # afterwards finds that, but only after the money is gone, so the arms are
 # separated here into those that can be pinned in advance and those that cannot:
 #
-#   aforge  yes — --one-model settles every text call on the session model.
+#   codeaf  yes — --one-model settles every text call on the session model.
 #   omp     yes — --smol/--slow/--plan take a model each (18.1.2 --help), so the
 #           three roles that would otherwise float are named explicitly.
 #   pi      unverified — 0.84.2 --help documents no way to pin auxiliary roles.
@@ -198,7 +198,7 @@ arm_role_pin() {
   local arm="$1" model; model="$(arm_model_arg "$arm")"
   ARM_ROLE_FLAGS=()
   case "$arm" in
-    aforge)
+    codeaf)
       ARM_ROLE_PIN="yes"; ARM_ROLE_NOTE="--one-model pins every text call"
       ;;
     omp)
@@ -233,7 +233,7 @@ arm_role_pin() {
 #                disabling in this cell's fresh profile (docs/settings.md at
 #                v18.1.2). Model providers are a separate namespace.
 #   pi 0.84.2    --no-skills --no-extensions
-#   aforge       nothing needed: AFORGE_HOME moves the whole state root, so a
+#   codeaf       nothing needed: CODEAF_HOME moves the whole state root, so a
 #                cell starts with no ambient skills or extensions at all
 ARM_BASELINE_FLAGS=()
 ARM_BASELINE_NOTE=""
@@ -248,8 +248,8 @@ arm_baseline() {
       ARM_BASELINE_FLAGS=(--no-skills --no-extensions)
       ARM_BASELINE_NOTE="skills/extensions off"
       ;;
-    aforge)
-      ARM_BASELINE_NOTE="clean by isolation: AFORGE_HOME is this cell's own"
+    codeaf)
+      ARM_BASELINE_NOTE="clean by isolation: CODEAF_HOME is this cell's own"
       ;;
     opencode)
       ARM_BASELINE_NOTE="unverified: no documented discovery switches read for opencode"
@@ -265,7 +265,7 @@ arm_baseline() {
 # the others is the most flattering possible lie about cost.
 #
 # Levels are as printed by --help on the versions in the table above:
-#   aforge    off low medium high
+#   codeaf    off low medium high
 #   omp       off minimal low medium high xhigh max auto
 #   pi        off minimal low high xhigh max          (no medium)
 #   opencode  --variant <provider-specific>           (no enumerated list)
@@ -280,7 +280,7 @@ arm_effort() {
   ARM_EFFORT_SUPPORTED="no"
   ARM_EFFORT_NOTE=""
   case "$arm" in
-    aforge)   levels="off low medium high" ;;
+    codeaf)   levels="off low medium high" ;;
     omp)      levels="off minimal low medium high xhigh max auto" ;;
     pi)       levels="off minimal low high xhigh max" ;;
     opencode) levels="" ;;
@@ -299,7 +299,7 @@ arm_effort() {
       ARM_EFFORT_SENT="$want"
       ARM_EFFORT_SUPPORTED="yes"
       case "$arm" in
-        aforge) ARM_EFFORT_FLAGS=(--reasoning "$want") ;;
+        codeaf) ARM_EFFORT_FLAGS=(--reasoning "$want") ;;
         omp|pi) ARM_EFFORT_FLAGS=(--thinking "$want") ;;
       esac
       return 0
@@ -329,18 +329,18 @@ arm_isolate() {
   ARM_STATE_DIR="$cell/state"
   mkdir -p "$ARM_STATE_DIR"
   case "$arm" in
-    aforge)
-      mkdir -p "$ARM_STATE_DIR/aforge-home"
+    codeaf)
+      mkdir -p "$ARM_STATE_DIR/codeaf-home"
       # A host socket has a roughly hundred-byte path limit. Evidence folders
       # can be much longer, so address this same state through a short owned
       # alias rather than silently measuring the in-process fallback.
       local alias_dir
       alias_dir="$(mktemp -d /tmp/afconv-home.XXXXXX)" || return 1
-      ln -s "$ARM_STATE_DIR/aforge-home" "$alias_dir/home" || return 1
-      ARM_ENV=("AFORGE_HOME=$alias_dir/home")
+      ln -s "$ARM_STATE_DIR/codeaf-home" "$alias_dir/home" || return 1
+      ARM_ENV=("CODEAF_HOME=$alias_dir/home")
       ARM_CLEANUP_PATH="$alias_dir"
       printf '%s\n' "$alias_dir" > "$cell/state-alias.txt"
-      ARM_ISOLATION="full: AFORGE_HOME is a short owned alias to this cell's state"
+      ARM_ISOLATION="full: CODEAF_HOME is a short owned alias to this cell's state"
       ;;
     omp)
       # omp's documented isolation is a named profile, and profiles live under
@@ -426,7 +426,7 @@ arm_print_argv() {
   local arm="$1" work="$2" text="$3"
   local model; model="$(arm_model_arg "$arm")"
   case "$arm" in
-    aforge)
+    codeaf)
       # --one-model is not optional: without it a chat session resolves titles,
       # reflexes and other auxiliary calls through role pins that this run never
       # named, and the open-model law would be enforced against a machine's
@@ -438,7 +438,7 @@ arm_print_argv() {
       # default, so a benchmark that opted out would be measuring a path people
       # do not use. Each cell gets its own workspace, so the host it starts is
       # its own, and run.sh stops that one host when the cell ends.
-      ARGV=("$AFORGE_BIN" chat --once "$text"
+      ARGV=("$CODEAF_BIN" chat --once "$text"
             --model "$model" --one-model --yolo "${ARM_EFFORT_FLAGS[@]}")
       ;;
     omp)
@@ -467,7 +467,7 @@ arm_print_argv() {
 arm_print_cwd() {
   case "$1" in
     omp|opencode) printf '%s' "$2" ;;   # told with a flag, but harmless to start there too
-    *)            printf '%s' "$2" ;;   # aforge chat and pi both take the process's directory
+    *)            printf '%s' "$2" ;;   # codeaf chat and pi both take the process's directory
   esac
 }
 
@@ -492,7 +492,7 @@ arm_tui_argv() {
   local model; model="$(arm_model_arg "$arm")"
   ARM_READY_RE=""; ARM_BUSY_RE=""; ARM_ASK_RE=""; ARM_DOOR_NOTE=""
   case "$arm" in
-    aforge)
+    codeaf)
       # Markers read off the CURRENT renderer rather than copied from an older
       # battery. internal/tui3/render.go's stateWord ends the status row with
       # the run state — "idle", "working", "interrupted" — or with waitingWord
@@ -506,7 +506,7 @@ arm_tui_argv() {
       # THE SEPARATOR IS NOT PART OF THE MARKER. This was `· idle`, and on
       # 2026-09-10 — after the seven-panel home landed — a fresh screen drew the
       # state word at the right edge of the status row with nothing in front of
-      # it, so the needle matched nothing and every interactive aforge cell
+      # it, so the needle matched nothing and every interactive codeaf cell
       # recorded `unsupported` at the ready wait. Measured on the Spark that
       # day: `followup-while-working` and `work-result-recalled` both ended
       # `noready` after 91s against a pane whose last line read `idle`.
@@ -525,7 +525,7 @@ arm_tui_argv() {
       # place this suite can measure the product's actual default, and passing
       # --no-host here would quietly measure something else. The cell's own
       # host is stopped by name when the cell ends (run.sh: arm_host_stop).
-      ARGV=("$AFORGE_BIN" chat --model "$model" --one-model --yolo
+      ARGV=("$CODEAF_BIN" chat --model "$model" --one-model --yolo
             --max-cost "${CONV_MAX_COST:-1}" --max-hours "$hours" "${ARM_EFFORT_FLAGS[@]}")
       ;;
     pi)
@@ -577,7 +577,7 @@ arm_tui_argv() {
 # account of what it spent.
 arm_receipt_kind() {
   case "$1" in
-    aforge)   printf 'aforge-home' ;;
+    codeaf)   printf 'codeaf-home' ;;
     omp|pi)   printf 'pi-events' ;;
     opencode) printf 'opencode-events' ;;
   esac
@@ -591,11 +591,11 @@ arm_receipt_kind() {
 # suite reads it opportunistically — the file is JSON Lines and carries
 # assistant messages, but its exact schema has not been verified here, so a
 # cell whose cost cannot be read comes back `unknown` and not-comparable rather
-# than zero. aforge is the same either way: the home is the witness.
+# than zero. codeaf is the same either way: the home is the witness.
 arm_receipt_path() {
   local arm="$1" cell="$2" door="${3:-print}"
   case "$arm" in
-    aforge) printf '%s' "$cell/state/aforge-home" ;;
+    codeaf) printf '%s' "$cell/state/codeaf-home" ;;
     pi)     [ "$door" = "interactive" ] && printf '%s' "$cell/state/pi-sessions" || printf '%s' "$cell/stdout.log" ;;
     omp)    [ "$door" = "interactive" ] && printf '%s' "$cell/state/omp-sessions" || printf '%s' "$cell/stdout.log" ;;
     *)      printf '%s' "$cell/stdout.log" ;;

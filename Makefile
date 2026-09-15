@@ -1,6 +1,6 @@
 # The one binary. Every build lands here — never at the repo root, never
 # anywhere else — so a stale copy can't shadow a fresh one.
-BINARY := bin/aforge
+BINARY := bin/codeaf
 
 .PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
@@ -16,9 +16,9 @@ BUDGET := SIZE-BUDGET
 BUILD_REV := $(shell git rev-parse --short HEAD)
 BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=normal)"; then printf true; else printf false; fi)
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-BUILDINFO := github.com/Agent-Field/aforge-v2/internal/buildinfo
+BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
-MANUAL_TAG := aforge_packed_manual
+MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
 # the archive beside it is an IGNORED build product (internal/packed says why),
@@ -41,12 +41,12 @@ manual-pack-law:
 	fi
 
 embed: manual-pack-law
-	# Generators execute on the build host, even when aforge targets another OS.
+	# Generators execute on the build host, even when codeaf targets another OS.
 	env -u GOOS -u GOARCH go generate $(PACKED_PKGS)
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# EVERY AFORGE IS AN AFORGE WITH FURROW, so the build fetches furrow before it
+# EVERY codeaf IS A codeaf WITH FURROW, so the build fetches furrow before it
 # can produce one. This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
@@ -57,7 +57,7 @@ embed: manual-pack-law
 # It is a prerequisite of `build` and not a thing anybody remembers to run. A
 # fetch that cannot happen STOPS THE BUILD, loudly, with the command to run: the
 # failure mode this ordering exists to make impossible is a quietly successful
-# build that produced an aforge without furrow inside it.
+# build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
 # sha256 is checked either way, so this is an offline road and not a looser one:
@@ -65,7 +65,7 @@ embed: manual-pack-law
 #   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
 #
 # THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
-# GOARCH for aforge, and the fetcher has to know them — but it must not be built
+# GOARCH for codeaf, and the fetcher has to know them — but it must not be built
 # FOR them, or the build machine tries to run a Linux tool and reports an exec
 # format error where it meant to report a download. So the two are captured as
 # the platform to fetch and taken out of the environment the tool is built in.
@@ -90,10 +90,10 @@ furrow:
 # anyway, so any such lookup has to fall through to the copy beside the cwd and
 # then to PATH — which is what it does here.
 build: furrow embed
-	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
 
 debug: furrow embed
-	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
 
 # ── the known-red ledger, read once ─────────────────────────────────────────
 #
@@ -255,7 +255,7 @@ test-remote:
 # THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
 # full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
 # the roomfeed twins run first and eat the budget). This is the door for the
-# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/aforge.
+# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
 test-e2e-tui: build
 	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
 
@@ -268,31 +268,31 @@ test-e2e: build
 # ── the demo home ───────────────────────────────────────────────────────────
 #
 # A HOME WITH SOMETHING ON EVERY PLACE, FOR LOOKING AT. On a machine that has
-# just started using aforge the standing store, the memory store and the
+# just started using codeaf the standing store, the memory store and the
 # spending ledger are empty, and every one of those pages correctly draws
 # nothing — which is the emptiness law working and is also indistinguishable
 # from a page that is broken. This builds a THROWAWAY home somewhere else and
 # opens the real binary against it, so all of it can be seen full without a
-# single invented row landing in ~/.aforge.
+# single invented row landing in ~/.codeaf.
 #
 # It prints the directory it built and the command to open it again, so the same
 # home can be returned to:
 #
 #   make demo-home                              a fresh one in a temp directory
-#   make demo-home DEMO_HOME=/tmp/aforge-demo    build it somewhere you can name
-#   make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1
+#   make demo-home DEMO_HOME=/tmp/codeaf-demo    build it somewhere you can name
+#   make demo-home DEMO_HOME=/tmp/codeaf-demo KEEP=1
 #                                               open the one already there,
 #                                               with whatever the last look left
 #
-# The seeder is its own binary and NOT a hidden verb on aforge, because the
+# The seeder is its own binary and NOT a hidden verb on codeaf, because the
 # shipped binary is on a checked-in byte budget (SIZE-BUDGET) and a developer
-# target must not spend the product's weight. bin/aforge-demo-home is not a
+# target must not spend the product's weight. bin/codeaf-demo-home is not a
 # second copy of the product and cannot shadow it — it is a different program
 # with a different name.
-DEMO_BINARY := bin/aforge-demo-home
+DEMO_BINARY := bin/codeaf-demo-home
 
 demo-home: build
-	go build -o $(DEMO_BINARY) ./cmd/aforge-demo-home
+	go build -o $(DEMO_BINARY) ./cmd/codeaf-demo-home
 	@$(DEMO_BINARY) $(if $(DEMO_HOME),--into "$(DEMO_HOME)") $(if $(KEEP),--keep) --launch "$(CURDIR)/$(BINARY)"
 
 vet:
@@ -353,7 +353,7 @@ check: vet fmt-check test test-packed-manual size
 # WRONGLY: the branch that stopped existing, the default that moved, the refusal
 # that became a capability. docs/rules/changelog.md says why that is the field
 # the format is built around and why it cannot be generated.
-CHANGES := ./cmd/aforge-changes
+CHANGES := ./cmd/codeaf-changes
 
 changelog-new:
 	@test -n "$(PR)"   || { echo 'usage: make changelog-new PR=82 KIND=changed SLUG=branch-rules'; exit 1; }
@@ -392,7 +392,7 @@ changelog:
 # runs `make census LOG=… OUT=…`; bench/README.md has the recipe and the one
 # thing the cron owns that this target does not.
 census:
-	@go run ./cmd/aforge-census \
+	@go run ./cmd/codeaf-census \
 	  $(if $(TOP),-top $(TOP)) $(if $(DAYS),-days $(DAYS)) \
 	  $(if $(MIN),-min $(MIN)) $(if $(CHAINS),-chains $(CHAINS)) \
 	  $(LOG) $(if $(OUT),> $(OUT))
@@ -415,7 +415,7 @@ census:
 #
 # It reads only; it never writes a belief file and never opens a connection.
 replay:
-	@go run ./cmd/aforge-replay \
+	@go run ./cmd/codeaf-replay \
 	  $(if $(LOG),-log $(LOG)) $(if $(SIGHTINGS),-sightings $(SIGHTINGS)) \
 	  $(if $(SINCE),-since $(SINCE)) $(if $(WINDOW),-window $(WINDOW)) \
 	  $(if $(MIN),-min $(MIN)) $(if $(INCIDENTS),-incidents $(INCIDENTS)) \

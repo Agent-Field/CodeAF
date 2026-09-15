@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // turnDone is one EventTurnDone as a child agent ends a step with it: the turn's

@@ -1,17 +1,17 @@
 # Connected accounts
 
-aforge can act on accounts you already hold — your mail, your calendar, your Notion
+codeaf can act on accounts you already hold — your mail, your calendar, your Notion
 pages, a billing service you have a key for. This page covers what connecting one
-gives aforge, how to connect, what you can turn on and off per account, and where
-the keys are kept. A connected account gives aforge tools it may use in your name; a
+gives codeaf, how to connect, what you can turn on and off per account, and where
+the keys are kept. A connected account gives codeaf tools it may use in your name; a
 connected model service is a place models come from and is covered by the
 [services page](services.md).
 
 ## What a connected account is
 
-A connected account is a service aforge holds a credential for. Connecting one does
+A connected account is a service codeaf holds a credential for. Connecting one does
 two things: it stores the credential in your profile directory, and it puts that
-account's tools on aforge's toolbelt so the model can call them.
+account's tools on codeaf's toolbelt so the model can call them.
 
 What arrives depends on the account:
 
@@ -73,7 +73,7 @@ the conversation.
 
 ## Signing in through a browser — it opens and the address stays on screen
 
-aforge starts a loopback listener, opens the sign-in address with this machine's
+codeaf starts a loopback listener, opens the sign-in address with this machine's
 browser, and writes the address down under `waiting in your browser…` as well. The two
 are not alternatives: if this machine has no browser, the written address is still a
 way through. The waiting card has a copy affordance; after it is copied the card reads
@@ -104,17 +104,17 @@ Slack asks for twelve user permissions: `search:read`; `channels:read`, `groups:
 the matching listener on this machine, so Slack tries only those two fixed addresses
 and never a free port. A workspace that requires admin approval shows Slack's own
 request screen and sends the request to the admin, and the browser does not come back
-until the admin says yes. When the model asked (`use_service`), aforge gives up after
+until the admin says yes. When the model asked (`use_service`), codeaf gives up after
 five minutes and says the sign-in did not complete. From `/connect` there is no clock:
 the card keeps waiting until Slack sends the browser back, until the conversation is
-replaced, or until aforge is closed. Either way nothing is connected until the browser
+replaced, or until codeaf is closed. Either way nothing is connected until the browser
 comes back. Slack limits channel-history reads for applications
 outside its Marketplace to one thread read a minute, with at most 15 messages in that
 read; searching, listing channels and posting are not under that limit.
 
 ## Tool-server and Datadog browser questions
 
-**The 28 tool servers listed below need nothing registered first.** aforge introduces
+**The 28 tool servers listed below need nothing registered first.** codeaf introduces
 itself to the service at connect time and is issued an identity on the spot, then
 makes the same browser trip.
 
@@ -146,7 +146,7 @@ pasted key shows nothing at all.
 Only exactly `$NAME` or `${NAME}`, in upper case, counts. `$name`, `${NAME` and
 `$NAME extra` are all read as literal keys.
 
-If you name a variable that is not set, aforge refuses before writing anything:
+If you name a variable that is not set, codeaf refuses before writing anything:
 `<Name> reads its key from $NAME, and nothing is set there`.
 
 A key of the wrong shape refuses with `<Name> needs one key and nothing else` or
@@ -242,7 +242,7 @@ conversation never learns the capability exists. The reason is plain: a refused 
 costs a turn, teaches the model to try again in different words, and puts a question in
 front of somebody who already answered it.
 
-Because the capability answers live in your profile directory, aforge's toolbelt
+Because the capability answers live in your profile directory, codeaf's toolbelt
 differs from profile to profile. The same build, opened under a different profile,
 holds a different set of tools.
 
@@ -280,12 +280,12 @@ and the `deny` default still refuses.
 
 **The account's tools are in your tool list from your very next request, which is still
 this turn — carry on and use them now.** A request that needs an account takes a beat:
-aforge picks up the account, then uses it, without waiting for you to say anything
+codeaf picks up the account, then uses it, without waiting for you to say anything
 else.
 
 ## The connect question use_service asks
 
-If `use_service` names an account you have not connected, aforge raises a question on
+If `use_service` names an account you have not connected, codeaf raises a question on
 the question block above the message box, like every other question it asks:
 
 ```
@@ -383,7 +383,7 @@ can be used for in this conversation.`
 ## MCP: accounts that bring their own tools
 
 Some services run a server whose whole job is to hand a program a list of tools and
-run one when asked. aforge fetches that list per account at the moment the account is
+run one when asked. codeaf fetches that list per account at the moment the account is
 picked up. You connect "Notion" — no protocol, server or grant is ever named in front
 of you. A tool server appears in `/connect` as a browser connection like any other, is
 connected with the same sign-in, forgotten with the same disconnect, and its keys live
@@ -427,16 +427,16 @@ Airtable's adds: "An enterprise admin may have to allow it first."
 Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
 address signs in with a key and nothing else, so it is deliberately not shipped.
 
-**All 28 work with zero registration.** aforge introduces itself to the service at
+**All 28 work with zero registration.** codeaf introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one service cannot be spent at another.
 
 **GitHub is deliberately not shipped** — its sign-in does not let a program introduce
 itself, and its maintainers say that will not change, so it can return only with an
 application registered by hand in a later wave. Slack now signs in through a browser
-with the application aforge ships; the Slack paragraph above describes that trip. Any
+with the application codeaf ships; the Slack paragraph above describes that trip. Any
 service whose sign-in refuses an introduction cannot be connected this way at all, and
-aforge says so in one sentence the moment you ask.
+codeaf says so in one sentence the moment you ask.
 
 An identity is reused only when the service address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
@@ -462,7 +462,7 @@ call `use_service` again with `tools` naming the few the work needs. Silent trim
 was rejected outright: the model would plan around a list it was never told was cut.
 
 The list a service gives is fetched once per run and remembered for the life of the
-process, so a tool newly added at the service needs aforge restarted.
+process, so a tool newly added at the service needs codeaf restarted.
 
 Each call opens a connection, does its one thing and closes it. The outer backstop is
 2 minutes. A tool that refuses comes back as an error carrying the service's own
@@ -503,7 +503,7 @@ it goes."
 No. Each outgoing mail or Slack message goes out **once**. Silence is not treated as a
 failure worth retrying: a reply is yours to wait for, and a duplicate is one more thing
 nobody can take back. `gmail_send` and `slack_send` both carry that rule in the text
-aforge reads immediately before it calls one, so an unanswered message does not become a
+codeaf reads immediately before it calls one, so an unanswered message does not become a
 chase on its own.
 
 What you can ask for is a **follow-up**, and then it is a new message you approved: "chase
@@ -512,43 +512,43 @@ approval question comes round again when it fires. See the keeping-an-eye page f
 moment or a rhythm is set up.
 
 If an outgoing call genuinely did not happen — the approval question was declined, or the
-account answered with an error — aforge says so in its reply rather than quietly trying
+account answered with an error — codeaf says so in its reply rather than quietly trying
 again, and you decide what to do next.
 
 ## Where your keys are kept on disk
 
-Account keys and model-service keys are different stores. An account adds tools aforge
+Account keys and model-service keys are different stores. An account adds tools codeaf
 may use in your name and keeps its credential in `credentials.json`; a model service is a
 place models come from and keeps its key in the profile `config.json`. The
 [services page](services.md) covers those model keys.
 
 Everything the accounts layer writes lives in your profile directory —
-`$AFORGE_PROFILE_DIR` when set, otherwise aforge's state root `$AFORGE_HOME` or
-`~/.aforge`.
+`$CODEAF_PROFILE_DIR` when set, otherwise codeaf's state root `$CODEAF_HOME` or
+`~/.codeaf`.
 
 | File | What is in it | Permissions |
 | --- | --- | --- |
 | `credentials.json` | every connection's keys: access and refresh tokens, pasted keys or the name of the variable holding one, the granted permissions, the account address | **0600**, inside a **0700** directory |
 | `connections.json` | your capability answers | **0644 and readable, deliberately** |
-| `toolservers.json` | aforge's own registered identity with each MCP tool server | **0600** |
+| `toolservers.json` | codeaf's own registered identity with each MCP tool server | **0600** |
 
 `connections.json` is readable on purpose: this is what you agreed to, not what lets
 anybody act on it. `toolservers.json` is 0600 like the keys because a server may issue
-a secret to aforge, but **no key of yours is in it**; it survives a disconnect on
+a secret to codeaf, but **no key of yours is in it**; it survives a disconnect on
 purpose.
 
 Every write to `credentials.json` goes through a temp file that is set to 0600 before
 a byte is written, then renamed over the old one — so keys are never briefly readable
 by anybody else, and a killed process leaves the previous file intact. Before that
-write, aforge takes the exclusive cross-process `credentials.json.lock` and reloads
+write, codeaf takes the exclusive cross-process `credentials.json.lock` and reloads
 the current store while holding it, so two processes cannot overwrite each other's
 last change.
 
 ## What never leaves the account credential store
 
-aforge never logs a key. No access key, refresh key, client secret or pasted key is
+codeaf never logs a key. No access key, refresh key, client secret or pasted key is
 printed, returned in an error, or written anywhere but the store file. And a key that
-reaches aforge from somewhere else entirely — a shell command that printed one, a config
+reaches codeaf from somewhere else entirely — a shell command that printed one, a config
 file that was read — is replaced with `[redacted token · …]` before the result is kept,
 shown or sent to the model; the conversations page has the shapes it recognises.
 
@@ -556,7 +556,7 @@ shown or sent to the model; the conversations page has the shapes it recognises.
 
 A `credentials.json` that has become unreadable reads as nothing connected — the safe
 answer, which asks you to sign in again rather than promising access that cannot be
-delivered. A damaged `toolservers.json` reads as no registrations, so aforge registers
+delivered. A damaged `toolservers.json` reads as no registrations, so codeaf registers
 again.
 
 ## Connecting an account over --host

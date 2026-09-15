@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/sanitize"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/sanitize"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // read thread:// — one conversation reads another, on demand and never

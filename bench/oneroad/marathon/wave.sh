@@ -9,7 +9,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK="${1:?usage: wave.sh <task> [arms...]}"; shift
-ARMS="${*:-aforge-crew pi opencode}"
+ARMS="${*:-codeaf-crew pi opencode}"
 MAR_OUT="${MAR_OUT:-$HOME/af-bench/marathon}"
 mkdir -p "$MAR_OUT"
 printf 'wave %s fired %s arms=%s loadavg %s\n' "$TASK" "$(date -Is)" "$ARMS" \

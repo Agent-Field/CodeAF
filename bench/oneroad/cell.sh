@@ -2,13 +2,13 @@
 # cell.sh — ONE cell of the one-road benchmark: one arm, one task, one clone.
 #
 # Usage: cell.sh <arm> <task>
-#   arm   aforge-new-flash | aforge-new-crew | aforge-old-flash | pi | opencode
+#   arm   codeaf-new-flash | codeaf-new-crew | codeaf-old-flash | pi | opencode
 #   task  20 | 21 | 22 | 23 | batch
 #
-# THE PROTOCOL POINT (bench/oneroad/README.md): the aforge arms are driven
+# THE PROTOCOL POINT (bench/oneroad/README.md): the codeaf arms are driven
 # through the REAL TUI over tmux. The issue text is pasted into the composer and
 # Enter is pressed, exactly as a person would, and what the chat surface decides
-# to do with it IS the measurement. `aforge do` and `chat --once` are headless
+# to do with it IS the measurement. `codeaf do` and `chat --once` are headless
 # doors that are handed the shape instead of choosing it, and using either here
 # would answer a different question.
 #
@@ -27,22 +27,22 @@ source "$ONEROAD/lib/corpus.sh"
 
 ISSUES="${ISSUES:-20 21 22 23}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
-OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
+OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/codeaf}"
 # WAVE 1B'S BINARY, AND IT IS A SNAPSHOT RATHER THAN THE LIVE PATH ON PURPOSE.
-# bin/aforge is rebuilt in place by whoever is working the tree, and wave 1's
+# bin/codeaf is rebuilt in place by whoever is working the tree, and wave 1's
 # batch cells landed two minutes before one such rebuild — which is luck, not a
-# protocol. A wave measured against "whatever bin/aforge was at the moment each
+# protocol. A wave measured against "whatever bin/codeaf was at the moment each
 # cell happened to launch" is a wave whose arm has no single identity, so the
 # bytes are copied once, sha'd into results/BINARIES, and every cell of the arm
 # runs that copy.
-ESC_BIN="${ESC_BIN:-$ONEROAD/bin/aforge-esc-b70de31c}"
+ESC_BIN="${ESC_BIN:-$ONEROAD/bin/codeaf-esc-b70de31c}"
 # Wave 1c's binary, snapshotted for the same reason ESC_BIN is.
-PRE_BIN="${PRE_BIN:-$ONEROAD/bin/aforge-pre-9b9a4c92}"
+PRE_BIN="${PRE_BIN:-$ONEROAD/bin/codeaf-pre-9b9a4c92}"
 # Wave 1d: the raced screen, the ski-rental checkpoints and the ceiling, together.
-CKPT_BIN="${CKPT_BIN:-$ONEROAD/bin/aforge-ckpt-6b9809e9}"
+CKPT_BIN="${CKPT_BIN:-$ONEROAD/bin/codeaf-ckpt-6b9809e9}"
 # Wave 1e: the finalist. Everything at once.
-FINAL_BIN="${FINAL_BIN:-$ONEROAD/bin/aforge-final-c0e4f5a7}"
+FINAL_BIN="${FINAL_BIN:-$ONEROAD/bin/codeaf-final-c0e4f5a7}"
 PI_BIN="${PI_BIN:-pi}"
 OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 
@@ -89,8 +89,8 @@ say "$ARM/$TASK: suite before = $BEFORE (passed/failed)"
 # be on the record rather than argued about afterwards.
 cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
 
-# ── the aforge arms: the real TUI, over tmux ────────────────────────────────
-run_aforge() {
+# ── the codeaf arms: the real TUI, over tmux ────────────────────────────────
+run_codeaf() {
   local binary="$1" all_flash="$2"
   local profile="$CELL/profile" cellhome="$CELL/home"
   mkdir -p "$profile" "$cellhome"
@@ -134,18 +134,18 @@ PY
   # --model pins the conversation's own model; the tier rows above (or their
   # absence) decide everything the machine calls on its own behalf.
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
-    "cd '$DIR' && env HOME='$cellhome' AFORGE_HOME='$profile' AFORGE_PROFILE_DIR='$profile' \
+    "cd '$DIR' && env HOME='$cellhome' CODEAF_HOME='$profile' CODEAF_PROFILE_DIR='$profile' \
       OPENROUTER_API_KEY='$OPENROUTER_API_KEY' TERM=xterm-256color \
-      '$binary' chat --yolo --model '$MODEL'; echo AFORGE-EXITED; sleep 60"
+      '$binary' chat --yolo --model '$MODEL'; echo codeaf-EXITED; sleep 60"
 
   # The first frame. A surface that never drew one has nothing to type into, and
   # the pane is kept so the reason is legible rather than inferred.
   local waited=0 drew=""
   while [ "$waited" -lt 60 ]; do
     sleep 3; waited=$((waited + 3))
-    if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'AFORGE-EXITED'; then
+    if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'codeaf-EXITED'; then
       tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-firstframe.txt"
-      say "aforge exited instead of drawing a frame"; return 90
+      say "codeaf exited instead of drawing a frame"; return 90
     fi
     if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -Eq '›|try "what is in this folder"'; then
       drew=yes; break
@@ -275,7 +275,7 @@ except Exception: print("")' 2>/dev/null)"
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt"
   tmux capture-pane -t "$SESSION_NAME" -p -S -4000 > "$CELL/tmux-scrollback.txt"
   # THE SESSION IS REAPED ONCE ITS EVIDENCE IS CAPTURED, and forgetting this cost
-  # wave 1 real money in contention: `aforge chat` is an interactive surface that
+  # wave 1 real money in contention: `codeaf chat` is an interactive surface that
   # never exits on its own, so every settled cell left a live process and a live
   # tmux session behind it. Fourteen of them were still resident when wave 1b
   # fired, competing for the same CPU as the cells being measured — which makes
@@ -301,7 +301,7 @@ run_peer() {
       # quiet: opencode 1.18.22 defaults `--auto` to false, so `run` without it
       # stops at the first permission prompt with nobody there to answer and the
       # cell measures a dialog rather than a harness. --auto is this arm's
-      # equivalent of aforge's --yolo and pi's -p.
+      # equivalent of codeaf's --yolo and pi's -p.
       (cd "$DIR" && timeout "$CELL_SECONDS" "$OPENCODE_BIN" run --auto \
         -m "openrouter/$MODEL" "$PROMPT")
       ;;
@@ -311,23 +311,23 @@ run_peer() {
 # ── the run ─────────────────────────────────────────────────────────────────
 STARTED=$(date +%s)
 case "$ARM" in
-  aforge-new-flash) run_aforge "$NEW_BIN" 1; CODE=$? ;;
-  aforge-new-crew)  run_aforge "$NEW_BIN" 0; CODE=$? ;;
-  aforge-old-flash) run_aforge "$OLD_BIN" 1; CODE=$? ;;
+  codeaf-new-flash) run_codeaf "$NEW_BIN" 1; CODE=$? ;;
+  codeaf-new-crew)  run_codeaf "$NEW_BIN" 0; CODE=$? ;;
+  codeaf-old-flash) run_codeaf "$OLD_BIN" 1; CODE=$? ;;
   # Wave 1b. Same two configurations as the new-* arms, same protocol, different
   # bytes: the question is whether the mid-turn escalation teaching moves the
   # road column, so everything except the binary has to be held still.
-  aforge-esc-flash) run_aforge "$ESC_BIN" 1; CODE=$? ;;
-  aforge-esc-crew)  run_aforge "$ESC_BIN" 0; CODE=$? ;;
+  codeaf-esc-flash) run_codeaf "$ESC_BIN" 1; CODE=$? ;;
+  codeaf-esc-crew)  run_codeaf "$ESC_BIN" 0; CODE=$? ;;
   # Wave 1c. The pre-turn route judge resolves the screen and the confirm
   # through the TIER ROWS, so the all-flash arm runs both readings on flash and
   # the crew arm runs the screen on the shipped low tier and the confirm on the
   # kimi mastermind. That difference is not noise to be controlled away — it is
   # what the two arms are FOR, and it is recorded as part of the arm.
-  aforge-pre-flash) run_aforge "$PRE_BIN" 1; CODE=$? ;;
-  aforge-pre-crew)  run_aforge "$PRE_BIN" 0; CODE=$? ;;
-  aforge-ckpt-flash) run_aforge "$CKPT_BIN" 1; CODE=$? ;;
-  aforge-ckpt-crew)  run_aforge "$CKPT_BIN" 0; CODE=$? ;;
+  codeaf-pre-flash) run_codeaf "$PRE_BIN" 1; CODE=$? ;;
+  codeaf-pre-crew)  run_codeaf "$PRE_BIN" 0; CODE=$? ;;
+  codeaf-ckpt-flash) run_codeaf "$CKPT_BIN" 1; CODE=$? ;;
+  codeaf-ckpt-crew)  run_codeaf "$CKPT_BIN" 0; CODE=$? ;;
   # Wave 1e. crew is the intended default — the mark-reader sidecar and the
   # confirm are mastermind calls and are simply ABSENT on the all-flash pin,
   # which is why that arm is the cost ablation and not a second opinion.
@@ -336,14 +336,14 @@ case "$ARM" in
   # ceiling for the turn and price for background calls, and pinning the row
   # would measure the pin instead of the default. The profile writer below has
   # never written that key; this comment is here so nobody adds it.
-  aforge-final-crew)  run_aforge "$FINAL_BIN" 0; CODE=$? ;;
-  aforge-1f-crew)     run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 0; CODE=$? ;;
-  aforge-1g-crew)     run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 0; CODE=$? ;;
-  aforge-1h-crew)     run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 0; CODE=$? ;;
-  aforge-1h-flash)    run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 1; CODE=$? ;;
-  aforge-1g-flash)    run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 1; CODE=$? ;;
-  aforge-1f-flash)    run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 1; CODE=$? ;;
-  aforge-final-flash) run_aforge "$FINAL_BIN" 1; CODE=$? ;;
+  codeaf-final-crew)  run_codeaf "$FINAL_BIN" 0; CODE=$? ;;
+  codeaf-1f-crew)     run_codeaf "$ONEROAD/bin/codeaf-1f-0fabf058" 0; CODE=$? ;;
+  codeaf-1g-crew)     run_codeaf "$ONEROAD/bin/codeaf-1g-ec52e7ae" 0; CODE=$? ;;
+  codeaf-1h-crew)     run_codeaf "$ONEROAD/bin/codeaf-1h-f831c2e6" 0; CODE=$? ;;
+  codeaf-1h-flash)    run_codeaf "$ONEROAD/bin/codeaf-1h-f831c2e6" 1; CODE=$? ;;
+  codeaf-1g-flash)    run_codeaf "$ONEROAD/bin/codeaf-1g-ec52e7ae" 1; CODE=$? ;;
+  codeaf-1f-flash)    run_codeaf "$ONEROAD/bin/codeaf-1f-0fabf058" 1; CODE=$? ;;
+  codeaf-final-flash) run_codeaf "$FINAL_BIN" 1; CODE=$? ;;
   pi|opencode)      run_peer >"$CELL/harness.log" 2>&1; CODE=$?
                     [ "$CODE" = "124" ] && echo DNF > "$CELL/outcome" || echo OK > "$CELL/outcome" ;;
   *) say "unknown arm $ARM"; exit 2 ;;
@@ -387,7 +387,7 @@ ROAD=""; ARMED=""; PARTS=0; PEAK=""; REFUSED=""; COST=""; COST_SRC=""
 ESCALATED=""; ESC_SEEN=""; ROUTE=""; GRIND=""; PRE_LINE=""; MARKS=""
 CALLS=""; COST_CALLS=""; ENDPOINTS=""; MARKS_J=""; FORKS=""; COSTROLE=""; CEIL=""; DIVISION=""; DIVWHY=""
 case "$ARM" in
-  aforge-*)
+  codeaf-*)
     # THE ESCALATION NOTE, WHICH IS ITS OWN COLUMN AND NOT A READING OF THE ROAD.
     # `taskEscalationNote` (internal/session/task.go) is the one line a person
     # sees when work leaves an answer that had already begun it, and it is looked
@@ -440,7 +440,7 @@ for name, key in (("ROAD","road"),("ARMED","armed"),("PARTS","parts"),
     fi
     ;;
   *)
-    # bench/README.md's rule: only aforge self-reports usage, and an account-level
+    # bench/README.md's rule: only codeaf self-reports usage, and an account-level
     # delta on a shared key is not a substitute. pi and opencode print no cost, so
     # the column is empty and the SOURCE says why rather than a zero that reads
     # like a free run.

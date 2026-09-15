@@ -37,7 +37,7 @@ package session
 // single `settings` tool carrying both verbs would offer the person exactly one
 // answer for two different acts — "settings:allow" to stop being asked about
 // reading their own configuration would silently hand over the right to rewrite
-// it. Split, the read can sit on the builtin floor (cmd/aforge's
+// it. Split, the read can sit on the builtin floor (cmd/codeaf's
 // v3BuiltinApprovals) where manual and jobs already sit, and every write goes to
 // the person like any other acting tool. One tool would have made that
 // impossible to express.
@@ -49,8 +49,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const settingsToolName = "settings"
@@ -77,9 +77,9 @@ const conversationSlot = "talk"
 // the write was the ENUMERATION of those rows and the sentence sending the person
 // to /settings — [config.Setting.SelfServiceRefusal] says both, by name, at the
 // moment a model actually tries one, which is the only moment either matters.
-const settingsDescription = "The person's aforge settings, the rows /settings shows under the same keys. No arguments lists them all. It only reads; " + changeSettingToolName + " writes one."
+const settingsDescription = "The person's codeaf settings, the rows /settings shows under the same keys. No arguments lists them all. It only reads; " + changeSettingToolName + " writes one."
 
-const changeSettingDescription = "Change one aforge setting permanently: the settings registry's own validated write into the profile's config.json, never a hand-edited file, so it survives a restart. Call " + settingsToolName + " first for the exact key. A LIST row is REPLACED WHOLE - write the whole list back. Rows that restrain this session are refused on purpose."
+const changeSettingDescription = "Change one codeaf setting permanently: the settings registry's own validated write into the profile's config.json, never a hand-edited file, so it survives a restart. Call " + settingsToolName + " first for the exact key. A LIST row is REPLACED WHOLE - write the whole list back. Rows that restrain this session are refused on purpose."
 
 const settingsSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"One registry key, read in full"},"search":{"type":"string","description":"Filter the listing by key, label or hint"}},"additionalProperties":false}`
 
@@ -96,9 +96,9 @@ const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"s
 func (a *Agent) settingsTools() []bare.Tool {
 	// THE EMPTY PROFILE DIRECTORY IS THE ORDINARY ONE, and gating on it turned
 	// this pair off for very nearly everybody. Config.ProfileDir carries
-	// AFORGE_PROFILE_DIR, which almost nobody sets, and every reader below it
+	// CODEAF_PROFILE_DIR, which almost nobody sets, and every reader below it
 	// treats "" as "the default location" — config.BudgetConfigPath("") answers
-	// ~/.aforge/config.json, which is the same file /settings has always
+	// ~/.codeaf/config.json, which is the same file /settings has always
 	// written. So an empty string is not "there is no profile", it is "the
 	// profile where it always is", and the tools belong on the belt either way.
 	dir := strings.TrimSpace(a.config.ProfileDir)
@@ -241,7 +241,7 @@ func (a *Agent) settingChanged(registry *config.Settings, key, before string) st
 		return fmt.Sprintf("%s (%s) was already %s; nothing changed.", row.Label, key, settingReading(after))
 	}
 	a.noteSetting(fmt.Sprintf("settings · %s · %s → %s", row.Label, settingReading(before), settingReading(after)))
-	return fmt.Sprintf("%s (%s) is now %s, saved to the profile — it will still be set the next time aforge starts. It was %s.%s",
+	return fmt.Sprintf("%s (%s) is now %s, saved to the profile — it will still be set the next time codeaf starts. It was %s.%s",
 		row.Label, key, settingReading(after), settingReading(before), projectOverrideWarning(a.config.Workspace, key))
 }
 
@@ -318,7 +318,7 @@ func modelSlotRefusal(row config.Setting) string {
 	if slot.Slot == conversationSlot {
 		return fmt.Sprintf("%q (%s) is the model this conversation is running on, which is not a row in the profile: change it with /model, or on the Providers tab of /settings.", row.Label, row.Key)
 	}
-	return fmt.Sprintf("%q (%s) is a binding the running session holds rather than a value in the profile, so neither this hand nor the /settings panel can write it. To send aforge's own auxiliary calls to a particular model, set %q (%s) or %q (%s), or pin one role in %q (%s).",
+	return fmt.Sprintf("%q (%s) is a binding the running session holds rather than a value in the profile, so neither this hand nor the /settings panel can write it. To send codeaf's own auxiliary calls to a particular model, set %q (%s) or %q (%s), or pin one role in %q (%s).",
 		row.Label, row.Key,
 		"careful work", config.KeyTierHighModel,
 		"small work", config.KeyTierLowModel,

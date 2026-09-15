@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // Everything one conversation writes lands in one folder, and the project's
@@ -35,7 +35,7 @@ func TestTheSidecarsFollowTheSessionFolder(t *testing.T) {
 // folder: the journal that is called transcript.jsonl is a session folder's by
 // construction, and nothing else can be.
 func TestTheDerivationsRecogniseAFolderFromThePathAlone(t *testing.T) {
-	transcript := "/home/p/.aforge/v3/projects/-home-p-code/0123456789abcdef/transcript.jsonl"
+	transcript := "/home/p/.codeaf/v3/projects/-home-p-code/0123456789abcdef/transcript.jsonl"
 	folder := filepath.Dir(transcript)
 	if got, want := statePath(transcript), filepath.Join(folder, "state.json"); got != want {
 		t.Fatalf("statePath = %q, want %q", got, want)
@@ -52,14 +52,14 @@ func TestTheDerivationsRecogniseAFolderFromThePathAlone(t *testing.T) {
 // what it always did — a session written before the folder existed opens as
 // itself.
 func TestTheZeroPlaceKeepsTheFlatDerivation(t *testing.T) {
-	config := Config{SessionFile: "/home/p/.aforge/v3/sessions/-w/20260815-101112_ab12cd.jsonl"}
-	if got, want := config.stateFile(), "/home/p/.aforge/v3/sessions/-w/20260815-101112_ab12cd.state.json"; got != want {
+	config := Config{SessionFile: "/home/p/.codeaf/v3/sessions/-w/20260815-101112_ab12cd.jsonl"}
+	if got, want := config.stateFile(), "/home/p/.codeaf/v3/sessions/-w/20260815-101112_ab12cd.state.json"; got != want {
 		t.Fatalf("the state file is %q, want %q", got, want)
 	}
-	if got, want := config.checkpointFile(), "/home/p/.aforge/v3/sessions/-w/20260815-101112_ab12cd.tasks.json"; got != want {
+	if got, want := config.checkpointFile(), "/home/p/.codeaf/v3/sessions/-w/20260815-101112_ab12cd.tasks.json"; got != want {
 		t.Fatalf("the checkpoint is %q, want %q", got, want)
 	}
-	if got, want := config.taskIndexFile(), "/home/p/.aforge/v3/sessions/-w/tasks.jsonl"; got != want {
+	if got, want := config.taskIndexFile(), "/home/p/.codeaf/v3/sessions/-w/tasks.jsonl"; got != want {
 		t.Fatalf("the task index is %q, want %q", got, want)
 	}
 }

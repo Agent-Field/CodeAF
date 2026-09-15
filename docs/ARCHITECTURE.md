@@ -1,14 +1,14 @@
-# Aforge as a resident agent — the finalized architecture
+# codeaf as a resident agent — the finalized architecture
 
 This document settles the long-running architecture: one permanent graph, one
 lease-elected resident role, and any number of surfaces attached to it. It is
 written as a set of decisions, each with the alternative that was rejected and
-why. The current single-shot CLI (`aforge plan` / `aforge run`) remains a
+why. The current single-shot CLI (`codeaf plan` / `codeaf run`) remains a
 supported mode throughout.
 
 ## The one-sentence design
 
-A single, permanent, append-only task graph lives in `~/.aforge`; the file is
+A single, permanent, append-only task graph lives in `~/.codeaf`; the file is
 the truth, no daemon owns it, and any process may hold the one resident role
 for that database while every terminal session, API caller, timer, or file
 watch remains an attachment to the same graph.
@@ -17,9 +17,9 @@ watch remains an attachment to the same graph.
 
 ## Decision 1 — The store: SQLite (WAL) for the graph, files for the bytes
 
-**Decision.** The graph lives in `~/.aforge/aforge.db`, SQLite in WAL mode.
+**Decision.** The graph lives in `~/.codeaf/codeaf.db`, SQLite in WAL mode.
 Large payloads — tool observations, artifacts, transcripts — never enter the
-database; they live in a content-addressed store (`~/.aforge/cas/<sha256[0:2]>/<sha256>`)
+database; they live in a content-addressed store (`~/.codeaf/cas/<sha256[0:2]>/<sha256>`)
 and per-run workspaces, and the database stores pointers and bounded digests.
 
 **Why not a custom binary format.** The instinct toward "binary or other clever
@@ -36,7 +36,7 @@ which is git's trick (packfile-style content addressing for bulk bytes, small
 index for structure). If event volume ever outgrows SQLite, the migration is
 mechanical, because of Decision 2.
 
-**Why not in-memory like plandb v1.** plandb v1 (aforge-v1) got the concurrency
+**Why not in-memory like plandb v1.** plandb v1 (codeaf-v1) got the concurrency
 semantics right — streaming admission, monotonic claim tokens, write scopes,
 bounded digests — and this design keeps all of them. What it lacked was
 durability: a process death lost the run (we lost a 19-minute benchmark run to
@@ -90,7 +90,7 @@ remain authoritative, and the kernel releases the role on process exit.
 
 An elected chat runs the head, reconciler, and workers. Other chat processes
 stay surface-only: they tail the WAL-backed thread and append user messages or
-command requests to its journal. `aforge wake` first probes the lease and
+command requests to its journal. `codeaf wake` first probes the lease and
 starts a bounded full reconciliation pass only when the role is free.
 
 **Why a role instead of a daemon.** The file is independently readable and
@@ -130,7 +130,7 @@ resident trigger engine, carrying:
 - **rails**: a per-firing token budget, a firing-rate limit, and an expiry.
   A trigger without rails is invalid by construction.
 
-Triggers are planted three ways: by the user (`aforge watch …`, `aforge cron
+Triggers are planted three ways: by the user (`codeaf watch …`, `codeaf cron
 …`), by the planner (a graph can end in a trigger — "re-verify nightly"), and
 by an executor tool (`plant_trigger`), which is the self-directed case: an
 agent finishing a task can leave behind "re-run the suite when this file
@@ -162,8 +162,8 @@ by model and skill: capability memory and knowledge memory, same shelf.
 ## Decision 7 — The conversation is a lens on the brain, not the brain
 
 **Decision.** There is one brain. A surface attaches to it and removes or adds
-nothing but the person. `aforge chat` is that brain with a head and a terminal;
-`aforge do` is the same construction with the conversation removed, and the
+nothing but the person. `codeaf chat` is that brain with a head and a terminal;
+`codeaf do` is the same construction with the conversation removed, and the
 seam between them is exactly one thing: where the task comes from.
 
 A chat ask travels through the head, which resolves what it points back into
@@ -222,7 +222,7 @@ bills of $9.50–15.80, against $2.33 for the run that never rolled four.
 a turn — default 1, and never a number of sends since #864),
 `response.lift_after` (K, default 1 — the count was never what was wrong),
 `response.lift_cap_usd` (default $25 on a lifted tier per piece of work — see
-[LIMITS.md](LIMITS.md); 0 is no cap), each with an `AFORGE_RESPONSE_*` pin. They
+[LIMITS.md](LIMITS.md); 0 is no cap), each with a `CODEAF_RESPONSE_*` pin. They
 are values in one struct, not constants at the sites that need them.
 
 **Where it is wired.** `internal/session/taxonomy_boundary.go` is the adapter and
@@ -262,7 +262,7 @@ session had left lying beside it.
 **A budget is what arms it, and nothing else.** `--yolo` says one thing today —
 run tools without asking — and reading it as permission to spend hours carrying
 work on would be the harness acting on a sentence nobody wrote. `--max-hours`
-and `--max-cost` (env `AFORGE_MAX_HOURS` / `AFORGE_MAX_COST`, either alone is a
+and `--max-cost` (env `CODEAF_MAX_HOURS` / `CODEAF_MAX_COST`, either alone is a
 budget) are that sentence. Without one, `--yolo` is exactly what it was and the
 door prints one line saying what the other thing is called.
 
@@ -401,7 +401,7 @@ disjoint set of files, so no two of them edit the same one.
 | lane | owns | delivers |
 | --- | --- | --- |
 | — (wave 0) | `internal/lane/{lane,posterior,contract,registry}.go`, `internal/lane/lanestub/` | the types, the five interfaces, the registry, the fake router |
-| L-A | `internal/lane/sheet*.go`, `belief*.go`, `store*.go` | the endpoints client and its beat, the Kalman ledger, `~/.aforge/v3/lanes.json` |
+| L-A | `internal/lane/sheet*.go`, `belief*.go`, `store*.go` | the endpoints client and its beat, the Kalman ledger, `~/.codeaf/v3/lanes.json` |
 | L-B | `internal/lane/choose*.go`, `frontier*.go`, `value*.go`; `internal/provider/lanes.go`; λ plumbing in `internal/session` | the gate, the Pareto prune, the scalar, and the adapter that replaces the velocity ledger's order and ignore |
 | L-C | `internal/lane/watch*.go`, `hedge*.go`, `probe*.go`; `internal/provider/hedge.go`, `probe.go`; the stream loop in `internal/provider/client.go` | the derived deadline, the heartbeat and drift tests, the budgeted hedge, the probe on typing |
 | L-D | `internal/tui3/lanes*.go` and the picker, settings and HUD edits; the lane keys in `internal/config`; the manual pages | the speed column, the lane unfold, the filter grammar, the settings rows |
@@ -752,7 +752,7 @@ decides it: everything that makes text is `writing` and media is `drawing`.
 
 | milestone | what lands | what it unlocks |
 |---|---|---|
-| M1 | `internal/store`: SQLite events + views behind the existing run; `aforge resume` | crash-proof runs, real accounting; the silent-death class of failure becomes impossible |
+| M1 | `internal/store`: SQLite events + views behind the existing run; `codeaf resume` | crash-proof runs, real accounting; the silent-death class of failure becomes impossible |
 | M2 | resident lease + visitor surfaces; spine + splice + fold | universal cross-session graph; many-terminal attach; history queries |
 | M3 | trigger engine + `plant_trigger` tool + rails | time/file/webhook/graph reactivity; the agent schedules itself |
 | M4 | ground-time recall + executor fold-query tool | the agent that remembers its territory |

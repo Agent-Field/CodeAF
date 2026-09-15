@@ -39,12 +39,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my service called z-ai-direct", "services"},
 		{"do I need an openrouter key if I connected z.ai", "services"},
 		{"why did my model change after I connected z.ai", "services"},
-		{"what model does aforge use after I connect a service", "services"},
-		{"I only have a zhipu key can I use aforge", "services"},
+		{"what model does codeaf use after I connect a service", "services"},
+		{"I only have a zhipu key can I use codeaf", "services"},
 		{"what happens when my plan runs out", "services"},
 		{"will it spend pay as you go automatically", "services"},
 		{"why are only four glm models listed", "services"},
-		{"is aforge supported by zhipu", "services"},
+		{"is codeaf supported by zhipu", "services"},
 		{"how do I reconnect a model service", "services"},
 		{"I exported the model service key after the engine started", "services"},
 		{"why does /connect say connections are unavailable", "accounts"},
@@ -120,7 +120,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the wave built does not reach them. Each is a limit the corpus now
 		// states rather than a thing they have to find out by pressing.
 		{"I pressed the key on the home row and nothing happened", "questions"},
-		{"why is there no question when I run aforge normally", "questions"},
+		{"why is there no question when I run codeaf normally", "questions"},
 		{"it printed asked with nobody to ask", "questions"},
 		{"there is no undo on the line saying what it did", "questions"},
 		{"it asked while I was away", "questions"},
@@ -163,12 +163,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed esc on the allow question and nothing happened", "permissions"},
 		{"the allow question turned into a card on my narrow terminal", "permissions"},
 		{"what does always this command write down", "permissions"},
-		// AND THE MARK AFORGE LEAVES ON WORK IT DID FOR YOU, asked the five ways
+		// AND THE MARK codeaf LEAVES ON WORK IT DID FOR YOU, asked the five ways
 		// somebody meets it: reading their own git log, reading a pull request
 		// they did not write the last line of, looking up a name they have never
 		// seen, and wanting it gone.
 		{"why is there a co-author on my commit", "permissions"},
-		{"does aforge sign my commits", "permissions"},
+		{"does codeaf sign my commits", "permissions"},
 		{"who is agentfield-bot", "permissions"},
 		{"what is the drafted with line at the bottom of my pull request", "permissions"},
 		{"stop adding a co-author trailer to my commits", "permissions"},
@@ -195,10 +195,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
-		// Two aforge commands on one collections database: the words somebody
+		// Two codeaf commands on one collections database: the words somebody
 		// types after they have seen the refusal, not the words it is written in.
 		{"collections database is locked", "collections"},
-		{"two aforge commands writing collections at the same time", "collections"},
+		{"two codeaf commands writing collections at the same time", "collections"},
 		// THE MANUAL'S PERSON-FACING TRUTHS, asked in the words that exposed
 		// stale claims about the switcher, approvals, and remote build versions.
 		{"what does ctrl+w do on the switcher", "keys"},
@@ -222,7 +222,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},
-		{"AFORGE_BASE_URL proxy no lanes", "lanes"},
+		{"CODEAF_BASE_URL proxy no lanes", "lanes"},
 		{"self-hosted router endpoints page", "lanes"},
 		// The model-call log: the file every outbound call writes a line to.
 		// Both spellings people actually use — one asks for the file, the other
@@ -255,25 +255,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is cost_s missing on a call log row", "models-and-cost"},
 		// And the money on a headless run's last line, asked both ways people
 		// meet it: reading the figure, and finding it beside the call log.
-		{"what does the total at the end of aforge do include", "models-and-cost"},
+		{"what does the total at the end of codeaf do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
 		// THE ONE SEND THAT IS NOT IN THE MONEY FIGURES, asked the three ways
 		// somebody meets it: noticing the sending, doubting the total, and
 		// looking for the switch. A capability that spends without appearing in
 		// /cost has to be findable from a person's own suspicion, or the only
 		// place it exists is the code.
-		{"does aforge send anything while I am typing", "models-and-cost"},
+		{"does codeaf send anything while I am typing", "models-and-cost"},
 		{"my provider bill is higher than what /cost says", "models-and-cost"},
-		{"how do I stop aforge sending requests I did not ask for", "models-and-cost"},
+		{"how do I stop codeaf sending requests I did not ask for", "models-and-cost"},
 		// A refused headless run names the project it worked in, asked in the two
 		// ways somebody meets an empty file list after spending time and money.
 		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
-		{"aforge do spent money and wrote no files", "running-from-the-terminal"},
+		{"codeaf do spent money and wrote no files", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},
 		{"show me the raw rows", "models-and-cost"},
-		{"filter aforge logs by model", "models-and-cost"},
+		{"filter codeaf logs by model", "models-and-cost"},
 		{"open a call's body", "models-and-cost"},
 		// And what a line's two token figures are. Somebody reading a bill or
 		// a context size asks for "tokens", never for "in" and "out", so the
@@ -291,8 +291,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// it: where the running program writes its own warnings and recovered
 		// faults, on every door rather than only the one that starts a session
 		// here (#404).
-		{"where does aforge write its log file", "starting-aforge"},
-		{"what is chat.log", "starting-aforge"},
+		{"where does codeaf write its log file", "starting-codeaf"},
+		{"what is chat.log", "starting-codeaf"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.
@@ -303,21 +303,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// open-weight model wondering whether they are being given the small
 		// version. The second is the one the ruling of 2026-09-10 turned around.
 		{"why does my local model get fewer tools", "models-and-cost"},
-		{"when does aforge use the lean profile", "models-and-cost"},
+		{"when does codeaf use the lean profile", "models-and-cost"},
 		{"is deepseek given a shorter page than claude", "models-and-cost"},
 		{"does an open weight model get the lean prompt", "models-and-cost"},
 		// And the row that chooses it by hand, asked the way somebody who has
 		// just seen it in /settings would ask, and the way somebody who wants
 		// the effect but not the word would.
 		{"what is the prompt profile setting", "models-and-cost"},
-		{"how do I make aforge send a shorter prompt", "models-and-cost"},
+		{"how do I make codeaf send a shorter prompt", "models-and-cost"},
 		{"can I turn the lean profile on myself", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
 		{"I set a search key and nothing changed", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
-		// A finished task's room after aforge was closed and opened again: the
+		// A finished task's room after codeaf was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
 		{"task page is empty", "task-rooms-after-restart"},
 		{"a saved task asks me to accept a different task with the same number", "task-rooms-after-restart"},
@@ -343,7 +343,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed escape and it is still running", "keys"},
 		{"how long does stop take", "keys"},
 		{"what happens if it will not stop", "keys"},
-		{"what happens if I kill the aforge process", "keys"},
+		{"what happens if I kill the codeaf process", "keys"},
 		{"I closed the terminal window while a task was running", "keys"},
 		{"does kill -INT stop my tasks", "keys"},
 		// A machine that refused the work, asked in the word the screen puts on
@@ -355,7 +355,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// own sentence and in the words somebody reaches for after reading it.
 		{"all providers have been ignored", "lanes"},
 		{"I switched off some providers in my openrouter account", "lanes"},
-		{"does aforge know which providers my account has turned off", "lanes"},
+		{"does codeaf know which providers my account has turned off", "lanes"},
 		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},
@@ -408,7 +408,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// saw it change — or saw the program's path there instead of a name.
 		{"what does the terminal tab say", "screen"},
 		{"why does my terminal title change", "screen"},
-		{"my terminal tab just shows the path to aforge", "screen"},
+		{"my terminal tab just shows the path to codeaf", "screen"},
 		// And the tasks page's tree, asked by somebody looking at a page that is
 		// hiding rows from them on purpose.
 		{"where did the workers go on the task page", "tasks"},
@@ -428,9 +428,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The defect this build ended, asked the way somebody meets it: they
 		// opened a second terminal and were handed a conversation that was not
 		// the one they came back for.
-		{"I opened aforge in a second terminal and it started a new conversation", "sessions-and-rewind"},
+		{"I opened codeaf in a second terminal and it started a new conversation", "sessions-and-rewind"},
 		{"why did it start a new conversation", "sessions-and-rewind"},
-		{"aforge started a new conversation instead of the one that was running", "sessions-and-rewind"},
+		{"codeaf started a new conversation instead of the one that was running", "sessions-and-rewind"},
 		// And the same person's actual want, said the way they want it: not two
 		// windows on one chat, but this chat, here, now.
 		{"continue this chat in another terminal", "sessions-and-rewind"},
@@ -438,7 +438,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A secret that reached a tool result, asked the two ways it is asked:
 		// before it happens, by somebody deciding whether to trust the thing, and
 		// after it happens, by somebody who has just watched a token go past.
-		{"does aforge save my API keys", "sessions-and-rewind"},
+		{"does codeaf save my API keys", "sessions-and-rewind"},
 		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
 		{"if a task prints a token is it saved", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
@@ -536,9 +536,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// visible answer.
 		{"why is home empty over ssh", "places"},
 		{"someone else is typing", "staying-on-that-machine"},
-		{"why does aforge take ten seconds to start", "staying-on-that-machine"},
+		{"why does codeaf take ten seconds to start", "staying-on-that-machine"},
 		{"my conversation says it ends with this terminal", "staying-on-that-machine"},
-		{"aforge home path too long", "staying-on-that-machine"},
+		{"codeaf home path too long", "staying-on-that-machine"},
 		{"state folder is a longer path than a socket may be named in", "staying-on-that-machine"},
 		{"how fast is the connection", "screen"},
 		// The two live figures on the working block. People ask for them as
@@ -557,7 +557,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"sometimes I don't see the infra provider and tok/sec", "screen"},
 		{"why is via missing next to the model", "screen"},
 		{"no tok/s when I set a reasoning level", "screen"},
-		{"it says the engine is an older aforge so the provider and tok/s are not shown", "screen"},
+		{"it says the engine is an older codeaf so the provider and tok/s are not shown", "screen"},
 		// And the questions the 2026-09-10 column answers: ↑ became the size of
 		// the request instead of the summed bill, the side that moved lights
 		// up, a jump leaves a receipt, and a hosted task's page draws it too.
@@ -587,9 +587,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The your-call doors, asked the four ways somebody arrives at them: the
 		// hand-over that did not take, the model's own account of why, the second
 		// press, and a merge round that died with the process it was running in.
-		{"I told aforge to decide and it still says your call", "task-controls"},
+		{"I told codeaf to decide and it still says your call", "task-controls"},
 		{"the model says the task graph expired", "task-controls"},
-		{"I pressed let aforge decide twice", "task-controls"},
+		{"I pressed let codeaf decide twice", "task-controls"},
 		{"I pressed resolve it and nothing happened", "task-controls"},
 		// The navigation wave: opening a task somebody else's conversation is
 		// running, what that page can and cannot say, and the two things about the
@@ -603,18 +603,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the tasks box say type to filter this list", "tasks"},
 		{"my cursor jumped to another task while I was reading", "tasks"},
 		{"why is the finished piece at the bottom of the family", "tasks"},
-		{"can aforge parallelize my task", "tasks"},
+		{"can codeaf parallelize my task", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
 		// C14: repository placement, protected landings and kept dependency
 		// inheritance are reachable in the words a person uses after meeting them.
 		{"why didn't my task merge", "how-tasks-run"},
-		{"aforge committed to dev", "how-tasks-run"},
+		{"codeaf committed to dev", "how-tasks-run"},
 		{"my checkout is on main where did the work go", "how-tasks-run"},
 		{"I said in place but it made a branch", "how-tasks-run"},
 		{"does a task that depends on kept work see it", "how-tasks-run"},
-		{"which branches does aforge refuse to write", "how-tasks-run"},
+		{"which branches does codeaf refuse to write", "how-tasks-run"},
 		// WHAT A WORKER'S BELT DOES NOT CARRY, asked the way people meet it: as a
 		// thing they want done from inside a task, and as the sentence a worker
 		// says back when it cannot.
@@ -632,7 +632,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// plain question, the conversation opened in the wrong place, the wish to
 		// send work somewhere else, and the complaint after it went wrong.
 		{"which folder does a task work in", "how-tasks-run"},
-		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
+		{"I opened codeaf in my home folder where will the task work", "how-tasks-run"},
 		{"can a task work in a different repo", "how-tasks-run"},
 		{"my task worked in the wrong project", "how-tasks-run"},
 		// AND THE ONE PLACE THE GROUND STOPS CLIMBING. `git rev-parse` walks up
@@ -815,7 +815,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is a harness", "saved-shapes-of-work"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
-		// The card aforge raises by itself, asked the three ways somebody meets
+		// The card codeaf raises by itself, asked the three ways somebody meets
 		// it: a card they did not open, the answer they want to give it, and
 		// the one that arrived while they were away from the keyboard.
 		{"a card popped up offering to run a program", "subharnesses"},
@@ -837,46 +837,46 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"enter does not connect the account any more", "accounts"},
 		{"where do I paste the key it is asking for", "accounts"},
 		{"how do I say not now to a key it wants", "accounts"},
-		{"how do I start aforge", "starting-aforge"},
-		{"why did it refuse to run git stash", "starting-aforge"},
-		{"it would not stash my changes on an unattended run", "starting-aforge"},
-		{"what git will it not run when left on its own", "starting-aforge"},
+		{"how do I start codeaf", "starting-codeaf"},
+		{"why did it refuse to run git stash", "starting-codeaf"},
+		{"it would not stash my changes on an unattended run", "starting-codeaf"},
+		{"what git will it not run when left on its own", "starting-codeaf"},
 		// The unattended run that would not finish, asked the four ways somebody
 		// meets it: the line it stopped on, the loop they watched, the note at
 		// the cap, and the check it kept failing over a file they never wrote a
 		// check for (#468).
-		{"it stopped and said the same thing was still left", "starting-aforge"},
-		{"it kept repeating the same thing", "starting-aforge"},
+		{"it stopped and said the same thing was still left", "starting-codeaf"},
+		{"it kept repeating the same thing", "starting-codeaf"},
 		{"why does it say carry on", "tasks"},
 		// AND THE SAME LOOP OVER WORK OF ITS OWN: one of two quick tasks landed,
 		// the reply that answered the landing was pushed on three times over the
 		// other, and the person met it as a reply that would not leave a running
 		// task alone.
 		{"it keeps asking about a task that is still running", "tasks"},
-		{"it said a file does not pass", "starting-aforge"},
-		{"a task waiting on one that did not finish", "starting-aforge"},
+		{"it said a file does not pass", "starting-codeaf"},
+		{"a task waiting on one that did not finish", "starting-codeaf"},
 		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody
 		// meets them: the turn that ended instead of starting more work, the
 		// landing nobody could check under the posture that decided it, and the
 		// work that never came home.
-		{"why did it stop at a task that was finished", "starting-aforge"},
-		{"it ended without starting more work", "starting-aforge"},
-		{"it said nothing was left but the work was not finished", "starting-aforge"},
-		{"it kept working after everything was finished", "starting-aforge"},
-		{"a task died on the wire and the run would not stop", "starting-aforge"},
-		{"it keeps saying the tests fail but they were already failing", "starting-aforge"},
-		{"why did it run the tests again at the end", "starting-aforge"},
-		{"it said unchecked when it finished", "starting-aforge"},
-		{"it ran out of time running the test suite", "starting-aforge"},
-		{"why did it move my work to a task after five minutes", "starting-aforge"},
-		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
-		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
-		{"the reader timed out and then it did the whole fix twice", "starting-aforge"},
+		{"why did it stop at a task that was finished", "starting-codeaf"},
+		{"it ended without starting more work", "starting-codeaf"},
+		{"it said nothing was left but the work was not finished", "starting-codeaf"},
+		{"it kept working after everything was finished", "starting-codeaf"},
+		{"a task died on the wire and the run would not stop", "starting-codeaf"},
+		{"it keeps saying the tests fail but they were already failing", "starting-codeaf"},
+		{"why did it run the tests again at the end", "starting-codeaf"},
+		{"it said unchecked when it finished", "starting-codeaf"},
+		{"it ran out of time running the test suite", "starting-codeaf"},
+		{"why did it move my work to a task after five minutes", "starting-codeaf"},
+		{"it kept running tests for ten minutes and then handed the work over", "starting-codeaf"},
+		{"it says nothing has been finished yet but it did the work itself", "starting-codeaf"},
+		{"the reader timed out and then it did the whole fix twice", "starting-codeaf"},
 		// The headless door of the same unattended posture (#535), asked as the
 		// budget, the missing start and the screenless carry-on somebody meets.
-		{"can I leave a headless run going with a budget", "starting-aforge"},
-		{"my --once yolo run never started a task", "starting-aforge"},
-		{"does a run with no screen carry its own work on", "starting-aforge"},
+		{"can I leave a headless run going with a budget", "starting-codeaf"},
+		{"my --once yolo run never started a task", "starting-codeaf"},
+		{"does a run with no screen carry its own work on", "starting-codeaf"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
@@ -912,8 +912,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The owned workspace, asked the two ways it actually gets discovered:
 		// before, wondering where the work will land, and after, when the folder
 		// went and took the work with it.
-		{"where do task files go when I did not open a project", "starting-aforge"},
-		{"deleted my chat and lost the files the task made", "starting-aforge"},
+		{"where do task files go when I did not open a project", "starting-codeaf"},
+		{"deleted my chat and lost the files the task made", "starting-codeaf"},
 		// The first-run setup, asked the four ways somebody meets it: arriving,
 		// wanting the key in, seeing the screen, and wanting to undo an answer.
 		{"first time setup", "getting-started"},
@@ -926,7 +926,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The empty screen, asked the ways somebody meets it: an opening frame
 		// with nothing on it, a column they expected and cannot see, a box that
 		// is not where boxes usually are, and a status row with no numbers.
-		{"why is the screen empty when I open aforge", "empty-screen"},
+		{"why is the screen empty when I open codeaf", "empty-screen"},
 		{"where is the task column on a new conversation", "empty-screen"},
 		{"what happened to the sidebar", "empty-screen"},
 		{"why is the message box in the middle of the screen", "empty-screen"},
@@ -995,7 +995,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asker's own words were written into a heading, which is the fix this
 		// test is meant to provoke.
 		// The working discipline the chat itself is taught, asked the two ways
-		// people meet it: wanting to know how aforge will go about the job, and
+		// people meet it: wanting to know how codeaf will go about the job, and
 		// asking why it went looking before it started building.
 		{"how do you decide how to go about a piece of work", "what-i-can-do"},
 		{"why did you search for something that already exists before building it", "what-i-can-do"},
@@ -1040,7 +1040,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A thought that has gone quiet, asked the way somebody asks it: the
 		// patience is measured against how the model usually thinks, so
 		// the question has to reach the lanes page rather than the model one.
-		{"how does aforge choose its patience for a model that is thinking?", "lanes"},
+		{"how does codeaf choose its patience for a model that is thinking?", "lanes"},
 		// The echo and the push, in the words somebody actually types when they
 		// notice either one.
 		{"why is my message dimmer than usual over --host", "running-on-another-machine"},
@@ -1088,7 +1088,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"ctrl+z", "keys"},
 		{"how do I redo in the message box", "keys"},
 		{"why does ctrl+shift+z just undo again", "keys"},
-		{"does ctrl+z suspend aforge", "keys"},
+		{"does ctrl+z suspend codeaf", "keys"},
 		{"I deleted too much with ctrl+u can I get it back", "keys"},
 		{"select all the text in the box", "keys"},
 		{"can I turn off the mouse", "keys"},
@@ -1100,7 +1100,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does image #1 in my message mean", "keys"},
 		{"why did the path I pasted turn into a token", "keys"},
 		{"where do I change settings", "commands"},
-		{"what is openaf", "starting-aforge"},
+		{"what is codeaf", "starting-codeaf"},
+		{"what happened to aforge", "starting-codeaf"},                // legacy-name
+		{"is this the same thing as aforge", "starting-codeaf"},       // legacy-name
+		{"is this the CodeAF from the benchmarks", "starting-codeaf"}, // legacy-name
+		{"why is the folder called .codeaf now", "starting-codeaf"},
 		{"can you access my email", "accounts"},
 
 		// The eighth wave: the chat knowing about the person's OTHER terminals.
@@ -1147,7 +1151,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is there a limit on how many chats I can open", "home"},
 		{"why can I not open another conversation", "home"},
 		{"too many conversations open", "home"},
-		{"does aforge close old chats", "home"},
+		{"does codeaf close old chats", "home"},
 		{"what does quiet a while mean", "home"},
 		{"what does let go mean on a conversation", "home"},
 		// WHAT A ROW SAYS WHEN ITS CONVERSATION IS ABOUT SOMEWHERE ELSE, and the
@@ -1171,13 +1175,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// standing when they want out of it.
 		{"how do I get back to the home screen from the tasks page", "home"},
 		{"double space does not go home from the memory page", "home"},
-		{"does closing one conversation quit aforge", "commands"},
+		{"does closing one conversation quit codeaf", "commands"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
 		{"does my approval question expire while I am in another chat", "permissions"},
 
 		// The fourth wave, and it is the one this build most needs to answer
-		// out of a page rather than out of the model's imagination: aforge
+		// out of a page rather than out of the model's imagination: codeaf
 		// carrying something from one conversation into the next. Every one of
 		// these is a question somebody asks the first time they notice it
 		// happening, and the honest answers — what is kept, who decides, and how
@@ -1189,10 +1193,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn memory off", "what-i-remember"},
 		{"it said memory is off but I never turned it off", "what-i-remember"},
 		{"why does it say could not open graph.db", "what-i-remember"},
-		{"aforge printed out of memory 14 on startup", "what-i-remember"},
+		{"codeaf printed out of memory 14 on startup", "what-i-remember"},
 		{"where is my memory file kept on disk", "what-i-remember"},
 		{"can I copy my memories to another machine", "what-i-remember"},
-		{"how do I see what aforge remembers", "what-i-remember"},
+		{"how do I see what codeaf remembers", "what-i-remember"},
 		{"how do I edit a memory", "what-i-remember"},
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
@@ -1215,7 +1219,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what did we decide last week", "what-i-remember"},
 		{"search my old conversations", "what-i-remember"},
 
-		// The third wave: aforge changing a person's own settings for them.
+		// The third wave: codeaf changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where
 		// it will not — because the second is the answer somebody gets when
 		// they ask for the first and are refused.
@@ -1229,7 +1233,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I remove the daily limit", "models-and-cost"},
 		{"why did it stop and ask me about money", "models-and-cost"},
 		{"what does per plan mean", "models-and-cost"},
-		{"where do I set what aforge may spend", "models-and-cost"},
+		{"where do I set what codeaf may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
 		// Issue #168: work a conversation started was on the machine's day figure
@@ -1245,7 +1249,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does remember over host not say whether memory is off", "running-on-another-machine"},
 		{"does subharness know whether the remote machine has saved programs", "running-on-another-machine"},
 		{"what does the indented part mean", "keys"},
-		{"how do I see what aforge did", "keys"},
+		{"how do I see what codeaf did", "keys"},
 		{"how do I keep everything expanded", "keys"},
 
 		// The fifth wave: long-running commands. A person meets these at the
@@ -1269,7 +1273,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// failed on every machine without ripgrep.
 		{"does it poll a background job or does it get told", "what-i-can-do"},
 		{"why is it running sleep and tail over and over", "what-i-can-do"},
-		{"how does aforge know a job finished", "what-i-can-do"},
+		{"how does codeaf know a job finished", "what-i-can-do"},
 		{"why is the job log empty while it is still running", "what-i-can-do"},
 		{"how long does a command wait before it goes to the background", "what-i-can-do"},
 		{"does grep work without ripgrep", "what-i-can-do"},
@@ -1283,7 +1287,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// model's own account of what happened is exactly what was wrong.
 		{"why does my run still say running", "adaptive-runs"},
 		{"does an adaptive run survive a restart", "adaptive-runs"},
-		{"what happens to a run if aforge restarts", "adaptive-runs"},
+		{"what happens to a run if codeaf restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
 		{"why did it break my job into stages", "adaptive-runs"},
@@ -1338,14 +1342,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The wall a run started from a terminal is given, asked the two ways
 		// somebody meets it: typing a length of time with a unit on it, and
 		// wanting to know how long the thing waits before it stops.
-		{"can I pass 5m as the timeout to aforge do", "adaptive-runs"},
-		{"how long does aforge do wait before the timeout stops it", "adaptive-runs"},
+		{"can I pass 5m as the timeout to codeaf do", "adaptive-runs"},
+		{"how long does codeaf do wait before the timeout stops it", "adaptive-runs"},
 		// And a person standing over a headless run that ended wrong. Two of
 		// these are asked in front of the evidence rather than about it: a
 		// folder they did not expect, and a flag somebody told them about
 		// afterwards. Only the third is the question the section was named for.
 		{"keep the run's files", "adaptive-runs"},
-		{"why is there a folder left behind after aforge do", "adaptive-runs"},
+		{"why is there a folder left behind after codeaf do", "adaptive-runs"},
 		{"my headless run failed where is its record", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
@@ -1564,9 +1568,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does saying looks good accept the task", "tasks"},
 		// And the two halves of the auto-settle floor, which are the same
 		// question asked before and after somebody notices the chips are gone.
-		{"it says aforge is deciding", "task-rooms-after-restart"},
+		{"it says codeaf is deciding", "task-rooms-after-restart"},
 		{"how do I take a task back", "tasks"},
-		// And the third: closing aforge ends the turn it was deciding in, so the
+		// And the third: closing codeaf ends the turn it was deciding in, so the
 		// question is the person's again when they come back to it.
 		{"who decides a task after a restart", "task-rooms-after-restart"},
 		// The other end of the same impatience: not "decide for me" but "give me
@@ -1703,20 +1707,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what words open an adaptive run", "adaptive-runs"},
 		{"can I still type orchestrate to start a planned run", "adaptive-runs"},
 
-		// The doors that have nobody in front of them. Somebody wiring aforge
+		// The doors that have nobody in front of them. Somebody wiring codeaf
 		// into a script asks the first two before they have run anything; the
 		// second two are asked afterwards, with the terminal still on screen —
 		// one at the flag list they are choosing from, one at the last line the
 		// run printed, which is the only line a person cannot read the exit code
 		// off.
-		{"how do I run aforge without the screen", "adaptive-runs"},
+		{"how do I run codeaf without the screen", "adaptive-runs"},
 		{"run one task from a script", "adaptive-runs"},
-		{"what flags does aforge do take", "adaptive-runs"},
-		{"what does the last line of aforge do mean", "adaptive-runs"},
+		{"what flags does codeaf do take", "adaptive-runs"},
+		{"what does the last line of codeaf do mean", "adaptive-runs"},
 		{"the plan said not settled, what do I do", "adaptive-runs"},
 		// And the door below that one: a single worker with no plan behind it,
 		// asked either by its name or by what it does.
-		{"what is aforge exec for", "adaptive-runs"},
+		{"what is codeaf exec for", "adaptive-runs"},
 		{"run one worker with no plan", "adaptive-runs"},
 
 		// The one-road wave: work now STARTS on its own after a words-only turn,
@@ -1725,7 +1729,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// words the transcript handed them.
 		{"why did a task start on its own", "tasks"},
 		{"this looked like work so task started", "tasks"},
-		{"aforge started work I did not ask for", "tasks"},
+		{"codeaf started work I did not ask for", "tasks"},
 		{"how do I stop it starting tasks by itself", "tasks"},
 		{"what happened to the card asking whether to run it", "tasks"},
 		// The spawn floor: a one-command ask that used to become a task and
@@ -1763,7 +1767,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// that read the record back refused the file whole over it.
 		{"I reopened the conversation and the task column is empty", "tasks"},
 		{"all my tasks disappeared after a restart", "tasks"},
-		{"does a quick task come back after I close aforge", "tasks"},
+		{"does a quick task come back after I close codeaf", "tasks"},
 		{"does a quick task resume when I reopen the conversation", "tasks"},
 		// The sixteenth wave, and every one of these is a real model choosing
 		// wrongly before the wording was fixed: a READ-ONLY survey that got a
@@ -1833,16 +1837,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the you talk to line in /crew", "commands"},
 
 		{"how do I quit", "keys"},
-		{"how do I exit aforge", "keys"},
-		{"how do I close aforge", "keys"},
+		{"how do I exit codeaf", "keys"},
+		{"how do I close codeaf", "keys"},
 		{"ctrl+c didn't quit", "keys"},
 		{"why doesn't ctrl+c close it", "keys"},
-		{"if I quit aforge while a task is splitting into child work does it all stop", "keys"},
+		{"if I quit codeaf while a task is splitting into child work does it all stop", "keys"},
 
 		// The sixteenth wave: the reply that came apart. A real conversation on
 		// 2026-08-20 watched deepseek-v4-pro collapse twice at 150k tokens —
 		// paragraphs of mixed-alphabet soup, then several thousand repetitions of
-		// one line — and both were recorded and re-sent. aforge now cuts a reply
+		// one line — and both were recorded and re-sent. codeaf now cuts a reply
 		// like that, drops it everywhere including the screen, and asks again. So
 		// a person watches an answer they were reading VANISH, sees words they
 		// have never seen before in its place, and asks these. The two halves are
@@ -1945,7 +1949,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// wrote down and were never asked, and about the turn that simply died.
 		{"I keep getting 429 and my turn just died", "models-and-cost"},
 		{"does a rate limit reach my fallback models", "models-and-cost"},
-		{"the model kept refusing and aforge moved to another one", "models-and-cost"},
+		{"the model kept refusing and codeaf moved to another one", "models-and-cost"},
 		{"why did my turn give up when another model was working fine", "models-and-cost"},
 		{"the request failed asking again over and over", "models-and-cost"},
 
@@ -2018,7 +2022,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run something every monday morning", "keeping-an-eye"},
 		{"does it keep working when I close the terminal", "keeping-an-eye"},
 		{"how do I stop a reminder", "keeping-an-eye"},
-		// The two clocks, asked apart: how often aforge LOOKS, which is one
+		// The two clocks, asked apart: how often codeaf LOOKS, which is one
 		// figure for everything standing, and a cadence somebody gave an item
 		// themselves, which is the one they name when they want it to stop.
 		{"how often does my watch check", "keeping-an-eye"},
@@ -2073,7 +2077,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// plain launch was refused by the engine that was holding the
 		// conversation. The first is what the screen said; the second is what
 		// actually happened next.
-		{"I opened aforge and it said open in another window", "home"},
+		{"I opened codeaf and it said open in another window", "home"},
 		// The transfer wave: every state of a move, asked the way somebody
 		// staring at one asks it. The first is the report's own complaint —
 		// nothing appeared to happen — and the rest are the states that used to
@@ -2189,9 +2193,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the page answered wrongly for as long as the engine has existed.
 		{"if I close this window does the chat stop", "keeping-an-eye"},
 		{"turn off background checks", "keeping-an-eye"},
-		{"i have two copies of aforge, which one runs the background checks", "keeping-an-eye"},
-		{"two copies of aforge and my reminders fired twice", "keeping-an-eye"},
-		{"does AFORGE_HOME move the background timer", "keeping-an-eye"},
+		{"i have two copies of codeaf, which one runs the background checks", "keeping-an-eye"},
+		{"two copies of codeaf and my reminders fired twice", "keeping-an-eye"},
+		{"does CODEAF_HOME move the background timer", "keeping-an-eye"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types
 		// looking at the page, at the card's `where` band, or at the one line a
@@ -2318,15 +2322,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 
 		// The wave that stopped a rebuild on the far machine from trapping
 		// somebody. These are the words a person actually uses at the moment it
-		// happens: they updated aforge over there, `aforge version` agreed, and
+		// happens: they updated codeaf over there, `codeaf version` agreed, and
 		// the connection still told them to update the older half.
-		{"I updated aforge on that machine and it still says the versions differ", "running-on-another-machine"},
-		{"I rebuilt aforge on my dev box and --host still refuses", "running-on-another-machine"},
+		{"I updated codeaf on that machine and it still says the versions differ", "running-on-another-machine"},
+		{"I rebuilt codeaf on my dev box and --host still refuses", "running-on-another-machine"},
 		{"it says the two halves have to be the same build but they are", "running-on-another-machine"},
-		{"it says spark is still running an older aforge", "running-on-another-machine"},
+		{"it says spark is still running an older codeaf", "running-on-another-machine"},
 		{"how do I stop the thing holding my session on that machine", "staying-on-that-machine"},
-		{"what does aforge engine --stop do", "staying-on-that-machine"},
-		{"does the session host notice when I rebuild aforge", "staying-on-that-machine"},
+		{"what does codeaf engine --stop do", "staying-on-that-machine"},
+		{"does the session host notice when I rebuild codeaf", "staying-on-that-machine"},
 
 		// The wave that made the files on the far machine things this one can
 		// open. These are the sentences somebody types with a hosted session in
@@ -2480,8 +2484,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// AUTO, asked from a terminal rather than from a conversation. The
 		// first two are somebody deciding whether the headless doors get any of
 		// this at all, and the third is the one people ask on day one, before
-		// aforge has timed anything of theirs.
-		{"does aforge do pick the fastest endpoint too", "lanes"},
+		// codeaf has timed anything of theirs.
+		{"does codeaf do pick the fastest endpoint too", "lanes"},
 		{"does a headless run choose between lanes", "lanes"},
 		{"why did it pick that provider on my very first message", "lanes"},
 		{"why did my first message go to the most expensive provider", "lanes"},
@@ -2489,7 +2493,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
-		{"does aforge do use the lane I pinned", "lanes"},
+		{"does codeaf do use the lane I pinned", "lanes"},
 		{"is my pinned provider used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
@@ -2545,7 +2549,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
-		{"how do I update aforge to the latest version", "running-from-the-terminal"},
+		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
 		// The ending #593 added, in the words somebody meets it in: on the
 		// stderr line they have just read, on the word in `--json`, and on the
 		// exit code they are staring at with a perfectly good answer above it.
@@ -2557,10 +2561,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// C6: the unattended road and the session task road have different
 		// checks, and the manual must answer in the words a person brings to each.
 		{"what checked my unattended run", "running-from-the-terminal"},
-		{"does task.audit apply to aforge do", "running-from-the-terminal"},
+		{"does task.audit apply to codeaf do", "running-from-the-terminal"},
 		{"did anything check that headless run", "running-from-the-terminal"},
 		{"what judged the delivery", "running-from-the-terminal"},
-		{"what does aforge wake do", "running-from-the-terminal"},
+		{"what does codeaf wake do", "running-from-the-terminal"},
 		// "how do I see what a task did" is deliberately NOT here: in the chat a
 		// task's own room is that question's answer, and how-tasks-run rightly
 		// wins it. The terminal reader is asked for in the words of the thing it
@@ -2570,14 +2574,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"show me the turns and tool calls of one piece of work", "running-from-the-terminal"},
 		{"how do I read a headless run's record afterwards", "running-from-the-terminal"},
 		{"what have I spent today from the terminal", "running-from-the-terminal"},
-		{"how do I retract a lesson aforge learned", "running-from-the-terminal"},
-		{"what is aforge measured as being good at", "running-from-the-terminal"},
-		{"how do I stop a dev server aforge started", "running-from-the-terminal"},
+		{"how do I retract a lesson codeaf learned", "running-from-the-terminal"},
+		{"what is codeaf measured as being good at", "running-from-the-terminal"},
+		{"how do I stop a dev server codeaf started", "running-from-the-terminal"},
 		{"what background processes are still running", "running-from-the-terminal"},
 		{"how do I replay the journal and rebuild the tables", "running-from-the-terminal"},
 		{"which commands need no api key", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
-		{"why does aforge show --help print a file error", "running-from-the-terminal"},
+		{"why does codeaf show --help print a file error", "running-from-the-terminal"},
 
 		// THE WAVE THAT GAVE EVERY TAB ITS OWN CONNECTION. Until it landed, a
 		// second conversation on an engine-backed door ENDED the first one, and
@@ -2645,11 +2649,11 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 		"That written host name is the row's name everywhere",
 		"a **Something else** service must provide the compatible chat path",
 		"tries `GET <base>/models` first",
-		"When that address is absent, aforge connects the service without inventing rows",
+		"When that address is absent, codeaf connects the service without inventing rows",
 		"z-ai-direct is connected · coding plan · 4 models",
 		"z-ai-direct is connected · pay-as-you-go · 10 models",
 		"when the plan is paused",
-		"Aforge is not currently listed; a request has been\ndrafted but has not been sent.",
+		"codeaf is not currently listed; a request has been\ndrafted but has not been sent.",
 	} {
 		if !strings.Contains(page, sentence) {
 			t.Errorf("services page does not state %q", sentence)

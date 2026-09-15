@@ -3,7 +3,7 @@ package remote
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE WEIGHT IS STATED AGAIN WHEN THE NEXT REQUEST SPEAKS, once per batch. The

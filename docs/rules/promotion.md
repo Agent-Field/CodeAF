@@ -88,7 +88,7 @@ assets, and reapplies the stable or prerelease marks without creating a tag.
 Users can pin a known tag while a repair moves forward:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=v0.2.0 bash
 ```
 
 To make an older stable the default again without moving a branch, run `gh

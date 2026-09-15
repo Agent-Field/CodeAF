@@ -67,18 +67,18 @@
     "run": "after the harness has stopped, from outside the workspace"
   },
   "arms": [
-    "aforge",
+    "codeaf",
     "pi",
     "omp"
   ],
   "doors": {
     "print": [
-      "aforge",
+      "codeaf",
       "pi",
       "omp"
     ],
     "interactive": [
-      "aforge",
+      "codeaf",
       "pi",
       "omp"
     ]

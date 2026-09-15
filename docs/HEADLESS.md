@@ -1,9 +1,9 @@
-# Headless — driving aforge without a person
+# Headless — driving codeaf without a person
 
 This is the contract a script, a CI job, or a benchmark harness programs
 against. Everything here is a promise about observable behaviour: flags, exit
 codes, stream discipline, and the shape of the JSON. Where this file and
-`internal/manual` disagree about what aforge *says*, the manual wins; where
+`internal/manual` disagree about what codeaf *says*, the manual wins; where
 this file and the binary disagree about what it *does*, the binary wins and
 this file is a bug.
 
@@ -12,10 +12,10 @@ schema, and a person needs to know which command actually thinks.
 
 ---
 
-## 1. `aforge do` — one errand, the whole living brain
+## 1. `codeaf do` — one errand, the whole living brain
 
 ```
-aforge do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
+codeaf do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--context-fill N] [--completion-reserve N]
 ```
@@ -26,9 +26,9 @@ same just-in-time repair when a cited gap earns another round, the same replan
 when a leaf runs out of room.
 
 It is *not* `plan new` + `plan run`. That pair compiles a plan once, writes it
-to a file, and executes exactly what the file says. Everything aforge learned
+to a file, and executes exactly what the file says. Everything codeaf learned
 about doing jobs happens **after** the plan is written, and a frozen plan cannot
-do any of it. Use `aforge plan` to read or hand-edit a plan; use `do` to get
+do any of it. Use `codeaf plan` to read or hand-edit a plan; use `do` to get
 work done.
 
 ### Flags
@@ -40,7 +40,7 @@ work done.
 | `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
-| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `aforge plan run`. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
+| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. |
 | `--model slug` | the ladder below | The work model for this run. |
 | `--plan-model slug` | the ladder below | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
 | `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
@@ -52,7 +52,7 @@ The run's own traces live under the kept store named by the `record kept at <pat
 
 Flags may appear after the task text; `do` reorders its own arguments. Naming
 neither context flag touches the environment at all, so a wrapper script that
-exported `AFORGE_CONTEXT_FILL_PCT` for a whole campaign stays in charge of it.
+exported `CODEAF_CONTEXT_FILL_PCT` for a whole campaign stays in charge of it.
 
 ### The brief may begin with anything, including `-`
 
@@ -61,7 +61,7 @@ else is the brief, whatever it starts with — so a task written as a bullet lis
 is a task:
 
 ```sh
-aforge do "- Update the display style property
+codeaf do "- Update the display style property
 - Keep the grid measurable"
 ```
 
@@ -79,12 +79,12 @@ beginning with a dash.
 Pass `-` as the task, or pass no task at all when something is piped in:
 
 ```sh
-aforge do - < brief.md
-cat brief.md | aforge do --json
-generate-brief | aforge do -w /repo -
+codeaf do - < brief.md
+cat brief.md | codeaf do --json
+generate-brief | codeaf do -w /repo -
 ```
 
-`aforge do` with no task and a terminal attached prints the usage rather than
+`codeaf do` with no task and a terminal attached prints the usage rather than
 reading your keyboard forever. Everything after the brief is unchanged: the text
 is taken byte for byte, exactly as a quoted argument is.
 
@@ -127,9 +127,9 @@ the same way at every headless door (`do`, `exec`, `run`, `plan new`,
 | | work seat | plan seat |
 | --- | --- | --- |
 | 1 | `--model slug` | `--plan-model slug` |
-| 2 | `AFORGE_MODEL` | `AFORGE_PLAN_MODEL` |
+| 2 | `CODEAF_MODEL` | `CODEAF_PLAN_MODEL` |
 | 3 | the profile's crew — the **small work** row | the profile's crew — the **mastermind** row |
-| 4 | the build's default (`aforge --help`) | empty: the work model plans too |
+| 4 | the build's default (`codeaf --help`) | empty: the work model plans too |
 
 **Rung 3 is what `/crew` writes** (`models.tiers.*` in the profile's
 `config.json`), and it is the rung that used to be missing: until #166 a headless
@@ -141,7 +141,7 @@ the crew now means the same thing on both surfaces.
 The crew answers only where a crew was actually **written**. A profile nobody has
 touched falls to rung 4 — the four shipped tier values are the `balanced` row, so
 reading them as a crew would make rung 4 unreachable and change the default work
-model for everybody. `AFORGE_HOME` / `AFORGE_PROFILE_DIR` decide which profile is
+model for everybody. `CODEAF_HOME` / `CODEAF_PROFILE_DIR` decide which profile is
 asked, so an isolated run is isolated here too.
 
 A crew row may carry a thinking level (`moonshotai/kimi-k3:low`), and so may a
@@ -237,15 +237,15 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `answer` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
-| `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
-| `judged_by` | On `aforge do`, the name of what read the delivery — `delivery gate`. It appears when the settled root has a gate row other than an unreachable-gate row, including an unreadable response. It identifies the attempted reader; `ok` and `stop` still decide the outcome. A split root or a run with no gate row can omit both `judged_by` and `unjudged`. `task.audit` is the conversation's own row for work handed out of a chat and does not reach this road. |
-| `checklist` | On `aforge do`, one whole, unclipped `{behaviour, state, why}` row for every acceptance point. `state` is exactly `answered`, `not answered` or `not reached`; the key is present when the settled root has a checklist. Split jobs can keep their checklists on child rows and omit this key. |
+| `unjudged` | On `codeaf do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
+| `judged_by` | On `codeaf do`, the name of what read the delivery — `delivery gate`. It appears when the settled root has a gate row other than an unreachable-gate row, including an unreadable response. It identifies the attempted reader; `ok` and `stop` still decide the outcome. A split root or a run with no gate row can omit both `judged_by` and `unjudged`. `task.audit` is the conversation's own row for work handed out of a chat and does not reach this road. |
+| `checklist` | On `codeaf do`, one whole, unclipped `{behaviour, state, why}` row for every acceptance point. `state` is exactly `answered`, `not answered` or `not reached`; the key is present when the settled root has a checklist. Split jobs can keep their checklists on child rows and omit this key. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
 | `model` | The model the work ran on. |
 | `steps` | How many pieces of work ran. A saved program does not count them and reports `0`. |
-| `run` | This invocation's id. `--debug` names its folder after it and every row this run wrote into `~/.aforge/logs/calls.jsonl` carries it, so `aforge logs --run <id>` joins the two. |
+| `run` | This invocation's id. `--debug` names its folder after it and every row this run wrote into `~/.codeaf/logs/calls.jsonl` carries it, so `codeaf logs --run <id>` joins the two. |
 | `calls` | Model calls this run made, counted whether or not the call log is switched on. |
 | `rounds` | How many times the run bought more work after looking at what it had. `exec` and a saved program do not measure it and report `0`. |
 
@@ -272,14 +272,14 @@ the work cost against what it cost to decide what the work should be —
 | --- | --- |
 | `blocked_on` | The question it could not answer, verbatim. Non-empty **only** alongside a non-zero exit and an empty `answer`. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
-| `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `AFORGE_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
+| `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `CODEAF_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
 | `workspace` | The directory the run worked in, absolute, edited in place. Always present; empty on a run that never opened one or was handed to an existing resident whose workspace this invocation cannot establish. |
 
 ### Stream discipline
 
 **stdout is the result and nothing else** — the JSON object under `--json`, the
 deliverable otherwise. Everything else goes to **stderr**: the `models:` line the
-run opens with, the kept-store path, the "another aforge is resident" notice, the
+run opens with, the kept-store path, the "another codeaf is resident" notice, the
 price refusal, and the quiet line.
 
 The quiet line is a structural read of the plan (no model call, one line)
@@ -316,7 +316,7 @@ plan, the notebook, and the job blackboard — the second run knows what the
 first learned. That is the seam an experiment about memory across tasks is
 measured at.
 
-### Another aforge may already be resident
+### Another codeaf may already be resident
 
 `do` takes the resident lease. If a live resident already holds it, this is
 **not** a failure and not a fight: the command is already in the journal, the
@@ -331,22 +331,22 @@ it the way a conversation would — reworded goal, declared assumptions, and a
 question asked into a thread nobody is reading.
 
 For guaranteed isolation from your own resident, give the run its own state
-root with `AFORGE_HOME`.
+root with `CODEAF_HOME`.
 
 ### Spending consent
 
 A plan whose estimated price crosses the threshold stops and asks. Headless
 there is nobody to ask, so the run ends `stop: "price"`, `ok: false`, **exit 3**,
 with the estimate on stderr and nothing bought. Pass `--yes-spend` (or
-`AFORGE_PREAUTHORIZE_SPEND=1`) to pre-approve. The day's spending limit is
-`AFORGE_DAILY_BUDGET` (`0` = unlimited) and applies regardless.
+`CODEAF_PREAUTHORIZE_SPEND=1`) to pre-approve. The day's spending limit is
+`CODEAF_DAILY_BUDGET` (`0` = unlimited) and applies regardless.
 
 ---
 
-## 2. `aforge exec` — one linear worker, no plan
+## 2. `codeaf exec` — one linear worker, no plan
 
 ```
-aforge exec ["<prompt>"] [--dir dir] [--system text]
+codeaf exec ["<prompt>"] [--dir dir] [--system text]
             [--max-turns N] [--token-budget N] [--timeout D]
             [--model slug]
             [--context-fill N] [--completion-reserve N]
@@ -359,9 +359,9 @@ It is the bottom of the product — the same executor a leaf runs on — exposed
 directly.
 
 Reach for it when the caller has already decided what the work is and wants the
-cheapest, most predictable path to an answer: a sub-harness embedding aforge in
+cheapest, most predictable path to an answer: a sub-harness embedding codeaf in
 its own pipeline, a benchmark measuring the raw worker, an agent framework that
-does its own planning. Reach for `do` when you want aforge to decide how the
+does its own planning. Reach for `do` when you want codeaf to decide how the
 work divides, to repair itself mid-flight, and to judge what it produced. `exec`
 does none of that, and the price of the missing machinery is that nothing checks
 the answer.
@@ -407,9 +407,9 @@ threading them onto every call:
 
 | Variable | Flag it stands in for | Units |
 | --- | --- | --- |
-| `AFORGE_EXEC_TURNS` | `--max-turns` | iterations |
-| `AFORGE_EXEC_BUDGET` | `--token-budget` | tokens |
-| `AFORGE_EXEC_TIMEOUT` | `--timeout` | a duration, or a bare number of seconds |
+| `CODEAF_EXEC_TURNS` | `--max-turns` | iterations |
+| `CODEAF_EXEC_BUDGET` | `--token-budget` | tokens |
+| `CODEAF_EXEC_TIMEOUT` | `--timeout` | a duration, or a bare number of seconds |
 
 **A flag that was typed always wins** — including `--max-turns 200`, which is a
 decision even though 200 is also the default. A variable that is set but is not
@@ -464,7 +464,7 @@ wrote two readers and the second one was written wrong.
 | `files` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. This is what `artifacts` was. |
 | `tokens`, `spend_usd` | What `usage` carried, split into the two facts a campaign actually reports. |
 | `error` | Empty unless `stop` is `error`. A run cut off by `--token-budget`, `--max-turns` or `--timeout` that produced text is a run that produced an answer, so it publishes the answer and no `error`. |
-| `incomplete` | Present only when a limit cut the run short: the reason, in the same words stderr carried. The same field `aforge run` carries, with the same meaning. |
+| `incomplete` | Present only when a limit cut the run short: the reason, in the same words stderr carried. The same field `codeaf run` carries, with the same meaning. |
 
 **Every old name is still printed beside the new one for one release** — `text`,
 `turns`, `elapsed_ms`, `artifacts`, and the whole `usage` object — so nothing
@@ -504,7 +504,7 @@ returned `1`, which is what every other command in the binary returns for "could
 not be run at all". That is the whole reason its numbers moved.
 
 ```bash
-AFORGE_EXIT_CODES=legacy aforge exec "…"
+CODEAF_EXIT_CODES=legacy codeaf exec "…"
 ```
 
 restores exactly the old 2/3/4/5/6 **for one release** and changes nothing else:
@@ -522,22 +522,22 @@ again.
 - **No `--db`, no journal, no notebook, no blackboard.** Nothing a run learns
   survives it, and two runs share nothing. If you want state across calls, that
   is `do --db`.
-- **No daily spending limit and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
+- **No daily spending limit and no `--yes-spend`.** `CODEAF_DAILY_BUDGET` is not
   consulted here; `--token-budget` is the only ceiling, and it is counted in
   tokens. Its landing stops after a few final calls or a fifth of the budget,
   whichever runs out first; the effective ceiling also includes overshoot from both the budget-crossing
   turn and the final landing turn. A campaign driving `exec` is responsible for its own spend.
-- **No resident lease.** It never waits for another aforge and never hands work
+- **No resident lease.** It never waits for another codeaf and never hands work
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
 - **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
-  directory, so the harness's own machinery — `.aforge/`, `.obs/` — is written
+  directory, so the harness's own machinery — `.codeaf/`, `.obs/` — is written
   into the workspace beside the work product. Point `--dir` at a directory you
   are willing to have written into, not at a repository you want left clean.
 
 `exec` still reads the state root for two things: the model catalog cache and,
-if you have one there, a persisted API key. `AFORGE_HOME` moves both.
+if you have one there, a persisted API key. `CODEAF_HOME` moves both.
 
 ---
 
@@ -546,7 +546,7 @@ if you have one there, a persisted API key. `AFORGE_HOME` moves both.
 **One errand, machine-readable, isolated:**
 
 ```bash
-aforge do "fix the failing test in ./pkg/parse" \
+codeaf do "fix the failing test in ./pkg/parse" \
   --dir "$PWD" --json --yes-spend --timeout 15m
 ```
 
@@ -556,7 +556,7 @@ it:
 
 ```bash
 for task in "$@"; do
-  aforge do "$task" --db "$RUN/store/graph.db" --dir "$RUN/repo" \
+  codeaf do "$task" --db "$RUN/store/graph.db" --dir "$RUN/repo" \
     --json --yes-spend --timeout 15m >> "$RUN/results.jsonl"
 done
 ```
@@ -564,15 +564,15 @@ done
 **A disposable brain that touches nothing of yours:**
 
 ```bash
-AFORGE_HOME="$(mktemp -d)" AFORGE_DAILY_BUDGET=5 \
-  aforge do "$TASK" --dir "$REPO" --json --yes-spend
+CODEAF_HOME="$(mktemp -d)" CODEAF_DAILY_BUDGET=5 \
+  codeaf do "$TASK" --dir "$REPO" --json --yes-spend
 ```
 
 **Reading the ending correctly** — branch on `stop`, which is one word and the
 same word on all three commands:
 
 ```bash
-aforge do "$TASK" --json --yes-spend > out.json
+codeaf do "$TASK" --json --yes-spend > out.json
 case "$(jq -r .stop out.json)" in
   done)               jq -r .answer out.json ;;
   incomplete)         echo "part of it does not stand:"; jq -r .answer out.json ;;
@@ -588,27 +588,27 @@ esac
 
 | Command | What it is for |
 | --- | --- |
-| `aforge chat --once "<text>" [--model slug] [--yolo] [--max-hours n] [--max-cost n] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. With `--yolo` and a ceiling it carries the ask on beyond that first turn. See below — it is a different shape from `do`. |
-| `aforge plan new "<goal>" [--out plan.json] [--json] [--instructions] [--passes auto\|off\|N]` | Compile a goal to a plan file. For reading and editing a plan by hand. Exits `2` when the plan it wrote still carries a node the ruler measured past one worker and the passes then left whole — see below. |
-| `aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
-| `aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]` | Re-plan from what actually happened. |
-| `aforge plan show <plan.json>` | Print a plan. |
-| `aforge run <program> --input <file.json\|->` | Run one saved program on typed input. Section 1's exit ladder and envelope. This was `aforge run subharness <name>`. The program is a **bare word**; an argument spelled as a path — a separator in it, a leading `./`, `../` or `~`, or a file extension — is read as a plan file and takes the retired `aforge run <plan.json>` road. It is the shape of the argument and never what is in the working directory. |
-| `aforge exec ["<prompt>"] [--dir dir] [--max-turns N] [--token-budget N] [--timeout D] [--json] [--out file]` | One linear worker with no plan behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
-| `aforge version` | The build this binary was cut from. `--version` and `-v` say the same thing. Answers with no API key set, because probing for the binary must not be a configuration problem. |
-| `aforge wake [--timeout 2m]` | One full background pass — evaluate sentinels, fire what is due, journal it, exit. What the five-minute timer runs. |
-| `aforge doctor` | Labelled rows: `store` and its size, who is resident, the `background timer` and when it last woke, today's spend against the limit, active goals and pending questions. |
-| `aforge competence` / `aforge why self` | The measured competence map; today's self-spend receipts. |
-| `aforge why <task-id>` | One piece of work's turn-by-turn record: what it said, which tools it called with what arguments, what came back, and how it ended. |
-| `aforge notebook [retract\|restore <seq>]` | Inspect, search, and retract beliefs. |
-| `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
-| `aforge models` | The router ledger — ratings and how many observations back each. |
-| `aforge rebuild [--yes]` | Discard everything worked out from the journal and replay it. |
-| `aforge help env` | The environment table: every variable and its default. It moved off `aforge --help`, which was 127 lines with more than half of them this table. |
+| `codeaf chat --once "<text>" [--model slug] [--yolo] [--max-hours n] [--max-cost n] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. With `--yolo` and a ceiling it carries the ask on beyond that first turn. See below — it is a different shape from `do`. |
+| `codeaf plan new "<goal>" [--out plan.json] [--json] [--instructions] [--passes auto\|off\|N]` | Compile a goal to a plan file. For reading and editing a plan by hand. Exits `2` when the plan it wrote still carries a node the ruler measured past one worker and the passes then left whole — see below. |
+| `codeaf plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
+| `codeaf plan revise <plan.json> "<what happened>" [--done 1,2,3]` | Re-plan from what actually happened. |
+| `codeaf plan show <plan.json>` | Print a plan. |
+| `codeaf run <program> --input <file.json\|->` | Run one saved program on typed input. Section 1's exit ladder and envelope. This was `codeaf run subharness <name>`. The program is a **bare word**; an argument spelled as a path — a separator in it, a leading `./`, `../` or `~`, or a file extension — is read as a plan file and takes the retired `codeaf run <plan.json>` road. It is the shape of the argument and never what is in the working directory. |
+| `codeaf exec ["<prompt>"] [--dir dir] [--max-turns N] [--token-budget N] [--timeout D] [--json] [--out file]` | One linear worker with no plan behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
+| `codeaf version` | The build this binary was cut from. `--version` and `-v` say the same thing. Answers with no API key set, because probing for the binary must not be a configuration problem. |
+| `codeaf wake [--timeout 2m]` | One full background pass — evaluate sentinels, fire what is due, journal it, exit. What the five-minute timer runs. |
+| `codeaf doctor` | Labelled rows: `store` and its size, who is resident, the `background timer` and when it last woke, today's spend against the limit, active goals and pending questions. |
+| `codeaf competence` / `codeaf why self` | The measured competence map; today's self-spend receipts. |
+| `codeaf why <task-id>` | One piece of work's turn-by-turn record: what it said, which tools it called with what arguments, what came back, and how it ended. |
+| `codeaf notebook [retract\|restore <seq>]` | Inspect, search, and retract beliefs. |
+| `codeaf services [stop <name>]` | Long-running processes it was asked to keep. |
+| `codeaf models` | The router ledger — ratings and how many observations back each. |
+| `codeaf rebuild [--yes]` | Discard everything worked out from the journal and replay it. |
+| `codeaf help env` | The environment table: every variable and its default. It moved off `codeaf --help`, which was 127 lines with more than half of them this table. |
 
-### `aforge plan` — exit `2` means the plan is not settled
+### `codeaf plan` — exit `2` means the plan is not settled
 
-`aforge plan new` writes and prints its plan whatever it thinks of it: a plan
+`codeaf plan new` writes and prints its plan whatever it thinks of it: a plan
 with one step too big for the worker that will run it is still the best account
 of the goal anyone has, and `--out` and `--json` produce exactly the same bytes
 they always did.
@@ -632,10 +632,10 @@ An oversized step with no reason on it is not this: the split gate collapsing a
 plan writes its own sentence and takes the responsibility, and the door leaves
 that alone.
 
-### `aforge chat --once` — one turn, and what it is not
+### `codeaf chat --once` — one turn, and what it is not
 
 `--once` is the headless door to the chat surface: it opens the same session
-`aforge chat` opens, submits one message, prints the reply, and exits. It is
+`codeaf chat` opens, submits one message, prints the reply, and exits. It is
 the right command for measuring *the chat experience*, and the wrong one for
 measuring a job.
 
@@ -649,7 +649,7 @@ It differs from `do` in three ways a harness will trip over:
 - **It prints no `$` summary line.** `do` ends with
   `<elapsed> · <n> nodes · $<spend>`; `--once` ends with the reply. The spend
   is in the session transcript instead — `usage` records in
-  `$AFORGE_HOME/v3/projects/<slug>/<session>/transcript.jsonl`, one per model,
+  `$CODEAF_HOME/v3/projects/<slug>/<session>/transcript.jsonl`, one per model,
   each with `costUsd` and a `calls` count, and `aux: true` on the calls made
   beside the turn rather than by it. **Sum `costUsd` across every record**; a
   harness that reads only the un-`aux` one under-reports.
@@ -677,7 +677,7 @@ at another will spend part of every turn there — measured on one trivial task:
 `--one-model` settles every **text** call on the session model for that run:
 
 ```
-aforge chat --once "<text>" --yolo --one-model --model deepseek/deepseek-v4-flash-0731
+codeaf chat --once "<text>" --yolo --one-model --model deepseek/deepseek-v4-flash-0731
 ```
 
 It **changes no setting and writes nothing**. The rows are still there and the
@@ -710,35 +710,35 @@ ended.
 
 ## 5. Environment
 
-The full list is `aforge help env`. What matters headless:
+The full list is `codeaf help env`. What matters headless:
 
 | Variable | Default | Why a harness cares |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | Required. |
-| `AFORGE_MODEL` | see `--help` | The work model. `--model` overrides per run; unset, the profile's crew answers before the built-in default — see the ladder in section 1. |
-| `AFORGE_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset, the profile's crew mastermind answers; with no crew written, the work model plans too. |
-| `AFORGE_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
-| `AFORGE_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
-| `AFORGE_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
-| `AFORGE_HOME` | `~/.aforge` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
-| `AFORGE_PROFILE_DIR` | `AFORGE_HOME` | Where measured behaviour is kept. |
-| `AFORGE_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. **Setting it also moves the chat conversation's own fold line**, which otherwise follows the model's window (`/status` says which rule governs); leaving it unset is not the same as setting it to 60. |
-| `AFORGE_COMPLETION_RESERVE` | `65536` | Tokens every call keeps free for its answer plus its reasoning. `--completion-reserve` sets it per run. **Pin both when measuring** — they change how much material a call sees and therefore what it costs. |
-| `AFORGE_MAX_DEPTH` | `2` | Levels of decomposition. |
-| `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
-| `AFORGE_REASONING` | `off` | Planning-call reasoning effort. |
-| `AFORGE_EXEC_REASONING` | model default | Executor-call reasoning effort. |
-| `AFORGE_EXEC_TURNS` | unset | `aforge exec` only: the turn cap when `--max-turns` was not passed. |
-| `AFORGE_EXEC_BUDGET` | unset | `aforge exec` only: the token budget when `--token-budget` was not passed. |
-| `AFORGE_EXEC_TIMEOUT` | unset | `aforge exec` only: the wall when `--timeout` was not passed, as a duration or a bare number of seconds. A typed flag always wins over all three; see section 2. |
-| `AFORGE_EXIT_CODES` | unset | `legacy` restores `aforge exec`'s old 2/3/4/5/6 exit codes for one release and changes nothing else. |
+| `CODEAF_MODEL` | see `--help` | The work model. `--model` overrides per run; unset, the profile's crew answers before the built-in default — see the ladder in section 1. |
+| `CODEAF_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset, the profile's crew mastermind answers; with no crew written, the work model plans too. |
+| `CODEAF_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
+| `CODEAF_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
+| `CODEAF_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
+| `CODEAF_HOME` | `~/.codeaf` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
+| `CODEAF_PROFILE_DIR` | `CODEAF_HOME` | Where measured behaviour is kept. |
+| `CODEAF_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. **Setting it also moves the chat conversation's own fold line**, which otherwise follows the model's window (`/status` says which rule governs); leaving it unset is not the same as setting it to 60. |
+| `CODEAF_COMPLETION_RESERVE` | `65536` | Tokens every call keeps free for its answer plus its reasoning. `--completion-reserve` sets it per run. **Pin both when measuring** — they change how much material a call sees and therefore what it costs. |
+| `CODEAF_MAX_DEPTH` | `2` | Levels of decomposition. |
+| `CODEAF_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
+| `CODEAF_REASONING` | `off` | Planning-call reasoning effort. |
+| `CODEAF_EXEC_REASONING` | model default | Executor-call reasoning effort. |
+| `CODEAF_EXEC_TURNS` | unset | `codeaf exec` only: the turn cap when `--max-turns` was not passed. |
+| `CODEAF_EXEC_BUDGET` | unset | `codeaf exec` only: the token budget when `--token-budget` was not passed. |
+| `CODEAF_EXEC_TIMEOUT` | unset | `codeaf exec` only: the wall when `--timeout` was not passed, as a duration or a bare number of seconds. A typed flag always wins over all three; see section 2. |
+| `CODEAF_EXIT_CODES` | unset | `legacy` restores `codeaf exec`'s old 2/3/4/5/6 exit codes for one release and changes nothing else. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.
 
 ---
 
-## 6. Measuring aforge with this surface
+## 6. Measuring codeaf with this surface
 
 Rules that came from getting them wrong:
 
@@ -753,7 +753,7 @@ Rules that came from getting them wrong:
 - **Report `seconds` and `spend_usd` from the JSON**, not from your own wall clock
   around the process — they are measured inside the run, and `spend` is a real
   ledger delta.
-- **Do not change host, model, or `AFORGE_MODELS` mid-campaign.** Wall clock and
+- **Do not change host, model, or `CODEAF_MODELS` mid-campaign.** Wall clock and
   cost are reported columns; changing what produces them mid-run corrupts the
   comparison rather than improving it.
 - **`--model` alone does not pin a chat cell to one model.** The tier rows and
@@ -768,7 +768,7 @@ Rules that came from getting them wrong:
 - **The profile is part of the measurement.** Two cells run from two profiles
   with different crews are two configurations, not one. Record `model_source`
   and `plan_model_source` beside the score, or point every cell at one
-  `AFORGE_PROFILE_DIR`.
+  `CODEAF_PROFILE_DIR`.
 - **`--timeout` is part of the result.** A cell that hit the wall measured the
   wall as much as the work. Report the timeout rate beside the score or the
   score is not what it appears to be.

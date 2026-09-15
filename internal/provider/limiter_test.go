@@ -280,7 +280,7 @@ func TestAdaptiveLimiterWakesOneWaiterPerSlot(t *testing.T) {
 // A nil waiter is the seam: releaseLocked closes the head of the queue, and
 // close(nil) panics with l.mu held. Since panics became absorbable rather than
 // fatal, a critical section that unlocked only on the success path would trade
-// one crash for a process-wide freeze — every provider call aforge makes passes
+// one crash for a process-wide freeze — every provider call codeaf makes passes
 // through this one lock, and a waiter it never wakes waits forever.
 func TestAdaptiveLimiterFaultUnderTheLockDoesNotWedgeAcquire(t *testing.T) {
 	l := newAdaptiveLimiter()
@@ -349,7 +349,7 @@ func atClock(l *adaptiveLimiter, now *time.Time) {
 	l.now = func() time.Time { return *now }
 }
 
-// THE RATCHET. Several aforge processes share one API key on this machine, so a
+// THE RATCHET. Several codeaf processes share one API key on this machine, so a
 // burst of 429s a sibling caused arrives here as if this process had caused it.
 // Halvings compound; the successes that undo them are earned only by traffic
 // this process may not have. A cut that can never heal is a sibling's minute

@@ -14,7 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE LAW: A HARNESS WAITS FOR ITS COMMANDS AT THE SAME TIME, NOT ONE AFTER
@@ -484,7 +484,7 @@ func TestTheHarnessStillGivesUpOnTheWaitersItNames(t *testing.T) {
 // asks the same question of real built commands; this one asks it of every row.
 func TestTheWaiterMatcherNamesEveryCommandTheTableHolds(t *testing.T) {
 	for _, name := range blockingCommands {
-		symbol := "github.com/Agent-Field/aforge-v2/internal/tui3.(*app)." + name + ".func1"
+		symbol := "github.com/Agent-Field/codeaf/internal/tui3.(*app)." + name + ".func1"
 		if !waiterSymbol(symbol) {
 			t.Errorf("waiterSymbol(%q) = false, and blockingCommands names %s — a waiter the matcher does not recognise is charged the whole %s and named as stuck when it does what it was written to do", symbol, name, workBudget)
 		}

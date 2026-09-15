@@ -135,7 +135,7 @@ func TestContracts1And3ADirectCutStopsAtItsCompletion(t *testing.T) {
 // TestContracts2And4AnOpenRouterCutChasesAnIdentifiedReceipt is validation
 // contract items 2 and 4: the real default-service client still asks for the
 // missing receipt on a 404, and both that GET and its completion identify as
-// aforge while the GET keeps OpenRouter's attribution.
+// codeaf while the GET keeps OpenRouter's attribution.
 func TestContracts2And4AnOpenRouterCutChasesAnIdentifiedReceipt(t *testing.T) {
 	defer shortenStallBounds(t, 30*time.Millisecond, 30*time.Millisecond)()
 	var requests atomic.Int64

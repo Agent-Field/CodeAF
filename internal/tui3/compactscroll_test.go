@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // compactedApp is a surface that opened on a journal with a compaction in it.

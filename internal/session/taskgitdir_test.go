@@ -22,7 +22,7 @@ func TestAGitCommandWithNoDirectoryNeverRuns(t *testing.T) {
 	// a real repository holding a real change, and a `git add` that reached it
 	// would leave something staged.
 	repo := t.TempDir()
-	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "aforge"}} {
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "codeaf"}} {
 		if out, err := git(repo, args...); err != nil {
 			t.Skipf("no usable git here: %s %v", out, err)
 		}

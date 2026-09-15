@@ -24,7 +24,7 @@ const theShapeOfAToken = "gho_16C7e42F292c6912E7710c838347Ae178B4a"
 // in plain text afterwards.
 func TestATokenInAToolResultIsGoneFromEveryCopyOfIt(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	journal := filepath.Join(root, "session.jsonl")
 
 	// THE TOKEN IS NEVER IN THE COMMAND. It is on the disk and the shell reads

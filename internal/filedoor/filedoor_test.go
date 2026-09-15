@@ -290,7 +290,7 @@ func TestTheBrowsePageComesBackWholeAndAlone(t *testing.T) {
 	}
 	page, _ := io.ReadAll(answer.Body)
 	text := string(page)
-	if !strings.Contains(text, "roadhouse — aforge files") {
+	if !strings.Contains(text, "roadhouse — codeaf files") {
 		t.Fatal("the page does not say whose disk it is looking at")
 	}
 	// THE TOKEN IS NOT IN THE DOCUMENT. The page authorises itself with the

@@ -49,7 +49,7 @@ const (
 // deliberately not represented by this type.
 //
 // Every wall-clock kind here is read in the PROCESS'S LOCAL ZONE — the zone the
-// machine running aforge is set to. "Sunday at 9" means nine in the morning
+// machine running codeaf is set to. "Sunday at 9" means nine in the morning
 // where the user is sitting, and a schedule that survives a restart is
 // recomputed in that same zone (NextWatchDue restores time.Local before doing
 // wall-clock math, because SQLite hands timestamps back in UTC).

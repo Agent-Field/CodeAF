@@ -1,5 +1,5 @@
 // Package remote is the wire between a surface on one machine and an engine on
-// another. The surface half dials `ssh <host> aforge engine …` and speaks this
+// another. The surface half dials `ssh <host> codeaf engine …` and speaks this
 // protocol over the pipes; the engine half wraps an ordinary *session.Agent and
 // answers. Both halves import THIS file and nothing of each other.
 //
@@ -17,8 +17,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // Version is the protocol's version. The hello and the welcome both carry it,
@@ -26,7 +26,7 @@ import (
 // about a frame must not guess at each other.
 //
 // VERSION 2 IS THE PERSISTENT ENGINE. Version 1 married a conversation to a
-// pipe: the engine was `ssh … aforge engine`, it read frames on stdin, and when
+// pipe: the engine was `ssh … codeaf engine`, it read frames on stdin, and when
 // the pipe died so did the turn in flight. Version 2 separates the two — a
 // session lives on the engine machine and a surface ATTACHES to it — and the
 // four things that separation needs are the whole of the delta:
@@ -181,7 +181,7 @@ import (
 //     ONE interface — the lane, the pending reading, and this — so a wire holding
 //     three of the four left a hosted rail unsubscribed rather than partly
 //     working, with nothing on any screen saying why. internal/tui3's DrawsTasks
-//     is that assertion made checkable, and cmd/aforge makes it.
+//     is that assertion made checkable, and cmd/codeaf makes it.
 //
 // The number moves rather than riding version 7 for [MethodTaskStart]'s reason:
 // an engine that does not know Task.Watch would answer the surface's one
@@ -202,7 +202,7 @@ import (
 // VERSION 11 CARRIES THE HARNESS LANE. A design card and a subharness intake
 // card are raised on a subscription that outlives the turn (internal/session's
 // emitHarness), and only a running turn's stream crossed this wire — so
-// cmd/aforge built every hosted session with the designer nilled and the cards
+// cmd/codeaf built every hosted session with the designer nilled and the cards
 // off, and said so in prose. The delta is one subscription up
 // ([MethodDesignWatch]), its frames down ("design"), and the intake card's
 // answer ([MethodSubharnessResolve]); the design card's own answer has been
@@ -262,7 +262,7 @@ import (
 // moment a surface attaches. That subscription had no frame here, so a hosted
 // surface asserted the questions half of its agent, found no
 // [Agent.WatchQuestions] on it, and drew nothing: an `ask` on the road a plain
-// `aforge` takes stopped the turn with no block, no chip and no row on any
+// `codeaf` takes stopped the turn with no block, no chip and no row on any
 // screen, for as long as the person left it. Measured at three minutes.
 //
 // The delta is one intent up and one fact down, on the shape versions 8 and 11
@@ -287,7 +287,7 @@ import (
 // reason, and the reason is the whole of the discipline here: a version-13
 // engine answers this subscription with "no such method" and leaves the lane
 // permanently dark, with nothing on the screen saying why. Refused at the door,
-// a person is told their engine is an older aforge; accepted, they would be told
+// a person is told their engine is an older codeaf; accepted, they would be told
 // nothing at all and their turn would simply stop. NEVER TO SILENCE.
 // VERSION 15 IS AN ANSWER THAT IS A MESSAGE (docs/design/questions/DESIGN.md).
 // A question the model asks no longer exists only for as long as the call that
@@ -508,7 +508,7 @@ const (
 	// engine process through exactly this client — asked the question and got
 	// "this conversation has no project to keep question rules in", whatever
 	// project it was in. `/autonomy` printed that sentence on a machine with the
-	// rules sitting in `.aforge/autonomy.json`, and the settings rows that read
+	// rules sitting in `.codeaf/autonomy.json`, and the settings rows that read
 	// the same door drew nothing at all.
 	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
 	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
@@ -751,7 +751,7 @@ type Hello struct {
 	// BUILDS the session rather than applied to it a millisecond later.
 	//
 	// They retire a stub. Version 1 had no room for them, so the door set them
-	// immediately after the handshake (cmd/aforge's applyHostChoices), which
+	// immediately after the handshake (cmd/codeaf's applyHostChoices), which
 	// worked for every turn the person could type but left the session file's
 	// first line naming the model the session was BORN on rather than the one
 	// they asked for. Nobody on the screen could see the difference; the
@@ -762,7 +762,7 @@ type Hello struct {
 	// Launch is how the conversation should be BUILT, when this hello is the
 	// one that opens it. Nil asks for the engine's own defaults, which is what
 	// every remote surface sends: these are settings of the machine the session
-	// runs on, and cmd/aforge refuses them over --host and --at by name.
+	// runs on, and cmd/codeaf refuses them over --host and --at by name.
 	Launch *LaunchShape `json:"launch,omitempty"`
 
 	// Encodings are the optional frame payload encodings this surface can read.
@@ -947,7 +947,7 @@ type Welcome struct {
 	// It is carried because a surface that is not alone must be able to say so:
 	// two people (or one person and their own forgotten window) sharing a
 	// conversation is a fact about that conversation, and a screen that hid it
-	// would be the one place aforge lied about who is in the room. Zero is the
+	// would be the one place codeaf lied about who is in the room. Zero is the
 	// ordinary case and draws nothing, by the emptiness law.
 	Attached int `json:"attached,omitempty"`
 
@@ -972,7 +972,7 @@ type Welcome struct {
 	// engine on a pipe.
 	//
 	// A SURFACE MUST NOT PROMISE A LIFETIME THE ENGINE DOES NOT HAVE. Both
-	// shapes speak this protocol and both are legitimate: `aforge engine`
+	// shapes speak this protocol and both are legitimate: `codeaf engine`
 	// started by hand on a machine with no host is still a conversation, it
 	// simply ends when the pipe does. The screen's word for detaching, and
 	// whether "close the lid, it keeps going" is true, both hang off this
@@ -1088,7 +1088,7 @@ type Welcome struct {
 	// line must not turn a live conversation away), which left a surface
 	// attached to an engine from before them drawing no rate and no machine and
 	// no way to say why — and a busy older engine on the same version is
-	// attached to rather than retired (cmd/aforge's clearStaleEngineHost). A
+	// attached to rather than retired (cmd/codeaf's clearStaleEngineHost). A
 	// surface reads this, or a news frame arriving, as the engine having the
 	// news; neither after a whole answer is an older engine, and the surface
 	// says so once ([Client.NewsSilent]).
@@ -1104,7 +1104,7 @@ type Welcome struct {
 // IT CARRIES THE FACT AND THE READING, and that is why it is per-recipient
 // rather than one broadcast fact. "The driver is macbook" means two different
 // sentences depending on who hears it: to the window sitting on macbook beside
-// it, the honest word is the one aforge already uses at home — `another window`
+// it, the honest word is the one codeaf already uses at home — `another window`
 // — and to a surface on spark it is the machine's name. Only the engine knows
 // both names, so only the engine can answer that; and the SURFACE still owns
 // the words, because the rest of the line it goes in is about keys on this

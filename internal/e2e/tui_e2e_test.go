@@ -5,7 +5,7 @@ package e2e
 // TestTUIE2E is the ambient side of v3, driven end to end: the real binary, a
 // real terminal, a real model, and the screen read back with capture-pane.
 //
-// Every subtest builds its own AFORGE_HOME and its own repository, and NOT ONE
+// Every subtest builds its own CODEAF_HOME and its own repository, and NOT ONE
 // STRING IS WRITTEN DOWN HERE. Every needle comes through [say] out of the table
 // in tuiwords_test.go, which an ordinary untagged test reads back against
 // internal/tui3's own sources — so a sentence the surface stops drawing turns a
@@ -48,8 +48,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
@@ -111,7 +111,7 @@ func TestTUIE2E(t *testing.T) {
 // ordinary launch, with no --no-host escape hatch, keeps this machine's account
 // store and harness registry on the surface side of the local socket.
 func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
-	// The socket path includes AFORGE_HOME. Go's test directory carries this
+	// The socket path includes CODEAF_HOME. Go's test directory carries this
 	// whole sentence and crosses the unix-socket limit, which would make the
 	// product honestly take its in-process floor and stop testing this road.
 	seed := newHome(t, nil)
@@ -171,12 +171,12 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 // ── 13 ──────────────────────────────────────────────────────────────────────
 
 // testFreshInstallSetup is #322's acceptance, on the real screen: THE FRONT
-// DOOR, on a machine that has never run aforge.
+// DOOR, on a machine that has never run codeaf.
 //
 // THE FAILURE THIS MEASURES MADE THE PRODUCT UNUSABLE ON A FRESH INSTALL.
 // [app.openSetup] returned early on an empty profile directory, which is what an
-// unset AFORGE_PROFILE_DIR looks like by the time it reaches the surface — so a
-// person who had just installed aforge and typed `aforge` was never shown the
+// unset CODEAF_PROFILE_DIR looks like by the time it reaches the surface — so a
+// person who had just installed codeaf and typed `codeaf` was never shown the
 // screen that connects a provider. Every unit test of that screen named a
 // profile directory first, and every person who ever tested it already had a key
 // in their shell, so it was green everywhere and broken for exactly the one
@@ -751,7 +751,7 @@ func walkTo(r *rig, hint, key string) bool {
 // testFiringReachesThePerson stands a one-minute reminder, sits in an ordinary
 // conversation of the same project, and waits for the window's own pass to
 // fire it. Then it quits, fires a second one from outside every window with
-// `aforge tick`, and reopens to read what was left waiting.
+// `codeaf tick`, and reopens to read what was left waiting.
 //
 // WHAT WENT. The second half used to reopen from ANOTHER project, put the
 // pointer on a folded `▸ firews` line and read the news band off the project
@@ -799,7 +799,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
 	// line is asked on the frame, so over a connection it is answered from a
 	// cache that refreshes behind itself — the seam's stated law rather than an
-	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
+	// optimization (cmd/codeaf's hostStanding) — and an item that stood a second
 	// ago reaches it on the next beat.
 	//
 	// AND THERE ARE THREE BEATS BETWEEN THE DISK AND THAT SEGMENT, not one, so
@@ -863,7 +863,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	// agent inside the process that ran the pass (session's standing_run.go) — so
 	// only a pass in the process holding this project's conversations can take
 	// one. On this machine that is the engine, and another pass can beat it to
-	// the item: the OS timer's `aforge tick` is a process of its own with an empty
+	// the item: the OS timer's `codeaf tick` is a process of its own with an empty
 	// registry, and it reaches a person down road 4 instead, through the project's
 	// inbox. Both ends AT A PERSON, which is what this subtest is named for, and
 	// the second half below proves road 4 the whole way to the next window's
@@ -941,7 +941,7 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	time.Sleep(75 * time.Second)
 	out := tick(t, home)
-	t.Logf("`aforge tick` said %q", strings.TrimSpace(out))
+	t.Logf("`codeaf tick` said %q", strings.TrimSpace(out))
 
 	second, ok := standingRecordAbout(t, home, "stretch")
 	if !ok {

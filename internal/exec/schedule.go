@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Scheduler drives a graph to completion.
@@ -687,7 +687,7 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	if outcome != nil {
 		s.addUsage(outcome.Usage)
 	}
-	// aforge plan run (cmd/aforge/run.go) is this scheduler's only caller. Its
+	// codeaf plan run (cmd/codeaf/run.go) is this scheduler's only caller. Its
 	// nodes are minted under no store namespace, so there is nowhere durable to
 	// journal into and nothing that would read one; that is why nil is passed
 	// instead of carrying a hook no door sets. Reaching the seam anyway keeps the

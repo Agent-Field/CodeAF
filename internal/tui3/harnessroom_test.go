@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // awaitingDesign is a surface standing in a design's room with a page waiting on

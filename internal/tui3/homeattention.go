@@ -34,7 +34,7 @@ package tui3
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // attentionOlder is the age comparison the needs-you rank sorts with. A stamp

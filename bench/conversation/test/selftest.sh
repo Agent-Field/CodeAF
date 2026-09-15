@@ -126,8 +126,8 @@ say
 
 # ── the dry run must not run anything ───────────────────────────────────────
 say "dry-run:"
-PI_BIN="$FAKE/pi-fake.sh" AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run dryrun --unguarded --arms pi,aforge --scenarios data-tally --dry-run
+PI_BIN="$FAKE/pi-fake.sh" CODEAF_BIN="$FAKE/codeaf-fake.sh" \
+  case_run dryrun --unguarded --arms pi,codeaf --scenarios data-tally --dry-run
 [ "$CASE_EXIT" -eq 0 ] && ok "a dry run exits 0" || bad "a dry run should exit 0 (got $CASE_EXIT)"
 if [ -e "$CASE_OUT/marker" ]; then
   bad "the dry run EXECUTED a harness — the marker file exists"
@@ -232,20 +232,20 @@ FAKE_MODE=wrongmodel PI_BIN="$FAKE/pi-fake.sh" print_case wrongmodel
 grep -q 'allowlist' "$LOGDIR/wrongmodel.log" \
   && ok "and the log names the offender" || bad "the log does not mention the allowlist"
 
-say "wrongmodel (aforge, an auxiliary role billed elsewhere):"
-FAKE_MODE=wrongmodel AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run auxmodel --unguarded --arms aforge --scenarios data-tally --cap 60
+say "wrongmodel (codeaf, an auxiliary role billed elsewhere):"
+FAKE_MODE=wrongmodel CODEAF_BIN="$FAKE/codeaf-fake.sh" \
+  case_run auxmodel --unguarded --arms codeaf --scenarios data-tally --cap 60
 [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
   && ok "a role call off the allowlist fails the cell" || bad "an auxiliary call escaped the allowlist"
 
-say "ok (aforge, home-shaped receipts):"
-FAKE_MODE=ok AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run aforgeok --unguarded --arms aforge --scenarios data-tally --cap 60
+say "ok (codeaf, home-shaped receipts):"
+FAKE_MODE=ok CODEAF_BIN="$FAKE/codeaf-fake.sh" \
+  case_run codeafok --unguarded --arms codeaf --scenarios data-tally --cap 60
 [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
-  && ok "the aforge receipt reader works end to end" || bad "a healthy aforge cell did not pass"
+  && ok "the codeaf receipt reader works end to end" || bad "a healthy codeaf cell did not pass"
 python3 -c "import sys; sys.exit(0 if abs(float('$(field "$CASE_RESULTS" cost_usd)') - 0.000796) < 1e-9 else 1)" \
   && ok "the turn and its auxiliary call are both counted" \
-  || bad "the aforge cost is not turn+aux (got $(field "$CASE_RESULTS" cost_usd))"
+  || bad "the codeaf cost is not turn+aux (got $(field "$CASE_RESULTS" cost_usd))"
 say
 
 # ── an arm that cannot pin the model ────────────────────────────────────────

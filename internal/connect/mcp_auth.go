@@ -23,15 +23,15 @@ import (
 // ── IT IS THE SAME TRIP, ARRANGED BY THE SERVICE INSTEAD OF BY US ──
 //
 // Google's trip (auth.go) is made of facts written down in this package: where
-// the sign-in page is, where the exchange goes, who aforge is. A tool server
+// the sign-in page is, where the exchange goes, who codeaf is. A tool server
 // publishes all three, in a shape everybody has agreed on, so the trip is the
-// same trip and the difference is only that the first thing aforge does is ASK:
+// same trip and the difference is only that the first thing codeaf does is ASK:
 //
 //	1. the service says where the description of its sign-in lives
 //	   (RFC 9728 — protected resource metadata),
 //	2. that description names the sign-in, which describes itself
 //	   (RFC 8414 — authorization server metadata),
-//	3. aforge introduces itself there and is issued an identity
+//	3. codeaf introduces itself there and is issued an identity
 //	   (RFC 7591 — dynamic client registration), kept for next time,
 //	4. the browser trip runs with a proof key and the service's own name
 //	   attached (PKCE and RFC 8707), on the same loopback addresses and behind
@@ -54,10 +54,10 @@ const (
 	// trip. They are ordinary web requests to a service that is either up or
 	// not, and none of them is worth hanging a screen on.
 	mcpAskTimeout = 30 * time.Second
-	// mcpClientName is how aforge introduces itself. It is shown to the person
+	// mcpClientName is how codeaf introduces itself. It is shown to the person
 	// on the service's own permission screen, so it is the product's name and
 	// nothing more technical.
-	mcpClientName = "aforge"
+	mcpClientName = "codeaf"
 )
 
 // refusedPage is what the person sees when they say no, or when the service
@@ -109,12 +109,12 @@ type signIn struct {
 	// and every later renewal go.
 	authorize string
 	token     string
-	// register is where aforge introduces itself, empty when the sign-in does
+	// register is where codeaf introduces itself, empty when the sign-in does
 	// not allow it.
 	register string
 	// scopes are the permissions the service says are worth asking for.
 	scopes []string
-	// style is how the sign-in wants aforge to identify itself on a request to
+	// style is how the sign-in wants codeaf to identify itself on a request to
 	// the token address.
 	style oauth2.AuthStyle
 	// stampsIssuer reports that the sign-in promises to name itself in the
@@ -153,7 +153,7 @@ func discoverSignIn(ctx context.Context, client *http.Client, address string) (s
 	// THE ASK IS WHAT THE SERVICE SAID IT NEEDS, AND NOTHING ELSE. A sign-in
 	// lists every permission it can issue, for every program it serves; asking
 	// for that list would put a permissions screen in front of the person that
-	// bears no relation to what aforge is about to do. A service that says
+	// bears no relation to what codeaf is about to do. A service that says
 	// nothing is asked for nothing, and answers with whatever it grants by
 	// default.
 	//
@@ -264,7 +264,7 @@ func namedDescription(ctx context.Context, client *http.Client, address string) 
 	return ""
 }
 
-// tokenStyle picks how aforge identifies itself when it asks for keys, from
+// tokenStyle picks how codeaf identifies itself when it asks for keys, from
 // what the sign-in says it accepts. The newer way is preferred where both are
 // offered, and a sign-in that says nothing is left to the stock guess.
 func tokenStyle(methods []string) oauth2.AuthStyle {
@@ -411,7 +411,7 @@ func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given
 		return Status{}, err
 	}
 
-	// The identity is written first: a failure between the two leaves aforge
+	// The identity is written first: a failure between the two leaves codeaf
 	// knowing who it is and not yet connected, which the next attempt fixes
 	// without asking the service for a second identity.
 	if err := m.registrations().put(service.ID, record); err != nil {
@@ -450,7 +450,7 @@ func checkIssuer(named string, found signIn) error {
 	return nil
 }
 
-// introduce registers aforge with one sign-in and returns the identity it was
+// introduce registers codeaf with one sign-in and returns the identity it was
 // issued.
 func introduce(ctx context.Context, client *http.Client, plug *toolServer, filled string, found signIn, redirect string) (mcpRegistration, error) {
 	if strings.TrimSpace(found.register) == "" {

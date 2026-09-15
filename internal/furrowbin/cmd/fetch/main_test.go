@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // fakeFurrow is the artifact these tests fetch. Nothing here depends on it
@@ -213,7 +213,7 @@ func TestAPlatformThePinDoesNotCoverStopsTheBuildByName(t *testing.T) {
 	cache, stage := t.TempDir(), t.TempDir()
 	err := fetch(fakePin("linux-arm64"), "plan9-riscv64", cache, stage, "")
 	if err == nil {
-		t.Fatal("a platform with no pinned artifact built happily; that is an aforge without furrow")
+		t.Fatal("a platform with no pinned artifact built happily; that is a codeaf without furrow")
 	}
 
 	// THE REFUSAL IS THE PRODUCT HERE. A build that stops has to hand back the

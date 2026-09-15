@@ -158,7 +158,7 @@ func TestAStatusFigureReadsAboveItsLabel(t *testing.T) {
 // THE COLUMN IS READ BACK OFF THE TEXT, in both directions, so the fact list and
 // the note cannot be two spellings of one thing that drift apart.
 func TestColumnFactsReadEitherHalfOfATwoColumnNote(t *testing.T) {
-	text := "openaf\n\n/help          what you can type\nctrl+b         copy mode\nsession · x.json"
+	text := "codeaf\n\n/help          what you can type\nctrl+b         copy mode\nsession · x.json"
 	if got := columnFacts(text, true); len(got) != 2 || got[0] != "/help" || got[1] != "ctrl+b" {
 		t.Fatalf("the leading column is not the two keys: %q", got)
 	}

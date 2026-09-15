@@ -286,13 +286,13 @@ func TestRoleBindingWritesAreIdempotent(t *testing.T) {
 }
 
 // TestSeedingNeverSpamsAndNeverClobbers is the environment bridge's whole
-// contract: AFORGE_PLAN_MODEL seeds an unbound role, re-seeds itself when the
+// contract: CODEAF_PLAN_MODEL seeds an unbound role, re-seeds itself when the
 // environment changes, writes nothing on an unchanged boot, and stops speaking
 // the moment a person has bound the role by hand.
 func TestSeedingNeverSpamsAndNeverClobbers(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "seed.db"))
 	spliceRoleTree(t, graph)
-	const origin = RoleSeedOriginPrefix + "AFORGE_PLAN_MODEL"
+	const origin = RoleSeedOriginPrefix + "CODEAF_PLAN_MODEL"
 
 	if changed, err := graph.SeedRoleBinding(RolePlan, ScopeGlobal, "env/plan", origin); err != nil || !changed {
 		t.Fatalf("first boot: changed=%t err=%v", changed, err)

@@ -65,7 +65,7 @@ while time.time() < deadline:
         pass
     # A QUARTER OF A SECOND, BECAUSE TWO SECONDS WAS ALREADY TOO SLOW. A server
     # that answers instantly scores all 68,186 points in about five seconds, and
-    # on the s1 aforge cell the gap between the main metrics.json appearing and
+    # on the s1 codeaf cell the gap between the main metrics.json appearing and
     # the holdout merge replacing it was under a second — the two-second poll
     # missed it and the per-method table had to be recovered from the printed
     # log. The fallback works; the file is the better source.

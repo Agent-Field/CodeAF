@@ -18,7 +18,7 @@ import (
 // them could see a COMMAND-LINE VERB, and the hole was not theoretical: `why`,
 // `notebook`, `competence`, `services`, `wake` and `rebuild` shipped for months
 // with no mention anywhere in chat/. This corpus is the only authoritative
-// source about aforge for the model — its training data does not contain this
+// source about codeaf for the model — its training data does not contain this
 // program — so somebody who asked the running chat "how do I see what that task
 // actually did?" was answered by an improvisation, or by a flat denial of a
 // command the binary has always had.
@@ -29,9 +29,9 @@ import (
 // also opened the manual.
 //
 // IT LIVES HERE, in the package that owns the corpus, because it is the one
-// place that can see BOTH halves: chat/ is beside it, and cmd/aforge is read as
+// place that can see BOTH halves: chat/ is beside it, and cmd/codeaf is read as
 // source the way truth_test.go already reads it for the figures the pages quote.
-// A test in cmd/aforge could see the dispatch more directly and could not be run
+// A test in cmd/codeaf could see the dispatch more directly and could not be run
 // at all while another lane has that package mid-edit.
 //
 // THE VERBS ARE READ OUT OF THE TREE WITH go/parser rather than off a list,
@@ -47,21 +47,21 @@ func TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo(t *testing.T) {
 	}
 	for _, verb := range verbs {
 		if !chatManualNamesTheCommand(t, verb) {
-			t.Errorf("no chat manual page mentions `aforge %s` — add it to internal/manual/chat/", verb)
+			t.Errorf("no chat manual page mentions `codeaf %s` — add it to internal/manual/chat/", verb)
 		}
 	}
 }
 
-// chatManualNamesTheCommand looks for `aforge <verb>` as a whole word.
+// chatManualNamesTheCommand looks for `codeaf <verb>` as a whole word.
 //
 // [Corpus.Mentions] is a plain substring test, which is right for a slash
-// command and wrong here: "aforge shows their names" contains "aforge show", so
+// command and wrong here: "codeaf shows their names" contains "codeaf show", so
 // a substring gate would have read the `show` verb as documented by a sentence
 // about something else entirely. The word boundary is the difference between
 // this gate checking the corpus and it checking the alphabet.
 func chatManualNamesTheCommand(t *testing.T, verb string) bool {
 	t.Helper()
-	named := regexp.MustCompile(`(?i)\baforge ` + regexp.QuoteMeta(verb) + `\b`)
+	named := regexp.MustCompile(`(?i)\bcodeaf ` + regexp.QuoteMeta(verb) + `\b`)
 	for _, name := range Chat().Pages() {
 		text, ok := Chat().Page(name)
 		if !ok {
@@ -74,14 +74,14 @@ func chatManualNamesTheCommand(t *testing.T, verb string) bool {
 	return false
 }
 
-// dispatchedVerbs is every word `aforge <word>` answers to, read from the two
-// places that decide it: the switch in run() (cmd/aforge/main.go), which is the
-// dispatch itself, and `knownCommands` (cmd/aforge/usage.go), which is what the
+// dispatchedVerbs is every word `codeaf <word>` answers to, read from the two
+// places that decide it: the switch in run() (cmd/codeaf/main.go), which is the
+// dispatch itself, and `knownCommands` (cmd/codeaf/usage.go), which is what the
 // typo suggester offers.  A word in either is a word a person can type.
 //
 // The flag spellings of a verb — `--version`, `-v`, `-h`, `--help` — are
 // dropped: each is an alias of a verb already in the set, and no page would
-// spell `aforge --version` as a command in its own right.
+// spell `codeaf --version` as a command in its own right.
 func dispatchedVerbs(t *testing.T) []string {
 	t.Helper()
 	found := map[string]bool{}
@@ -104,9 +104,9 @@ func dispatchedVerbs(t *testing.T) []string {
 // its place in the typo suggester — is a decision made after this one.
 func runSwitchCases(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/aforge/main.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/codeaf/main.go", nil, 0)
 	if err != nil {
-		t.Fatalf("read cmd/aforge/main.go: %v", err)
+		t.Fatalf("read cmd/codeaf/main.go: %v", err)
 	}
 	var cases []string
 	for _, decl := range file.Decls {
@@ -128,7 +128,7 @@ func runSwitchCases(t *testing.T) []string {
 		})
 	}
 	if len(cases) == 0 {
-		t.Fatal("no case labels were read out of run()'s dispatch switch in cmd/aforge/main.go")
+		t.Fatal("no case labels were read out of run()'s dispatch switch in cmd/codeaf/main.go")
 	}
 	return cases
 }
@@ -138,9 +138,9 @@ func runSwitchCases(t *testing.T) []string {
 // checked — the suggester will still offer it, and a person will still type it.
 func knownCommandsLiteral(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/aforge/usage.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "../../cmd/codeaf/usage.go", nil, 0)
 	if err != nil {
-		t.Fatalf("read cmd/aforge/usage.go: %v", err)
+		t.Fatalf("read cmd/codeaf/usage.go: %v", err)
 	}
 	var words []string
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -162,7 +162,7 @@ func knownCommandsLiteral(t *testing.T) []string {
 		return false
 	})
 	if len(words) == 0 {
-		t.Fatal("knownCommands was not found in cmd/aforge/usage.go")
+		t.Fatal("knownCommands was not found in cmd/codeaf/usage.go")
 	}
 	return words
 }

@@ -11,8 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // /export: THE CONVERSATION, AS A DOCUMENT SOMEBODY ELSE CAN READ.
@@ -210,7 +210,7 @@ func writeExport(target exportTarget, doc string) (string, error) {
 // artifactsIndex is where the row goes: what the door said, or the product's
 // own file under the state root. The fallback is [Options.Models]'s — a surface
 // nobody wired still records where everything else in the product looks, and
-// AFORGE_HOME moves it with the rest.
+// CODEAF_HOME moves it with the rest.
 func (a *app) artifactsIndex() string {
 	if index := strings.TrimSpace(a.artifacts); index != "" {
 		return index

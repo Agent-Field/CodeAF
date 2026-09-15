@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // ── THE SHIPPED DEFAULT, END TO END ─────────────────────────────────────────
@@ -176,7 +176,7 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 	// THE STATE FILE IS WRITTEN BY THE WRITER AND NOT BY THE TURN (issue #264):
 	// an observation appends to the journal, and the compaction that folds the
 	// journal into `lanes.json` happens off the send path. This is the door a
-	// real process runs at its own exit (`cmd/aforge`'s execute).
+	// real process runs at its own exit (`cmd/codeaf`'s execute).
 	lanes.Flush()
 
 	// ONE MODEL, ONE KEY. The file is what the next session opens, so it is what

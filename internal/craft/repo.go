@@ -18,7 +18,7 @@ import (
 
 // The craft repository is an ordinary git repository, driven through the git
 // CLI. There is no library here on purpose: git is already a dependency of the
-// machine aforge works on, the resident already shells it, and a workflow's
+// machine codeaf works on, the resident already shells it, and a workflow's
 // history has to be readable by the user with the tools they already have —
 // `git log workflows/presentation.yaml` in the craft directory is part of the
 // interface, not an implementation detail.
@@ -39,8 +39,8 @@ const (
 	// commitAuthor is the identity every craft commit carries. It is set local
 	// to the repository so a version the resident writes never depends on, or
 	// borrows from, whatever git identity the host happens to have configured.
-	commitAuthorName  = "aforge resident"
-	commitAuthorEmail = "resident@aforge.local"
+	commitAuthorName  = "codeaf resident"
+	commitAuthorEmail = "resident@codeaf.local"
 )
 
 // gitLock serializes every mutation across the process. The git index is a

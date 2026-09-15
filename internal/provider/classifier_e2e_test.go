@@ -3,9 +3,9 @@ package provider
 import (
 	"testing"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // ── FIVE REFUSALS, ONE CALL SITE, ONE VERDICT EACH ──────────────────────────

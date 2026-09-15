@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A PAGE MAY LOWER SALIENCE; IT MAY NEVER DROP A FACT.
@@ -418,11 +418,11 @@ func TestACallAboveTheSeamIsNeverDrawnAsStillRunning(t *testing.T) {
 }
 
 // AND A WHOLE RECORD THIS BUILD CANNOT READ SAYS SO ON THE SAME ROW. A node's
-// file written by a newer aforge is refused entire — nothing above a line, no
+// file written by a newer codeaf is refused entire — nothing above a line, no
 // entries at all — so a page that drew what came back and nothing else would
 // open BLANK, which reads as a task that has done no work rather than as a
 // record this build has no business reading.
-func TestATaskPageFromANewerAforgeSaysWhyItIsEmpty(t *testing.T) {
+func TestATaskPageFromANewerCodeafSaysWhyItIsEmpty(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "node.jsonl")
 	record := strings.Join([]string{
 		`{"type":"session","version":9,"id":"n1","cwd":"/tmp/lab"}`,
@@ -441,7 +441,7 @@ func TestATaskPageFromANewerAforgeSaysWhyItIsEmpty(t *testing.T) {
 		t.Fatalf("the page drew %d blocks, want the one row saying why it is empty: %#v",
 			len(blocks), blocks)
 	}
-	if !strings.Contains(blocks[0].text, "newer aforge") {
+	if !strings.Contains(blocks[0].text, "newer codeaf") {
 		t.Fatalf("the page does not say why it is empty: %q", blocks[0].text)
 	}
 	// AND IT OPENS NO TURN. Nothing was read, so there is nothing to number.

@@ -8,7 +8,7 @@ import (
 
 	ampsdk "github.com/amp-labs/connectors/providers"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	"github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 // This file is the proof that replacing the amp-labs import with a committed

@@ -9,15 +9,15 @@ import (
 )
 
 // TestRealBinaryPreservesExitCodes is the one test that touches a real rtk. It
-// is skipped unless AFORGE_TEST_RTK=1, because the suite must run offline and
+// is skipped unless CODEAF_TEST_RTK=1, because the suite must run offline and
 // without the binary; run it when bumping Version, since the property it checks
 // — that putting rtk in the middle never changes whether a command succeeded —
 // is the whole basis for wrapping anything.
 //
-//	AFORGE_TEST_RTK=1 go test -run RealBinary ./internal/rtk/
+//	CODEAF_TEST_RTK=1 go test -run RealBinary ./internal/rtk/
 func TestRealBinaryPreservesExitCodes(t *testing.T) {
-	if os.Getenv("AFORGE_TEST_RTK") != "1" {
-		t.Skip("set AFORGE_TEST_RTK=1 to exercise a real rtk")
+	if os.Getenv("CODEAF_TEST_RTK") != "1" {
+		t.Skip("set CODEAF_TEST_RTK=1 to exercise a real rtk")
 	}
 	tool, ok := Available()
 	if !ok {

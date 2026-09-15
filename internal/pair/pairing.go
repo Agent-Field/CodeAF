@@ -32,8 +32,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/pair/cpace"
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/pair/cpace"
+	"github.com/Agent-Field/codeaf/internal/relay"
 	"github.com/flynn/noise"
 )
 
@@ -45,8 +45,10 @@ var suite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.Ha
 // because the two ends have to agree on them exactly, and a machine name is the
 // only part that varies.
 const (
-	whoSurface = "aforge device"
-	whoMachine = "aforge machine"
+	// These are ON-THE-WIRE PAKE identities, not product prose. They remain
+	// stable so the two ends derive the same key across an upgrade.
+	whoSurface = "aforge device"  // legacy-name
+	whoMachine = "aforge machine" // legacy-name
 )
 
 // pakeContext binds the exchange to THIS machine and THIS protocol, so that a
@@ -214,7 +216,7 @@ func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device,
 	//
 	// A WRITE THAT FAILS SENDS NOTHING AT ALL. There is no room in this message
 	// for a machine to say why it stopped — its shape is the machine's key and
-	// its name, and it is the same shape every build of aforge has ever sent — so
+	// its name, and it is the same shape every build of codeaf has ever sent — so
 	// the refusal is the silence of a machine that hangs up, which is exactly what
 	// this machine already does when the six digits were wrong. The device is left
 	// knowing the pairing did not hold, which is the fact that matters to it, and

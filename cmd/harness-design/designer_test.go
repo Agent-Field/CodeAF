@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/subharness/prompts"
+	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness/prompts"
 )
 
 // The guide is an asset now, so the thing that used to be a compile error — a

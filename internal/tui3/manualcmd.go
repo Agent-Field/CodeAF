@@ -1,6 +1,6 @@
 package tui3
 
-// /manual — WHAT AFORGE KNOWS ABOUT ITSELF, READ RATHER THAN RETOLD.
+// /manual — WHAT codeaf KNOWS ABOUT ITSELF, READ RATHER THAN RETOLD.
 //
 // The manual (internal/manual's chat pages) had exactly one reader for its whole
 // life and it was not the person: the only door onto it was the belt's `manual`
@@ -16,14 +16,14 @@ package tui3
 // it. It makes no model call and spends nothing: the pages are inside the binary
 // and reading them is a lookup, not a turn.
 //
-// THE COMMAND LINE HAS THE SAME DOOR (cmd/aforge's manual.go) and it is not a
+// THE COMMAND LINE HAS THE SAME DOOR (cmd/codeaf's manual.go) and it is not a
 // duplicate of this one — it is the door for the questions people ask BEFORE
 // there is a key to open a conversation with.
 
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // manualChatSections is how many sections a question typed here is answered
@@ -79,12 +79,12 @@ func (a *app) runManualQuestion(question string) {
 	sections := manual.Chat().Search(question, manualChatSections)
 	if len(sections) == 0 {
 		// NOT A REFUSAL. The manual having nothing on a topic is a fact about
-		// aforge worth saying — it usually means the answer is "no, it does not
+		// codeaf worth saying — it usually means the answer is "no, it does not
 		// do that" — and the pages go under it so the next question is one
 		// keystroke away rather than a guess.
 		// AND THE LISTING UNDER IT IS A BLOCK for [app.runManualCommand]'s reason
 		// exactly: one page per line, cut rather than re-flowed.
-		a.noteBlock("the manual has nothing on that, which usually means aforge does not do it\n\n" + manual.Chat().Listing())
+		a.noteBlock("the manual has nothing on that, which usually means codeaf does not do it\n\n" + manual.Chat().Listing())
 		return
 	}
 	a.note(manual.RenderWhole(sections))

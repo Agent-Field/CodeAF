@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Journey #19 without a phrase list. "what can you do?" arrives in a hundred
@@ -48,7 +48,7 @@ func TestTheProductPitchRidesTheStablePromptExactlyOnce(t *testing.T) {
 		t.Fatalf("the system message is not byte-stable across two renders:\n%q\n%q", first, second)
 	}
 	// The law and the catalog are both in there: an answer quoted from this
-	// block can say what aforge is and what a person may say to it.
+	// block can say what codeaf is and what a person may say to it.
 	for _, phrase := range []string{
 		"the thread is the only mouth", "commission work", "stand up a rule",
 	} {

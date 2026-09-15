@@ -53,7 +53,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (
@@ -434,7 +434,7 @@ func TestOneWideCheckIsNotOrderedByEveryPart(t *testing.T) {
 	// refuses a division whose evidence names fewer than six separate items, and
 	// three sections is deliberately below that floor. Whether handing work out
 	// PAYS is a different question from what a part is finished against.
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 
 	run := familyWithParts(t, w, newFolderGround, wideCheckAsk, nil, theWideCheckShapeWasReached,
 		"no division carrying one whole-project check in more than one part ever reached the road")

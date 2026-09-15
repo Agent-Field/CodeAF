@@ -5,7 +5,7 @@ package connect
 // ── WHY TWO AND NOT ONE ──
 //
 // The line is the same line internal/approval draws: reading Slack is not
-// posting in somebody's name. A person who wants aforge to find and read a
+// posting in somebody's name. A person who wants codeaf to find and read a
 // thread without ever speaking as them needs a control that can say exactly
 // that. Search, thread reading and channel listing stay together because a
 // program allowed to find a message but not open its thread is a distinction

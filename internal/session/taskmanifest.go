@@ -65,8 +65,11 @@ const (
 // [worktreeDirt] exclude it: a job's own log is this program's droppings and
 // never the work's.
 func groundManifest(dir string) string {
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
-		"--", ".", ":(exclude)"+aforgeDroppings)
+	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	out, err := git(dir, args...)
 	if err != nil {
 		return ""
 	}

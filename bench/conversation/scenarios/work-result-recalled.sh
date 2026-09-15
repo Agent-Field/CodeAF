@@ -21,14 +21,14 @@
 #     live check, run against the product's own task surface, and it is not in
 #     this suite.
 #
-# It runs on aforge alone because it is aforge's terminal being examined, not
+# It runs on codeaf alone because it is codeaf's terminal being examined, not
 # because a claim is made about what the other arms can or cannot hand off.
 
 SCENARIO_WORKLOAD="conversation"
 SCENARIO_DOOR="interactive"
 # On any other arm it is recorded `unsupported` — the honest word for "this
 # suite has no equivalent calibrated to run there".
-SCENARIO_ARMS="aforge"
+SCENARIO_ARMS="codeaf"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-480}"
 SCENARIO_GUARDS="what the work really produced is what the person is told when they ask"
 

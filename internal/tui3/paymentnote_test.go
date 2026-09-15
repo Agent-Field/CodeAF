@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // A VENDOR'S REFUSAL IS QUOTED AND NEVER CLASSIFIED, and this is the line that

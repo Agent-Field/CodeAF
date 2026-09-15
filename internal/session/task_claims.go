@@ -271,7 +271,7 @@ var goneWords = []string{
 // only place a writer puts the thing they are saying is gone.
 //
 // AND IT NEEDS A QUOTED LITERAL. "The refusal is gone" is a claim about a
-// behaviour and no search settles it; "`8 open is as many as aforge holds` is
+// behaviour and no search settles it; "`8 open is as many as codeaf holds` is
 // gone" names the exact text and a search settles it outright. A claim with no
 // literal in its absent clause is not recognised, and goes to the checker.
 func huntStringIsGone(made claim, ground claimGround) (claimFinding, bool) {

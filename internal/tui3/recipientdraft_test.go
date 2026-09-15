@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/history"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/history"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE BOX BELONGS TO WHOEVER IT IS TALKING TO (recipient.go).

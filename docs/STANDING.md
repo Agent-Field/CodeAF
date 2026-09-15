@@ -44,12 +44,12 @@ A charter is the compiled form of standing intent:
 - **rails** — per-firing budget quote, firing-rate limit, expiry. Mandatory
   by construction; firings draw from the daily dollar rail like all work.
 
-Everything else in aforge assumes-and-declares. A charter is the one
+Everything else in codeaf assumes-and-declares. A charter is the one
 exception: **standing = spending forever**, which crosses the consequence
 gate, so ratification is explicit — the compiler plays back the charter as
 a card and asks once. The ask is *selectable*, not an essay question:
 
-    watch PRs on Agent-Field/aforge — review each new one, post a summary
+    watch PRs on Agent-Field/codeaf — review each new one, post a summary
     fires: on new PR (polled ~2m)   costs: ~$0.15/firing, ≤10/day   expires: never
     ▸ 1 yes, stand this up      ▸ 2 change the cadence      ▸ 3 once, not standing
 
@@ -131,7 +131,7 @@ the user's explicit yes.
 *Not built, and deliberately: v3's law is **rules are the tenure**. A firing runs
 under the rules the person has already banked, with nobody to ask; anything that
 would have asked stops the run as `needs your look` and the item says so. There
-are no probation counters, no tenure threshold and no `AFORGE_TENURE_AFTER` —
+are no probation counters, no tenure threshold and no `CODEAF_TENURE_AFTER` —
 counting three green firings would have been a second permission system beside
 the one a person actually built by answering consent cards. The rest of this
 section is kept as the v1 reasoning it was.*
@@ -145,7 +145,7 @@ never compiles, plans, or splices work.
 
 Three consecutive approved firings must independently finish green and within
 the charter's per-firing rail before the charter becomes **tenured**. The
-threshold is configurable with `AFORGE_TENURE_AFTER`. Always allow is an
+threshold is configurable with `CODEAF_TENURE_AFTER`. Always allow is an
 explicit journaled override. A failed or cancelled subtree, a rejected output,
 or a per-firing budget breach returns a tenured charter to probation; a second
 failure demotion pauses it. “Back to asking” is the conversational, non-failure
@@ -157,7 +157,7 @@ reversion to probation.
 `/budget 50` (today's ceiling — a journaled raise), `/budget default 35`
 (persisted config), `/budget unlimited today`. The same numbers live in
 the charter cards (per-firing quotes) and the header's cost meter. Config
-file and `AFORGE_DAILY_BUDGET` remain for headless; the slash command is
+file and `CODEAF_DAILY_BUDGET` remain for headless; the slash command is
 the conversational spelling of the same journaled events.
 
 ## Decision 7 — Presence when no terminal is open, asked exactly once
@@ -166,7 +166,7 @@ A standing goal that only fires while a window happens to be open is a
 promise the system cannot keep. So the first ratified charter — and only
 the first — earns one question in the resident's voice: "Should I keep
 watching this when you're not here? `▸ 1 yes, always · ▸ 2 only while I'm
-around`". Yes arranges a five-minute `aforge wake` for this user account
+around`". Yes arranges a five-minute `codeaf wake` for this user account
 and answers with a single line; no is remembered as a decline. Both
 answers are journal events, so the never-ask-twice gate survives
 restarts, rebuilds, and every later charter.
@@ -187,7 +187,7 @@ honest rather than decorative:
   already active when the offer is attempted; a failure to post it is
   logged, not surfaced as a rejected ratification.
 
-`aforge doctor` prints the same five rows this reasoning produces — brain,
+`codeaf doctor` prints the same five rows this reasoning produces — brain,
 resident, standing watch, spend, standing work — and those rows are the
 grounding the head answers "who's keeping watch?" from.
 

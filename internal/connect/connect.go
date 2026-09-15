@@ -1,4 +1,4 @@
-// Package connect is the accounts layer: it holds the keys that let aforge act
+// Package connect is the accounts layer: it holds the keys that let codeaf act
 // on a person's own SaaS accounts — their mail, their calendar — and hands the
 // rest of the program one ready, self-refreshing [http.Client] per account.
 //
@@ -35,7 +35,7 @@ import (
 
 // ClientCredential is the application's own identity with one service: the
 // pair a person registers once in that service's developer console and hands
-// to aforge. It is not the person's account — it only lets aforge ask for one.
+// to codeaf. It is not the person's account — it only lets codeaf ask for one.
 type ClientCredential struct {
 	ID     string
 	Secret string
@@ -57,7 +57,7 @@ func (c ClientCredential) ok() bool {
 //
 // [AuthBrowser] is a trip through the person's own browser and the service's
 // own sign-in page: they are asked there, by the service, in the service's
-// words, and what comes back is a set of keys aforge renews for itself. Google
+// words, and what comes back is a set of keys codeaf renews for itself. Google
 // is one.
 //
 // [AuthKey] is a key the person already holds and pastes once. Nothing opens,
@@ -139,7 +139,7 @@ type Service struct {
 // Status is a [Service] plus where it stands right now.
 type Status struct {
 	Service
-	// Connected reports that aforge holds usable keys for this service.
+	// Connected reports that codeaf holds usable keys for this service.
 	Connected bool
 	// Account is the address the keys belong to. THE EMPTINESS LAW: an
 	// account we do not know is empty, never a placeholder — a screen that
@@ -256,7 +256,7 @@ type Manager struct {
 }
 
 // NewManager opens the store under profileDir and binds it to the credentials
-// the caller was configured with. An empty profileDir means aforge's own state
+// the caller was configured with. An empty profileDir means codeaf's own state
 // root, matching every other file the program keeps.
 //
 // Opening reads the store once so that a damaged file is an error here, at
@@ -347,7 +347,7 @@ func (m *Manager) Connected(id string) bool {
 //
 // A store that has become unreadable since startup reads as nothing being
 // connected, which is the safe answer: it makes the person sign in again rather
-// than letting a screen promise access aforge cannot deliver.
+// than letting a screen promise access codeaf cannot deliver.
 func (m *Manager) standing(p Plug) (stored, bool) {
 	service := p.Service()
 	if !m.offered(service) {

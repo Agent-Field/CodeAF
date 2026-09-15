@@ -24,10 +24,10 @@
 //   - a whole page, bounded (#293 §5): the largest page comes back CUT under the
 //     read tool's own byte cap, saying so and naming its sections, and the road
 //     out of the cut is travelled — a section asked for by heading, whole.
-//   - truth on the wire (#293 §3): how many models aforge runs on its own behalf
+//   - truth on the wire (#293 §3): how many models codeaf runs on its own behalf
 //     is a number `internal/config` owns, and the answer a person is read has to
 //     be that number.
-//   - the person's own door (#293 §1): `aforge manual` with NO key in the
+//   - the person's own door (#293 §1): `codeaf manual` with NO key in the
 //     environment, which costs nothing and calls no model.
 //
 // WHAT IT COSTS AND HOW IT IS PINNED. Every call rides
@@ -52,10 +52,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (
@@ -69,10 +69,10 @@ const (
 	// `Chat().Search` was measured directly, with no model in the loop, on
 	// queries this model actually wrote for the privacy scenario:
 	//
-	//	who can see my files in aforge              → permissions, ranked 1st
+	//	who can see my files in codeaf              → permissions, ranked 1st
 	//	who can see my files                        → permissions, ranked 3rd of 4
 	//	who can see my files privacy file access    → MISS
-	//	who can see my files when I use aforge      → MISS
+	//	who can see my files when I use codeaf      → MISS
 	//	privacy files who can see my workspace      → MISS
 	//
 	// Two words the person never said drop the page out of the four the model is
@@ -101,12 +101,12 @@ const (
 	// model answers the other one: measured on this model, a third of asks were
 	// answered by running `ls`, reading the folder and reporting unix modes and
 	// shell access — a fair reading of "my files" when you are sitting in a
-	// workspace, and an answer about the person's disk rather than about aforge.
+	// workspace, and an answer about the person's disk rather than about codeaf.
 	// Naming the product is what a person does when they mean the product, it is
 	// lifted from no heading, and it is also where the corpus is strongest:
 	// `Chat().Search` ranks permissions FIRST for these words and third of four
 	// without them.
-	manualPrivacyQuestion = "who can see my files in aforge?"
+	manualPrivacyQuestion = "who can see my files in codeaf?"
 	// manualLargestPage is the page the bound exists for — 205 KB of it, four
 	// times what the read tool will hand over. Its size is asserted rather than
 	// assumed, so this scenario cannot quietly become a test of a small page.
@@ -321,10 +321,10 @@ func TestManualQuotesTheCrewsRealSize(t *testing.T) {
 
 	w := newManualWorld(t)
 	runManualScenario(t, w, "how many models the crew is",
-		"how many models does aforge run on its own behalf?",
+		"how many models does codeaf run on its own behalf?",
 		func(p *probe, out turn, calls []manualCall) {
 			if len(calls) == 0 {
-				p.missf("the model answered a question about aforge out of memory: it called %v and never opened the manual", out.names())
+				p.missf("the model answered a question about codeaf out of memory: it called %v and never opened the manual", out.names())
 				return
 			}
 			// NAMING THE SEATS IS SAYING HOW MANY OF THEM THERE ARE, and it is
@@ -434,7 +434,7 @@ type countClaim struct {
 //
 // EVERY CLAIM IS COLLECTED AND THE RIGHT ONE IS LOOKED FOR AMONG THEM, rather
 // than every claim being required to be the right one. A measured reply reads
-// "Five. aforge runs six model seats total: the one you talk to, and five it
+// "Five. codeaf runs six model seats total: the one you talk to, and five it
 // uses on its own behalf" — which answers the question exactly and counts the
 // talk model in a second, true sentence. Failing that would be grading arithmetic
 // the person did not ask for. What #293 §3 is about is a reply in which the
@@ -496,21 +496,21 @@ func numberWord(word string) (int, bool) {
 // a model call with, so the command line is driven with the key stripped out of
 // the environment and a home directory that holds no profile at all.
 func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
-	aforge := binary(t)
+	codeaf := binary(t)
 	home := t.TempDir()
 	pages := manual.Chat().Pages()
 
 	t.Run("the list", func(t *testing.T) {
-		out, code := runManualCommand(t, aforge, home)
+		out, code := runManualCommand(t, codeaf, home)
 		if code != 0 {
-			t.Errorf("`aforge manual` exited %d with no key; the list is what a person with nothing set up reads first:\n%s", code, out)
+			t.Errorf("`codeaf manual` exited %d with no key; the list is what a person with nothing set up reads first:\n%s", code, out)
 		}
 		for _, page := range pages {
 			if !strings.Contains(out, page) {
 				t.Errorf("the list does not name the page %q", page)
 			}
 		}
-		t.Logf("`aforge manual` listed all %d pages, exit 0", len(pages))
+		t.Logf("`codeaf manual` listed all %d pages, exit 0", len(pages))
 	})
 
 	t.Run("a page by name", func(t *testing.T) {
@@ -518,25 +518,25 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 		if !found {
 			t.Fatalf("there is no manual page named %s", manualPrivacyPage)
 		}
-		out, code := runManualCommand(t, aforge, home, manualPrivacyPage)
+		out, code := runManualCommand(t, codeaf, home, manualPrivacyPage)
 		if code != 0 {
-			t.Fatalf("`aforge manual %s` exited %d:\n%s", manualPrivacyPage, code, shorten(out, 400))
+			t.Fatalf("`codeaf manual %s` exited %d:\n%s", manualPrivacyPage, code, shorten(out, 400))
 		}
 		// VERBATIM, and that is the whole claim of the person's door: a person
 		// reading the manual here is reading the manual, not a retelling.
 		if strings.TrimSpace(out) != strings.TrimSpace(want) {
-			t.Errorf("`aforge manual %s` printed %d bytes where the page is %d; the page is printed as it is written or not at all",
+			t.Errorf("`codeaf manual %s` printed %d bytes where the page is %d; the page is printed as it is written or not at all",
 				manualPrivacyPage, len(strings.TrimSpace(out)), len(strings.TrimSpace(want)))
 		}
-		t.Logf("`aforge manual %s` printed the page byte for byte, exit 0", manualPrivacyPage)
+		t.Logf("`codeaf manual %s` printed the page byte for byte, exit 0", manualPrivacyPage)
 	})
 
 	t.Run("a question in the person's own words", func(t *testing.T) {
-		out, code := runManualCommand(t, aforge, home, "who can see my files")
+		out, code := runManualCommand(t, codeaf, home, "who can see my files")
 		if code != 0 {
-			t.Fatalf("`aforge manual \"who can see my files\"` exited %d:\n%s", code, shorten(out, 400))
+			t.Fatalf("`codeaf manual \"who can see my files\"` exited %d:\n%s", code, shorten(out, 400))
 		}
-		// THE PERSON'S DOOR, NOT THE MODEL'S. `aforge manual "…"` prints
+		// THE PERSON'S DOOR, NOT THE MODEL'S. `codeaf manual "…"` prints
 		// [manual.RenderWhole], whose labels are Markdown headings
 		// (`## permissions · …`). The belt tool still uses bracketed labels
 		// ([manual.Render]); a test that looked for `[permissions · ` here
@@ -551,26 +551,26 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 	})
 
 	t.Run("a page that does not exist", func(t *testing.T) {
-		out, code := runManualCommand(t, aforge, home, "no-such-page")
+		out, code := runManualCommand(t, codeaf, home, "no-such-page")
 		if code == 0 {
-			t.Errorf("`aforge manual no-such-page` exited 0; a page asked for BY NAME and missing really did fail:\n%s", shorten(out, 400))
+			t.Errorf("`codeaf manual no-such-page` exited 0; a page asked for BY NAME and missing really did fail:\n%s", shorten(out, 400))
 		}
 		for _, page := range pages {
 			if !strings.Contains(out, page) {
 				t.Errorf("the refusal does not name the page %q that does exist", page)
 			}
 		}
-		t.Logf("`aforge manual no-such-page` exited %d and named all %d real pages", code, len(pages))
+		t.Logf("`codeaf manual no-such-page` exited %d and named all %d real pages", code, len(pages))
 	})
 }
 
 // runManualCommand drives the built binary's manual door with NO key anywhere
 // near it and a home directory holding nothing, so a pass is a pass for somebody
-// who has not set aforge up yet.
-func runManualCommand(t *testing.T, aforge, home string, args ...string) (string, int) {
+// who has not set codeaf up yet.
+func runManualCommand(t *testing.T, codeaf, home string, args ...string) (string, int) {
 	t.Helper()
-	run := exec.Command(aforge, append([]string{"manual"}, args...)...)
-	run.Env = append(withoutKeys(os.Environ()), "AFORGE_HOME="+home, "AFORGE_PROFILE_DIR=")
+	run := exec.Command(codeaf, append([]string{"manual"}, args...)...)
+	run.Env = append(withoutKeys(os.Environ()), "CODEAF_HOME="+home, "CODEAF_PROFILE_DIR=")
 	out, err := run.CombinedOutput()
 	code := 0
 	var exit *exec.ExitError
@@ -593,7 +593,7 @@ func withoutKeys(env []string) []string {
 		if at := strings.IndexByte(row, '='); at >= 0 {
 			name = row[:at]
 		}
-		if strings.HasSuffix(name, "_API_KEY") || name == "AFORGE_HOME" || name == "AFORGE_PROFILE_DIR" {
+		if strings.HasSuffix(name, "_API_KEY") || name == "CODEAF_HOME" || name == "CODEAF_PROFILE_DIR" {
 			continue
 		}
 		stripped = append(stripped, row)
@@ -634,7 +634,7 @@ func newManualWorld(t *testing.T) *world {
 // material was put in it first, on the reasoning that nobody asks who can see
 // their files while standing in an empty folder. It made the scenario worse, and
 // instructively so: the model read every file and then answered about THOSE
-// files — unix modes, shell access, `chmod 600` — instead of about aforge. The
+// files — unix modes, shell access, `chmod 600` — instead of about codeaf. The
 // question is about the product, the material is a prompt to answer about the
 // material, and this lane is not the place to discover which.
 func aPlainWorkspace(t *testing.T) string {
@@ -884,7 +884,7 @@ var (
 // back into the sections it was built from. This is the assertion the whole
 // lane rests on: the labels are how a person — and this test — traces a
 // sentence to the page that authorized it. Both spellings are accepted because
-// the belt tool and `aforge manual "…"` share the corpus and disagree only on
+// the belt tool and `codeaf manual "…"` share the corpus and disagree only on
 // the label shape ([manual.PersonSectionOpen], [manual.ModelSectionOpen]).
 func renderedSections(text string) []labelled {
 	type hit struct {
@@ -949,7 +949,7 @@ func labelsOf(sections []labelled) []string {
 // ── is the reply read off the page, or composed? ────────────────────────────
 
 // groundedIn answers whether a reply carries something ONLY the named page says,
-// and what that something was. A fluent answer about aforge is indistinguishable
+// and what that something was. A fluent answer about codeaf is indistinguishable
 // from a remembered one — that is the sentence internal/manual's own header opens
 // with — so a scenario that graded the reply for sounding right would be grading
 // the exact thing the manual exists to stop anybody trusting.

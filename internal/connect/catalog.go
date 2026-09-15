@@ -1,6 +1,6 @@
 package connect
 
-// The catalog: a few hundred services aforge can reach the moment a person
+// The catalog: a few hundred services codeaf can reach the moment a person
 // pastes a key, taken from Ampersand's connectors project.
 //
 // ── THIS FILE IS THE ONLY PLACE THAT NAME APPEARS ──
@@ -35,9 +35,9 @@ import (
 	"sort"
 	"strings"
 
-	amp "github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	amp "github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // blankPattern is the one shape the catalog writes a missing piece of an

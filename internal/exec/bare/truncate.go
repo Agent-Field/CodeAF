@@ -1,6 +1,6 @@
 // Package bare is the wire tool library: pi 0.82.1's seven tools (read, bash,
 // edit, write, grep, find, ls) with the matching, truncation and streaming
-// logic behind them. Chat's tool surface is built from it. It is aforge-owned
+// logic behind them. Chat's tool surface is built from it. It is codeaf-owned
 // code — not a vendored copy of pi — but the schemas, result strings and
 // truncation footers are pinned to pi's source so the wire bytes a model sees
 // are identical to the ones these tools were measured on.
@@ -17,7 +17,7 @@ package bare
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // Truncation constants mirror pi's truncate.js. They are the literal values pi

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE LIVE WORK TREE, AND WHAT THIS COLUMN TAKES FROM IT ──────────────────
@@ -59,7 +59,7 @@ func TestANilWorkTreeLeavesTheRailByteIdentical(t *testing.T) {
 //
 // This is the test the old file could not have been: it scripted `ID: "7"`,
 // which nothing in the engine publishes, so the preview it was pinning never
-// attached in a running aforge and the double draw was invisible.
+// attached in a running codeaf and the double draw was invisible.
 func TestAWorkerIsDrawnOnceByTheFamilyThatOwnsIt(t *testing.T) {
 	a, _ := workRailApp(t,
 		session.WorkNode{ID: session.CancelTask + ":8", Title: "Read the law", State: session.WorkWaiting},
@@ -106,7 +106,7 @@ func TestARunsPlannedWorkersAreDrawnOnceEach(t *testing.T) {
 // NOTHING IS DRAWN FOR A WORKER THIS COLUMN WAS NEVER TOLD ABOUT. The engine's
 // tree is not a second source of rows: a hand it reports under a task whose own
 // notice has not arrived leaves the column exactly as it was. There is no such
-// worker in a running aforge — a node cannot be in that tree without having
+// worker in a running codeaf — a node cannot be in that tree without having
 // announced itself first — and this pins that the column does not invent one
 // if the two ever disagree.
 func TestTheLiveTreeAddsNoRowOfItsOwn(t *testing.T) {

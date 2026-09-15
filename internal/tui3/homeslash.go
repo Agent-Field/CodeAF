@@ -351,7 +351,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	// /quit IS ON THIS ROAD AND NEEDS NOTHING ADDED TO IT. Closing the
 	// conversation behind home says `closed · <name>` through the same echo
 	// (keeper.go's [app.leaveFront]), and when that one was the last conversation
-	// this terminal held there is no line to write because aforge itself leaves.
+	// this terminal held there is no line to write because codeaf itself leaves.
 	a.echoHome = true
 	defer func() { a.echoHome = false }()
 	return a.slash(line)

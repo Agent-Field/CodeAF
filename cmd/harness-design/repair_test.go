@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // scripted is a model that says what it was told to say, in order, and records

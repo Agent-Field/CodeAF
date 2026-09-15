@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func openTestEvents(t *testing.T) (*Events, string) {
@@ -66,7 +66,7 @@ func TestEventRowsAreUnchangedByTheBuffering(t *testing.T) {
 	}
 }
 
-// Two aforge processes append to one file and O_APPEND is atomic per write, so
+// Two codeaf processes append to one file and O_APPEND is atomic per write, so
 // a row must never be split across two of them — including a row that is larger
 // than the whole buffer.
 func TestARowLargerThanTheBufferIsStillWrittenWhole(t *testing.T) {

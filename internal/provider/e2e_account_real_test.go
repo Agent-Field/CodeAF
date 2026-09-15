@@ -28,7 +28,7 @@ package provider_test
 //	go test -tags e2e ./internal/provider/ -run TestRealRouterAccountExclusion -v
 //
 // It SKIPS green without OPENROUTER_API_KEY (this package's TestMain re-roots
-// AFORGE_HOME, so the variable is the way in), and it SKIPS, saying so, when
+// CODEAF_HOME, so the variable is the way in), and it SKIPS, saying so, when
 // the account no longer excludes DeepSeek — a probe asks first, with a bare
 // request, so a changed setting is reported as a changed setting and never as
 // a pass.
@@ -45,11 +45,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const (
@@ -140,7 +140,7 @@ func accountStillExcludes(t *testing.T, key string) (bool, string) {
 }
 
 func TestRealRouterAccountExclusionIsPaidOnceForEveryModel(t *testing.T) {
-	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("CODEAF_PROFILE_DIR")))
 	if key == "" {
 		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
 	}
@@ -267,7 +267,7 @@ func laneIsPaced(t *testing.T, key, lane string) (bool, string) {
 // 404 and the call failed; now the deferred ladder runs and the router's free
 // choice answers — on this one call.
 func TestRealRouterTheMeasuredRaceLandsOnTheFirstAttempt(t *testing.T) {
-	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("CODEAF_PROFILE_DIR")))
 	if key == "" {
 		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
 	}

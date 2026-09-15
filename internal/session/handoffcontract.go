@@ -33,10 +33,10 @@ package session
 // it is deliberately not a list of kinds: a file, a folder, a note, an asset, a
 // dataset and a transcript are all places, and a symbol, a heading, a column
 // name and an identifier are all text inside one. A schema that enumerated
-// "symbol", "column", "url" would be aforge deciding in advance what domains it
+// "symbol", "column", "url" would be codeaf deciding in advance what domains it
 // works in, which it does not get to do.
 //
-// WHAT IT DOES NOT REACH, said out loud: an expectation aforge cannot check
+// WHAT IT DOES NOT REACH, said out loud: an expectation codeaf cannot check
 // against a directory — a URL that must fetch, an account that must still be
 // logged in — is not accepted here, because the value of the manifest is that
 // every line of it is answered before the money is spent. Those belong in the

@@ -1,9 +1,9 @@
-// Command relay is the aforge relay: a blind pipe between a machine that runs
-// aforge and a machine somebody is sitting at.
+// Command relay is the codeaf relay: a blind pipe between a machine that runs
+// codeaf and a machine somebody is sitting at.
 //
 // IT IS A SEPARATE BINARY BECAUSE IT IS A SEPARATE THING. Nothing in it imports
 // the session, the surface, or the wire they speak; it cannot open a frame and
-// has nothing to open one with. Building it apart from `aforge` is how that
+// has nothing to open one with. Building it apart from `codeaf` is how that
 // stays true — a relay that linked the session package would be one careless
 // import away from being able to read what it forwards.
 //
@@ -28,7 +28,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 func main() {

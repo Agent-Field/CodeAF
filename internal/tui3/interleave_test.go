@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // AN INTERLEAVED STREAM IS ONE THOUGHT AND ONE ANSWER, NOT A SAW BLADE.

@@ -59,12 +59,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func init() {
@@ -544,7 +544,7 @@ func consolidateClip(text string, limit int) string {
 // world has moved past, and `project_state`, which the store's own comment says
 // "goes stale in a way a preference never does". A preference, a decision and a
 // correction are somebody stating how they want things — a correction is
-// literally them saying aforge had it wrong — and the pass may sharpen their
+// literally them saying codeaf had it wrong — and the pass may sharpen their
 // wording with a refine, never decide they have been replaced.
 //
 // The store keeps no "the person typed this" flag, so this is a rule about
@@ -595,7 +595,7 @@ func consolidateNoticeLine(tidied standing.Tidied) string {
 // pass that has no origin conversation to prefer.
 //
 // AND NO WINDOW AT ALL IS THE ORDINARY CASE, because most passes happen inside
-// `aforge tick` with nothing open anywhere. Then nothing is said, and /memory is
+// `codeaf tick` with nothing open anywhere. Then nothing is said, and /memory is
 // where the change is seen.
 func noticeLiveWindow(text string) {
 	liveSessionsMu.Lock()

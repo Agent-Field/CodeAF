@@ -63,7 +63,7 @@ func TestToolBudgetsConvergeOnTheNamedWorkingSet(t *testing.T) {
 
 	// A dial rather than a belief, exactly as the observation window is: the
 	// operator with evidence of their own moves the ceiling and the bounds move.
-	t.Setenv("AFORGE_WORKING_SET", "400000")
+	t.Setenv("CODEAF_WORKING_SET", "400000")
 	if wider := toolBudgetsFor(1 << 20); wider.result <= huge.result ||
 		wider.spill <= huge.spill || wider.preview <= huge.preview || wider.recall <= huge.recall {
 		t.Errorf("with the working set raised to 400k the bounds are %+v, no more than the %+v "+

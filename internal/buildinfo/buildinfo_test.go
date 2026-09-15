@@ -52,7 +52,7 @@ func TestUnknownBuildSaysDevWithoutInventingAStamp(t *testing.T) {
 
 func TestDetectorNoticesEachNewerExecutableOnce(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "aforge")
+	path := filepath.Join(dir, "codeaf")
 	if err := os.WriteFile(path, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestBuildIdentityDistinguishesRebuildsWithinOneDisplayMinute(t *testing.T) 
 }
 
 // TWO BUILDS OF ONE COMMIT ARE ONE ENGINE. The window that met the engine
-// thirteen seconds after it was linked was told it had met an older aforge, and
+// thirteen seconds after it was linked was told it had met an older codeaf, and
 // the difference it read was one nobody had made (#730).
 func TestBuildIdentityKeepsOneCleanRevisionAcrossRebuilds(t *testing.T) {
 	previous := current

@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // SENDING A CORRECTION IS A CROSSING, AND A CROSSING IS NOT A KEYSTROKE.
@@ -110,7 +110,7 @@ import (
 //   - AND THE CONVERSATION'S NAME CROSSES WITH THE SEND
 //     ([session.SteerSource.Conversation]), because holding the door is not
 //     enough over a wire: `/resume` and `/new` swap the conversation behind the
-//     SAME remote handle (cmd/aforge's chatv3_host.go returns the same agent),
+//     SAME remote handle (cmd/codeaf's chatv3_host.go returns the same agent),
 //     so a captured pointer would still deliver to the replacement. The engine
 //     compares the name against the conversation actually open, under the lock
 //     the swap happens beneath, and refuses rather than re-aiming
@@ -283,7 +283,7 @@ const (
 // steerAddress is WHO A SEND IS FOR: one task, inside one conversation.
 //
 // THE OWNER IS A WHOLE IDENTITY AND NOT A PATH. A transcript path is not unique
-// by itself: the same `/srv/app/.aforge/…jsonl` names different work on two
+// by itself: the same `/srv/app/.codeaf/…jsonl` names different work on two
 // machines, so the machine and the workspace are part of it (host.go's own
 // reading of what a hosted conversation is). A conversation with no transcript
 // has no such identity and no sender either ([app.steerDoorNow]), so no address

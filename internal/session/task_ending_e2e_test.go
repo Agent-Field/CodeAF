@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // ── the four endings, end to end ────────────────────────────────────────────
@@ -36,7 +36,7 @@ func endingAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph) {
 	t.Helper()
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "2")
+	t.Setenv("CODEAF_RESPONSE_ATTEMPTS", "2")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
 		config.AskConsent = false

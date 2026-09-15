@@ -93,7 +93,7 @@ const (
 // toldName is the stamp file, in the session's own folder beside meta.json and
 // presence.json:
 //
-//	~/.aforge/v3/projects/<encoded-workspace>/<session-id>/told.json
+//	~/.codeaf/v3/projects/<encoded-workspace>/<session-id>/told.json
 //
 // IT IS NOT `.last-look`, AND THE DIFFERENCE IS THE WHOLE REASON IT EXISTS.
 // look.go's stamp is ONE instant at the places root, for the WHOLE MACHINE,

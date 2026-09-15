@@ -4,7 +4,7 @@ package tui3
 //
 // THE DEFECT IT ENDS. At home, pressing enter and seeing your sentence appear
 // are the same instant: the surface writes the line and the agent takes it, both
-// inside one update. Over `aforge chat --host devbox` the taking is a round trip
+// inside one update. Over `codeaf chat --host devbox` the taking is a round trip
 // — the engine has to answer with the stream the turn will run on — and until
 // this file there was nothing saying what the line on screen MEANT in that gap.
 // It was drawn as though it had landed, and when the engine refused it (a turn

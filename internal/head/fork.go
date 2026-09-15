@@ -3,7 +3,7 @@ package head
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // fork-this-conversation-into-a-task (8.2.12): "take what we just discussed and

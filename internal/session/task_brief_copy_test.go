@@ -180,9 +180,9 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 
 	// AND THE ORIGIN POINTER IS NEVER BOUND: a journal address lives outside
 	// every worktree, so a bound one would name a file that is not there.
-	journal := taskOrigin{journal: "/x/repo/.aforge/v3/sessions/abc.jsonl", line: 12}
+	journal := taskOrigin{journal: "/x/repo/.codeaf/v3/sessions/abc.jsonl", line: 12}
 	pointed := composeBrief(briefWhole, "", "change /x/repo/internal/widget.go", "", "", "", AdmissionContext{}, journal, own)
-	if !strings.Contains(pointed, "/x/repo/.aforge/v3/sessions/abc.jsonl") {
+	if !strings.Contains(pointed, "/x/repo/.codeaf/v3/sessions/abc.jsonl") {
 		t.Fatalf("the pointer at the person's own journal was moved into the copy:\n%s", pointed)
 	}
 }

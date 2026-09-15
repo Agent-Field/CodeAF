@@ -3,7 +3,7 @@ package lane
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
 )
 
 // ── THE PURSE: WHAT KEEPS A RESCUE FROM BECOMING A SECOND BILL ──────────────

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // roamingRail is a persistent conversation and a surface that redials onto it,

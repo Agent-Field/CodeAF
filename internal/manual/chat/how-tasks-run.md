@@ -11,14 +11,14 @@ if you see a forming line now, it is the one below.
 **The forming block belongs to a proposal you said yes to.** Approving a task the model
 proposed on its card is followed by a short pause before the task exists, and one dim block
 rises at the transcript tail with a `▏ ` hairline: the word `task`, the task's name —
-unquoted, because the name is aforge's word rather than something you typed — and a
+unquoted, because the name is codeaf's word rather than something you typed — and a
 spinning mark with a climbing clock. The spinner and count-up keep moving on the same frame
 clock as the other live rows — the block starts that clock itself, so it turns even when
 the conversation is otherwise idle. In the plain-text tier the mark is a still `*` on
 purpose and only the clock climbs. It collapses the moment the task appears on the rail.
 Saying no, or redirecting the proposal, raises nothing.
 
-## Which folder does a task work in — I opened aforge in my home folder, can a task work in a different repo, why did my task work in the wrong project
+## Which folder does a task work in — I opened codeaf in my home folder, can a task work in a different repo, why did my task work in the wrong project
 
 Every task has a **ground**: the one repository or folder the work is about. It is settled
 before you are asked to approve anything, out of what this conversation already holds, and
@@ -104,7 +104,7 @@ names another plain folder, the task works in that exact folder instead. A path 
 repository still gets a branch from that repository; its card and its `/history` record
 show the resolved place.
 
-aforge makes that copy from your folder **as it stands** — see *Does a task see my
+codeaf makes that copy from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
 
 - **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home. It
@@ -115,7 +115,7 @@ unsaved changes* above for what travels and what does not.
   `task/fix-the-nil-map-crash-9c1a2f`. The random tail lets the same title be proposed
   twice.
 
-The task's copy lives inside the conversation's session folder, and aforge puts no task
+The task's copy lives inside the conversation's session folder, and codeaf puts no task
 directory in your repo. When it is a worktree you will also see its registration in the
 repository's `git worktree list`; when it is a whole copy there is nothing to see there,
 and the branch appears in your repository when the work comes home.
@@ -132,7 +132,7 @@ left, and they use the same four words for it:
 - `its own copy of the folder` — a whole copy of your folder, forked or copied file by
   file. The branch, when there is one, still comes home to your repository.
 - `your own folder` — a task that worked in place, in the directory you are standing in.
-- `where` — aforge does not know which of those it was: work from a record written before
+- `where` — codeaf does not know which of those it was: work from a record written before
   it wrote this down, or a task handed an empty folder of its own to write in. It names the
   place and claims nothing about it.
 
@@ -147,7 +147,7 @@ Two limits:
   Inside a repository the task goes on a branch even when `in place` was asked for, and
   you are told: `in place was asked for, and <root> is a repository — the work goes on a
   branch cut from it instead`. The one exception is a referred place you explicitly told
-  aforge to edit directly. While an in-place task runs, **the chat cannot write in that
+  codeaf to edit directly. While an in-place task runs, **the chat cannot write in that
   directory** — see *A task working in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
@@ -155,8 +155,8 @@ Two limits:
 ## A task in a conversation with no project — task failed saying it needs a project, task in a conversation with no folder, do tasks work without a repository
 
 They work. A conversation opened where there is no project — your home directory, a temp
-folder, a launcher; the place line reads `aforge` — has a **workspace of its own**, and
-aforge quietly makes that workspace a git repository the moment the conversation opens.
+folder, a launcher; the place line reads `codeaf` — has a **workspace of its own**, and
+codeaf quietly makes that workspace a git repository the moment the conversation opens.
 
 So a task in a conversation that has been nowhere else takes the ordinary road described
 above, against that repository instead of a project's: a working copy at `<session
@@ -180,16 +180,16 @@ Two things follow from it:
   this conversation has put there.` A task folder holding nothing is the ordinary state of
   a conversation that never had a project, and the line is what stops a worker reading it
   as a checkout that failed.
-- If that workspace is **not** a repository — a conversation from an older aforge, or a
+- If that workspace is **not** a repository — a conversation from an older codeaf, or a
   machine with no `git` — the task runs **in place** in it and says so, exactly as any
   other non-repository does. It is never refused for want of a project.
 
-An older aforge stopped such a task with `this task needs a project; use /workspace <path>
+An older codeaf stopped such a task with `this task needs a project; use /workspace <path>
 or name where it should work`. Nothing says that any more.
 
 That scratch workspace is `work/` **inside the conversation's own session folder**, so anything
 made there is inside the conversation and deleting the conversation deletes it. The path and the
-three ways to keep the work are on the starting-aforge page, under *Where do task files go when I
+three ways to keep the work are on the starting-codeaf page, under *Where do task files go when I
 did not open a project*.
 
 ## Does a task see my unsaved changes — does a task get my uncommitted work, do I have to commit before starting a task
@@ -203,7 +203,7 @@ a brief describing work that was still uncommitted spent an hour looking for fil
 not on its disk. Nothing about the isolation changed — you keep typing in your own folder
 while it runs, and what you type does not reach it.
 
-Aforge says so before it spends anything. When you start a task and your working copy has
+codeaf says so before it spends anything. When you start a task and your working copy has
 uncommitted changes, one line goes into the chat with the brief:
 
 ```
@@ -217,7 +217,7 @@ nothing to tell you. **New files you have never committed do not get the line** 
 output and scratch files would otherwise make it appear on every single start — but they
 travel with the task just the same.
 
-**How your work travels, if you want to know.** aforge writes a commit of your folder as it
+**How your work travels, if you want to know.** codeaf writes a commit of your folder as it
 stands, called `the world this task started from: <title>`, and cuts the task's branch from
 that. Your own checkout is not touched: your HEAD does not move, your index does not move,
 and your uncommitted work is still uncommitted in front of you. That commit is scaffolding
@@ -241,7 +241,7 @@ start with*, is where that is spelled out.
 ## Does my task see my .env — does a task get node_modules, an installed dependency tree, the dev database, the files git ignores
 
 **Usually yes.** A task's world is a copy of your whole folder, made by furrow, which every
-aforge carries inside itself. A copy made that way holds what git was told to ignore
+codeaf carries inside itself. A copy made that way holds what git was told to ignore
 alongside everything git can see: your `.env`, an installed `node_modules` or `.venv`, a
 dev database sitting in the folder, a build somebody spent ten minutes on. That is the
 difference between a task that can run your tests and one that spends its first four steps
@@ -257,13 +257,13 @@ what your `.gitignore` covers is the one thing it does not have. Two reasons:
 - furrow could not take that folder on this machine — it would not attach, the fork
   failed, or either step took longer than its bound (attaching and forking each get a
   minute, so the longest wait is about two). The task's log says so, with furrow's reason
-  and the cost: `a fork of the whole folder was tried and could not be made`. aforge then
+  and the cost: `a fork of the whole folder was tried and could not be made`. codeaf then
   **stops trying on that folder** — later tasks say `a fork of the whole folder was not
-  tried`, with that reason and when it last failed — until aforge or the furrow it carries
+  tried`, with that reason and when it last failed — until codeaf or the furrow it carries
   is updated. If it was your folder that changed (a hook removed, signing turned off),
-  delete its line from `~/.aforge/v3/universe-falls.json` and the next task tries again.
+  delete its line from `~/.codeaf/v3/universe-falls.json` and the next task tries again.
 - the folder is a **linked worktree** — its `.git` is a file naming another repository
-  rather than a directory of its own. aforge never copies one of those whole, because a
+  rather than a directory of its own. codeaf never copies one of those whole, because a
   byte-exact copy would write the task's commits into the repository that file points at
   and move a checkout you are standing in.
 
@@ -271,7 +271,7 @@ Everything else is the same either way: your uncommitted edits and untracked fil
 on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as a merge
 into your branch — unless the checkout is protected, detached, on another branch, or on a
 commit you moved after the cut, in which case the branch is kept and named for you instead.
-Commits from aforge's own landings do not count as you moving it.
+Commits from codeaf's own landings do not count as you moving it.
 
 **To see which one a task got,** open its page: the log says what world it worked in —
 `its world is a fork of <folder> as it stood, taken whole` for the whole copy, and `its
@@ -279,7 +279,7 @@ world is a branch off <folder> as it stood, uncommitted work included` for the g
 and then `its world was made in <time>`.
 
 **Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
-furrow keeps its own ids in. aforge adds that name to your repository's
+furrow keeps its own ids in. codeaf adds that name to your repository's
 `.git/info/exclude`, so it never appears in `git status` and can never be committed. That
 file is local to your checkout — it is not committed, not pushed, and nobody else working
 on the project sees it.
@@ -293,7 +293,7 @@ twenty-two minutes and $7.99 rewriting a test file for a component its own brief
 been deleted, four lines at a time, until the step limit stopped it.
 
 So a brief may carry **what it assumes is already true** of the folder it will get, and
-aforge checks every line of it **before anything starts** — no model call, no money. Each
+codeaf checks every line of it **before anything starts** — no model call, no money. Each
 assumption is a place, and optionally something that must be findable there:
 
 - a file or folder that must be there — `internal/tui3/taskchip.go`
@@ -301,7 +301,7 @@ assumption is a place, and optionally something that must be findable there:
 - text that must be findable at that place: a symbol, a heading, a column name
 
 It is **optional and never invented**. Whoever writes the brief writes the assumptions,
-because only they know which of their own sentences the work leans on; aforge never
+because only they know which of their own sentences the work leans on; codeaf never
 reads a brief and guesses. A brief that assumes nothing is checked against nothing and
 costs nothing, which is most tasks.
 
@@ -439,11 +439,11 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
-not change whether a forward commit belongs to aforge.
+not change whether a forward commit belongs to codeaf.
 
 Automatic task landing never merges into a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
@@ -460,12 +460,12 @@ You will see one exact reason:
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
 'task/*'` lists finished work waiting this way. Or check out a feature branch before
 starting tasks; when it is still checked out at landing and any commits since the cut came
-from aforge's own landings, finished work comes home by itself. A checkout that is on a
+from codeaf's own landings, finished work comes home by itself. A checkout that is on a
 different branch than when the task started, or detached before it landed, is kept by the
-same rule so aforge never guesses where you meant the work to go. The test is both the
+same rule so codeaf never guesses where you meant the work to go. The test is both the
 branch and the commit it was cut from: work you commit, amend, rebase or reset on that
 branch yourself keeps the task's branch instead of merging into it. Another task landing
-through aforge does not count as you moving it.
+through codeaf does not count as you moving it.
 
 ## My task's branch would not merge — what happens then
 
@@ -494,7 +494,7 @@ merged. It names the kept branch. A merge that did not fasten the branch to your
 a landing, even if the task's own report said the work arrived.
 
 A clash with work you **committed** on your own branch is kept before a merge is tried.
-The conflict road above is for your uncommitted work and for repositories aforge owns,
+The conflict road above is for your uncommitted work and for repositories codeaf owns,
 where a committed clash can still reach the merge itself.
 
 **A landing never ends in a sentence that names nothing.** There is one shape of refusal
@@ -539,12 +539,12 @@ leaves the task needing your look with the same sentence.
 
 ## Accepting a task after its working copy was released, or after its branch was renamed
 
-A task that stops needing a running checkout can leave its files in place while aforge
+A task that stops needing a running checkout can leave its files in place while codeaf
 releases their Git registration. Accepting that task later restores the registration
 before saving and bringing the work home. It does not move the saved files, overwrite
-loose edits, or mistake aforge's cleanup for a folder that was never a repository.
+loose edits, or mistake codeaf's cleanup for a folder that was never a repository.
 
-If the task renamed its branch, aforge records the actual branch when releasing the
+If the task renamed its branch, codeaf records the actual branch when releasing the
 copy; later acceptance and fresh checks use that name. Older released copies can also
 be recovered when their retained-file record and original branch are still available.
 An old record cannot reconstruct an unknown renamed branch.
@@ -564,7 +564,7 @@ copy of it, and the task lands as **`your call`** with the report naming that fo
 quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
 changed:
 
-`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
+`nobody could check it — its work is in ~/.codeaf/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
 
 Nothing of the task's working copy is given back: the branch is kept, the copy is left
 registered where it is, and your own branch is untouched — no empty merge, no commit that
@@ -577,7 +577,7 @@ when every one of them can be placed does anything move. A lay that cannot happe
 your folder **exactly as it was** — not one file of the half that would have fitted — and
 says so:
 
-`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
+`nobody could check it — its work is in ~/.codeaf/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
 
 The task's copy is kept, so everything the family made is still in the folder that sentence
 names.
@@ -602,7 +602,7 @@ measured run accepted the same task three times and got the same refusal three t
 **Which one it was is settled by trying the folder, never by reading the message.** Git says
 "Permission denied" when it cannot lock a branch's ref in a folder you can write to
 perfectly well, and a hook of yours can print anything it likes. So when a commit is
-refused, aforge writes a scratch file into the repository and removes it again: if that
+refused, codeaf writes a scratch file into the repository and removes it again: if that
 works the refusal is about the **work**, the task comes back for your look, and accepting it
 after you have cleared whatever was in the way is worth doing. Only a folder that will not
 take that write — a read-only mount, a permission, a full disk, a quota — settles the task
@@ -620,7 +620,7 @@ this conversation exactly as it stands, every result in it, reading none of it a
 (*tasks*, under *Can it keep what it read*). Every other task inherits **not the
 transcript**: one assembled brief is its whole world, and your own message is the first
 part of it (below, under *What the task actually reads*). The
-one thing it is given of what aforge remembers about you is the handful of lines its own
+one thing it is given of what codeaf remembers about you is the handful of lines its own
 brief needs: the conversation asks the router once, against that brief, and puts the
 answer at the top of the task's instructions (what-i-remember). The task itself never
 writes a memory — a family of eight tasks would be eight writers on one brain, each blind
@@ -665,9 +665,9 @@ running task. Its step-by-step log is the job log, at
 in.** The job log above, and the bytes of any long tool result lifted out of a worker's
 live context to save room, both land under the conversation's `logs/` — the same place the
 conversation's own do. A worker reads a lot of files, and none of what the harness keeps
-about that reading is your work: nothing of aforge's is written into your repository or
+about that reading is your work: nothing of codeaf's is written into your repository or
 into the task's copy of it. Only a conversation with no folder at all falls back to
-`<workspace>/.aforge-v3/`.
+`<workspace>/.codeaf/`.
 
 The worker's **working set is a cleanup target, not a memory cliff**. Crossing it retires
 read results and assistant reasoning only after the worker has successfully changed the
@@ -739,10 +739,10 @@ is the change tracked as #434b.
 ## How a task is told to spend its time — the measure, a zero, and not remaking what exists
 
 Beyond the tools, a task is given three working habits in its instructions. They are
-written as principles rather than examples, because aforge hands tasks prose, research,
+written as principles rather than examples, because codeaf hands tasks prose, research,
 data, operations and code through the same door and a habit written in one trade's words
 is a habit that is wrong for the next job. **The chat is given the same three, in the
-same words** — see *What aforge can do for you* — because the approach to a piece of work
+same words** — see *What codeaf can do for you* — because the approach to a piece of work
 is usually chosen in the conversation, before the task exists.
 
 - **When the work comes with its own measure, that measure is the loop, not the report.**
@@ -838,7 +838,7 @@ carries on. It covers every hand that names its target:
 The wording it reads names **both the path and the directory it may write in**:
 
 > /Users/you/code/yours/NOTES.md is outside your copy — this task works in
-> /Users/you/.aforge/v3/projects/…/trees/1; read anywhere, write only there. Say what needs
+> /Users/you/.codeaf/v3/projects/…/trees/1; read anywhere, write only there. Say what needs
 > changing out there in your report; what you write in your copy comes home on its own.
 
 **The machine's scratch is not yours.** `/tmp`, the temp directory and `/dev/null` are
@@ -918,7 +918,7 @@ or the conversation's to run.
 
 A task works in **its own copy of the repository**, and its copy shares the repository's
 object store with yours: every branch you have is visible from inside it. So the line
-aforge draws around a task's `git` is about **whose work it may take**, not about which
+codeaf draws around a task's `git` is about **whose work it may take**, not about which
 directory it is standing in.
 
 **It may read anything.** `git status`, `git diff`, `git log`, `git show`, `git branch
@@ -926,7 +926,7 @@ directory it is standing in.
 other task's branch. Knowing what is around it is how it does the work.
 
 **It does not have to save anything.** What lands on your branch — or on the kept branch,
-where your checkout is one aforge will not write — is every path the task passed to `write`
+where your checkout is one codeaf will not write — is every path the task passed to `write`
 or `edit`, staged by name on the way home — the task is told not to stage
 its own work, and `git add` and `git commit` are neither needed nor refused.
 
@@ -954,10 +954,10 @@ copy" — because "this is your own copy" is false about a repository the task i
 in, and a refusal a model can see through is a refusal it goes around.
 
 **In a session you are sitting in front of, none of this applies to you.** In your own
-conversation, in your own checkout, aforge runs whatever git you ask for. A session you
+conversation, in your own checkout, codeaf runs whatever git you ask for. A session you
 left running on its own with a budget answers to this same list, because it decides on its
 own word that the work is done; *The git an unattended run left on its own will not run*
-in *What aforge is, and how you start it* says exactly what that session reads. The rule
+in *What codeaf is, and how you start it* says exactly what that session reads. The rule
 exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
 really did report somebody else's fixes as the thing it had just built.
 
@@ -1041,12 +1041,12 @@ carries the whole of that final message — read back off the task's own journal
 `what it said at the end`.
 
 When a task's work does come home, the paths it wrote are staged by name — never
-`git add -A`, and never `.aforge-v3` — then committed on its own branch as
+`git add -A`, and never `.codeaf` or its former `.aforge-v3` spelling — then committed on its own branch as <!-- legacy-name -->
 `task: <first line of title, at most 72 chars>` with the identity
-`aforge <aforge@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
+`codeaf <codeaf@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
 A checkout on a protected branch, on a different branch than when the work was cut, on the
 same branch at a commit the person moved after the cut, or detached, is left alone and the
-task branch is kept instead. Commits written by aforge's own landings do not count as the
+task branch is kept instead. Commits written by codeaf's own landings do not count as the
 person moving it.
 Otherwise the merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
@@ -1072,25 +1072,25 @@ and its page shows that message under `what it said at the end`. Open the task f
 went; the short report on the landing card, and the one the task's row keeps for later,
 stay bounded.
 
-## What aforge says in the chat when a task lands, and the full path to the file
+## What codeaf says in the chat when a task lands, and the full path to the file
 
-Nobody typed the landing note, so aforge answers it as if you had asked for the work
+Nobody typed the landing note, so codeaf answers it as if you had asked for the work
 directly: what it writes next is **the answer itself** — the findings, the summary of what
 was made, what it changes.
 
 The card the landing writes into the conversation already says the task finished, how long
-it took, how many files it touched and where the branch went, so aforge does not say that
+it took, how many files it touched and where the branch went, so codeaf does not say that
 again, and it does not grade the deliverable. "In good shape", "solid", "genuinely non-trivial" are sentences *about* the
 work in place of the work, and so is narrating what it did to get there.
 
-When the report is too thin to answer from, aforge reads the deliverable and answers out of
+When the report is too thin to answer from, codeaf reads the deliverable and answers out of
 what is in it. The message is the answer; the file is the deep dive.
 
 ## Why did the chat reply on its own
 
 A finished task can arrive while you are not typing. Its landing note starts the turn
 that answers the work, so the answer may appear on its own. Immediately above that reply,
-aforge draws a dim line with the task's identity mark, its name, and the exact words you
+codeaf draws a dim line with the task's identity mark, its name, and the exact words you
 originally asked it to handle. That line is part of the transcript and returns when you
 resume the conversation. The finished-task card still stays above the input as before.
 
@@ -1101,7 +1101,7 @@ a session host answered in its journal only: the window sat at idle, the task ca
 done, and the answer was waiting in the transcript for whoever opened the conversation
 next. The turn now crosses the wire like any other.
 
-This is true for the ordinary `aforge chat` too, not only when you asked for a host: an
+This is true for the ordinary `codeaf chat` too, not only when you asked for a host: an
 ordinary chat is served by a session host. The same road brings the reply when a background
 job exits or a watch fires, so "my job finished and nothing appeared" is not a separate
 kind of silence. And it stays true after you have typed: a window used to stop hearing
@@ -1125,7 +1125,7 @@ identity used for that task in the task column and its finished card; the quoted
 your original request verbatim, not the more detailed brief prepared for the worker. More
 than one line means the answer is responding to all of those finished tasks, top to bottom.
 
-**Every file aforge names you is named by its full absolute path** — after a task and
+**Every file codeaf names you is named by its full absolute path** — after a task and
 everywhere else in the conversation. A relative path like `research/notes.md` is one you
 would have to work out a root for, and a task that ran in a copy of its own
 makes even that a guess.
@@ -1209,7 +1209,7 @@ bytes reset `no_progress` on every call and nothing but the 200-step budget stoo
 way. One really did: twenty-odd rewrites of a single file over twenty-two minutes, every
 call clean.
 
-So aforge fingerprints what each call **produced** — the bytes of the file a saving call
+So codeaf fingerprints what each call **produced** — the bytes of the file a saving call
 wrote, or the answer any other call brought back — and counts how many in a row produced
 something it had already produced. The same count covers a search run twice with the same
 query, an API called again with the same body and a page downloaded twice; it is not about
@@ -1269,10 +1269,10 @@ for a task cutting a film: joining clips, saving a frame and scoring the cut are
 **It changed its working copy.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under
 everything else, so a tool nobody classified still counts when it actually produced
-something. Anything under `.aforge-v3` is excluded: what the harness leaves there is not
+something. Anything under `.codeaf` is excluded: what the harness leaves there is not
 the task's work. Job logs and stubbed tool results are not even there any more — they are
 kept with the conversation, under its own `logs/` — and the exclusion stays as the floor
-under everything else aforge may leave in a checkout.
+under everything else codeaf may leave in a checkout.
 
 **It learned something.** A read-only call — `read`, `read_document`, `ls`, `grep`, `find`,
 `web_search`, `web_fetch`, `jobs`, `recall`, `view_image`, `manual`, `tasks`, `settings`,
@@ -1282,7 +1282,7 @@ old**. A failed one still counts as learning: finding out that something does no
 finding something out.
 
 "Whose answer was more new than old" is measured **line by line, not result by result**.
-aforge remembers the lines a task has already been shown, and counts how many of a
+codeaf remembers the lines a task has already been shown, and counts how many of a
 result's lines are ones it has never been given. Nothing is stripped out or excused first:
 a line is the same line, or it is not.
 
@@ -1319,7 +1319,7 @@ Failure matters for saving and not for learning. A `generate_image` that came ba
 API error saved no file, so a task calling it repeatedly and getting the same error is
 stuck and is stopped — which is what the counter is for.
 
-**A failure aforge itself produced is never counted, in either direction.** A tool that was
+**A failure codeaf itself produced is never counted, in either direction.** A tool that was
 withdrawn from the task's belt, and a call a permission rule refused before it ran, are
 answers written on this side of the wall: the tool never ran and the world never saw the
 call. Those steps do not advance the counter, do not reset it, and do not earn the task a
@@ -1351,7 +1351,7 @@ left running holds nothing up, and the task is asked its next step straight away
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
-*the work has not changed since step 12; nine results since brought nothing new*. aforge
+*the work has not changed since step 12; nine results since brought nothing new*. codeaf
 knows which steps changed the deliverable — the files the task's own `write`, `edit` or
 generating hands saved — so it can say when that last happened and what the steps since
 brought back. The same line appears in the short account a checkpoint hands to whoever
@@ -1397,7 +1397,7 @@ in the working copy is paying twice for the run the limit has just ended. With `
 or with no acceptance to judge against, there is nobody to ask and the task simply stays
 stopped.
 
-## How aforge knows a task really finished
+## How codeaf knows a task really finished
 
 A task is never done on its own say-so. When the work finishes, a **separate, fresh,
 read-only checker** is put in a clean restore of what the task wrote, runs the checks the work
@@ -1409,7 +1409,7 @@ of files written, and where to look. **The brief is deliberately withheld** so i
 the contract, not the effort.
 
 **On work that started itself, the acceptance is your own message.** Nobody groomed a
-done-condition for a task aforge started out of a reply, so what the checker is held against
+done-condition for a task codeaf started out of a reply, so what the checker is held against
 is your request in full, framed as "everything asked for below is actually done — all of it,
 not the part that was easiest to reach". Before that it was a generic line pointing at the
 task's name, and on a long piece of work that meant a request being accepted as met the moment
@@ -1422,7 +1422,7 @@ newline in the command is turned away before the allowlist is even consulted. Ev
 it reads is capped at 8000 bytes. `read` reserves room inside that bound for its ordinary
 `Use offset=… to continue.` footer. When another tool returns more, the result names the
 content-addressed file holding the whole output; the checker opens that path with `read` and
-uses the same line offsets as any other file. Those saved results are aforge's expiring
+uses the same line offsets as any other file. Those saved results are codeaf's expiring
 droppings beside the commissioning conversation, never files in the work being checked.
 If the full output cannot be saved, the result says so and asks for a narrower path, pattern,
 or range; it does not claim the missing bytes are available.
@@ -1438,7 +1438,7 @@ the report is marked `nothing checked this work: the task.audit setting is off` 
 task's own words. There are no correction rounds at all.
 
 **`task.audit` is this road's row and only this road's.** It governs tasks the conversation
-hands out with `/task`. It does not reach `aforge do`, whose delivery is judged by the
+hands out with `/task`. It does not reach `codeaf do`, whose delivery is judged by the
 delivery gate instead — see *running from the terminal* for what checks an unattended run
 and how its `--json` result names it.
 
@@ -1481,7 +1481,7 @@ merges upward until that check answers.
 ## Which commands the checker is allowed — the checks the work declared, not a fixed list
 
 **The checker is allowed the verification the work DECLARED, and nothing else it merely
-watched happen.** There is no list of build tools in aforge, and no setting that holds one.
+watched happen.** There is no list of build tools in codeaf, and no setting that holds one.
 The commands its `bash` will accept come from two places:
 
 - **the `checks` the task was proposed with** — the commands whoever wrote the brief typed
@@ -1568,7 +1568,7 @@ the checker may run it as `verify.sh`, as `./verify.sh`, by its full path, or be
 interpreter the file itself names** — the program on its `#!` first line, or the program that
 line hands to `/usr/bin/env`. So a file beginning `#!/usr/bin/env bash` is allowed
 `bash verify.sh`, one beginning `#!/usr/bin/python3` is allowed `python3 check.py`, and any
-path to that same program counts. **aforge holds no list of launchers**: the file answers the
+path to that same program counts. **codeaf holds no list of launchers**: the file answers the
 question, which is why `rm verify.sh` is not a spelling of your check. Paths are resolved
 against the directory the checker stands in and compared as files, so anything that starts the
 same file is the same check, and a wildcard you wrote is resolved the same way — `verify.*`
@@ -1638,12 +1638,12 @@ A worker committing its own edits does not move this baseline. A restored task
 whose older record has no captured base supplies no before-reading; the current
 branch tip is never substituted for the missing history.
 
-Before a task's work is checked, aforge runs the task's named checks on the **base commit
+Before a task's work is checked, codeaf runs the task's named checks on the **base commit
 its copy was cut from**. That is the before-reading: it says which checks were already red
 before the task began. The check of what would ship is then compared with it. A check that
 was already failing and still names the same failure is unchanged baseline evidence. It is
 not proof that the requested behavior works: the checker still judges the request from the
-work and its evidence. When both readings name individual failures, aforge compares those
+work and its evidence. When both readings name individual failures, codeaf compares those
 names, so one old failure cannot hide a different new failure under the same command. A
 check that was passing before the task and is red after it **is** new red. Output that does
 not name individual failures stays uncertain rather than being guessed different.
@@ -1651,7 +1651,7 @@ not name individual failures stays uncertain rather than being guessed different
 The checker is told that distinction before it reads which commands it may run. If the base
 was clean, it is told every check was passing before the work began, so any red it finds is
 the task's. If a command could not start, changed the tree while it ran, or lay beyond the
-five-minute reading window, it counts neither way and is not named: aforge does not guess
+five-minute reading window, it counts neither way and is not named: codeaf does not guess
 whose failure it is. A reading nobody could take produces no claim about earlier failures
 at all.
 
@@ -1701,8 +1701,8 @@ untracked, the block says so in as many words, and the checker is told to open t
 `read` if they matter to the acceptance.
 
 Two things bound it. The listing stops at 100 paths and then says how many more there are,
-so a checker knows it is looking at a prefix and can run the command itself. And aforge's
-own metadata directory (`.aforge-v3`, where a job's log lives) is left out — that is this
+so a checker knows it is looking at a prefix and can run the command itself. And codeaf's
+own metadata directory (`.codeaf`, where a job's log lives) is left out — that is this
 program's droppings and never the work's. A workspace that is not a repository gets no
 manifest at all, and the packet already says so in its own sentence: `this workspace is not
 a repository, so there is no diff to read: check the files themselves`.
@@ -1722,7 +1722,7 @@ way, and you see one plain line of what is being closed.
 
 **A correction round is attempted by a more capable model.** The first attempt runs on the
 task's own model; when a check finds gaps, the worker sent back to close them runs on your
-crew's **careful work** model — the `repair` role, in `/crew`. It is the one place aforge
+crew's **careful work** model — the `repair` role, in `/crew`. It is the one place codeaf
 spends more than you asked it to, and it is spent only after something has actually gone
 wrong, on a job the check has already narrowed to named gaps in a working copy that is
 already most of the way there. Two things turn it off by themselves: a crew whose careful
@@ -1871,7 +1871,7 @@ task carries on as a single worker instead.
 **The row clears when the reading ends.** It says what is true while it is true; a task back
 at its own work never carries a line about a wait that has finished.
 
-## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
+## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, codeaf froze for thirty seconds, nothing appeared on the rail
 
 When your turn is handed over, the **status line at the bottom says `briefing a worker`**
 with a clock counting up beside it, and no task exists yet.
@@ -1898,7 +1898,7 @@ whole of it. It does not go blank partway through and it does not restart at zer
 ## The four words a task can land with — done, stopped, incomplete, your call
 
 Every task ends wearing exactly one of four words, and the words are the same everywhere
-you read them: the card, the rail, the roster, home, and the note aforge itself reads. Two
+you read them: the card, the rail, the roster, home, and the note codeaf itself reads. Two
 of them say nothing more is coming; the other two carry a reason, which the next section
 sets out in full.
 
@@ -1976,20 +1976,20 @@ claim two attempts. These are checks of the work, not unanswered questions to yo
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it
 on `ask` — the default — the note says the task waits until somebody decides and offers
-`tasks id 7 resolve accept|reaudit|refute`, and tells aforge to say what it thinks and leave
+`tasks id 7 resolve accept|reaudit|refute`, and tells codeaf to say what it thinks and leave
 the choice with you; the chips on the landed card are the door. With it on `auto` the
-same note tells aforge to read the report and the work and settle the task itself, and to
+same note tells codeaf to read the report and the work and settle the task itself, and to
 come back to you only when it genuinely cannot tell. Everything else in the landing is
 identical either way.
 
-**A session with nobody watching reads as `auto` whatever the row says.** `aforge --once`
+**A session with nobody watching reads as `auto` whatever the row says.** `codeaf --once`
 and every other headless door run with no surface to raise a card on, no settings panel and
 nobody to read a landing that says it is waiting on somebody — so a task that needs a look
 there would stop the run for good, and that was measured stopping a ten-hour run. Such a
-session takes the same road your own `d let aforge decide this one` takes: aforge reads the
+session takes the same road your own `d let codeaf decide this one` takes: codeaf reads the
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
-row you set, and a blank row still means aforge asks you.
+row you set, and a blank row still means codeaf asks you.
 
 **And a run you left going with a budget goes one step further, for the case where nobody
 could check the work at all.** On a headless `--once --yolo` run with `--max-hours` or `--max-cost`, a landing
@@ -2171,7 +2171,7 @@ it wrote back over your folder by name when it lands. **A file you changed there
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
 copy where it is, and it lands `your call`:
 
-`nobody could check it — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+`nobody could check it — its work is in /Users/you/.codeaf/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
 
 Both versions survive that: yours in your folder exactly as you left it, the task's in the
 directory the sentence names, so you can read the two and take what you want. The first few
@@ -2369,14 +2369,14 @@ credit to a model you never picked. Blank means the conversation's own model.
 of its own, and each of those settles its own model when *it* is admitted — the only id
 anybody can be told up front is the one the task you asked for is running on. The one
 thing that can move a task off its frozen id is a model with **no tool use**: a task
-cannot run without tools, so aforge swaps once to the small-work class and says so on the
+cannot run without tools, so codeaf swaps once to the small-work class and says so on the
 row — `model <id> has no tools; using <other>` — and from then on the row names the model
 it is really on.
 
 The receipt only names a model when the `model` argument was given. A task that named no
 model is not told which default it got.
 
-## When aforge refuses a model name
+## When codeaf refuses a model name
 
 Two refusals, both ordinary tool results the model can retry from in one round trip.
 
@@ -2419,7 +2419,7 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
 
-The real ceiling is the machine. Before starting **each** task, aforge asks whether one
+The real ceiling is the machine. Before starting **each** task, codeaf asks whether one
 more may start:
 
 | Setting | What it reads | Default | Effect |
@@ -2436,7 +2436,7 @@ started is invisible to the memory reading — its own memory arrives with its f
 minutes later — so each task that starts **sets aside a footprint** of memory until a
 reading shows it, and the next one is judged against what is left. A footprint is the
 larger of two figures this machine gives: one core's share of its memory (`MemTotal` ÷
-cores, so 2 GiB on a 16 GiB eight-core laptop) and the most memory per task aforge has
+cores, so 2 GiB on a 16 GiB eight-core laptop) and the most memory per task codeaf has
 watched a task actually hold. A quiet machine therefore starts roughly **one
 task per core's share of the memory above the floor**; the rest wait saying `machine busy`
 and start as the earlier ones finish or as a reading shows room. Nothing is counted twice —
@@ -2446,9 +2446,9 @@ much.
 This gates **starts only**. Nothing already running is ever touched; pressure drains as
 running tasks finish.
 
-**Tasks in your other conversations count here.** aforge is one program, and the reading
+**Tasks in your other conversations count here.** codeaf is one program, and the reading
 covers that whole program and everything it started — it cannot tell which conversation
-started which build. So every task aforge is running is set aside for, whichever
+started which build. So every task codeaf is running is set aside for, whichever
 conversation started it: tasks fanning out beside you leave less room here too, and a
 build running beside yours is never mistaken for what one of your own tasks weighs.
 
@@ -2467,7 +2467,7 @@ the next section spells.
 ## Rate limited — why work waits, how long it waits, and why things stay slow after
 
 When the provider answers **too many requests**, that is not a failure. It is the provider
-saying *not yet*, and aforge waits rather than throwing the work away.
+saying *not yet*, and codeaf waits rather than throwing the work away.
 
 **What the wait looks like.** The first retry comes after about **0.7 seconds**, and each
 one after that doubles — but no single wait is ever longer than **one minute**, whatever
@@ -2494,19 +2494,19 @@ its own and does not spend any of those three (see *Models, context, and what it
 
 **Routing around a full pool.** Some *too many requests* answers name which upstream
 provider's pool is full — one machine room out of the several that can serve the same
-model. When that happens, aforge remembers the name and asks the router to route new
+model. When that happens, codeaf remembers the name and asks the router to route new
 calls around that provider for the next five minutes (or for the comeback time it named,
 if shorter), so fresh work lands on machines with room instead of queueing behind the
 full one. The call that drew the answer still waits its own wait — only calls sent after
 it steer around. A model served by a single provider has nowhere else to go, and simply
 waits as described above.
 
-**Why things can stay slow afterwards.** aforge watches how many calls the provider will
+**Why things can stay slow afterwards.** codeaf watches how many calls the provider will
 take at once and pulls that number in half when it is told *too many requests* — once per
 burst, not once per answer. It gives it back on the clock: after **20 seconds** with no
 further pacing, one call's worth returns every **5 seconds** until it is back where it
 started. So a burst costs a few minutes of reduced throughput, not the rest of the session.
-This matters most when several aforge windows share one API key: the pacing one of them
+This matters most when several codeaf windows share one API key: the pacing one of them
 causes is charged to all of them, and without the healing every window would ratchet down
 and stay there.
 
@@ -2528,7 +2528,7 @@ When a session comes back:
   - `paused — it resumes; whatever it wrote is in your tree`, when it worked directly in
     the workspace;
 - **a sub-harness design that was still being written is the exception: it does not
-  resume.** It comes back **failed**, saying `the design did not finish before aforge
+  resume.** It comes back **failed**, saying `the design did not finish before codeaf
   closed; nothing was saved`, and it is never handed to an ordinary worker. Nothing reaches
   the harness registry until you approve the card, so an unfinished design left nothing
   behind to pick up — ask for it again and it is designed from the start;
@@ -2553,7 +2553,7 @@ clause reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any comp
 that were never delivered appear underneath.
 
 **An adaptive run is not a task and does not come back at all** — it has no checkpoint.
-What comes back is its row in the project's list, closed with `incomplete — aforge closed
+What comes back is its row in the project's list, closed with `incomplete — codeaf closed
 while this was still running`. See *Adaptive runs*.
 
 A completion is announced **once per life of the work** — a resumed session does not
@@ -2580,7 +2580,7 @@ Four places.
 **The checkpoint**, one per conversation, in the conversation's own folder:
 
 ```
-~/.aforge/v3/projects/<workspace-with-dashes>/<session id>/tasks.json
+~/.codeaf/v3/projects/<workspace-with-dashes>/<session id>/tasks.json
 ```
 
 It holds the id counter and, per task in admission order: id, title, summary, brief,
@@ -2605,7 +2605,7 @@ anyway.
 **The project index**, one per workspace, shared by every window open on that project:
 
 ```
-~/.aforge/v3/projects/<workspace-with-dashes>/tasks.jsonl
+~/.codeaf/v3/projects/<workspace-with-dashes>/tasks.jsonl
 ```
 
 Append-only, one row per landed task: id, name, label, title, status, the first sentence
@@ -2623,7 +2623,7 @@ the closing write-up cost on their own.
 **Task transcripts**, which are real, resumable session files you can open with `read`:
 
 ```
-~/.aforge/v3/tasks/<session id>/<YYYYMMDD-HHMMSS>_<task id>.jsonl
+~/.codeaf/v3/tasks/<session id>/<YYYYMMDD-HHMMSS>_<task id>.jsonl
 ```
 
 Beside each one sit `…_<id>-audit-<6 hex>.jsonl` per check and `…_<id>-repair1.jsonl` per
@@ -2766,7 +2766,7 @@ other halted row; the landing note reads
 `task 7 incomplete: <title> · would not write its notes down`; and the record that grades
 the model on the work says it was `stopped`, not that it did not finish. The run settles on whatever it
 had actually done and the branch is kept like any other. The keys page has the whole ladder
-under "Why did aforge stop running tool calls, and what is a [held] answer?".
+under "Why did codeaf stop running tool calls, and what is a [held] answer?".
 
 If a row says `went in circles`, the worker had genuinely stopped making progress, and its
 transcript shows what it kept repeating.
@@ -2788,7 +2788,7 @@ Endings are checked in a fixed order, and the first match wins:
 | 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish`, `stopped: 6 steps without progress`, or `stopped at repeat checkpoint: <what the second look said>` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
-| 5b | The session closed or detached | paused — it resumes, it is not failed. Two kinds do not resume: a sub-harness **design** reads `the design did not finish before aforge closed; nothing was saved`, and a **quick** task that was running reads `the quick task did not finish before aforge closed; whatever it wrote is in your folder` — it was writing in your own folder, so what it managed is already there |
+| 5b | The session closed or detached | paused — it resumes, it is not failed. Two kinds do not resume: a sub-harness **design** reads `the design did not finish before codeaf closed; nothing was saved`, and a **quick** task that was running reads `the quick task did not finish before codeaf closed; whatever it wrote is in your folder` — it was writing in your own folder, so what it managed is already there |
 | 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
 | 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
 | 6c | The run errored | `it ended with an error: <err>` |
@@ -2890,7 +2890,7 @@ message. See the next section.
 
 Yes. Your own message travels with the work, word for word.
 
-A task's first and only message is assembled by aforge from these parts, under headings, in
+A task's first and only message is assembled by codeaf from these parts, under headings, in
 this order:
 
 ```
@@ -2927,7 +2927,7 @@ The restatement above is bounded. Their original words are at this path and line
 grep or read <journal path>, line <n>
 ```
 
-The first part is taken by aforge from the conversation — the message that was in front of
+The first part is taken by codeaf from the conversation — the message that was in front of
 the model when it proposed the work, or the newest thing you typed into that turn if you
 steered it. The model never writes that part and cannot edit it. The task cannot put a question to you
 and wait for an answer once it starts, though you can still send it a line while it runs —
@@ -3022,7 +3022,7 @@ The last section of its opening message, when the address is known, is:
 THE PERSON'S ORIGINAL MESSAGE
 The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
 
-grep or read /home/x/.aforge/v3/sessions/abc.jsonl, line 12
+grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, line 12
 ```
 
 The restatement under `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS` is bounded at 6000

@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 // THE CONNECTIONS TAB: the sixth page of the settings sheet, and the only one
@@ -926,13 +926,13 @@ func capStateInk(pal palette, note string, selected bool) string {
 func (s *sheet) connFootNote() string {
 	item, ok := s.current()
 	if !ok || item.conn == nil {
-		return "the accounts aforge may reach for you"
+		return "the accounts codeaf may reach for you"
 	}
 	switch item.conn.kind {
 	case connCapability:
 		return "saved the moment you change it"
 	case connDisconnect:
-		return "the account stays yours — aforge forgets its keys"
+		return "the account stays yours — codeaf forgets its keys"
 	}
 	if item.conn.entry != nil {
 		if !item.conn.entry.secret {

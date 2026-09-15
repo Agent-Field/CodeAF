@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // The belt half of the completeness gate (internal/tui3's manual_test.go is the

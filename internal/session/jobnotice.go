@@ -222,7 +222,7 @@ func jobNameOf(info jobInfo) string {
 //
 // THE CHECKPOINT IS THE ONE PLACE THE OLD PACKED SENTENCE STILL LIVES, and that
 // is a fact about files already written rather than a shape anybody would choose
-// now. A conversation reopened tomorrow is drawn from rows saved by the aforge
+// now. A conversation reopened tomorrow is drawn from rows saved by the codeaf
 // that closed it — `job 3 · log /…/3.log` in a task row's prose field — so the
 // choice is to read that sentence here or to tell every person with a
 // conversation on disk that their history began today.
@@ -284,7 +284,7 @@ func jobNoticeFromRow(row TaskNotice) (JobNotice, bool) {
 //
 // THE RUNNING CASE IS THE FALLBACK WHEN THE REGISTRY HAS ALREADY LET GO. A
 // row restored from a file is always settled — a job that was still moving
-// when aforge closed is stopped on the way in (task_store.go) — and a lane
+// when codeaf closed is stopped on the way in (task_store.go) — and a lane
 // that attaches while the work is still going is handed the live notice
 // ([Agent.liveJobNotices]), not this projection. Reading a leftover running
 // row as an ending would still be wrong if the overlay missed, so the

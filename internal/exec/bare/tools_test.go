@@ -25,7 +25,7 @@ import (
 // rather than an unconditional one — as part of the PR that put
 // ./internal/exec/... back into the release gate: where rg and fd exist the
 // assertions below still run in full, and where they do not the gate stays
-// deterministic instead of failing for a reason that is not about aforge.
+// deterministic instead of failing for a reason that is not about codeaf.
 // Installing both on the runner so CI exercises them is the follow-up.
 func requireExternalTool(t *testing.T, program string) {
 	t.Helper()

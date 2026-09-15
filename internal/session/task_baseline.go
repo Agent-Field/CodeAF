@@ -17,8 +17,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // checkPhotograph is one reading of a set of check commands on one tree. Red
@@ -308,7 +308,7 @@ func readClaimedBaseChecks(ctx context.Context, place Place, base checkBase, cla
 		// separate context check happens to keep it safe today.
 		return checkPhotograph{read: true, unread: commands}
 	}
-	holder, err := os.MkdirTemp("", "aforge-check-base-")
+	holder, err := os.MkdirTemp("", "codeaf-check-base-")
 	if err != nil {
 		return checkPhotograph{}
 	}

@@ -93,7 +93,7 @@ type Scoring struct {
 // at is a time from the start of the clip, or [Closing] for the final frame.
 // The final frame is the one that matters most: it is how one generated clip
 // connects to the next, handed to generate_video as the opening frame of the
-// shot that follows, and it is the only way aforge has of making two independent
+// shot that follows, and it is the only way codeaf has of making two independent
 // renders look like one continuous take.
 func SaveFrame(ctx context.Context, source string, at time.Duration, destination string) error {
 	if !Available() {

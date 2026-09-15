@@ -15,7 +15,7 @@ package session
 // So three principles are taught, and this file holds them to being principles.
 // A prompt that taught the CASE instead — a language, a tool, a file name, a
 // kind of work — would be a prompt that is wrong for whatever the next brief
-// turns out to be, and aforge's workers are handed every kind of work there is.
+// turns out to be, and codeaf's workers are handed every kind of work there is.
 // The same reason shape.md names no domain (task_shape.go states it).
 //
 // AND IT HOLDS THEM TO BEING TAUGHT WHERE THE APPROACH IS ACTUALLY PICKED.
@@ -156,7 +156,7 @@ func TestTheWorkerPromptStatesTheDeliverableFilePathLawOnce(t *testing.T) {
 	}
 }
 
-// AND IT TEACHES THEM WITHOUT NAMING A TRADE. aforge is handed prose, research,
+// AND IT TEACHES THEM WITHOUT NAMING A TRADE. codeaf is handed prose, research,
 // data, operations and code by the same door, and a surface reading a law written
 // in one trade's nouns reads a law that is not about the job in front of it. So
 // the passage carries no vocabulary from any of them, and no number either — a

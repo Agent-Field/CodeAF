@@ -1,19 +1,19 @@
 // Package enginehost is the process that keeps a conversation alive between
 // connections.
 //
-// `aforge chat --host devbox` runs `ssh devbox aforge engine` and speaks
+// `codeaf chat --host devbox` runs `ssh devbox codeaf engine` and speaks
 // internal/remote's protocol over the pipes. In version 1 that process WAS the
 // conversation: it opened the session, answered frames, and died with the pipe,
 // so a closed laptop lid and a dropped wifi both ended a running turn. This
 // package is the other half of version 2's answer — a host that outlives the
-// pipe, holding the engine, while `aforge engine` becomes a splice between the
+// pipe, holding the engine, while `codeaf engine` becomes a splice between the
 // ssh pipes and a unix socket.
 //
 // ── THE GRAIN IS ONE HOST PER WORKSPACE, AND THE CHDIR LAW DECIDES IT ────────
 //
 // A host holds one engine per open session, but every session it holds is about
-// the SAME directory, and that is not an arbitrary carving. `aforge engine`
-// moves the process into the workspace before it assembles anything (cmd/aforge
+// the SAME directory, and that is not an arbitrary carving. `codeaf engine`
+// moves the process into the workspace before it assembles anything (cmd/codeaf
 // engine.go), and that chdir is the only chdir in the tree — the process's own
 // idea of where it is has to agree with the session config's. A host holding
 // two workspaces would have to break that or lie about it. So the socket lives
@@ -47,8 +47,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 // socketName, lockName and logName are the three files a host keeps beside each
@@ -59,17 +59,17 @@ const (
 	logName    = "host.log"
 	// placeName records the workspace this directory is the host of, in plain
 	// text, because the directory itself is named by a hash and a person
-	// looking at ~/.aforge/v3/hosts deserves to be able to tell which is which.
+	// looking at ~/.codeaf/v3/hosts deserves to be able to tell which is which.
 	placeName = "workspace"
 )
 
 // SocketLimit is the most bytes a unix socket path may weigh.
 //
 // It is 104 rather than Linux's own 108 because THE SMALLEST LIMIT IS THE ONE
-// THAT TRAVELS: macOS stops at 104, the same aforge home can be shared over a
+// THAT TRAVELS: macOS stops at 104, the same codeaf home can be shared over a
 // network mount, and a host that worked on one machine and refused on another
 // for a reason nobody could see would be worse than one honest refusal
-// everywhere. Exceeding it is not a fault — AFORGE_HOME can be anywhere — so it
+// everywhere. Exceeding it is not a fault — CODEAF_HOME can be anywhere — so it
 // is answered as "no host today" and the caller falls back to the pipe.
 const SocketLimit = 104
 
@@ -86,12 +86,12 @@ var ErrSocketPathTooLong = errors.New("engine host: the state path is too long f
 var ErrNoHostAnswered = errors.New("engine host: no host answered")
 
 // SocketPathFits exposes the shared Unix-socket ceiling to other doors that
-// place a socket under the aforge state root. Keeping the number here prevents
+// place a socket under the codeaf state root. Keeping the number here prevents
 // ssh control sockets and engine-host sockets from drifting across platforms.
 func SocketPathFits(path string) bool { return len(path) <= SocketLimit }
 
 // Dir is where the host for one workspace keeps its socket: a directory under
-// ~/.aforge/v3/hosts, resolved through internal/home so AFORGE_HOME moves it
+// ~/.codeaf/v3/hosts, resolved through internal/home so CODEAF_HOME moves it
 // with everything else.
 //
 // THE DIRECTORY IS NAMED BY A HASH AND NOT BY THE PATH, which is the one place
@@ -113,9 +113,9 @@ func Dir(workspace string) (string, error) {
 
 // where is the same answer WITHOUT making the directory, and the split is not a
 // tidy-up: ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. Every
-// plain `aforge chat` now puts one question to [Dial] before it opens anything
-// (cmd/aforge's v3HostRoad), and a Dial that created a directory would leave one
-// behind under every workspace anybody ever ran aforge in — litter proving only
+// plain `codeaf chat` now puts one question to [Dial] before it opens anything
+// (cmd/codeaf's v3HostRoad), and a Dial that created a directory would leave one
+// behind under every workspace anybody ever ran codeaf in — litter proving only
 // that a question was asked. The doors that are about to WRITE something — the
 // host's own listener, the spawn lock, the wait for a host to go — call [Dir]
 // and make it themselves.
@@ -164,7 +164,7 @@ const dialTimeout = 2 * time.Second
 // caller simply serves the connection itself.
 const spawnWait = 10 * time.Second
 
-// Attach is the door `aforge engine` knocks on: a connection to this
+// Attach is the door `codeaf engine` knocks on: a connection to this
 // workspace's host, starting one if nothing answers.
 //
 // THE SPAWN RACE IS GUARDED BY THE LOCK THE HOST ITSELF HOLDS, which is the
@@ -264,14 +264,14 @@ func Ask(workspace string, ask remote.WhoIs) (remote.HostSelf, error) {
 //
 // IT IS THE HOST THAT SAYS WHETHER IT MAY. A host holding a turn, a surface or
 // an unanswered question answers [ErrHostBusy] and stays where it is; anyway
-// asks for it regardless, which is one person's own `aforge engine --stop` and
+// asks for it regardless, which is one person's own `codeaf engine --stop` and
 // nothing else. Either way the ending is the host's own shutdown — every
 // conversation closed, every journal flushed — and never a signal from outside.
 // Held is every workspace this machine has a host directory for, in the plain
 // text each host wrote there ([placeName]).
 //
 // IT READS THE DIRECTORIES AND NOT THE PROCESS TABLE. A host is known by the
-// state it left under ~/.aforge/v3/hosts, so this answers for hosts started by
+// state it left under ~/.codeaf/v3/hosts, so this answers for hosts started by
 // any build and by any terminal, including one whose process has gone and left
 // its socket behind. Whether anybody is actually listening is the caller's next
 // question, asked through [Dial] or [Stop] — and a directory whose host is gone
@@ -350,7 +350,7 @@ func waitForGone(workspace string, within time.Duration) error {
 	}
 }
 
-// Stop is `aforge engine --stop`: whatever is holding this workspace on this
+// Stop is `codeaf engine --stop`: whatever is holding this workspace on this
 // machine, stopped, whichever build it is.
 //
 // IT HAS TO WORK ON A BUILD THAT PREDATES THE EXCHANGE, because that is the
@@ -393,7 +393,7 @@ func Stop(workspace string) (bool, error) {
 // Spawn starts a host process and lets go of it.
 //
 // IT IS DETACHED ON PURPOSE AND THAT IS THE POINT OF THE WHOLE LANE. The
-// process asking for it is `aforge engine` under sshd, and when the connection
+// process asking for it is `codeaf engine` under sshd, and when the connection
 // drops sshd takes down everything in that session's process group — which is
 // exactly the death this package exists to survive. So the child gets a session
 // of its own ([detach]) and none of the parent's input or output: its stdout is
@@ -429,7 +429,7 @@ func Spawn(workspace, name string, args ...string) error {
 	return command.Process.Release()
 }
 
-// Splice is `aforge engine` once it has a host: everything the surface says
+// Splice is `codeaf engine` once it has a host: everything the surface says
 // goes to the socket, everything the host says goes back, and nothing in
 // between is read.
 //

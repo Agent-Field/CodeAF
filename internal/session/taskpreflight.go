@@ -311,7 +311,7 @@ const briefPathTrim = "`'\"“”‘’(){}[]<>,;:.!?*…"
 //   - `internal/session/task.go` is a place, `task.go` is not — a bare name
 //     cannot be matched against a claim that spells its directory, so accepting
 //     one would only ever produce a miss or a false hit on the wrong file;
-//   - `github.com/Agent-Field/aforge-v2/internal/session` is an import path and
+//   - `github.com/Agent-Field/codeaf/internal/session` is an import path and
 //     has no extension, so it falls out without a rule of its own;
 //   - `internal/session/task.go:112` is what grep and a compiler print, so the
 //     line number is cut rather than making the whole word unreadable.

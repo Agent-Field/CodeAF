@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -349,7 +349,7 @@ func (a *app) tabList() []chatTab {
 	// AND THE CONVERSATION ON SCREEN IS ALWAYS A TAB, including the one this
 	// window has no transcript for yet. A session gets its file when it is first
 	// written to, and a strip that waited for that would be a strip missing from
-	// the frame a person meets aforge on — which is exactly the frame where being
+	// the frame a person meets codeaf on — which is exactly the frame where being
 	// told what this window is holding is worth most.
 	if !tabsHold(tabs, front) {
 		tabs = append(tabs, a.tabAs(chatTab{key: front, file: a.file}, nil, front))

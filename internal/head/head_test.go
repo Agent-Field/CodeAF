@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 type headModalities bool
@@ -300,7 +300,7 @@ func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 
 func TestHeadLearningQuestionCarriesSeededNotebookFact(t *testing.T) {
 	graph := openHeadStore(t)
-	fact, err := graph.RecordFact(store.RootID, "repo:aforge", store.FactLesson,
+	fact, err := graph.RecordFact(store.RootID, "repo:codeaf", store.FactLesson,
 		"card receipts stay anchored to the job that produced them")
 	if err != nil {
 		t.Fatal(err)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ordersAgent is a conversation with the ambient side wired to a REAL store in

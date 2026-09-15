@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/codeaf/internal/history"
 )
 
 // THE ROOM'S BOX IS THE CONVERSATION'S BOX (room.go's [app.roomKey]).

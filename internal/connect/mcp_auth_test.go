@@ -50,11 +50,11 @@ func TestConnectingAToolServerAsksItsWayIn(t *testing.T) {
 		t.Errorf("a connection that cannot be renewed was stored")
 	}
 
-	// The identity aforge was issued is written down beside it, keyed to the
+	// The identity codeaf was issued is written down beside it, keyed to the
 	// sign-in that issued it and the thing it was issued for.
 	record, kept := manager.registrations().get("example")
 	if !kept {
-		t.Fatalf("nothing was written down about who aforge is to this service")
+		t.Fatalf("nothing was written down about who codeaf is to this service")
 	}
 	if record.Issuer != fake.URL {
 		t.Errorf("the sign-in was recorded as %q, want %q", record.Issuer, fake.URL)
@@ -76,7 +76,7 @@ func TestConnectingAToolServerAsksItsWayIn(t *testing.T) {
 		}
 	}
 	if introductions, _, _ := fake.counted(); introductions != 1 {
-		t.Errorf("aforge introduced itself %d times", introductions)
+		t.Errorf("codeaf introduced itself %d times", introductions)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestReconnectingAtAnotherSiteObtainsAFreshIdentity(t *testing.T) {
 	connectFakeAt(t, manager, "elsewhere")
 
 	if introductions, _, _ := fake.counted(); introductions != 2 {
-		t.Errorf("aforge introduced itself %d times, want once at each site", introductions)
+		t.Errorf("codeaf introduced itself %d times, want once at each site", introductions)
 	}
 	record, held := manager.registrations().get("example")
 	want := fake.URL + "/elsewhere"
@@ -268,7 +268,7 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 		t.Fatalf("the keys are gone")
 	}
 	if _, kept := manager.registrations().get("example"); !kept {
-		t.Errorf("who aforge is to this service is not a thing to forget")
+		t.Errorf("who codeaf is to this service is not a thing to forget")
 	}
 
 	flow, err := manager.BeginAuth(ctx, "example", "")
@@ -280,7 +280,7 @@ func TestTheIdentityIsUsedAgainAndSurvivesDisconnect(t *testing.T) {
 		t.Fatalf("Wait: %v", err)
 	}
 	if introductions, _, _ := fake.counted(); introductions != 1 {
-		t.Errorf("aforge introduced itself %d times, want once", introductions)
+		t.Errorf("codeaf introduced itself %d times, want once", introductions)
 	}
 }
 

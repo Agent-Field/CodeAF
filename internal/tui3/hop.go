@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE SWITCHER — alt+tab for the conversations this process already holds ──
@@ -473,7 +473,7 @@ func (a *app) hopReading(all bool) ([]hopRow, int) {
 // them, and it is the half of the card that made the key worth binding.
 //
 // THE CARD USED TO HOLD ONLY WHAT WAS ALREADY OPEN, AND THAT WAS THE DEFECT. A
-// person who has just started aforge holds exactly one conversation, so the key
+// person who has just started codeaf holds exactly one conversation, so the key
 // did nothing, was advertised nowhere, and could only be discovered by somebody
 // who already knew that `enter` on home opens a second one beside the first.
 // The feature was invisible until you had learned the thing it exists for.
@@ -1556,7 +1556,7 @@ const (
 	// running and still on this list, and a word claiming otherwise would be the
 	// surface reporting an act it did not perform.
 	hopAwayWord    = "tab closed"
-	hopLastOneWord = "that is the only conversation open — /quit closes aforge"
+	hopLastOneWord = "that is the only conversation open — /quit closes codeaf"
 )
 
 // The floating switcher owns the pointer as well as the keyboard. A miss on

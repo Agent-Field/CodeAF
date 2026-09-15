@@ -8,12 +8,12 @@ import (
 
 	amp "github.com/amp-labs/connectors/providers"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	"github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 // This is the test that makes the snapshot safe to trust.
 //
-// The whole point of ampcatalog is that the aforge binary does not link the
+// The whole point of ampcatalog is that the codeaf binary does not link the
 // catalog library — 9.6 MB for a table it reads a handful of fields out of. The
 // cost of that is a copy, and the risk of a copy is that it drifts from the
 // thing it copied without anyone noticing. So the library is still a module

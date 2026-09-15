@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── AN IGNORE LIST NEVER EMPTIES THE SET THE REQUEST IS SENT TO ─────────────

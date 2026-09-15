@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func askOpenQuestion(t *testing.T, graph *store.Store, session, prompt string, labels ...string) store.AgentQuestion {

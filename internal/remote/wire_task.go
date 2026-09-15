@@ -90,7 +90,7 @@ type TaskSteerArgs struct {
 	//
 	// THE HANDLE DOES NOT CHANGE WHEN THE CONVERSATION DOES. `Session.Open` and
 	// `Session.New` swap the engine's conversation behind the same client and the
-	// same agent (cmd/aforge's chatv3_host.go returns that agent unchanged), so a
+	// same agent (cmd/codeaf's chatv3_host.go returns that agent unchanged), so a
 	// send held over a swap — queued behind another, or retried after one — would
 	// otherwise reach whatever task 7 means in the conversation that replaced it.
 	// Empty is a surface making no claim.

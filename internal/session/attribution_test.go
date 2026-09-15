@@ -7,7 +7,7 @@ package session
 // commits a node's work without asking anybody and appends the trailer with no
 // model in the loop (task_run.go's [signed]). A build where one signs and the
 // other does not is a build whose git history cannot be counted — half the
-// commits aforge made in somebody's name would carry no provenance at all.
+// commits codeaf made in somebody's name would carry no provenance at all.
 //
 // The bytes are pinned in internal/exec (attribution_test.go there), so what is
 // asked here is that the constant is what reaches each reader — never a second
@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn is the belt half. The row
@@ -82,12 +82,12 @@ func TestALandedCommitCarriesTheTrailer(t *testing.T) {
 		t.Fatalf("the commit carries no trailer:\n%s", body)
 	}
 	// A TRAILER IS A TRAILER BLOCK, which is a blank line and then the line —
-	// git reads nothing else as one, and a subject with aforge in it is exactly
+	// git reads nothing else as one, and a subject with codeaf in it is exactly
 	// what the law forbids.
 	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "\n\n"+exec.AttributionTrailer) {
 		t.Fatalf("the trailer is not a trailer block:\n%q", body)
 	}
-	if subject := strings.SplitN(body, "\n", 2)[0]; strings.Contains(subject, "aforge <") {
+	if subject := strings.SplitN(body, "\n", 2)[0]; strings.Contains(subject, "codeaf <") {
 		t.Fatalf("the subject carries the signature: %q", subject)
 	}
 }

@@ -38,7 +38,7 @@ CELL="$MAR_OUT/$ARM-$TASK-$SEED"
 CONTAINER="oneroad-mar-$ARM-$TASK-$SEED"
 SESSION_NAME="$CONTAINER"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
 HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
 
 say() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CELL/cell.log"; }
@@ -75,8 +75,8 @@ touch "$CELL/agent-done"
 # started lives on in the container as an orphan, and an orphan holding a cargo
 # build would fight the verifier for the same target directory and CPUs.
 docker exec "$CONTAINER" sh -c \
-  'pkill -f aforge; pkill -f "pi/dist/bundle"; pkill -f opencode; sleep 3;
-   pkill -9 -f aforge; pkill -9 -f "pi/dist/bundle"; pkill -9 -f opencode; sleep 1;
+  'pkill -f codeaf; pkill -f "pi/dist/bundle"; pkill -f opencode; sleep 3;
+   pkill -9 -f codeaf; pkill -9 -f "pi/dist/bundle"; pkill -9 -f opencode; sleep 1;
    pkill -9 cargo; pkill -9 rustc; true' >/dev/null 2>&1
 sleep 2
 
@@ -130,7 +130,7 @@ say "$ARM/$TASK: verifier exit $VCODE in ${VWALL}s"
 docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer 2>/dev/null
 
 MODEL="$MODEL" IMAGE_REF="$IMAGE" IMAGE_ID="$IMAGE_ID" TASK_COMMIT="$TASK_COMMIT" \
-AFORGE_BUILD_COMMIT="${AFORGE_BUILD_COMMIT:-}" \
+CODEAF_BUILD_COMMIT="${CODEAF_BUILD_COMMIT:-}" \
 IMAGE_TOOLCHAIN="$IMAGE_TOOLCHAIN" IMAGE_RUSTC="$IMAGE_RUSTC" \
 AGENT_TOOLCHAIN="${AGENT_TC:-}" AGENT_RUSTUP_HOME="$AGENT_RUSTUP_HOME" AGENT_CARGO_HOME="$AGENT_CARGO_HOME" \
 WORKDIR="$WORKDIR" NEW_BIN="$NEW_BIN" CELL_SECONDS="${CELL_SECONDS:-36000}" \

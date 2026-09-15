@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           go generate ./internal/manual
-          go test -tags=aforge_packed_manual ./internal/manual
+          go test -tags=codeaf_packed_manual ./internal/manual
           if ! git diff --exit-code; then
             echo
             echo 'A tracked packed corpus disagrees with its source folder.'
@@ -111,7 +111,7 @@ jobs:
           PRNUM: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          go run ./cmd/aforge-changes check
+          go run ./cmd/codeaf-changes check
           if git diff --name-only --diff-filter=A "$BASE" HEAD \
                -- 'docs/changes/unreleased/*.md' | grep -q .; then
             echo "This pull request adds a change entry."
@@ -168,7 +168,7 @@ jobs:
       # this very pull request died that way.
       - name: The laws hold
         env:
-          TMPDIR: /tmp/aforge-ci
+          TMPDIR: /tmp/codeaf-ci
         run: |
           mkdir -p "$TMPDIR"
           make test-laws
@@ -183,7 +183,7 @@ jobs:
   # It reads the same ledger and the same timeout as `make test`, through
   # `make test`, so a red here is a red on a clean laptop too. AND IT BLOCKS.
   # It was neutral for a day and then, for a day, off pull requests altogether
-  # (#499); in that day #523 merged red on cmd/aforge with `check` green, the
+  # (#499); in that day #523 merged red on cmd/codeaf with `check` green, the
   # way #437, #439 and #483 had before the job existed. A red that reaches
   # nobody before the merge is the whole story of this file, so the owner's
   # ruling is that this runs on every pull request and `check` needs it.
@@ -214,7 +214,7 @@ jobs:
           # branch was before it. A first push has no before, and diffs one
           # commit.
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          TMPDIR: /tmp/aforge-ci
+          TMPDIR: /tmp/codeaf-ci
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR"
@@ -240,7 +240,7 @@ jobs:
           echo "touched:$pkgs"
           # -p 1 for the reason ci-full.yml gives: this runner has been shut
           # down under the link load of the heavy binaries twice, and a change
-          # touching tui3, session and cmd/aforge links all three at once.
+          # touching tui3, session and cmd/codeaf links all three at once.
           # -count=1 so a cached pass never stands in for a run.
           make test TEST_FLAGS='-count=1 -p 1' PKGS="$pkgs"
 

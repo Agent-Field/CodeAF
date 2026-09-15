@@ -77,11 +77,11 @@ func TestAGroundThatIsNotARepositoryDrawsNoManifest(t *testing.T) {
 // asking a reader to judge work by the files the harness left.
 func TestTheManifestLeavesThisProgramsOwnDroppingsOut(t *testing.T) {
 	repo := newTestRepo(t)
-	writeFile(t, filepath.Join(repo, aforgeDroppings, "jobs", "1.log"), "building\n")
+	writeFile(t, filepath.Join(repo, codeafDroppings, "jobs", "1.log"), "building\n")
 	writeFile(t, filepath.Join(repo, "topbar.go"), "package tui3\n")
 
 	manifest := groundManifest(repo)
-	if strings.Contains(manifest, aforgeDroppings) {
+	if strings.Contains(manifest, codeafDroppings) {
 		t.Fatalf("the manifest reports this program's own droppings:\n%s", manifest)
 	}
 	if !strings.Contains(manifest, "topbar.go") {

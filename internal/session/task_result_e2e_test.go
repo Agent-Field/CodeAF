@@ -34,7 +34,7 @@ import (
 // into a terminal, unreachable from the card's preview because three lines of
 // preamble stand in front of it, and carrying Unicode because a result that is
 // cut has to be cut between runes.
-const resultCommandLine = `aforge --host beta-07 --at /srv/state run --seed 4711 --note "réplica ✅ 上海"`
+const resultCommandLine = `codeaf --host beta-07 --at /srv/state run --seed 4711 --note "réplica ✅ 上海"`
 
 // answerOnLineFour is the whole of what the scripted worker says.
 const answerOnLineFour = "I read the deployment notes and the runbook first.\n" +
@@ -53,9 +53,9 @@ func resultAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph, string)
 	// No door in this file may reach a real profile or a real provider: the
 	// completer is scripted, and these two are what a leaked key or a leaked home
 	// would come in through.
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "")
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "2")
+	t.Setenv("CODEAF_RESPONSE_ATTEMPTS", "2")
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo

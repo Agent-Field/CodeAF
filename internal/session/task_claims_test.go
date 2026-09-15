@@ -203,9 +203,9 @@ func TestAClaimNothingCouldSettleIsPutToTheCheckerAndThenSaidOutLoud(t *testing.
 // news about an unexamined obligation, and printing it over evidence that
 // already speaks to the claim would be the harness talking over the checker.
 func TestAClaimTheCheckerAnsweredIsNotReportedAsUnchecked(t *testing.T) {
-	made := claim{text: "The refusal `8 open is as many as aforge holds` is gone.", source: "note.md", declared: true}
+	made := claim{text: "The refusal `8 open is as many as codeaf holds` is gone.", source: "note.md", declared: true}
 	held := auditVerdict{verified: true, answered: true, word: auditVerified,
-		evidence: []string{"grep found no `8 open is as many as aforge holds` anywhere in the surface"}}
+		evidence: []string{"grep found no `8 open is as many as codeaf holds` anywhere in the surface"}}
 	if got := withOpenClaims(held, []claimFinding{{claim: made}}); len(got.evidence) != 1 {
 		t.Fatalf("the checker's own answer was talked over: %v", got.evidence)
 	}

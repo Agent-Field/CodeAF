@@ -24,7 +24,7 @@ package config
 // answer alone, so an unanswered row still says "not set" rather than claiming
 // a value the person never wrote.
 //
-// THIS PAIR NAMES THE PUBLIC AFORGE DESKTOP APP. It deliberately shares one
+// THIS PAIR NAMES THE PUBLIC codeaf DESKTOP APP. It deliberately shares one
 // quota, one consent screen, and one revocation across every released binary.
 // Development and staging builds should use the override rungs above; changing
 // these lines is a release-wide registration migration, not local setup.

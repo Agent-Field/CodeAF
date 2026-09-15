@@ -56,7 +56,7 @@ func sectionIndex(block, section string) int {
 func TestTrackCommitRecallRoundTrip(t *testing.T) {
 	agent, _ := stateAgent(t)
 
-	if out := trackBelief(t, agent, "the module path is github.com/Agent-Field/aforge-v2", "read: go.mod"); !strings.Contains(out, "b1") {
+	if out := trackBelief(t, agent, "the module path is github.com/Agent-Field/codeaf", "read: go.mod"); !strings.Contains(out, "b1") {
 		t.Fatalf("track did not report the belief's id:\n%s", out)
 	}
 	if out := trackProgress(t, agent, "wire StateBlock into the compaction rebuild", "grep: compact loop.go"); !strings.Contains(out, "p1") {
@@ -69,7 +69,7 @@ func TestTrackCommitRecallRoundTrip(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[state]", "beliefs:", "open:",
-		"b1 the module path is github.com/Agent-Field/aforge-v2  ← read: go.mod",
+		"b1 the module path is github.com/Agent-Field/codeaf  ← read: go.mod",
 		"p1 wire StateBlock into the compaction rebuild  ← grep: compact loop.go",
 	} {
 		if !strings.Contains(block, want) {

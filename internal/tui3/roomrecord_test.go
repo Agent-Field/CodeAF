@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // AN ORDINARY NODE WHOSE TRANSCRIPT IS GONE STILL HAS ITS REPORT, and the room

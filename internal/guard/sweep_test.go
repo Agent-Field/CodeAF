@@ -16,7 +16,7 @@ import (
 // goroutines under a live terminal surface, so a fault in any of them is a
 // fault the user would watch happen.
 var guardedPackages = []string{
-	"cmd/aforge",
+	"cmd/codeaf",
 	"internal/catalog",
 	"internal/exec",
 	"internal/plan",

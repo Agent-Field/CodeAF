@@ -2,7 +2,7 @@
 # swe/grid.sh — the Senior SWE-Bench wave, fired arm-fair, under a GLOBAL cap.
 #
 # THE CAP IS GLOBAL AND NOT THIS TRACK'S OWN. The live-issue wave is running on
-# the same machine and each of its cells holds a tmux session, an aforge process
+# the same machine and each of its cells holds a tmux session, a codeaf process
 # and a clone; each of these holds a container with 4 CPUs and 8 GB reserved on
 # top. Counting only our own cells would let the two tracks add up to twice the
 # machine. So capacity is measured across BOTH runners' cells and a wave waits
@@ -12,7 +12,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWE_OUT="${SWE_OUT:-$HOME/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 
-ARMS="${ARMS:-aforge-swe-crew pi opencode}"
+ARMS="${ARMS:-codeaf-swe-crew pi opencode}"
 # The tasks whose reward this benchmark can actually produce. The four that are
 # validation-primary are left out by name, with the reason, rather than run and
 # reported as failures: their reward needs an LLM validation agent we have no

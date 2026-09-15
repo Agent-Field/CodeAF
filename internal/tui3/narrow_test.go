@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE NARROW TIER ─────────────────────────────────────────────────────────
@@ -401,8 +401,8 @@ func squash(line string) string { return strings.Join(strings.Fields(line), " ")
 // THE SETTINGS FOOT DROPS ITS ASIDE AND KEEPS THE ANSWER.
 //
 // The panel's note says `saved to your profile · a project's own
-// .aforge-v3/config.json is a hand edit`, which is an answer followed by an
-// aside, and a character ruler ended it `· a project's own .aforge-v3/conf…` at
+// .codeaf/config.json is a hand edit`, which is an answer followed by an
+// aside, and a character ruler ended it `· a project's own .codeaf/conf…` at
 // sixty columns: a line that named a path and then ate it. A note is fitted from
 // the OTHER end to a key sheet ([noteFit]) — the answer is at the front — so
 // what a narrow panel keeps is the half a person asked for.

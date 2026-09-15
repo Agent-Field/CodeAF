@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // ── A PINNED FILL IS HONOURED, AND AN UNTOUCHED ONE IS NOT ──────────────────
@@ -25,7 +25,7 @@ import (
 // back afterwards, so no other test in this package inherits a pinned law.
 func pinFill(t *testing.T, percent int) {
 	t.Helper()
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", strconv.Itoa(percent))
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", strconv.Itoa(percent))
 }
 
 // TestAPinnedFillFoldsWhereItSaysAndAnUnpinnedOneFollowsTheWindow is the issue's
@@ -132,7 +132,7 @@ func TestAPinAskingForMoreRoomNeverGetsLessThanAnUnpinnedSession(t *testing.T) {
 			t.Fatalf("on a %d-token window a pinned 90 folds at %d, earlier than the unpinned %d",
 				window, pinned, derived)
 		}
-		t.Setenv("AFORGE_CONTEXT_FILL_PCT", "")
+		t.Setenv("CODEAF_CONTEXT_FILL_PCT", "")
 	}
 }
 

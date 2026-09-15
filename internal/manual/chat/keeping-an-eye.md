@@ -2,10 +2,10 @@
 
 Some things you say are not work for right now. "Remind me at 6 to leave", "tell
 me when CI on main goes red", "every Monday draft the weekly update", "keep main
-green", "tonight run the full suite" — each of those asks aforge to leave
+green", "tonight run the full suite" — each of those asks codeaf to leave
 something behind that keeps working after this window is closed.
 
-The tool behind all of them is `stand`. You never type it; aforge recognises the
+The tool behind all of them is `stand`. You never type it; codeaf recognises the
 words. Nothing is ever set up without a card you answer.
 
 ## It asked while I was away
@@ -14,7 +14,7 @@ words. Nothing is ever set up without a card you answer.
 last key, not from which window is in front.
 
 After that, a question this project has a rule for may take its own recommended answer,
-and its receipt says `aforge, on your settings` decided it. Only a **reversible** question
+and its receipt says `codeaf, on your settings` decided it. Only a **reversible** question
 with a recommended answer can go that way. Everything else stays open: it is on home, the
 desktop notification says the conversation is `waiting on you`, and the terminal bell rings
 **once** — only for a question something is blocked on, and never twice for the same one.
@@ -47,7 +47,7 @@ Which chat it lands in is the next section.
 
 ## Where a reminder arrives — the chat you are in, or the next one you open
 
-A firing reaches **you**, not one particular window. aforge tries four addresses
+A firing reaches **you**, not one particular window. codeaf tries four addresses
 in this order and stops at the first one that ends at a person:
 
 1. **The conversation that asked for it, if it is open.** The line arrives in it
@@ -99,7 +99,7 @@ this page.
 
 ## Why did it run date before setting the reminder — it knows the clock now
 
-It does not any more. aforge tells the model the time in its own instructions, as
+It does not any more. codeaf tells the model the time in its own instructions, as
 one line:
 
 ```
@@ -112,9 +112,9 @@ the week. Before that line existed, "remind me in 2 minutes" began with a
 read a clock the program already had. The instructions now say plainly: never run
 `date` to learn the time.
 
-For a moment you name — "at 6", "tomorrow at 9am" — aforge works the stamp out
+For a moment you name — "at 6", "tomorrow at 9am" — codeaf works the stamp out
 from that line itself. For a distance from now — "remind me in 2 minutes" — it
-sends the **duration** instead and aforge resolves it against the real clock at
+sends the **duration** instead and codeaf resolves it against the real clock at
 that instant, then says back the moment it landed on. That is what the card
 shows:
 
@@ -160,7 +160,7 @@ Everything else keeps all three: a watch, a rule, a routine, overnight work.
 ## Why did it set my reminder for a time that already passed — it cannot any more
 
 It cannot. A moment that has already gone is **refused before the card is ever
-drawn**, and the refusal tells aforge what time it is now so it can work the
+drawn**, and the refusal tells codeaf what time it is now so it can work the
 stamp out again:
 
 ```
@@ -179,16 +179,16 @@ This used to be possible. A session that had been open for hours carried the tim
 it *opened* with in its instructions, so "remind me in 1 minute" was worked out
 from a stale stamp and landed in the past. Two things changed:
 
-- The `Now` line in aforge's instructions is **re-stamped** whenever a turn opens
+- The `Now` line in codeaf's instructions is **re-stamped** whenever a turn opens
   more than ten minutes after the last one, so the clock does not drift over a
   long session.
 - **Every `stand` result ends with the real time**, on its own line:
   `now: 07:34 -04:00`. Whatever the model was told when the turn opened, it is
   told the true time at the moment it matters.
 
-And "in 1 minute" no longer needs a stamp at all: aforge sends the **duration**
+And "in 1 minute" no longer needs a stamp at all: codeaf sends the **duration**
 and the engine resolves it against the real clock. A one-minute reminder is an
-ordinary standing one-off — if you are ever told aforge "cannot hold a
+ordinary standing one-off — if you are ever told codeaf "cannot hold a
 1-minute timer", that is wrong, and this is the page that says so.
 
 ## Can I give one an end date — expires, and why an end before the first firing is refused
@@ -197,7 +197,7 @@ Yes. Anything that stands can carry an **end**, and the check that runs it
 retires it on that day: "watch the build until Friday", "never touch the public
 API until the release lands". Leave it out and it stands until you stop it.
 
-**The end has to be later than the first time the thing would fire**, and aforge
+**The end has to be later than the first time the thing would fire**, and codeaf
 refuses one that is not, before any card is drawn:
 
 ```
@@ -212,7 +212,7 @@ because a rhythm has no single moment to edit.
 This is not fussiness about a second. The check asks **"has it run out of
 time?" first**, before it asks whether anything is due, so an end at or before
 the moment kills the item by every road there is — the window's own pass, the
-background timer, `aforge tick`, all of them. It would have run **0 times** and
+background timer, `codeaf tick`, all of them. It would have run **0 times** and
 been marked `expired`, and the only trace would be a line in its own log:
 `its time ran out — no longer watching`.
 
@@ -250,7 +250,7 @@ check that found nothing writes nothing anywhere, which is why a watch that ran
 faithfully for thirty mornings and found nothing reads differently from one that
 never ran at all.
 
-The look is either a shell command run in this project, or one of aforge's own
+The look is either a shell command run in this project, or one of codeaf's own
 tools — including a tool one of your connected accounts brought (see the
 accounts page). One look is bounded at **60 seconds**; what it printed is
 clipped to the last **8KB**, because the news in a command's output is at the
@@ -259,7 +259,7 @@ end of it.
 The judgement is one sentence in plain words: "the last run on main failed". It
 carries the last few things it said, so something you have already been told
 about is not raised again every five minutes. When the answer is neither a clear
-yes nor a clear no, aforge treats it as a no and the log says
+yes nor a clear no, codeaf treats it as a no and the log says
 `there was no clear answer, so nothing was said`.
 
 ## How long do I have to answer the card — the card does not time out
@@ -347,7 +347,7 @@ item spends money on its own, at times nobody chose, so silence may never arm
 one.
 
 What ends a card unanswered is the turn ending — `esc`, or the window closing.
-Then **nothing is set up**, and aforge is told exactly that:
+Then **nothing is set up**, and codeaf is told exactly that:
 `the card was left unanswered — nothing was set up`. That is not a refusal
 anybody made; it is a card nobody reached.
 
@@ -366,7 +366,7 @@ A rhythm is written as a cron line (`0 9 * * 1`) or as a plain interval (`20m`,
 the cadence **in words** ("Mondays at 9am"), because a cron line read back is
 something nobody can check.
 
-If aforge invented a cadence because you did not give one, the card **asks**
+If codeaf invented a cadence because you did not give one, the card **asks**
 rather than states: "about every 2 minutes — you didn't say, so that's my guess.
 Right?"
 
@@ -424,7 +424,7 @@ starts where it reaches opens already knowing it.
 On any screen that lists what is standing, one of these says `holds` where a
 watch would say what it last found, and on the home screen it sits after
 everything that has an appointment. The standing-orders page has the rest: how to
-say one, and how aforge decides an "always" is a rule rather than an instruction
+say one, and how codeaf decides an "always" is a rule rather than an instruction
 for the job in hand.
 
 ## Tonight — overnight and long-horizon work
@@ -445,7 +445,7 @@ Close the lid.
 Two different clocks, and mixing them up is why an item can look late when it is not.
 
 **Everything standing is checked every five minutes.** That is the pass: whichever of an
-open aforge window or this machine's own timer gets there first walks everything you have
+open codeaf window or this machine's own timer gets there first walks everything you have
 standing and asks which of them the world has something to say about. The two run exactly
 the same work, so it does not matter which one is awake — and with no window open at all,
 the machine's timer still does it (*Does it keep working when I close the terminal or shut
@@ -453,7 +453,7 @@ the laptop?* below).
 
 **An item fires on the cadence you gave it, not on that pass.** "Every hour", "every
 Monday at 9", "at 6 tonight", "whenever these files change" — the pass is only how often
-aforge looks; your own words are what decides whether looking finds anything. So an hourly
+codeaf looks; your own words are what decides whether looking finds anything. So an hourly
 item is checked twelve times an hour and fires once, and a rule with no cadence at all is
 never woken by the clock — something has to happen first.
 
@@ -508,7 +508,7 @@ it is unlimited, the card says `shares the day's allowance` without inventing a
 figure.
 
 There are quiet per-run and per-day backstops inside each item so one noisy order
-cannot consume the pool unchecked, but aforge does not ask the model to negotiate
+cannot consume the pool unchecked, but codeaf does not ask the model to negotiate
 them and does not quote them on an ordinary card. The real protection is the
 shared allowance and the approval rules you already banked. If you said "spend at
 most a dollar" or named a daily firing limit yourself, that is different: the
@@ -547,15 +547,15 @@ draw one, are where the counts are.
 
 **Yes — background checks are on out of the box, and nobody asks you first.**
 
-While any aforge window is open, one of them runs the pass every **5 minutes** —
+While any codeaf window is open, one of them runs the pass every **5 minutes** —
 whichever window takes the lock first; the others do nothing and say nothing. One
 other piece of quiet work rides that same pass: at most once every six hours, and
 only while nobody has typed anywhere for a quarter of an hour, it tidies the notes
 kept across sessions (`what I remember`).
 For "no terminal open at all", the **first thing you ever set up** installs one
-small timer under your own login that runs `aforge tick` every 5 minutes: a
-launchd agent called `ai.agentfield.aforge.tick` on a Mac, a systemd user timer
-called `aforge-tick.timer` on Linux. Nothing else is installed, ever — no
+small timer under your own login that runs `codeaf tick` every 5 minutes: a
+launchd agent called `ai.agentfield.codeaf.tick` on a Mac, a systemd user timer
+called `codeaf-tick.timer` on Linux. Nothing else is installed, ever — no
 server, no port, no account.
 
 You are told, once, in one dim line under the card you just said yes to:
@@ -633,22 +633,22 @@ says `off` — it cannot tell you the checks are running when they are not.
 `keeping watch  while a window is open`, or
 `keeping watch  nothing is checking · background checks are off · /settings`.
 
-## Does aforge keep running when my terminal is closed — if I close this window does the chat stop, closing the terminal app, is it still running in the other shell
+## Does codeaf keep running when my terminal is closed — if I close this window does the chat stop, closing the terminal app, is it still running in the other shell
 
 **Yes.** Your conversation does not live inside the terminal you started it in.
-`aforge chat` runs the conversation in this folder's **engine** — a process with
+`codeaf chat` runs the conversation in this folder's **engine** — a process with
 no terminal of its own — and the window you type into is a view onto it. Close the
 window, kill the shell, `ctrl+c` out of it: the reply goes on arriving, the tasks
 go on running, and the engine keeps the transcript.
 
-**To get back to it, open aforge again and press `enter` on that conversation's
+**To get back to it, open codeaf again and press `enter` on that conversation's
 row on home.** It comes up here, mid-reply, in well under a second. The row says
 `open in the engine` when the engine has it with no window anywhere, and
 `another window` when a terminal is sitting in it; either way one `enter` brings
 it here, and the terminal that had it steps back and says so. See
 *Continue a conversation from another terminal* on the home page.
 
-**A plain `aforge` in that folder sits straight down in it**, with nothing to press
+**A plain `codeaf` in that folder sits straight down in it**, with nothing to press
 at all. A launch that names no conversation is asking for this folder's latest,
 and the engine hands back the one it is already holding — mid-reply, with its
 tasks still running. It never opens a second chat on top of one it holds, and
@@ -656,7 +656,7 @@ never says `open in another window` about its own conversation.
 
 The engine lets go on its own when there is nothing left to hold: a conversation
 with no window, no turn and no waiting question is kept for half an hour and then
-closed, and an engine holding nothing at all exits. `aforge engine --stop` in the
+closed, and an engine holding nothing at all exits. `codeaf engine --stop` in the
 folder ends it now.
 
 Three launches keep the old arrangement, where the conversation really does live
@@ -664,7 +664,7 @@ in the window and ends with it: `--no-host`, `--debug`, and `--once`.
 
 The other half of running with the terminal closed is the **standing side** —
 reminders, watches, rules, overnight work — and it is separate machinery. Every 5 minutes, terminal closed
-or not, the timer runs `aforge tick`, which takes a few seconds, does whatever is
+or not, the timer runs `codeaf tick`, which takes a few seconds, does whatever is
 due, and exits. There is no daemon sitting in memory between those moments, and
 closing the terminal app changes nothing about it.
 
@@ -677,18 +677,18 @@ If the program itself moves — you rebuild it somewhere else and delete the old
 one, or an upgrade leaves the old path empty — the timer would be pointing at a
 program that is gone. Every launch checks for exactly that and quietly puts the
 timer back on the program you are actually running. You are not asked and nothing
-is said on screen; one line goes to `v3/standing.log` under your aforge home.
+is said on screen; one line goes to `v3/standing.log` under your codeaf home.
 
-## I have two copies of aforge and my reminders fired twice, or stopped firing — which build runs the background checks, and does AFORGE_HOME move the timer
+## I have two copies of codeaf and my reminders fired twice, or stopped firing — which build runs the background checks, and does CODEAF_HOME move the timer
 
 There is one timer per login and it runs one build, so nothing ever fires twice
 from two copies — if a reminder arrived twice, it was not two timers. And if your
-reminders stopped firing after you installed a second aforge and removed the
+reminders stopped firing after you installed a second codeaf and removed the
 first, the timer was naming a program that is gone; the next launch of any build
 under that home puts it back.
 
 There is **one timer per login**, and it is a pair: the home it checks and the
-program it runs. Its definition carries both — `AFORGE_HOME` and the path to the
+program it runs. Its definition carries both — `CODEAF_HOME` and the path to the
 program — and a launch speaks only for its own pair.
 
 - **Two builds on one machine** (a release beside one you built, two versions side
@@ -698,20 +698,20 @@ program — and a launch speaks only for its own pair.
   definition is not one this build would have written. So the timer never flips
   between builds on every launch, and `/settings` says `on` while it is running the
   other build — something is checking, and that is what the row reads.
-- **To move the timer to the aforge you are running**, turn **background checks**
+- **To move the timer to the codeaf you are running**, turn **background checks**
   off and on again under `/settings`. That is the one deliberate hand that moves
   it; a launch never does.
-- **`AFORGE_HOME`**: the timer checks the home that turned it on, and `aforge tick`
-  runs with that `AFORGE_HOME` set. If you export it permanently, your background
-  checks run against that home and not against `~/.aforge`. A launch under some
-  other `AFORGE_HOME` — a test, a throwaway home — reads the timer as somebody
+- **`CODEAF_HOME`**: the timer checks the home that turned it on, and `codeaf tick`
+  runs with that `CODEAF_HOME` set. If you export it permanently, your background
+  checks run against that home and not against `~/.codeaf`. A launch under some
+  other `CODEAF_HOME` — a test, a throwaway home — reads the timer as somebody
   else's: it neither claims it nor rewrites it, and its `/status` says nothing is
   checking that home.
 
 ## Do reminders work over --host — yes, on the far machine
 
 Yes, and this is the one ambient thing a connection does not take away. Over
-`aforge chat --host devbox` the conversation runs on devbox, and so does
+`codeaf chat --host devbox` the conversation runs on devbox, and so does
 everything you set up from it:
 
 - The `stand` tool is on the belt, so "remind me at 6", "tell me when CI goes
@@ -752,7 +752,7 @@ guessing:
 Say so: "stop the CI one", "stop reminding me about the plants". You can name it
 by its id or by any part of your own sentence — nobody remembers an id.
 
-Stopping is permanent. aforge answers:
+Stopping is permanent. codeaf answers:
 
 ```
 stopped: tell me when CI on main goes red
@@ -774,7 +774,7 @@ item is not checked and not fired, and keeps everything else it knows: what it
 has cost, when it last fired, what it last saw.
 
 To see what stands here, ask what you have set up, or type `/standing` for the page
-of it with `p` and `s` on its rows. Each row leads with the glyph every aforge
+of it with `p` and `s` on its rows. Each row leads with the glyph every codeaf
 screen uses — `?` needs you, `◐` being checked or fired right now, `◦` waiting
 for its time, `∙` paused or stopped — then your own words, then the cadence in
 words. A project with nothing set up answers
@@ -801,9 +801,9 @@ delivered, or the overnight job running.
 
 The dot is not guessed from anything the item remembers. While a pass is working
 on an item, whichever process is doing it leaves a small marker in that item's
-own folder — `~/.aforge/v3/standing/<id>/running` — naming the process, the
+own folder — `~/.codeaf/v3/standing/<id>/running` — naming the process, the
 moment it started and which of the two halves it is in, and removes it when that
-item's pass ends. Every aforge screen reads that file. So a firing started by
+item's pass ends. Every codeaf screen reads that file. So a firing started by
 the OS timer with no window open at all, or by a window in another terminal,
 still shows `◐` on your home and in your status line.
 
@@ -826,26 +826,26 @@ list it, so finished errands cannot fill up the screen you typed them at.
 The moment something stands, that folder is filed **under the thing it made**:
 
 ```
-~/.aforge/v3/standing/<item id>/exchange/transcript.jsonl
+~/.codeaf/v3/standing/<item id>/exchange/transcript.jsonl
 ```
 
 and the pane says `kept · this exchange is filed under it`. The item's own
 record points there, so "why did I get this?" opens the exchange that made it,
 the same way an item made in a conversation opens that conversation. Runs of the
 same item are numbered folders beside it, under
-`~/.aforge/v3/standing/<item id>/runs/`.
+`~/.codeaf/v3/standing/<item id>/runs/`.
 
 An errand that came to nothing stays where it was made,
-`~/.aforge/v3/standing/exchanges/<id>/`, until the sweep clears it. See the
+`~/.codeaf/v3/standing/exchanges/<id>/`, until the sweep clears it. See the
 asking-from-home page for the rest of that door.
 
 ## What gets cleaned up, and when
 
-Once per launch aforge sweeps its own folders. On the ambient side it removes
+Once per launch codeaf sweeps its own folders. On the ambient side it removes
 exactly two things, and only after **7 days** with nothing touching them:
 
 - an **errand that came to nothing** — a folder under
-  `~/.aforge/v3/standing/exchanges/` that never became a standing thing and was
+  `~/.codeaf/v3/standing/exchanges/` that never became a standing thing and was
   never continued as a conversation;
 - a **run that came to nothing** — a firing whose work saved no file, left
   nothing waiting for you and had nothing to say when it finished. Nothing is
@@ -864,9 +864,9 @@ the `work/` workspace if it owned one. If a task of that conversation was still
 running when you last closed it, furrow is told to forget the copy of your
 folder that task was working in as well, so `furrow forks` is never left naming
 a directory that has gone. Every other conversation under
-`~/.aforge/v3/projects/` stays whatever its age. If you work in a temp directory
+`~/.codeaf/v3/projects/` stays whatever its age. If you work in a temp directory
 and want to keep what a conversation makes, anchor it with `/workspace <path>`
-or copy the files out; the starting-aforge page has both under *I deleted my chat
+or copy the files out; the starting-codeaf page has both under *I deleted my chat
 and lost the files the task made*.
 
 **Sweeping a run removes the folder and nothing else.** The money line stays: the
@@ -937,10 +937,10 @@ transcript reads with the same tools as any other conversation.
   is watching, and a standing item spends money at times nobody chose.
 - **A "do it once" answer sets nothing up.** It answers
   `do it once, now, as an ordinary turn — nothing stands. Nothing was set up.`
-  and aforge does the thing in front of you instead. A **one-off reminder's card
+  and codeaf does the thing in front of you instead. A **one-off reminder's card
   does not offer that answer** — see "Why is there no once on my reminder card".
 - **It will not set a reminder for a moment that has already passed.** The stamp
-  is refused with the current time in it, and aforge is asked to work it out
+  is refused with the current time in it, and codeaf is asked to work it out
   again from that.
 - **It will not fire while the machine is asleep**, and it will not fire when you
   are not logged in. A missed check is caught up once when the machine comes

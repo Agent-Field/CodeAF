@@ -9,8 +9,8 @@ Three arms, one model — `deepseek/deepseek-v4-flash` over OpenRouter:
 
 | arm | what it is |
 | --- | --- |
-| `aforge-crew` | `aforge chat --yolo --model …` in a real TTY, **registry tiers** — the reader, division and repair roles resolve to their own tiers, exactly as `swe/cell.sh`'s crew arm does |
-| `aforge-flash` | the same, with every tier collapsed onto the one model (`models.tiers.*`) |
+| `codeaf-crew` | `codeaf chat --yolo --model …` in a real TTY, **registry tiers** — the reader, division and repair roles resolve to their own tiers, exactly as `swe/cell.sh`'s crew arm does |
+| `codeaf-flash` | the same, with every tier collapsed onto the one model (`models.tiers.*`) |
 | `pi` | `pi -p --provider openrouter --model …` |
 | `opencode` | `opencode run --auto -m openrouter/…` |
 
@@ -23,7 +23,7 @@ docker build -t swe-marathon/rust-java-lsp:v1.1 \
 
 bash preflight.sh rust-java-lsp        # ALWAYS FIRST: proves the toolchain and the egress allowlist
 bash cell.sh <arm> rust-java-lsp        # one cell, the task's own 10 h wall
-bash wave.sh rust-java-lsp aforge-crew pi opencode   # all three, arm-fair
+bash wave.sh rust-java-lsp codeaf-crew pi opencode   # all three, arm-fair
 bash rescore.sh s6 1                    # an out-of-band honest score of a LIVE cell
 ```
 
@@ -38,37 +38,37 @@ The three 10 h cells of 2026-08-25 were launched as:
 
 ```bash
 cd ~/af-oneroad/bench/oneroad/marathon
-AFORGE_BUILD_COMMIT=6e956a1a nohup bash wave.sh rust-java-lsp aforge-crew pi opencode \
+CODEAF_BUILD_COMMIT=6e956a1a nohup bash wave.sh rust-java-lsp codeaf-crew pi opencode \
   > ~/af-bench/marathon/.wave.out 2>&1 &
 ```
 
-To launch the aforge arm alone against a freshly built binary — the crew config
+To launch the codeaf arm alone against a freshly built binary — the crew config
 is the default, so nothing is pinned:
 
 ```bash
 cd ~/af-oneroad/bench/oneroad/marathon
-AFORGE_BUILD_COMMIT=<commit the binary was built from> \
-NEW_BIN=~/af-oneroad/bin/aforge \
-nohup bash cell.sh aforge-crew rust-java-lsp > ~/af-bench/marathon/.aforge.out 2>&1 &
-# watch it:  tmux attach -t oneroad-mar-aforge-crew-rust-java-lsp-s1
+CODEAF_BUILD_COMMIT=<commit the binary was built from> \
+NEW_BIN=~/af-oneroad/bin/codeaf \
+nohup bash cell.sh codeaf-crew rust-java-lsp > ~/af-bench/marathon/.codeaf.out 2>&1 &
+# watch it:  tmux attach -t oneroad-mar-codeaf-crew-rust-java-lsp-s1
 ```
 
-`AFORGE_BUILD_COMMIT` is the binary's own provenance and is recorded beside its
+`CODEAF_BUILD_COMMIT` is the binary's own provenance and is recorded beside its
 sha256. It is not the same thing as the repository's HEAD: several lanes share
 this checkout and HEAD moves under a ten-hour cell, so the record keeps both
 (`build_commit` and `repo_commit_at_record`).
 
-**s2, aforge-crew only, to be launched when the new binary lands** — fill in the
+**s2, codeaf-crew only, to be launched when the new binary lands** — fill in the
 commit the binary was built from and check the sha it prints:
 
 ```bash
 cd ~/af-oneroad/bench/oneroad/marathon
-sha256sum ~/af-oneroad/bin/aforge            # confirm it is the new build
-SEED=s2 AFORGE_BUILD_COMMIT=<new build commit> NEW_BIN=~/af-oneroad/bin/aforge \
-  nohup bash cell.sh aforge-crew rust-java-lsp \
-  > ~/af-bench/marathon/.aforge-s2.out 2>&1 &
-# watch:  tmux attach -t oneroad-mar-aforge-crew-rust-java-lsp-s2
-# tail:   tail -f ~/af-bench/marathon/aforge-crew-rust-java-lsp-s2/cell.log
+sha256sum ~/af-oneroad/bin/codeaf            # confirm it is the new build
+SEED=s2 CODEAF_BUILD_COMMIT=<new build commit> NEW_BIN=~/af-oneroad/bin/codeaf \
+  nohup bash cell.sh codeaf-crew rust-java-lsp \
+  > ~/af-bench/marathon/.codeaf-s2.out 2>&1 &
+# watch:  tmux attach -t oneroad-mar-codeaf-crew-rust-java-lsp-s2
+# tail:   tail -f ~/af-bench/marathon/codeaf-crew-rust-java-lsp-s2/cell.log
 ```
 
 Everything else is the s1 configuration unchanged: same task, same
@@ -136,7 +136,7 @@ pristine golden with the key embedded in `test.sh`, score the visible corpus, sc
 the holdout, merge. Nothing is skipped and the verdict is the benchmark's own.
 Timeout `[verifier] timeout_sec` = 3600 s, and the whole hour can genuinely be
 needed: `score_golden.py` gives each of the 68,186 requests its own 30-second
-deadline, so a server that **answers** is scored in seconds (the s1 aforge cell:
+deadline, so a server that **answers** is scored in seconds (the s1 codeaf cell:
 6 s) while one that **hangs** can burn the full budget. Both outcomes are real
 readings, not runner faults.
 
@@ -151,7 +151,7 @@ parsing the table `score_golden.py` printed to the log.
 ## The settle rule
 
 Exactly the SWE track's: the cell ends at the wall, or earlier only when the
-store has been quiet for `SILENCE_SECONDS` **and** — for the aforge arms — no task
+store has been quiet for `SILENCE_SECONDS` **and** — for the codeaf arms — no task
 is live per `lib/tasklive.py`. Both readings are taken **inside** the container:
 the harness runs as root and creates its session folder mode 700, so from the
 host the profile is unreadable, `find` returns nothing with no error, and a
@@ -162,13 +162,13 @@ from the host would settle blind no matter what the agent was doing.
 forty-five minute wall; this wall is ten hours and one `cargo build --release` of
 a tree-sitter grammar runs for minutes with nothing written to the store.
 
-**The fingerprint must not see the heartbeats.** aforge's standing-work ticker
+**The fingerprint must not see the heartbeats.** codeaf's standing-work ticker
 appends one line to `/prof/v3/standing/wake.log` every **300 s** for as long as
 the profile is open — and the line it writes when there is nothing to do says so
 itself: `examined=0 checked=0 fired=0 said=0`. A fingerprint over the whole store
 was therefore reset every five minutes by a record of *nothing happening*, so
 `stable` could never reach 900 and `quiet` could never reach the 2700-second
-escape hatch either. **The s1 aforge cell's settle rule was arithmetically
+escape hatch either. **The s1 codeaf cell's settle rule was arithmetically
 unreachable**: it went idle at 12:14 with its only task landed and would have run
 to the ten-hour wall. `presence.json` and everything under `standing/` are now
 excluded — both are the harness reporting that it is *alive*, which is the
@@ -271,7 +271,7 @@ only the end-of-cell verifier runs against the container the agent actually left
 
 ## The record
 
-`record.json` per cell: arm, harness version (aforge: repo commit + binary
+`record.json` per cell: arm, harness version (codeaf: repo commit + binary
 sha256 + which tier config; pi/opencode: their `--version`), model, image id and
 ref, task repo commit, started/ended/wall/verify wall, outcome and settle reason,
 reward, partial_score, pass_rate, passed/total, holdout block, `per_method`,
@@ -279,13 +279,13 @@ the `toolchain` block (the image's toolchain and rustc, the toolchain the AGENT
 ended on, which rustup store it came from, and `split_home` for the cells whose
 store our own bug misplaced), `network_deviation` as the cell computed it,
 tokens in/out/cached, requests, `cost_usd`, workspace file count, the timer's
-reading at t=0, the curve, and for the aforge arms the road summary from
+reading at t=0, the curve, and for the codeaf arms the road summary from
 `lib/road.py` (marks, ceiling decision, divisions, parts, peak concurrency).
 
 **One price table for all three arms is the law.** `cost_usd` is always
 tokens × the OpenRouter list price for the pinned model
 (`lib/competitor_cost.py:list_prices`), computed from each harness's own usage
-records — aforge's `call` journal lines via `lib/aforge_list_cost.py`, pi's
+records — codeaf's `call` journal lines via `lib/codeaf_list_cost.py`, pi's
 session jsonl and opencode's sqlite store via `lib/competitor_cost.py`. What a
 harness believed it spent is recorded beside it as `native_usd`, for the record
 and never for the comparison.
@@ -395,7 +395,7 @@ bash rescore.sh s6 3          # the third out-of-band reading of seed s6
 ```
 
 Copies the running cell's `/workspace` **with the droppings stripped** — no
-`target/` (build output the verifier rebuilds), no `.git`, no `.aforge-v3` (the
+`target/` (build output the verifier rebuilds), no `.git`, no `.codeaf` (the
 harness's own store, which the agent happened to write inside the working
 directory and which is no part of the work being judged) — scores it in a
 short-lived two-CPU container with the agent's toolchain adopted, and appends a
@@ -563,7 +563,7 @@ That is the benchmark's own behaviour, and it means:
 | --- | --- |
 | no `Cargo.toml` at all | `metrics.json` with `partial_score 0.0, pass_rate 0.0, passed 0, total 0, per_method {}` and `reward.txt` `0.0` — **checked**, on an untouched container |
 | a crate that does not compile | **no `metrics.json` at all**; only `reward.txt` `0.0`, written at the top of the script — **observed**, on the pi smoke (`test_sh_exit=101`) |
-| a crate that compiles but whose server never answers `initialize` | the full merged `metrics.json` with `main` and `holdout` blocks at `passed 0 / total 0` — **observed**, on the aforge smoke |
+| a crate that compiles but whose server never answers `initialize` | the full merged `metrics.json` with `main` and `holdout` blocks at `passed 0 / total 0` — **observed**, on the codeaf smoke |
 
 `record.py` records the second as `partial_score 0.0` with `score_source` saying
 why, not as a missing score — the verifier did reach a verdict and wrote it. Only

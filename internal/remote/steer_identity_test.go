@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // namedAgent is an engine that keeps the identity on a send, and answers a
@@ -134,7 +134,7 @@ func TestAnEngineWithNoNamesSaysSoAtTheDoorAndStillSteers(t *testing.T) {
 //
 // This is the bug the conversation name exists for, staged over a real wire with
 // no pointer swapped anywhere: ONE client, ONE agent handle held across
-// `Session.Open` and `Session.New`, exactly as cmd/aforge's chatv3_host.go holds
+// `Session.Open` and `Session.New`, exactly as cmd/codeaf's chatv3_host.go holds
 // it (its Resume calls OpenSession and hands back the same agent). A correction
 // typed at task 7 of the first conversation must never be delivered to task 7 of
 // whatever replaced it.

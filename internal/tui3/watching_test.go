@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // watched is a surface attached to a conversation another window is typing
@@ -56,7 +56,7 @@ func TestAWatcherDrawsOneLineWhereItsComposerWas(t *testing.T) {
 }
 
 // A SECOND WINDOW ON THIS SAME MACHINE IS `another window`, which is the word
-// aforge already uses at home for a conversation open somewhere else.
+// codeaf already uses at home for a conversation open somewhere else.
 func TestAWindowOnThisMachineIsCalledAnotherWindow(t *testing.T) {
 	for _, driving := range []Driving{
 		{Machine: "macbook", Here: true},

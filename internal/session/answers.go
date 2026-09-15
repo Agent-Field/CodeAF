@@ -62,7 +62,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The two refusals this file makes, and both are about the CALLER rather than
@@ -359,7 +359,7 @@ const (
 	// LandingAgainKey sends a fresh look at the same working copy.
 	LandingAgainKey = "r"
 	// LandingDecideKey hands this one decision to the model. It is the
-	// one-time `let aforge decide this one`, and it is never a standing
+	// one-time `let codeaf decide this one`, and it is never a standing
 	// setting.
 	LandingDecideKey = "d"
 	// LandingTakeBackKey takes back a decision that was settled without the

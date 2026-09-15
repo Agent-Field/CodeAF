@@ -38,7 +38,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // BashRule is one entry of the bash rules row: a glob in internal/approval's

@@ -11,8 +11,8 @@ your draft. The two halves talk to each other with a small line-based protocol o
 ssh pipes; you never see it.
 
 ```
-aforge chat --host devbox
-aforge resume --host devbox
+codeaf chat --host devbox
+codeaf resume --host devbox
 ```
 
 The flag's own help text reads:
@@ -27,7 +27,7 @@ the lid mid-answer, lose your wifi, kill the terminal: the turn keeps running ov
 running the same command puts you back in it, including whatever finished while you were away.
 See *Staying on that machine* and *When the connection drops*.
 
-The one case where closing really does end it is a far machine running `aforge engine` by hand
+The one case where closing really does end it is a far machine running `codeaf engine` by hand
 on a pipe, with no session host behind it. Then the pipe **is** the conversation's life. The
 surface knows which of the two it has and never promises the stronger one.
 
@@ -61,12 +61,12 @@ and, for a target that starts with the colon, a refusal saying the target
 
 Nothing, beyond two things you already have.
 
-1. **aforge is installed on the far machine**, on the PATH that a non-login ssh command
+1. **codeaf is installed on the far machine**, on the PATH that a non-login ssh command
    sees.
 2. **`ssh <machine>` already works** from where you are sitting.
 
-There is no daemon to run, no config file of aforge's own and no key handling, and no port
-to open — the two halves talk over the ssh pipes and nothing else. aforge runs your own
+There is no daemon to run, no config file of codeaf's own and no key handling, and no port
+to open — the two halves talk over the ssh pipes and nothing else. codeaf runs your own
 `ssh`, the one on your PATH, so your `~/.ssh/config`, your
 host aliases, your keys, your jump hosts and your ssh agent all apply unchanged. If
 `ssh devbox` works, `--host devbox` works.
@@ -83,7 +83,7 @@ you are sitting at, `--host localhost` is a real connection over a real ssh pipe
 exercises every part of this page except one:
 
 ```
-aforge chat --host localhost:code/app
+codeaf chat --host localhost:code/app
 ```
 
 The engine starts over there — which is here — through ssh, the session lives in its own
@@ -92,7 +92,7 @@ the room. It is the fastest way to see what a dropped connection looks like befo
 happens to you for real.
 
 **What it cannot prove** is that the two halves do not quietly share a disk. Over
-`localhost` they do: the same home directory, the same `~/.aforge`, the same files. So a
+`localhost` they do: the same home directory, the same `~/.codeaf`, the same files. So a
 path that only works because both ends are one filesystem will pass here and fail against
 a real machine. For that, use a machine you actually ssh to.
 
@@ -100,7 +100,7 @@ a real machine. For that, use a machine you actually ssh to.
 terminal kill the ssh child this session started:
 
 ```
-pkill -f "ssh -T localhost aforge engine"
+pkill -f "ssh -T localhost codeaf engine"
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
@@ -112,8 +112,8 @@ in a moment`, and pressing enter again once it is back sends it.
 
 The failed dial says what it found, rather than guessing:
 
-- aforge missing over there:
-  `aforge is not installed on <dest> — install it there, or put it on the PATH that a non-login ssh command sees`
+- codeaf missing over there:
+  `codeaf is not installed on <dest> — install it there, or put it on the PATH that a non-login ssh command sees`
 - ssh could not get a session at all: `ssh could not open a session on <dest>`. ssh has
   already printed its own reason on the line above.
 - no ssh on this machine: `this machine has no ssh on its path, and --host is ssh`, or
@@ -123,7 +123,7 @@ If the two machines run different builds, the connection is refused at the door 
 side says:
 
 ```
-<dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
+<dest> runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol
 ```
 
 When the **far** machine is the older one it refuses first, and what you see is its own
@@ -141,25 +141,25 @@ same sentence gains a clause naming it, because then the machine — not the bin
 what is behind:
 
 ```
-error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build, and this machine is still running the older one — run codeaf engine --stop here to retire it
 ```
 
-Either way the fix is one command: update aforge on the machine that is behind. Nothing is
+Either way the fix is one command: update codeaf on the machine that is behind. Nothing is
 negotiated down — two builds that might disagree about a frame must not find that out three
 turns into a conversation.
 
-## I updated aforge on that machine and it still says the versions differ
+## I updated codeaf on that machine and it still says the versions differ
 
 The next connection checks the running build as well as protocol compatibility. An idle old copy is replaced automatically; a busy one is left running and the connection explains how to retire it.
 
 Something over there holds your conversation between connections. It is started by the
 first connection and outlives it, which is what lets a turn keep running after you close
 the lid — and it is a **running copy of the build that started it**, so replacing the
-binary does not replace it. `aforge version` on that machine reports the new build while
+binary does not replace it. `codeaf version` on that machine reports the new build while
 the old one is still answering, which is how you can be told to update something you
 updated an hour ago.
 
-So before it hands your window over, `aforge engine` asks whatever is already holding that
+So before it hands your window over, `codeaf engine` asks whatever is already holding that
 workspace which build it is. The check asks which source the running engine was built from,
 so building the same commit twice is the same build and your window attaches to it without
 a word; a build from a changed working tree, or one too old to report a stamp at all, counts
@@ -174,25 +174,25 @@ as another build. Three things can be true:
   you. The connection is refused instead, in these words:
 
 ```
-engine: spark is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop --workspace /home/you/project on spark
+engine: spark is still running an older codeaf and something is still going in it — let that finish, or run codeaf engine --stop --workspace /home/you/project on spark
 ```
 
 A copy too old to answer the question at all is refused the same way and left alone,
 because a process that cannot say whether it is busy is not one to guess about:
 
 ```
-engine: spark is still holding this conversation on an older aforge — run aforge engine --stop --workspace /home/you/project on spark
+engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
 ```
 
-**The `--workspace` in that line is not decoration — type it.** `aforge engine --stop`
+**The `--workspace` in that line is not decoration — type it.** `codeaf engine --stop`
 with no `--workspace` stops whatever is holding your **home directory**, not the folder the
 sentence is about. Without the flag you stop a healthy engine, leave the one being
-complained about running, and read the same line again the next time you open aforge. The
+complained about running, and read the same line again the next time you open codeaf. The
 sentence spells the workspace out so the command you copy is the command that works.
 
 One nobody connects to again lets itself go on its own: it notices that the file it was
 started from has been removed or rebuilt, and retires the next time it is holding nothing.
-`aforge engine --stop` is on the *Staying on that machine* page.
+`codeaf engine --stop` is on the *Staying on that machine* page.
 
 ## What runs on the far machine, and what stays local
 
@@ -271,7 +271,7 @@ Yes, and they show **the far machine's**.
 `space` `space` opens the home of the machine your session runs on: its projects, its
 conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
 that conversation beside the one you are in — the engine gives it a connection of its own
-and the chat you came from keeps running, the same door `aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
 Three of the seven places still read the machine this window is running on, and each says so
@@ -286,7 +286,7 @@ to the wrong machine, and before that it refused to open.
 
 Yes. A landing that comes home as **your call** draws the same card here that it draws on
 the machine it ran on — the reason on one row and `a accept · n not right · s tell it`
-under it, with `d let aforge decide this one` beside them — and every one of those keys is
+under it, with `d let codeaf decide this one` beside them — and every one of those keys is
 spent on the engine that owns the work. A conflict's `a resolve it` spends its merge round
 over there too.
 
@@ -299,7 +299,7 @@ not drawn at all**. You saw
   nobody could check it
 ```
 
-and nothing under it. That is aforge's rule about capabilities doing exactly what it is
+and nothing under it. That is codeaf's rule about capabilities doing exactly what it is
 written to do — a control with nothing behind it is left off rather than offered and failing
 — and what had nothing behind it was the connection: the four doors that decide a landing
 had never been given a way to cross it.
@@ -316,7 +316,7 @@ purpose, and says `this window is reading this conversation, not typing into it`
 
 These are two different things and they are easy to run together.
 
-**Another window** is a second aforge on the *same* machine holding a conversation you can
+**Another window** is a second codeaf on the *same* machine holding a conversation you can
 see on home. Its row says `another window` in the right margin — and `another window · enter
 brings it here` while the cursor is on it. `enter` on it never opens a
 second copy — one conversation, one writer — but it does something better: it **moves** the
@@ -416,8 +416,8 @@ Yes. All of it crosses the connection, and it is the same row you read locally.
 - **The `served` row in `/status`** — the endpoint the last answer came from.
 
 **An engine too old to send them says so**, once, after an answer: `this conversation's
-engine is an older aforge, so the provider and tok/s are not shown — they come back once it
-picks up this build`. Nothing else changes; update aforge on that machine and reconnect.
+engine is an older codeaf, so the provider and tok/s are not shown — they come back once it
+picks up this build`. Nothing else changes; update codeaf on that machine and reconnect.
 
 **Nothing is measured on this machine.** Every one of those figures is taken where the
 request is made, which is the machine running the conversation, and pushed down to you
@@ -519,7 +519,7 @@ The current `--host` protocol carries the far engine's task doors. Starting a ta
 listing it on the roster, opening its live room, steering it and stopping it all work on
 the other machine. A surface that answers
 `room unavailable — this session has no task rooms` is not using that current contract;
-update the older aforge so both ends are the same build and reconnect.
+update the older codeaf so both ends are the same build and reconnect.
 
 ## Why is the task roster empty over host, and can I start a task?
 
@@ -597,7 +597,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     on *Opening files from that machine*.
 
 15. **A file dropped onto the terminal joins the attachment tray.** A terminal sends a
-    drop as a pasted local path. When the paste is only real files, aforge shows their
+    drop as a pasted local path. When the paste is only real files, codeaf shows their
     chips instead of putting those paths into the message. Pressing `enter` carries the
     bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
     take the reverse road automatically so their far bytes can be painted in this terminal.
@@ -681,7 +681,7 @@ Half the rows are this surface's own — the mouse, the timestamps, the draft �
 genuinely apply to what you are looking at. The other half govern the conversation, and
 the conversation reads them from the profile on the far machine. Change those over there.
 
-**Asking aforge to change a setting goes the other way.** `settings` and `change_setting`
+**Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
 run inside the session, which is on the far machine, so they read and write **that**
 machine's profile — which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
@@ -791,10 +791,10 @@ land.
 Naming either with `--host` is an error that names the machine the setting lives on:
 
 ```
---no-compact and --yolo cannot travel over --host: the session is built on <dest>, so set it there — `ssh <dest> aforge chat --no-compact --yolo` — or open the settings panel on that machine
+--no-compact and --yolo cannot travel over --host: the session is built on <dest>, so set it there — `ssh <dest> codeaf chat --no-compact --yolo` — or open the settings panel on that machine
 ```
 
-Set them on the far machine: run `aforge chat` there with the flags, or open the settings
+Set them on the far machine: run `codeaf chat` there with the flags, or open the settings
 panel on that machine.
 
 ## --model and --reasoning over --host
@@ -846,17 +846,17 @@ in *When the connection drops* and *Staying on that machine*.
 ## One headless message over a connection
 
 ```
-aforge chat --host devbox --once "text"
+codeaf chat --host devbox --once "text"
 ```
 
 This is deliberately the same shape as a local `--once` run: the reply goes to stdout, and
 tool lines, compaction lines and failures go to stderr, so a script cannot tell which
 machine answered. The session is closed when the turn ends.
 
-`aforge resume` refuses `--once` and points you at the right form:
+`codeaf resume` refuses `--once` and points you at the right form:
 
 ```
-aforge resume opens the session picker; for one headless message use: aforge chat --host <dest> --once "text"
+codeaf resume opens the session picker; for one headless message use: codeaf chat --host <dest> --once "text"
 ```
 
 ## Reopening another tab through the local engine
@@ -869,14 +869,14 @@ Explicitly different launch flags still use the existing compatibility check.
 
 ## Opening full-quality images from an SSH server
 
-To view an original image on your computer, run aforge locally with `--host` pointing
+To view an original image on your computer, run codeaf locally with `--host` pointing
 to the server. The **[open original]** action, a click on the expanded picture, or
 **alt+o** fetches the remote file through the existing connection, checks its content,
 keeps a named local copy and opens that copy in your system viewer. Repeated opens
 reuse unchanged content; a changed remote file is refreshed. A local attachment
 keeps its local ownership and does not make that round trip.
 
-If you SSH into a server and run aforge there, the terminal application and its file
+If you SSH into a server and run codeaf there, the terminal application and its file
 opener are on that server. The original-file action explains how to use the local
 `--host` client and shows the original path so you can retrieve it yourself. It does
 not launch a viewer on a machine you are not sitting at. The optional cell preview

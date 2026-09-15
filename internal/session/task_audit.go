@@ -151,12 +151,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // The auditor is a ROLE, registered from the file that makes the call, exactly
@@ -2104,7 +2104,7 @@ func restoreTaskWork(node *TaskNode, tree taskTree, wrote []string) (auditGround
 // the node wrote laid over it is the restore. The person's uncommitted changes
 // are not in it, which is exactly right: they are not part of what ships either.
 func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround, string) {
-	holder, err := os.MkdirTemp("", "aforge-check-")
+	holder, err := os.MkdirTemp("", "codeaf-check-")
 	if err != nil {
 		return auditGround{}, "a fresh checkout could not be made: " + err.Error()
 	}
@@ -2138,7 +2138,7 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 // restoreFromFolder is the mirror's road: a fresh copy of the ground folder,
 // which the node never touched, with what the node wrote laid over it.
 func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
-	dir, err := os.MkdirTemp("", "aforge-check-")
+	dir, err := os.MkdirTemp("", "codeaf-check-")
 	if err != nil {
 		return auditGround{}, "a clean copy could not be made: " + err.Error()
 	}
@@ -2222,7 +2222,7 @@ func restoreByCopy(node *TaskNode, tree taskTree, wrote []string) (auditGround, 
 	if started.IsZero() {
 		return auditGround{}, "nothing records when the work began, so the tree it started from cannot be told from what it left behind"
 	}
-	dir, err := os.MkdirTemp("", "aforge-check-")
+	dir, err := os.MkdirTemp("", "codeaf-check-")
 	if err != nil {
 		return auditGround{}, "a clean copy could not be made: " + err.Error()
 	}
@@ -2289,7 +2289,7 @@ func copyOriginal(from, to string, wrote []string, started time.Time) string {
 			// The repository's own metadata and the harness's own corner are never
 			// part of anybody's deliverable (task_run.go's [stageTaskWork] keeps the
 			// second one off a branch for the same reason).
-			if entry.Name() == ".git" || child == aforgeDroppings {
+			if entry.Name() == ".git" || isTaskDropping(child) {
 				continue
 			}
 			if visited++; visited > auditRestoreEntries {
@@ -2641,9 +2641,9 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 }
 
 // handedAlreadyWord is what a repeated hand-over answers with, in the person's
-// own vocabulary for the thing they pressed — the card says aforge is deciding,
+// own vocabulary for the thing they pressed — the card says codeaf is deciding,
 // so the refusal says the same word back rather than naming a field.
-const handedAlreadyWord = "already handed to aforge"
+const handedAlreadyWord = "already handed to codeaf"
 
 // ErrTaskHandedOver says the second press changed nothing because the first one
 // already did it, and it is a SEPARATE sentinel from [ErrTaskDecided] because
@@ -2652,7 +2652,7 @@ const handedAlreadyWord = "already handed to aforge"
 // still waiting on an answer, and the only thing that moved is whose hands the
 // question is in — so a surface that drew "already answered" over it would be
 // reporting a decision nobody has made (internal/tui3's tasksettle.go).
-var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
+var ErrTaskHandedOver = errors.New("session: that task is already handed to codeaf")
 
 // wasHandedOver reports that THIS DOOR has already given the model this node's
 // decision and nothing has taken it back.
@@ -2724,7 +2724,7 @@ func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
 // [Agent.handBackUnsettled]).
 //
 // IT RESOLVES NOTHING EITHER. The node stays exactly as it is and what changes is
-// who is holding the question, so the card stops saying aforge is deciding and
+// who is holding the question, so the card stops saying codeaf is deciding and
 // draws its chips again. A line already on the steering queue is left where it
 // is: the model may still say what it thinks, and what it may no longer do is
 // have the last word.
@@ -3009,12 +3009,12 @@ func acceptedLine(why string, by TaskAskOwner) string {
 // auto` carried `you looked at this yourself and took it as done` into the
 // person's own transcript — a sentence about something they never did, on work
 // nobody had read. The person's own press keeps `you`; the model's verb says
-// `aforge`, which is what this product is called everywhere a person reads it.
+// `codeaf`, which is what this product is called everywhere a person reads it.
 const (
 	acceptedByYou    = "you took this as done"
-	acceptedByAforge = "aforge took this as done"
+	acceptedByCodeaf = "codeaf took this as done"
 	notRightByYou    = "you said it is not finished"
-	notRightByAforge = "aforge said it is not finished"
+	notRightByCodeaf = "codeaf said it is not finished"
 )
 
 // acceptedTookLine and notRightSaidLine pick the voice off the door that spent
@@ -3023,14 +3023,14 @@ const (
 // happen.
 func acceptedTookLine(by TaskAskOwner) string {
 	if by == TaskAskOwnerModel {
-		return acceptedByAforge
+		return acceptedByCodeaf
 	}
 	return acceptedByYou
 }
 
 func notRightSaidLine(by TaskAskOwner) string {
 	if by == TaskAskOwnerModel {
-		return notRightByAforge
+		return notRightByCodeaf
 	}
 	return notRightByYou
 }

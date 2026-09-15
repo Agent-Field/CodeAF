@@ -14,13 +14,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const (
-	jobsDir                  = ".aforge/jobs"
+	jobsDir                  = ".codeaf/jobs"
 	defaultJobSeconds        = 900
 	maxUndeadlinedJobSeconds = 3600
 	maxJobWaitSeconds        = 120
@@ -137,8 +138,9 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	if t.history != nil {
 		if bin, pathErr := store.SkillsBinDir(); pathErr == nil {
 			environment = os.Environ()
-			environment = replaceEnv(environment, "AFORGE_SKILLS_BIN", bin)
-			command = "export PATH=\"${AFORGE_SKILLS_BIN:?}:$PATH\"\n" + command
+			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
+			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
+			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
 

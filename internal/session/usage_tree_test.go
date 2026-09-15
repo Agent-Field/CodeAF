@@ -32,7 +32,7 @@ func TestATasksSpendIsOnTheConversationsTotalBeforeTheTaskCloses(t *testing.T) {
 	// A home of this test's own, so that nothing here can reach the machine's
 	// real ledger even if an agent were built without one.
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	journal, _ := journalIn(t)
@@ -200,7 +200,7 @@ func (r pricedReplier) CompleteWithMessages(_ context.Context, messages []ai.Mes
 // node is a settlement and not a call.
 func TestAnAdaptiveRunsNodeSpendRaisesTheDayTotalOnce(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	journal, _ := journalIn(t)

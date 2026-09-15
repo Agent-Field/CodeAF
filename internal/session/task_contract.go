@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── The task contract ───────────────────────────────────────────────────────
@@ -682,7 +682,7 @@ type TaskNotice struct {
 	GroundHeld bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
-	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
+	// pressing "let codeaf decide this one" ([Agent.HandUnverifiedToModel]) are the
 	// two things that make it the model, and neither of them makes it the model for
 	// long — the floor hands it back when the model's turn ends (agent.go).
 	//

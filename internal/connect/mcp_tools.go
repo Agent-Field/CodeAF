@@ -41,7 +41,7 @@ const (
 	// generous than [clientTimeout] because the work behind one of these calls
 	// is somebody else's search, not one fetch.
 	mcpCallTimeout = 2 * time.Minute
-	// mcpClientVersion is what aforge calls this version of itself when it
+	// mcpClientVersion is what codeaf calls this version of itself when it
 	// says hello. It is machinery, seen only by the service.
 	mcpClientVersion = "1"
 )
@@ -58,7 +58,7 @@ var (
 // THE LIST IS FETCHED ONCE PER RUN. It costs a connection and a round-trip, the
 // answer is the same for every call in a sitting, and a belt is rebuilt far more
 // often than a service adds a tool. A person who connects a service, uses it,
-// and finds a new tool missing has only to start aforge again — which is a much
+// and finds a new tool missing has only to start codeaf again — which is a much
 // smaller surprise than every turn of a conversation paying for a list that has
 // not changed since the one before.
 //
@@ -191,7 +191,7 @@ func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSessio
 	return session, nil
 }
 
-// mcpClient is aforge as the service sees it.
+// mcpClient is codeaf as the service sees it.
 func mcpClient() *mcp.Client {
 	return mcp.NewClient(&mcp.Implementation{Name: mcpClientName, Version: mcpClientVersion}, nil)
 }

@@ -539,7 +539,7 @@ func TestTheReceiptAndWhatIsMissingReachTheJournal(t *testing.T) {
 // reef-145's repair leaf finished its work, both of the gate's calls were
 // refused, and the store held no gate row for the delivered leaf at all — so the
 // door ended `ok` at exit 0 and the rig read an unchecked delivery as a clean
-// pass (2026-09-02, aforge-v2-14 anchor 1; #514). The row below is what that run
+// pass (2026-09-02, codeaf-14 anchor 1; #514). The row below is what that run
 // should have written: the reason, that nothing closed it, and that nobody was
 // ever answered by. All three are journaled and read back, because a field the
 // store drops is a field the exit code cannot turn on.

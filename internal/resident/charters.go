@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // applyCharterCommand maps conversational charter management onto the
@@ -261,7 +261,7 @@ func (r *Reconciler) offerStandingWatch(sessionID, charterID string) error {
 		return err
 	}
 	if decision == store.StandingWatchEnabled {
-		if !status.Installed {
+		if !status.Installed || status.Stale {
 			return r.installStandingWatch(context.Background())
 		}
 		return nil
@@ -269,7 +269,7 @@ func (r *Reconciler) offerStandingWatch(sessionID, charterID string) error {
 	if decision == store.StandingWatchOffered || decision == store.StandingWatchDeclined {
 		return nil
 	}
-	if status.Installed {
+	if status.Installed && !status.Stale {
 		return nil
 	}
 	_, err = r.store.OfferStandingWatch(sessionID, charterID)
@@ -365,7 +365,7 @@ func (r *Reconciler) reconcileStandingWatch(ctx context.Context) {
 		log.Printf("standing watch status: %v", err)
 		return
 	}
-	if status.Installed {
+	if status.Installed && !status.Stale {
 		return
 	}
 	if r.standingWatchKeyPersist != nil {

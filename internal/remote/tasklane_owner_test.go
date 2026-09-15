@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // twoConversations is one session that can be moved from `one.jsonl` to
@@ -34,9 +34,9 @@ type twoConversations struct {
 }
 
 const (
-	joinedTranscript   = "/srv/app/.aforge/one.jsonl"
-	replacedTranscript = "/srv/app/.aforge/two.jsonl"
-	freshTranscript    = "/srv/app/.aforge/three.jsonl"
+	joinedTranscript   = "/srv/app/.codeaf/one.jsonl"
+	replacedTranscript = "/srv/app/.codeaf/two.jsonl"
+	freshTranscript    = "/srv/app/.codeaf/three.jsonl"
 )
 
 func twoConversationSession() *twoConversations {

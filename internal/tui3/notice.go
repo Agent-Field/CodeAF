@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // THE NOTICES: telling a person one thing at the moment it becomes true.

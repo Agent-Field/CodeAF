@@ -197,7 +197,7 @@ func TestALiveClaimIsCappedTheSameWayARowIs(t *testing.T) {
 
 func TestAPresenceRowWrittenBeforeFilesExistedStillReads(t *testing.T) {
 	dir := t.TempDir()
-	old := fmt.Sprintf(`{"schema":%d,"sessionId":"eeee5555eeee5555","workspace":"/work/aforge","pid":42,`+
+	old := fmt.Sprintf(`{"schema":%d,"sessionId":"eeee5555eeee5555","workspace":"/work/codeaf","pid":42,`+
 		`"updatedAt":%q,"state":"working","runningTasks":[{"id":"3","title":"Port the parser","state":"running"}]}`,
 		presenceSchema, time.Now().Format(time.RFC3339Nano))
 	if err := os.WriteFile(filepath.Join(dir, presenceName), []byte(old), 0o600); err != nil {

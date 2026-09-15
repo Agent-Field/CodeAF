@@ -10,13 +10,13 @@ mode="${1:-preflight}"
 if [[ "$mode" == preflight-pi ]]; then
   bash "$root/bench/deepswe/compare-cell.sh" pi "$out/preflight-pi-v2" "$image" "$verifier" 180 preflight
 elif [[ "$mode" == preflight ]]; then
-  for arm in aforge pi; do
+  for arm in codeaf pi; do
     bash "$root/bench/deepswe/compare-cell.sh" "$arm" "$out/preflight-$arm" "$image" "$verifier" 180 preflight
   done
 else
   [[ -f "$out/preflight-approved.json" ]] || { echo 'Both runtime preflights must pass first.' >&2; exit 2; }
   # This is one predeclared paired pilot, not enough repeats for a ranking.
-  for arm in pi aforge; do
+  for arm in pi codeaf; do
     bash "$root/bench/deepswe/compare-cell.sh" "$arm" "$out/score-$arm" "$image" "$verifier" 1800 score
   done
 fi

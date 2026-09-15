@@ -73,11 +73,11 @@ and spending. A real stop never reaches the check and is never handed back for a
 
 **A task that is not running answers with what it is**, rather than refusing: `task 2 is
 done`, or `stopped`, or `your call`, in the words your screen is showing. Work running in
-**another aforge window** cannot be stopped from here — the window that owns it has to.
+**another codeaf window** cannot be stopped from here — the window that owns it has to.
 
-## I told aforge to decide and it still says your call — the model says there is no graph left, the task graph expired, I pressed let aforge decide twice
+## I told codeaf to decide and it still says your call — the model says there is no graph left, the task graph expired, I pressed let codeaf decide twice
 
-Pressing `let aforge decide` on a your-call card hands **that one card** to the model
+Pressing `let codeaf decide` on a your-call card hands **that one card** to the model
 (it changes no setting) and puts a line in front of it about the work. The model then
 reads the branch and answers with accept, not right, or check it again.
 
@@ -92,22 +92,22 @@ it in` and pointed at a worktree belonging to work it had never seen. A number n
 still means the newest task anywhere in the project that wears it, which is what a name is for.
 
 **Pressing it twice does nothing the first press did not do.** The second press answers
-`already handed to aforge` and sends the model nothing further — no second instruction, no
+`already handed to codeaf` and sends the model nothing further — no second instruction, no
 second line about the same decision — and it is not shown to you as trouble, because the
-state it asks for is the state that already holds: the reason row goes on reading `aforge
+state it asks for is the state that already holds: the reason row goes on reading `codeaf
 is deciding`. If you want it back, press `take it back` and the answers return to you.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers
 works on those tasks, the model's answers included.
 
-## The merge round stopped when aforge restarted — I pressed resolve it and nothing happened, my conflict still says your call
+## The merge round stopped when codeaf restarted — I pressed resolve it and nothing happened, my conflict still says your call
 
 `resolve it` on a conflict card starts one round: your branch is merged into the task's
 branch inside the task's own copy, a worker settles the clashing files, the work is checked
 again and the landing is retried. It costs a model call and it takes minutes.
 
-**If aforge is restarted or the engine is replaced while that round is running, the round
+**If codeaf is restarted or the engine is replaced while that round is running, the round
 dies with it.** Nothing is lost and nothing is broken: the task is exactly where it was —
 `your call`, its files still clashing, its branch untouched — and the card offers the same
 three answers. What was missing was any word about it, so the card read as though you had

@@ -512,7 +512,7 @@ func TestSkillFactStatusTransitionsSurviveRebuild(t *testing.T) {
 		t.Fatalf("candidate leaked into retrieval: hits=%+v err=%v", hits, err)
 	}
 
-	installed := "/home/test/.aforge/skills/git-audit"
+	installed := "/home/test/.codeaf/skills/git-audit"
 	if err := graph.ActivateSkill(first.Seq, installed); err != nil {
 		t.Fatal(err)
 	}

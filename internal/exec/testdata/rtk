@@ -4,9 +4,9 @@
 # line and exiting 3 — and then actually runs what it was asked, compressing a
 # read the way the real one would.
 #
-# Every invocation appends a line to AFORGE_RTK_STUB_LOG, which is how the tests
+# Every invocation appends a line to CODEAF_RTK_STUB_LOG, which is how the tests
 # see what was and was not asked of it.
-log="${AFORGE_RTK_STUB_LOG:-/dev/null}"
+log="${CODEAF_RTK_STUB_LOG:-/dev/null}"
 
 case "$1" in
     rewrite)

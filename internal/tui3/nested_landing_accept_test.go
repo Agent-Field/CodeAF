@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A NESTED PART'S ACCEPT LEAVES THE RECEIPT ON THE CONVERSATION. The tmux

@@ -3,8 +3,8 @@ package remote
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── THE THREE PLACES THAT COULD NOT CROSS ───────────────────────────────────
@@ -38,7 +38,7 @@ const (
 	// on the beat after, the surface asks from the newest instant it already
 	// holds, so the second call and every call after it carries the handful of
 	// lines written since. That is [session.UsageCache]'s own tail-read law with
-	// a wire in the middle of it (cmd/aforge's [hostLedger]).
+	// a wire in the middle of it (cmd/codeaf's [hostLedger]).
 	MethodPlacesLedger = "Places.Ledger" // LedgerArgs → LedgerReading
 
 	// MethodPlacesSearch is one full-text query over every message the ENGINE
@@ -62,7 +62,7 @@ const (
 	// end is the one that stats it, snaps it to its repository root and writes
 	// it down. That is not a concession to the remote case: the ordinary local
 	// launch goes through this same wire to this machine's own session host
-	// (cmd/aforge's chatv3_local.go), and before these methods existed the
+	// (cmd/codeaf's chatv3_local.go), and before these methods existed the
 	// surface's picker asserted a door onto the agent, found a wire client that
 	// had none, and said `folder · <path>` over a conversation that had gained
 	// nothing.
@@ -90,7 +90,7 @@ const (
 	// not (server.go's [Engine.Memory]).
 	//
 	// The names are the SURFACE's names for these readings and not the store's,
-	// because the surface's seam is what this wire exists to fill; cmd/aforge
+	// because the surface's seam is what this wire exists to fill; cmd/codeaf
 	// already owns that translation in one place ([v3Brain]).
 
 	// MethodMemorySnapshot is everything remembered on the engine machine,
@@ -198,7 +198,7 @@ type MemoryOrigin struct {
 // it is deliberately the same seven methods internal/tui3's MemoryStore asks
 // for — one interface, satisfied by the same adapter at both ends, so that a
 // method added to the place cannot land here as a method the far end silently
-// does not have (cmd/aforge's [v3Brain] satisfies both by construction).
+// does not have (cmd/codeaf's [v3Brain] satisfies both by construction).
 //
 // NIL IS MEMORY OFF ON THAT MACHINE, and it is answered as a refusal rather than
 // as an empty store — the same reading [Engine.World] and [Engine.StandingItems]

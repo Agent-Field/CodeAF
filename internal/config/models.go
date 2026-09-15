@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 // This file is the naming half of the model palette's candidacy seam. Slots

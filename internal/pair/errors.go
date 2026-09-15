@@ -3,12 +3,12 @@ package pair
 // ONE SENTENCE, NAMING THE THING THAT IS WRONG. Never a stack trace, never a
 // hang, and never a sentence that covers two different causes.
 //
-// This matters more here than almost anywhere else in aforge, because `--at`
+// This matters more here than almost anywhere else in codeaf, because `--at`
 // has four completely different ways to not work and a person cannot tell them
 // apart by looking: there is no relay set up; the relay is not answering; the
 // machine is not connected to it; this device was never let in. Each one has a
 // different next step, and a shrug that covered all four would send somebody
-// to check their wifi when the answer was `aforge serve`.
+// to check their wifi when the answer was `codeaf serve`.
 //
 // THE RELAY SERVICE IS NOT DEPLOYED YET, and the first of these is therefore
 // the sentence most people will meet. It says what to do about it rather than
@@ -47,12 +47,12 @@ func Unreachable(service string) error {
 
 // NotConnected is the third: the relay is fine and that machine is not there.
 func NotConnected(name string) error {
-	return fmt.Errorf("%s is not connected to the relay right now — run `aforge serve` on that machine", name)
+	return fmt.Errorf("%s is not connected to the relay right now — run `codeaf serve` on that machine", name)
 }
 
 // NotPaired is the fourth: this device has never been let in.
 func NotPaired(name string) error {
-	return fmt.Errorf("this device is not paired with %s — run `aforge serve` on that machine, then run this command again and type the code it shows", name)
+	return fmt.Errorf("this device is not paired with %s — run `codeaf serve` on that machine, then run this command again and type the code it shows", name)
 }
 
 // WrongCode is the pairing code being wrong, said with the fact that makes it

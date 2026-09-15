@@ -56,8 +56,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/pdfx"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/prose"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
+	"github.com/Agent-Field/codeaf/internal/tui2/prose"
 )
 
 // ── the bounds ──────────────────────────────────────────────────────────────

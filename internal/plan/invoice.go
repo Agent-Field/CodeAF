@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/profile"
 )
 
 // The invoice is what a split costs, in the only currency anybody can check:

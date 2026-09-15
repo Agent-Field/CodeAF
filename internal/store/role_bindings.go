@@ -365,7 +365,7 @@ func (s *Store) SetRoleBinding(role ModelRole, scope BindingScope, value, origin
 	})
 }
 
-// SeedRoleBinding is the initializer's door: AFORGE_PLAN_MODEL and
+// SeedRoleBinding is the initializer's door: CODEAF_PLAN_MODEL and
 // --plan-model set the global plan binding through it at startup.
 //
 // It writes in exactly two cases — nothing is bound yet, or what is bound was

@@ -2,7 +2,7 @@ package tui3
 
 // THE HEAD: ONE SET OF ROWS OVER EVERY FRAME.
 //
-//	aforge                     2 want you · 1 moving · $0.14 / $20.00 · thu 9:49am
+//	codeaf                     2 want you · 1 moving · $0.14 / $20.00 · thu 9:49am
 //	 Home   Parsing the logs   Porting the picker
 //	──────────────────────────────────────────────────────────────────────────────
 //

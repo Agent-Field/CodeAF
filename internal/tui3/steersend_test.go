@@ -21,7 +21,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // lostLink is a crossing NOBODY ANSWERED: the shape internal/remote's client
@@ -696,7 +696,7 @@ func TestAConversationWithNoTranscriptCannotSteer(t *testing.T) {
 
 	// AND A SAVED ONE CARRIES THE MACHINE IT IS ON. The same transcript path
 	// names different work on two machines.
-	a.file = "/srv/app/.aforge/one.jsonl"
+	a.file = "/srv/app/.codeaf/one.jsonl"
 	here := a.steerOwner()
 	if !a.canSteerTask() {
 		t.Fatal("a named conversation could not steer")

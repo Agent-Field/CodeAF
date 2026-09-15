@@ -7,7 +7,7 @@ project**, not just the folder this window was started in — as seven **panels*
 answering one question you would ask walking up to a colleague's desk:
 
 ```
- aforge                                                      $0.14 / $20 · thu 9:49am
+ codeaf                                                      $0.14 / $20 · thu 9:49am
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ answering one question you would ask walking up to a colleague's desk:
    70 more · type to find one
 
  projects                                        next up
-   ~/aforge-v2      12 chats · 1 running  master     the 6am repo watch                in 20h
+   ~/codeaf      12 chats · 1 running  master     the 6am repo watch                in 20h
    ~/pricing-site   5 chats
 ```
 
@@ -206,7 +206,7 @@ Three ways to settle it, and they are the same door:
 - **the landing card in the conversation** — `a <yes>` and `n <no>`, whose words are
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
   `s tell it`, which opens the task's page rather than answering, and a dimmer
-  `d let aforge decide this one`;
+  `d let codeaf decide this one`;
 - **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
   the moment that conversation next opens — the constructor drains the doorstep before
@@ -215,7 +215,7 @@ Three ways to settle it, and they are the same door:
   foot of the page; `a`, `n`, `s` and `d` over an empty box answer it with nothing
   selected;
 - **just say so.** "accept task 7", "that one isn't finished", "have another look at task
-  7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
+  7" — codeaf settles it through its `tasks` tool. Whichever is used first wins; the other
   says `already answered`.
 
 Accepting merges the task's branch and unblocks everything queued behind it. The tasks page
@@ -342,7 +342,7 @@ ceiling and saved shapes of work.
 
 ```
  projects
-   ~/aforge-v2          12 chats · 1 running   master, 2 files dirty
+   ~/codeaf          12 chats · 1 running   master, 2 files dirty
    …/code/pricing-site  5 chats
    /tmp/af-stop-ws
 ```
@@ -545,11 +545,11 @@ the same four rows at the top wherever you are standing. **Inside a chat** and o
 place but home it reads:
 
 ```
- aforge              2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ codeaf              2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock —
-` aforge                              $0.55 / $500 · tue 1:11pm` — because the `needs you`
+` codeaf                              $0.55 / $500 · tue 1:11pm` — because the `needs you`
 and `running` panels are those counts, row by row.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
@@ -588,9 +588,9 @@ you are; `tab` from there goes to home. `alt+.` draws the map of all seven with 
 numbers. Home's own panels already summarise the three on the bar: `running` is a glimpse of
 tasks, `spend` of spend, `next up` of standing.
 
-## Why did a dashboard open when I started aforge — home greets you
+## Why did a dashboard open when I started codeaf — home greets you
 
-**Home is the first thing you see when you open aforge.** The conversation your launch
+**Home is the first thing you see when you open codeaf.** The conversation your launch
 would have opened is loaded and waiting underneath it: `esc` drops straight into it. In
 effect the launch is the launch you always had, with home already open on top of it.
 
@@ -605,7 +605,7 @@ drawn at all.
 
 It greets you only when it has something to say. All of these have to be true:
 
-- You opened aforge **without naming a conversation**. `aforge` or `aforge chat`.
+- You opened codeaf **without naming a conversation**. `codeaf` or `codeaf chat`.
 - The machine holds **a conversation other than the one this launch opened**. Somewhere
   else to go, in other words.
 - It is a real terminal session — not `--once`, not `--host`.
@@ -619,10 +619,10 @@ Four ways, and each of them is you saying which conversation you mean:
 
 | What you run | What you get |
 |---|---|
-| `aforge chat --session <path>` | that conversation, no home |
-| `aforge resume` | the session picker, no home |
-| `aforge chat --once "text"` | replies printed with no surface; one reply normally, or every landing-woken reply when `--yolo` has a budget |
-| `aforge --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
+| `codeaf chat --session <path>` | that conversation, no home |
+| `codeaf resume` | the session picker, no home |
+| `codeaf chat --once "text"` | replies printed with no surface; one reply normally, or every landing-woken reply when `--yolo` has a budget |
+| `codeaf --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
 
 And on a machine with only one conversation — a first run — home does not greet you.
 There is no setting for this and no flag to turn it off: whether home greets you follows
@@ -747,7 +747,7 @@ A conversation another terminal has open is a **door**, and pressing `enter` on 
 it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
 in this one, with its work and its half-typed sentence.
 
-**On the ordinary `aforge chat`, it is instant and it takes one `enter`.** Your conversation
+**On the ordinary `codeaf chat`, it is instant and it takes one `enter`.** Your conversation
 does not live inside the terminal you started it in: it lives in this folder's **engine**,
 which is why it keeps working when you close the window. So the second terminal asks the
 engine for the conversation and gets it back — mid-reply, in well under a second, with the
@@ -767,14 +767,14 @@ conversation straight back.
 **What comes with it.** The transcript, whole. Every running task, still running. The unsent
 sentence in the other window's box arrives in yours.
 
-**`aforge chat` in a folder whose conversation is open elsewhere** — you opened aforge and it
+**`codeaf chat` in a folder whose conversation is open elsewhere** — you opened codeaf and it
 said `open in another window` — does not start a second one silently. It opens home with that row pointed at, so one `enter` continues where you
-left off and `esc` gets on with a new conversation instead. A plain `aforge` in a folder
+left off and `esc` gets on with a new conversation instead. A plain `codeaf` in a folder
 whose engine is already holding a conversation simply **sits down in the one the engine
 has**.
 
 **The one road where it still asks first** is a window with no engine behind it —
-`aforge chat --no-host`, `--debug`, or a build old enough to predate the engine. See
+`codeaf chat --no-host`, `--debug`, or a build old enough to predate the engine. See
 *Moving a conversation from a window with no engine*. **And `--host` is the one place it
 cannot happen at all**: the row says
 `open in another window — go there, or start a new conversation here`.
@@ -782,7 +782,7 @@ cannot happen at all**: the row says
 ## Moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
 
 This is the road a window takes when there is no engine holding the conversation —
-`--no-host`, `--debug`, a test. On the ordinary `aforge chat` you will not meet it: see
+`--no-host`, `--debug`, a test. On the ordinary `codeaf chat` you will not meet it: see
 *Continue a conversation from another terminal*, where one `enter` opens the conversation
 instantly.
 
@@ -856,12 +856,12 @@ since.
 **How many you already have open is never a refusal.** See *How many conversations can one
 terminal hold*.
 
-## How many conversations can one terminal hold — is there a limit, too many open, why can I not open another, let go, quiet a while, does aforge close old chats
+## How many conversations can one terminal hold — is there a limit, too many open, why can I not open another, let go, quiet a while, does codeaf close old chats
 
 **Opening another is never refused**, over every door. The ninth and the fiftieth open
 like the first, from home's `enter`, a typed path, the switcher (`ctrl+k`), search or
 `/new`. There used to be a cap of eight, and taking a ninth said `8 open is as many as
-aforge holds — /quit closes this one`. That sentence is gone.
+codeaf holds — /quit closes this one`. That sentence is gone.
 
 **Past twelve open, a quiet conversation you have not looked at for fifteen minutes may
 be let go of.** Twelve is how many rows the switcher card draws. The one left longest ago
@@ -922,8 +922,8 @@ them refuses rather than pretending. The row's verb strip drops `t new chat here
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
 
-**The conversation itself is not lost.** Everything aforge recorded about it lives under
-`~/.aforge/v3/projects`, not in the workspace. What cannot happen is *continuing* it,
+**The conversation itself is not lost.** Everything codeaf recorded about it lives under
+`~/.codeaf/v3/projects`, not in the workspace. What cannot happen is *continuing* it,
 because there is nowhere to continue it.
 
 **What to do:** recreate the folder at that exact path and the row opens again on the next
@@ -953,7 +953,7 @@ and *Choosing a folder*.
 
 ## What also about means on a row — the conversation is about another folder
 
-A conversation is filed under the project it is **standing in** — the folder aforge was
+A conversation is filed under the project it is **standing in** — the folder codeaf was
 opened in. It can also be **about** other folders: ones you named with `/folder` or
 `/attach`, and ones a task's ground settled on and the conversation wrote down. On a
 **search match** the row's dim tail ends with the name:
@@ -983,7 +983,7 @@ What does not move is where the conversation is **standing**: its own working di
 `AGENTS.md` and its settings stay the folder it was opened in. *Choosing a folder* has both
 halves.
 
-For separate conversations with their own project settings, models and histories, aforge
+For separate conversations with their own project settings, models and histories, codeaf
 holds as many as you open over every door — opening another is never refused. One is on
 screen and the rest stay alive behind it. Past twelve, a quiet conversation left alone
 may be let go of; *How many conversations can one terminal hold* is the whole of that.
@@ -999,11 +999,11 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   empty, in which case it takes its place.
 - **the tab strip** above the transcript draws one tab per open conversation, and marks the
   ones stopped on a question.
-- **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
+- **`/quit`** closes the one in front and brings the previous one forward. It leaves codeaf
   only when that was the last one.
 - **`ctrl+c` twice** closes all of them, and the warm line says how many:
   `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop` — and
-  `keeps running` in place of `will stop` for work the aforge service is running.
+  `keeps running` in place of `will stop` for work the codeaf service is running.
 
 ## How do I switch to my other chat — and is it still running
 
@@ -1136,7 +1136,7 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ────────── alt+w folder · alt+o model ─
+ ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
  › pricing
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
@@ -1221,7 +1221,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | **`answers here`** | `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
-| **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, aforge leaves. |
+| **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, codeaf leaves. |
 
 **The fate is never the half that gets cut.** On a narrow window the command's own
 description gives way first, whole, and what `enter` will do stays on the row.
@@ -1375,7 +1375,7 @@ four places on the tab bar, and each answers to its own position, `alt+1` throug
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
-`alt+<digit>` arrives in every terminal aforge runs in — it is sent as escape-then-digit and
+`alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
 has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
 encoding a terminal can send at all.
 
@@ -1399,7 +1399,7 @@ news between two glances — and closing home writes the new mark for next time.
 
 Three honest edges: the very first time home opens there is no "last time", so nothing is
 reported rather than everything; work that lands in **the conversation this window is in**
-is never news, because you watched it happen; and if aforge is killed with home open, the
+is never news, because you watched it happen; and if codeaf is killed with home open, the
 same work is simply reported once more on the next open — repeating news is the safe
 direction to fail in.
 
@@ -1451,7 +1451,7 @@ The chips are the ones the question has:
 
 `2 always` means what it means in the window: **that session stops asking about that
 tool** for the rest of its life. It does not write a permission rule into your settings. The
-handful of shapes aforge always asks about — the ones that wipe a disk — are asked about
+handful of shapes codeaf always asks about — the ones that wipe a disk — are asked about
 again whatever you press here.
 
 The digits are keys **only while nothing is typed**. Every other moment a `1` is a `1` going
@@ -1471,7 +1471,7 @@ window you are not looking at sends `<conversation> · turn done`.
 ## Why a task says incomplete on home
 
 The project's record of its work is append-only: a task writes a row when it starts and
-another when it lands. So a machine that lost power, or an aforge that was killed, leaves
+another when it lands. So a machine that lost power, or a codeaf that was killed, leaves
 rows on disk that say `running` forever.
 
 Home never repeats that claim. **It asks the session itself.** A live session says out
@@ -1588,7 +1588,7 @@ press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and ho
 
 An item nobody has dialled says **nothing** at all about it, which is not the same as
 `low`: it means nobody chose and no rung is sent. The rung is kept with the item, so it
-survives closing aforge, and it is what that item's firings **and** its checks ask for
+survives closing codeaf, and it is what that item's firings **and** its checks ask for
 from then on.
 
 `ctrl+v` does nothing on a conversation's row: that rung belongs to the window that
@@ -1711,7 +1711,7 @@ you go to confirm it really did look.
 
 While you are typing, the row directly above `start a new conversation` is
 `ask here: "…"`. It answers the sentence **in a pane of its own** — a real conversation
-with a real transcript, kept outside `~/.aforge/v3/projects` so home never grows a session
+with a real transcript, kept outside `~/.codeaf/v3/projects` so home never grows a session
 row for a one-off errand. One `↑` reaches it, and `ctrl+enter` does it without leaving the
 box.
 
@@ -1766,7 +1766,7 @@ on one. It is read top to bottom as bands with blank lines between them, and eac
 drawn only when it has something to say:
 
 1. the conversation's **name**, the brightest text on the screen;
-2. directly under it, one dim line of **where it is** — `~/aforge-v2 · master, 1 file
+2. directly under it, one dim line of **where it is** — `~/codeaf · master, 1 file
    dirty · here` — a link that opens the folder in terminals that make hyperlinks;
 3. the **question** it is stopped on, and the digits that answer it;
 4. **the work** — each task and what it came to, three of them, then `▸ N more tasks`;
@@ -1979,7 +1979,7 @@ unknown or zero clause disappears, so a clean repository on main reads only `mai
 folder that is not a repository adds nothing.
 
 The card beside a search carries the same clause on its place line, after the address:
-`~/aforge-v2 · main, 1 file dirty · here`.
+`~/codeaf · main, 1 file dirty · here`.
 
 Home refreshes this reading for a folder at most once every five seconds, and a failed or
 timed-out Git check draws nothing. The reading arrives a moment after home opens. A folder

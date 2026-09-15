@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // The document ladder is exercised through the real provider client over an
@@ -121,9 +121,9 @@ func documentNativeStub(text string, cost float64) documentWireStub {
 }
 
 const (
-	stubPDFTextEnv  = "AFORGE_TEST_PDFTOTEXT_TEXT"
-	stubPDFLogEnv   = "AFORGE_TEST_PDFTOTEXT_LOG"
-	stubPDFPagesEnv = "AFORGE_TEST_PDFINFO_PAGES"
+	stubPDFTextEnv  = "CODEAF_TEST_PDFTOTEXT_TEXT"
+	stubPDFLogEnv   = "CODEAF_TEST_PDFTOTEXT_LOG"
+	stubPDFPagesEnv = "CODEAF_TEST_PDFINFO_PAGES"
 )
 
 // stubPDFBinaries puts a scripted poppler on an otherwise empty PATH. The local
@@ -486,6 +486,27 @@ func TestReadDocumentCacheIsInstantUntilTheSourceHashMoves(t *testing.T) {
 	ranged := tools.Execute(context.Background(), "read_document", `{"path":"filing.pdf","pages":"2-4"}`)
 	if ranged.IsError || wire.calls != 3 {
 		t.Fatalf("page-scoped read = %+v calls=%d", ranged, wire.calls)
+	}
+}
+
+func TestDocumentCacheAcceptsFormerAndCurrentHeadersWithoutTrustingAnotherHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "filing.extracted.md")
+	former := "<!-- aforge-source-sha256: source-one -->\n" + // legacy-name
+		"<!-- aforge-pages: all -->\n\n\nCached filing text.\n" // legacy-name
+	if err := os.WriteFile(path, []byte(former), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := readDocumentCache(path, "source-one", ""); !ok || text != "Cached filing text." {
+		t.Fatalf("former cache was discarded: %q %v", text, ok)
+	}
+	if _, ok := readDocumentCache(path, "source-two", ""); ok {
+		t.Fatal("former cache survived a changed source hash")
+	}
+	if err := writeDocumentCache(path, "source-one", "", "", "Current cached text."); err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := readDocumentCache(path, "source-one", ""); !ok || text != "Current cached text." {
+		t.Fatalf("current cache was discarded: %q %v", text, ok)
 	}
 }
 

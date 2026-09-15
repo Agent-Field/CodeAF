@@ -13,7 +13,7 @@ raised while you were away is still waiting, and two windows can watch one turn.
 
 The shape where it is not true is a machine that cannot start a host — one where the
 socket cannot be made, or an older build. There the ssh pipe is the conversation's whole
-life, and losing the pipe ends the turn. aforge says which of the two you are on instead
+life, and losing the pipe ends the turn. codeaf says which of the two you are on instead
 of letting you guess.
 
 ## Does it keep running when I close my terminal
@@ -27,7 +27,7 @@ Closing the terminal, losing wifi or shutting the laptop takes away the attachme
 nothing else: the turn in flight keeps running, keeps writing the session file, and is
 still going when you come back.
 
-There is one shape where this is not true, and aforge tells you which one you are on
+There is one shape where this is not true, and codeaf tells you which one you are on
 rather than letting you guess. If that machine cannot start a host — no room for its
 socket, a state directory it cannot write, a build without one — the conversation is
 served on the ssh pipe itself, exactly as older versions did, and then the pipe is the
@@ -44,7 +44,7 @@ file and it writes it as the conversation happens.
 ## How quickly a dead ssh link is noticed and retried
 
 With the defaults, an ssh connection that stops answering is noticed in about **9
-seconds**: aforge asks after 3 seconds of silence and gives up after 3 unanswered asks.
+seconds**: codeaf asks after 3 seconds of silence and gives up after 3 unanswered asks.
 The existing reconnect loop then keeps trying for up to 5 minutes. A cleanly closed link
 is noticed immediately. During that gap the status line says
 `reconnecting to devbox — trying for up to 5 minutes`; a message submitted in the gap is
@@ -52,8 +52,8 @@ refused visibly rather than lost.
 
 A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
 full handshake when the underlying ssh connection is still healthy. Its control socket
-lives under this machine's aforge state directory at `~/.aforge/v3/ssh/` (moved by
-`AFORGE_HOME`). The same **104-byte** socket-path limit applies there: a state path too
+lives under this machine's codeaf state directory at `~/.codeaf/v3/ssh/` (moved by
+`CODEAF_HOME`). The same **104-byte** socket-path limit applies there: a state path too
 long disables reuse only; the ordinary ssh connection still opens.
 
 These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
@@ -63,7 +63,7 @@ the next launch rather than on the conversation in front of you; nothing you sav
 with them. Setting the heartbeat to 0 turns
 dead-link probes off; setting reuse to 0 stops keeping a connection after its channel
 closes. Whole-stream ssh compression stays off because it usually slows a LAN attach;
-large transcript frames compress themselves only when both aforge builds support it.
+large transcript frames compress themselves only when both codeaf builds support it.
 
 ## I closed my laptop — did it keep going
 
@@ -85,7 +85,7 @@ the conversation, which is where you find it when you come back.
 
 ## Coming back later to the same conversation
 
-Run the same command. `aforge chat --host devbox` opens the conversation that machine
+Run the same command. `codeaf chat --host devbox` opens the conversation that machine
 already has for that workspace, whether it has been thirty seconds or a week.
 
 There is nothing to reconnect to by hand and nothing to name. The machine keeps one
@@ -180,10 +180,10 @@ The rest of what you should know about sharing one:
   or, for more than one, `2 other windows are on this conversation — typing is here now`.
   When you are alone — the ordinary case — nothing is said at all.
 
-## Opening aforge in a second terminal here — two terminals on this machine
+## Opening codeaf in a second terminal here — two terminals on this machine
 
 Sharing is not only for two machines. When a conversation on **this** machine is held by a
-session host, `aforge` typed in a second terminal in the same workspace **joins it** rather
+session host, `codeaf` typed in a second terminal in the same workspace **joins it** rather
 than opening one of its own — the same room, the same turn, one keyboard.
 
 What the second terminal shows is exactly what a second machine shows. The newest window
@@ -192,7 +192,7 @@ one dim line reading `typing from another window now · enter takes it back` —
 window` rather than a machine name, because there is no other machine in it. The status
 line grows no `via` segment for the same reason.
 
-**A host is started for you.** `aforge chat` in a folder opens its conversation in this
+**A host is started for you.** `codeaf chat` in a folder opens its conversation in this
 machine's session host, and starts one if none is running. That is what makes the work
 outlive the terminal: close the window mid-task and the task keeps going; open a terminal
 here tomorrow and you are back in the same conversation rather than beside it. The host
@@ -206,7 +206,7 @@ lives in this process:
   launch takes the host road.
 - **`--once`**, which never starts a host — a resident process left behind by a headless
   command is a surprise — though it joins one that is already there.
-- **a run that is recording** — `--debug`, or `AFORGE_DEBUG=1` in the shell that started
+- **a run that is recording** — `--debug`, or `CODEAF_DEBUG=1` in the shell that started
   it — because the model-call record is written by the process making the calls, and over
   a socket that process is the host, which was never told to record. Either way of asking
   keeps the conversation here, so the folder holds the request bodies and not just a
@@ -217,7 +217,7 @@ lives in this process:
 `--max-hours` and `--max-cost` describe how a session is BUILT, and the host builds it that
 way. A conversation that is already open keeps the shape it was opened with — nothing here
 overwrites a session somebody else is in — so if you ask for one shape and this folder's
-conversation is already running under another, aforge says so in one line and opens a
+conversation is already running under another, codeaf says so in one line and opens a
 conversation in this terminal instead, where the flag is real. That one ends when the
 terminal does.
 
@@ -232,7 +232,7 @@ typing from spark now                                     enter takes it back
 
 `spark` is the machine the other window is on — the name that machine calls itself, with
 any domain trimmed off it. A second window on **this** machine reads as `another window`
-instead, which is what aforge calls a conversation open somewhere else everywhere. A
+instead, which is what codeaf calls a conversation open somewhere else everywhere. A
 machine that could not say its own name gets `another window` too.
 
 The line is the whole of the change. The transcript above it, the status line below it and
@@ -327,15 +327,15 @@ If the window that closed was the watcher, nothing moves at all.
 Nothing at all. There is no daemon to install, no port to open, no service to enable, no
 configuration file.
 
-The first time you connect, `aforge engine` looks for a host for that workspace and starts
+The first time you connect, `codeaf engine` looks for a host for that workspace and starts
 one if there is none. That is the whole of the installation: the first attach is the
 host's birth. It listens on a unix socket under that machine's own state directory —
-`~/.aforge/v3/hosts/`, moved by `AFORGE_HOME` like everything else aforge keeps — and
+`~/.codeaf/v3/hosts/`, moved by `CODEAF_HOME` like everything else codeaf keeps — and
 never on a network port, so nothing about it is reachable from outside that machine. Your
 ssh is still the only door in.
 
 Two things are still required, and they are the same two `--host` has always needed:
-aforge installed on that machine, and `ssh <machine>` already working from where you are
+codeaf installed on that machine, and `ssh <machine>` already working from where you are
 sitting.
 
 If none of it can be set up — a socket path too long, a directory that cannot be written,
@@ -357,23 +357,23 @@ keeps that machine's attention until it is finished, and only then does the ordi
 begin.
 
 **Reminders and watches are not affected by this.** They are not held by that process:
-their pass is done by whichever aforge is up — any open window, or the timer on that
-machine that calls `aforge tick` with nobody sitting anywhere. A host going away hands
+their pass is done by whichever codeaf is up — any open window, or the timer on that
+machine that calls `codeaf tick` with nobody sitting anywhere. A host going away hands
 their timing back to that timer exactly as closing a terminal always did.
 
-**And it goes early when aforge on that machine is rebuilt under it.** It is a running copy
+**And it goes early when codeaf on that machine is rebuilt under it.** It is a running copy
 of the build that started it, so a new binary at the same path does not replace it; it
 notices the file it was started from has been removed or rebuilt and retires the next time
 it is holding nothing — no window attached, no turn running, no question waiting. What it
 was holding is closed properly on the way out and every transcript is flushed. Nothing that
 was still going is cut short for this.
 
-## How do I stop the old engine holding my session — aforge engine --stop
+## How do I stop the old engine holding my session — codeaf engine --stop
 
 Run it on the machine that is holding it:
 
 ```
-aforge engine --stop
+codeaf engine --stop
 ```
 
 Its help text reads:
@@ -393,18 +393,18 @@ nothing is holding /home/you/api here
 ```
 
 `--workspace` picks which one; with no flag it means your home directory, exactly as it does
-for `aforge engine` itself. **Type the flag.** Without it you stop whatever is holding your
+for `codeaf engine` itself. **Type the flag.** Without it you stop whatever is holding your
 home directory, which is usually not the folder that refused you — and the refusal comes
 back on the next launch because the engine it was about is still running. Both refusals
-about an older aforge spell the workspace out in the command they give you (*Running on
+about an older codeaf spell the workspace out in the command they give you (*Running on
 another machine*); copy the line as written.
 
-## Stop every engine on this machine — aforge engine --stop-all, I don't know which folder is stuck
+## Stop every engine on this machine — codeaf engine --stop-all, I don't know which folder is stuck
 
 When you do not know which workspace is the problem, do not go looking for it:
 
 ```
-aforge engine --stop-all
+codeaf engine --stop-all
 ```
 
 It stands down every engine this machine is holding, in every workspace, one at a time, and
@@ -431,9 +431,9 @@ cold on the next connection rather than staying warm.
 If what you are actually chasing is a reply that stopped and said so on screen, this is
 not the page — *Models and cost* has the sentence you read and what each of them means.
 
-## Rebuilt aforge but your conversation was still on the old engine — how aforge tells you
+## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
 
-A plain `aforge` does not run your conversation inside the window — the session host does,
+A plain `codeaf` does not run your conversation inside the window — the session host does,
 in a process of its own, so it survives the terminal closing. That process also outlives the
 build that started it. Rebuild with `make build` while a host is holding a conversation and
 the host of the **older** build keeps answering until it is holding nothing — a turn still
@@ -442,10 +442,10 @@ now on disk.
 
 You are told, once, on the way in, which state the machine was in:
 
-- **It was still holding work** — `the engine on <machine> is an older aforge and is still
+- **It was still holding work** — `the engine on <machine> is an older codeaf and is still
   holding work — it picks up this build the moment it goes quiet`.
 - **It was only keeping your conversation warm** (the turn had finished and you had stepped
-  away) — `the engine on <machine> was an older aforge holding this conversation — it has
+  away) — `the engine on <machine> was an older codeaf holding this conversation — it has
   picked up this build`.
 
 Both are the same fact at two moments: the build you installed was not the one answering
@@ -477,7 +477,7 @@ failing, which is why the model is not given a verb it could not finish.
 
 ## Is the tok/s and the via name still right when a session host is holding the conversation
 
-Yes, and there is nothing to turn on. A plain `aforge` in a folder does not run the
+Yes, and there is nothing to turn on. A plain `codeaf` in a folder does not run the
 conversation inside the window you are looking at — the session host holds it, in a
 process of its own, so that closing the terminal does not end the work. Everything the
 status row says about a request in flight is measured in that process and pushed to your
@@ -488,8 +488,8 @@ model as soon as the machine writing the answer has named itself, the phase word
 model change in the middle of a turn, a fallback, or a change made from another window
 cannot hide them.
 
-A host started by an **older aforge** may not send them at all. The window then says so
-once, after an answer — `this conversation's engine is an older aforge, so the provider
+A host started by an **older codeaf** may not send them at all. The window then says so
+once, after an answer — `this conversation's engine is an older codeaf, so the provider
 and tok/s are not shown — they come back once it picks up this build` — and the host
 retires as soon as it is holding nothing, so the next one runs this build.
 
@@ -502,14 +502,14 @@ answer for `--host`, where the engine is on a different computer entirely.
 There are two of it, one for each end, and they mean the same thing: do not look for a
 session host, do not start one, open this conversation right here.
 
-**`aforge chat --no-host`** and **`aforge resume --no-host`**, typed on the machine you are
+**`codeaf chat --no-host`** and **`codeaf resume --no-host`**, typed on the machine you are
 sitting at. Its help text reads:
 
 ```
 open this conversation in this process instead of attaching to this workspace's session host
 ```
 
-Without it, `aforge chat` joins this workspace's host when one is already up. With it, the
+Without it, `codeaf chat` joins this workspace's host when one is already up. With it, the
 conversation is built in this terminal's own process whatever is up. The reason to type it
 is that something about the host itself is wrong and you want the floor rather than the
 feature. It changes nothing in a workspace no host is holding, which is most of them.
@@ -517,7 +517,7 @@ feature. It changes nothing in a workspace no host is holding, which is most of 
 It cannot be combined with `--host` or `--at`: over those the conversation is on the far
 machine either way, and naming both is refused rather than ignored.
 
-**`aforge engine --no-host`** serves one *connection* on the pipe, the old way. Its help
+**`codeaf engine --no-host`** serves one *connection* on the pipe, the old way. Its help
 text reads:
 
 ```
@@ -536,24 +536,24 @@ hold this workspace's conversations and answer surfaces on a socket
 That one is machinery: it is how a host is started, by the attaching process, and there is
 nothing a person accomplishes by typing it. The third flag beside them is `--stop`, which is
 the one a person really does type; it has its own section above. None of them appear in
-`aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
+`codeaf`'s usage text, because `codeaf engine` itself does not — it is the far half of
 `--host` and a surface dials it.
 
-## Why does aforge take ten seconds to start, or say the conversation ends with this terminal — a state folder too long for a socket
+## Why does codeaf take ten seconds to start, or say the conversation ends with this terminal — a state folder too long for a socket
 
 The thing that holds a conversation after you close the terminal is reached on a unix
-socket under aforge's own state folder, and a socket path may weigh at most **104
+socket under codeaf's own state folder, and a socket path may weigh at most **104
 bytes**. It is 104 rather than Linux's own 108 because the smallest limit is the one that
 travels: macOS stops at 104, and the same folder can be shared over a network mount.
 
-If `AFORGE_HOME` puts that folder deep enough to push the path past the limit, there is
+If `CODEAF_HOME` puts that folder deep enough to push the path past the limit, there is
 nowhere for a session host to answer, and the launch opens the conversation in this
 terminal **at once** — nothing is started in the background, and nothing is left behind
 under `v3/hosts`. Everything else about the conversation works exactly as it always does.
 It simply ends when this terminal does. The entry notice says so:
 
 ```
-this conversation opened in this terminal instead, and ends with it: aforge's state folder is a longer path than the 104 bytes a socket may be named in — AFORGE_HOME moves it somewhere shorter
+this conversation opened in this terminal instead, and ends with it: codeaf's state folder is a longer path than the 104 bytes a socket may be named in — CODEAF_HOME moves it somewhere shorter
 ```
 
 **It used to cost ten seconds.** The launch started a host into a path it could never
@@ -561,8 +561,8 @@ listen on and waited out the whole birth wait before falling back, with a blank 
 the entire time. The refusal is settled before anything is started now, so the surface
 draws immediately.
 
-The way out is to point `AFORGE_HOME` at a shorter path — that is the whole of it, and
-the next launch holds its conversation in the background again. `aforge chat --no-host`
+The way out is to point `CODEAF_HOME` at a shorter path — that is the whole of it, and
+the next launch holds its conversation in the background again. `codeaf chat --no-host`
 is the same floor asked for on purpose, on any machine.
 
 The same 104 bytes govern the reusable ssh control socket under **How quickly a dead ssh

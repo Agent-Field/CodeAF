@@ -1,7 +1,7 @@
 # Standing goals and charters
 
 A standing goal is something you want to remain true, checked over and over,
-rather than something done once. Aforge calls the durable object behind it a
+rather than something done once. codeaf calls the durable object behind it a
 **charter**.
 
 ## Saying one
@@ -55,7 +55,7 @@ schedule.
 Every charter carries three limits, stated on that card before you agree:
 
 - **per-firing budget** — what one firing may spend. Default **$5.00**, or the
-  measured cost of similar work when aforge has actually measured it. **`0` is
+  measured cost of similar work when codeaf has actually measured it. **`0` is
   no per-firing limit**: the charter is then bounded by the daily rail and its
   max-per-day alone.
 - **max per day** — default **10** firings; a reminder gets **1**.
@@ -91,13 +91,13 @@ you so before you agree.
 ## Where to see them
 
 - `/standing` lists your active charters.
-- The **self** place (alt+3) shows them alongside what aforge has learned.
-- `aforge doctor` prints them from outside the chat, together with the standing
+- The **self** place (alt+3) shows them alongside what codeaf has learned.
+- `codeaf doctor` prints them from outside the chat, together with the standing
   watch state and today's spend.
 
 ## Keeping watch when you are not here
 
-The first time you ratify a charter, aforge asks — once, ever — whether it
+The first time you ratify a charter, codeaf asks — once, ever — whether it
 should keep checking when you are not around. Saying yes installs an operating
 system timer that wakes it every few minutes with no terminal open. That is the
 standing watch, and it is what makes a charter mean anything overnight.

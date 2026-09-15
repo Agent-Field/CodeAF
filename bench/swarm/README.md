@@ -1,7 +1,7 @@
 # Swarm benchmark — measuring cooperative decomposition against refusal-to-split
 
 This suite exists to answer one question honestly: **when does swarm mode
-(`AFORGE_SWARM=1`, the cooperative claim-time decomposition) beat the
+(`CODEAF_SWARM=1`, the cooperative claim-time decomposition) beat the
 default refusal-first pipeline, and on which task shapes?** It is the
 reusable instrument for that measurement — add a task, get a verdict; come
 back after every change that touches planning, splitting, or capacity, and
@@ -17,10 +17,10 @@ first. The short version, applied to this measurement:
   artifacts do not support scores 0, exactly as `bench/` scores a harness
   that changed no files.
 - **The cost comes from the journal's `usage` table, per cell, summed.**
-  Aforge self-reports usage; nothing here approximates it from an account
+  codeaf self-reports usage; nothing here approximates it from an account
   credit delta. `results.csv` records it as `cost_usd` from that table only.
 - **The factor varies, everything else is pinned.** Each cell is one task ×
-  one arm (`AFORGE_SWARM=0` or `1`) × one seed, run in a fresh directory
+  one arm (`CODEAF_SWARM=0` or `1`) × one seed, run in a fresh directory
   with a private store. Model, timeout, task text, and verdict are constant
   across the two arms of a task; the only difference is the flag.
 

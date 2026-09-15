@@ -8,15 +8,15 @@ when it changed, and who signed for it.
 They are **not applied automatically.** Apply them by hand:
 
 ```sh
-gh api -X POST repos/Agent-Field/aforge-v2/rulesets --input .github/rulesets/dev.json
-gh api -X POST repos/Agent-Field/aforge-v2/rulesets --input .github/rulesets/promotion-pointers.json
+gh api -X POST repos/Agent-Field/codeaf/rulesets --input .github/rulesets/dev.json
+gh api -X POST repos/Agent-Field/codeaf/rulesets --input .github/rulesets/promotion-pointers.json
 ```
 
 To update one that already exists, find its id and PUT over it:
 
 ```sh
-gh api repos/Agent-Field/aforge-v2/rulesets --jq '.[] | "\(.id)\t\(.name)"'
-gh api -X PUT repos/Agent-Field/aforge-v2/rulesets/<id> --input .github/rulesets/dev.json
+gh api repos/Agent-Field/codeaf/rulesets --jq '.[] | "\(.id)\t\(.name)"'
+gh api -X PUT repos/Agent-Field/codeaf/rulesets/<id> --input .github/rulesets/dev.json
 ```
 
 ## They do not work yet
@@ -30,7 +30,7 @@ older protection API answer `403 Upgrade to GitHub Pro`. Until the org moves to
 Check whether it has started working:
 
 ```sh
-gh api repos/Agent-Field/aforge-v2/rulesets
+gh api repos/Agent-Field/codeaf/rulesets
 ```
 
 ## `required_status_checks` names are job names

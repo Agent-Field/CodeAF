@@ -45,7 +45,7 @@ package session
 //
 // ── WHERE IT LIVES ──
 //
-// In the PROJECT BUCKET — ~/.aforge/v3/projects/<workspace>/ — which is the
+// In the PROJECT BUCKET — ~/.codeaf/v3/projects/<workspace>/ — which is the
 // directory holding this workspace's session folders (place.go, Decision 26).
 // The scope is the project and not the conversation: every window open on the
 // repository appends to one file, which is what makes "what work has this
@@ -656,7 +656,7 @@ func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
 // taskInterruptedOutcome is what a row says about work this session was doing
 // when its process went away. It is not a finding about the work — nobody was
 // there to make one — it is the plain fact that nothing finished it.
-const taskInterruptedOutcome = "incomplete — aforge closed while this was still running"
+const taskInterruptedOutcome = "incomplete — codeaf closed while this was still running"
 
 // closeInflightTaskIndexRows settles the rows THIS session left saying
 // "running" when its last process ended.

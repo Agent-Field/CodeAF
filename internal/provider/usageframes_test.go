@@ -13,7 +13,7 @@ import (
 // The law under test: USAGE ACCUMULATES ACROSS THE FRAMES OF ONE CALL. A later
 // frame states what it knows; it never zeroes a count an earlier frame carried.
 //
-// Nothing aforge drives today splits the frame — DeepSeek and Kimi both send one
+// Nothing codeaf drives today splits the frame — DeepSeek and Kimi both send one
 // terminal block with the counts and the price in it — so what these tests hold
 // is a property of the protocol rather than a reproduction of a live failure.
 // The cost of getting it wrong is a call billed with zero prompt tokens, zero
@@ -89,7 +89,7 @@ func TestASplitUsageFrameKeepsBothHalves(t *testing.T) {
 	}
 }
 
-// TestOneTerminalUsageFrameIsUnchanged pins the shape every provider aforge
+// TestOneTerminalUsageFrameIsUnchanged pins the shape every provider codeaf
 // drives today actually sends, so the merge cannot buy the split frame at the
 // price of the common one.
 func TestOneTerminalUsageFrameIsUnchanged(t *testing.T) {

@@ -83,7 +83,7 @@ is not disguised as the whole reset.
 
 It was reset a third time on 2026-08-31, when furrow moved inside the binary
 (`internal/furrowbin`, the places wave's P0). This one is a decision and not a
-drift: the owner's ruling was **no variance — every aforge is an aforge with
+drift: the owner's ruling was **no variance — every codeaf build includes
 furrow, and if the only blocker is size, the limit rises**, so the four
 workspace verbs stop being a capability some machines have. The measurement on
 darwin/arm64, Go 1.26.5:
@@ -914,7 +914,7 @@ else.**
 
 | number | value | where |
 | --- | --- | --- |
-| when it is asked | **once per gate that is about to buy a repair or a remainder** | `cmd/aforge/chat.go requestSettled`, `revision.ExtendForGap` |
+| when it is asked | **once per gate that is about to buy a repair or a remainder** | `cmd/codeaf/chat.go requestSettled`, `revision.ExtendForGap` |
 | how many times per gate | **one** | `revision.Judgment.RequestAsked` |
 | the deliverable it carries | **24KB** | `revision.requestMetDeliverableBytes` |
 | the record it carries | **the gate's own evidence block** | `revision.Evidence.block` |
@@ -1029,7 +1029,7 @@ One clock enters, as a floor rather than a ceiling, in `outOfWall`
 (`internal/revision/judge.go`): **a repair is bought only while the run's own
 deadline still holds as long as the attempt that produced the finding took.** It
 is derived from two things that already exist — the errand's deadline, which
-`aforge do --timeout` sets, and the node's start, which the store stamps — so it
+`codeaf do --timeout` sets, and the node's start, which the store stamps — so it
 is not a knob and not a typed duration. A repair the wall will kill mid-flight
 spends money to deliver nothing, and a run that stopped for want of time is
 **partial** (exit 2), never whole. An unknown deadline or an untimed attempt
@@ -1086,9 +1086,9 @@ finish what is running and be judged — and the bound is derived, never typed:
 | the round | the **median** interval between two admitted rounds of THIS job | `jobPace`, `internal/resident/grow.go` |
 | the reading | the **longest** reading this job has been observed taking | `readingPace`, `store.VerificationReading.Elapsed` |
 | the pace | the round plus the reading | `JobPace` |
-| the clock | the run context's deadline, which is the errand's own `--timeout` | `chatBrain.wall`, `cmd/aforge/chat.go` |
+| the clock | the run context's deadline, which is the errand's own `--timeout` | `chatBrain.wall`, `cmd/codeaf/chat.go` |
 | the rule | refuse when `time.Until(deadline) < pace`, and stop the job's queued work | `CauseOutOfWall`, `Runner.CloseOut` |
-| the floor | the settlement watch forces a verdict at the same distance | `settlementWatch.forceJudgement`, `cmd/aforge/do.go` |
+| the floor | the settlement watch forces a verdict at the same distance | `settlementWatch.forceJudgement`, `cmd/codeaf/do.go` |
 
 The median and no longer the longest. Rounds are long-tailed: one round of ofetch
 v4-flash s13 took twenty minutes while the median of its five was under four, so
@@ -1111,7 +1111,7 @@ Fewer than two admitted rounds is a job that has not shown its pace, and it
 answers zero, which refuses nothing and forces nothing — the same direction
 `outOfWall` takes above, and for the same reason (`SETTLEMENT.md` §3).
 
-**The clock reaches the machinery.** `aforge do` used to build its timeout
+**The clock reaches the machinery.** `codeaf do` used to build its timeout
 context for the settlement watcher alone while the brain ran on
 `context.Background()`, so every deadline-reading rule in the program — this one
 and `outOfWall` both — was told there was no limit. The errand's wall is now the
@@ -1120,7 +1120,7 @@ wall; what it changes is that a run approaching one can act on it.
 
 ## Provider-owned generation defaults and local bounds
 
-A request with no operator choice sends **no generation control**. Aforge omits
+A request with no operator choice sends **no generation control**. codeaf omits
 `max_tokens`, `max_completion_tokens`, `temperature`, `top_p` and `reasoning`
 from ordinary chat, headless work, auxiliary roles, structured calls, document
 parsing, saved harness execution and resident work. The provider and selected
@@ -1129,12 +1129,12 @@ model therefore supply their own generation defaults.
 This applies to retries and continuations too. A shaped request still carries
 its schema or JSON mode, and a document request still carries its parser plug;
 neither functional field implies a generation ceiling. The plain OpenAI SDK
-loop is the one request builder Aforge does not own. Its config defaults are
+loop is the one request builder codeaf does not own. Its config defaults are
 cleared **before** caller options are applied, so the same omission holds there
 and an explicit zero temperature or output limit is preserved.
 
-Explicit choices remain explicit. `AFORGE_REASONING`,
-`AFORGE_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
+Explicit choices remain explicit. `CODEAF_REASONING`,
+`CODEAF_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
 `:high`, a saved task or standing-work rung, and an embedder's `ai.Option` still
 travel. The three shipped crew presets contain bare model ids and add no effort
 level. `cmd/harness-design` is a development command with explicit CLI-sized
@@ -1486,7 +1486,7 @@ whatever its own model claimed. It is handed that model's card figure now
 
 **And a person's own line outranks the derivation.** The fill percentage
 (`ctxbudget.DefaultFillPercent`, **60**) reaches the process from three places
-that are one setting — the `context fill` row, `AFORGE_CONTEXT_FILL_PCT`, and
+that are one setting — the `context fill` row, `CODEAF_CONTEXT_FILL_PCT`, and
 `--context-fill N`, which sets that variable for one run. It governs the
 conversation's fold line **only when somebody set it**: `ctxbudget.Limits`
 carries zero for a row nobody has written down, `ctxbudget.PinnedFillPercent`
@@ -1576,7 +1576,7 @@ keystroke:
 | --- | --- | --- |
 | the deliverables index | **7–11 ms** | 900 KB of JSON decoded to keep one conversation's four rows |
 | the conversation's journal | **1–33 ms** | `session.Peek` scans the whole transcript |
-| the repository | **7.7 ms** | `git status --porcelain=v2 --branch` on aforge's own worktree, warm, with a **1 s** ceiling on it |
+| the repository | **7.7 ms** | `git status --porcelain=v2 --branch` on codeaf's own worktree, warm, with a **1 s** ceiling on it |
 
 The first is one file about the WHOLE MACHINE, so it is read with the world and
 filed by the conversation that made each row. The other two are about the row
@@ -1824,7 +1824,7 @@ and deliver the wakeup by hand.
 Two costs can hold a terminal dark before anything is drawn in it, and neither
 looks slow in review: a question put to the model catalog through the door that
 waits (a `GET /models` with a fifteen-second ceiling on a cold cache), and a
-packed corpus decompressed. Both are counted, in `cmd/aforge/launchlaws_test.go`,
+packed corpus decompressed. Both are counted, in `cmd/codeaf/launchlaws_test.go`,
 against a catalog endpoint that refuses immediately.
 
 - **Nothing on the way to the first frame unpacks a corpus.** Zero, for
@@ -1944,7 +1944,7 @@ longer here has no worker to stop and is released at once, which is what
 ### And a reaped node resumes
 
 A node the reaper returns to the queue is claimed again with its attempt counter
-raised, and `cmd/aforge`'s `leafBank` hands the new attempt what the old one
+raised, and `cmd/codeaf`'s `leafBank` hands the new attempt what the old one
 left: its partial, its progress lines, the files the workspace was SEEN to change
 under this leaf's key, and — this is the part that was missing — **its own
 recorded turns**, read back from the store through `resident.BankedRun`.
@@ -1973,7 +1973,7 @@ day while it was not true.
 
 ### A node watchdog that reads evidence of life
 
-`cmd/aforge`'s `runLeafWithWatchdog` fired on a flat `deadline + 2m` timer and,
+`cmd/codeaf`'s `runLeafWithWatchdog` fired on a flat `deadline + 2m` timer and,
 when it fired, **returned without cancelling the leaf** — so the goroutine went
 on spending, went on writing to the workspace, and kept whatever children its
 last command had started, for as long as its own deadline had left.
@@ -2005,7 +2005,7 @@ of the abandonment; the money had no equivalent.
 
 `provider.WithBilling` reports each decoded response at the adapter's own door —
 the one seam every outbound call in this process passes through, and the same
-place the call log's per-call row is already written. `cmd/aforge`'s `leafBanker`
+place the call log's per-call row is already written. `cmd/codeaf`'s `leafBanker`
 writes one `usage` row per call under the leaf's node as the answers arrive.
 **This adds one durable write per MODEL CALL and not per tool result**, which is
 the line `internal/exec/liveness.go` draws and stays the right side of: a leaf's
@@ -2020,7 +2020,7 @@ the same responses in different places must never disagree into a negative row.
 `usage_turns` is written either way, because one row per turn is a different kind
 of record and nothing else carries it. `cost.json` and the settlement's money line both read
 the `usage` table, so both now see an interrupted leaf's spend. Pinned by
-`cmd/aforge/leafbank_test.go`.
+`cmd/codeaf/leafbank_test.go`.
 
 ## A leaf's bounds, and the one that is allowed to land it
 
@@ -2070,8 +2070,8 @@ from a number that had since moved, which made it fail whenever the grant
 grant again means re-running the sweep in #920's replication and rewriting this
 section, the constant's comment, and the manual page that quotes the figure.**
 
-`exec.DefaultLeafTokens` is now the only place the figure is written. `aforge
-exec`, `aforge run` and the chat surface read it; `internal/exec`'s
+`exec.DefaultLeafTokens` is now the only place the figure is written. `codeaf
+exec`, `codeaf run` and the chat surface read it; `internal/exec`'s
 `TestTheLeafGrantIsSpelledOnce` fails the build on a second spelling, because
 four copies had to be recalibrated together by somebody who knew all four
 existed.
@@ -2206,7 +2206,7 @@ whole lineage would cost O(nodes) queries per claim to arrive at the same string
 Measured, textual s9: three gap rounds, fourteen briefed nodes, the same two
 unexercised behaviours reported on every gate, and thirteen of the fourteen
 briefs naming neither. Pinned by `internal/resident/lineage_test.go` and
-`cmd/aforge/openfindings_test.go`.
+`cmd/codeaf/openfindings_test.go`.
 
 ## The session's memory of declared checks
 

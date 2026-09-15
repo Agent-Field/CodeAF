@@ -23,7 +23,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // guestLab is a window holding its own task 7 — running, on a model, with a name
@@ -262,7 +262,7 @@ func TestAReadingPageWithNoOwnerLaneSaysTheStateIsTheLastItWasTold(t *testing.T)
 var theirLiveSession = session.SessionRow{
 	ID:         "the-other-window",
 	Title:      "docs pass",
-	Transcript: "/w/.aforge/v3/sessions/-w/the-other-window/session.jsonl",
+	Transcript: "/w/.codeaf/v3/sessions/-w/the-other-window/session.jsonl",
 	ProjectDir: "/w",
 }
 

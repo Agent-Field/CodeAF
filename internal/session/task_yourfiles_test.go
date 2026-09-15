@@ -222,14 +222,14 @@ func TestTheAcceptReceiptSaysWhoTookIt(t *testing.T) {
 	if got := acceptedLine("", TaskAskOwnerPerson); got != acceptedByYou {
 		t.Fatalf("the person's own press reads %q, want %q", got, acceptedByYou)
 	}
-	if got := acceptedLine("", TaskAskOwnerModel); got != acceptedByAforge {
-		t.Fatalf("the model's own verb reads %q, want %q", got, acceptedByAforge)
+	if got := acceptedLine("", TaskAskOwnerModel); got != acceptedByCodeaf {
+		t.Fatalf("the model's own verb reads %q, want %q", got, acceptedByCodeaf)
 	}
-	if got := acceptedLine("I read the diff", TaskAskOwnerModel); !strings.HasPrefix(got, acceptedByAforge+": ") {
+	if got := acceptedLine("I read the diff", TaskAskOwnerModel); !strings.HasPrefix(got, acceptedByCodeaf+": ") {
 		t.Fatalf("the reason lost its voice: %q", got)
 	}
-	if got := refutedLine("", TaskAskOwnerModel); !strings.Contains(got, notRightByAforge) {
-		t.Fatalf("the not-right receipt reads %q, want it to name aforge", got)
+	if got := refutedLine("", TaskAskOwnerModel); !strings.Contains(got, notRightByCodeaf) {
+		t.Fatalf("the not-right receipt reads %q, want it to name codeaf", got)
 	}
 	if got := refutedLine("", TaskAskOwnerPerson); !strings.Contains(got, notRightByYou) {
 		t.Fatalf("the person's own not-right reads %q", got)

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The notices' own tests (notice.go, notice_ledger.go): the table check, the
@@ -115,7 +115,7 @@ func TestEveryNoticeEventIsFiredSomewhere(t *testing.T) {
 // ABSENCE IS A HOSTED WINDOW — and the notices' own memory is what that law cost
 // most (#315). [noticeLedgerPath] answered "" for an empty directory and the
 // board then held everything in RAM for the session, so on every launch that had
-// not exported AFORGE_PROFILE_DIR — which is very nearly all of them — a hint
+// not exported CODEAF_PROFILE_DIR — which is very nearly all of them — a hint
 // meant to age out after three sessions was on its first session every time.
 //
 // The road here is the real one: three ordinary launches in a row, each firing
@@ -672,7 +672,7 @@ func TestNewsIsSaidOnceAfterABuildChange(t *testing.T) {
 // anywhere — which is what this suite's bare app is pinned to (tui3_test.go),
 // and what an embedding that wires its own storage gets.
 //
-// It is NOT what a launch with no AFORGE_PROFILE_DIR gets: that is the ordinary
+// It is NOT what a launch with no CODEAF_PROFILE_DIR gets: that is the ordinary
 // launch, and its notices live in the state root with everything else it
 // remembers ([TestAHintAgesOutAcrossOrdinaryLaunches]).
 func TestABoardWithNoPathKeepsNoticesForTheSession(t *testing.T) {

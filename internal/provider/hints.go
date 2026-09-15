@@ -1,4 +1,4 @@
-// Package provider is Aforge's model adapter: the one place in the process
+// Package provider is codeaf's model adapter: the one place in the process
 // that speaks to an OpenAI-compatible endpoint.
 //
 // It exists because provider economics are request-shape decisions, not loop
@@ -6,7 +6,7 @@
 // adapter can make a provider actually pay for that stability, by carrying the
 // cache key, the usage-accounting opt-in, and the per-phase reasoning knob that
 // the pinned AgentField SDK's Request type has no field for. Everything else in
-// Aforge — the scheduler, the tool registry, the TUI — keeps seeing the SDK's
+// codeaf — the scheduler, the tool registry, the TUI — keeps seeing the SDK's
 // neutral message and response types and never learns a wire detail.
 package provider
 
@@ -172,7 +172,7 @@ func effortFrom(ctx context.Context) effortRequest {
 // paying to write it again.
 func RunCacheKey(task, model string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(task) + "\x00" + strings.TrimSpace(model)))
-	return "aforge-" + hex.EncodeToString(sum[:16])
+	return "codeaf-" + hex.EncodeToString(sum[:16])
 }
 
 // WithLeafCacheKey narrows the run's affinity to one leaf.

@@ -477,7 +477,7 @@ func (r *Recorder) silence(err error) {
 		r.events = nil
 	}
 	r.silenced = true
-	fmt.Fprintf(stderr, "aforge: cannot write the debug record at %s (%v); it is off for this run\n", r.dir, err)
+	fmt.Fprintf(stderr, "codeaf: cannot write the debug record at %s (%v); it is off for this run\n", r.dir, err)
 }
 
 // RunHeader is the run's own first record: which door opened it, what it was

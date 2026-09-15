@@ -1508,9 +1508,9 @@ func (a *app) placeChipped(row, chip string, width int, pal palette) string {
 func (a *app) scopeChip() string {
 	// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS ([shortPath],
 	// and [app.placePath] applies it to this window's own project). A raw
-	// `~/work/aforge-v2` in this chip while the very next place drew
-	// `aforge` would be one fact spelled two ways on two frames a `tab` apart,
-	// and the design draws the short form (SCREEN 2b's `here ~/aforge-v2`).
+	// `~/work/codeaf` in this chip while the very next place drew
+	// `codeaf` would be one fact spelled two ways on two frames a `tab` apart,
+	// and the design draws the short form (SCREEN 2b's `here ~/codeaf`).
 	//
 	// AND THE CHIP'S OWN DECORATIONS GO ON TOP OF THAT ONE FACT: a session opened
 	// over `--host` says whose disk the path is on, and an owned place says the
@@ -1531,7 +1531,7 @@ func (a *app) scopeChip() string {
 // of "where" that could disagree is exactly the drift the ONE SOURCE OF TRUTH
 // law exists for, and they did: the chip drew this window's project on a place
 // that is not home while the errand door fell through to the person's home
-// directory, so a person read `here ~/aforge-v2` and started a task in `~`.
+// directory, so a person read `here ~/codeaf` and started a task in `~`.
 func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
@@ -1550,10 +1550,10 @@ func (a *app) scopeWorkspace() string {
 // project belong to", and a project's NAME is a perfectly good bucket key when
 // nothing recorded a path. The chip is asking where a sentence will LAND, and a
 // name in that slot is not an address: with the cursor on a conversation the
-// chip read `here ~/aforge-v2` and one row down, on a standing item that
-// recorded no directory, `here aforge-v2` — which cannot be told from a second
+// chip read `here ~/codeaf` and one row down, on a standing item that
+// recorded no directory, `here codeaf` — which cannot be told from a second
 // checkout of the same name, and is the exact drift [app.scopeWorkspace]'s own
-// header cites ("a person read `here ~/aforge-v2` and started a task in `~`").
+// header cites ("a person read `here ~/codeaf` and started a task in `~`").
 //
 // SO EVERY ROW ANSWERS WITH A PATH OR WITH NOTHING, and nothing falls through to
 // this window's own workspace, which is what the chip already did for a row that
@@ -1988,7 +1988,7 @@ func hintFitBeside(hint, note string, room int) string {
 // narrow frame may never take. A note is the other way round: it is a sentence
 // whose FIRST clause is what happened and whose later clauses elaborate on it.
 // The settings foot is the worked example — `saved to your profile · a project's
-// own .aforge-v3/config.json is a hand edit` — where the first clause answers
+// own .codeaf/config.json is a hand edit` — where the first clause answers
 // the question a person asked ("where did that go?") and the second is an aside
 // about a file most people will never open. A character ruler took sixty columns
 // through the middle of that path; [hintFit] would have kept the aside and

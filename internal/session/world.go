@@ -17,8 +17,8 @@
 // Two laws shape what it answers with:
 //
 //   - A LIVE-LOOKING ROW IS NOT A LIVE ROW. The project's index is append-only
-//     and a task takes its row when it starts; a machine that lost power, or an
-//     aforge that was killed, leaves rows on disk that say `running` forever.
+//     and a task takes its row when it starts; a machine that lost power, or a
+//     codeaf that was killed, leaves rows on disk that say `running` forever.
 //     So this layer never repeats a file's claim of liveness. It asks the
 //     SESSION, through the presence file it refreshes every few seconds
 //     (taskpresence.go): a `running` index row counts as running only when a
@@ -42,7 +42,7 @@
 //     somebody opened since.
 //   - THE BUCKET NAME IS NOT A PROJECT NAME. The directory under v3/projects is
 //     a workspace path with its separators replaced by dashes, and that encoding
-//     is one-way on purpose (cmd/aforge's chatv3_layout.go: decoding it would be
+//     is one-way on purpose (cmd/codeaf's chatv3_layout.go: decoding it would be
 //     guessing which dashes were separators). The path comes back out of the
 //     sessions' own meta.json, which records it, and a bucket whose sessions
 //     will not say answers with the encoded name unchanged rather than with a
@@ -59,7 +59,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // PlacesRoot is where every project's bucket lives under the state root. It is
@@ -611,7 +611,7 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // TWO RULES, AND THEY PULL IN OPPOSITE DIRECTIONS ON PURPOSE. A folder with no
 // transcript in it is not a session at all and is skipped. A folder whose
 // meta.json says nobody has ever spoken — a `lastUserAt` that is not there — is
-// the empty shell a launch mints and the groom reuses (cmd/aforge's
+// the empty shell a launch mints and the groom reuses (cmd/codeaf's
 // v3ScanBucket), and it is skipped too. But a folder whose meta.json is MISSING
 // or unreadable is kept, for the reason the sweep keeps it: a session that
 // cannot say what it is, stays, because hiding somebody's conversation on the

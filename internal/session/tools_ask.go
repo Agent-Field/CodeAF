@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const askDescription = "Ask only after the decision ladder is exhausted. Give a reason, stakes, structured answers before free text, your pick and what would change it."
@@ -216,7 +216,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		// took a default silently is a run whose decision nobody can find
 		// afterwards. The engine does not print; the answer carries the sentence
 		// in [Answer.From] and this is what puts it where a door with nobody at
-		// it can read it (cmd/aforge's --once). Nothing was ever asked here, so
+		// it can read it (cmd/codeaf's --once). Nothing was ever asked here, so
 		// a surface hearing this about a question it never drew does nothing
 		// with it, which is what [app.foldOthersAnswer] already does.
 		a.emitQuestion(EventQuestionAnswered, q, &answer)

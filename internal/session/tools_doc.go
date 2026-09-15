@@ -61,10 +61,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/pdfx"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // DocumentParser is the one call read_document makes: a file in, its text out.

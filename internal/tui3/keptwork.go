@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
+import "github.com/Agent-Field/codeaf/internal/session"
 
 // noteJob keeps hidden commands visible after the reply that started them ends.
 func (w *behindWatch) noteJob(notice *session.JobNotice) bool {

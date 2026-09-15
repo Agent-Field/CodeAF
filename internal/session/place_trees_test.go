@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // A node's worktree lands in the session's own trees/, and git knows about it
@@ -42,7 +42,7 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 	}
 	// NOTHING OF OURS IN THEIR REPOSITORY. The old directory is not created, not
 	// even empty.
-	if _, err := os.Stat(filepath.Join(repo, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("the repository was littered anyway (%v)", err)
 	}
 	// And the branch law is untouched: a branch off HEAD that merges home.
@@ -90,7 +90,7 @@ func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing
 	}
 
 	// C1: A model-authored in-place request inside that repository takes the same
-	// branch road. Owned changes still merge below because this is aforge's own
+	// branch road. Owned changes still merge below because this is codeaf's own
 	// working repository rather than the person's checkout.
 	inPlace, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 2, "write notes", "in place", "")
 	if err != nil {
@@ -160,7 +160,7 @@ func TestAWorkerInTheConversationsOwnSpaceIsToldThereIsNoProject(t *testing.T) {
 
 // newOwnedPlace is the layout a conversation opened outside any project gets:
 // a session folder whose work/ the door has made into a repository with a first
-// commit (cmd/aforge's prepareOwnedWorkspace).
+// commit (cmd/codeaf's prepareOwnedWorkspace).
 func newOwnedPlace(t *testing.T) (Place, string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -172,7 +172,7 @@ func newOwnedPlace(t *testing.T) (Place, string) {
 		t.Fatal(err)
 	}
 	mustGit(t, work, "init")
-	mustGit(t, work, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+	mustGit(t, work, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost",
 		"commit", "--allow-empty", "-m", "session opened")
 	return Place{Dir: dir, Workspace: work, Owned: true}, work
 }
@@ -366,7 +366,7 @@ func TestTheGitRootLockLivesUnderTheStateRoot(t *testing.T) {
 
 // A node's transcript lives beside the conversation that commissioned it, and
 // the parallel tree under the state root is the legacy answer — which now
-// finally follows AFORGE_HOME, the direct os.UserHomeDir call being the reason
+// finally follows CODEAF_HOME, the direct os.UserHomeDir call being the reason
 // it did not.
 func TestANodeJournalFollowsItsSession(t *testing.T) {
 	state := t.TempDir()
@@ -428,7 +428,7 @@ func TestAPieceOfATasksWorkKeepsToTheSameSessionFolder(t *testing.T) {
 	if want := filepath.Join(place.Trees(), strconv.FormatUint(piece.id, 10)); tree.dir != want {
 		t.Fatalf("the piece works in %q, want %q — inside the session that commissioned the family", tree.dir, want)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("a piece littered the person's repository anyway (%v)", err)
 	}
 	// AND ITS TRANSCRIPT SITS BESIDE ITS PARENT'S, which is the same question

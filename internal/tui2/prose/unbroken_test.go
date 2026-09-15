@@ -30,7 +30,7 @@ var theUnbreakables = []struct {
 	},
 	{
 		"an absolute path",
-		"/home/dev/.aforge/v3/projects/-home-dev-work-aforge-v2-checkout/ffff0000longmsg1/transcript.jsonl",
+		"/home/dev/.codeaf/v3/projects/-home-dev-work-codeaf-checkout/ffff0000longmsg1/transcript.jsonl",
 	},
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 // pinJSON is the committed pin, and it is THE one source of truth for which
-// furrow this aforge is. The build reads it to know what to fetch and what
+// furrow this codeaf is. The build reads it to know what to fetch and what
 // sha256 to demand; the running binary reads the same bytes to know what to
 // call the file it extracts. A version written down twice is a version that
 // drifts, and the shape it drifts into is the worst one — a binary extracting
@@ -33,7 +33,7 @@ type Pin struct {
 	Version string `json:"version"`
 
 	// Artifacts maps "<goos>-<goarch>" to the release asset for it. A platform
-	// with no entry is a platform this aforge cannot embed furrow for — which
+	// with no entry is a platform this codeaf cannot embed furrow for — which
 	// the build says out loud rather than quietly skipping.
 	Artifacts map[string]Artifact `json:"artifacts"`
 }
@@ -72,7 +72,7 @@ func ReadPin() Pin {
 	return pinParsed
 }
 
-// Version is the furrow this aforge is pinned to — "0.1.0" — and is what
+// Version is the furrow this codeaf is pinned to — "0.1.0" — and is what
 // stamps the extracted binary's name.
 func Version() string { return ReadPin().Version }
 

@@ -13,12 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
-	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // Config configures the adapter. It is deliberately the same shape the
@@ -113,7 +113,7 @@ type Config struct {
 	HTTPClient *http.Client
 }
 
-// Client is Aforge's model adapter. It satisfies the harness's LoopClient and
+// Client is codeaf's model adapter. It satisfies the harness's LoopClient and
 // TextStreamer interfaces structurally, so nothing above it knows a wire
 // format, and it owns the only outbound provider path in the process.
 type Client struct {
@@ -134,7 +134,7 @@ type Client struct {
 	// base is the pinned AgentField client retained for an operator's custom
 	// non-direct OpenAI-compatible endpoint. Connected direct services use this
 	// adapter's transport even through ExecuteToolCallLoop, because that is where
-	// their billing-door policy and aforge attribution live. Nil while there is
+	// their billing-door policy and codeaf attribution live. Nil while there is
 	// no key, because the SDK refuses to be built without one.
 	base *ai.Client
 	// wait is the retry backoff, seamed exactly like the media client's video
@@ -312,7 +312,7 @@ func (c *Client) Model() string { return c.config.Model }
 // membrane — drives it rather than a provider-side loop.
 func (c *Client) OwnsToolLoop() bool { return true }
 
-// ExecuteToolCallLoop satisfies the harness's LoopClient interface. Aforge
+// ExecuteToolCallLoop satisfies the harness's LoopClient interface. codeaf
 // ordinarily drives its own loop against this adapter, so this is a contract
 // detail rather than the live chat path — but it is a REACHABLE one, and where
 // it goes is the SDK boundary.
@@ -328,7 +328,7 @@ func (c *Client) OwnsToolLoop() bool { return true }
 // c.base is only for an operator's non-direct plain OpenAI-compatible endpoint.
 // A connected service is direct even when its wire happens to be compatible:
 // sending that loop through the SDK would bypass both its billing-door answer
-// and the User-Agent that identifies aforge honestly.
+// and the User-Agent that identifies codeaf honestly.
 func (c *Client) ExecuteToolCallLoop(
 	ctx context.Context,
 	messages []ai.Message,
@@ -896,7 +896,7 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // never had anything to do with whether the call is watched, and until 2026-08
 // it silently decided exactly that.
 //
-// What that cost, measured: a headless `aforge do` leaf attaches no observer, so
+// What that cost, measured: a headless `codeaf do` leaf attaches no observer, so
 // every one of its calls took the request/response path, whose only bound is
 // [adaptiveCompletionTimeout] — a total deadline that caps at fifteen minutes. A
 // DeepSeek endpoint accepted a request and never answered; the leaf sat on it
@@ -1173,7 +1173,7 @@ func (u *usageWire) reasoningTokens() int {
 // block in, so a second reader cannot drift from the first.
 //
 // USAGE ACCUMULATES ACROSS THE FRAMES OF ONE CALL: A LATER FRAME NEVER ZEROES A
-// COUNT AN EARLIER FRAME CARRIED. Every provider aforge drives today sends its
+// COUNT AN EARLIER FRAME CARRIED. Every provider codeaf drives today sends its
 // token counts and its price together in one terminal frame, so replacing the
 // block wholesale looked right for as long as that held — but that is a property
 // of today's endpoints and not of the protocol. An endpoint that reports the
@@ -1484,7 +1484,7 @@ func (c *Client) completeWithMessagesStreaming(
 		return nil, false, refusal
 	}
 	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
-	// CONTENT TYPE. A gateway behind AFORGE_BASE_URL may take `stream: true` and
+	// CONTENT TYPE. A gateway behind CODEAF_BASE_URL may take `stream: true` and
 	// serve a whole completion anyway; feeding that body to the SSE decoder finds
 	// no `data:` frames and would hand the caller an empty answer for a call it
 	// paid for.

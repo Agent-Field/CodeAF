@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
+	"github.com/Agent-Field/codeaf/internal/tui2/modelui"
 )
 
 // WHAT WENT INTO A PICTURE, when somebody opens the step.

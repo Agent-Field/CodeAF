@@ -16,7 +16,7 @@ import (
 //
 // [DefaultLeafTokens] is calibrated against measured work, and recalibrating it
 // is a reading somebody takes and writes down. That reading is worthless if a
-// second copy of the figure sits at a door: `aforge exec`, `aforge run` and the
+// second copy of the figure sits at a door: `codeaf exec`, `codeaf run` and the
 // chat surface each carried their own `150000`, and chat's even carried a
 // comment promising it "mirrors the headless run defaults exactly" — which is
 // an intention where this repository's one-source-of-truth law wants an
@@ -55,7 +55,7 @@ import (
 // prose, which is markdown and out of an AST law's reach — internal/manual's
 // TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt already owns that
 // half, checking the sentence adaptive-runs.md writes the grant into against
-// `aforge exec --token-budget`'s default. A second law for the same claim was
+// `codeaf exec --token-budget`'s default. A second law for the same claim was
 // written here and deleted: two gates on one figure is the drift this file
 // exists to stop, wearing a test's clothes.
 func TestTheLeafGrantIsSpelledOnce(t *testing.T) {
@@ -112,8 +112,8 @@ func TestTheLeafGrantIsSpelledOnce(t *testing.T) {
 // THE HEADLESS REFERENCE STATES THE GRANT TOO, AND IT IS NOT MARKDOWN THIS
 // PACKAGE MAY IGNORE.
 //
-// docs/HEADLESS.md's flag table gives a default for every flag `aforge exec`
-// and `aforge run` take, and the `--token-budget` row is the grant written out
+// docs/HEADLESS.md's flag table gives a default for every flag `codeaf exec`
+// and `codeaf run` take, and the `--token-budget` row is the grant written out
 // for somebody reading the reference instead of the help. It is the SEVENTH
 // place this figure has lived, and it was the one still saying 150000 after
 // #918 wrote the constant once and after internal/manual's truth table took
@@ -155,7 +155,7 @@ var leafGrantWatched = []struct {
 	dir       string
 	doorsOnly bool
 }{
-	{dir: "cmd/aforge"},
+	{dir: "cmd/codeaf"},
 	{dir: "internal/session"},
 	{dir: "internal/exec", doorsOnly: true},
 }

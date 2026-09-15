@@ -123,7 +123,7 @@ var unspellableField sync.Once
 
 func reportUnspellableField(name string, value float64) {
 	unspellableField.Do(func() {
-		fmt.Fprintf(stderr, "aforge: a model-call record carried %s as %s, which JSON cannot write; the figure is off the row and the row is kept\n",
+		fmt.Fprintf(stderr, "codeaf: a model-call record carried %s as %s, which JSON cannot write; the figure is off the row and the row is kept\n",
 			name, spellNonFinite(value))
 	})
 }
@@ -137,6 +137,6 @@ var unspellable sync.Once
 
 func reportUnspellable(err error) {
 	unspellable.Do(func() {
-		fmt.Fprintf(stderr, "aforge: a model-call record could not be written to the log (%v); the log stays on for the calls that follow\n", err)
+		fmt.Fprintf(stderr, "codeaf: a model-call record could not be written to the log (%v); the log stays on for the calls that follow\n", err)
 	})
 }

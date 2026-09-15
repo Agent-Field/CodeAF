@@ -291,8 +291,8 @@ func TestFirecrawlFetchKeepsBraceLeadingPageText(t *testing.T) {
 
 func TestFirecrawlLiveSearch(t *testing.T) {
 	// V1: The shipped keyless endpoint returns a real result without a key.
-	if os.Getenv("AFORGE_LIVE_FIRECRAWL") != "1" {
-		t.Skip("set AFORGE_LIVE_FIRECRAWL=1 to call the keyless endpoint")
+	if os.Getenv("CODEAF_LIVE_FIRECRAWL") != "1" {
+		t.Skip("set CODEAF_LIVE_FIRECRAWL=1 to call the keyless endpoint")
 	}
 	results, err := (firecrawlSearch{}).Bind(Options{}).Search(
 		context.Background(), "Go programming language release notes", 1,

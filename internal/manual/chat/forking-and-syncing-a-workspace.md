@@ -2,10 +2,10 @@
 
 ## Do I need to install furrow — is furrow required, and do I have it
 
-**You already have it. furrow ships inside aforge, so there is nothing to
-install.** Every copy of aforge carries the furrow it was built against and
-writes it out to `~/.aforge/bin/` the first time something needs it. There is no
-machine where aforge has this and yours does not.
+**You already have it. furrow ships inside codeaf, so there is nothing to
+install.** Every copy of codeaf carries the furrow it was built against and
+writes it out to `~/.codeaf/bin/` the first time something needs it. There is no
+machine where codeaf has this and yours does not.
 
 furrow is open source, Apache-2.0, from Agent-Field:
 **https://github.com/Agent-Field/furrow**. It copy-on-write forks a whole
@@ -16,39 +16,39 @@ workspace into an immutable timeline you can put back.
 **One thing is still yours to do, and it is per folder: attach it.** Until you
 do, `workspace_snapshots`, `workspace_restore`, `workspace_fork` and
 `workspace_merge` are **not on the tool list at all** — not present and refusing,
-simply absent, so aforge tells you it cannot put files back rather than trying.
+simply absent, so codeaf tells you it cannot put files back rather than trying.
 furrow's own words are what you get if you ask: *"this repository is not watched;
 run `furrow watch` first"*.
 
-Attaching is one command, run once, in the folder. aforge's copy is not on your
+Attaching is one command, run once, in the folder. codeaf's copy is not on your
 `PATH`, so name it:
 
 ```
-ls ~/.aforge/bin                       # the copy aforge carries, named for its version
-cd my-project && ~/.aforge/bin/furrow-<version> watch
+ls ~/.codeaf/bin                       # the copy codeaf carries, named for its version
+cd my-project && ~/.codeaf/bin/furrow-<version> watch
 ```
 
 If you would rather have `furrow` as a command of your own, install it yourself
-from the link above; that copy is what your terminal will use, and aforge will
+from the link above; that copy is what your terminal will use, and codeaf will
 still use the one it carries.
 
-Set `AFORGE_FURROW` to the full path of a binary to make aforge use that one
-instead — your own build, or a newer furrow than this aforge is pinned to. A
+Set `CODEAF_FURROW` to the full path of a binary to make codeaf use that one
+instead — your own build, or a newer furrow than this codeaf is pinned to. A
 value that names nothing is an error rather than a quiet fall back.
 
-Nothing is uploaded anywhere, and no watcher is left running. aforge attaches a
+Nothing is uploaded anywhere, and no watcher is left running. codeaf attaches a
 folder by itself in exactly one case: a task about to be handed a whole copy of it
 (the tasks guide, *Does my task see my .env*). It attaches without a background
 watcher, and that attachment alone does not put the four tools above on your belt.
 
-## Where is the furrow that aforge carries
+## Where is the furrow that codeaf carries
 
-`~/.aforge/bin/`, in a file named for its version — `furrow-0.1.0`. It is
-written out the first time aforge needs it and then left alone; a new aforge with
+`~/.codeaf/bin/`, in a file named for its version — `furrow-0.1.0`. It is
+written out the first time codeaf needs it and then left alone; a new codeaf with
 a newer furrow writes a **new** file beside the old one rather than over it, so
 nothing that is running is ever replaced underneath itself.
 
-That folder is not on your `PATH` and aforge does not put it there. Running
+That folder is not on your `PATH` and codeaf does not put it there. Running
 furrow's own commands — `furrow watch`, `furrow ui`, `furrow forks`,
 `furrow remote add` — means naming that path, or installing furrow yourself.
 
@@ -87,7 +87,7 @@ restores**, so a restore is itself undoable. If there is nothing to do you get:
 
 > Nothing to restore: the workspace already matches that restore point.
 
-aforge will not restore on its own judgement. It previews, shows you the paths,
+codeaf will not restore on its own judgement. It previews, shows you the paths,
 and waits for you to say yes.
 
 ## Restore .env, my dev database, or files git never saw
@@ -106,11 +106,11 @@ ask for one path back rather than the whole folder:
 
 Restoration covers symlinks, permissions, extended attributes, SQLite databases
 and git's mutable state. Every restore point declares how exactly it can be put
-back; aforge shows that declaration beside the id, as furrow words it, rather than
+back; codeaf shows that declaration beside the id, as furrow words it, rather than
 promising something furrow did not.
 
 In a folder nobody has attached, none of this exists: no restore points, no
-`.env` back. aforge will say so instead of pretending.
+`.env` back. codeaf will say so instead of pretending.
 
 ## Try something risky without breaking my project
 
@@ -151,7 +151,7 @@ A successful merge says what it changed and what it sealed:
 furrow's own answer to running more than one agent in a project is to give each
 one its own **universe**: a full copy-on-write fork of the working state, so ten
 of them cost roughly the disk of one and none of them fight over files, ports or
-the dev database. In aforge that is `workspace_fork`, one fork per risky run or
+the dev database. In codeaf that is `workspace_fork`, one fork per risky run or
 per session, landed back with `workspace_merge` and its check.
 
 Two things are worth knowing before you rely on it:
@@ -159,24 +159,24 @@ Two things are worth knowing before you rely on it:
 - **Nothing lands by itself.** Each fork is sealed and sits there until somebody
   merges it. A fork whose merge finds the same paths changed on both sides stops,
   and says so, and changes nothing.
-- **This is furrow's machinery, not aforge's.** aforge does not orchestrate the
+- **This is furrow's machinery, not codeaf's.** codeaf does not orchestrate the
   agents, watch them for conflicts, or decide the merge order. `furrow forks`
   and `furrow ui`, run yourself, are where you see every universe, its real disk
   cost and its live conflicts.
 
-In a folder nobody has attached, two aforge sessions share that folder exactly as
+In a folder nobody has attached, two codeaf sessions share that folder exactly as
 they always have — see "Two terminals in the same folder" on the sessions and
 rewind page. Nothing about that changes, and no fork is available.
 
 ## Sync my folder to the other machine — my laptop's files over there
 
-If you want a folder that lives on your laptop to exist on the machine aforge is
-running on, **aforge does not have its own file-sync**, and does not try to grow
-one. What it does is offer furrow's pairing. Every machine running aforge already
-has furrow; a machine that is not running aforge needs its own copy.
+If you want a folder that lives on your laptop to exist on the machine codeaf is
+running on, **codeaf does not have its own file-sync**, and does not try to grow
+one. What it does is offer furrow's pairing. Every machine running codeaf already
+has furrow; a machine that is not running codeaf needs its own copy.
 
 Run these yourself, in the folder, on the machine that has it — furrow's own
-commands are not on your `PATH`, so name aforge's copy in `~/.aforge/bin/` or
+commands are not on your `PATH`, so name codeaf's copy in `~/.codeaf/bin/` or
 install furrow yourself:
 
 ```
@@ -196,9 +196,9 @@ the recovery key, entered once per machine, is the only thing that can read it.
 The remote can be an SSH host over a LAN or a tailnet, or any S3-compatible
 bucket used as a mailbox. No hosted service is involved.
 
-**aforge never runs `furrow remote add` for you.** Pairing prints the recovery
-key, and a key that passed through aforge would be written into a transcript. So
-the commands are yours to run, and the key never reaches aforge at all.
+**codeaf never runs `furrow remote add` for you.** Pairing prints the recovery
+key, and a key that passed through codeaf would be written into a transcript. So
+the commands are yours to run, and the key never reaches codeaf at all.
 
 One honest edge, furrow's own:
 
@@ -217,16 +217,16 @@ honest options:
 
 1. **Copy it over and work there.** Simplest, and it is what most people mean.
 2. **Pair the folder with furrow** — see "Sync my folder to the other machine".
-   Both machines run aforge, so both already have furrow. That gives the far machine your
+   Both machines run codeaf, so both already have furrow. That gives the far machine your
    *current* state, not your last commit, and keeps it warm both ways with
    `furrow sync --follow`.
 
 Option 2 is worth the setup only when you keep going back and forth. Note its
 edge: cross-machine divergence is preserved and reported, never merged for you,
 so let one machine be the one that writes — and over a connection, that is the
-machine aforge is running on.
+machine codeaf is running on.
 
-Option 2 still needs the folder attached on both ends, and aforge will say so
+Option 2 still needs the folder attached on both ends, and codeaf will say so
 rather than offering a sync that is not set up.
 
 ## When one of the workspace tools cannot do something
@@ -237,10 +237,10 @@ furrow's words are what you will act on:
 
 > furrow could not do that: this repository is not watched; run `furrow watch` first
 
-If furrow answers something aforge cannot make sense of — a version whose output
+If furrow answers something codeaf cannot make sense of — a version whose output
 changed shape — it says so plainly instead of guessing:
 
-> furrow answered in a shape aforge does not understand
+> furrow answered in a shape codeaf does not understand
 
 Nothing is retried, nothing is half-applied, and a restore that furrow did not
 confirm is never reported as done.
@@ -253,11 +253,11 @@ Two more limits worth knowing:
 - **Long output is cut.** A fork's output and a merge check's output are capped,
   and the cut says how much was left behind: `… 5120 more bytes not shown`.
 
-## What aforge does not do with furrow
+## What codeaf does not do with furrow
 
 Plainly, so you do not find out the hard way:
 
-- **It does not attach a folder.** aforge carries furrow, so nothing is yours to
+- **It does not attach a folder.** codeaf carries furrow, so nothing is yours to
   install — but `furrow watch` is yours to run, and a folder nobody has attached
   stays unattached.
 - **It does not pair machines.** `furrow remote add`, `furrow sync` and
@@ -268,8 +268,8 @@ Plainly, so you do not find out the hard way:
   `workspace_merge` is called on it by name.
 - **It does not read furrow's own dashboard.** `furrow forks`, `furrow timeline`,
   `furrow ui`, `furrow bisect`, `furrow try` and `furrow shrink` are furrow's
-  commands, run in your own terminal. aforge uses four of furrow's verbs and no
+  commands, run in your own terminal. codeaf uses four of furrow's verbs and no
   more.
 - **It cannot tell you whether a remote is already paired.** furrow does not
-  report that in a form aforge reads, so the sync commands are offered as
+  report that in a form codeaf reads, so the sync commands are offered as
   something to run, not as a state to check.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // A BLOCKQUOTE'S GUTTER IS NOT A RULE, BECAUSE THIS SURFACE ALREADY HAS ONE.

@@ -498,7 +498,7 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// THE CONVERSATION HANGS FROM THE TOP AND THE SLACK FALLS BELOW IT. The
 	// blank rows used to go above, which put a two-line conversation down at the
 	// bottom of an empty screen and made a new session look like the tail of one
-	// that had scrolled away. A person opening aforge reads from the top of the
+	// that had scrolled away. A person opening codeaf reads from the top of the
 	// window like they read everything else, so the first thing said is the
 	// first thing drawn and the emptiness is under it where it costs nothing.
 	//
@@ -871,7 +871,7 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 // The welcome box is chrome by construction — it is built, marked and
 // hit-tested with the legend and the draft, and it belongs there because it is
 // what stands in for a conversation rather than part of one. But it is the one
-// piece of chrome that reads as the TOP of the page: a person opening aforge
+// piece of chrome that reads as the TOP of the page: a person opening codeaf
 // meets the box first and the input second, and a box pinned to the bottom of an
 // empty window put the greeting below a screenful of nothing.
 //

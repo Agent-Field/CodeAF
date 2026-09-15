@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── /status AND /cost: THE STATUS LINE, ASKED OUT LOUD ──────────────────────
@@ -106,7 +106,7 @@ func (a *app) statusItems() []deckItem {
 			item.value = "the round trip to " + a.host + " is about " + latencyWord(a.linkLatency)
 		}
 		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.
-		// The frame calls it "aforge" because the path is bookkeeping a person
+		// The frame calls it "codeaf" because the path is bookkeeping a person
 		// did not ask to read (host.go's [ownedWord]) — but this note is the one
 		// surface whose whole job is the full truth, and "where did my files go"
 		// is exactly the question somebody opens it to answer.
@@ -121,7 +121,7 @@ func (a *app) statusItems() []deckItem {
 	// [app.deckItems] now, so both surfaces say it and neither says it twice.
 	// THE BUILD IS A LOOKUP FACT, NOT LIVE TELEMETRY. It stays off the bottom
 	// row and phone sheet, where an immutable revision would spend a row all
-	// session, and appears here whole when a person asks which aforge is
+	// session, and appears here whole when a person asks which codeaf is
 	// holding this conversation.
 	if a.build != "" {
 		items = append(items, deckItem{label: "build", value: a.build})

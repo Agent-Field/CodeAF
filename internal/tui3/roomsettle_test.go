@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE LANDED `your call` IS A QUESTION, AND IT FOLLOWS THE PERSON EVERYWHERE.

@@ -5,7 +5,7 @@ package manual
 // A lookup on this manual is composed by a model, not typed by the person who
 // wanted to know. Asked "who can see my files", `deepseek/deepseek-v4-flash`
 // was measured sending "who can see my files privacy file access", "privacy
-// files who can see my workspace", "who can see my files when I use aforge" —
+// files who can see my workspace", "who can see my files when I use codeaf" —
 // and this corpus is a few dozen short sections, so two words nobody said move
 // the ranking off the page. Those were the numbers then; the permissions
 // section has since been reworded to carry the privacy and file-access terms,
@@ -13,8 +13,8 @@ package manual
 // stand-ins for the two that reach the page on their own now:
 //
 //	who can see my files                        → permissions, 2nd of 4
-//	who can see my files when I use aforge      → MISS
-//	who can view my files in aforge             → MISS
+//	who can see my files when I use codeaf      → MISS
+//	who can view my files in codeaf             → MISS
 //	visibility of files in the workspace        → MISS
 //
 // The person's own words are the better question and the harness is holding

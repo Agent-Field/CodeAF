@@ -45,11 +45,11 @@ words, and the one printed on the terminal before the screen appears always says
 what the trouble was after a colon:
 
 ```
-memory is off for this session: could not open ~/.aforge/graph.db: permission denied
+memory is off for this session: could not open ~/.codeaf/graph.db: permission denied
 ```
 
-Everything remembered on this machine lives in one file, `~/.aforge/graph.db`,
-and every part of aforge opens that same file. When it will not open, this
+Everything remembered on this machine lives in one file, `~/.codeaf/graph.db`,
+and every part of codeaf opens that same file. When it will not open, this
 conversation runs without memory rather than refusing to start — you asked for a
 conversation, and a sulky file is no reason not to have one. Nothing already in
 the file is lost by this; nothing new is written until it opens again.
@@ -57,13 +57,13 @@ the file is lost by this; nothing new is written until it opens again.
 The reason after the colon is the operating system's own, and it is the thing to
 act on:
 
-- `permission denied` — something owns `~/.aforge` that you do not. `ls -la ~/.aforge`
+- `permission denied` — something owns `~/.codeaf` that you do not. `ls -la ~/.codeaf`
   says who.
 - `read-only file system` — the disk it is on will not take writes.
 - `file is not a database` / `database disk image is malformed` — the file is
   damaged. Move it aside and the next launch makes a fresh one, empty.
 
-**On a machine that has never run aforge there is no trouble to report.** The
+**On a machine that has never run codeaf there is no trouble to report.** The
 folder is made on the way in, and the first launch comes up with an empty memory
 that teaches rather than an error. It did not always: a first run once reported
 `out of memory (14)`, which was never true — that is one code SQLite uses for
@@ -72,18 +72,18 @@ worth replacing.
 
 ## Where is everything you remember kept
 
-In `~/.aforge/graph.db`, one file, made the first time aforge runs. Memories,
+In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,
 every conversation this machine has held, and the work it has run are all in it,
 which is why a memory kept in one project is there in the next.
 
-`AFORGE_HOME` moves the whole folder — set it and aforge keeps everything
+`CODEAF_HOME` moves the whole folder — set it and codeaf keeps everything
 somewhere else, which is how a disposable run gets a brain of its own without
 touching yours.
 
 Copy the file to another machine and your memories go with it. Delete it and
 they are gone; nothing else keeps a second copy.
 
-## How do I see what aforge remembers about me?
+## How do I see what codeaf remembers about me?
 
 Open `/memory` — or `/memories`, or `alt+6` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
@@ -343,7 +343,7 @@ That number is what `helped 7` counts in `/memory`, and it is one of the three
 things the shortlist is ranked by. It counts **help, not retrieval**: a line put
 in front of a model that then had nothing to do with the reply is counted
 *against* itself, so something that keeps sounding relevant and never once
-changes an answer stops being offered. It is the same bargain aforge already
+changes an answer stops being offered. It is the same bargain codeaf already
 keeps with a suggested fix that gets offered and then fails.
 
 Nothing is counted either way when that pass could not run. A provider outage is
@@ -355,7 +355,7 @@ Yes. `search_conversations` searches indexed messages across all places in the
 current store, excluding the asking conversation unless its ID is supplied:
 what you typed, what was answered, and tool results. Ask "what did
 we decide about the retry limit" or "search my old conversations for the flag
-name" and aforge looks for the original words.
+name" and codeaf looks for the original words.
 
 Each match carries its conversation name and ID, message ID, a copyable `ref`,
 date, matching passage, whether it is full text or an excerpt, the stored role
@@ -385,7 +385,7 @@ even when there is no transcript file beside the current conversation.
 - This is word search, not semantic search. Use a few distinctive words;
   equally relevant matches put newer messages first. Short words and Unicode
   words are supported (at most 32 query words). Names and IDs label results;
-  titles are not searched. If a task search misses, aforge is pointed at
+  titles are not searched. If a task search misses, codeaf is pointed at
   conversation search when that tool is available.
 - Only messages already indexed in this store are searched. Memory-off history,
   failed or pending index writes, other stores and spilled file contents are not
@@ -396,7 +396,7 @@ even when there is no transcript file beside the current conversation.
   when their parent has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
-  words. Asked what was decided, aforge searches and quotes rather than
+  words. Asked what was decided, codeaf searches and quotes rather than
   reciting a memory, because the words somebody actually used are the answer and
   a summary of them is not.
 
@@ -412,7 +412,7 @@ that is the answer it gives most of the time.
 When it does find something, it is settled against what is already remembered
 near it before anything is written. Four outcomes: it is added, it refines an
 existing line, it replaces a line that has stopped being true, or it is skipped
-because something already says it. That is what keeps telling aforge the same
+because something already says it. That is what keeps telling codeaf the same
 preference in three sessions from leaving three near-identical lines behind.
 
 Nothing is announced when a memory is **added or refined** by this pass — no
@@ -462,7 +462,7 @@ is where you see what it did — and because a line it rewrote was last touched 
 the tidy rather than by a conversation, that row's `learned <age>` is the age of
 the rewrite and it names no session. Nothing is deleted: a retired line keeps its
 row and the store keeps what it said before. What the pass spent is one line in
-the day's ledger under `~/.aforge/v3/standing/`, and it counts against the same
+the day's ledger under `~/.codeaf/v3/standing/`, and it counts against the same
 daily budget as everything else that runs in the background.
 
 ## Does it clean up or delete old memories on its own?
@@ -478,7 +478,7 @@ own is never a reason.
 
 **And it will never replace something you said yourself with something it
 worked out.** A `preference`, a `decision` and a `correction` are your own words
-about how you want things — a correction is you saying aforge had it wrong — and
+about how you want things — a correction is you saying codeaf had it wrong — and
 the tidy is not allowed to decide any of them has been superseded. It may sharpen
 the wording of one, because you can read that and change it back; it may not
 retire it. Only a plain `fact` and a `project state` can be retired that way,
@@ -500,7 +500,7 @@ remembered · deploys on Fridays
 ```
 
 `/remember <text>` is the same thing typed as a command. So is the `remember`
-tool, which aforge reaches for itself when you have stated something durable: it
+tool, which codeaf reaches for itself when you have stated something durable: it
 takes the line and, optionally, how far the truth reaches — `user` for something
 true about you everywhere (the default), `project` for something true only in
 this project, `env` for something true only on this machine.
@@ -554,7 +554,7 @@ off, the ceiling is raised to **2,000 tokens** instead so the answer has room in
 front of it.
 
 An unreadable answer costs **one** repair retry and no more. An empty answer that
-ended at the 200-token ceiling is different: aforge retries the same question
+ended at the 200-token ceiling is different: codeaf retries the same question
 once with 2,000 tokens. If that answers, later calls on that model start with the
 larger budget. If it is empty again, this conversation stops using the reflex
 model and uses the configured **small work** model instead, with one line saying
@@ -574,9 +574,9 @@ pair uses it.
 
 ## Where is it kept, and does a task see it?
 
-It is kept in `~/.aforge/graph.db`, which is per person rather than per
+It is kept in `~/.codeaf/graph.db`, which is per person rather than per
 conversation or per project — so something remembered in one repository is
-remembered in the next. `AFORGE_HOME` moves it with everything else aforge
+remembered in the next. `CODEAF_HOME` moves it with everything else codeaf
 keeps. The same file holds every message of every conversation, which is what
 `search_conversations` searches; the transcripts themselves stay in each
 conversation's own folder.
@@ -592,7 +592,7 @@ brain, all blind to each other.
 Yes, and it is a separate thing from everything above. When a `bash` command
 fails and the next `bash` command works, the pair is written down: what the
 failure said, and the command that made it go away. No model is asked anything to
-do it — a failure followed by a success is something aforge watched happen.
+do it — a failure followed by a success is something codeaf watched happen.
 
 The next time that same failure comes back, **and only if the pair has earned
 it**, one line is added to the bottom of the failed row, and it is the only
@@ -603,7 +603,7 @@ this exact error came up here before · what ran next and it went away: make cle
 ```
 
 That is the weaker of **two** lines, and it is the one a suggestion starts life
-with: all aforge has watched is that the command ran after the failure and the
+with: all codeaf has watched is that the command ran after the failure and the
 failure did not come back. Once that suggestion has been offered back, taken,
 and the error has gone away, it earns the stronger line:
 
@@ -655,9 +655,9 @@ is worse than the silence it replaced.
 Three kinds of failure are watched and deliberately **not** written down, because
 nothing the next command did could have fixed them:
 
-- **aforge itself said no.** A refused call — a permission you denied, a command
+- **codeaf itself said no.** A refused call — a permission you denied, a command
   outside what a task's checker may run, a tool a task does not have — is
-  aforge's own answer, written before anything ran. Whatever gets typed next is
+  codeaf's own answer, written before anything ran. Whatever gets typed next is
   simply the next thing that was typed.
 - **the tool is not there.** `Unknown tool: …` is the same fact from the other
   side.
@@ -665,7 +665,7 @@ nothing the next command did could have fixed them:
   command that ran badly, it is the absence of a command. Going round an absence
   is not advice anybody can be handed later.
 
-A refusal is also never **answered**: however much aforge knows about that
+A refusal is also never **answered**: however much codeaf knows about that
 wording, no suggestion is added under a refused call.
 
 This was a real defect, and it is what the rule is written from. On one long
@@ -677,15 +677,15 @@ the checker's own refusal. An hour later it offered `pwd` back as "what worked".
 ## Why did it say this error was fixed before, and how did it know?
 
 Because it watched it happen here, on this machine, in an earlier conversation
-or an earlier task — nothing is shipped with aforge and nothing is learned from
+or an earlier task — nothing is shipped with codeaf and nothing is learned from
 anybody else's work.
 
 Two files hold it, both called `fixes.json`. One sits beside this project's
 conversations and is asked first, because a fix is usually about this
 repository — its toolchain, its build tags, the one `grep` on this machine that
-will not take that pattern. The other sits at the top of aforge's own folder and
-is what makes the first failure in a brand new checkout cheap. `AFORGE_HOME`
-moves both, with everything else aforge keeps.
+will not take that pattern. The other sits at the top of codeaf's own folder and
+is what makes the first failure in a brand new checkout cheap. `CODEAF_HOME`
+moves both, with everything else codeaf keeps.
 
 **Tasks write into the same project file.** A worker hammering a build in its own
 working copy is where most of this comes from, and a private file nobody ever read
@@ -703,7 +703,7 @@ line on a failed row is the whole of what it ever says.
 
 ## I used to have a memory.md file
 
-Earlier builds kept memory as one file of lines at `~/.aforge/v3/memory.md`,
+Earlier builds kept memory as one file of lines at `~/.codeaf/v3/memory.md`,
 written by a `note` tool and filtered by a `forget` tool. Neither tool exists any
 more, and the file is no longer read on every message.
 
@@ -716,7 +716,7 @@ wrote is still on disk. It says so once:
 imported 12 memories from memory.md
 ```
 
-After that the file is gone from aforge's view and the store is the only memory.
+After that the file is gone from codeaf's view and the store is the only memory.
 
 ## It used to say preparing saved context — why is that gone, and does the lookup slow my answer down?
 

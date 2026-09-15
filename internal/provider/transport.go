@@ -104,7 +104,7 @@ const (
 //     this package sends `Expect: 100-continue`, so the wait it bounds is a
 //     wait no request of ours takes. It is kept at a second rather than
 //     disabled because a zero here means "wait forever" for the one request
-//     that might one day carry the header through a proxy at AFORGE_BASE_URL.
+//     that might one day carry the header through a proxy at CODEAF_BASE_URL.
 const (
 	idleConnTimeout       = 6 * time.Minute
 	http2KeepAlive        = 2 * time.Minute
@@ -137,7 +137,7 @@ func buildTransports() {
 	// sixty-four. Every request past the second was therefore closing its
 	// connection on completion and paying a fresh handshake on the next one —
 	// invisible against HTTP/2 to OpenRouter, which multiplexes over one
-	// connection, and expensive against an h1 endpoint behind AFORGE_BASE_URL.
+	// connection, and expensive against an h1 endpoint behind CODEAF_BASE_URL.
 	shared.MaxIdleConnsPerHost = limiterCeiling
 	if shared.MaxIdleConns < 2*limiterCeiling {
 		shared.MaxIdleConns = 2 * limiterCeiling

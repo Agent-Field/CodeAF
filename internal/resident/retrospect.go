@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // JobSketch is one settled job as the retrospective sees it: what was asked

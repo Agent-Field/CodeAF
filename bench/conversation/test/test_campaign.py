@@ -20,8 +20,8 @@ class CampaignTests(unittest.TestCase):
         self.binary = self.root / "binary"
         self.binary.write_bytes(b"frozen executable")
         self.args = argparse.Namespace(manifest=str(self.root / "plan.json"),
-            arms="aforge,pi,omp", scenarios="data-tally,revision-midwork", repeats=3,
-            cap=30, seed=12, id="test", aforge=str(self.binary))
+            arms="codeaf,pi,omp", scenarios="data-tally,revision-midwork", repeats=3,
+            cap=30, seed=12, id="test", codeaf=str(self.binary))
 
     def plan(self):
         with patch.object(campaign.shutil, "which", return_value=str(self.binary)):
@@ -37,7 +37,7 @@ class CampaignTests(unittest.TestCase):
         for block in ("1", "2", "3"):
             for scenario in ("data-tally", "revision-midwork"):
                 self.assertCountEqual([r["arm"] for r in first["schedule"]
-                    if r["block_id"] == block and r["scenario"] == scenario], ["aforge", "pi", "omp"])
+                    if r["block_id"] == block and r["scenario"] == scenario], ["codeaf", "pi", "omp"])
 
     def test_the_default_battery_is_the_six_calibration_slices(self):
         # An added scenario must not join the battery by existing: every earlier
@@ -75,7 +75,7 @@ class CampaignTests(unittest.TestCase):
         entry.write_text('import "./agent.js"')
         implementation = self.root / 'agent.js'
         implementation.write_text('const prompt = "original"')
-        self.args.aforge = str(entry)
+        self.args.codeaf = str(entry)
         self.plan()
         implementation.write_text('const prompt = "changed"')
         with patch.object(campaign.subprocess, 'run') as run:

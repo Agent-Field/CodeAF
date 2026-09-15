@@ -12,7 +12,7 @@ import "strings"
 // [ModelExecOpts.Model] is the other one, and it belongs to the RUN: a person
 // said "research the pricing tiers with opus", and the model they named is a
 // fact about this run of the harness rather than about the harness itself
-// (internal/session's harness.go reads the sentence; cmd/aforge hands the answer
+// (internal/session's harness.go reads the sentence; cmd/codeaf hands the answer
 // down). Nothing on the page changes, nothing is saved, and the next run of the
 // same harness is the ordinary one again.
 //

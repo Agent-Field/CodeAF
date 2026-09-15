@@ -17,13 +17,13 @@ watch is the shape of the work crystallising as the planner learns what is there
 Two things bound it: **one fuel tank in dollars** for the whole run, and small nodes.
 Inside a run, parallelism comes from having many nodes, never from a big one.
 
-**A run is not how aforge works on wide things, and it is not something a conversation can
+**A run is not how codeaf works on wide things, and it is not something a conversation can
 open at all.** Ordinary work — however broad — takes one road: one task, which hands its own
 parts out once it has opened the material. There is no word, no command, no setting and no
 tool that starts a run from a conversation; *How do I start an adaptive run* below is the
 whole of that answer. What the rest of this page describes — the fuel tank, the roster tree,
 the run's own page — is how a run behaves where one exists, and is left here because the
-machinery is still in aforge. See also *Should this be a run, or one worker that splits
+machinery is still in codeaf. See also *Should this be a run, or one worker that splits
 itself*.
 
 ## Should this be a run, or one worker that splits itself — when I use a run instead of a task, why didn't you start an adaptive run for this, how it knows the work is too big for one worker
@@ -84,7 +84,7 @@ opus` — those words are simply part of what you said; nothing reads a tank out
 more.
 
 **What is left of a run, and where.** The planner, the fuel tank, the run's page and the
-node tree are all still in aforge, and the rest of this page describes them, because work
+node tree are all still in codeaf, and the rest of this page describes them, because work
 that arrives as a planned graph still behaves exactly this way. What no longer exists is a
 way into it from here. For a shape of work that recurs, the thing to reach for is a
 **sub-harness** — built once, saved, offered again (*Saved shapes of work*) — and for one
@@ -92,7 +92,7 @@ job that leaves the conversation, a **task**.
 
 ## The plan said "not settled" — what do I do
 
-For every oversized work node the planner could not divide, `aforge plan` writes this line
+For every oversized work node the planner could not divide, `codeaf plan` writes this line
 to the error stream:
 
 ```
@@ -101,7 +101,7 @@ not settled: <title> — <reason>
 
 The graph was still written, but the command exits with code **2**. The reason means the
 planner could not divide a node that is too large for one worker. Rephrase the request and
-name the parts you want, or run it anyway with `aforge do`, which plans again.
+name the parts you want, or run it anyway with `codeaf do`, which plans again.
 
 One of the reasons is measured rather than judged: **its named material exceeds what one
 worker holds**. When the run has a folder (`-w`), the planner weighs the material a node
@@ -139,10 +139,10 @@ None of this happens without a folder to weigh in. A run with no `-w`, or a goal
 no file that exists, is not treated as small — it is treated as unmeasured, and every one of
 these passes behaves exactly as it did before any of it was read.
 
-## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
+## Running one task without the screen — codeaf do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
-aforge do "<task>"
+codeaf do "<task>"
 ```
 
 One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
@@ -192,22 +192,22 @@ the error stream:
 ```
 it stopped to ask:
   <the question, word for word>
-headless mode cannot answer that — `aforge do` runs with nobody at the keyboard, so nothing was done.
+headless mode cannot answer that — `codeaf do` runs with nobody at the keyboard, so nothing was done.
 ```
 
 Put the answer inside the ask and run it again, or bring it here where it can be answered.
 
-## Running one worker with no plan behind it — what aforge exec is for
+## Running one worker with no plan behind it — what codeaf exec is for
 
 ```
-aforge exec "<prompt>"
+codeaf exec "<prompt>"
 ```
 
 One worker, straight through. No plan, no cutting the job into pieces, no review of what
 comes back, nothing that repairs itself mid-flight — it is the same worker a single piece
 of a job runs on, handed to you on its own. Reach for it when you have already decided what
-the work is and want the cheapest, most predictable path to an answer; reach for `aforge
-do` when you want aforge to work out how the job divides and to judge what it produced.
+the work is and want the cheapest, most predictable path to an answer; reach for `codeaf
+do` when you want codeaf to work out how the job divides and to judge what it produced.
 Nothing checks the answer here.
 
 With no prompt written out, it reads the prompt from whatever is piped in.
@@ -236,15 +236,15 @@ it stopped, what it used, and the files it made. **A run that failed also carrie
 script reading only standard output can learn why and not just that.
 
 **Its exit code is the one ladder every headless command leaves on**, and it is written in
-`aforge --help` beside the command: `0` done · `1` it could not be run at all · `2` it ran
+`codeaf --help` beside the command: `0` done · `1` it could not be run at all · `2` it ran
 and did not finish · `3` a limit you set stopped it · `4` it needed an answer and nobody
 was there. Which limit stopped it is in `stop`. **`1` means nothing ran at all** — a
 missing key, or a model id the provider rejected before the first call — so a run that
 started, spent money and then fell over leaves with `2`, not `1`.
 
-`aforge exec` used to leave on six rungs of its own — `2` the token budget, `3` the turn
+`codeaf exec` used to leave on six rungs of its own — `2` the token budget, `3` the turn
 cap, `4` the wall, `5` an error, `6` nothing to say — and never returned `1`. Setting
-`AFORGE_EXIT_CODES=legacy` puts those old numbers back for one release and changes nothing
+`CODEAF_EXIT_CODES=legacy` puts those old numbers back for one release and changes nothing
 else.
 
 `--plan-model` is still taken so that a command line written before it went away keeps
@@ -291,7 +291,7 @@ A run is also bounded in time: **4 hours** covers every node, every planner call
 wait at the gate.
 
 **And the whole session says so, to every other window.** While a run sits at its gate the
-conversation reads `waiting on you` — on home, and on every other aforge open on the
+conversation reads `waiting on you` — on home, and on every other codeaf open on the
 machine — with `out of fuel · $100.00 of $100.00` beside it, the same line the run's own page
 shows. It is the same word an approval question or a task proposal puts there, and it
 sorts to the top of its project for the same reason: nothing is going to happen until you
@@ -373,7 +373,7 @@ does not move it. A run whose classes resolved nothing says nothing rather than 
 out carries a `title` of its own: two or three lowercase words naming the role or the
 slice — `traffic shapes`, `token bucket`, `pricing sheet` — and that is what the roster
 row, the home card and the task list all draw. It costs nothing extra; it is one more
-field in an answer aforge was already paying for.
+field in an answer codeaf was already paying for.
 
 It is a separate thing from the node's **goal**, which is the whole brief the worker
 opens on. That brief is written to the worker in the second person and runs to a
@@ -392,12 +392,12 @@ the row is named from the node's **id** instead, when that id has words in it: a
 mints are its own filing rather than language — `r1` through `r7` with `synth` at the foot
 of them — and spelling one of those out leaves you with `r1`. So a node whose title is
 missing, or is nothing but its own id over again, is sent to the same small naming model
-every other piece of work in aforge is named by: two or three lowercase words, read off
+every other piece of work in codeaf is named by: two or three lowercase words, read off
 what the node was actually asked to do.
 
 That call is made the moment the node joins the run and **nothing waits for it** — the
 work is already launchable, and the answer lands a second or two later. In that gap the
-row is drawn as `task 19` — aforge's own word for work nobody has named yet — and renames
+row is drawn as `task 19` — codeaf's own word for work nobody has named yet — and renames
 itself when the name arrives. You may see one flicker past on a fast node. What you will
 not see is `r1`: a raw id on a row looks like an answer and is not one.
 
@@ -458,19 +458,19 @@ rather than showing an error. Only a long transcript is trimmed, and it says how
 `… N earlier lines` sits at the top of what is kept.
 
 The file itself is a real session journal at
-`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
+`~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
 
 ## it could not be read on that machine — a run's transcript over --host
 
 A run's rows on the task page each name a transcript, and over `--host` that name is drawn
-with the far machine in front of it — `spark:/home/you/.aforge/v3/runs/<session>/<run>/n3.jsonl`.
+with the far machine in front of it — `spark:/home/you/.codeaf/v3/runs/<session>/<run>/n3.jsonl`.
 The card then peeks the end of that file over the connection.
 
 Two things used to go wrong here and both are fixed:
 
 - **Every adaptive transcript was refused.** The engine only opens a record under the roots
   it answers for, and it was holding one of the two: a run's node journals live under
-  `~/.aforge/v3/runs` while conversations live under `~/.aforge/v3/projects`. So a card that
+  `~/.codeaf/v3/runs` while conversations live under `~/.codeaf/v3/projects`. So a card that
   named a perfectly readable `n3.jsonl` was answered `it could not be read on <machine>` —
   the file was there, and the boundary was wrong. The engine now answers for both roots.
 - **A run's own row named a folder.** The root row of a run pointed at the run's *directory*,
@@ -503,7 +503,7 @@ Yes, and every node of it does too.
 your own message under the heading `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS` and the
 line saying their words win where anything disagrees; then `THE GOAL:` — the goal the run
 was started with; then anything you have steered it with since (which outranks its plan);
-then what is done, the frontier, and the fuel gauge. The verbatim part is taken by aforge
+then what is done, the frontier, and the fuel gauge. The verbatim part is taken by codeaf
 from the conversation, not written by any model, so a planner cannot paraphrase away a
 requirement it never had to copy.
 
@@ -556,14 +556,14 @@ Each node is a child agent working in your workspace, and two bounds are put on 
 A node sees its prerequisites' **digests** — eight lines or so each, plus what they wrote —
 and never their whole output. That is what keeps the run's context from growing with the
 run. Each node's transcript is a real session journal under
-`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
+`~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
 
 Nodes run **4 at a time**, and one gives up after 60 steps or 6 steps with no progress.
 
 ## What happens when a run node's reply is cut off at the output limit
 
 A text-only reply is normally how an adaptive-run node finishes. If the provider says
-that reply was cut off at its output-token limit, aforge does **not** accept the fragment
+that reply was cut off at its output-token limit, codeaf does **not** accept the fragment
 as finished work. It tells the node that the reply was cut off and asks it to continue in
 smaller parts, using tool calls to save a large deliverable when writing is in scope and
 keeping its final report short.
@@ -600,7 +600,7 @@ for. It is never held to this.
 A rule you state about what the run may or may not **do** — as distinct from what it must
 produce — is a law of the run, not a preference in the brief. Tell it to touch nothing
 (`Change no files.`) or to stay inside one folder (`Only touch docs/.`, `Don't write
-outside src/.`). aforge may only hold you to words you actually wrote: a rule it cannot
+outside src/.`). codeaf may only hold you to words you actually wrote: a rule it cannot
 quote back out of your request is dropped. **Three things then happen with it.**
 
 - **Every worker reads it first.** It sits above the working method in the brief of every
@@ -610,7 +610,7 @@ quote back out of your request is dropped. **Three things then happen with it.**
 - **The gate checks the files the run changed against it**, before any review is bought.
   A run told to touch nothing is stopped by any file it left in your workspace — **or
   deleted from it**; a run told to stay in one folder, by anything it wrote outside that
-  folder. aforge's own bookkeeping — its `.aforge/` logs and traces — is never counted, and
+  folder. codeaf's own bookkeeping — its `.codeaf/` logs and traces — is never counted, and
   neither is a dependency tree something installed. A rule no such arithmetic can settle —
   "don't use the network" — is put to the review as the standard beside your request
   instead, and **a review that fails the work by quoting one of your rules ends it the same
@@ -660,7 +660,7 @@ that before delivering`.
   and a run once shipped "all three files are implemented and committed" over a file that
   had never been written.
 - **The review asked for something you never asked for.** Nothing is redone, because a
-  round bought against a standard aforge set for itself cannot converge on anything. You
+  round bought against a standard codeaf set for itself cannot converge on anything. You
   are told, in the delivery: `— I've delivered as it stands, because what the review asked
   for next is not in the request, and I don't redo work over a standard the request never
   set. Say the word and I will.`
@@ -670,7 +670,7 @@ that before delivering`.
   left on the run to finish it.`
 
 **Only the first two of those are a finished run.** The other two hand over something the run
-itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
+itself says is short, so the work lands as **partial** — headless, `codeaf do` leaves with
 **exit 2: the run handed over less than it promised, and the finding it is short of is
 named on the last line.** That is the whole difference: a refusal that was checked against
 the world overturns the finding, and a refusal about where the review got its words does
@@ -693,7 +693,7 @@ partial — gate: The deliverable does not contain the code that writes feature_
 
 The finding comes first because the finding is the news; the reason is why nothing further
 ran — a refusal in the review's own words, or `nothing further was started`. A run that
-prints no such line finished whole, and `aforge do` left with 0.
+prints no such line finished whole, and `codeaf do` left with 0.
 
 One shortfall has no repair to explain, and drops the `gate:` and the reason with it: a run
 whose project declares a suite that could not be read. Nothing was refused and nothing was
@@ -723,9 +723,9 @@ because its wall could not hold another round of work says `partial — no time 
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
 
-## My headless run failed — where is its record, why is there a folder left behind after `aforge do`, how do I keep the run's files with `--keep`
+## My headless run failed — where is its record, why is there a folder left behind after `codeaf do`, how do I keep the run's files with `--keep`
 
-`aforge do` works in a private store of its own unless you point it somewhere durable with
+`codeaf do` works in a private store of its own unless you point it somewhere durable with
 `--db`. What becomes of that store depends on how the run ended:
 
 - **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
@@ -740,14 +740,14 @@ check what it did, not a run that ran out of time.
   run writes on the error stream is where it is:
 
   ```
-  record kept at ~/.aforge/runs/aforge-do-3f81c2
+  record kept at ~/.codeaf/runs/codeaf-do-3f81c2
   ```
 
-Kept records live under `runs/` in aforge's own folder — `~/.aforge/runs/`, or wherever
-`AFORGE_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
+Kept records live under `runs/` in codeaf's own folder — `~/.codeaf/runs/`, or wherever
+`CODEAF_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
 one away before you go looking for it. That directory holds `graph.db`: the journal every
 worker wrote to, the plan as it stood, the deliverables, the receipts and the spend. Hand it
-back with `aforge do --db <that path>/graph.db "…"` to work in it again, and it is an
+back with `codeaf do --db <that path>/graph.db "…"` to work in it again, and it is an
 ordinary directory otherwise — read it, copy it, delete it when you are done with it.
 
 Stopping a run yourself keeps it too. Ctrl+C — or a `SIGTERM` from whatever launched it —
@@ -757,7 +757,7 @@ and the process dies immediately; the folder is still there, because nothing got
 deleting it.
 
 Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
-`AFORGE_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
+`CODEAF_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
 as long as it is set. Neither is needed to keep a failure any more. This used to be the
 other way round — every run's store was deleted on the way out, worked or not — so a person
 discovered they wanted the record after the failure, which was after it was gone.
@@ -765,9 +765,9 @@ discovered they wanted the record after the failure, which was after it was gone
 A run pointed at `--db` never had a private store to keep: that store is yours and is left
 exactly where you put it, whatever the run did.
 
-## When aforge decides there is nothing left to do — and when it may not
+## When codeaf decides there is nothing left to do — and when it may not
 
-Before buying more work, aforge asks whether everything the request is judged on is
+Before buying more work, codeaf asks whether everything the request is judged on is
 already covered by work that has landed or is running. When the answer is yes, it stops
 and says `everything this job is judged on is already covered by work that has landed or
 is already running — handing over what's done`.
@@ -829,7 +829,7 @@ this is handed over with it named rather than repaired`.
 
 A worker's account names the shell commands that worker issued itself, under
 `What the work ran itself:`, in the order it ran them. They are kept apart from the reading
-aforge takes of the finished tree: a command the worker ran is a fact about what it did,
+codeaf takes of the finished tree: a command the worker ran is a fact about what it did,
 and its output was never read as proof that a check passed. The list is bounded, and where
 its beginning was left out it says how many earlier commands are in the run's own record.
 
@@ -845,17 +845,17 @@ afford a reading worth taking: nothing was going to be read, and the account say
 Where a reading WAS taken and the finished tree could not be read, you get that reason
 instead — the check that could not be started a second time, the suite that failed to
 collect, the command killed at its ceiling before it named anything. Those are not the same
-fact and aforge does not spell them the same way: nobody looked is not everything passed,
+fact and codeaf does not spell them the same way: nobody looked is not everything passed,
 and a reading that broke is not a tree that went unchecked.
 
-A red that aforge's own reading finds on the finished tree does not stop there either when
+A red that codeaf's own reading finds on the finished tree does not stop there either when
 the worker had already been told to land and so was never asked to settle it. The finding
 is handed to whoever picks the work up, so the next worker starts from what the reading
 found rather than paying to discover it again.
 
 ## When a worker runs out of its tokens mid-work — ⏳, and the work is picked up again
 
-A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
+A worker is given a token budget. When it crosses it, codeaf does not kill it: it is told
 the budget is spent and given a few final calls to make what it was changing consistent
 again, run the quickest check that would catch breakage, and fix only what that reveals.
 Then it stops.
@@ -912,23 +912,23 @@ no turns at all is not offered again either, because there is nothing for a next
 carry on from, and it says that instead: `…with none of its work recorded, so there was
 nothing for another attempt to carry on from`.
 
-## How long a headless run gets — the `-timeout` wall, how long does aforge do wait, can I write 5m or 2h
+## How long a headless run gets — the `-timeout` wall, how long does codeaf do wait, can I write 5m or 2h
 
-`aforge do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is
+`codeaf do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is
 `15m`.** The flag's own help line is the whole rule: `hard wall, as a duration such as 15m
 or 2h (a bare number is seconds, kept for one release)`.
 
-    aforge do "…" -timeout 5m     five minutes
-    aforge do "…" -timeout 2h     two hours
-    aforge do "…" -timeout 90s    ninety seconds
-    aforge do "…" -timeout 900    fifteen minutes — a bare number is still seconds
+    codeaf do "…" -timeout 5m     five minutes
+    codeaf do "…" -timeout 2h     two hours
+    codeaf do "…" -timeout 90s    ninety seconds
+    codeaf do "…" -timeout 900    fifteen minutes — a bare number is still seconds
 
-So a length of time is written here the way it is written everywhere else in aforge, with
+So a length of time is written here the way it is written everywhere else in codeaf, with
 a unit on it. A bare number keeps its old meaning for one more release, which is there so
 that a script already passing `-timeout 900` goes on working untouched; anything new should
 carry the unit.
 
-**Two spellings are refused, and the run does not start.** Something aforge cannot read as
+**Two spellings are refused, and the run does not start.** Something codeaf cannot read as
 a length of time — `-timeout 5 minutes`, `-timeout soon` — comes back as `a duration such
 as 15m or 2h, or a number of seconds`. Zero or less — `-timeout 0`, `-timeout -1`,
 `-timeout -5m` — comes back as `must be positive`. Both name the flag you typed, so there
@@ -939,10 +939,10 @@ dead. The wall also reaches the work itself instead of leaving every worker at f
 minutes; *Why a two-hour run no longer gives a leaf only fifteen minutes* is the exact rule.
 
 **Planning has a shorter wall of its own, and the model is told it.** Each planning call
-of `aforge do` — compiling the ask, grounding, the spine, the fan-out, the contracts — gets
+of `codeaf do` — compiling the ask, grounding, the spine, the fan-out, the contracts — gets
 four minutes, or its share of what the run has left when that is less, and a model that
 thinks before answering is given a thinking budget worked out from that time and how fast the
-machine serving it writes. No budget is sent for a machine aforge has not yet measured or
+machine serving it writes. No budget is sent for a machine codeaf has not yet measured or
 read a speed for, nor to a provider that has refused one; those calls think as the model
 does by default, under the same wall. A call still thinking
 when its time runs out — at that wall, or at any shorter bound the run puts on it — is asked
@@ -990,7 +990,7 @@ that answer.
 ## When the wall gets close — the work is checked before the clock stops
 
 A job that has not finished when its wall arrives is a job nothing ever judged: the review
-happens when a job finishes, and a job cut off mid-step never finishes. So aforge stops
+happens when a job finishes, and a job cut off mid-step never finishes. So codeaf stops
 buying new work while there is still room to check what it did. Two things do it, and they
 answer the same question from opposite ends:
 
@@ -1015,7 +1015,7 @@ still ends at the errand's wall when that arrives first.
 ## When the repair only rewrote the summary — a round that changed nothing on disk
 
 Sometimes the work has already landed and what is wrong is the account of it, so instead
-of running the worker again aforge rewrites the summary over the change that is already
+of running the worker again codeaf rewrites the summary over the change that is already
 there. Nothing runs; only the words are new. **That kind of round can close a review's
 finding about the summary — a wrong description, a missing explanation — and it is not
 allowed to close one about the work itself.**
@@ -1056,14 +1056,14 @@ The reason at the tail names why the review could not be read. It keeps the mode
 reply when the answer was prose, or says it was cut off when that is what happened. Two
 unchecked runs that failed for different reasons therefore end with different lines.
 
-**The run lands partial.** `aforge do` leaves with exit **2**, not 0. This used to be exit
+**The run lands partial.** `codeaf do` leaves with exit **2**, not 0. This used to be exit
 0 with the work reported as done — the review was treated as having no opinion rather than
 as having failed to give one — and that is the single difference. Nothing is being said
 about the work; nobody looked at it.
 
 ## When a model's answer is cut off or comes back as prose — the ↻ lines
 
-Every place aforge asks a model for a structured answer — planning a job, compiling your
+Every place codeaf asks a model for a structured answer — planning a job, compiling your
 request, reviewing a delivery — the reply is given room sized to what was asked for, and
 repaired when it does not fit. Two things go wrong and both are said out loud:
 
@@ -1102,7 +1102,7 @@ says what happened, so the substitution is never silent:
 The compiler supplied no reading of its own, so your request stands as the goal, word for word.
 ```
 
-On `aforge do`, where the goal is your request whatever the compiler wrote and the receipt
+On `codeaf do`, where the goal is your request whatever the compiler wrote and the receipt
 is filed rather than printed, the same fact is one line in the progress stream:
 
 ```
@@ -1192,7 +1192,7 @@ line-per-check summary from pytest, TAP from mocha. Your flags on it are kept. T
 formatting complaint no longer reads as a broken suite; it used to exit first, and the
 report was "`pnpm test` exited 1 and named 0 checks" of a suite that was green. Where that
 invocation names nothing — a flag aimed at a plugin this machine lacks — the runner is asked
-again in its plainest form, inside the same budget. A runner aforge has not met is invoked
+again in its plainest form, inside the same budget. A runner codeaf has not met is invoked
 as your project declares it and read as plain text, as everything was before.
 
 **It reads the package your work is in, not the whole workspace.** A repository that
@@ -1281,7 +1281,7 @@ same words it would use for a project it could not read at all.
 **And a reading cut at its ceiling is taken again, smaller — when there is a smaller one to
 take.** Every other reason there is no reading is a fact about your project or about the
 time available, and a later round inherits it rather than paying to learn it twice. A scoped
-reading that ran out of time is not one of those: it is a fact about a size aforge chose, and
+reading that ran out of time is not one of those: it is a fact about a size codeaf chose, and
 the run now knows how fast this project's checks go — so the next reading is the checks your
 change is in, rather than the same ceiling again. But **only when that next reading is
 strictly smaller**: a reading of the whole suite has nothing narrower to fall to, and a
@@ -1477,7 +1477,7 @@ file the point names, the line says so without claiming that the behaviour holds
 
 The block a person reads is bounded so a long checklist cannot crowd the failure itself
 off the ending. If every line does not fit, its last line counts how many remain on the
-run's own record. `aforge do --json` carries the whole, unclipped list in `checklist`, with
+run's own record. `codeaf do --json` carries the whole, unclipped list in `checklist`, with
 one `{behaviour, state, why}` row per point. A run whose request produced no acceptance
 checklist has neither the block nor that key. When a split job stores checklists only on
 its children, the root JSON can omit `checklist`; a failing child keeps its own account
@@ -1772,10 +1772,10 @@ timeout is unchanged: `t` still defaults to 60 seconds. This rule does not make 
 individual command give up sooner; it stops one command from being started again after
 that command has already reached its timeout three times in the round.
 
-## What happens to a run when aforge closes or restarts
+## What happens to a run when codeaf closes or restarts
 
 **A run does not survive the process.** It has no checkpoint and nothing resumes it: its
-planner, its nodes and its fuel tank all live in memory, and closing aforge ends them.
+planner, its nodes and its fuel tank all live in memory, and closing codeaf ends them.
 Reopening the conversation does not start it again, and there is no way to ask for that.
 
 What survives is the **record** of it — and, on the task column, its **rows**, redrawn
@@ -1789,7 +1789,7 @@ If the process went away before the run could close its own row — a crash, a k
 laptop that slept — the row is closed the next time you open that session, and it reads:
 
 ```
-incomplete — aforge closed while this was still running
+incomplete — codeaf closed while this was still running
 ```
 
 So a run can never sit in the list saying "running" hours after anything was running it.
@@ -1798,7 +1798,7 @@ is left alone. And you do not have to wait for that session to be reopened to kn
 task column and on `/history`, a row saying `running` is **drawn** as running only while the
 window that started it is open and still holds it — otherwise it reads `incomplete`
 straight away, whatever the file still says. Each node's transcript stays on disk at
-`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
+`~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
 did get done is still readable.
 
 ## Where did my run's rows go — the run disappeared from the task column when I switched away or reopened the conversation
@@ -1811,7 +1811,7 @@ it is in *right now*, including `forming the work` if the run is still in its op
 minute. Nothing is lost by looking somewhere else, and nothing has to be re-asked for.
 
 **Reopening the conversation tomorrow** redraws the run's rows as **history**. The run
-itself does not come back — see *What happens to a run when aforge closes or restarts* —
+itself does not come back — see *What happens to a run when codeaf closes or restarts* —
 but the rows do, settled:
 
 - a node that **finished** comes back done, with its digest and what it spent
@@ -1820,7 +1820,7 @@ but the rows do, settled:
   the row reads:
 
 ```
-it ended when aforge closed; its journal is kept
+it ended when codeaf closed; its journal is kept
 ```
 
 **These restored rows are history the column keeps, not work.** Nothing on them runs.
@@ -1829,7 +1829,7 @@ ended with the last process, because there is nothing left to stop. They are not
 in the running total on the status line, and no queued row among them will start. Opening
 one still opens the run's page, and the page says `no shape published yet`, because the
 frontier it would draw died with the process. Each node's transcript is still on disk at
-`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`.
+`~/.codeaf/v3/runs/<session>/<run>/<node>.jsonl`.
 
 A conversation you have reopened several times keeps every run it ever started, in the
 order they were started, each still a family with its nodes hanging under it.

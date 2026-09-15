@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // Every test here runs against a FAKE furrow: a shell script on PATH that
@@ -56,7 +56,7 @@ timeline)
     echo '[]'
     exit 0
   fi
-  echo '[{"id":"aaaabbbbcccc0001","sealed_at":1700000200,"label":"hook turn-end agent=aforge turn=t2","trigger":"agent_run","pinned":false,"materialization":{"grade":"byte-exact","partial_classes":[],"missing_paths":[]},"unknown_field_from_a_newer_furrow":true},{"id":"aaaabbbbcccc0000","sealed_at":1700000100,"label":null,"trigger":"quiet","pinned":true,"materialization":{"grade":"partial"}}]'
+  echo '[{"id":"aaaabbbbcccc0001","sealed_at":1700000200,"label":"hook turn-end agent=codeaf turn=t2","trigger":"agent_run","pinned":false,"materialization":{"grade":"byte-exact","partial_classes":[],"missing_paths":[]},"unknown_field_from_a_newer_furrow":true},{"id":"aaaabbbbcccc0000","sealed_at":1700000100,"label":null,"trigger":"quiet","pinned":true,"materialization":{"grade":"partial"}}]'
   ;;
 rewind)
   if [ "$mode" = "nochange" ]; then
@@ -104,7 +104,7 @@ forks)
   echo '[{"fork_id":"f1","name":"risky","destination":"/w.furrow-forks/risky","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009","tier":"clone","files":1,"directories":1,"symlinks":0,"fifos":0,"skipped_special":0,"logical_bytes":1,"cloned_bytes":1,"copied_bytes":0,"hardlinked_files":0,"elapsed_ms":9,"created_at":1700000300}]'
   ;;
 hook)
-  echo '{"event":"turn-end","label":"hook turn-end agent=aforge turn=t9","snapshot":"aaaabbbbcccc00aa"}'
+  echo '{"event":"turn-end","label":"hook turn-end agent=codeaf turn=t9","snapshot":"aaaabbbbcccc00aa"}'
   ;;
 *)
   echo "Error: unknown fake subcommand $sub" >&2
@@ -115,7 +115,7 @@ esac
 
 // carryNothing takes the embedded furrow out of the picture for one test.
 //
-// IT EXISTS BECAUSE THE STATE IT PRODUCES NO LONGER OCCURS. aforge carries
+// IT EXISTS BECAUSE THE STATE IT PRODUCES NO LONGER OCCURS. codeaf carries
 // furrow inside it, so "this machine has no furrow" and "the furrow answering
 // is the fake I just wrote" are both, on a shipped build, impossible — and they
 // are exactly the two states this file has to be able to put the package in.
@@ -323,7 +323,7 @@ func TestSnapshotsToolSaysSoWhenThereAreNone(t *testing.T) {
 
 // A restore previews unless it is confirmed, and the preview is the ONLY thing
 // that happens without confirm. This is furrow's own gate — an explicit id plus
-// a yes — kept at aforge's boundary rather than delegated to a model's
+// a yes — kept at codeaf's boundary rather than delegated to a model's
 // judgement.
 func TestRestorePreviewsUnlessConfirmed(t *testing.T) {
 	installFake(t, "ok")
@@ -582,7 +582,7 @@ func TestMarkSealsAnAttributedRestorePoint(t *testing.T) {
 	if workspace == nil {
 		t.Fatal("Open returned nil")
 	}
-	snapshot, err := workspace.Mark(ctx, "aforge", "t9")
+	snapshot, err := workspace.Mark(ctx, "codeaf", "t9")
 	if err != nil {
 		t.Fatalf("Mark: %v", err)
 	}
@@ -685,8 +685,8 @@ func TestDocumentsReadsAStreamAndSurvivesATrailingFragment(t *testing.T) {
 // RULING IN ONE ASSERTION. The version riding inside this binary is the one it
 // was built and tested against; a furrow on PATH is a different program with
 // the same name, and preferring it would put the decoders here in front of JSON
-// nobody chose. AFORGE_FURROW still beats both, because that one a person set.
-func TestTheFurrowAforgeCarriesIsPreferredToTheOneOnPath(t *testing.T) {
+// nobody chose. CODEAF_FURROW still beats both, because that one a person set.
+func TestTheFurrowCodeafCarriesIsPreferredToTheOneOnPath(t *testing.T) {
 	onPath := installFake(t, "ok")
 	carried := filepath.Join(t.TempDir(), "furrow-carried")
 	if err := os.WriteFile(carried, []byte(fakeScript), 0o755); err != nil {
@@ -724,14 +724,14 @@ func TestAnExtractionThatFailedFallsBackToPathRatherThanRefusing(t *testing.T) {
 	}
 }
 
-// An AFORGE_FURROW that names something missing is an error and never a quiet
+// A CODEAF_FURROW that names something missing is an error and never a quiet
 // fall back to PATH: somebody who set that variable meant that binary.
 func TestAConfiguredBinaryThatIsNotThereIsNotSilentlyReplaced(t *testing.T) {
 	installFake(t, "ok")
 	t.Setenv(BinaryEnvVar, filepath.Join(t.TempDir(), "nowhere"))
 	Forget()
 	if presence := Detect(context.Background(), t.TempDir()); presence.Installed {
-		t.Fatalf("a missing AFORGE_FURROW fell back to PATH: %+v", presence)
+		t.Fatalf("a missing CODEAF_FURROW fell back to PATH: %+v", presence)
 	}
 }
 
@@ -803,7 +803,7 @@ func TestForkRefusesAnAnswerWithNoUniverseInIt(t *testing.T) {
 	}
 }
 
-// ATTACHING IS AFORGE'S OWN MOVE NOW. A folder nobody ran `furrow watch` in is
+// ATTACHING IS codeaf'S OWN MOVE NOW. A folder nobody ran `furrow watch` in is
 // attached by the caller that is about to work in it, on the same consent as
 // the write — and a machine with no furrow at all still answers nil, which is
 // the whole of the absent-not-broken law in a return type.

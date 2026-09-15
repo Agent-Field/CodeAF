@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // WHAT A MEMO DOES NOT ANSWER, AND WHAT A BANKED RULE MEANS.

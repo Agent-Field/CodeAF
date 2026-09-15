@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── WHAT A PERSON SAID ABOUT THE MACHINE ────────────────────────────────────
@@ -83,7 +83,7 @@ func SetLanePin(pin LanePin) {
 	// whole reason it can afford that rule. It is called by every place that
 	// READS the row and hands the answer down — the door at launch, and the
 	// standing ticker, which rebuilds a whole posture every five minutes for as
-	// long as the window lives (cmd/aforge's v3StandingTicker). An experiment
+	// long as the window lives (cmd/codeaf's v3StandingTicker). An experiment
 	// build that forgot here unconditionally therefore forgot what the wire had
 	// said every five minutes and paid the identical 404 again: one at launch,
 	// one at 16:30:02, one at 16:35:00, in one process, in one measured run,
@@ -148,10 +148,10 @@ func CurrentLanePin() LanePin {
 // next request does not ask for. It is memory only and cheap when nothing is
 // pinned, because the chrome asks it on every frame.
 // personAtTheDoor is whether this process was started by a command a person
-// typed and is waiting on — `aforge do`, `aforge exec`, `aforge plan new` — as
+// typed and is waiting on — `codeaf do`, `codeaf exec`, `codeaf plan new` — as
 // distinct from a conversation they opened. Its whole content is that EVERY
 // call of such a process is the person's own work: there is no errand beside a
-// typed command, because the command is the errand. cmd/aforge's
+// typed command, because the command is the errand. cmd/codeaf's
 // typedDoorContext is the one door that sets it.
 var personAtTheDoor atomic.Bool
 

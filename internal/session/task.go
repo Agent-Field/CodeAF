@@ -82,8 +82,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // taskDescription is what the model reads before it calls. THE FAN CAP IS
@@ -108,7 +108,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. A WIDE CHANGE IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + " each, with tasks nested at most " + strconv.Itoa(taskDepthLimit) + " deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them. If you will read the result yourself and carry on, and it does not need its own check or its own branch, use quick_task instead — it starts now and costs nothing to land."
+var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. A WIDE CHANGE IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + " each, with tasks nested at most " + strconv.Itoa(taskDepthLimit) + " deep; sequential or context-sharing parts are faster in your own hands. Files another codeaf window is already writing come back on their own line: nothing is blocked, so plan around them. If you will read the result yourself and carry on, and it does not need its own check or its own branch, use quick_task instead — it starts now and costs nothing to land."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the

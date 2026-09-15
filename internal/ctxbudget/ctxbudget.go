@@ -22,9 +22,10 @@
 package ctxbudget
 
 import (
-	"os"
 	"strconv"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // BytesPerToken is the estimator used everywhere a budget is spent in bytes.
@@ -34,13 +35,13 @@ const BytesPerToken = 4
 
 const (
 	// DefaultFillPercent is the law's number: fill to 60% of the window,
-	// then compact. AFORGE_CONTEXT_FILL_PCT overrides it (clamped 10–90).
+	// then compact. CODEAF_CONTEXT_FILL_PCT overrides it (clamped 10–90).
 	DefaultFillPercent = 60
 
 	// DefaultCompletionReserveTokens is the room every call keeps for its
 	// visible answer plus reasoning. It is deliberately high: a reasoning
 	// pass routinely spends more thinking than writing, and a ceiling only
-	// costs on the turns that use it. AFORGE_COMPLETION_RESERVE overrides.
+	// costs on the turns that use it. CODEAF_COMPLETION_RESERVE overrides.
 	DefaultCompletionReserveTokens = 65536
 
 	// DefaultWorkingSetTokens is the ceiling on the LIVE WORKING SET — how much
@@ -63,7 +64,7 @@ const (
 	// independently, caps its live working set at 160,000 tokens and applies that
 	// cap BEFORE the same 0.6 trigger. Two engines reaching the same shape from
 	// different evidence is the strongest argument available for it, and
-	// AFORGE_WORKING_SET is here for the operator who has evidence of their own.
+	// CODEAF_WORKING_SET is here for the operator who has evidence of their own.
 	//
 	// A model whose whole window is smaller than this is unaffected: the minimum
 	// keeps the law exactly what it was for it.
@@ -169,7 +170,7 @@ func FillPercent() int {
 // The default comes back with false, so a caller that wants the number either
 // way still gets the law's own figure.
 func PinnedFillPercent() (int, bool) {
-	if v, ok := envInt("AFORGE_CONTEXT_FILL_PCT"); ok {
+	if v, ok := envInt("CODEAF_CONTEXT_FILL_PCT"); ok {
 		return clampFill(v), true
 	}
 	if v := configuredValue(func(l Limits) int { return l.FillPercent }); v > 0 {
@@ -181,7 +182,7 @@ func PinnedFillPercent() (int, bool) {
 // CompletionReserve is the process-wide completion+reasoning reserve:
 // environment pin, then the configured setting, then the default.
 func CompletionReserve() int {
-	if v, ok := envInt("AFORGE_COMPLETION_RESERVE"); ok && v > 0 {
+	if v, ok := envInt("CODEAF_COMPLETION_RESERVE"); ok && v > 0 {
 		return v
 	}
 	if v := configuredValue(func(l Limits) int { return l.CompletionReserveTokens }); v > 0 {
@@ -194,7 +195,7 @@ func CompletionReserve() int {
 // resolved the same way: environment pin, then the configured setting, then the
 // default. See DefaultWorkingSetTokens for what it is and why it exists.
 func WorkingSetCeiling() int {
-	if v, ok := envInt("AFORGE_WORKING_SET"); ok && v > 0 {
+	if v, ok := envInt("CODEAF_WORKING_SET"); ok && v > 0 {
 		return v
 	}
 	if v := configuredValue(func(l Limits) int { return l.WorkingSetTokens }); v > 0 {
@@ -206,7 +207,7 @@ func WorkingSetCeiling() int {
 // ReusePercent is the process-wide cumulative-re-send allowance, resolved the
 // same way and clamped so it can never stop a loop before its first full send.
 func ReusePercent() int {
-	if v, ok := envInt("AFORGE_CONTEXT_REUSE_PCT"); ok && v > 0 {
+	if v, ok := envInt("CODEAF_CONTEXT_REUSE_PCT"); ok && v > 0 {
 		return clampReuse(v)
 	}
 	if v := configuredValue(func(l Limits) int { return l.ReusePercent }); v > 0 {
@@ -446,7 +447,7 @@ func (b Budget) Share(weight, total, fallback int) int {
 }
 
 func envInt(key string) (int, bool) {
-	raw := os.Getenv(key)
+	raw := env.Value(key)
 	if raw == "" {
 		return 0, false
 	}

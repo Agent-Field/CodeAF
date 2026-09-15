@@ -12,7 +12,7 @@ package session
 //
 // This file is the seam that fixes that, and it is deliberately a PUSH rather
 // than a re-read. The policy is built from three settings rows resolved through
-// the project layer (cmd/aforge's v3Policy), and a gate that re-read them on the
+// the project layer (cmd/codeaf's v3Policy), and a gate that re-read them on the
 // tool path would put a file walk in front of every call and would change its
 // mind halfway through a batch. What a surface does instead is rebuild the
 // policy at the moment somebody asked for a change and hand the finished thing
@@ -25,7 +25,7 @@ package session
 // that really was in force. This is the same bargain the belt makes under armMu
 // (session.go) — swap the header, never edit what a reader is walking.
 
-import "github.com/Agent-Field/aforge-v2/internal/approval"
+import "github.com/Agent-Field/codeaf/internal/approval"
 
 // SetApprovalPolicy replaces the standing gate for the rest of this session.
 //

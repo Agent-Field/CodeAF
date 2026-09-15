@@ -81,7 +81,7 @@ row a search kept can be picked, whether it is a message, a reply or a call.
 calls named, and `tool calls` counts the CALLS — a turn that ran `bash` four times made four
 of them. A turn that called nothing says nothing at all — not `0 tool calls`. There are no
 timestamps and no costs on these rows, because the transcript this page is built from does
-not keep them, and aforge will not invent them.
+not keep them, and codeaf will not invent them.
 
 ## Jumping to an old message from far back in the conversation
 
@@ -122,14 +122,14 @@ than of what is currently believed"*.
 
 Rewind will not undo work on disk for you. **In a folder furrow is watching,
 `workspace_restore` is the separate verb that does** — ask for the files to be
-put back and aforge uses the workspace's own restore points, which cover things git never
+put back and codeaf uses the workspace's own restore points, which cover things git never
 sees: `.env`, a dev database, an untracked file, a dependency that changed. It is a
 different thing from a rewind and they are never the same gesture: a rewind edits the
 conversation and touches no file; `workspace_restore` moves bytes and leaves the
 conversation alone. See *Forking and syncing a workspace*.
 
 In a folder nobody has attached to furrow there is no such verb, and then the sentence
-above is the whole truth: undo it yourself. aforge carries furrow itself, so attaching is
+above is the whole truth: undo it yourself. codeaf carries furrow itself, so attaching is
 one command and nothing to install — *Forking and syncing a workspace* has it.
 
 ## What a rewind point is
@@ -181,7 +181,7 @@ step walk cannot leave it. `↑`/`↓` never fall off either end.
 While the mode is up it takes **every** key. Nothing falls through to the draft box, because
 the mode bar is standing where that box was. `ctrl+c` is read above it and stays the way
 out — it does not leave rewind, it arms the door underneath, and a second press within
-1.5 seconds quits aforge with the mode still up.
+1.5 seconds quits codeaf with the mode still up.
 
 The mouse can do everything the keys can: click any transcript row to move the cut, click
 the cut line itself to commit. A click chooses the nearest point at or above the row you
@@ -262,7 +262,7 @@ Every conversation is one folder on disk, and the transcript inside it is one JS
 The path shape is:
 
 ```
-~/.aforge/v3/projects/<workspace with separators turned to dashes>/<session id>/transcript.jsonl
+~/.codeaf/v3/projects/<workspace with separators turned to dashes>/<session id>/transcript.jsonl
 ```
 
 The workspace part replaces `/` and `:` with `-` and always starts with a `-`, so
@@ -278,7 +278,7 @@ of its own — `work/`, the directory it works in. Removing one conversation is 
 folder.
 
 The directories are created with mode `0700`; the transcript itself is `0644`. The
-surface's own files — model cache, input history, drafts — sit in `~/.aforge/v3`.
+surface's own files — model cache, input history, drafts — sit in `~/.codeaf/v3`.
 
 Coming back with no arguments opens the conversation **you spoke in most recently**, not
 the file that was written to most recently: work finishing in the background does not
@@ -340,7 +340,7 @@ and over — sixty or more requests on a long one — and the `usage` line above
 all of them. A sum cannot say what the twentieth request cost, or how much of its prompt
 was served warm, or which endpoint answered it.
 
-So aforge also writes one `call` line **per answered request**, carrying the model that
+So codeaf also writes one `call` line **per answered request**, carrying the model that
 answered, the endpoint that served it when the provider names one, tokens in, cache read,
 cache write, tokens out, and the provider's own figure for the money. A request the
 provider reported no usage for writes no line — a row of zeros would read as a fact.
@@ -365,13 +365,13 @@ chosen by file modification time. A directory that has never held one gets a fre
 
 It opens showing the last **40** blocks of that conversation rather than all of it, which is
 what keeps the first frame quick. Everything older is still there and still reachable:
-aforge keeps a local copy of the transcript and prepares the previous 40 blocks before you
+codeaf keeps a local copy of the transcript and prepares the previous 40 blocks before you
 reach the top — when the first visible line is within one screen of the oldest part already
 drawn. The page arrives between frames and is put above what you are reading without moving
 that line. Keep scrolling and this repeats until you are at the first message. While there is
 more above you the top row says `· earlier · keep scrolling`. The screen page has the keys.
 
-**This is local even with `aforge chat --host <machine>`.** The conversation and its files
+**This is local even with `codeaf chat --host <machine>`.** The conversation and its files
 stay on the other machine, but the transcript shown by this window is mirrored on the machine
 holding your terminal. A scroll key or wheel movement never waits for ssh; several trackpad
 reports arriving inside one frame are applied together. New conversation work still crosses
@@ -391,12 +391,12 @@ that were said, and the model's own copy of them is shorter (old tool results ar
 long runs of its work are one line). Ask about something above the line and it may answer
 from the shortened version. See the screen page for the whole of that line's meaning.
 
-This needs the pass to have written down **how much it wrote back**, which aforge started
-recording with this version. A session compacted by an older aforge is drawn from the
+This needs the pass to have written down **how much it wrote back**, which codeaf started
+recording with this version. A session compacted by an older codeaf is drawn from the
 shortened copy, exactly as it always was, and gains the fuller history the next time it
 compacts — showing both copies would print the whole conversation twice.
 
-`aforge chat --session <path>` takes the path you named as given — *"a path a person named
+`codeaf chat --session <path>` takes the path you named as given — *"a path a person named
 is a path they mean, existing or not"*. `~` is expanded and the directory is created. The
 launch reports it as resumed only if the file already existed.
 
@@ -429,13 +429,13 @@ Two repairs then make the transcript legal to send again:
 Without these, a session killed mid-batch would be rejected by every model provider forever
 — *"a file that can never be resumed."*
 
-One thing is refused loudly: a file written by a newer aforge.
+One thing is refused loudly: a file written by a newer codeaf.
 
 ```
-session file: <path> was written by a newer aforge (format version 3; this build reads 2)
+session file: <path> was written by a newer codeaf (format version 3; this build reads 2)
 ```
 
-**The empty screen's greeting.** On the first frame of an empty session, aforge draws one
+**The empty screen's greeting.** On the first frame of an empty session, codeaf draws one
 centred group — the wordmark, the model line, the message box itself and a line of things
 to try — and, when this folder has earlier conversations, up to four of them under the
 heading `recent sessions` beneath it. On a fresh machine that list is simply absent: no
@@ -552,7 +552,7 @@ in the background, appending the good name when it arrives.
 ## /resume — opening an earlier conversation
 
 `/resume` (alias `/sessions`) opens the picker of earlier conversations in this directory.
-From the shell, `aforge resume` opens the ordinary surface with the picker already up.
+From the shell, `codeaf resume` opens the ordinary surface with the picker already up.
 
 A filter box takes the place of the input line, with up to **10** rows under it. `↑`/`↓` to
 move, `enter` to open, `esc` to cancel. The empty filter box shows
@@ -577,22 +577,22 @@ staleness: the list reads what the file says rather than the transcript a resume
 rebuild, so a rewind with nothing typed after it leaves the taken-back message as the row's
 description.
 
-## When /resume refuses, and what aforge resume does
+## When /resume refuses, and what codeaf resume does
 
 `/resume` (alias `/sessions`) opens the picker of earlier conversations in this directory.
 Here is what it says when it cannot do what you asked.
 
 - A directory with no conversations gets a note and no overlay:
-  `No sessions yet — start one with aforge chat`.
+  `No sessions yet — start one with codeaf chat`.
 - A surface that cannot resume says `resuming is unavailable here`.
 - A filter that matches nothing draws `  no session matches`.
 - `enter` on the row you are already in does no work and notes `already here · <Name>`.
-- `aforge resume` takes no positional arguments and refuses `--once`:
-  `aforge resume opens the session picker; for one headless message use: aforge chat --once "text"`.
+- `codeaf resume` takes no positional arguments and refuses `--once`:
+  `codeaf resume opens the session picker; for one headless message use: codeaf chat --once "text"`.
   Its usage line is
-  `usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo] [--one-model]`.
-- `aforge resume` does not resume anything by itself. The surface opens exactly as bare
-  `aforge` does, on this directory's most recent conversation, with the picker over it — so
+  `usage: codeaf resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo] [--one-model]`.
+- `codeaf resume` does not resume anything by itself. The surface opens exactly as bare
+  `codeaf` does, on this directory's most recent conversation, with the picker over it — so
   `esc` lands you where you would have been anyway.
 
 Opening a conversation interrupts any running turn, closes the current one (a failed close
@@ -603,7 +603,7 @@ note reading `resumed <path>`.
 **`/resume` follows the project you are in, and it replaces.** Its list is this directory's
 conversations, and opening one closes the one you were in. That is the one place it differs
 from home: `enter` there opens any project's row and leaves the conversation you were in
-**open**, still running. `aforge resume` in a shell follows that shell's folder in exactly
+**open**, still running. `codeaf resume` in a shell follows that shell's folder in exactly
 the same way — the picker it opens is that directory's list.
 
 **Except for a conversation this terminal already holds.** One open behind the screen is not
@@ -615,12 +615,12 @@ the section on two terminals in the same folder.
 
 ## Two terminals in the same folder — continue a chat in another terminal
 
-**Yes, you can run more than one aforge at once in the same workspace.** What you usually
+**Yes, you can run more than one codeaf at once in the same workspace.** What you usually
 want, though, is not two windows on one conversation — it is to **continue** a conversation
 somewhere else: you started it in one terminal, you are in another one now, and you want it
 here.
 
-That is a **move**, and the second terminal offers it to you on the way in. `aforge` in a
+That is a **move**, and the second terminal offers it to you on the way in. `codeaf` in a
 folder whose conversation is open in another window comes up on **home, with that row
 pointed and already armed**, so one `enter` moves the conversation here — the transcript,
 the tasks, and your unsent sentence — and the window that had it says `moved to another
@@ -633,13 +633,13 @@ what the two presses do and what they cost.
 `--host` story rather than this one: a conversation held by a session host can have several
 windows attached, one keyboard between them, the newest window typing. That happens locally
 too when a host is already holding this workspace — a `--host` or `--at` connection into this
-machine, or somebody's `aforge engine`, or the host `aforge chat` here starts for itself.
+machine, or somebody's `codeaf engine`, or the host `codeaf chat` here starts for itself.
 See *Staying on that machine*: an ordinary launch now opens its conversation in this
 machine's session host, so a second terminal in this folder joins that conversation rather
 than meeting a lock. Harness building and subharness intake cards work in a hosted
 conversation; the adaptive runner is the one thing still switched off in one.
 
-## It used to start a new conversation in the second terminal — why it doesn't now, aforge started a new conversation instead of the one that was running
+## It used to start a new conversation in the second terminal — why it doesn't now, codeaf started a new conversation instead of the one that was running
 
 Opening a conversation takes a non-blocking exclusive lock on its file before anything is
 replayed, so a second window meets that lock at the door. It used to quietly name a new
@@ -676,13 +676,13 @@ named" means is read the same way at the door as it is when one is opened.
 no screen to offer a row on, so it refuses and says what to do:
 
 ```
-this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace /home/you/api to let go of it
+this conversation is open in another window — open codeaf here and press enter on it to move it here, or run codeaf engine --stop --workspace /home/you/api to let go of it
 ```
 
-The directory in it is the workspace, spelled out because `aforge engine --stop` with no
+The directory in it is the workspace, spelled out because `codeaf engine --stop` with no
 `--workspace` means your home directory. That half of the sentence is for the other case
 entirely: something is holding the workspace that you cannot move it away from — an older
-aforge, or a window that has stopped answering. It closes what is holding that workspace and
+codeaf, or a window that has stopped answering. It closes what is holding that workspace and
 flushes every transcript first, and if nothing is holding it, it says `nothing is holding
 /home/you/api here` and changes nothing.
 
@@ -700,12 +700,12 @@ one"*. The sentence is:
 open in another window — go there, or start a new conversation here
 ```
 
-**No file path is printed.** The path is aforge's bookkeeping and not something you can act
+**No file path is printed.** The path is codeaf's bookkeeping and not something you can act
 on; what you can act on is in the sentence.
 
 **Home does something better: it BRINGS IT HERE.** `enter` on a row marked `another window`
 or `open in the engine` opens that conversation in this terminal. On the ordinary
-`aforge chat` it is one keystroke and it is instant — the engine holds the conversation and
+`codeaf chat` it is one keystroke and it is instant — the engine holds the conversation and
 hands it over mid-reply, nothing pauses, and the terminal that had it says
 `moved to another window · enter on home brings it back`. Where there is no engine
 (`--no-host`, `--debug`) it takes a second `enter`, and that window's reply stops there. See
@@ -756,7 +756,7 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
-## Does aforge save my API keys — a token or password a command printed, and whether it is in the transcript
+## Does codeaf save my API keys — a token or password a command printed, and whether it is in the transcript
 
 **A secret is taken out of a tool result before anything keeps it.** When output comes
 back from a shell command, a file that was read, or a page that was fetched, every span in
@@ -783,9 +783,9 @@ runs — in every spelling, `$(gh auth token)` inside another command included. 
 how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always
 did.
 
-**What is recognised** includes every key aforge holds: its exact value is redacted,
+**What is recognised** includes every key codeaf holds: its exact value is redacted,
 whatever its shape. Results are also checked for these familiar shapes when the value did
-not come from aforge's own settings:
+not come from codeaf's own settings:
 
 - GitHub tokens — `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_`
 - keys in the `sk-` family — OpenAI, Anthropic, OpenRouter, and everything else using it
@@ -823,7 +823,7 @@ Some things live only in memory, and a resumed conversation does not have them.
   and never the secret. The section above says which shapes are recognised.
 
 Two things are kept on your behalf rather than the conversation's, and they survive
-independently of it: your input history at `~/.aforge/v3/history.jsonl`, and your unsent
+independently of it: your input history at `~/.codeaf/v3/history.jsonl`, and your unsent
 draft, which is kept per workspace. Neither is ever waited for — a history file that cannot
 be opened costs you the up arrow and nothing else.
 
@@ -836,7 +836,7 @@ back. The exception is a conversation nobody has used yet, which is closed and r
 because there is nothing in it to keep.
 
 What carries over: the settings the session was launched with, and **the approval gate as it
-stands right now** rather than as it stood when aforge started. If you have changed what is
+stands right now** rather than as it stood when codeaf started. If you have changed what is
 allowed during this conversation, the new one begins with that. A conversation opened from
 the resume picker is built the same way, for the same reason.
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // WHAT THE SURFACE DOES WHEN A PERSON'S OWN WORD LET GO OF THE REQUEST.

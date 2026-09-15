@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── harness ─────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ func TestANarrowFiringIsTheRunItAlwaysWas(t *testing.T) {
 	}
 }
 
-// AND THE ROAD ITSELF STILL SWITCHES OFF. `AFORGE_SWARM=0` reaches a firing the
+// AND THE ROAD ITSELF STILL SWITCHES OFF. `CODEAF_SWARM=0` reaches a firing the
 // way it reaches everything else — through the posture the door builds — and
 // with it off the widest brief in the world is one worker.
 func TestAFiringNeverDividesWithTheRoadTurnedOff(t *testing.T) {
@@ -389,7 +389,7 @@ func TestAFiringsDivisionCarriesThePersonsOwnCeilings(t *testing.T) {
 	}
 
 	// AND NOTHING OF THIS EXISTS FOR NARROW WORK. The road off answers the same
-	// way, which is what makes `AFORGE_SWARM=0` the whole of the way out.
+	// way, which is what makes `CODEAF_SWARM=0` the whole of the way out.
 	if _, none, _ := standingWideWork(base, nightly(base.Workspace), "look at last night's failures"); none != nil {
 		t.Fatal("a narrow firing was given a graph")
 	}

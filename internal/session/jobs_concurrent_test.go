@@ -1,6 +1,6 @@
 package session
 
-// Two aforge windows, one workspace: the job-log half of it.
+// Two codeaf windows, one workspace: the job-log half of it.
 
 import (
 	"path/filepath"

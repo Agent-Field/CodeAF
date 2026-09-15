@@ -38,7 +38,7 @@ import (
 // as the directory, and the window is this process.
 //
 // What that costs is the restore, and paying it is [adoptDraft] below: a
-// window's own file is gone the next time aforge starts, because the pid is. A
+// window's own file is gone the next time codeaf starts, because the pid is. A
 // draft whose window is dead is an ORPHAN, and an orphan is the person's
 // sentence with nobody holding it — so the next window opened on that directory
 // takes it over. A file whose pid is still running is never touched, which is
@@ -93,7 +93,7 @@ var draftOrdinals = struct {
 // IT IS NOT A PURE FUNCTION AND MUST NOT BE CALLED TWICE FOR ONE CONVERSATION:
 // each call takes the next ordinal for that workspace, which is what stops two
 // conversations of this process colliding. The door calls it exactly once, in
-// the same breath as it builds the agent (cmd/aforge's chatv3_process.go).
+// the same breath as it builds the agent (cmd/codeaf's chatv3_process.go).
 //
 // THE PID STAYS THE LAST TOKEN, which is not a style choice:
 // [draftWindowAlive] parses it out of the name to decide whether the window
@@ -425,7 +425,7 @@ func readDraft(path string) string {
 
 // writeDraft replaces the file, or removes it when the box is empty — an empty
 // draft is not a draft, and leaving a zero-byte file behind would mean every
-// directory aforge was ever opened in keeps one forever.
+// directory codeaf was ever opened in keeps one forever.
 //
 // EMPTY IS WHAT THE BOX ITSELF CALLS EMPTY, which is whitespace and not only the
 // zero-length string ([editor.empty]). A draft of "\n\n" is a draft nobody can

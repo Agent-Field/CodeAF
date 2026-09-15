@@ -37,8 +37,8 @@ SCHEMA = 2
 # The doors bench/conversation actually has, and which arms it can drive through
 # each. opencode has no calibrated interactive markers, so naming it there is the
 # one substitution that would make a table a lie (README: "the two doors").
-DOORS = {"print": {"aforge", "omp", "pi", "opencode"},
-         "interactive": {"aforge", "omp", "pi"}}
+DOORS = {"print": {"codeaf", "omp", "pi", "opencode"},
+         "interactive": {"codeaf", "omp", "pi"}}
 ARMS = DOORS["print"]
 # Open models only. Exact catalog ids, matching lib/allowlist.sh — no wildcards
 # and no family names, because a substring match accepts dated siblings too.

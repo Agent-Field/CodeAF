@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -1764,7 +1764,7 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		// The boundary question is asked of the DRAFT and not of the row,
 		// because a row is a soft-wrapped slice of it: [wrapLine] breaks after a
 		// space where it can, but a word longer than the box breaks mid-word, and
-		// a row that opens in the middle of "cmd/aforge" does not open a token.
+		// a row that opens in the middle of "cmd/codeaf" does not open a token.
 		at := segments[i].from
 		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
 		row := string(e.value[at:segments[i].to])

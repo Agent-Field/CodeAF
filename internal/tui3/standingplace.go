@@ -51,8 +51,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The mark a "not here" line leads with, and its stand-in on a terminal that
@@ -279,7 +279,7 @@ func standRowStops(rows []standRow) []int {
 	return stops
 }
 
-// standRowLabel is an order's own half of its row: the mark every aforge screen
+// standRowLabel is an order's own half of its row: the mark every codeaf screen
 // agrees on ([standing.Item.Glyph] is the authority), and what the order is
 // called.
 func standRowLabel(row standRow, pal palette) string {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
+	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
 )
 
 // THE ONE LINE A LIST ROW SAYS ABOUT THE LAST TIME A PROGRAM RAN.

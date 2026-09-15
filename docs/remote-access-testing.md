@@ -22,14 +22,14 @@ part is code-complete but has no service deployed, so it fails with a clear sent
 ## 1. Build it
 
 ```sh
-make build          # → bin/aforge
+make build          # → bin/codeaf
 ```
 
-Add `bin/aforge` to the PATH of **both** machines you test with. The two halves must speak
+Add `bin/codeaf` to the PATH of **both** machines you test with. The two halves must speak
 the same protocol version: that version is checked at the door and a mismatch is refused with
 
 ```
-<dest> runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol
+<dest> runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol
 ```
 
 ---
@@ -56,7 +56,7 @@ setsid: can't execute '/usr/local/bin/modelstub': Exec format error
 ```
 
 you are on a build of this harness that pinned `GOARCH=amd64`; it is fixed, and
-`AFORGE_E2E_ARCH` overrides the choice if you are ever running containers of another
+`CODEAF_E2E_ARCH` overrides the choice if you are ever running containers of another
 architecture on purpose.
 
 Last full runs: **4 pass, 1 skip, 60s** on darwin/arm64 → linux/amd64 containers, and
@@ -71,15 +71,15 @@ Last full runs: **4 pass, 1 skip, 60s** on darwin/arm64 → linux/amd64 containe
 | `AnAttachmentLandsOverThere` | **SKIPPED** — `/attach` is a slash command and `--once` has no tray; needs a pty driver |
 
 Also relevant, and expected to fail for reasons that predate this branch: `internal/plan`
-and `cmd/aforge TestHarnessEntriesFromStore`. `cmd/aforge`'s two `TestTick*` need
+and `cmd/codeaf TestHarnessEntriesFromStore`. `cmd/codeaf`'s two `TestTick*` need
 `OPENROUTER_API_KEY` in the environment. See CLAUDE.md.
 
 ---
 
 ## 3. By hand, over ssh
 
-You need a second machine you can already `ssh` into, with `aforge` on the PATH that a
-**non-login** ssh command sees (test with `ssh devbox aforge version`).
+You need a second machine you can already `ssh` into, with `codeaf` on the PATH that a
+**non-login** ssh command sees (test with `ssh devbox codeaf version`).
 
 ### 3.0 Without a second machine: `--host localhost`
 
@@ -90,9 +90,9 @@ they do.
 
 ```sh
 ssh localhost true                       # the only prerequisite
-cp bin/aforge <somewhere on the PATH a non-login ssh sees>
-ssh localhost aforge version             # both ends must speak the same protocol version
-aforge chat --host localhost:code/app --model deepseek/deepseek-v4-flash
+cp bin/codeaf <somewhere on the PATH a non-login ssh sees>
+ssh localhost codeaf version             # both ends must speak the same protocol version
+codeaf chat --host localhost:code/app --model deepseek/deepseek-v4-flash
 ```
 
 Driving the real surface without a keyboard, which is what an agent has to do:
@@ -100,7 +100,7 @@ Driving the real surface without a keyboard, which is what an agent has to do:
 ```sh
 REMOTE_DEMO=$(mktemp -d)
 tmux new-session -d -s dx -x 200 -y 50 \
-  "bin/aforge chat --host localhost:$REMOTE_DEMO --model deepseek/deepseek-v4-flash"
+  "bin/codeaf chat --host localhost:$REMOTE_DEMO --model deepseek/deepseek-v4-flash"
 tmux send-keys -t dx "use the bash tool: sleep 45 && echo done" Enter
 tmux capture-pane -p -t dx | tail -4          # read the screen back
 ```
@@ -109,11 +109,11 @@ An empty directory starts a fresh session for this check. `--session` takes a tr
 path; `new` is not a sentinel for creating one.
 
 To drop the link on purpose, kill the ssh child this session started — and kill it **by
-pid**, because a pattern wide enough to match `aforge engine` also matches the shell you
+pid**, because a pattern wide enough to match `codeaf engine` also matches the shell you
 typed it in:
 
 ```sh
-kill -9 $(pgrep -f "^ssh -T .* localhost aforge engine" | head -1)
+kill -9 $(pgrep -f "^ssh -T .* localhost codeaf engine" | head -1)
 ```
 
 **Verified this way, on this tree:** a turn mid-`bash` survives the kill and completes
@@ -128,10 +128,10 @@ submitted during the gap is refused visibly with
 ### 3a. The basic connection
 
 ```sh
-aforge chat --host devbox                 # the far machine's home directory
-aforge chat --host devbox:code/app        # relative to the far machine's home
-aforge chat --host devbox:/srv/code/app   # absolute, over there
-aforge resume --host devbox               # the picker, on that machine's conversations
+codeaf chat --host devbox                 # the far machine's home directory
+codeaf chat --host devbox:code/app        # relative to the far machine's home
+codeaf chat --host devbox:/srv/code/app   # absolute, over there
+codeaf resume --host devbox               # the picker, on that machine's conversations
 ```
 
 **What you should see.** The machine appears as part of the place — `devbox:app` in the
@@ -155,7 +155,7 @@ machine's. `~` collapsing runs against *your* home, so expect full paths.
 
 4. It should reconnect by itself and **the answer should continue**, not restart.
 
-If the far machine is running a bare `aforge engine` on a pipe with no session host, the turn
+If the far machine is running a bare `codeaf engine` on a pipe with no session host, the turn
 does **not** survive, and the surface says so once rather than pretending:
 
 ```
@@ -185,7 +185,7 @@ not know how to draw is skipped and left waiting rather than half-rendered.
 
 ### 3d. Two windows on one conversation
 
-Open `aforge chat --host devbox` in two terminals. The second should say
+Open `codeaf chat --host devbox` in two terminals. The second should say
 
 ```
 another window is on this conversation — typing is here now
@@ -215,7 +215,7 @@ Driving it without a keyboard, which is what an agent has to do:
 
 ```sh
 for s in w1 w2; do
-  tmux new-session -d -s $s -x 140 -y 40 "aforge chat --host localhost:code/app --model <m>"
+  tmux new-session -d -s $s -x 140 -y 40 "codeaf chat --host localhost:code/app --model <m>"
   sleep 11
 done
 tmux capture-pane -p -t w1 | tail -2      # the watcher's line
@@ -263,7 +263,7 @@ without a keyboard.
 ```sh
 REMOTE_FILES=$(mktemp -d)
 tmux new-session -d -s fx -x 200 -y 50 \
-  "bin/aforge chat --host localhost:$REMOTE_FILES --model deepseek/deepseek-v4-flash"
+  "bin/codeaf chat --host localhost:$REMOTE_FILES --model deepseek/deepseek-v4-flash"
 tmux send-keys -t fx "write a file notes/hello.txt containing hello, then say where you put it" Enter
 sleep 30
 tmux capture-pane -p -t fx | tail -6
@@ -327,9 +327,9 @@ kept, nothing said. `/attach` is the same landing place *with* a person's senten
 **5. The copies on this machine: a CAS blob and a hardlinked mirror.**
 
 ```sh
-ls ~/.aforge/v3/remote/cas/*/ | head               # content-addressed: <first two hex>/<sha256>
-find ~/.aforge/v3/remote/mirror -type f | head     # mirror/<host>/<the engine's own path>
-stat -c '%h %n' $(find ~/.aforge/v3/remote/mirror -type f | head -1)   # 2 links = same inode as the blob
+ls ~/.codeaf/v3/remote/cas/*/ | head               # content-addressed: <first two hex>/<sha256>
+find ~/.codeaf/v3/remote/mirror -type f | head     # mirror/<host>/<the engine's own path>
+stat -c '%h %n' $(find ~/.codeaf/v3/remote/mirror -type f | head -1)   # 2 links = same inode as the blob
 ```
 
 A file the model **wrote** during a turn is fetched speculatively at 2MB or under, before
@@ -371,16 +371,16 @@ This is the pairing road. **No relay service is deployed**, so the honest outcom
 clear refusal. Run it anyway; the refusals are the deliverable.
 
 ```sh
-aforge devices                     # who may reach this machine, and its name
-aforge serve                       # be reachable (needs AFORGE_RELAY set)
-aforge chat --at otter-lamp-42     # reach a machine by its name
+codeaf devices                     # who may reach this machine, and its name
+codeaf serve                       # be reachable (needs CODEAF_RELAY set)
+codeaf chat --at otter-lamp-42     # reach a machine by its name
 ```
 
-`aforge devices` on a fresh machine prints something like:
+`codeaf devices` on a fresh machine prints something like:
 
 ```
 this machine is reachable as rudder-basil-62
-its key is kept in a file on this machine, readable only by you (~/.aforge/v3/remote/device.key)
+its key is kept in a file on this machine, readable only by you (~/.codeaf/v3/remote/device.key)
 
 no devices are paired with this machine.
 ```
@@ -388,28 +388,28 @@ no devices are paired with this machine.
 The four refusals, each naming what is actually wrong:
 
 ```
-no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set AFORGE_RELAY to a relay's address, or reach that machine with --host over ssh
+no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay's address, or reach that machine with --host over ssh
 the relay at https://relay.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
-otter-lamp-42 is not connected to the relay right now — run `aforge serve` on that machine
-this device is not paired with otter-lamp-42 — run `aforge serve` on that machine, then run this command again and type the code it shows
+otter-lamp-42 is not connected to the relay right now — run `codeaf serve` on that machine
+this device is not paired with otter-lamp-42 — run `codeaf serve` on that machine, then run this command again and type the code it shows
 ```
 
 ### Running a relay yourself, to see the whole flow
 
 ```sh
 go run ./cmd/relay --listen :8787          # machine C, or the same box
-export AFORGE_RELAY=http://localhost:8787  # on BOTH the engine and the surface
-aforge serve                               # on the engine machine
+export CODEAF_RELAY=http://localhost:8787  # on BOTH the engine and the surface
+codeaf serve                               # on the engine machine
 ```
 
-`aforge serve` prints:
+`codeaf serve` prints:
 
 ```
   this machine is reachable as  otter-lamp-42
   pair a new device with code   715 302   (valid 10 minutes)
 ```
 
-Then from the other machine, `aforge chat --at otter-lamp-42` walks the pairing:
+Then from the other machine, `codeaf chat --at otter-lamp-42` walks the pairing:
 
 ```
 pairing with otter-lamp-42
@@ -418,7 +418,7 @@ enter the code shown on otter-lamp-42: ______
 paired. this device is now a key to otter-lamp-42.
 ```
 
-After that, `--at otter-lamp-42` opens without a code. `aforge devices revoke <name>` takes
+After that, `--at otter-lamp-42` opens without a code. `codeaf devices revoke <name>` takes
 it back, and revocation is **always the engine machine's decision** — no surface can do it
 down the wire.
 
@@ -441,7 +441,7 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 
 ### Known-absent, deliberately, and documented as such
 4. **No OS keychain, no Touch ID.** The device key is a file at
-   `~/.aforge/v3/remote/device.key`, mode 0600 — exactly the exposure of an ssh key with no
+   `~/.codeaf/v3/remote/device.key`, mode 0600 — exactly the exposure of an ssh key with no
    passphrase. `pair.Keeper` is the seam; filling it is Mac-only cgo work, with Linux and
    Windows each wanting their own.
 5. **Traffic analysis is not defended.** The relay cannot read anything, but record sizes and
@@ -459,7 +459,7 @@ Ranked. Nothing here is hidden in a comment; it is all real.
    nothing yet proves the bytes had to travel. **A pty or tmux driver inside the container
    harness would close this** — `internal/e2e/tmux_test.go` is prior art, and §3.0's tmux
    recipe is the driving half of it.
-8. **`aforge serve` spawns `aforge engine` as a child, one per connection**, and does not use
+8. **`codeaf serve` spawns `codeaf engine` as a child, one per connection**, and does not use
    the session host. So over `--at` the *persistence* story is weaker than over `--host`.
    Worth confirming what `Welcome.Persistent` reports there before trusting it.
 9. **`filippo.io/cpace` is vendored** at `internal/pair/cpace` — ours now, bug included. The
@@ -474,12 +474,12 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 
 ### Housekeeping
 12. ~~`internal/pair/zz_probe_scratch_test.go` — scratch probe file~~ — deleted in this branch.
-13. `gofmt -l` flags `cmd/aforge/chat.go`, unformatted on a clean tree and untouched here.
+13. `gofmt -l` flags `cmd/codeaf/chat.go`, unformatted on a clean tree and untouched here.
 14. ~~A refused handshake printed its sentence **twice** — once by the engine's own stderr,
     which ssh puts on the person's terminal, and once by the surface reading the refusal off
     the wire.~~ Fixed on the merge: `remote.Refusal` is typed, and the engine door exits
     quietly on one because the reason has already been delivered
-    (`cmd/aforge/engine.go`'s `quietRefusal`). The exit code is still 1.
+    (`cmd/codeaf/engine.go`'s `quietRefusal`). The exit code is still 1.
 15. ~~`make test-remote` built its container binaries for `amd64` unconditionally~~ — fixed;
     it follows the host, which is what docker starts the containers as.
 
@@ -500,7 +500,7 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 | `internal/pair/`, `internal/relay/`, `cmd/relay/` | pairing, the blind relay, the deployable |
 | `internal/furrow/` | the four `workspace_*` verbs, absent unless furrow is installed |
 | `internal/tui3/hostlink.go` | the status segment, the notice, held-card replay |
-| `cmd/aforge/chatv3_host.go`, `chatv3_at.go`, `engine.go` | the three doors |
+| `cmd/codeaf/chatv3_host.go`, `chatv3_at.go`, `engine.go` | the three doors |
 | `internal/e2e/remote_test.go`, `test/remote/` | the two-machine harness and its stub model |
 
 The manual pages the chat itself reads: `staying-on-that-machine.md`,

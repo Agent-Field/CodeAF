@@ -1,7 +1,7 @@
 // Command fetch puts the pinned furrow release where `go:embed` will find it.
 //
-// It is the build's half of the no-variance ruling: aforge ships furrow inside
-// it, so a build has to have furrow before it can produce an aforge, and this
+// It is the build's half of the no-variance ruling: codeaf ships furrow inside
+// it, so a build has to have furrow before it can produce a codeaf, and this
 // is the step that either gets it or stops. It never half-succeeds. Either the
 // staged archive is a furrow whose sha256 is the one internal/furrowbin/pin.json
 // names, or the command exits non-zero with the sentence that says what to run.
@@ -27,7 +27,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
 // downloadTimeout bounds the whole transfer. The artifacts are six or seven
@@ -211,7 +211,7 @@ func digest(data []byte) string {
 func refusal(pin furrowbin.Pin, platform string, cause error) string {
 	return fmt.Sprintf("\nfurrow %s for %s could not be prepared, so this build stopped.\n\n    %s\n\n",
 		pin.Version, platform, cause) +
-		"aforge ships furrow inside it, so a binary without it is not a binary\n" +
+		"codeaf ships furrow inside it, so a binary without it is not a binary\n" +
 		"this repository will produce. Get the artifact once and the build carries\n" +
 		"on from the cache from then on:\n\n" +
 		"    make furrow\n\n" +

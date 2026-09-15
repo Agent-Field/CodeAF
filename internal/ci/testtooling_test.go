@@ -29,7 +29,7 @@ func TestTheQuickTargetRunsEveryDeterministicLightGate(t *testing.T) {
 		t.Fatalf("make -n test-quick: %v\n%s", err, out)
 	}
 	for _, command := range []string{
-		"go run ./cmd/aforge-changes check",
+		"go run ./cmd/codeaf-changes check",
 		"go test ./internal/manual/",
 		"go test -run 'Manual' ./internal/tui3/ ./internal/session/",
 	} {

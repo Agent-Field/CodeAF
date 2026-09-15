@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // ── harness ─────────────────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ func TestCheckpointRoundTripsTheTaskOrigin(t *testing.T) {
 	graph.run = func(*TaskNode) {}
 	graph.mu.Unlock()
 
-	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	origin := taskOrigin{journal: "/home/x/.codeaf/v3/sessions/abc.jsonl", line: 12}
 	id := graph.reserve()
 	graph.admit(id, taskSpec{
 		title: "Add the greeting", brief: "write hello.txt", acceptance: "the file is there",
@@ -283,7 +283,7 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	// The branch and the worktree directory a killed node would have left.
 	branch := "task/fix-the-reconciler-9c1a2f"
 	mustGit(t, repo, "branch", branch)
-	worktree := filepath.Join(repo, ".aforge-v3", "tasks", "2")
+	worktree := filepath.Join(repo, ".codeaf", "tasks", "2")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -604,7 +604,7 @@ func TestRecoveryNoteReadsAsOneLine(t *testing.T) {
 // The checkpoint sits beside the journal, per conversation — never one file per
 // session directory, which every window in a workspace would write over.
 func TestCheckpointPathIsPerJournal(t *testing.T) {
-	if got := taskCheckpointPath("/home/p/.aforge/v3/work/20260815-101112.jsonl"); got != "/home/p/.aforge/v3/work/20260815-101112.tasks.json" {
+	if got := taskCheckpointPath("/home/p/.codeaf/v3/work/20260815-101112.jsonl"); got != "/home/p/.codeaf/v3/work/20260815-101112.tasks.json" {
 		t.Fatalf("path = %q", got)
 	}
 	if got := taskCheckpointPath("  "); got != "" {

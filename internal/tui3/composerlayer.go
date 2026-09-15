@@ -7,9 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE COMPOSER LAYER — the three facts a task needs before it leaves ──────
@@ -23,7 +23,7 @@ import (
 //
 //	› cut the opus spend in half without losing the sweep
 //	 it will run on its own and tell you when it lands            a task
-//	 · in ~/aforge-v2, on master                        alt+w to move it
+//	 · in ~/codeaf, on master                        alt+w to move it
 //	 · execution runs on opus 4.1                          alt+o to change
 //	 · it may spend up to $10.00 before it asks              type a number
 //	 alt+enter send it off · enter talk about it first · esc back to spend
@@ -43,7 +43,7 @@ import (
 // settings page anywhere in this gesture.
 //
 // Each of them is also a REAL FIELD of the session the door builds, carried on
-// [ErrandOrders] and honoured in cmd/aforge's v3Errand: the workspace it works
+// [ErrandOrders] and honoured in cmd/codeaf's v3Errand: the workspace it works
 // in, the model its work runs on (config's execution slot), and the spend rail
 // it stops at. A figure a person set and nothing read would be worse than a
 // figure they were never offered.
@@ -171,7 +171,7 @@ func (a *app) composerWhere() string {
 // which falls through to the person's home directory).
 //
 // THE CHIP IS ONE ROW ABOVE THIS LINE AND THEY MAY NOT DISAGREE. `here
-// ~/aforge-v2` over `· in ~` is one frame saying a sentence lands in two
+// ~/codeaf` over `· in ~` is one frame saying a sentence lands in two
 // different places, and it is the reading a person acts on — the whole promise
 // of the chip is that a verb always in reach always says where it goes.
 func (a *app) composerOpensAt() string {

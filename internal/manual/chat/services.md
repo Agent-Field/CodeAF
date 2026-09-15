@@ -14,11 +14,11 @@ then shows the service, door, safe spelling of its key, region and order.
 The default service remains first. With two or more services, `/model` groups models by
 service in that order; with only the default service, the picker remains ungrouped.
 
-## Using aforge with only a direct service — no OpenRouter key at all
+## Using codeaf with only a direct service — no OpenRouter key at all
 
 Yes. When the conversation is on a model from a connected service, that service can carry
 the turn without an OpenRouter key. Pressing `enter` sends the message; the setup screen
-does not open, and aforge does not show
+does not open, and codeaf does not show
 `openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
 Ollama counts as connected without a key because its local service explicitly needs none.
 
@@ -33,7 +33,7 @@ default service does have a key, the crew keeps using its configured models as u
 
 A successful connection from `/connect`, or a reconnect from the Providers tab in
 `/settings`, moves this conversation onto that service in the same moment. A plan door's
-first documented model wins. Otherwise aforge uses the vendor's preferred model when the
+first documented model wins. Otherwise codeaf uses the vendor's preferred model when the
 service listed it or published no list, then the first model the service listed. With no
 preferred or listed model there is no move and no extra sentence.
 
@@ -48,7 +48,7 @@ until that answer ends, so the model does not change under a sentence already st
 When the key is a variable, the receipt adds, for example,
 `the engine process reads $DEEPSEEK_API_KEY from its own environment`. The daemon keeps
 the environment it started with. If it started before that variable existed, run
-`aforge engine --stop --workspace <dir>` and launch aforge again so the new engine reads
+`codeaf engine --stop --workspace <dir>` and launch codeaf again so the new engine reads
 the variable.
 
 `--no-host` has the same immediate result inside its one process. Under `--host` or
@@ -67,23 +67,23 @@ opens when reconnecting one of these services from its Providers row in `/settin
 Z.ai is the direct service for GLM and Moonshot is the direct service for Kimi.
 MiniMax, Ollama and **Something else** are single-door services. MiniMax makes no plan
 claim because its plan and metered traffic currently have no wire-level difference
-aforge can use to prove which balance answered.
+codeaf can use to prove which balance answered.
 
 A service name cannot be confused with the author part of a model already on the default
-service. When `deepseek` is already an author there, aforge connects the direct service
+service. When `deepseek` is already an author there, codeaf connects the direct service
 under `deepseek-direct` in that same attempt. The region and key are not asked for twice,
 and its models read `deepseek-direct/<model id>`.
 
 ## Why is my service called z-ai-direct — I connected Z.ai, the name changed
 
 A service may not be written with a name the default service already uses for a model
-author. Aforge appends `-direct` and finishes the connection in the same attempt, so the
+author. codeaf appends `-direct` and finishes the connection in the same attempt, so the
 region and key are not asked for twice. The connect line tells you the name it used, for
 example `z-ai-direct is connected · coding plan · 4 models`, and those models read
 `z-ai-direct/<model id>`. DeepSeek follows the same rule: it becomes `deepseek-direct`,
 and its models read `deepseek-direct/<model id>`.
 
-## Connect a service — what is asked for, and what aforge checks before it saves anything
+## Connect a service — what is asked for, and what codeaf checks before it saves anything
 
 Open `/connect` and choose a row in `models`. DeepSeek asks for `your key`. Z.ai,
 Moonshot and Alibaba Qwen ask `your region` with one row per region: `International`
@@ -100,19 +100,19 @@ service's own answer, cut at 120 characters on a word boundary:
 `deepseek refused that key — Authentication Fails, Your api key is invalid`. No answer is
 different: `deepseek did not answer · nothing was saved`.
 
-Aforge checks each billing door in order with a one-token completion and binds the first
+codeaf checks each billing door in order with a one-token completion and binds the first
 one that answers. A no-plan or payment answer on one door moves the connection check to
 the next; a bad-key answer stops immediately in the vendor's words. A missing answer also
-moves to the next door. If no door answers, aforge saves nothing. Key-prefix hints may
+moves to the next door. If no door answers, codeaf saves nothing. Key-prefix hints may
 change which door is tried first, but never skip a door.
 
-A spent plan window proves that plan door works: aforge binds it, stops before the
+A spent plan window proves that plan door works: codeaf binds it, stops before the
 pay-as-you-go door, and says `plan paused`. It does not make a paid probe or change the
 saved billing door. When the vendor supplies a reset time, the connected line carries
 the same sentence used during a turn, for example
 `plan paused · resets at 18:30 UTC · /connect can switch to pay-as-you-go`.
 
-The bound door is saved and every later request uses it. Aforge does not silently probe
+The bound door is saved and every later request uses it. codeaf does not silently probe
 or change billing doors while a turn runs. Only an explicit reconnect rechecks them:
 re-enter the service from its Providers row in `/settings`, or press `ctrl+r` there to
 reuse the saved details. Disconnecting and reconnecting the service through `/connect`
@@ -120,7 +120,7 @@ does the same check. Where a door has no fixed catalog, its model listing is bel
 after the one-token check succeeds.
 
 A payment refusal proves a key authenticated. For an unchanged one-door service, the
-service is connected and stored as before. For a multi-door service, aforge tries the
+service is connected and stored as before. For a multi-door service, codeaf tries the
 remaining doors; if every one refuses for plan or payment reasons, it stores nothing and
 says, for example,
 `z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
@@ -130,7 +130,7 @@ is waited out. Every saved key lives in the profile `config.json`, owner-readabl
 ## Z.ai coding-plan models — why only four GLM models are listed
 
 Z.ai's coding endpoint publishes a wider model listing than its DevPack documentation
-says the plan serves. Aforge therefore shows only the documented plan catalog:
+says the plan serves. codeaf therefore shows only the documented plan catalog:
 `glm-5.3`, `glm-5.3-flash`, `glm-5.3[1m]`, and `glm-5.3-flash[1m]`. The
 pay-as-you-go door keeps the model listing returned by that door.
 
@@ -148,10 +148,10 @@ It defaults to `wait`, which never sends the turn to a metered door. Choose
 During overflow the status line names it, for example
 `writing · 4s · pay-as-you-go 61 t/s`. The setting is per service.
 
-## Is aforge supported by Zhipu for the coding plan
+## Is codeaf supported by Zhipu for the coding plan
 
-Zhipu lists the tools its plan covers. Aforge is not currently listed; a request has been
-drafted but has not been sent. Aforge identifies itself as aforge and does not pretend to
+Zhipu lists the tools its plan covers. codeaf is not currently listed; a request has been
+drafted but has not been sent. codeaf identifies itself as codeaf and does not pretend to
 be another supported client.
 
 ## What a service without a model list can and cannot do
@@ -162,13 +162,13 @@ not on the picture tool itself.
 
 A service whose model-list check proves absent says `deepseek is connected`
 with no count. Its picker group contains one dim row:
-`no list from this service · type a model id`. Type a model id to use one; aforge does not invent a catalog.
+`no list from this service · type a model id`. Type a model id to use one; codeaf does not invent a catalog.
 
 The vendored list fact is only the expectation from the documentation survey. A service that was expected to have no list
 but answers the check gets the listed behaviour immediately: its model count, picker group and service-scoped cache all use
 the ids it returned, with no reconnect.
 
-An empty catalog also means aforge cannot know which picture-making, speech or video
+An empty catalog also means codeaf cannot know which picture-making, speech or video
 models that service offers. Those tools are off the belt for that service—absent rather
 than present and broken. Text models can still be named and used. A direct service has
 one provider, so there is nothing to choose between; that is not a fault.
@@ -176,11 +176,11 @@ one provider, so there is nothing to choose between; that is not a fault.
 ## Remove a key — disconnect a service, delete a key, stop using a service
 
 Open `/connect` and press `enter` on a connected row. The row first says
-`enter again to disconnect`; press `enter` a second time to confirm. When no turn is using it, aforge removes its saved key and says
+`enter again to disconnect`; press `enter` a second time to confirm. When no turn is using it, codeaf removes its saved key and says
 `deepseek is disconnected · its models are gone from the picker`.
 
 A service answering the current turn cannot be cut:
-`deepseek is answering right now · try again in a moment`. If this conversation used the removed service, aforge either says
+`deepseek is answering right now · try again in a moment`. If this conversation used the removed service, codeaf either says
 the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a service or pick a model`.
@@ -206,7 +206,7 @@ Phase 1 records no cost for a direct service. Its calls therefore add nothing to
 spend page and show no invented `$0.00`. This does not mean the vendor charged nothing;
 consult that account for its bill and limits.
 
-When a direct stream ends before its usage block arrives, aforge asks for no OpenRouter
+When a direct stream ends before its usage block arrives, codeaf asks for no OpenRouter
 receipt and writes no ledger row for that unmeasured call. `/cost` stays silent about it
 rather than saying a subscription call was charged but could not be priced. Direct calls
 whose usage block does arrive still record their model call and token counts without an
@@ -231,7 +231,7 @@ service has one provider, so there is nothing to choose between and that is not 
 ## Something else — a proxy, a gateway, or your own endpoint
 
 The **Something else** row in `/connect` accepts an OpenAI-compatible base URL and key.
-Use it for a proxy, gateway, self-hosted endpoint, or vendor not already named. Aforge
+Use it for a proxy, gateway, self-hosted endpoint, or vendor not already named. codeaf
 checks the address before saving it and uses a short written name derived from its host;
 if that name is already taken, the message offers a `-direct` spelling.
 
@@ -239,7 +239,7 @@ That written host name is the row's name everywhere. A refusal from a localhost 
 `localhost refused that key — …`, and a success says `localhost is connected · 2 models`;
 neither switches back to `custom`.
 
-In Phase 1 a **Something else** service must provide the compatible chat path. Aforge
+In Phase 1 a **Something else** service must provide the compatible chat path. codeaf
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
-When that address is absent, aforge connects the service without inventing rows and the
+When that address is absent, codeaf connects the service without inventing rows and the
 picker asks you to type a model id. Direct calls record no cost in Phase 1 and have one provider.

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The memory tests are written against BEHAVIOUR a person could observe: what
@@ -153,7 +153,7 @@ func (r *reflexScript) counts() (routes, extracts, decides int) {
 
 // brainAgent is a session with a brain of its own, in a directory the test
 // owns. The store is never the person's real one: a test that wrote into
-// ~/.aforge would be a test that changes their next conversation.
+// ~/.codeaf would be a test that changes their next conversation.
 func brainAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Agent, *store.Store) {
 	t.Helper()
 	brain, err := store.Open(filepath.Join(t.TempDir(), "brain.db"))

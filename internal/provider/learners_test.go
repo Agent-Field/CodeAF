@@ -1,6 +1,6 @@
 package provider
 
-import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+import lanes "github.com/Agent-Field/codeaf/internal/lane"
 
 // resetSharedLearners puts every package-level learner back to a fresh one.
 //

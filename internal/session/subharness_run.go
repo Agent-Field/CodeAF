@@ -23,7 +23,7 @@ package session
 //
 // Everything below is about drawing a run for somebody. The run itself is
 // [exec.Runner.Run] and knows nothing about any of it — which is what lets the
-// headless command (cmd/aforge) run the same program through the same runner
+// headless command (cmd/codeaf) run the same program through the same runner
 // with no task system in the process at all. If this file ever became necessary
 // to running a subharness, the contract would have quietly acquired a dependency
 // on a terminal.
@@ -47,8 +47,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // subharnessRunSpec is what one run node is admitted with: which program, the
@@ -74,7 +74,7 @@ type subharnessRunSpec struct {
 // process ended says for itself. It says the two things somebody reading the row
 // afterwards needs: it did not finish, and the account of how far it got is
 // still there (task_store.go's [interrupt] states why it is never re-run).
-const subharnessInterruptedReport = "the run did not finish before aforge closed; its journal is kept"
+const subharnessInterruptedReport = "the run did not finish before codeaf closed; its journal is kept"
 
 // subharnessStoppedWord is the report a run a person ended settles with.
 const subharnessStoppedWord = "stopped; its journal is kept"

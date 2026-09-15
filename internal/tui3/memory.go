@@ -3,10 +3,10 @@ package tui3
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// THE THREE COMMANDS ONTO WHAT AFORGE REMEMBERS ABOUT YOU.
+// THE THREE COMMANDS ONTO WHAT codeaf REMEMBERS ABOUT YOU.
 //
 // Memory is otherwise invisible by design: a small model decides before each
 // message which remembered lines bear on it and the rest of the time nothing is

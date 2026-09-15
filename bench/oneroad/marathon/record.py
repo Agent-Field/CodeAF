@@ -175,7 +175,7 @@ meta = {
 
 # ── which build of which harness was measured ───────────────────────────────
 def harness_version():
-    if ARM.startswith("aforge"):
+    if ARM.startswith("codeaf"):
         binary = os.environ.get("NEW_BIN", "")
         sha = ""
         if binary and os.path.exists(binary):
@@ -189,10 +189,10 @@ def harness_version():
         # THE COMMIT THE BINARY WAS BUILT FROM IS NOT THE COMMIT THE TREE IS ON.
         # Several lanes share this checkout, so HEAD moves under a ten-hour cell
         # and the repo commit read at record time is only "where the tree was
-        # when the row was written". AFORGE_BUILD_COMMIT is the binary's own
+        # when the row was written". CODEAF_BUILD_COMMIT is the binary's own
         # provenance, passed in by whoever built it; the sha256 is the proof.
         return {"binary": binary, "sha256": sha,
-                "build_commit": os.environ.get("AFORGE_BUILD_COMMIT", ""),
+                "build_commit": os.environ.get("CODEAF_BUILD_COMMIT", ""),
                 "repo_commit_at_record": commit,
                 "config": "all-flash" if ARM.endswith("flash") else "crew (registry tiers)"}
     exe = {"pi": "pi", "opencode": os.path.expanduser("~/.opencode/bin/opencode")}.get(ARM, ARM)
@@ -207,12 +207,12 @@ except Exception as exc:
 
 # ── the money, on the one price table ───────────────────────────────────────
 from competitor_cost import list_prices, pi_usage, opencode_usage  # noqa: E402
-from aforge_list_cost import usage as aforge_usage  # noqa: E402
+from codeaf_list_cost import usage as codeaf_usage  # noqa: E402
 
 def spend():
     prices = list_prices(MODEL)
-    if ARM.startswith("aforge"):
-        tok, n = aforge_usage(CELL)
+    if ARM.startswith("codeaf"):
+        tok, n = codeaf_usage(CELL)
         return {"input": tok["in"], "output": tok["out"], "cache_read": tok["cache"]}, None, n
     # lib/competitor_cost.py finds pi's and opencode's stores under the HOME it is
     # running as. The cell ran them with HOME=/peer inside the container, which is
@@ -229,8 +229,8 @@ try:
     tok, native, calls = spend()
     p = list_prices(MODEL)
     # `input` is prompt_tokens in the OpenAI dialect and INCLUDES the cached part
-    # in aforge's journal, so only the remainder is billed at the uncached rate.
-    uncached = max(0, tok["input"] - tok["cache_read"]) if ARM.startswith("aforge") else tok["input"]
+    # in codeaf's journal, so only the remainder is billed at the uncached rate.
+    uncached = max(0, tok["input"] - tok["cache_read"]) if ARM.startswith("codeaf") else tok["input"]
     usd = uncached * p["prompt"] + tok["cache_read"] * p["cache_read"] + tok["output"] * p["completion"]
     meta.update({"tokens_in": tok["input"], "tokens_out": tok["output"],
                  "tokens_cache": tok["cache_read"], "requests": calls,
@@ -240,7 +240,7 @@ except Exception as exc:
     meta.update({"cost_usd": None, "cost_source": "unreadable: %s" % exc})
 
 # ── the road columns, for the arms that have a road ─────────────────────────
-if ARM.startswith("aforge"):
+if ARM.startswith("codeaf"):
     # THE SESSION IS TWO LEVELS UNDER projects/, NOT ONE: projects/<project>/<session>/.
     sessions = sorted(
         d for d in glob.glob(os.path.join(CELL, "profile", "v3", "projects", "*", "*"))

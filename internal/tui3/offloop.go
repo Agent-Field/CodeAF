@@ -9,9 +9,9 @@ import (
 // ── EVERY DOOR IS ASKED OFF THE LOOP ────────────────────────────────────────
 //
 // THE LAW. A door on the agent — answering a question, writing a rule, taking up
-// a conversation's record — is a CALL TO ANOTHER PROCESS. Bare `aforge` runs its
+// a conversation's record — is a CALL TO ANOTHER PROCESS. Bare `codeaf` runs its
 // engine in a session host and talks to it over a socket, so this is true of
-// every window and not only of `--host` (cmd/aforge's chatv3_local.go). A call
+// every window and not only of `--host` (cmd/codeaf's chatv3_local.go). A call
 // made from Update is a call the window cannot draw during, cannot take a key
 // during, and cannot even read the news of its own answer during — which is how
 // one keystroke came to cost ten seconds (doorbell.go tells that story from the

@@ -52,7 +52,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // THE TWO DESCRIPTIONS ARE PROMPT TEXT AND ARE PAID FOR ON EVERY REQUEST OF

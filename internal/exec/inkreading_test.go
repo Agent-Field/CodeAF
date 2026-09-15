@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // inkSuite stages a project whose suite behaves the way ink's does under this

@@ -18,7 +18,7 @@ func openAdmissionStore(t *testing.T) *Store {
 
 // The guard used to live in the head's commissioning tool, which meant it
 // protected exactly one caller. Everything else that can commission work —
-// `aforge do` running headless, a question answered into a continuation, a
+// `codeaf do` running headless, a question answered into a continuation, a
 // surface with its own composer — journaled twins freely and the person paid
 // for both. This is the funnel refusing one without any conversation involved.
 func TestTheFunnelRefusesATwinOfWorkAlreadyWaiting(t *testing.T) {

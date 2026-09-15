@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // ── ONE BEAT PER SHEET, HOWEVER MANY DOORS ASK FOR ONE ──────────────────────
@@ -20,7 +20,7 @@ import (
 // the wire the only way it can be: by counting what the router was asked.
 func TestASecondBeatJoinsTheFirstRatherThanFetchingAgain(t *testing.T) {
 	// A HOME OF ITS OWN. The beat primes the default ledger from every reading,
-	// and that ledger writes through a store rooted at AFORGE_HOME.
+	// and that ledger writes through a store rooted at CODEAF_HOME.
 	t.Setenv(home.EnvVar, t.TempDir())
 	Default().Reset()
 	t.Cleanup(Default().Reset)

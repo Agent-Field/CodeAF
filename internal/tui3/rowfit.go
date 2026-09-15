@@ -70,7 +70,7 @@ const (
 
 // rowUnbounded is the width of a frame with no edge — what [rowAll] fits
 // against when a caller wants the row as it would read with room to spare
-// (`aforge models`, the tail a test pins). It is a number and not a special
+// (`codeaf models`, the tail a test pins). It is a number and not a special
 // case so that one code path draws every row.
 const rowUnbounded = 1 << 30
 

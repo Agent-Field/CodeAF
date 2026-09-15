@@ -47,7 +47,7 @@ func TestAFreshStateRootGetsTheBinaryStampedWithItsVersion(t *testing.T) {
 		t.Fatalf("stat what was extracted: %v", err)
 	}
 	if info.Mode().Perm()&0o111 == 0 {
-		t.Fatalf("extracted furrow has mode %v; a binary aforge cannot execute is a binary it did not extract", info.Mode())
+		t.Fatalf("extracted furrow has mode %v; a binary codeaf cannot execute is a binary it did not extract", info.Mode())
 	}
 
 	// Nothing half-written is left behind. A .partial that survived would be
@@ -162,7 +162,7 @@ func TestEnsureAgreesWithWhatThisBuildActuallyCarries(t *testing.T) {
 	// fresh clone carries nothing and must say so through the sentinel the seam
 	// branches on; a build after `make furrow` carries the real furrow and must
 	// put it under the state root and nowhere else.
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	ensureOnce = sync.Once{}
 
 	path, err := Ensure()

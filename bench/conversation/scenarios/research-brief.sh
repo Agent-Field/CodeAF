@@ -9,7 +9,7 @@
 
 SCENARIO_WORKLOAD="research"
 SCENARIO_DOOR="print"
-SCENARIO_ARMS="aforge omp pi opencode"
+SCENARIO_ARMS="codeaf omp pi opencode"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-420}"
 SCENARIO_GUARDS="facts joined across files, with a stale note present"
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
 // THE MANUAL IS A BUILD ARTEFACT, NOT A DOCUMENT SOMEBODY REMEMBERS TO UPDATE.

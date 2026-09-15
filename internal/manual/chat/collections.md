@@ -2,7 +2,7 @@
 
 ## How do I group chats in logical folders
 
-`aforge collections` is a local command for organizing references to conversations,
+`codeaf collections` is a local command for organizing references to conversations,
 tasks, ongoing items and files. A collection is a logical folder with a stable ID
 and name. Several collections can reference the same record. Collections can
 contain other collections, including one child shared by several parents;
@@ -16,39 +16,39 @@ automatic context injection yet.
 
 ## Where do I file a task
 
-File a task reference with `aforge collections add <collection-id> task
+File a task reference with `codeaf collections add <collection-id> task
 <task-id> --session <conversation-id>`. A task needs its conversation ID because
 task numbers repeat across conversations. You can file the same task in several
 collections alongside related chats and files. Filing does not move, copy, start
 or stop the task; its original conversation still owns its execution.
 
 The conversation ID is the 16-hex name of the folder holding its journal at
-`~/.aforge/v3/projects/<the workspace path with its separators turned to dashes>/<id>/transcript.jsonl`;
-it is the same ID the transcript header carries, and `AFORGE_HOME` moves the root.
-`aforge collections show <collection-id>` prints the IDs already filed back to you.
+`~/.codeaf/v3/projects/<the workspace path with its separators turned to dashes>/<id>/transcript.jsonl`;
+it is the same ID the transcript header carries, and `CODEAF_HOME` moves the root.
+`codeaf collections show <collection-id>` prints the IDs already filed back to you.
 There is no command that lists conversation IDs.
 
 ## Creating, listing and renaming collections
 
-Run `aforge collections` or `aforge collections list` to list collections.
-`aforge collections create "Marketing"` prints the new ID and name.
-Use that ID with `aforge collections rename <collection-id> "Launch"`.
-`aforge collections show <collection-id>` lists that collection's direct references.
+Run `codeaf collections` or `codeaf collections list` to list collections.
+`codeaf collections create "Marketing"` prints the new ID and name.
+Use that ID with `codeaf collections rename <collection-id> "Launch"`.
+`codeaf collections show <collection-id>` lists that collection's direct references.
 Order follows creation and insertion, rather than inferred relevance.
 Reading a fresh home or an existing empty file does not create a database.
 `create` initializes it when needed.
 
 All commands accept `--json` for structured output and `--db <path>` to choose a
-separate collection database. The default is `~/.aforge/v3/collections.db`;
-`AFORGE_HOME` moves the state root. Collections do not require a model API key
+separate collection database. The default is `~/.codeaf/v3/collections.db`;
+`CODEAF_HOME` moves the state root. Collections do not require a model API key
 or optional learned memory. Pointing `--db` at a database that already belongs
 to another feature is refused, and so is a database written by an incompatible
 version; neither is reset. With no collections yet, listing answers `No
-collections found. Create one with aforge collections create <name>.`
+collections found. Create one with codeaf collections create <name>.`
 
-## Database is locked, busy, two windows or another aforge command at the same time
+## Database is locked, busy, two windows or another codeaf command at the same time
 
-Several aforge commands and windows may use one collections database at the same
+Several codeaf commands and windows may use one collections database at the same
 time. A write waits up to ten seconds for another one to finish rather than
 being dropped. If that wait
 runs out, it answers `the collections database is busy being written by something
@@ -63,10 +63,10 @@ belong to collections.
 
 ## Adding, removing and finding a chat or work reference
 
-Use `aforge collections add <collection-id> <kind> <record-id>`.
+Use `codeaf collections add <collection-id> <kind> <record-id>`.
 The kinds are `collection`, `conversation`, `task`, `standing` and `artifact`.
 A task also requires `--session <conversation-id>` because task numbers repeat
-in different conversations. For example, `aforge collections add <collection-id>
+in different conversations. For example, `codeaf collections add <collection-id>
 task 1 --session <conversation-id>` records that specific task.
 
 `artifact` takes a local file path, stored as an absolute path. A relative path
@@ -80,9 +80,9 @@ exist or the command answers `collection not found`. Other references are not
 checked for availability, so they can be retained while their source is offline.
 These commands list references, not current execution status or record contents.
 
-`aforge collections find <kind> <record-id>` lists direct memberships; use the
+`codeaf collections find <kind> <record-id>` lists direct memberships; use the
 same `--session` when finding a task. A record in none answers `No collection
-references this record.` `aforge collections remove <collection-id> <kind>
+references this record.` `codeaf collections remove <collection-id> <kind>
 <record-id>` removes only that membership, answering `This collection no longer
 references it; the original record is unchanged.` It neither deletes the original
 record nor stops ongoing work. Repeating add or remove is harmless, and removing

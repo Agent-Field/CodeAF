@@ -9,13 +9,13 @@ package tui3
 // the ARRANGEMENT — where each of them stands at which width, and the one cell
 // on the whole page that is allowed to move (homespinner.go).
 //
-//	aforge                    2 want you · 4 moving · $0.55 today · tue 1:11pm
+//	codeaf                    2 want you · 4 moving · $0.55 today · tue 1:11pm
 //	 home   tasks 1   standing   memory 2   spend   search   settings
 //	───────────────────────────────────────────────────────────────────────────
 //	 since you left · 3h
 //	 a watch fired at 6am — nothing had changed, and it says so      standing
 //	 20 chats · what wants you first                    alt+g group by project
-//	 ? Swarm Task Splitting     aforge-v2   asks: add a --report-only mode?  2h
+//	 ? Swarm Task Splitting     codeaf   asks: add a --report-only mode?  2h
 //	 ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings 3h
 //	 ▸ 15 more, quiet since 6d
 //	───────────────────────────────────────────────────────────────────────────

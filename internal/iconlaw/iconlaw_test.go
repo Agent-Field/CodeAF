@@ -99,7 +99,7 @@ var ownedRunes = map[rune]string{
 // a mark at all.
 var exemptions = map[string]string{
 	"internal/resident/bank.go⚑": "resident.NoteMark is a PROTOCOL BYTE, not a cell on a screen: " +
-		"a job-board note is written with it and read back by prefix (cmd/aforge/chat.go strips it " +
+		"a job-board note is written with it and read back by prefix (cmd/codeaf/chat.go strips it " +
 		"before anybody sees the line). Routing it through the tier would make the bytes in the " +
 		"journal depend on the terminal that wrote them, which is a data-format bug wearing a " +
 		"design law's clothes",

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // TestARescueTheCallCouldNotPayForSaysSoOnTheRow is C4: the row records both

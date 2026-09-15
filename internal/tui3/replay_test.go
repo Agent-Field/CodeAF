@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE DEFECT THESE TESTS PIN: a resumed conversation drew its tool calls as
@@ -153,7 +153,7 @@ func TestAReplayedRowExpandsExactlyLikeTheLiveRow(t *testing.T) {
 		{
 			name: "bash", tool: "bash", hint: "bash go test ./...",
 			args:   `{"command":"go test ./..."}`,
-			output: "ok  github.com/Agent-Field/aforge-v2/internal/session 7.6s",
+			output: "ok  github.com/Agent-Field/codeaf/internal/session 7.6s",
 		},
 	}
 	for _, testCase := range cases {

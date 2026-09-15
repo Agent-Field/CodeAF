@@ -718,7 +718,7 @@ func TestACheckpointWithNoDeciderReadsAsThePerson(t *testing.T) {
 
 // A CONFLICT IS NEVER MODEL-HELD, ACROSS A RESTART EITHER. Two versions of
 // somebody's own file are theirs whatever a record says, so the restored card
-// asks them and never announces that aforge is deciding it.
+// asks them and never announces that codeaf is deciding it.
 func TestARestoredConflictIsNeverTheModelsToDecide(t *testing.T) {
 	graph := &TaskGraph{}
 	graph.rehydrate(taskDocument{

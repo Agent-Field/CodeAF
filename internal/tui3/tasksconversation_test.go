@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -38,8 +38,8 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 
 	gate := session.SessionRow{
-		ID: "room-a", Title: "shipping the gate", Project: "aforge",
-		Transcript: "/journals/room-a/session.jsonl", ProjectDir: "/work/aforge",
+		ID: "room-a", Title: "shipping the gate", Project: "codeaf",
+		Transcript: "/journals/room-a/session.jsonl", ProjectDir: "/work/codeaf",
 	}
 	// Every row carries its title as well as its label, because that is what a
 	// query is asked of ([session.TaskMatches]) and these are searched below.
@@ -64,7 +64,7 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 			Name: "render-the-fight-clip", Status: string(session.TaskDone), EndedAt: ago(30 * time.Hour)},
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{gate}},
+		{Name: "codeaf", Sessions: []session.SessionRow{gate}},
 		{Name: "media", Sessions: []session.SessionRow{clips}},
 	}, Read: now}
 	return world, session.LastDays(now, 14), now
@@ -453,7 +453,7 @@ func TestAQueryKeepsTheAncestorsOfWhatItFoundAndOpensThePath(t *testing.T) {
 // drawn where work with no parent is drawn.
 func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, time.UTC)
-	row := session.SessionRow{ID: "room-a", Title: "the knot", Project: "aforge"}
+	row := session.SessionRow{ID: "room-a", Title: "the knot", Project: "codeaf"}
 	row.Tasks.Rows = []session.TaskIndexEntry{
 		{SessionID: "room-a", ID: "1", Parent: "2", Label: "first half",
 			Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour)},
@@ -465,7 +465,7 @@ func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 			Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour)},
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 	r.unfolded = true
@@ -485,13 +485,13 @@ func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 // vanishing behind a row that is not there.
 func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, time.UTC)
-	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "aforge"}
+	row := session.SessionRow{ID: "room-a", Title: "the split", Project: "codeaf"}
 	row.Tasks.Rows = []session.TaskIndexEntry{
 		{SessionID: "room-a", ID: "8", Parent: "7", Label: "the worker whose run is gone",
 			Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour)},
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 
@@ -530,13 +530,13 @@ func TestTwoConversationsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
 // is drawn over a blank.
 func TestWorkOutOfAnUnnamedConversationIsDrawnWithNoRowOverIt(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 0, 0, 0, time.UTC)
-	row := session.SessionRow{ID: "room-a", Project: "aforge"}
+	row := session.SessionRow{ID: "room-a", Project: "codeaf"}
 	row.Tasks.Rows = []session.TaskIndexEntry{
 		{SessionID: "room-a", ID: "1", Label: "port the parser",
 			Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour)},
 	}
 	world := session.World{Projects: []session.Project{
-		{Name: "aforge", Sessions: []session.SessionRow{row}},
+		{Name: "codeaf", Sessions: []session.SessionRow{row}},
 	}, Read: now}
 	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 

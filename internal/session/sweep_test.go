@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // A conversation opened in a temp directory and abandoned for a week is litter:
@@ -478,7 +478,7 @@ func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
 // installed, so the fake carries the claim everywhere and this carries the one
 // thing a fake cannot — that furrow really does forget the fork.
 //
-//	AFORGE_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
+//	CODEAF_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
 func TestARealFurrowForgetsASweptSessionsFork(t *testing.T) {
 	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
 	if binary == "" {

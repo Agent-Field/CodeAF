@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // The rig's two halves ARE the contract's two interfaces, asserted here so the

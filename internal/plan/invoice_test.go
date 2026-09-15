@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/profile"
 )
 
 // invoiceRecords builds n records of one shape at a fixed price, which is all

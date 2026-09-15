@@ -4,7 +4,7 @@
 
 A worker can start a long command in the background instead of waiting on it —
 a build, a test suite, a dev server — and get on with something else. Each one
-writes to its own log under `.aforge/jobs/`, so a chatty build can never block
+writes to its own log under `.codeaf/jobs/`, so a chatty build can never block
 anything, and the worker reads that log incrementally as it goes.
 
 Background groups get **900 seconds** by default, are reniced to **+10** so they
@@ -29,7 +29,7 @@ asked — you already said so. On yes, the receipt tells you how to end it:
 ## Health checks
 
 Every service declares how it can be checked: a **port**, a **URL** that must
-return 200, or a **command** that must exit clean. Aforge probes it roughly
+return 200, or a **command** that must exit clean. codeaf probes it roughly
 twice a second, after a two-second grace at startup, with a two-second timeout.
 It also verifies the process is still the one it started, so a recycled process
 id is never mistaken for a healthy service.
@@ -61,7 +61,7 @@ Keep it or stop it. It is asked once per service and never nagged again.
 
 - The **board** shows each service with its status, its log path, and the last
   ten log lines, with stop, restart and enable-auto-restart actions.
-- `aforge services` lists them from a shell; `aforge services stop <name>` ends
+- `codeaf services` lists them from a shell; `codeaf services stop <name>` ends
   one.
 - Plain sentences work: "what services are running", "stop the api", "restart
   the worker".
@@ -78,7 +78,7 @@ it is read as a targeted request and resolved against the live board.
 
 ## After a restart
 
-When aforge starts again it re-adopts the services it was running, verifying
+When codeaf starts again it re-adopts the services it was running, verifying
 each is still the same process. One that died while it was away is reported
 honestly rather than shown as healthy:
 

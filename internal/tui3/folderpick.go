@@ -51,7 +51,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // folderRows is how many rows of DIRECTORIES this browser wants at once. The
@@ -104,7 +104,7 @@ type folderCand struct {
 	// typing what they can see.
 	//
 	// IT USED TO BE [shortPath], WHICH IS THE LEGEND SPELLING and spends the
-	// ancestors down to initials: `~/code/aforge-v2/internal` drew as
+	// ancestors down to initials: `~/code/codeaf/internal` drew as
 	// `~/c/a/internal`, so the rows were unreadable AND unsearchable — a filter
 	// on "code" matched nothing, because the letters it was scoring against were
 	// not there. The same call in the walk's own box write put `/t/b/t/alpha/`

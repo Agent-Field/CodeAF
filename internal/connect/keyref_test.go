@@ -148,6 +148,22 @@ func TestAReferenceIsResolvedFreshOnEveryRequest(t *testing.T) {
 	}
 }
 
+func TestAStoredOwnedReferenceUsesTheFormerValueAndForeignNamesStayExact(t *testing.T) {
+	t.Setenv("CODEAF_EXAMPLE_KEY", "")
+	t.Setenv("AFORGE_EXAMPLE_KEY", "former-owned-value") // legacy-name
+	owned := stored{KeyEnv: "CODEAF_EXAMPLE_KEY"}
+	if got, err := owned.secret("Example"); err != nil || got != "former-owned-value" {
+		t.Fatalf("owned reference = %q, %v", got, err)
+	}
+
+	t.Setenv("PROVIDER_EXAMPLE_KEY", "provider-value")
+	t.Setenv("AFORGE_PROVIDER_EXAMPLE_KEY", "must-not-leak") // legacy-name
+	foreign := stored{KeyEnv: "PROVIDER_EXAMPLE_KEY"}
+	if got, err := foreign.secret("Example"); err != nil || got != "provider-value" {
+		t.Fatalf("foreign reference = %q, %v", got, err)
+	}
+}
+
 // ── 3. the variable that is not there ───────────────────────────────────────
 
 // A MISSING VARIABLE IS A REFUSAL THAT NAMES IT. Not a silence, not a request

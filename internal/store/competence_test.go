@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/profile"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func TestCompetenceMapClassifiesProfileBucketsAndExportsFrontier(t *testing.T) {

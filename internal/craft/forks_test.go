@@ -145,7 +145,7 @@ func TestListHandsBackACallersOwnCopy(t *testing.T) {
 // not carry. Each load resolves a version — a `git log -1` and a
 // `git status --porcelain` — so the pane used to cost two forks per workflow
 // on every poll, on top of the listing. What follows is the shape of that
-// pane, built the way cmd/aforge builds it.
+// pane, built the way cmd/codeaf builds it.
 
 type craftsEntry struct {
 	Name        string

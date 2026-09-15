@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // endedRailText expands the finished report and reads its rows as one line, because the rail wraps a row's

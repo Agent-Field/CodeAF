@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1493,7 +1493,7 @@ func (a *app) paintTarget(e *entry, target string) string {
 
 	case "read", "edit", "write", "generate_image", "view_image":
 		// AND THE TARGET IS THE DOOR ITSELF (pathlink.go). This is the one path
-		// on the row that aforge resolved rather than found — it came out of the
+		// on the row that codeaf resolved rather than found — it came out of the
 		// call's own arguments — so it is exactly the kind of path that may be
 		// linked, and the shown text may be an ellipsis or a bare basename
 		// without the click losing the file.
@@ -2021,7 +2021,7 @@ func toolWords(tool, hint string) (string, string) {
 
 // ToolGloss is how a tool's activity is said in ONE plain sentence, with the
 // verb said once. It is exported because the non-interactive door in
-// cmd/aforge prints the same fact without a terminal, and one rule for one
+// cmd/codeaf prints the same fact without a terminal, and one rule for one
 // sentence is the point.
 func ToolGloss(tool, hint string) string {
 	name, gloss := toolWords(tool, hint)

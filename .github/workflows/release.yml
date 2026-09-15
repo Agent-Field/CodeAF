@@ -38,7 +38,9 @@ permissions:
   contents: read
 
 env:
-  RELEASE_REPOSITORY: Agent-Field/aforge-v2
+  # The repository publishing this release, which is right before and after the
+  # GitHub rename this repository is about to take, and right in a fork.
+  RELEASE_REPOSITORY: ${{ github.repository }}
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.channel || (github.ref_name == 'main' && 'rc' || github.ref_name) }}
@@ -96,7 +98,7 @@ jobs:
               echo "Release tag ${tag} does not exist; choose an existing_version from the Releases page."
               exit 1
             fi
-            if ! existing_kind=$(go run ./cmd/aforge-release kind "$tag"); then
+            if ! existing_kind=$(go run ./cmd/codeaf-release kind "$tag"); then
               existing_kind="other"
             fi
             if [ "$existing_kind" != "$channel" ]; then
@@ -138,10 +140,10 @@ jobs:
               # The channel resolver deliberately does not read stdin. Keeping
               # git tag out of a pipe prevents its writer dying with SIGPIPE
               # under pipefail once the repository has enough tags.
-              tag=$(go run ./cmd/aforge-release next \
+              tag=$(go run ./cmd/codeaf-release next \
                 --channel "$channel" --sha "$sha" --date "$(date -u +%Y%m%d)")
             else
-              tag=$(git tag --list | go run ./cmd/aforge-release next \
+              tag=$(git tag --list | go run ./cmd/codeaf-release next \
                 --channel "$channel" --component "$component")
             fi
           fi
@@ -175,11 +177,11 @@ jobs:
           set -euo pipefail
           # The known-red ledger only shrinks, so an empty ledger is a success
           # state and must not leave an empty -skip expression in the way.
-          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"
+          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
           go test "${test_args[@]}" \
-            ./cmd/aforge \
+            ./cmd/codeaf \
             ./internal/config \
             ./internal/exec/... \
             ./internal/filelock \
@@ -230,16 +232,16 @@ jobs:
                 -goos "$goos" -goarch "$goarch"
             fi
             GOOS="$goos" GOARCH="$goarch" go build \
-              -tags=aforge_packed_manual \
+              -tags=codeaf_packed_manual \
               -trimpath \
               -ldflags="-s -w -X ${buildinfo_package}.rev=${TAG} -X ${buildinfo_package}.dirty=false -X ${buildinfo_package}.builtAt=${built_at}" \
-              -o "dist/aforge-${goos}-${goarch}${extension}" \
-              ./cmd/aforge
+              -o "dist/codeaf-${goos}-${goarch}${extension}" \
+              ./cmd/codeaf
           done
-          (cd dist && sha256sum aforge-* > checksums.txt)
+          (cd dist && sha256sum codeaf-* > checksums.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: aforge-release
+          name: codeaf-release
           path: dist/*
           if-no-files-found: error
 
@@ -267,7 +269,7 @@ jobs:
           cache: true
       - uses: actions/download-artifact@v4
         with:
-          name: aforge-release
+          name: codeaf-release
           path: dist
       - name: Write release notes
         id: notes
@@ -318,7 +320,7 @@ jobs:
 
           if [ "$REPUBLISH" = "true" ]; then
             gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
-            gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+            gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "codeaf $TAG" "${marks[@]}"
           else
             if [ "$GENERATED_NOTES" = "true" ]; then
               notes=(--generate-notes --notes-file install.md)
@@ -339,12 +341,12 @@ jobs:
                 exit 1
               fi
               gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
-              gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+              gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "codeaf $TAG" "${marks[@]}"
             else
               gh release create "$TAG" dist/* \
                 --repo "$RELEASE_REPOSITORY" \
                 --target "$RELEASE_SHA" \
-                --title "AForge $TAG" \
+                --title "codeaf $TAG" \
                 "${notes[@]}" \
                 "${marks[@]}"
             fi
@@ -356,7 +358,7 @@ jobs:
             # channel is kept at forty, so pagination is unnecessary until then.
             gh release list --repo "$RELEASE_REPOSITORY" --limit 1000 \
               --json tagName,createdAt --jq '.[] | [.tagName, .createdAt] | @tsv' > releases.tsv
-            go run ./cmd/aforge-release prune --channel "$CHANNEL" < releases.tsv > expired-tags.txt
+            go run ./cmd/codeaf-release prune --channel "$CHANNEL" < releases.tsv > expired-tags.txt
             while IFS= read -r expired; do
               [ -z "$expired" ] || gh release delete "$expired" \
                 --repo "$RELEASE_REPOSITORY" --cleanup-tag --yes

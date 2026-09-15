@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The trigger table. Every true here is a question a person would ask while
@@ -44,7 +44,7 @@ func TestSelfQuestionTriggerOpensOnQuestionsAndNotOnWork(t *testing.T) {
 	}
 }
 
-// The whole point, end to end: a question about aforge with nothing live at
+// The whole point, end to end: a question about codeaf with nothing live at
 // all, answered out of the manual, journalling nothing.
 func TestSelfQuestionAnswersFromTheManualWithNothingLiveAndNoCommand(t *testing.T) {
 	graph := openHeadStore(t)
@@ -134,12 +134,12 @@ func TestWorkMessageWithLiveJobsStillGetsTheWorkBelt(t *testing.T) {
 //
 // What closed it: steering-work.md gained "What the front desk's hands actually
 // are". The gap was real and it was in internal/manual rather than in this
-// package — the manual is the only honest source for a question about aforge
+// package — the manual is the only honest source for a question about codeaf
 // itself, so until the page existed, "can you stop what you're doing?" was a
 // question the head could only improvise about.
 var undocumentedHands = map[string]bool{}
 
-// Completeness. A capability that lands without a page becomes something aforge
+// Completeness. A capability that lands without a page becomes something codeaf
 // improvises about, so the registries the recognizers actually dispatch on are
 // checked against the pages on every build.
 func TestManualCoversEveryCapabilityTheHeadDispatchesOn(t *testing.T) {

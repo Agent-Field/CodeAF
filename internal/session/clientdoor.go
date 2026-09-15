@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	account "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	account "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 type modelAccount struct {
@@ -506,7 +506,7 @@ const (
 	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
 	// already gathered, run on every check of every item forever. It is the ONE
 	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
-	// tag is `standing-check`, because cmd/aforge already writes `sentinel` for
+	// tag is `standing-check`, because cmd/codeaf already writes `sentinel` for
 	// the resident's quorum errand and two different calls under one tag is one
 	// reading of neither. THE RENAME IS A HOLDING ACTION: it moves the collision
 	// rather than fixing it, and it is fixed by carrying [lane.Role] on the

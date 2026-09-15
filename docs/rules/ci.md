@@ -71,7 +71,7 @@ request and every push to `dev`, beside the light gate rather than after it. A
 change with no Go file and no module file runs nothing here and is green in a
 minute; a change to `go.mod` or `go.sum` runs the whole tree. **It blocks.** It
 was neutral for a day, then off pull requests for a day (#499), and in that day
-#523 merged red on `cmd/aforge` with `check` green, as #437, #439 and #483 had
+#523 merged red on `cmd/codeaf` with `check` green, as #437, #439 and #483 had
 before the job existed. The owner's ruling is that it runs on the pull request
 and `check` needs it.
 

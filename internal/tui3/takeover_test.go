@@ -4,7 +4,7 @@ package tui3
 // terminal that is holding it: home's two enters, the wait on the flock, and the
 // holder letting go.
 //
-// The flocks here are REAL — the same lock a second aforge meets, taken the same
+// The flocks here are REAL — the same lock a second codeaf meets, taken the same
 // way (internal/session's sessionfile.go) — because the whole exchange is timed
 // against that lock and a flag standing in for it would test nothing.
 
@@ -19,10 +19,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // cardSays reports that a phrase is on the card, ACROSS ITS WRAPS. The right
@@ -1051,9 +1051,9 @@ func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
 // card drawn inside a home band, which is a place no other screen in this suite
 // has photographed. It is written through the same door every question screen
 // is (questionscreens_test.go): the whole frame, at truecolor, with the
-// geometric glyph floor, and only when AFORGE_SCREENS names a directory.
+// geometric glyph floor, and only when CODEAF_SCREENS names a directory.
 func TestTheTakeoverCardScreen(t *testing.T) {
-	dir := strings.TrimSpace(os.Getenv("AFORGE_SCREENS"))
+	dir := strings.TrimSpace(os.Getenv("CODEAF_SCREENS"))
 	lab := newHomeLab(t)
 	now := time.Date(2026, time.September, 9, 14, 2, 0, 0, time.UTC)
 	where := lab.project("-tmp-alpha")

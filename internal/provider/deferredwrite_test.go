@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // ── THE WIRE, WITH SOMEBODY ELSE HOLDING THE BELIEF FILE (issue #264) ───────
@@ -30,7 +30,7 @@ import (
 const wireBound = 5 * time.Second
 
 // heldBeliefFile takes the real belief file's gate exclusively, as another
-// aforge mid-compaction holds it, for the rest of the test.
+// codeaf mid-compaction holds it, for the rest of the test.
 //
 // The path is the one a shipped binary uses, resolved under the temporary home
 // the rig has already installed — a test that locked the real one would freeze

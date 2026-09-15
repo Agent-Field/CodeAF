@@ -1,8 +1,8 @@
 package remote
 
 // server.go is the ENGINE half: the side that holds a real conversation and
-// answers frames about it. It is what `aforge engine` runs after it has changed
-// into the workspace and assembled an agent exactly the way `aforge chat` does.
+// answers frames about it. It is what `codeaf engine` runs after it has changed
+// into the workspace and assembled an agent exactly the way `codeaf chat` does.
 //
 // The shape is one reader, one writer, and one ORDERED LANE, and everything
 // else follows from it. Calls that open a stream or change the conversation's
@@ -41,7 +41,7 @@ package remote
 //     ring of a running turn's events, the questions raised with nobody
 //     watching, and the set of surfaces currently attached. It outlives any one
 //     connection when somebody is holding it (internal/enginehost) and is
-//     closed with the connection when nobody is (a bare `aforge engine`).
+//     closed with the connection when nobody is (a bare `codeaf engine`).
 //   - [server] is one CONNECTION. It reads frames, writes frames, and holds a
 //     pointer to the session it attached to. Several of them can point at one
 //     session, which is what makes a desk and a phone one room.
@@ -65,11 +65,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // WrappedAgent is the slice of *session.Agent an engine serves. It is the
@@ -128,7 +128,7 @@ type WrappedAgent interface {
 }
 
 // Engine is one opened conversation and the doors that replace it. The door
-// that builds it (cmd/aforge) owns config resolution, session-file resolution
+// that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
@@ -228,7 +228,7 @@ type Engine struct {
 	//
 	// THE PLACES ARE A LISTING OF THIS MACHINE'S DISK, and until version 4 the
 	// surface listed its own instead. Over --host that meant the tasks place
-	// walked the LAPTOP's `~/.aforge/v3` and drew what it found — eight rows and
+	// walked the LAPTOP's `~/.codeaf/v3` and drew what it found — eight rows and
 	// a total in dollars — under a conversation running here. These doors are
 	// how it asks the right machine, and they are the same shape Recent and
 	// StandingItems already are: nil is the reading absent rather than empty,
@@ -337,7 +337,7 @@ const ringEvents = 4096
 // surface broke, and the caller turns that into an exit code.
 //
 // THE CONVERSATION IS THIS PIPE'S WHOLE LIFE, which is what the false below
-// says: a bare `aforge engine` with no host behind it is a legitimate version-2
+// says: a bare `codeaf engine` with no host behind it is a legitimate version-2
 // engine, it simply ends when the connection does. The welcome says so
 // ([Welcome.Persistent]) so that no surface promises a lifetime this shape does
 // not have.
@@ -663,7 +663,7 @@ func workingNow(agent WrappedAgent) bool {
 // down.
 // AND THE DOOR IS READ FROM PRESENCE, because this is the road the whole
 // machine takes when it goes away — internal/enginehost's shutdown, which is
-// `aforge engine --stop`, a signal, and a stale build letting go. A window
+// `codeaf engine --stop`, a signal, and a stale build letting go. A window
 // still in the room means the engine went out from under somebody, and that is
 // not the unattended door however the host was asked. An empty room is.
 func (sess *Session) Close() error {
@@ -1685,7 +1685,7 @@ func (s *server) serve(in io.Reader) (err error) {
 //     the turn running, keeps its events in the ring, and holds any question it
 //     raises.
 //   - A TORN PIPE ON AN ENGINE THAT IS NOT PERSISTENT ends the conversation,
-//     and that is still the honest reading. A bare `aforge engine` on a pipe
+//     and that is still the honest reading. A bare `codeaf engine` on a pipe
 //     with no host behind it IS the conversation's whole life: nothing will
 //     ever attach to it again, so a turn left running would burn a person's
 //     money into a journal nobody will reopen. The interrupt goes first so the
@@ -1738,11 +1738,11 @@ func (s *server) handshake(line []byte) error {
 		if s.host != nil {
 			// THE CLAUSE THAT WAS MISSING THE DAY THIS SENTENCE LIED. A host
 			// outlives the connection, so the process saying this may be an
-			// older aforge that is still running on a machine whose binary was
+			// older codeaf that is still running on a machine whose binary was
 			// updated an hour ago — and the sentence above sent the person off
 			// to update something that was already updated. When there is a
 			// host behind this connection, say the other thing that is true.
-			reason += ", and this machine is still running the older one — run aforge engine --stop here to retire it"
+			reason += ", and this machine is still running the older one — run codeaf engine --stop here to retire it"
 		}
 		return s.refuse(reason)
 	}
@@ -1800,7 +1800,7 @@ func (s *server) handshake(line []byte) error {
 //
 // IT IS TYPED BECAUSE THE SENTENCE HAS ALREADY BEEN DELIVERED. Over ssh the
 // engine's stderr is the person's stderr — that is how a passphrase prompt
-// reaches them (cmd/aforge/chatv3_host.go) — so a door that also prints this
+// reaches them (cmd/codeaf/chatv3_host.go) — so a door that also prints this
 // error writes the same line onto the same terminal the wire is about to draw
 // it on. [Refusal] is how the engine door knows to exit quietly instead.
 func (s *server) refuse(reason string) error {
@@ -1818,9 +1818,9 @@ func (r *Refusal) Error() string { return r.Reason }
 // Refuse writes one refusal onto a wire nobody has said hello on yet and hands
 // back the same [Refusal] a handshake's own refusals do.
 //
-// IT EXISTS FOR THE ONE REFUSAL THAT COMES BEFORE THERE IS A SERVER. `aforge
+// IT EXISTS FOR THE ONE REFUSAL THAT COMES BEFORE THERE IS A SERVER. `codeaf
 // engine` decides whether it may splice this connection onto a host before it
-// reads a byte of stdin (cmd/aforge's engine.go), and a reason found there has
+// reads a byte of stdin (cmd/codeaf's engine.go), and a reason found there has
 // the same audience and travels the same road as any other: the surface is
 // holding the terminal, it is waiting for a welcome, and a fatal frame is the
 // sentence it prints unchanged.

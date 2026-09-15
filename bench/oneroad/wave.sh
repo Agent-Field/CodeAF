@@ -11,7 +11,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK="${1:?usage: wave.sh <task> [arms...]}"; shift
-ARMS="${*:-aforge-new-flash aforge-new-crew aforge-old-flash pi opencode}"
+ARMS="${*:-codeaf-new-flash codeaf-new-crew codeaf-old-flash pi opencode}"
 # SEED rides through so a wave can be repeated: wave 1f runs the same arm twice
 # over the same five tasks, and the two runs must land in different cells.
 SEED="${SEED:-s1}"

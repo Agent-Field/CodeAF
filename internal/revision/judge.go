@@ -5,7 +5,7 @@
 // the sentinel pass that edits a job's remaining plan in light of what just
 // landed.
 //
-// It lived inside cmd/aforge/chat.go, which meant none of it was reachable
+// It lived inside cmd/codeaf/chat.go, which meant none of it was reachable
 // from internal/ — a resident-side orchestrator could run work and could not
 // judge it. Nothing here knows about a terminal, a session, or a window: every
 // entry point takes the durable graph, the node in question, and a client, and
@@ -31,18 +31,18 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/router"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // DeliverablePrompt is a gate, not a critic: its default is pass, and a
@@ -243,7 +243,7 @@ type Judgment struct {
 	// whose only complaint was wrong delivered whole. Refusing a mechanical
 	// citation says only that no repair round will be bought — the absence it
 	// reports is a fact about the filesystem, which no admission rule is
-	// competent to overturn. See deliveredWhole in cmd/aforge/do.go.
+	// competent to overturn. See deliveredWhole in cmd/codeaf/do.go.
 	Mechanical bool
 	// Grounds are the promises this run made before it began working, and they
 	// travel on the judgement because every rule that weighs this gap must weigh
@@ -1665,7 +1665,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// is a gate that was given every chance and produced no verdict — which
 		// is a fact about the run, and FAILSAFE.md's floor says a fact about the
 		// run reaches the exit code. See Judgment.Fault and its one reader in
-		// cmd/aforge/chat.go.
+		// cmd/codeaf/chat.go.
 		if shaped.Unreadable(err) {
 			provider.Report(judgeCtx, provider.ReadingFormatFailure)
 			// AND THE MECHANICAL GATE STILL RUNS. A gate that produced no
@@ -1690,7 +1690,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// What it is NOT any more is silent — the note says the gate was never
 		// reached and what was done about it, the delivery path turns that into
 		// a gate row of its own kind, and the run leaves unchecked rather than
-		// ok. See GateUnreached and cmd/aforge/chat.go's seam.
+		// ok. See GateUnreached and cmd/codeaf/chat.go's seam.
 		provider.Report(judgeCtx, provider.ReadingProviderFailure)
 		return unjudged(node, gateNote(GateUnreached, asked), err)
 	}
@@ -1859,7 +1859,7 @@ func unjudged(node store.Node, why string, err error) Judgment {
 //
 // IT IS THE FIRST CLAUSE OF THE NOTE AND NEVER THE WHOLE OF IT. What follows it
 // — how the gate was asked, and the provider's own sentence — is detail a person
-// may or may not need; this is the fact they are owed, and cmd/aforge/do.go
+// may or may not need; this is the fact they are owed, and cmd/codeaf/do.go
 // prints it verbatim after "delivered without a check: ". Spelled once here
 // because a sentence in two places is two sentences.
 const GateUnreached = "the gate could not be reached"
@@ -1868,7 +1868,7 @@ const GateUnreached = "the gate could not be reached"
 // person reads and a machine reads back.
 //
 // Spelled once here for the reason GateUnreached above it is: a name in two
-// places is two names, and the second one drifts. cmd/aforge's `--json`
+// places is two names, and the second one drifts. cmd/codeaf's `--json`
 // envelope publishes it as `judged_by`, docs/HEADLESS.md's contract table
 // quotes it, and the chat manual answers "what checked my unattended run" with
 // it — three readers, one string.
@@ -2017,7 +2017,7 @@ func citationSpent(citation string, spent []string) bool {
 //
 // The extension was guarded and the revision was not, and the measured cost of
 // that asymmetry is one benchmark cell where the gate held the worker to a
-// working decision aforge had invented for itself — "March refers to any
+// working decision codeaf had invented for itself — "March refers to any
 // calendar year present in the data" — bought a five-turn re-run against it,
 // and got back a worse deliverable than the one it rejected. A round bought on
 // a self-authored standard cannot converge on anything, because the standard

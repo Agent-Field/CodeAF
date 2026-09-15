@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 // ── ASKING THE ROUTER FOR TODAY'S LIST, FROM INSIDE /model ─────────────────
@@ -62,7 +62,7 @@ const (
 	modelsNewWord    = "new"
 	modelsNothingNew = "nothing new"
 	// ModelsFetchFailed leads the note a failed fetch leaves, followed by what
-	// the door said went wrong. It is exported for `aforge models --refresh`,
+	// the door said went wrong. It is exported for `codeaf models --refresh`,
 	// which says the same sentence on stderr rather than a second spelling of it.
 	ModelsFetchFailed = "could not fetch the model list"
 )
@@ -167,7 +167,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
-	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/aforge's v3 door),
+	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/codeaf's v3 door),
 	// so this is the moment the memo behind the picker's second rung stopped
 	// being true. Dropping it here is what makes ctrl+r a fresh list on every
 	// road onto it rather than only on the one the fetch came back through

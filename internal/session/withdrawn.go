@@ -50,7 +50,7 @@ package session
 // runner on [Event.HarnessMade]).
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // landingWithdrawal is why the landing turn's belt is narrow, in the words the

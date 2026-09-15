@@ -162,7 +162,7 @@ func completions(w http.ResponseWriter, r *http.Request) {
 
 	reply := compose(ask, answered)
 	if !body.Stream {
-		// Nothing in aforge asks for a whole completion today, but a stub that
+		// Nothing in codeaf asks for a whole completion today, but a stub that
 		// only spoke one of the two shapes would fail mysteriously the day
 		// something does.
 		writeWhole(w, reply)

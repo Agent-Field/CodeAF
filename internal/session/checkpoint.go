@@ -129,10 +129,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // The mark reader is registered here, beside the call it belongs to, exactly as
@@ -479,7 +479,7 @@ const checkpointResultArrow = " → "
 // judgement was ignored outright on a quarter to a half of the turns.
 //
 // IT NAMES NOTHING ABOUT THE KIND OF WORK, which is the law prompts/system.md and
-// the ceiling's line are both held to. aforge is a general harness: a research
+// the ceiling's line are both held to. codeaf is a general harness: a research
 // sweep, a writing project and a mechanical change are one shape of problem to
 // this question, and a sentence about files would read as an instruction about
 // programming to a reader watching a literature review.
@@ -3804,7 +3804,7 @@ func endsAskingThePerson(said string) bool {
 //
 // IT IS THE LIVE WORK TREE'S OWN ANSWER and not a second reading of the
 // registry: [Agent.jobsWorkingNow] is what the head count over the roster
-// column is drawn from (jobrow.go), so "aforge thinks something is running" is
+// column is drawn from (jobrow.go), so "codeaf thinks something is running" is
 // one fact with one definition, and the gate above cannot come to disagree with
 // the number a person is looking at while they read its line.
 //

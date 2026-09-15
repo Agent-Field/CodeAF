@@ -18,7 +18,7 @@ import (
 // (docs/design/plan-gate-doe/REPORT.md). So the default is off, and the count
 // is what somebody opts into.
 func TestTheUnpinnedBinaryKeepsEveryDivisionThePlannerDrew(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "")
+	t.Setenv("CODEAF_SPLITGATE", "")
 	if got := Mode(); got != ModeOff {
 		t.Fatalf("the unpinned mode is %q, want %q", got, ModeOff)
 	}
@@ -83,12 +83,12 @@ func TestThePinSelectsTheModeAndAnythingUnknownIsOff(t *testing.T) {
 		{"judgement", ModeOff},
 		{"2", ModeOff},
 	} {
-		t.Setenv("AFORGE_SPLITGATE", probe.pin)
+		t.Setenv("CODEAF_SPLITGATE", probe.pin)
 		if got := Mode(); got != probe.want {
-			t.Errorf("AFORGE_SPLITGATE=%q selected %q, want %q", probe.pin, got, probe.want)
+			t.Errorf("CODEAF_SPLITGATE=%q selected %q, want %q", probe.pin, got, probe.want)
 		}
 		if got, want := Armed(), probe.want != ModeOff; got != want {
-			t.Errorf("AFORGE_SPLITGATE=%q armed=%v, want %v", probe.pin, got, want)
+			t.Errorf("CODEAF_SPLITGATE=%q armed=%v, want %v", probe.pin, got, want)
 		}
 	}
 }
@@ -98,7 +98,7 @@ func TestThePinSelectsTheModeAndAnythingUnknownIsOff(t *testing.T) {
 // selects what an unset pin selects anyway: the gate has no say, whatever the
 // brief counts and whatever the plan drew.
 func TestOffKeepsEveryDivisionWhateverTheBriefOrThePlanSays(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "0")
+	t.Setenv("CODEAF_SPLITGATE", "0")
 	for _, probe := range []struct {
 		text   string
 		leaves []Leaf
@@ -120,7 +120,7 @@ func TestOffKeepsEveryDivisionWhateverTheBriefOrThePlanSays(t *testing.T) {
 // the fault that started the experiment and the reason this is a pin now rather
 // than what everybody gets.
 func TestTheCountPinIsTheGateExactlyAsItShipped(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "1")
+	t.Setenv("CODEAF_SPLITGATE", "1")
 	for _, probe := range []string{
 		"twelve image files need captions",
 		"there are 12 image files",
@@ -134,12 +134,12 @@ func TestTheCountPinIsTheGateExactlyAsItShipped(t *testing.T) {
 		}
 	}
 	if !Armed() {
-		t.Error("AFORGE_SPLITGATE=1 did not arm the gate")
+		t.Error("CODEAF_SPLITGATE=1 did not arm the gate")
 	}
 	// And the sizing a judgment run would read is not read here: three
 	// independent atomic leaves cannot rescue a brief that counts zero.
 	if Judge("rewrite the handbook in three lanes", threeIndependentAtomicLeaves()).Keep {
-		t.Error("the count pin kept a division on the plan's sizing; only AFORGE_SPLITGATE=judgment does that")
+		t.Error("the count pin kept a division on the plan's sizing; only CODEAF_SPLITGATE=judgment does that")
 	}
 }
 
@@ -147,7 +147,7 @@ func TestTheCountPinIsTheGateExactlyAsItShipped(t *testing.T) {
 // sizing says yes and the count is overruled; sizing says nothing useful and
 // the count decides; and an oversized leaf is never the yes.
 func TestJudgmentReadsThePlansSizingAndFallsBackToTheCount(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "judgment")
+	t.Setenv("CODEAF_SPLITGATE", "judgment")
 	// A brief with no digit in it at all, and three atomic leaves that owe each
 	// other nothing: KEPT. This is #418's replication, decided the other way.
 	narrow := "HANDBOOK.md is one file. Deliver lanes that share no lines: rewrite the headings, link the cross-references, insert a contents section."
@@ -239,9 +239,9 @@ func TestEveryCountingModeStillDecidesTheCorpusTheWayItWasMeasured(t *testing.T)
 			t.Errorf("%s: the counting reads %d items, want %d", name, got, want.items)
 		}
 		for _, mode := range []GateMode{ModeCount, ModeJudgment} {
-			t.Setenv("AFORGE_SPLITGATE", string(mode))
+			t.Setenv("CODEAF_SPLITGATE", string(mode))
 			if got := Judge(string(text), nil).Keep; got != want.divide {
-				t.Errorf("%s under AFORGE_SPLITGATE=%s divides=%v, want the measured %v", name, mode, got, want.divide)
+				t.Errorf("%s under CODEAF_SPLITGATE=%s divides=%v, want the measured %v", name, mode, got, want.divide)
 			}
 		}
 	}

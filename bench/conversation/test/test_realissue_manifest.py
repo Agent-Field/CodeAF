@@ -36,8 +36,8 @@ GOOD = {
                               "dropped_paragraphs": {}}},
     "acceptance": {"held_out_paths": ["pkg/tally_test.go"], "fix_paths": ["pkg/tally.go"],
                    "guarded_paths": ["pkg/fixtures/rates.csv"], "command": "go test ./pkg/"},
-    "arms": ["aforge", "pi", "omp"],
-    "doors": {"print": ["aforge", "pi", "omp"], "interactive": ["aforge", "pi", "omp"]},
+    "arms": ["codeaf", "pi", "omp"],
+    "doors": {"print": ["codeaf", "pi", "omp"], "interactive": ["codeaf", "pi", "omp"]},
     "model_pin": "deepseek/deepseek-v4-flash-0731",
 }
 
@@ -166,32 +166,32 @@ class TheManifestRefuses(unittest.TestCase):
 
     # --- doors and models --------------------------------------------------
     def test_an_arm_no_door_names(self):
-        self.refuses(mutate(doors={"print": ["aforge", "pi"], "interactive": ["aforge", "pi"]}),
+        self.refuses(mutate(doors={"print": ["codeaf", "pi"], "interactive": ["codeaf", "pi"]}),
                      "door print is missing omp")
 
     def test_doors_that_cover_the_arms_only_between_them(self):
-        """aforge through print and pi through interactive is two experiments, not one row."""
-        m = mutate(arms=["aforge", "pi"],
-                   doors={"print": ["aforge"], "interactive": ["pi"]})
+        """codeaf through print and pi through interactive is two experiments, not one row."""
+        m = mutate(arms=["codeaf", "pi"],
+                   doors={"print": ["codeaf"], "interactive": ["pi"]})
         self.refuses(m, "a compared door carries every arm")
 
     def test_a_door_that_repeats_an_arm(self):
-        m = mutate(arms=["aforge", "pi"],
-                   doors={"print": ["aforge", "pi", "pi"], "interactive": ["aforge", "pi"]})
+        m = mutate(arms=["codeaf", "pi"],
+                   doors={"print": ["codeaf", "pi", "pi"], "interactive": ["codeaf", "pi"]})
         self.refuses(m, "door print repeats an arm")
 
     def test_a_door_naming_an_arm_that_is_not_in_the_run(self):
-        self.refuses(mutate(doors={"print": ["aforge", "pi", "omp", "opencode"],
-                                   "interactive": ["aforge", "pi", "omp"]}),
+        self.refuses(mutate(doors={"print": ["codeaf", "pi", "omp", "opencode"],
+                                   "interactive": ["codeaf", "pi", "omp"]}),
                      "which is not in arms")
 
     def test_an_interactive_door_this_suite_cannot_drive(self):
-        m = mutate(arms=["aforge", "opencode"],
-                   doors={"print": ["aforge", "opencode"], "interactive": ["aforge", "opencode"]})
+        m = mutate(arms=["codeaf", "opencode"],
+                   doors={"print": ["codeaf", "opencode"], "interactive": ["codeaf", "opencode"]})
         self.refuses(m, "drives no interactive door for opencode")
 
     def test_a_door_with_no_arm_at_all(self):
-        self.refuses(mutate(doors={"print": ["aforge", "pi", "omp"], "interactive": []}),
+        self.refuses(mutate(doors={"print": ["codeaf", "pi", "omp"], "interactive": []}),
                      "door interactive names no arm")
 
     def test_a_model_off_the_open_allowlist(self):

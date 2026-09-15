@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+	executor "github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // THE CUT AND THE JOIN ARE ONE FACT, SO THEY ARE TESTED AGAINST EACH OTHER.

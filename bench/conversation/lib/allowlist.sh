@@ -37,7 +37,7 @@ allowlist_follow_model() {
 }
 
 # normalise_model drops only the spellings that are the same configuration under
-# a different prefix: aforge's `~` alias marker and the `openrouter/` prefix omp
+# a different prefix: codeaf's `~` alias marker and the `openrouter/` prefix omp
 # and opencode want. A `:batch` or other variant suffix is KEPT — batch routing
 # is a different queue with different latency and price, so it is a different
 # entry and has to be allowlisted on purpose.

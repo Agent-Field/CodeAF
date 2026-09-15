@@ -5,14 +5,14 @@
 # cell in $RESULTS/<harness>-<issue>/.
 #
 # Read bench/README.md before trusting any number this prints, in particular
-# the cost column: only aforge self-reports usage.
+# the cost column: only codeaf self-reports usage.
 set -uo pipefail
 
 # ── parameters ──────────────────────────────────────────────────────────────
 REPO="${REPO:-https://github.com/MALIBA-AI/bambara-text-normalization}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash-0731}"
 ISSUES="${ISSUES:-20 21 22 23}"
-HARNESSES="${HARNESSES:-aforge pi opencode}"
+HARNESSES="${HARNESSES:-codeaf pi opencode}"
 
 # Wall-clock cap per cell. A harness that has not produced a diff by here is
 # recorded as DNF rather than left to spend: opencode hit this on issue #22 and
@@ -27,25 +27,25 @@ CELL_TIMEOUT="${CELL_TIMEOUT:-40m}"
 # (2026-08-02, merge of PR #18): the last commit with all four issues open.
 BASE_COMMIT="${BASE_COMMIT:-}"
 
-# aforge shape. Four values, against the same recorded pi and opencode rows:
+# codeaf shape. Four values, against the same recorded pi and opencode rows:
 #
 #   node     one leaf, one graph. The executor measured alone, and the drift
-#            control: byte for byte the invocation the recorded aforge numbers
+#            control: byte for byte the invocation the recorded codeaf numbers
 #            came from, so a re-run that moves says the harness moved.
-#   do       `aforge do "<issue text>"` with no graph written for it. The
+#   do       `codeaf do "<issue text>"` with no graph written for it. The
 #            shipping claim: the compiler decides how the work is shaped and
 #            that shape is what gets measured. It used to be called `select`,
 #            for the worker it also chose; there is one worker now, so what it
 #            still decides is the shape and nothing else.
 #   pipeline plan the graph first, then run it. The parallel shape, and what the
 #            PR-review comparison used.
-#   chat     `aforge chat --once` — the chat surface's brain, one turn, nobody
+#   chat     `codeaf chat --once` — the chat surface's brain, one turn, nobody
 #            watching. NOT a fourth way to run an errand: it compiles no graph,
 #            so there is no delivery gate, no replan and no done.json. It is
 #            here to answer a different question than the other three — what a
 #            person typing into chat would have got.
-AFORGE_MODE="${AFORGE_MODE:-node}"
-AFORGE_BIN="${AFORGE_BIN:-aforge}"
+CODEAF_MODE="${CODEAF_MODE:-node}"
+CODEAF_BIN="${CODEAF_BIN:-codeaf}"
 
 # BENCH_DRY_RUN composes every invocation and runs none of them. It clones
 # nothing, builds no venv, calls no model, and prints the exact argv each mode
@@ -76,16 +76,16 @@ for tool in git python3 gh; do
   command -v "$tool" >/dev/null || { echo "need $tool" >&2; exit 1; }
 done
 
-# The engine needs the same key the rest of aforge runs on, and a cell that
+# The engine needs the same key the rest of codeaf runs on, and a cell that
 # starts without it burns a clone and a venv before finding out. Nothing is
 # invented here — this only makes sure what the shell already has reaches the
 # child processes, and says so early when it has nothing.
 case " $HARNESSES " in
-  *" aforge "*)
+  *" codeaf "*)
     if [ -n "${OPENROUTER_API_KEY:-}" ]; then
       export OPENROUTER_API_KEY
     elif [ "$BENCH_DRY_RUN" != "1" ]; then
-      echo "OPENROUTER_API_KEY is unset — aforge cells will fail" >&2
+      echo "OPENROUTER_API_KEY is unset — codeaf cells will fail" >&2
     fi
     ;;
 esac
@@ -96,7 +96,7 @@ CSV="$RESULTS/results.csv"
 # by position still reads the first nine and a CSV written before a column
 # arrived is still a CSV. `subharness_chosen` was dropped in #227, when the last
 # thing that could have chosen anything went: every leaf runs the one worker.
-echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,nodes_failed" > "$CSV"
+echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,codeaf_mode,nodes_failed" > "$CSV"
 
 SLUG="$(basename "$REPO" .git)"
 OWNER_REPO="$(echo "$REPO" | sed -E 's#^.*github.com[:/]##; s#\.git$##')"
@@ -150,7 +150,7 @@ setup_python() {
 # Substitution goes through python rather than sed because an issue body
 # contains quotes and newlines that would otherwise produce invalid JSON.
 #
-# What it writes is byte-identical to what it wrote when the recorded aforge
+# What it writes is byte-identical to what it wrote when the recorded codeaf
 # numbers were taken, which is the only way this shape can still be the drift
 # control.
 render_graph() {
@@ -168,7 +168,7 @@ json.dump(raw, open(os.environ["OUT"], "w"), indent=2)
 PY
 }
 
-# seconds_of turns a timeout(1) duration into the plain seconds `aforge do`
+# seconds_of turns a timeout(1) duration into the plain seconds `codeaf do`
 # wants. The two walls have to be the same wall: a `do` cell held to do's
 # fifteen-minute default while the graph shapes get forty is not the same cell.
 seconds_of() {
@@ -181,24 +181,24 @@ seconds_of() {
   esac
 }
 
-# compose_aforge builds the argv this cell would execute, and executes nothing.
+# compose_codeaf builds the argv this cell would execute, and executes nothing.
 # It is a separate step from running it so that --dry-run can print exactly what
 # the real run would launch, rather than a hand-written approximation of it that
 # drifts the first time a flag moves.
 #
-# AFORGE_PRE_ARGV is the planning call, and only the pipeline shape has one —
-# AFORGE_HAS_PRE says whether it is there, because an empty array is not
+# CODEAF_PRE_ARGV is the planning call, and only the pipeline shape has one —
+# CODEAF_HAS_PRE says whether it is there, because an empty array is not
 # something every bash this script may meet will let `set -u` look at.
-# AFORGE_ARGV is the single invocation every shape ends with.
-compose_aforge() {
+# CODEAF_ARGV is the single invocation every shape ends with.
+compose_codeaf() {
   local dir="$1" prompt="$2" cell="$3"
-  AFORGE_PRE_ARGV=()
-  AFORGE_HAS_PRE=""
-  case "$AFORGE_MODE" in
+  CODEAF_PRE_ARGV=()
+  CODEAF_HAS_PRE=""
+  case "$CODEAF_MODE" in
     pipeline)
-      AFORGE_HAS_PRE="1"
-      AFORGE_PRE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" plan "$prompt" --brief -model "$MODEL" -o "$cell/graph.json")
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
+      CODEAF_HAS_PRE="1"
+      CODEAF_PRE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$CODEAF_BIN" plan "$prompt" --brief -model "$MODEL" -o "$cell/graph.json")
+      CODEAF_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$CODEAF_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
     do)
       # No graph written and nothing pinned: the compiler decides the shape,
@@ -206,7 +206,7 @@ compose_aforge() {
       # clone, so the diff afterwards is this run's diff; --keep leaves the
       # private store behind, which is where the model audit reads what actually
       # served each node.
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" "do" "$prompt" \
+      CODEAF_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$CODEAF_BIN" "do" "$prompt" \
         -w "$dir" -keep -model "$MODEL" -timeout "$(seconds_of "$CELL_TIMEOUT")")
       ;;
     chat)
@@ -222,11 +222,11 @@ compose_aforge() {
       #                tier rows and role pins, so --model alone measures the
       #                machine's /settings as much as the model. Without this
       #                the cell is not the single-model cell the row claims.
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" chat \
+      CODEAF_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$CODEAF_BIN" chat \
         --once "$prompt" --yolo --one-model -model "$MODEL")
       ;;
     *)
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
+      CODEAF_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$CODEAF_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
   esac
 }
@@ -234,11 +234,11 @@ compose_aforge() {
 # nodes_failed reads the run's own verdict out of done.json. The smoke run
 # proved why the exit code is not enough: the engine crashed inside its leaf,
 # `run` exited 0, and the row read like a pass with a suite that was green
-# before the harness arrived. Only aforge's graph shapes have a done.json;
+# before the harness arrived. Only codeaf's graph shapes have a done.json;
 # everyone else is n/a, not 0 — absence of evidence, recorded as absence.
 nodes_failed() {
   local harness="$1" cell="$2"
-  [ "$harness" = "aforge" ] || { echo "n/a"; return; }
+  [ "$harness" = "codeaf" ] || { echo "n/a"; return; }
   [ -f "$cell/done.json" ] || { echo "n/a"; return; }
   python3 - "$cell/done.json" <<'PY' 2>/dev/null || echo "n/a"
 import json, sys
@@ -252,7 +252,7 @@ PY
 # what there is to check.
 render_cell_graph() {
   local prompt="$1" cell="$2"
-  case "$AFORGE_MODE" in
+  case "$CODEAF_MODE" in
     # None of these executes a file. Rendering one anyway would leave a
     # graph.json beside the evidence that nothing in the cell ever read, which
     # is worse than no file: the next person to open the directory reads it as
@@ -268,10 +268,10 @@ render_cell_graph() {
 run_harness() {
   local harness="$1" dir="$2" prompt="$3" log="$4" cell="$5"
   case "$harness" in
-    aforge)
-      compose_aforge "$dir" "$prompt" "$cell"
-      if [ -n "$AFORGE_HAS_PRE" ]; then
-        "${AFORGE_PRE_ARGV[@]}" >>"$log" 2>&1 || return $?
+    codeaf)
+      compose_codeaf "$dir" "$prompt" "$cell"
+      if [ -n "$CODEAF_HAS_PRE" ]; then
+        "${CODEAF_PRE_ARGV[@]}" >>"$log" 2>&1 || return $?
       else
         render_cell_graph "$prompt" "$cell" || return 1
       fi
@@ -279,10 +279,10 @@ run_harness() {
       # this is the one shape the harness has to walk into the clone for. Every
       # other shape is told the directory and must NOT be cd'd, because their
       # -w is what the diff is measured against.
-      if [ "$AFORGE_MODE" = "chat" ]; then
-        (cd "$dir" && AFORGE_HOME="$cell/home" "${AFORGE_ARGV[@]}") >>"$log" 2>&1
+      if [ "$CODEAF_MODE" = "chat" ]; then
+        (cd "$dir" && CODEAF_HOME="$cell/home" "${CODEAF_ARGV[@]}") >>"$log" 2>&1
       else
-        "${AFORGE_ARGV[@]}" >>"$log" 2>&1
+        "${CODEAF_ARGV[@]}" >>"$log" 2>&1
       fi
       ;;
     pi)
@@ -298,13 +298,13 @@ run_harness() {
   esac
 }
 
-# harness_cost reads the run's own accounting. For aforge that is the $ figure
+# harness_cost reads the run's own accounting. For codeaf that is the $ figure
 # on the run summary line, which every graph shape ends with. For pi and
 # opencode there is nothing to read, and the account-level delta is not a
 # substitute — see bench/README.md.
 harness_cost() {
   local harness="$1" log="$2" cell="${3:-}"
-  if [ "$harness" != "aforge" ]; then
+  if [ "$harness" != "codeaf" ]; then
     echo "n/a,not-self-reported"
     return
   fi
@@ -313,7 +313,7 @@ harness_cost() {
   # usage record per model, each with its own costUsd, and the ones made BESIDE
   # the turn marked aux. Every record counts — reading only the un-aux one is
   # how a cell under-reports the exact spend --one-model exists to make legible.
-  if [ "$AFORGE_MODE" = "chat" ]; then
+  if [ "$CODEAF_MODE" = "chat" ]; then
     local total
     total="$(CELL="$cell" python3 - <<'PY' 2>/dev/null
 import glob, json, os
@@ -378,10 +378,10 @@ run_suite() {
   echo "${passed:-0},${failed:-0}"
 }
 
-# mode_of names the shape a cell ran in. Only aforge has one; the column reads
+# mode_of names the shape a cell ran in. Only codeaf has one; the column reads
 # n/a for the harnesses that are one shape and nothing else.
 mode_of() {
-  if [ "$1" = "aforge" ]; then echo "$AFORGE_MODE"; else echo "n/a"; fi
+  if [ "$1" = "codeaf" ]; then echo "$CODEAF_MODE"; else echo "n/a"; fi
 }
 
 # quote_argv prints an argv the way a person could paste it back into a shell.
@@ -408,7 +408,7 @@ quote_argv() {
 # launched and prints it, having cloned nothing and called nothing.
 dry_cell() {
   local harness="$1" dir="$2" prompt="$3" cell="$4"
-  if [ "$harness" != "aforge" ]; then
+  if [ "$harness" != "codeaf" ]; then
     case "$harness" in
       pi)       quote_argv "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$PI_BIN" -p --provider openrouter --model "$MODEL" "$prompt" ;;
       opencode) quote_argv "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$OPENCODE_BIN" run -m "openrouter/$MODEL" "$prompt" ;;
@@ -416,14 +416,14 @@ dry_cell() {
     esac
     return
   fi
-  compose_aforge "$dir" "$prompt" "$cell"
+  compose_codeaf "$dir" "$prompt" "$cell"
   render_cell_graph "$prompt" "$cell" || true
-  if [ -n "$AFORGE_HAS_PRE" ]; then
-    quote_argv "${AFORGE_PRE_ARGV[@]}"
+  if [ -n "$CODEAF_HAS_PRE" ]; then
+    quote_argv "${CODEAF_PRE_ARGV[@]}"
     printf '%-9s #%-3s ' "$harness" "$issue"
   fi
-  quote_argv "${AFORGE_ARGV[@]}"
-  case "$AFORGE_MODE" in
+  quote_argv "${CODEAF_ARGV[@]}"
+  case "$CODEAF_MODE" in
     pipeline|do|chat) ;;
     *)
       [ -f "$cell/graph.json" ] && printf '          graph:   %s\n' "$cell/graph.json"
@@ -436,7 +436,7 @@ echo "repo:     $REPO"
 echo "model:    $MODEL"
 [ -n "$BASE_COMMIT" ] && echo "pinned:   $BASE_COMMIT" || echo "pinned:   (none — clone HEAD; see BASE_COMMIT in this file before trusting rows)"
 echo "issues:   $ISSUES"
-echo "harness:  $HARNESSES (aforge mode: $AFORGE_MODE)"
+echo "harness:  $HARNESSES (codeaf mode: $CODEAF_MODE)"
 echo "results:  $RESULTS"
 [ "$BENCH_DRY_RUN" = "1" ] && echo "dry run:  composing invocations only — no clone, no venv, no model call"
 echo

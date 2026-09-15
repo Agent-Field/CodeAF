@@ -9,7 +9,7 @@ package tui3
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // decidedProposal is one restated card, as the turn's replay carries it.

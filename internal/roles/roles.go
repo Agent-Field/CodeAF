@@ -245,7 +245,7 @@ const (
 	// THE WORD LIVES HERE AND NOT AT THE CALL SITE, which is the whole reason
 	// this constant moved. It was `const spellOutRole roles.Role = "spellout"` in
 	// internal/session, and every reader that asks this package what the role
-	// vocabulary IS — cmd/aforge-replay's roleWords, which parses this file — could
+	// vocabulary IS — cmd/codeaf-replay's roleWords, which parses this file — could
 	// not see it. So `spellout` reached the cost report as an unrecognised tag and
 	// was priced as a background errand with nobody waiting, when it is the one
 	// auxiliary a person sits and watches. A role declared anywhere else is a role
@@ -531,7 +531,7 @@ func Registered() []Role {
 // different questions and this package now answers both.
 //
 // THE LIST IS COMPLETE BECAUSE A LAW SAYS SO, not because somebody remembers:
-// cmd/aforge-replay's TestEveryRoleWordIsDeclaredWhereTheVocabularyIs already
+// cmd/codeaf-replay's TestEveryRoleWordIsDeclaredWhereTheVocabularyIs already
 // parses this file for every Role constant, and fails when one of them is
 // missing from here.
 func Vocabulary() []Role {

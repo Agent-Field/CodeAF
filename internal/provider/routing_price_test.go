@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── THE PRICE OF SPEED ──────────────────────────────────────────────────────

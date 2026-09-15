@@ -4,7 +4,7 @@ import "testing"
 
 // The shapes a model actually answers in when the router lands it on a
 // provider without structured-output support. Every one of these was a paid
-// call that returned nothing usable: `aforge do` lost its working method on
+// call that returned nothing usable: `codeaf do` lost its working method on
 // 100% of runs against deepseek-flash, with the leaf then running silently
 // degraded and nobody told.
 func TestDecodeJSONObjectAcceptsWhatModelsActuallySend(t *testing.T) {

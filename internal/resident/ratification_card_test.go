@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // draftForCard puts one proposed rule in the store and hands back the canonical
@@ -83,7 +83,7 @@ func TestTheCardStatesAStatedScheduleAndAsksAboutAGuessedOne(t *testing.T) {
 }
 
 // A charter draft is the right answer in a conversation and a dead end on a
-// surface with no mouth. `aforge do` already carries the answer to "standing or
+// surface with no mouth. `codeaf do` already carries the answer to "standing or
 // once?" in its verb, so a draft that reaches a one-shot errand is resolved as
 // the caller already chose — journaled as a retired proposal, then run as work.
 //

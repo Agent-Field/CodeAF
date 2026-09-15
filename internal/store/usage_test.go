@@ -76,7 +76,7 @@ func TestTopLevelJobUsageMeansDefinedLeafSurprises(t *testing.T) {
 // that fact. TopLevelJobUsage rolls usage up from the job roots — the spine's
 // own children — downward, so a row written against RootID is on the day's rail
 // and on nobody's card. That was the whole of the planning-spend defect
-// (cmd/aforge's journalPlanSpend): the largest structuring cost in the system
+// (cmd/codeaf's journalPlanSpend): the largest structuring cost in the system
 // was billed to the spine, and the task that bought it read `$—`.
 //
 // It also pins the shape of the fix. A plan's bill cannot be written early —

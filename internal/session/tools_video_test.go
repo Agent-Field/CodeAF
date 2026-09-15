@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── (1) the tool exists only when something is behind it ────────────────────
@@ -90,7 +90,7 @@ func TestGenerateVideoReturnsAJobBeforeTheRenderFinishes(t *testing.T) {
 
 	// The ending is the note, and the note names the file that landed.
 	waitFor(t, "the completion note", func() bool { return notesContain(agent, "job 1 finished") })
-	directory := filepath.Join(workspace, ".aforge-v3", "video")
+	directory := filepath.Join(workspace, ".codeaf", "video")
 	entries, err := os.ReadDir(directory)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("%s holds %v (%v), want one file", directory, entries, err)
@@ -103,7 +103,7 @@ func TestGenerateVideoReturnsAJobBeforeTheRenderFinishes(t *testing.T) {
 	if err != nil || !bytes.Equal(written, film) {
 		t.Fatalf("the saved file is not the video the provider sent (%v)", err)
 	}
-	if !notesContain(agent, ".aforge-v3/video/"+name) {
+	if !notesContain(agent, ".codeaf/video/"+name) {
 		t.Fatalf("the note does not name the landed file; notes = %v", sessionNotes(agent))
 	}
 	if !notesContain(agent, "film/model") {
@@ -253,7 +253,7 @@ func TestGenerateVideoFailureArrivesAsANote(t *testing.T) {
 			if !notesContain(agent, testCase.want) {
 				t.Fatalf("notes %v do not say %q", sessionNotes(agent), testCase.want)
 			}
-			if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3", "video")); err == nil {
+			if _, err := os.Stat(filepath.Join(workspace, ".codeaf", "video")); err == nil {
 				t.Fatal("a failed render left a directory behind")
 			}
 		})

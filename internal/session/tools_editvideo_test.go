@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/video"
+	"github.com/Agent-Field/codeaf/internal/video"
 )
 
 // ── the belt's answer, which is a fact about the machine ─────────────────────
@@ -320,7 +320,7 @@ func TestAJoinedCutIsMeasuredBackOffTheFileAndKeepsItsSound(t *testing.T) {
 		t.Errorf("the answer %q does not carry the measured length of both clips", result)
 	}
 	// And it landed where this session keeps its video, with a row in the index.
-	cut := onlyFileIn(t, filepath.Join(workspace, ".aforge-v3", "video"))
+	cut := onlyFileIn(t, filepath.Join(workspace, ".codeaf", "video"))
 	if !strings.HasSuffix(cut, ".mp4") {
 		t.Errorf("the cut landed as %s, want an mp4", cut)
 	}
@@ -349,7 +349,7 @@ func TestASavedFrameLandsWithThePicturesAndNamesWhichFrameItIs(t *testing.T) {
 	}
 	// A frame is a PICTURE: it lands with the pictures, because the next thing
 	// that happens to it is being handed to generate_video as a frame.
-	saved := onlyFileIn(t, filepath.Join(workspace, ".aforge-v3", "images"))
+	saved := onlyFileIn(t, filepath.Join(workspace, ".codeaf", "images"))
 	if filepath.Ext(saved) != ".png" {
 		t.Errorf("the frame landed as %s, want a png", saved)
 	}

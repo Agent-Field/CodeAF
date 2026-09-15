@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // briefPrompt writes the instruction a leaf is actually handed.
@@ -279,7 +279,7 @@ type briefWriter struct {
 
 	// journal, when set, writes one node_briefed event per briefed node as
 	// apply lands its brief. Nil is the build that has no store to journal to
-	// — the one-shot `aforge plan` command, the batch `Briefs` form — and
+	// — the one-shot `codeaf plan` command, the batch `Briefs` form — and
 	// leaves the brief exactly as durable as it was before this hook existed.
 	journal BriefJournal
 

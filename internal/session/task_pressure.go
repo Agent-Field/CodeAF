@@ -25,7 +25,7 @@ import (
 // available memory.
 //
 // The same lesson is written down in internal/exec's governor.go, from the
-// incident that produced it — aforge pinning a laptop's fan — and the
+// incident that produced it — codeaf pinning a laptop's fan — and the
 // per-core figure here is the one it settled on. A task node is exactly the
 // class that governor calls LOCAL WORK: it spawns real compilers and real
 // test runs on this host, so the host's own reading is the right question to
@@ -212,7 +212,7 @@ type admissionGovernor struct {
 
 // TaskLanes is THE COUNT OF RUNNING LANES ON ONE MACHINE, and the one divisor
 // the governor's reading is shared over. Every task graph that belongs to the
-// same running aforge writes its own starts and hand-backs into one of these,
+// same running codeaf writes its own starts and hand-backs into one of these,
 // so the count beside a reading of the whole process tree is drawn from the
 // same population the reading is (#907).
 //

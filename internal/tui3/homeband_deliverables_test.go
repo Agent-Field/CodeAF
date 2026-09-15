@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE INDEX IS ONE FILE FOR THE WHOLE MACHINE, SO IT IS READ ONCE FOR THE WHOLE

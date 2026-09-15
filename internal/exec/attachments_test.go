@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/cas"
 )
 
 func attachmentFixture(t *testing.T, dir, name, body string) string {

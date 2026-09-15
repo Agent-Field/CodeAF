@@ -1,4 +1,4 @@
-module github.com/Agent-Field/aforge-v2
+module github.com/Agent-Field/codeaf
 
 go 1.26.5
 

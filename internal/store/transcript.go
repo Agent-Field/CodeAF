@@ -10,7 +10,7 @@ import (
 
 // The leaf transcript: what a worker actually did, turn by turn.
 //
-// THE DEFECT THIS ANSWERS. A headless `aforge do` leaf ran the bare executor
+// THE DEFECT THIS ANSWERS. A headless `codeaf do` leaf ran the bare executor
 // for one node and billed 1,292,313 prompt tokens, 14,316 completion tokens and
 // fifty cents against it. It left no file on disk and no record of a single
 // turn: internal/exec/bare's loop kept its messages in memory and dropped them
@@ -26,7 +26,7 @@ import (
 //
 // The messages table is the CONVERSATION, and a message anchored to a node is
 // read by half a dozen callers who each mean "what was said about this work":
-// a running leaf's steering mailbox (cmd/aforge/chat.go), the pickup bank that
+// a running leaf's steering mailbox (cmd/codeaf/chat.go), the pickup bank that
 // reconstructs a re-claimed leaf's progress from its own record
 // (internal/resident/bank.go, which pages the first 400 rows), the narrator,
 // the missed-direction sweep (internal/resident/redirect.go), the node lens
@@ -43,7 +43,7 @@ import (
 // rebuild.
 //
 // WHY THIS IS NOT internal/exec/trace.go. That file is the OTHER recorder — a
-// prose flight recorder the generalist writes to `.aforge/trace/<leaf>.trace.log`
+// prose flight recorder the generalist writes to `.codeaf/trace/<leaf>.trace.log`
 // inside the job's workspace, with per-turn cache ratios a benchmark asserts on.
 // It is the right tool for reading over a running leaf's shoulder and the wrong
 // one for the failure above, for two reasons: the bare executor never wired
@@ -53,7 +53,7 @@ import (
 // leaves behind. The two are complements: the file is verbose and local, this
 // is bounded and durable, and neither is a copy of the other.
 //
-// HOW TO READ ONE BACK. `aforge why <node-id> --db <path>` prints it. In SQL:
+// HOW TO READ ONE BACK. `codeaf why <node-id> --db <path>` prints it. In SQL:
 //
 //	SELECT turn, kind, tool, body FROM transcript
 //	WHERE node_id = ? ORDER BY seq, idx;

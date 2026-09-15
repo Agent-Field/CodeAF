@@ -5,7 +5,7 @@ package session
 // It had two, and they were a drift pair. The designer was told what it could
 // whitelist by [Agent.harnessMachinery], the lint checked the whitelist it wrote
 // against [Agent.harnessToolNames], and the RUN resolved those same names
-// against a third list assembled in cmd/aforge's chatv3_harness.go — three
+// against a third list assembled in cmd/codeaf's chatv3_harness.go — three
 // independent calls to bare.AllTools that nothing held together. A verb added to
 // one of them and not the others is a harness the designer may write and the
 // runner cannot execute, or worse, a verb the runner would happily execute that
@@ -43,13 +43,13 @@ package session
 // which is the whole point of this file.
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // HarnessBeltSeams is everything the media half of the belt needs from the door
 // that builds it: what it may generate with, what it may look with, and where
 // what it makes lands. It is a struct rather than a handful of arguments because
-// the run door (cmd/aforge's chatv3_harness.go) fills it from a config it
+// the run door (cmd/codeaf's chatv3_harness.go) fills it from a config it
 // already holds, and a positional list of two interfaces, two functions, a
 // folder and a path is a call nobody can read at the call site.
 //
@@ -58,7 +58,7 @@ import (
 // seven wire tools, which is what a harness has always had and what a machine
 // with no media models still gets. A zero [HarnessBeltSeams.Place] does not take
 // a verb away — it moves what the verbs write. Such a run lands its files on the
-// legacy rung, `<workspace>/.aforge-v3/images` and its siblings (landing.go's
+// legacy rung, `<workspace>/.codeaf/images` and its siblings (landing.go's
 // ladder), and records none of them, which is the honest answer for a door that
 // genuinely has no session folder to land in and the WRONG one for every door
 // that has.

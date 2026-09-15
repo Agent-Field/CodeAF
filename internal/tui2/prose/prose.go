@@ -8,8 +8,8 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
 
-	"github.com/Agent-Field/aforge-v2/internal/sanitize"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/sanitize"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // DefaultMeasure is the reading length prose wraps to when a caller states no

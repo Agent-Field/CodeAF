@@ -10,7 +10,7 @@
 
 SCENARIO_WORKLOAD="writing"
 SCENARIO_DOOR="print"
-SCENARIO_ARMS="aforge omp pi opencode"
+SCENARIO_ARMS="codeaf omp pi opencode"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-420}"
 SCENARIO_GUARDS="a constrained deliverable on disk, not a fluent reply"
 

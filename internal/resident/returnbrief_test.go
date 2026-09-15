@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // Journey #12 driven the way the binary drives it, end to end: a session that
 // was open and closed, work that lands while nobody is watching, and a fresh
 // attach that goes AttachSession → SessionOpening → deliver, exactly as
-// cmd/aforge does. The pieces are each covered on their own; what was never
+// cmd/codeaf does. The pieces are each covered on their own; what was never
 // asserted is that the sequence composes — that the detach edge the TUI writes
 // on its way out becomes the "since" of the brief the next launch reads, and
 // that the absence threshold is crossed by a real gap rather than by zero.

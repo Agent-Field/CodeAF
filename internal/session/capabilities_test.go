@@ -20,11 +20,11 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/video"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/video"
 )
 
 // blockRecorder is a completer that keeps the TOOL BLOCK of every request

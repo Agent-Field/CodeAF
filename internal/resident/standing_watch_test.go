@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/watchdog"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
 type fakeStandingWatch struct {
@@ -21,8 +21,27 @@ func (watch *fakeStandingWatch) Install(context.Context) error {
 	watch.installs++
 	if watch.err == nil {
 		watch.status.Installed = true
+		watch.status.Stale = false
 	}
 	return watch.err
+}
+
+func TestEnabledStandingWatchRepairsAFormerInstalledTimer(t *testing.T) {
+	graph := openStore(t)
+	charter := createProposedStandingCharter(t, graph, "charter-former-timer", "standing-session")
+	if err := graph.SetCharterStatus(charter.ID, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "standing-session", Evidence: "yes",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enableStandingWatch(t, graph, charter.ID)
+	watch := &fakeStandingWatch{status: watchdog.Status{Installed: true, Stale: true}}
+	if err := New(graph, nil, nil).WithStandingWatch(watch).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if watch.installs != 1 || !watch.status.Installed || watch.status.Stale {
+		t.Fatalf("former installed timer was not repaired: installs=%d status=%+v", watch.installs, watch.status)
+	}
 }
 
 func (watch *fakeStandingWatch) Uninstall(context.Context) error {

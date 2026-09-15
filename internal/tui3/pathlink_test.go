@@ -9,8 +9,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/prose"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/prose"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // A workspace with one real file in it, so that the honesty rule has something
@@ -88,7 +88,7 @@ func TestOnlyAPathThatExistsBecomesALink(t *testing.T) {
 		{"v2.0", false},
 		{"1/2", false},
 		{"4:3", false},
-		{"github.com/Agent-Field/aforge-v2", false},
+		{"github.com/Agent-Field/codeaf", false},
 		{"https://example.com/README.md", false},
 		{"../../../etc/passwd", false}, // climbs out of the workspace
 		{"", false},
@@ -328,7 +328,7 @@ func TestFlattenSkipsAHyperlinkWhole(t *testing.T) {
 }
 
 // END TO END, through the frame a person is actually looking at: the model's
-// prose, aforge's own note, and a tool row's target all carry a link, and the
+// prose, codeaf's own note, and a tool row's target all carry a link, and the
 // tool row's does so even though the row was too narrow to show the path.
 func TestTheFrameLinksProseNotesAndToolTargets(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"internal/tui3/pathlink.go": 8})

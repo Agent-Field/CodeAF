@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 func vendoredSource(t *testing.T, id string) modelsource.Source {
@@ -492,7 +492,7 @@ func TestAnUnqualifiedIdResolvesExactlyAsItDidBefore(t *testing.T) {
 	t.Setenv(APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 	for _, base := range []string{"", "https://company.example/v1"} {
-		t.Setenv("AFORGE_BASE_URL", base)
+		t.Setenv("CODEAF_BASE_URL", base)
 		loaded, err := Load()
 		if err != nil {
 			t.Fatal(err)

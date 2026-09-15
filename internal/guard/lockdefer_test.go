@@ -18,7 +18,7 @@ import (
 // no longer crashes the process — it wedges it, and a wedge has no stack trace
 // and no line in the log.
 var lockedPackages = []string{
-	"cmd/aforge",
+	"cmd/codeaf",
 	"internal/exec",
 	"internal/provider",
 	"internal/resident",

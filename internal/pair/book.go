@@ -7,7 +7,7 @@ package pair
 // matter what it believes about itself. REVOCATION IS ALWAYS THIS MACHINE'S
 // DECISION — a surface cannot un-pair itself from here, cannot add itself here,
 // and cannot ask this machine to forget somebody else. That is the same law the
-// rest of aforge already keeps about remote surfaces: trust roots on the machine
+// rest of codeaf already keeps about remote surfaces: trust roots on the machine
 // that runs the tools.
 //
 // THE SURFACE'S BOOK IS A MEMORY, NOT A PERMISSION. It records which key each
@@ -46,7 +46,7 @@ type Known struct {
 // Paired is one device this machine has let in, as the engine remembers it.
 type Paired struct {
 	// Label is what the device called itself when it paired — its host name.
-	// It is a convenience for the person reading `aforge devices` and is
+	// It is a convenience for the person reading `codeaf devices` and is
 	// NEVER what a connection is checked against.
 	Label string `json:"label"`
 	// Key is the device's long-term public key, base64 raw-url. This is what a
@@ -187,10 +187,10 @@ func (b *Book) Revoke(label string) (Paired, error) {
 	}
 	switch len(hits) {
 	case 0:
-		return Paired{}, fmt.Errorf("no device called %q is paired with this machine — `aforge devices` lists the ones that are", label)
+		return Paired{}, fmt.Errorf("no device called %q is paired with this machine — `codeaf devices` lists the ones that are", label)
 	case 1:
 	default:
-		return Paired{}, fmt.Errorf("%d devices are called %q — this build can only stop one by name, so revoke them all with `aforge devices revoke --all %s`", len(hits), label, label)
+		return Paired{}, fmt.Errorf("%d devices are called %q — this build can only stop one by name, so revoke them all with `codeaf devices revoke --all %s`", len(hits), label, label)
 	}
 	gone := hits[0]
 	err = b.updateDevices(func(paired []Paired) []Paired {
@@ -221,7 +221,7 @@ func (b *Book) RevokeAll(label string) (int, error) {
 		return kept
 	})
 	if err == nil && count == 0 {
-		return 0, fmt.Errorf("no device called %q is paired with this machine — `aforge devices` lists the ones that are", label)
+		return 0, fmt.Errorf("no device called %q is paired with this machine — `codeaf devices` lists the ones that are", label)
 	}
 	return count, err
 }
@@ -283,7 +283,7 @@ func (b *Book) updateDevices(change func([]Paired) []Paired) error {
 	return b.write(change(paired))
 }
 
-// since is the plain-words age of a moment, for the list `aforge devices`
+// since is the plain-words age of a moment, for the list `codeaf devices`
 // prints. It stops at days, because a pairing older than that is a date and
 // nobody counts weeks.
 func since(at, now time.Time) string {

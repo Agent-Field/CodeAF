@@ -54,6 +54,21 @@ func TestANameIsTheSameEveryTimeForTheSameKey(t *testing.T) {
 	}
 }
 
+func TestRelayWireAndDerivationIdentifiersRemainCompatibleWithEarlierBuilds(t *testing.T) {
+	if nameSalt != "aforge relay name\x00" { // legacy-name
+		t.Fatalf("relay name salt moved to %q", nameSalt)
+	}
+	if registrationLabel != "aforge relay registration v1" { // legacy-name
+		t.Fatalf("registration label moved to %q", registrationLabel)
+	}
+	if Protocol != "aforge-relay/1" { // legacy-name
+		t.Fatalf("relay protocol moved to %q", Protocol)
+	}
+	if HeaderName != "Aforge-Name" || HeaderKey != "Aforge-Key" { // legacy-name
+		t.Fatalf("relay headers moved to %q and %q", HeaderName, HeaderKey)
+	}
+}
+
 func TestDifferentKeysGetDifferentNames(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 200; i++ {

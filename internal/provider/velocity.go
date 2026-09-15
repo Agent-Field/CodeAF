@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 )
 
 // ── WHO SERVED, AND HOW FAST ────────────────────────────────────────────────
@@ -209,7 +209,7 @@ func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRoutin
 // [RoutingSource] is how a caller HANDS an answer down, and every client that
 // is handed one keeps it. The problem is the clients nobody hands one to, and
 // there are several: the harness and the subharness build their own adapters
-// (cmd/aforge), `read_document` and `view_image` build theirs
+// (cmd/codeaf), `read_document` and `view_image` build theirs
 // (internal/config), and a panel builds one per member (internal/router). Each
 // of those was assembled through [config.Config.ClientConfig], which has never
 // carried a routing answer at all — so whatever a person wrote in the routing
@@ -659,7 +659,7 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 // membershipNarrowing reports whether this preference object carries a
 // membership restriction the first ladder rung can remove. max_price is
 // deliberately separate: a wider set is tried under the same ceiling before
-// aforge authorizes a dearer endpoint.
+// codeaf authorizes a dearer endpoint.
 //
 // It is the whole membership rule of the ladder's first rung, written once, so
 // that the rung is offered exactly when it would do something

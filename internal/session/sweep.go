@@ -59,9 +59,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 const (
@@ -73,7 +73,7 @@ const (
 
 	// placesDirName is where the session folders live under the state root:
 	// v3/projects/<encoded-workspace>/<session-id>/ — the same word
-	// cmd/aforge's layout spells when it creates a bucket (chatv3_layout.go).
+	// cmd/codeaf's layout spells when it creates a bucket (chatv3_layout.go).
 	// The sweep needs only the root and never the encoder.
 	placesDirName = "projects"
 )
@@ -151,7 +151,7 @@ func sweepSession(dir string, now time.Time, note func(string)) {
 	reapSession(dir, meta, note)
 }
 
-// sessionIsOpen reports whether another aforge holds this session's transcript.
+// sessionIsOpen reports whether another codeaf holds this session's transcript.
 //
 // It asks the way sessionfile.go's own claim asks — a non-blocking exclusive
 // flock, dropped the instant it is taken — because a held flock IS a live

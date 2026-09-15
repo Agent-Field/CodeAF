@@ -3,8 +3,8 @@ package remote
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // rungAgent is an engine with the conversation's thinking dial on it. resolved,

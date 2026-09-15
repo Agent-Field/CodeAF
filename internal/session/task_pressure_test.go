@@ -91,7 +91,7 @@ func fanGraph(t *testing.T, machine *fakeMachine) (*TaskGraph, *noticeLog) {
 }
 
 // fanGraphIn is the same graph in a process a test names, so that two graphs
-// can share one — two conversations in one aforge, which is the whole scene
+// can share one — two conversations in one codeaf, which is the whole scene
 // issue #907 is about.
 func fanGraphIn(t *testing.T, machine *fakeMachine, process *TaskLanes) (*TaskGraph, *noticeLog) {
 	t.Helper()

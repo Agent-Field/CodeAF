@@ -16,14 +16,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // journalUnderHome is the shape that broke both: a real journal path, absolute, under
 // the person's home, with a project slug in the middle that is one long segment.
-const journalUnderHome = "/home/dev/.aforge/v3/projects/" +
-	"tmpclaude1001homedevafdev2418657d81734e64b3ec73decce3d3d5scratchpaddemohomeaforgev2/" +
-	"ffff0000longmsg1aforgev3sessionfolderwithalongidentifieronitsownline/transcript.jsonl"
+const journalUnderHome = "/home/dev/.codeaf/v3/projects/" +
+	"tmpclaude1001homedevafdev2418657d81734e64b3ec73decce3d3d5scratchpaddemohomecodeafv2/" +
+	"ffff0000longmsg1codeafv3sessionfolderwithalongidentifieronitsownline/transcript.jsonl"
 
 // noticeBlockRows is one note as the conversation draws it: every row of that block,
 // with colour stripped and the indent law's gutter left on, because the gutter
@@ -65,7 +65,7 @@ func TestAResumedConversationOpensWithItsNameAndNotItsPath(t *testing.T) {
 	// that survives being pasted into a shell.
 	a.title, a.entries = "", nil
 	said = a.resumedNote()
-	if !strings.HasPrefix(said, resumedWord+" ~/.aforge/") {
+	if !strings.HasPrefix(said, resumedWord+" ~/.codeaf/") {
 		t.Fatalf("an unnamed conversation opens with %q, want the path written against $HOME", said)
 	}
 	if strings.Contains(said, "/home/dev") {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/shaped"
 )
 
 // ceilingClient answers a scripted reply per call and remembers the ceiling

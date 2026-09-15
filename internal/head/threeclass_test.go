@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/resident"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
 )
 
 // THE THREE-CLASS LAW, held over a whole cycle (13.18).
@@ -63,7 +63,7 @@ func TestAWholeCycleSaysOnlyCommitmentDeliveryAndQuestion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. Planning narrates itself. This is the shape cmd/aforge's plan-progress
+	// 3. Planning narrates itself. This is the shape cmd/codeaf's plan-progress
 	//    poster writes — that package cannot be imported from here, and its own
 	//    test pins the poster; what is pinned HERE is that the shape lands on
 	//    the record and never in the room's conversation.

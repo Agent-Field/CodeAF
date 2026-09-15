@@ -15,7 +15,7 @@ package session
 // ── UNTIL SOMETHING THAT COULD CHANGE THE ANSWER HAS CHANGED ──
 //
 // A remembered fall holds only while the two things that decide it are the ones
-// that produced it: THIS aforge ([buildinfo.Identity]) — whose rung is the code
+// that produced it: THIS codeaf ([buildinfo.Identity]) — whose rung is the code
 // that failed — and THE FURROW IT RUNS ([furrow.Program]) — whose fork is the
 // other half. Either one changing is a new question and the rung is tried again,
 // so a fix to either end is never held back by a memory of the bug it fixed. A
@@ -40,9 +40,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/furrow"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // universeFallsName is the file the falls are kept in, under the state root's
@@ -119,7 +119,7 @@ func writeUniverseFalls(falls map[string]universeFall) {
 }
 
 // universeFallAt answers the fall remembered for this ground, when it still
-// holds: the same aforge, and the same furrow, as the one that failed.
+// holds: the same codeaf, and the same furrow, as the one that failed.
 func universeFallAt(ground string) (universeFall, bool) {
 	ground = canonicalPath(ground)
 	if ground == "" {

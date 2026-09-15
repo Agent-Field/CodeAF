@@ -2,7 +2,7 @@ package remote
 
 // lanes.go is this protocol's answer to "which capabilities can a conversation
 // held over a connection actually have", said once so the doors that BUILD a
-// conversation do not each keep a copy of it (cmd/aforge's chatv3_lanes.go).
+// conversation do not each keep a copy of it (cmd/codeaf's chatv3_lanes.go).
 //
 // A capability is not a channel. Carrying a lane's events is the easy half: a
 // card is only real when its answer has a door, when one raised with nobody

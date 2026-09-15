@@ -139,7 +139,7 @@ func (placeSettings) box(a *app) *editor {
 // EVERY ONE OF THESE FOUR LINES DROPS CLAUSES RATHER THAN CUTTING CHARACTERS.
 // They are sentences with clauses in them — the foot note is two, separated by
 // the surface's own middle dot (`saved to your profile · a project's own
-// .aforge/config.json is a hand edit`), and a pinned row's note is a statement
+// .codeaf/config.json is a hand edit`), and a pinned row's note is a statement
 // with the remedy hung off a dash — and a character ruler took sixty columns
 // through the middle of a path and through the middle of the word `unset`. So
 // they all go through [noteFit], which is the STATEMENT half of the pair the

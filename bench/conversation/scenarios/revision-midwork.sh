@@ -28,7 +28,7 @@
 
 SCENARIO_WORKLOAD="conversation"
 SCENARIO_DOOR="interactive"
-SCENARIO_ARMS="aforge omp pi"
+SCENARIO_ARMS="codeaf omp pi"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-420}"
 SCENARIO_GUARDS="a requirement changed while the work was in flight"
 

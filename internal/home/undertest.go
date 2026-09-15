@@ -9,9 +9,9 @@ import (
 
 // A TEST BINARY NEVER RESOLVES THE STATE ROOT OF WHOEVER RAN IT.
 //
-// [Dir] answers ~/.aforge when AFORGE_HOME says nothing, which is exactly right
+// [Dir] answers ~/.codeaf when CODEAF_HOME says nothing, which is exactly right
 // for the product and exactly wrong under `go test`: a test binary inherits the
-// HOME and the AFORGE_HOME of the person at the keyboard, so any package that
+// HOME and the CODEAF_HOME of the person at the keyboard, so any package that
 // reaches this seam without pinning a root of its own writes into that person's
 // live state — their journals, their model caches, their router ledger, their
 // profile.
@@ -54,7 +54,7 @@ var inherited = resolve()
 // It is NAMED and not created. Callers under the state root make their own
 // directories, and a root that is only named costs nothing on the runs that
 // never touch it — which is most of them.
-var quarantine = filepath.Join(os.TempDir(), "aforge-test-home-"+strconv.Itoa(os.Getpid()))
+var quarantine = filepath.Join(os.TempDir(), "codeaf-test-home-"+strconv.Itoa(os.Getpid()))
 
 // InheritedDir is the state root this process was started with, ungated.
 //

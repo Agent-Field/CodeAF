@@ -8,7 +8,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ────────── alt+w folder · alt+o model ─
+ ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
  › remind me at 6 to leave
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
@@ -85,13 +85,13 @@ says nothing.
 
 Yes. A settled answer in the `ask here` pane goes through **the same markdown renderer the
 conversation uses** — one parser, one set of colours, one answer to what your terminal can
-draw. You never see `**bold**`, a leading `##`, or backticks around `aforge status`; you see
+draw. You never see `**bold**`, a leading `##`, or backticks around `codeaf status`; you see
 bold, a heading and a code span.
 
 ```
 Two reminders
 
-You have two of them. Run aforge status to see them:
+You have two of them. Run codeaf status to see them:
 
 · one at 6
 · one at 9
@@ -155,7 +155,7 @@ Filing means the session is closed and the folder is moved where it belongs. Not
 deleted. An exchange that made something standing leaves an ordinary item row on the same
 screen, under the same project, so the row going is not the fact going.
 
-**Quitting aforge files every open exchange**, including one that is still working — the
+**Quitting codeaf files every open exchange**, including one that is still working — the
 session is interrupted and closed, and a stood one's folder still reaches the item it made.
 
 **The reminder itself does not fire into the pane.** The exchange is a pane on a screen you
@@ -239,7 +239,7 @@ answers it in a conversation. Each answer owns its whole row, so there is no gap
 of them to miss.
 
 **There is a chord for it and the foot does not name it.** `ctrl+enter` is still bound to
-`ask here`, and it only reaches aforge on a terminal that can tell it apart from a plain
+`ask here`, and it only reaches codeaf on a terminal that can tell it apart from a plain
 `enter` — the kitty keyboard protocol, Windows terminals. `alt+enter` is **not** a second
 spelling of it: on home as on every place, that chord opens the composer layer and sends
 what you typed off as a **task** (the places page). So the arrow is the gesture the foot
@@ -250,7 +250,7 @@ If this window was launched with no way to open a second session, the row refuse
 line: `this window cannot ask from home`, and nothing is created. The window that gets that
 line is one attached to another machine — `--host` or `--at`: the errand's folder and the
 standing store live on the machine that runs the errand, and a laptop cannot make either of
-them on a server's disk. An ordinary `aforge` in a folder asks from home whether or not this
+them on a server's disk. An ordinary `codeaf` in a folder asks from home whether or not this
 project's engine is holding the conversation, because that engine is a process on the same
 machine as the folder.
 
@@ -260,9 +260,9 @@ They send the same words to the same kind of model. The difference is **what is 
 afterwards**.
 
 - `start a new conversation` opens a session in this project. It gets a folder under
-  `~/.aforge/v3/projects/`, a row on home, and it stays on that list.
+  `~/.codeaf/v3/projects/`, a row on home, and it stays on that list.
 - `ask here` opens a session too — a real one, with a real transcript — but its folder is
-  made under `~/.aforge/v3/standing/exchanges/` instead. Home lists what is under
+  made under `~/.codeaf/v3/standing/exchanges/` instead. Home lists what is under
   `projects/`, so an errand that is finished can never fill up the screen it was typed at.
 
 It is not an unstored chat. The record is the point: "why did I get this reminder?" has to
@@ -320,8 +320,8 @@ here deletes one.
 
 | What happened | Where the folder is |
 | --- | --- |
-| you asked | `~/.aforge/v3/standing/exchanges/<id>/transcript.jsonl` |
-| something now stands | `~/.aforge/v3/standing/<item id>/exchange/`, **when the exchange is filed** |
+| you asked | `~/.codeaf/v3/standing/exchanges/<id>/transcript.jsonl` |
+| something now stands | `~/.codeaf/v3/standing/<item id>/exchange/`, **when the exchange is filed** |
 | you continued it as a conversation | the project's own folder, with a `meta.json` |
 | it came to nothing | it stays in `exchanges/`, and the sweep clears it after 7 days |
 
@@ -331,7 +331,7 @@ it`.
 
 **The move waits until the exchange is finished with.** The news that something now stands
 arrives while the turn that made it is still running, so the folder is not touched then:
-aforge remembers where it belongs, and moves it when the exchange is filed — after you have
+codeaf remembers where it belongs, and moves it when the exchange is filed — after you have
 seen it settled and walked off its row, or when you quit — and after the session has been
 closed. Until then **the exchange is still alive**: `→` back into the pane and a follow-up
 goes to the same conversation. Nothing is copied and nothing is deleted; the folder only

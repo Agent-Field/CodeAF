@@ -8,7 +8,7 @@
 # money and is ON DEMAND; nothing in `make check` reaches it.
 #
 # Usage:
-#   bench/canary/run.sh --bin ~/af-dev/bin/aforge                 anchors, both doors
+#   bench/canary/run.sh --bin ~/af-dev/bin/codeaf                 anchors, both doors
 #   bench/canary/run.sh --bin BIN --fresh 2                       plus two fresh picks
 #   bench/canary/run.sh --bin BIN --doors do                      one door
 #   bench/canary/run.sh --bin BIN --baseline RUN/rows.csv --post 380
@@ -18,7 +18,7 @@ set -uo pipefail
 CANARY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$CANARY_ROOT/../.." && pwd)"
 
-BIN="${AFORGE_BIN:-$REPO_ROOT/bin/aforge}"
+BIN="${CODEAF_BIN:-$REPO_ROOT/bin/codeaf}"
 POOL="$CANARY_ROOT/pool.json"
 DOORS="do,chat"
 FRESH=0
@@ -30,7 +30,7 @@ MODEL="${CANARY_MODEL:-deepseek/deepseek-v4-flash}"
 CAP="1.00"
 WALL=900
 RESULTS="${CANARY_RESULTS:-$REPO_ROOT/bench-results/canary}"
-CACHE="${CANARY_CACHE:-$HOME/.cache/aforge-canary}"
+CACHE="${CANARY_CACHE:-$HOME/.cache/codeaf-canary}"
 BASELINE=""
 POST=""
 DRY=0
@@ -59,7 +59,7 @@ done
 for tool in tmux git python3 timeout flock gh; do
   command -v "$tool" >/dev/null || { echo "need $tool" >&2; exit 1; }
 done
-[ -x "$BIN" ] || { echo "no aforge binary at $BIN — build one or pass --bin" >&2; exit 1; }
+[ -x "$BIN" ] || { echo "no codeaf binary at $BIN — build one or pass --bin" >&2; exit 1; }
 [ -f "$POOL" ] || { echo "no pool at $POOL — bench/canary/pick.py --anchors 3 writes one" >&2; exit 1; }
 
 SHA="$("$BIN" version 2>/dev/null | awk '{print $2}')"

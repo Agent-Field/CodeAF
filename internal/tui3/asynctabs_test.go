@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── SEVERAL CONVERSATIONS, RUNNING AT ONCE, AND CLOSING A TAB THAT IS ────────
 //
 // These are the surface's half of the async wave. The engine's half — that the
 // ordinary door can really hold three connections and three sessions — is
-// asserted against a real host on a real socket in cmd/aforge's
+// asserted against a real host on a real socket in cmd/codeaf's
 // chatv3_beside_test.go; what is asserted here is what the surface does with
 // them: that switching moves nothing but the screen, that a tab coming off the
 // row keeps its conversation alive, and that the card offering to stop the work
@@ -61,7 +61,7 @@ func (s *asyncAgent) begin() {
 
 // asyncDoor is a door that opens a WHOLE conversation with an agent of its own
 // every time it is asked — which is what the engine door does now that each
-// conversation has its own connection (cmd/aforge's chatv3_beside.go).
+// conversation has its own connection (cmd/codeaf's chatv3_beside.go).
 type asyncDoor struct {
 	t     *testing.T
 	made  []*asyncAgent

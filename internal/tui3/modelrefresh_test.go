@@ -13,7 +13,7 @@ import (
 // The refresh key, asked of a fake door: it returns rows or an error, never the
 // network. The door's contract is that [Options.Models] reads what a landed
 // fetch brought back, so the fake swaps the list the picker's closure reads,
-// exactly as cmd/aforge's shelf does.
+// exactly as cmd/codeaf's shelf does.
 type fakeRefresh struct {
 	list  []Model
 	next  []Model

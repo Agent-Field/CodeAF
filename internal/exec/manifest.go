@@ -122,12 +122,12 @@ const (
 	// nothing in this tree writes or reads one yet; the constant exists so the
 	// phase that does is a registration rather than a renumbering.
 	LayerPacked
-	// LayerProject is `.aforge/subharnesses/` inside the repository in hand.
+	// LayerProject is `.codeaf/subharnesses/` inside the repository in hand.
 	LayerProject
-	// LayerHome is `~/.aforge/subharnesses/`, which moves with AFORGE_HOME the
+	// LayerHome is `~/.codeaf/subharnesses/`, which moves with CODEAF_HOME the
 	// same way the page store below does.
 	LayerHome
-	// LayerPages is `~/.aforge/harnesses/`, where a subharness written as a PAGE
+	// LayerPages is `~/.codeaf/harnesses/`, where a subharness written as a PAGE
 	// lives — the shape the design flow saves when somebody asks for a program to
 	// be built for them (internal/subharness's store.go owns the layout).
 	//

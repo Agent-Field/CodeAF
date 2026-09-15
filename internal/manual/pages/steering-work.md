@@ -21,7 +21,7 @@ Name the thing in your own words and say what you want:
 - "do the API audit first"
 
 Cancel and pause apply to work that is queued or running; resume applies to
-paused work; restart applies to failed or cancelled work; reordering — aforge
+paused work; restart applies to failed or cancelled work; reordering — codeaf
 calls it **reprioritize** — applies to work that has not started. If you ask for a verb the thing's state cannot take,
 you are told which state it is actually in rather than being silently ignored.
 
@@ -32,13 +32,13 @@ failed ones", "stop them all" resolve against the board as a group — not as on
 fuzzy guess. "The failed one", singular, still means the one thing you have in
 mind.
 
-"Everything" is the only word that reaches past your own work into aforge's own
+"Everything" is the only word that reaches past your own work into codeaf's own
 practice and charter internals. "All", "the rest", "them all" mean all of *your*
 work.
 
 ## Why a big cancel asks you to confirm
 
-Some changes are worth one question, and aforge asks it exactly once, before
+Some changes are worth one question, and codeaf asks it exactly once, before
 anything moves. A confirm appears when:
 
 - the change would reach **more than 3** tasks — this applies to any change,
@@ -64,7 +64,7 @@ The immediate receipt promises only the handoff. What actually changed in the
 plan is written a moment later by the part that did it, because that is the only
 place that honestly knows.
 
-This is a revision — aforge calls it an **amend** internally — not a new job.
+This is a revision — codeaf calls it an **amend** internally — not a new job.
 Your original words stay the authority; only the remaining plan moves.
 
 ## Steering one worker mid-turn
@@ -75,14 +75,14 @@ re-planned; the person doing the thing simply hears you.
 
 ## "Complete it fast"
 
-Urgency is its own verb — aforge calls it **expedite**. "asap", "hurry up",
+Urgency is its own verb — codeaf calls it **expedite**. "asap", "hurry up",
 "just finish it", "give me what you have" do not queue anything new; that would
 make the wait longer. Instead the job you named moves up the claim order and its
 unstarted tail is trimmed to the shortest path to the deliverable. Expedite
 never adds work, and it never asks: everything it touches is cheap and
 reversible.
 
-Aforge will never say it will hurry something unless it actually did. If you say
+codeaf will never say it will hurry something unless it actually did. If you say
 "make the parser faster", that is a different deliverable, not a schedule — it
 is heard as work, not impatience.
 
@@ -150,7 +150,7 @@ The rest change something and each one journals:
   held are held instead of ended. "Everything" is the total one, and it asks
   once about live work before touching it.
 - **bash** — run one shell command in the workspace, on your own machine. This
-  is the one hand that changes what YOU experience rather than what aforge
+  is the one hand that changes what YOU experience rather than what codeaf
   knows: a read tells it something, this does something where you are. What the
   command printed and how it exited is the whole of what it may then tell you
   about it — it never describes an outcome the command did not show. Anything
@@ -160,11 +160,11 @@ The rest change something and each one journals:
 - **write** — put a document on disk and hand you the path. Anything you will
   use outside the conversation — a diagram, a document, code, data — is born as
   a file rather than typed into a reply.
-- **note** and **forget** — write one durable thing into what aforge has
+- **note** and **forget** — write one durable thing into what codeaf has
   learned, or let one numbered line go when you say it is no longer true.
 - **ask** — one short numbered question when more than one thing plausibly
   matches what you meant. It never picks for you.
-- **answer_question** — settle a question a worker is blocked on. Aforge may
+- **answer_question** — settle a question a worker is blocked on. codeaf may
   only do this for questions explicitly marked informational; anything that
   needs your consent comes to you and stays open until you answer it.
 - **interrupt** — stop the turn the front desk is in the middle of. That is

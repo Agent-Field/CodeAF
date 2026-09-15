@@ -22,7 +22,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // formingInterval is the fastest a single forming call may speak. The provider

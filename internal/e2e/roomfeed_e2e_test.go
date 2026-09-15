@@ -84,7 +84,7 @@ func TestATaskPageShowsWhatACallTook(t *testing.T) {
 	// session with none at all, and nothing behind this endpoint checks it.
 	rig := startWithEnv(t, []string{
 		"OPENROUTER_API_KEY=test-key",
-		"AFORGE_BASE_URL=" + brain.URL + "/api/v1",
+		"CODEAF_BASE_URL=" + brain.URL + "/api/v1",
 	}, "roomfeed", home, ws, 120, 40)
 
 	// ONE WORKER AND NO SIZING CALL, which is what `solo` means: the node starts
@@ -502,7 +502,7 @@ func TestATaskPageSaysWhenAnAttemptWasCutAndAskedAgain(t *testing.T) {
 	ws := newWorkspace(t, "cutprobe", false)
 	rig := startWithEnv(t, []string{
 		"OPENROUTER_API_KEY=test-key",
-		"AFORGE_BASE_URL=" + brain.URL + "/api/v1",
+		"CODEAF_BASE_URL=" + brain.URL + "/api/v1",
 	}, "roomfeedcut", home, ws, 120, 40)
 
 	rig.lit("/task solo " + roomProbeBrief)

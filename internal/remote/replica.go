@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // replica.go is THE SURFACE'S COPY OF WHAT THE ENGINE KNOWS ABOUT ITSELF.

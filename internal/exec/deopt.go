@@ -22,7 +22,7 @@ import (
 // have had, or "handled it the long way" is a sentence about something else.
 //
 // IT LIVES HERE BECAUSE BOTH SURFACES DO IT. The task-node door
-// (internal/session) and the headless command (cmd/aforge) reach exactly this
+// (internal/session) and the headless command (cmd/codeaf) reach exactly this
 // function, so the rule for when to fall back, the worker it falls back to, and
 // the sentence a person reads are written once. Two spellings of a fallback are
 // two programs disagreeing about what happened.

@@ -30,8 +30,8 @@ import (
 	"sort"
 	"strings"
 
-	executor "github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	executor "github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The two continuation headers, owned here and used by everything that hands

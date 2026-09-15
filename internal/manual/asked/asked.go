@@ -39,7 +39,7 @@ type Question struct{ Ask, Want string }
 var Plain = []Question{
 	{"how do I share a file with it", "attaching-files"},
 	{"how do I check on it later", "keeping-an-eye"},
-	{"what is aforge", "starting-aforge,what-i-can-do"},
+	{"what is codeaf", "starting-codeaf,what-i-can-do"},
 	{"how do I get started", "getting-started"},
 	{"what does it remember", "what-i-remember"},
 	{"how do I set a spending limit", "models-and-cost,commands"},
@@ -95,7 +95,7 @@ var HeldOut = []Question{
 	{"does it work on a server I ssh into", "running-on-another-machine"},
 	{"can it draw me a picture", "making-pictures-audio-and-video"},
 	{"how do I make it repeat the same routine each time", "saved-programs,saved-shapes-of-work"},
-	{"what is the first thing I should do after installing", "getting-started,starting-aforge"},
+	{"what is the first thing I should do after installing", "getting-started,starting-codeaf"},
 	{"will it keep going if I shut my laptop", "staying-on-that-machine"},
 	{"how do I tell it which project to work on", "choosing-a-folder"},
 }

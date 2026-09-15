@@ -4,7 +4,7 @@ package session
 // next division reads what it learned.
 //
 // Everything here drives the real seams — the graph's own settle, the belt's own
-// `divide_work`, and the ledger internal/router writes and `aforge models`
+// `divide_work`, and the ledger internal/router writes and `codeaf models`
 // reads — because the whole of issue #147 was two ends that both existed and
 // never met. A test that asserted against a fixture of its own would be a third
 // end.
@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 // ── harness ─────────────────────────────────────────────────────────────────
@@ -74,8 +74,8 @@ func (n *gradeNest) settleWith(t *testing.T, title, model string, verdict provid
 	return node
 }
 
-// entries is the ratings store as `aforge models` reads it: the very same call
-// cmd/aforge's runModels makes, out of the very same directory.
+// entries is the ratings store as `codeaf models` reads it: the very same call
+// cmd/codeaf's runModels makes, out of the very same directory.
 func (n *gradeNest) entries(t *testing.T) []router.Entry {
 	t.Helper()
 	ledger, err := router.LoadLedger(n.profile)
@@ -117,13 +117,13 @@ func findEntry(entries []router.Entry, model, kind string) (router.Entry, bool) 
 	return router.Entry{}, false
 }
 
-// ── ACCEPTANCE: after any task settles, aforge models shows a graded row ─────
+// ── ACCEPTANCE: after any task settles, codeaf models shows a graded row ─────
 
-// THE FIRST HALF OF THE LOOP. `aforge models` reads router.LoadLedger out of the
+// THE FIRST HALF OF THE LOOP. `codeaf models` reads router.LoadLedger out of the
 // profile directory and prints one row per entry; before this wave the chat
 // engine wrote nothing there at all, so a machine that had run tasks for weeks
 // printed "nothing measured yet".
-func TestASettledTaskShowsUpInTheRatingsAforgeModelsReads(t *testing.T) {
+func TestASettledTaskShowsUpInTheRatingsCodeafModelsReads(t *testing.T) {
 	nest := newGradeNest(t, &scriptedCompleter{})
 
 	nest.settle(t, "tests for the rail", "cheap/model", provider.ReadingVerifiedSuccess, 1, TaskDone)
@@ -440,7 +440,7 @@ func TestWithNoTiersConfiguredTheStoreLiftsNothing(t *testing.T) {
 
 // A KIND IS THE DIVIDER'S OWN WORDS AND NOTHING ELSE — no enum, no domain list,
 // no rule about what any word means. It is cut to words, lowercased, deduped and
-// capped, and it keeps its order so the class reads as a name on `aforge models`.
+// capped, and it keeps its order so the class reads as a name on `codeaf models`.
 func TestAKindIsTheWordsSomebodyWroteForTheWork(t *testing.T) {
 	for title, want := range map[string]string{
 		"The Eleven Adapters":            "the eleven adapters",

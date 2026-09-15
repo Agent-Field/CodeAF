@@ -41,7 +41,7 @@ package provider_test
 // then the OpenAI one, then the profile file.
 //
 // IN PRACTICE THAT MEANS THE VARIABLE. This package's TestMain re-roots
-// AFORGE_HOME to a throwaway directory before any test runs (calllog_test.go),
+// CODEAF_HOME to a throwaway directory before any test runs (calllog_test.go),
 // so the profile rung resolves under that root and finds nothing — which is the
 // right behaviour for every other test here and the reason the skip sentence
 // names the variable first. Export it from the profile if that is where the key
@@ -56,10 +56,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // realIgnoreModel is a model the router serves from more than a dozen machines,
@@ -100,7 +100,7 @@ func (r *refusalCounter) RoundTrip(request *http.Request) (*http.Response, error
 
 // TestRealRouterNeverRefusesItselfTwice is the whole of this file.
 func TestRealRouterNeverRefusesItselfTwice(t *testing.T) {
-	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")))
+	key := strings.TrimSpace(config.APIKeyAt(os.Getenv("CODEAF_PROFILE_DIR")))
 	if key == "" {
 		t.Skipf("no provider key: set %s (or OPENAI_API_KEY, or the profile's api_key)", config.APIKeyEnv)
 	}

@@ -14,11 +14,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/filedoor"
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/filedoor"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── the fakes ───────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ func (w *fakeWire) DepositFile(name, mime string, data []byte) (string, error) {
 	if w.depositErr != nil {
 		return "", w.depositErr
 	}
-	return "/srv/app/.aforge-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-" + name, nil
+	return "/srv/app/.codeaf/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-" + name, nil
 }
 
 func (w *fakeWire) fetched() []string {
@@ -950,7 +950,7 @@ func TestDepositCrossesAndAnswersWithTheEnginesOwnPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a deposit has to cross: %v", err)
 	}
-	if landed != "/srv/app/.aforge-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-notes.txt" {
+	if landed != "/srv/app/.codeaf/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-notes.txt" {
 		t.Fatalf("the path is the engine's answer and came back as %q", landed)
 	}
 	wire.mu.Lock()

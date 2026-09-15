@@ -11,16 +11,16 @@ package remote
 // and the sentence says so.
 //
 // A session host broke that reading, and broke it silently. The host outlives
-// the connection by design (internal/enginehost), so after `rm bin/aforge &&
-// make build` on the far machine the NEW binary answers `aforge version` while
-// the OLD one is still holding the socket — and `aforge engine` spliced the new
+// the connection by design (internal/enginehost), so after `rm bin/codeaf &&
+// make build` on the far machine the NEW binary answers `codeaf version` while
+// the OLD one is still holding the socket — and `codeaf engine` spliced the new
 // surface straight onto it. What came back was the old host's own refusal,
 // `engine: this build speaks protocol 3 and the surface speaks 4`, telling the
 // person to update a machine they had just updated. The two halves were the
 // same build. The half in the middle was not.
 //
 // So the splice stopped being a blind copy of bytes. Before it hands the
-// surface over, `aforge engine` asks the socket what it is, and a host that
+// surface over, `codeaf engine` asks the socket what it is, and a host that
 // answers with another protocol is retired and replaced rather than attached
 // to. THE QUESTION IS ASKED BEFORE THE HELLO, on a connection that never
 // becomes a surface, because a hello would open a conversation — which is the
@@ -43,7 +43,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
 // WhoIs is the question, and it is asked on a connection's FIRST frame in place
@@ -55,7 +55,7 @@ type WhoIs struct {
 	// flight, and the answer says which happened.
 	StandDown bool `json:"standDown,omitempty"`
 	// Anyway asks for the retirement even with work in flight, and there is
-	// exactly one caller: a person typing `aforge engine --stop` on the machine
+	// exactly one caller: a person typing `codeaf engine --stop` on the machine
 	// itself, who has been told what is running and said stop anyway. A turn
 	// caught by it stops where it is and keeps its partial reply — the same
 	// thing ctrl+c does locally, by the same road ([Session.Close]).
@@ -137,7 +137,7 @@ func AskHost(conn io.ReadWriter, ask WhoIs) (HostSelf, error) {
 // reached from the handshake before the version check — because THE WHOLE POINT
 // IS TO BE ANSWERABLE BY A BUILD THAT WOULD BE REFUSED.
 //
-// A connection with no host behind it says so plainly. A bare `aforge engine`
+// A connection with no host behind it says so plainly. A bare `codeaf engine`
 // on a pipe is nobody's host: it has no socket, nothing can outlive it, and
 // there is nothing to ask to leave.
 func (s *server) whois(frame Frame) error {

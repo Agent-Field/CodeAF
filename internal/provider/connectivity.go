@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/lane/control"
 )
 
 // Connection recovery is a reachability check, never an inference. One shared

@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // The layout under the state root. One directory per harness, immutable
 // version pages inside it, and the runs beside them:
 //
-//	~/.aforge/harnesses/<name>/v1.json
-//	~/.aforge/harnesses/<name>/v2.json
-//	~/.aforge/harnesses/<name>/run/20260816T101112Z.json
+//	~/.codeaf/harnesses/<name>/v1.json
+//	~/.codeaf/harnesses/<name>/v2.json
+//	~/.codeaf/harnesses/<name>/run/20260816T101112Z.json
 //
 // There is no head file. The head is the highest page present, which means the
 // pointer cannot disagree with the pages it points at — the failure mode a
@@ -33,7 +33,7 @@ const (
 	pagePrefix = "v"
 	pageSuffix = ".json"
 	// runStamp is the run filename. Sortable, second-resolution, UTC, and
-	// legal on every filesystem aforge runs on — colons are not.
+	// legal on every filesystem codeaf runs on — colons are not.
 	runStamp = "20060102T150405Z"
 )
 
@@ -59,8 +59,8 @@ func At(dir string) *Store {
 	return &Store{dir: dir, Now: time.Now}
 }
 
-// Default opens the registry aforge owns: ~/.aforge/harnesses, moved wholesale
-// by AFORGE_HOME like everything else durable.
+// Default opens the registry codeaf owns: ~/.codeaf/harnesses, moved wholesale
+// by CODEAF_HOME like everything else durable.
 func Default() *Store { return At(home.Join(Root)) }
 
 // Dir names the registry directory.
@@ -288,7 +288,7 @@ func (s *Store) LoadRun(path string) (Trace, error) {
 //
 // IT IS THE PAGE STORE'S ANSWER TO "WHEN DID THIS LAST RUN", and it is the whole
 // answer for a page: every run of one goes through the surface's single run door
-// (cmd/aforge's v3RunHarness), whichever list started it, and that door saves a
+// (cmd/codeaf's v3RunHarness), whichever list started it, and that door saves a
 // trace here. So a page run from `/harness` and a page run from `/subharness`
 // both land in this directory, which is what lets the two doors agree.
 //

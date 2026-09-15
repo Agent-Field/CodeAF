@@ -66,7 +66,7 @@ type standingWatchDecisionPayload struct {
 	Reason string `json:"reason"`
 }
 
-// StandingWatchPass is the bounded receipt written by `aforge wake`. It is
+// StandingWatchPass is the bounded receipt written by `codeaf wake`. It is
 // journal-native because status needs only the event time.
 type StandingWatchPass struct {
 	Examined  int `json:"examined"`
@@ -349,7 +349,7 @@ func standingWatchDecisionQuery(query rowQuerier) (StandingWatchDecision, error)
 	}
 }
 
-// RecordStandingWatchPass records one completed `aforge wake` pass.
+// RecordStandingWatchPass records one completed `codeaf wake` pass.
 func (s *Store) RecordStandingWatchPass(pass StandingWatchPass) error {
 	if !validStandingWatchPass(pass) {
 		return fmt.Errorf("record standing watch pass: %w: negative count", ErrInvalid)

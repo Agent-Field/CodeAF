@@ -73,7 +73,7 @@ meta = {
 }
 
 # The road columns, from the profile the container wrote through its bind mount.
-if ARM.startswith("aforge"):
+if ARM.startswith("codeaf"):
     # THE SESSION IS TWO LEVELS UNDER projects/, NOT ONE. The walk here tested
     # `dirname(base) == "projects"`, which matches the PROJECT directory — the
     # one named after the workspace path — and handed road.py a directory with

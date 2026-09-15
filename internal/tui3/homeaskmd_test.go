@@ -8,14 +8,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // askMarkdown is the canned answer every test below asks about: the four shapes
 // a person notices immediately when they are NOT rendered — a heading, bold, an
 // inline code span and a list.
 const askMarkdown = "## Two reminders\n\n" +
-	"You have **two** of them. Run `aforge status` to see them:\n\n" +
+	"You have **two** of them. Run `codeaf status` to see them:\n\n" +
 	"- one at 6\n" +
 	"- one at 9\n"
 
@@ -71,7 +71,7 @@ func TestAnAnswerAskedFromHomeIsRenderedMarkdownAndNotItsSource(t *testing.T) {
 				sigil, prose)
 		}
 	}
-	for _, word := range []string{"Two reminders", "two", "aforge status", "one at 6", "one at 9"} {
+	for _, word := range []string{"Two reminders", "two", "codeaf status", "one at 6", "one at 9"} {
 		if !strings.Contains(prose, word) {
 			t.Fatalf("rendering the answer lost %q:\n%s", word, prose)
 		}

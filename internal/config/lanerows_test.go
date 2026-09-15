@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // preserveLaneRows puts both process-wide rows back after a test. A leaked pin

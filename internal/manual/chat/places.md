@@ -2,7 +2,7 @@
 
 ## What a place is, and the seven of them
 
-A **place** is a full-screen room in aforge that is not this conversation. There are seven,
+A **place** is a full-screen room in codeaf that is not this conversation. There are seven,
 and they are always in the same order — the four on the tab bar, then the three reached by
 their command:
 
@@ -66,7 +66,7 @@ Four ways, and they all reach the same seven rooms:
   already standing on does nothing (going there would throw away what you have typed and
   the row you are on).
 
-`alt+<digit>` arrives in every terminal aforge runs in. `ctrl+<digit>` does not exist as a
+`alt+<digit>` arrives in every terminal codeaf runs in. `ctrl+<digit>` does not exist as a
 thing a terminal can send, which is why the numbers are on `alt`.
 
 **`tab` walks the whole circle, and no room on it is ever shut.** `tab` and `shift+tab`
@@ -194,9 +194,9 @@ click puts the caret where you clicked — **except on tasks**, where the letter
 control row at the top of the list instead, beside the `⌕` mark, so that what you typed is
 above the rows it changed rather than two lines below them.
 
-## The scope chip — what is the here ~/aforge-v2 thing next to the box
+## The scope chip — what is the here ~/codeaf thing next to the box
 
-At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
+At the right of the box is the **scope chip** — the `here ~/codeaf` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
 with nothing typed, because a verb that is always in reach has to always say where it goes.
 The path is shortened the same way every path on this surface is: `~` for your home
@@ -217,9 +217,9 @@ opens. It is not a new screen: **the page behind dims to the faintest tier inste
 covered**, the box stays exactly where it was, and three lines appear in the air under it.
 
 ```
-› cut the opus spend in half without losing the sweep                       here ~/aforge-v2
+› cut the opus spend in half without losing the sweep                       here ~/codeaf
  it will run on its own and tell you when it lands                                    a task
- · in ~/aforge-v2, on master                                                alt+w to move it
+ · in ~/codeaf, on master                                                alt+w to move it
  · execution runs on opus 4.1                                                alt+o to change
  · it may spend up to $100.00 before it asks                                    type a number
  alt+enter send it off · enter talk about it first · esc back to spend
@@ -228,8 +228,8 @@ covered**, the box stays exactly where it was, and three lines appear in the air
 Those three are the only facts a task needs before it leaves: **where, on what, how much.**
 Each one is edited on the line that shows it.
 
-- **`in ~/aforge-v2, on master`** — the project the task will work in, and the branch that
-  tree is on right now. **`alt+w`** cycles it through the projects aforge knows, this
+- **`in ~/codeaf, on master`** — the project the task will work in, and the branch that
+  tree is on right now. **`alt+w`** cycles it through the projects codeaf knows, this
   window's own first, and round again from the last. A machine with one project has nowhere
   to move a task to, so the `alt+w to move it` clause is not on the line and the key does
   nothing. A folder that is not a repository, or one on a detached head, draws the project
@@ -379,7 +379,7 @@ They are two different kinds of line and they are fitted by two different rules.
 - **A note** — the dim words written into the rule over the composer, saying what just
   happened or what the page holds — has the answer at
   the **front**, so the front is protected and the line gives up its later clauses. Settings
-  says `saved to your profile · a project's own .aforge-v3/config.json is a hand edit`; at
+  says `saved to your profile · a project's own .codeaf/config.json is a hand edit`; at
   sixty columns that becomes `saved to your profile`, which is the half you asked for. The
   macOS chord note behaves the same way: `your terminal sends ⌥ as a letter — turn on "use
   option as meta" in Terminal: Profiles › Keyboard` shortens to
@@ -412,7 +412,7 @@ being held down — it only reports what arrived.
 
 ## home — what wants you, as seven panels
 
-The first place, and the one aforge opens on. Everything on this machine, from every
+The first place, and the one codeaf opens on. Everything on this machine, from every
 project, as **seven panels** in one, two or three columns: `needs you`, `where you were` and
 `projects` on the left; `running`, `since you left`, `spend` and `next up` on the right. An
 empty panel keeps its heading and one dim line naming what arrives there.
@@ -471,7 +471,7 @@ The standing orders page has the whole of it.
 
 ## memory — what is held true
 
-What aforge holds true about you and this machine, with what kind of thing each line is, how
+What codeaf holds true about you and this machine, with what kind of thing each line is, how
 it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+6`. It is not on the tab bar.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
@@ -632,7 +632,7 @@ names what arrives there and the one thing that puts it there, the way home's em
 do. It never says the place is empty.
 
 **Every place opens, always.** There is no state of the machine in which a word on the bar,
-or any of the seven digits, is a key that does nothing. On a machine aforge was installed on
+or any of the seven digits, is a key that does nothing. On a machine codeaf was installed on
 an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 
 - **tasks**, headed `tasks`:
@@ -698,7 +698,7 @@ to it — rather than a room in the machine, so it has no tab and `tab` does not
 ## The places over --host — whose machine am I looking at
 
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
-session runs on.** Home lists the conversations under `~/.aforge/v3`; tasks lists the work
+session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
 those conversations ran; standing lists what keeps an eye on that machine; spend adds up the
 ledger every model call there writes a line into; search reads the index of what was said
 there; memory reads what those sessions learned. All six are directories, and over a
@@ -736,13 +736,13 @@ at all: a machine name is worth a word only when there is more than one machine 
 `space` `space` over `--host` opens the home of the machine your session runs on: its
 projects, its conversations, and what each of those ran. `enter` on a row opens that
 conversation beside the one you are in — the engine gives it a connection of its own and
-the chat you came from keeps running, the same door `aforge resume` uses locally.
+the chat you came from keeps running, the same door `codeaf resume` uses locally.
 
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects
 it could reach were the laptop's while the work was on the server. Before that it refused to
 open at all. If you press space space over a connection and get one line, the machine you are
-attached to is running an older aforge than the one you are sitting at, and the fix is the
+attached to is running an older codeaf than the one you are sitting at, and the fix is the
 same as for any version mismatch: update the older one.
 
 In the fraction of a second before the far machine's first answer arrives, home draws **no
@@ -758,7 +758,7 @@ The tasks place reads its rows out of the same reading home lists, so the door t
 home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
 
 This was the worst of the seven before it crossed. The page walked *this* computer's
-`~/.aforge/v3` and drew what it found — a count and a total in dollars, `work aforge ran on
+`~/.codeaf/v3` and drew what it found — a count and a total in dollars, `work codeaf ran on
 its own. 8, $22.54 of it.` — under a conversation on a server that had run none of it. A page
 that reads a real disk and names the wrong machine is worse than a page that says nothing.
 
@@ -785,7 +785,7 @@ A tab's number is *what changed since you last looked at that place*, so it need
 what is in there now, which belongs to the machine the place describes, and when you last
 looked, which belongs to the terminal you are sitting at. Those are two different machines
 over a connection, so **the look stamps for a remote session are kept on this computer in a
-folder of their own** — `~/.aforge/v3/looks/<machine>` — beside the local ones rather than in
+folder of their own** — `~/.codeaf/v3/looks/<machine>` — beside the local ones rather than in
 them. Glancing at the server's tasks does not clear the number over your laptop's tasks tab,
 and your laptop's own windows do not overwrite the origin a remote one measures from.
 

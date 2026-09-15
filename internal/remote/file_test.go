@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // attachEngine is a scripted engine rooted at one directory, with a session folder
@@ -129,6 +129,33 @@ func TestTwoAttachmentsUnderOneNameDoNotOverwriteEachOther(t *testing.T) {
 			names = append(names, e.Name())
 		}
 		t.Fatalf("two distinct files and one repeat make two on disk, not %d: %v", len(entries), names)
+	}
+}
+
+func TestFlatAttachmentsReadCurrentFirstAndNewWritesNeverUseTheFormerDirectory(t *testing.T) {
+	workspace := t.TempDir()
+	former := filepath.Join(workspace, filepath.FromSlash(attachmentsFormerDirectory))
+	if err := os.MkdirAll(former, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := AttachmentsDir(session.Place{}, workspace); got != former {
+		t.Fatalf("former attachment directory was not found: %q", got)
+	}
+	current := filepath.Join(workspace, filepath.FromSlash(attachmentsFlatDirectory))
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := AttachmentsDir(session.Place{}, workspace); got != current {
+		t.Fatalf("current attachment directory did not win: %q", got)
+	}
+	if err := os.RemoveAll(current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeAttachment(session.Place{}, workspace, WireFile{Name: "new.txt", Bytes: []byte("new")}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(current); err != nil || len(entries) != 1 {
+		t.Fatalf("new attachment did not use current directory: %v %v", entries, err)
 	}
 }
 

@@ -262,7 +262,7 @@ Every word it draws:
   `your call · conflicts with your branch: parser.go`.
 - `merged`, `branch kept`, `in your own folder`, `conflicted`, `stopped`, `done`,
   `incomplete` — it is over, and the word says how it ended: its branch came home; the work
-  is finished and left on its own branch because your checkout is one aforge will not write
+  is finished and left on its own branch because your checkout is one codeaf will not write
   to; there was no branch to bring home, so it edited your own files; the merge clashed; it
   was ended early; it is over and nothing was said about a branch; or it ended without
   finishing, with the reason beside it (`incomplete · ran out of steps`). **There is no
@@ -481,7 +481,7 @@ refuses leaves its words in the box that holds them.
 Two things worth knowing:
 
 - **A task page's line is kept on disk, like the conversation's.** Close the window or
-  crash, open aforge here again, click that task: your half-typed correction is in the
+  crash, open codeaf here again, click that task: your half-typed correction is in the
   box with its documents and its tray. It is never restored into the conversation, and
   never into another conversation's task with the same number (the keys page has the
   detail).
@@ -549,7 +549,7 @@ page drew `task finished — esc to return` (that was the old wording) under a h
 clock was still counting up
 — `video · working · 32s` over a foot claiming the work was over.
 
-The cause was that a background job is not a task in aforge's own graph, so every attempt
+The cause was that a background job is not a task in codeaf's own graph, so every attempt
 to open a **room** for one was refused — which is the **ordinary** answer for a job, on a
 perfectly healthy conversation — and that refusal was read as "the work has landed". A
 job's page is a card now, not a room, and it draws the job's own clock or ending, so the

@@ -24,7 +24,7 @@ import (
 
 // THE PROMPT TEACHES A JUDGEMENT, NOT A THRESHOLD.
 //
-// aforge is a general harness: a research sweep, a writing project and a
+// codeaf is a general harness: a research sweep, a writing project and a
 // mechanical code change are the same shape of problem to this law, and the
 // moment the prompt says "after N tool calls" or reaches for a worked example
 // about files, it stops being true for two of the three. So this pins both

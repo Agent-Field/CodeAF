@@ -1,6 +1,6 @@
 package session
 
-import "github.com/Agent-Field/aforge-v2/internal/provider"
+import "github.com/Agent-Field/codeaf/internal/provider"
 
 // turnhandoff.go answers TWO questions for the end of a turn, both facts about
 // the graph rather than readings of anything the model said:

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 
 // ProcessStartTime is the platform identity helper used both when a service
 // is recorded and when it is re-adopted. Darwin and the other Unix targets
-// supported by aforge expose lstart through ps; callers degrade safely when a
+// supported by codeaf expose lstart through ps; callers degrade safely when a
 // platform does not.
 func ProcessStartTime(pid int) (time.Time, error) {
 	if pid <= 0 {
