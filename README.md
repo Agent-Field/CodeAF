@@ -24,14 +24,20 @@
 
 </div>
 
-CodeAF is an open-source software factory for your terminal. You talk through
-the work. It becomes tasks that run, check and land on their own, across every
-project on the machine, from one window. You decide only what needs you, and
-the work that matters most goes to subharnesses, specialists built for one job.
-One binary, built for open models. Apache 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
+**Frontier-grade coding on open models, at a fraction of the cost.**
+
+CodeAF is a coding harness built from the ground up for open models, to get the
+most intelligence out of every dollar. It also changes how you work once more
+than one thing is going on. Instead of three terminals of agents with you in the
+middle of all of them, you get one place to hand work off, see what is moving
+across every project, and step in only where your judgment is needed. The more
+you hand it, the more you get done, and that holds as models get smarter.
+
+Written in Go as one small binary, with nothing else to install or run. Apache
+2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
 
 > **Early preview.** CodeAF is young and moving fast. Expect rough edges, and tell
-> us where you hit them: [Discord](https://discord.gg/aBHaXMkpqh) or an [issue](https://github.com/Agent-Field/codeaf/issues).
+> us where you hit them on [Discord](https://discord.gg/aBHaXMkpqh) or in an [issue](https://github.com/Agent-Field/codeaf/issues).
 
 <img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
 
@@ -93,8 +99,8 @@ Work that passes its check lands on your branch by itself, never on `main`,
 
 ## What a factory is
 
-Three terminals, three agents and a merge waiting is a factory run by hand.
-The agents got fast. The scheduling, checking and merging stayed with you.
+Agents run by hand got fast, but the scheduling, checking and merging stayed
+with you.
 
 <img src="assets/readme/how-work-changes.webp" alt="one agent: one line on you, you wait. several agents by hand: ten lines on you, you schedule, merge and check. a factory: one line out, one line back." width="100%">
 
