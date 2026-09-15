@@ -13,6 +13,7 @@
 <a href="#install">Install</a> ·
 <a href="#one-window-for-every-project">One window</a> ·
 <a href="#what-a-factory-is">What a factory is</a> ·
+<a href="#subharnesses-specialists-built-for-one-job">Subharnesses</a> ·
 <a href="#benchmarks">Benchmarks</a> ·
 <a href="#headless-is-the-other-front-door">Headless</a> ·
 <a href="#switching-from-opencode-pi-or-aider">Switching</a> ·
@@ -23,10 +24,11 @@
 
 CodeAF is an open-source software factory for your terminal. You talk through
 the work. It becomes tasks that run, check and land on their own, across every
-project on the machine, from one window. You decide only what needs you. One
-binary, built for open models. Apache 2.0. By [AgentField AI](https://agentfield.ai).
+project on the machine, from one window. You decide only what needs you, and
+the work that matters most goes to subharnesses, specialists built for one job.
+One binary, built for open models. Apache 2.0. By [AgentField AI](https://agentfield.ai).
 
-<img src="assets/readme/screens/overview.jpg" alt="You talk. It becomes tasks. You decide what lands. Three panels: a conversation that handed out four fixes, the tree of tasks it became, and home showing the two questions that need you and the work waiting to be checked" width="100%">
+<img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
 
 ## Install
 
@@ -55,12 +57,12 @@ of them in a tab, and the one you left keeps streaming with its tasks still
 running. `tab` flips back. `ctrl+k` jumps to any conversation, open or closed.
 Each keeps its own approval rules, models and spend limit.
 
-<img src="assets/readme/screens/projects.jpg" alt="One window, every project: conversations from three projects open as tabs in one terminal, with the ctrl+k switcher listing them" width="100%">
+<img src="assets/readme/screens/projects.webp" alt="One window, every project: conversations from three projects open as tabs in one terminal, with the ctrl+k switcher listing them" width="100%">
 
 `home` answers what needs you, what to check, what is running and what it
 cost, for all of them at once. A digit answers a question from its row.
 
-<img src="assets/readme/screens/home.jpg" alt="Home in two columns: needs you, to check and where you were on the left; running, since you left and spend on the right" width="100%">
+<img src="assets/readme/screens/home.webp" alt="Home in two columns: needs you, to check and where you were on the left; running, since you left and spend on the right" width="100%">
 
 ## Talk, and it becomes tasks
 
@@ -76,13 +78,13 @@ shows every task and its subtasks.
 
 <!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
      lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
-<img src="assets/readme/screens/conversation.jpg" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
+<img src="assets/readme/screens/conversation.webp" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
 
 Work that passes its check lands on your branch by itself, never on `main`,
 `dev` or a release branch. Work nothing could check waits under `to check`:
 `1` accept, `2` not right.
 
-<img src="assets/readme/screens/tasks-tree.jpg" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
+<img src="assets/readme/screens/tasks-tree.webp" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
 
 ## What a factory is
 
@@ -97,27 +99,40 @@ A factory is the third picture: one line out, one line back.
   they cannot collide, tests what came back and merges what passed.
 - **It asks only when it must.** A question waits under `needs you`, from every
   project. Everything else it decides, writes down, and carries on.
-- **Repeat work checks itself.** Review this pull request, chase this flaky
-  test: a saved program with typed input and output that delivers what it
-  promised or is marked incomplete. These run the benchmark below.
 
-<img src="assets/readme/screens/question.jpg" alt="It asks only when it must: a question panel asking which store the spend ledger should sit on, three options, SQLite recommended with the reason" width="100%">
+<img src="assets/readme/screens/question.webp" alt="It asks only when it must: a question panel asking which store the spend ledger should sit on, three options, SQLite recommended with the reason" width="100%">
 
-<!-- TODO: settle the public name. The manual calls these subharnesses and the
-     command is /subharness; this README says specialist task. -->
+## Subharnesses: specialists built for one job
+
+A general agent does everything a little. The work that matters most comes round
+in the same shape: review this pull request, fix this issue, audit these
+dependencies. A subharness is a specialist built for exactly that job, with its
+own plan, its own checks and the models that suit it. It takes typed input and
+returns typed output, so it delivers what it promised or is marked incomplete.
+A run is a task like any other, on `home`, with a room and a stop.
+
+- **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
+  open-source code reviewer on Martian Code-Review-Bench.
+- **In the benchmark below:** `[SUBHARNESS]`, the developer subharness, against
+  general harnesses on the same open model.
+- **Your own:** "make me a harness for triaging flaky tests" designs one, saves
+  it, and `/subharness` runs it.
+
+<!-- TODO: name the developer subharness the benchmark ran, and the release that
+     ships PR-AF natively. -->
 
 ## Benchmarks
 
 <!-- TODO(C1): chart, two panels: pass rate vs cost, pass rate vs time.
      Render from the launch run with bench/oneroad/plots/final_board.py. -->
 
-We ran `[N]` held-out GitHub issues, `[K]` seeds each, through every harness
-below on the same open model, `[MODEL]`. Versions and configs are in
+We ran `[N]` held-out GitHub issues, `[K]` seeds each, through CodeAF's
+developer subharness and every harness below on the same open model, `[MODEL]`. Versions and configs are in
 [BENCHMARKS.md](BENCHMARKS.md), with every failure, timeout and unpriced call.
 
 | harness | version | pass rate | cost per issue | time per issue |
 | --- | --- | --- | --- | --- |
-| CodeAF | `[..]` | `[..]` | `[..]` | `[..]` |
+| CodeAF, `[SUBHARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
 | `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
 | `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
 | `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
@@ -137,7 +152,7 @@ crew, take the calls you did not type:
 | small work | digests, task names, yes-or-no checks |
 | worker | every task you hand off. Most of the bill. |
 | careful work | checks on finished work, the brief a task is shaped into, vision |
-| mastermind | plans runs and designs specialist tasks |
+| mastermind | plans runs and designs subharnesses |
 
 `/crew frugal`, `balanced` or `max` sets all five in one word. Any seat can be
 pinned.
@@ -153,7 +168,7 @@ keeps failing on the worker seat moves up to careful work on its own, and each
 request goes to the provider that has been fastest for that kind of call.
 `codeaf models` prints the ratings.
 
-<img src="assets/readme/screens/models.jpg" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
+<img src="assets/readme/screens/models.webp" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
 Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
 any OpenAI-compatible endpoint.
@@ -165,7 +180,7 @@ Rules, reminders and watches are one thing, and you set them up by saying them.
 "Tell me when CI goes red." A card asks once; `1` and it stands, in this project
 or everywhere, on the same daily spend limit as the rest.
 
-<img src="assets/readme/screens/standing.jpg" alt="The standing place: orders, reminders and watches for this project and others, when each last woke and what it cost" width="100%">
+<img src="assets/readme/screens/standing.webp" alt="The standing place: orders, reminders and watches for this project and others, when each last woke and what it cost" width="100%">
 
 ## Headless is the other front door
 
@@ -208,7 +223,7 @@ On your phone there is no app to install. ssh in from any mobile terminal, run
 `codeaf` in the project, and it joins the same live conversation, folded to fit
 the screen.
 
-<img src="assets/readme/screens/phone.jpg" alt="Native in the terminal on your phone: CodeAF home at phone width inside a mobile terminal over ssh, beside the same home on a wide screen" width="100%">
+<img src="assets/readme/screens/phone.webp" alt="Native in the terminal on your phone: CodeAF home at phone width inside a mobile terminal over ssh, beside the same home on a wide screen" width="100%">
 
 Still local over a connection: spend, search and memory. Reaching a machine
 with no ssh at all, through a relay and a pairing code, is built and waits on a
@@ -231,7 +246,7 @@ be one you can read.
 | --- | --- | --- |
 | where you work | one window, one repository | every project on the machine, from one control room |
 | what you do | watch it type | describe work, answer what needs you, decide what lands |
-| what runs | one model, one thread | six seats, chosen per call, on open weights |
+| what runs | one model, one thread | six seats chosen per call, and subharnesses built for one job |
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
 
@@ -244,6 +259,7 @@ changes is around it:
 - what you ask for becomes tasks that land themselves, and only the unchecked
   ones wait for you
 - a model per call, not per session
+- subharnesses: specialists for the work that comes round again
 - rules and reminders you say once
 - the session lives on your dev box, and the screen stays where you are
 
@@ -254,9 +270,9 @@ v0.1.0 shipped on 2026-08-17. `[N]` changes since, each written up in
 
 | shipped | launch, `[DATE]` | next |
 | --- | --- | --- |
-| conversation, tasks, review | binaries and installer for every platform | team server: one machine, every engineer's factory |
-| home, standing orders, memory | benchmark results and chart | no-ssh access through a hosted relay (`--at`) |
-| six-seat crew, spend limits | `[..]` | web view |
+| conversation, tasks, review, subharnesses you design | binaries and installer for every platform | native subharnesses, starting with PR-AF code review |
+| home, standing orders, memory | benchmark results and chart | team server: one machine, every engineer's factory |
+| six-seat crew, spend limits | `[..]` | no-ssh access through a hosted relay (`--at`), web view |
 | remote over ssh, phone-width terminal, headless | | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
 
 Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
