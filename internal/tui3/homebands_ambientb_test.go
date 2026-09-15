@@ -77,7 +77,16 @@ func TestKeysBandDrawsBothLegendsAndObeysWidth(t *testing.T) {
 		t.Fatalf("session keys = %q", got)
 	}
 	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "→ more")
+	// AN ITEM NAMES `enter` ONLY WHERE THERE IS A CONVERSATION BEHIND IT. The
+	// legend's own law is that it names keys that work, and an item made at home
+	// has no origin to open — [app.homeItemEnter] refuses it in words, so a
+	// legend that advertised the key would be inviting a keystroke the row has
+	// already decided against.
 	ctx.subject.kind = bandKindItem
+	if got := plain(drawKeysBand(a, ctx)[0]); strings.Contains(got, "enter") {
+		t.Fatalf("an item with no origin names enter: %q", got)
+	}
+	ctx.subject.item.Item.Origin.Transcript = "/work/.codeaf/v3/projects/-work/s1/transcript.jsonl"
 	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, "enter open where") {
 		t.Fatalf("item keys = %q", got)
 	}

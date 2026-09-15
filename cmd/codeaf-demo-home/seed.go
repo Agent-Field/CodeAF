@@ -115,7 +115,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Nodes, built.Jobs = nodes, jobs
 
-	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, now)
+	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, ids, now)
 	if err != nil {
 		return built, err
 	}
