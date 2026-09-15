@@ -241,6 +241,45 @@ func TestTheNeedsYouQuestionIsAlwaysInTheColumnOnItsOwnRowsLine(t *testing.T) {
 	}
 }
 
+// A QUESTION HOME RAISES IS DRAWN IN THE DESCRIPTION COLUMN, beside the row
+// whose `enter` raised it — and the foot does not say it a second time.
+//
+// Until the column existed the grid had nowhere to put the card: it belongs to
+// the detail column beside the typed search, which is not up at rest, so a
+// raised question left only its one-line foot version appended to the resting
+// sentence. A person pressing enter saw the bottom of the screen change and read
+// it as noise (owner, 2026-09-15).
+func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.T) {
+	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	a := lab.a
+	a.width, a.height = 180, 40
+	homeText(a)
+	homeLineOf(t, a, func(l homeLine) bool {
+		return l.cell != nil && l.cell.panel == panelNeeds && l.kind == homeSession
+	})
+	a.placeKeyPress(key("enter"))
+	ask, ok := a.homeAsking()
+	if !ok {
+		t.Fatal("enter on a row another window holds raised no question")
+	}
+	frame := homeText(a)
+	head := strings.TrimSpace(ask.question.Head)
+	row, at := homeRowOf(frame, head)
+	if row < 0 {
+		t.Fatalf("the question %q is not on the frame:\n%s", head, frame)
+	}
+	_, rail := homeRowOf(frame, "projects · ")
+	if at <= homeGridMargin || at >= rail {
+		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
+	}
+	// AND THE FOOT KEEPS ITS OWN SENTENCE. One decision drawn twice on one screen
+	// is the defect the question block exists to end.
+	lines := strings.Split(frame, "\n")
+	if foot := lines[len(lines)-1]; strings.Contains(foot, head) {
+		t.Fatalf("the foot repeats the question: %q", foot)
+	}
+}
+
 // firstWordsOf is enough of a sentence to find it on a frame that may have
 // wrapped the rest of it.
 func firstWordsOf(said string) string {

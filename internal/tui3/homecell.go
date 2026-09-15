@@ -97,6 +97,13 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 		return nil
 	}
 	room = min(room, len(field))
+	// A QUESTION HOME HAS RAISED TAKES THE WHOLE COLUMN, beside the row it is
+	// about. One decision is drawn once and nothing is drawn beside it: the
+	// column is otherwise a set of notes about rows, and notes stacked around a
+	// question a person has to answer are the screen talking over it.
+	if rows := a.homeAskNote(field, width, room); rows != nil {
+		return rows
+	}
 	preview := h.previewAt()
 	type note struct {
 		y     int
@@ -569,4 +576,56 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 		n += 1 + ansi.StringWidth(tail)
 	}
 	return n
+}
+
+// homeAskNote is the question home is holding, drawn in the description column
+// on the line of the row whose `enter` raised it, and nil where there is no
+// question or its row is not in the field.
+//
+// IT IS THE QUESTION BLOCK'S OWN CARD ([app.homeAskRows]) and not a second
+// drawing of the same facts, so a person who has learnt one question on this
+// surface has learnt this one. Until this column existed the grid had nowhere to
+// put it: the card belongs to the detail column beside the typed search, which
+// is not up at rest, so a raised question left only its one-line foot version —
+// appended to the resting sentence, where it read as a run-on and was missed
+// (owner, 2026-09-15).
+//
+// IT IS PULLED UP RATHER THAN CUT where the card is taller than the room under
+// its row. A decision with its last answer off the bottom of the screen is worse
+// than one drawn a few lines above the row it belongs to.
+func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine {
+	h := &a.home
+	if _, ok := a.homeAsking(); !ok || strings.TrimSpace(h.armed) == "" {
+		return nil
+	}
+	at := homeNoLine
+	for y := 0; y < room; y++ {
+		line := field[y].at
+		if line == homeNoLine || line < 0 || line >= len(h.lines) {
+			continue
+		}
+		if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == h.armed {
+			at = y
+			break
+		}
+	}
+	if at == homeNoLine {
+		return nil
+	}
+	said := a.homeAskRows(max(1, width-homeGridLead))
+	if len(said) == 0 {
+		return nil
+	}
+	top := min(at, max(0, room-len(said)))
+	out := make([]homeCellLine, room)
+	for i := range out {
+		out[i] = homeCellLine{at: homeNoLine, head: -1}
+	}
+	for i, words := range said {
+		if top+i >= room {
+			break
+		}
+		out[top+i] = homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + words}
+	}
+	return out
 }
