@@ -1,396 +1,271 @@
 <div align="center">
 
-# codeaf
+<img src="assets/readme/hero.jpg" alt="codeaf, the open-source software factory. Direct the work from your terminal, servers or phone." width="100%">
 
-**Talk through the work, change the files, and hand off tasks you can walk away from.**
+<br>
 
-*One terminal session gives a model tools, memory, background work, and a manual about itself.*
+<a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-0A0B0D?style=flat&labelColor=1D2024&color=D4A24A"></a>
+<a href="https://github.com/Agent-Field/codeaf/releases"><img alt="release" src="https://img.shields.io/github/v/release/Agent-Field/codeaf?style=flat&labelColor=1D2024&color=0A0B0D"></a>
+<a href="https://github.com/Agent-Field/codeaf/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/Agent-Field/codeaf?style=flat&labelColor=1D2024&color=0A0B0D"></a>
+<img alt="one binary, darwin linux windows" src="https://img.shields.io/badge/one%20binary-darwin%20%7C%20linux%20%7C%20windows-0A0B0D?style=flat&labelColor=1D2024">
 
-<img alt="Go 1.26.5" src="https://img.shields.io/badge/Go-1.26.5-0c0b09?style=flat&labelColor=8b7355"> <img alt="darwin, linux, windows" src="https://img.shields.io/badge/targets-darwin%20%7C%20linux%20%7C%20windows-0c0b09?style=flat&labelColor=8b7355">
-
-<p><a href="#install">Install</a> • <a href="#talk-to-codeaf">Chat</a> • <a href="#tools-in-the-conversation">Tools</a> • <a href="#hand-work-to-tasks">Tasks</a> • <a href="#models-keys-and-spending">Models</a> • <a href="#the-manual-ships-with-the-binary">Manual</a> • <a href="#headless-work">Headless</a> • <a href="#work-on-another-machine">Remote</a> • <a href="#contributing">Contributing</a> • <a href="#documentation">Docs</a></p>
+<p>
+<a href="#install">Install</a> ·
+<a href="#benchmarks">Benchmarks</a> ·
+<a href="#you-are-already-running-a-factory">Why a factory</a> ·
+<a href="#seven-places-one-machine">Places</a> ·
+<a href="#from-your-terminal-your-servers-or-your-phone">Anywhere</a> ·
+<a href="#any-model-open-by-default">Models</a> ·
+<a href="#coming-from-opencode-pi-or-aider">Switching</a> ·
+<a href="#built-in-the-open">Roadmap</a> ·
+<a href="docs/GUIDE.md">Guide</a>
+</p>
 
 </div>
 
-Run `codeaf` inside a project. It opens the conversation that directory was last
-having. Ask in ordinary language; the model can read and edit files, run commands,
-search the web, remember useful context, and bring separate tasks back when they land.
-
-This is the chat flow in a real terminal:
-
-```text
- codeaf                                                                 $0.0010 / $500 · sun 7:32pm
-   Home      [key lookup] ×   +
-────────────────────────────────────────────────────────────────────────────────────────────────────
-    · esc interrupts · ctrl+c twice quits · ? for help
-
-  › read ./apikey.go and tell me in two lines where codeaf looks for an API key
-
-    ▾ worked 3.2s · thought 0.6s · 1 tool call · ctrl+e
-    ▸ read apikey.go                                                                        1 call
-
-  In Load's order (from `apiKeyFrom`/`APIKeyAt`): `$OPENROUTER_API_KEY`, then
-  `$OPENAI_API_KEY`, then the `api_key` field in the profile config file written with
-  `WriteAPIKey`. First non-empty wins.
-
-    · ⟲ 14.1k cached · saved $0.0005
-                                                          · 19:31 · 3.2s · 1 tool call · $0.0008 · ❮
-─ where codeaf finds its a… · ~deepseek/deepseek-v4-flash-latest ─── space space home · / commands ─
- ›
- $0.0008 · ⟲ saved $0.0005 · 45% cached   15.6k/1.3M · 1%                                       idle
-```
-
-That is a real session on the default model, `~deepseek/deepseek-v4-flash-latest`:
-one question, one `read`, one answer, and what it cost on the last line.
-
-### Which folder it works in
-
-"Inside a project" is decided at launch, in this order
-(`cmd/codeaf/chatv3_layout.go:84`): `--workspace <path>` if you gave one, else the root
-of the git repository you are standing in, else the directory itself. The exception is
-a directory nobody chose — your home directory, or anything under a temporary directory
-— where codeaf keeps a folder of its own and says so on the welcome screen:
-
-```text
-in a folder codeaf keeps for this conversation · /workspace picks another
-```
-
-Your files are not in that folder, so asking it to read one gets you an empty
-directory. `/workspace <path>` anchors a conversation to a project at any point; the
-shorter road is to start codeaf inside the project.
-
-Once this machine has conversations on it, bare `codeaf` opens **home** rather than a
-conversation — projects, running work, questions waiting on you, what you have spent.
-Type into the box to start one, or press enter on a row to reopen one. `space space`
-goes to home from a conversation and `esc` comes back untouched.
+codeaf is an open-source software factory for your terminal. You describe work
+across your projects. It runs in its own worktrees, on the model you choose,
+and comes back for your review. One binary. Any model, open models by default.
+Apache 2.0. By [AgentField AI](https://agentfield.ai).
 
 ## Install
 
-### Build from the repository
-
-The road that works today is a source checkout. The module needs Go 1.26.5, and
-`make build` is the one supported build command; it writes `bin/codeaf`.
-
 ```bash
-git clone https://github.com/Agent-Field/codeaf.git  # needs repository access while it is private
-cd codeaf
-make build   # fetches the pinned Furrow artifact, so it needs the network;
-             # FURROW_ARTIFACT=/path/to/furrow supplies it offline
-bin/codeaf
-```
-
-### The installer, and what it is waiting on
-
-```bash
-curl -fsSL https://agentfield.ai/get/codeaf | bash                                                    # the preferred form
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash     # the script under it
-```
-
-The first is the road that will be supported, and it is not serving yet — the route is
-written and unmerged. The second answers 404 to anyone not signed in, and starts working
-when the repository is public and `scripts/install.sh` has reached `main`.
-
-<details>
-<summary>Installer channels, flags, and checks</summary>
-
-The repository currently has no rc or staging publication. Those channel selections
-therefore stop with `no <channel> build has been published yet`. Recognizing a channel
-does not mean a matching release exists.
-
-```bash
-curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
-curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
-curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
-curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
-```
-
-| Installer input | Behaviour |
-| --- | --- |
-| `--stable` | Select the latest stable release; this is the default. |
-| `--dev` | Select the latest `dev-*` release. |
-| `--rc`, `--staging` | Select a matching channel build or stop if none has been published. |
-| `--version TAG` or `VERSION=<tag>` | Pin one release tag. |
-| `--dir PATH` | Install somewhere other than `~/.codeaf/bin`. |
-| `--no-modify-path` | Print the PATH line without editing a shell file. |
-| `--verbose` | Print each GET. |
-| `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's anonymous API limit. |
-
-The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
-`checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
-appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
-last action is `codeaf version`. Release builds cover darwin, linux, and windows on
-amd64 and arm64.
-
-</details>
-
-## Talk to codeaf
-
-Bare `codeaf` and `codeaf chat` open the same conversation surface. `codeaf resume`
-opens a picker for an earlier conversation.
-
-```bash
+curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
-codeaf chat --model <slug>
-codeaf chat --once "summarize the changes"  # print one reply and exit
-codeaf resume
 ```
 
-`enter` sends a message or steers a running answer. `ctrl+enter` makes a standing
-order. `esc` interrupts or, pressed twice at rest, opens rewind. `ctrl+c` interrupts
-mid-turn; twice within 1.5 seconds while idle quits.
+No account. On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi,
+MiniMax or Qwen, or point it at Ollama and use no key at all. Building from
+source, pinning a version and the dev channel are in the [guide](docs/GUIDE.md#install).
 
-<details>
-<summary>Chat launch flags and terminal keys</summary>
+## Your first turn
 
-| Flag | Meaning |
-| --- | --- |
-| `--model <slug>` | Choose the model for this session. |
-| `--once "text"` | Run one message non-interactively, print the reply, and exit. |
-| `--session <path>` | Resume the transcript at that path. |
-| `--yolo` | Run tools without asking; the approval default becomes allow. |
-| `--reasoning auto\|low\|medium\|high\|xhigh\|max` | Override reasoning for the session. |
-| `--no-compact` | Never compact automatically. |
-| `--one-model` | Put every text call on the session model. |
-| `--host`, `--at`, `--no-host` | Choose where the session runs and how this surface attaches. |
-| `--debug` | Keep the full run record. |
-| `--max-hours`, `--max-cost` | Bound an unattended `--yolo` session. |
-
-| Key | Action |
-| --- | --- |
-| `ctrl+o` | Expand the selected call or task instruction. |
-| `ctrl+.` | Open task history. |
-| `space space` | Open home from an empty message box. |
-| `alt+1` … `alt+7` | Select one of the seven places. |
-| `ctrl+,` | Open settings. |
-| `ctrl+g` | Send a running command to the background; otherwise close the task column, or bring it back. |
-
-</details>
-
-Once the conversation has begun, a column stands down the right-hand side of a wide
-terminal — the tasks and standing orders over this conversation, or, while there are
-none, `+ /task` and `+ /standing` with `❯ ctrl+g hide` under them.
-
-Slash commands cover models, conversations, work, memory, permissions, and spending.
-Start with `/help`. Common doors are `/model`, `/new`, `/resume`, `/workspace`, `/task`,
-`/history`, `/standing`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
-`/spend`, `/budget`, `/compact`, `/rewind`, `/manual`, `/help`, and `/quit`. `/drafts`
-keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
-
-<details>
-<summary>Slash-command reference</summary>
-
-| Command | Registered meaning |
-| --- | --- |
-| `/model` | `pick a model · or press its name above the message box`; with a slug, `switch the model for the conversation or open task`. |
-| `/new` | `start another conversation in this project` |
-| `/resume` | `open an earlier conversation` |
-| `/workspace <path>` | `anchor this conversation to a project` |
-| `/task <brief>` | `start work you can walk away from` |
-| `/history` | `every task this project has run · ctrl+.` |
-| `/standing <words>` | `keep this true · a card, never work done once` |
-| `/memory` | `inspect and change what is remembered` |
-| `/remember <text>` | `keep one thing across conversations` |
-| `/permissions` | `what runs without asking · drop one with d` |
-| `/status` | `everything the status line knows, one fact per line` |
-| `/cost` | `what this conversation has spent · /spend is the whole machine` |
-| `/spend` | `what this machine has cost, by the day · alt+3` |
-| `/budget` | `what codeaf may spend · every limit on one tab` |
-| `/compact` | `summarize the conversation now` |
-| `/rewind` | `go back to an earlier point · esc esc takes back the last` |
-| `/manual` | `codeaf's own manual · every page, one per line` |
-| `/help` | `this list` |
-| `/quit` | `close this conversation` |
-| `/drafts` | `cleared-but-kept drafts · enter restores one, d lets one go` |
-
-</details>
-
-A call that needs permission pauses on a block. Its header counts ten seconds down and
-then stops and keeps waiting, rather than answering for you:
+Start it inside a repository and ask something.
 
 ```text
-╭─  needs your ok to run bash ─────────────────────────────────────────────────────── bash · 10s ─╮
-│ echo hi · default                                                                                │
-│                                                                                                  │
-│ ▸ 1  allow once                                                                                  │
-│   2  always                                                                                      │
-│   3  deny                                                                           safe answer  │
-│                                                                                                  │
-╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────────────────────────────────╯
-  c change · ? ask back · 1–3 jump
+ › where does codeaf find its api key?
+
+    ▸ read apikey.go                                                          1 call
+
+  In Load's order: `$OPENROUTER_API_KEY`, then `$OPENAI_API_KEY`, then the `api_key`
+  field in the profile config. First non-empty wins.
+
+                                          · 19:31 · 3.2s · 1 tool call · $0.0008 · ❮
+ $0.0008 · ⟲ saved $0.0005 · 45% cached   15.6k/1.3M · 1%                        idle
 ```
 
-`↑↓` and `enter` take an answer, the digits jump straight to one, and `esc` leaves it
-for later. `c` is `change: say what you want different, then enter`; `?` is
-`ask back: type your question, then enter`. The answer leaves a row you can reopen —
-`needs your ok to run bash → allow once · you · 20:21 · c change`. A call whose outcome
-cannot be taken back drops choice 2, the widening one. `--yolo` makes allow the default,
-and the status line then says `YOLO`.
+That is a real turn on the default model, `deepseek/deepseek-v4-flash`: one
+question, one file read, one answer, and what it cost on the last line. The
+same line is there on every turn, so you always know.
 
-## Tools in the conversation
+Now hand it something you would rather not sit through.
 
-The model works through named tools rather than by suggestion. `read`, `write`,
-`edit` and `bash` act on the folder this conversation is anchored to; `grep`, `find`
-and `ls` look around it; `web_search` and `web_fetch` go out; `remember` keeps something for later;
-`propose_task` hands work off. The belt is assembled for each session, and a
-capability that cannot work is left off it rather than offered and failing.
+<!-- TODO(G1): hero gif. One message that becomes three tasks, home fills, one task
+     comes back, `a` accepts it. 160x45, ~20s, scripted with vhs. -->
+<img src="assets/readme/screens/tasks.png" alt="a conversation with three tasks running in the column beside it" width="100%">
 
-<details>
-<summary>Tool-name reference</summary>
+## Benchmarks
 
-| Work | Exact tool names |
+<!-- TODO(C1): pareto chart, two panels: pass rate vs cost, pass rate vs time.
+     Render from the launch run with bench/oneroad/plots/final_board.py, brand colours. -->
+
+codeaf sits on the Pareto frontier of cost, time and pass rate on
+`[BENCHMARK]`: no measured harness reached a higher pass rate at lower cost
+and time. Every harness ran the same open model, `[MODEL]`, on `[N]` held-out
+GitHub issues, `[K]` seeds each.
+
+| harness | pass rate | cost per issue | time per issue |
+| --- | --- | --- | --- |
+| codeaf `[VERSION]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
+
+Every run is published with its failures, timeouts and unpriced calls, in
+[BENCHMARKS.md](BENCHMARKS.md). The result comes from the task type described
+under [specialist tasks](#specialist-tasks-the-benchmarked-kind-of-work).
+
+## You are already running a factory
+
+If you have three terminals open with three agents, three worktrees and a merge
+waiting, you are running a factory by hand. The agents got fast. The scheduling,
+the merging and the checking stayed with you.
+
+<img src="assets/readme/how-work-changes.png" alt="one agent: you wait. several agents by hand: you are the scheduler. a factory: you assign and review." width="100%">
+
+codeaf is built for the third picture. Work runs where it cannot collide, keeps
+its own record, and reaches you only when it needs a decision or a review.
+Your attention goes to the row that asks for it.
+
+## What a copilot does, and what a factory does
+
+| | a copilot | codeaf |
+| --- | --- | --- |
+| where you work | one window, one repository | every project on the machine, from one home screen |
+| what you do | watch it type | assign work, answer questions, review what lands |
+| what it works in | your checkout | its own worktree per task, merged when you accept |
+| how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
+| what it costs | a subscription | the price of the tokens, on every turn, with a daily limit you set |
+
+## Seven places, one machine
+
+A chat has a scrollback. A factory has a floor. codeaf gives every machine
+seven full-screen places, reached with `alt+1` to `alt+7` from anywhere.
+
+| place | what it answers |
 | --- | --- |
-| Files and shell | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
-| Documents and jobs | `read_document`, `jobs`, `manual` |
-| Interaction and work | `ask`, `watch`, `tasks`, `propose_task`, `quick_task`, `items`, `divide_work`, `stand` |
-| Memory and workspace | `remember`, `recall`, `track`, `commit`, `workspace`, `workspace_snapshots`, `workspace_restore`, `workspace_fork`, `workspace_merge`, `search_conversations` |
-| Web | `web_search`, `web_fetch` |
-| Settings and accounts | `settings`, `change_setting`, `services`, `use_service`, `gmail_search`, `gmail_read`, `gmail_send`, `calendar_list`, `calendar_create`, `slack_search`, `slack_read_thread`, `slack_list_channels`, `slack_send` |
-| Media | `generate_image`, `speak`, `generate_music`, `generate_video`, `view_image`, `edit_video`, `load_capability` |
+| `home` | What needs me? What is running? What happened while I was away? What did today cost? |
+| `tasks` | Every task on the machine, by the conversation that started it, with state and cost. |
+| `spend` | Cost by day, by model and by task. |
+| `settings` | Models, the crew, connected accounts, limits. |
+| `standing` | The orders that keep running: what they do, when they last fired, what they cost. |
+| `memory` | What codeaf remembers about you and your projects, line by line, editable. |
+| `search` | Every past conversation. |
 
-`remember` needs memory switched on. The four `workspace_*` tools need a folder under
-Furrow watch. The five `gmail_*` and `calendar_*` tools arrive only with a connected
-Google account and the four `slack_*` only with Slack; `/connect` — `your connected
-accounts · connect another` — is the door, and any other keyed account brings one
-`<service-id>_request` instead, plus whatever the service names for itself.
-`view_image` needs a vision model. `edit_video` needs its local video binaries. Each
-media-generation tool needs both a media client and a resolved model for its modality.
+<img src="assets/readme/screens/home.png" alt="home: needs you, where you were, projects, running, since you left, spend, next up" width="100%">
 
-</details>
+`home` opens on a bare `codeaf` once the machine has work on it. `esc` puts you
+back in the conversation you came from.
 
-## Hand work to tasks
+## Hand off work
 
-`propose_task` gives self-contained work to a separate task, returns its id immediately,
-and opens a short countdown. Redirect or cancel during the countdown; silence starts it.
-Keep talking while the task runs. Its report starts a turn in the conversation when it
-lands.
+Say what you want done. When it is more than a few edits, codeaf proposes a
+task: a brief, a worktree, a budget. Say yes and walk away. Several tasks at
+once is the normal case, and each one keeps to its own branch until you accept it.
 
-A task page shows the instruction, folded work and calls, steering, the report, and a
-pinned line with activity, duration, cost and call count. `/task <brief>` is the direct
-door; `/history` opens the project's task history.
+<img src="assets/readme/screens/tasks-tree.png" alt="the tasks place: conversations, their tasks and sub-tasks, with state and cost" width="100%">
 
-Standing orders use `/standing <words>` or `ctrl+enter`. They become cards and stay true
-after the conversation. Memory keeps person-, project-, or machine-scoped records in
-`graph.db`; `/memory`, `/memories`, `/remember` and `/forget` change them.
+When a task lands it says so on `home`, under `to check`, and waits for your
+call: `a` accept, `l` look again, `n` not right. Nothing merges on its own.
 
-## Models, keys, and spending
+<img src="assets/readme/screens/review.png" alt="a task page: finished, but nobody has checked it. your call." width="100%">
 
-Key resolution is `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, then `api_key` in the
-profile's `config.json`. With no key, an interactive local launch opens a two-page setup
-that offers to connect OpenRouter in a browser or take a pasted key. A non-interactive
-chat with no key stops instead, with `codeaf chat needs a model to talk with.`
+## Specialist tasks: the benchmarked kind of work
 
-<details>
-<summary>The two first-run screens, word for word</summary>
+<!-- TODO: confirm the public name for this task type. The manual calls them
+     subharnesses; the site copy retires that word. -->
 
-Where a browser is reachable the first page is headed `connect openrouter`:
+Some work comes round again in the same shape: review this pull request, chase
+this flaky test, audit these dependencies. A specialist task is a saved program
+for one such job. It takes typed input, plans, fans out, checks its own result
+and answers with typed output, so a run either produces what it promised or is
+marked incomplete. The benchmark numbers above are specialist tasks.
 
-```text
-sign in once in your browser. openrouter makes the default service's key for this profile; codeaf stores it on this machine. no prompt is sent and no model is called.
-```
+<img src="assets/readme/screens/specialist.png" alt="a specialist task: plan, fan out, verify" width="100%">
 
-Where it is not, the same page is headed `your openrouter key` and reads `codeaf talks
-to models on its default service through openrouter, on your key and your card. nothing
-is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
-The second page is `Daily limit`, `Chat model` and `Work crew`.
+Describe the job and codeaf writes the program. `/subharness` lists the ones on
+this machine.
 
-</details>
+## Standing orders
 
-The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
-then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
-OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
-Qwen, Ollama, and a custom OpenAI-compatible service; a qualified slug such as
-`qwen/<model>` selects its service.
+Say "always run the tests before you land" or "every morning, check the
+release radar". codeaf asks whether you mean this once or from now on, and a
+standing order is born. They run on a timer, in the background, under the same
+budget and the same review as everything else.
 
-Provider routing defaults to `simple`: an unpinned OpenRouter call carries no provider
-object, while a pinned call asks for exactly that lane. `latency` and `price` remain
-opt-in settings.
+<img src="assets/readme/screens/standing.png" alt="the standing place: four orders, when they fired, what they cost" width="100%">
 
-The default daily rail is `$500`; setting that row to `0` removes it. First run asks for
-`Daily limit`, `Chat model`, and `Work crew`.
+## From your terminal, your servers, or your phone
 
-State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset or empty: settings and credentials
-in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/`.
+The conversation lives on the machine that owns the work. Your screen attaches
+to it.
 
-## The manual ships with the binary
-
-The Markdown under `internal/manual/chat/` is compiled into codeaf, and the conversation
-reads it with the `manual` tool to answer questions about its own behaviour. From a
-terminal `codeaf manual` lists every page and `codeaf manual "<question>"` returns the
-sections that answer it; inside the chat it is `/manual`. Build gates require every
-slash command and alias, every tool name, and more than a hundred questions in ordinary
-language to reach an answering page.
-
-## Headless work
-
-- `codeaf do "<task>"` does one task and exits: the same living agent as chat, with nobody watching.
-- `codeaf exec ["<prompt>"]` runs one worker for one pass, with no planning.
-- `codeaf run <program> --input <file.json|->` runs one saved typed program and writes typed output to stdout.
-
-None takes `--yolo`, and all three end the same way — `--json` carries the reason
-in its `stop` field.
-
-<details>
-<summary>Exit codes, and the read-only commands</summary>
-
-| Code | Meaning |
-| --- | --- |
-| `0` | Done. |
-| `1` | Could not be run at all. |
-| `2` | Ran and did not finish. |
-| `3` | A limit you set stopped it. |
-| `4` | Needed an answer and nobody was there. |
-
-These need no model key and spend nothing: `codeaf why self`, `codeaf why <task-id>`,
-`codeaf logs [--tail 40] [--follow] [--json]`, `codeaf doctor`,
-`codeaf manual [page | "question"]`, and `codeaf version`. `codeaf help env` prints the
-environment table.
-
-`codeaf models [--refresh]` is the exception in that group: it spends nothing of yours,
-but it reaches the network for the catalog and stops with
-`codeaf needs a model to work with.` if no key is resolvable.
-
-</details>
-
-See [the headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
-
-## Work on another machine
-
-The conversation and its work stay on the machine that owns the workspace; the local
-surface attaches to it over a byte stream.
+<img src="assets/readme/anywhere.png" alt="one conversation on devbox; a terminal, a laptop over ssh and a phone through the relay all attach to it" width="100%">
 
 ```bash
-codeaf chat --host devbox            # also me@devbox, or devbox:code/app
+codeaf chat --host devbox        # the work runs on devbox, over ssh, nothing to install there first
+codeaf serve                     # no ssh? hold a relay open and attach from anywhere
+codeaf chat --at devbox          # ...including your phone
 ```
 
-`--host` runs the far machine's `codeaf engine` over `ssh -T`: it needs `ssh` here and
-codeaf installed there, and it cannot be combined with `--one-model`. For a machine
-without ssh, `codeaf serve [--workspace path] [--relay url]` holds an outbound relay
-connection and prints a pairing name such as `otter-lamp-42` — without a configured
-relay it stops — and `codeaf chat --at <name>` connects to it. `codeaf devices` lists
-paired devices; `codeaf devices revoke <name> [--all]` revokes access.
+Close the laptop and the tasks keep running. Open the phone and `home` is
+there at phone width: what needs you, a digit to answer, a key to accept.
 
-Current boundary: spend, search and memory pages still read local files, and inside a
-remote task room steering, stopping and model changes are absent.
+<p>
+<img src="assets/readme/screens/ssh.png" alt="codeaf chat --host devbox from a laptop" width="66%">
+<img src="assets/readme/screens/phone.png" alt="home on a phone: needs you, approve" width="32%">
+</p>
 
-Read [remote access](docs/REMOTE.md) and its [testing guide](docs/remote-access-testing.md).
+## Any model, open by default
 
-## Contributing
+The model is the part you swap. Providers built in: OpenRouter, DeepSeek, GLM,
+Kimi, MiniMax, Qwen, Ollama and any OpenAI-compatible endpoint.
 
-Branch from `dev` and open the pull request against `dev`; `main` is the release pointer.
-Every pull request carries a change entry under `docs/changes/unreleased/`.
+The crew is five seats, one per kind of work, and each seat has its own model.
+Three presets ship, all on open weights:
+
+| preset | worker | high | mastermind |
+| --- | --- | --- | --- |
+| frugal | deepseek-v4-flash | glm-5.3-flash | glm-5.3-flash |
+| balanced | glm-5.3-flash | qwen3.8-27b | glm-5.3 |
+| max | glm-5.3 | kimi-k3 | kimi-k3 |
+
+Set a daily limit on first start. `spend` shows where it went.
+
+<img src="assets/readme/screens/crew.png" alt="/crew: the chat model and five seats, frugal, balanced and max" width="100%">
+
+## One binary. You bring a model.
+
+Everything above is in `bin/codeaf`: the tools, the tasks and their worktrees,
+standing orders, memory, spend, search, remote access, the headless commands
+and a manual about itself. No daemon to run, no account to make, no other
+service to stand up.
+
+<!-- TODO: binary size, cold start, idle memory, largest number of tasks run at once. -->
 
 ```bash
-make build        # bin/codeaf
-make pr-ready     # the bar a pull request into dev has to clear
-make demo-home    # a throwaway home with something on every page
-make changelog-new PR=<n> KIND=<kind> SLUG=<slug>
+codeaf do "bump every dependency with a changelog worth reading"   # headless, exit code says how it went
+codeaf manual                                                       # the manual the chat reads too
 ```
 
-Read the [branching rules](docs/rules/branching.md), the [change-entry rules](docs/rules/changelog.md)
-and [AGENTS.md](AGENTS.md) before contributing.
+Open source under Apache 2.0, all of it. You are giving a program write access
+to your repositories. You should be able to read every line of it.
 
-## Documentation
+## Coming from opencode, pi or aider?
 
-Start with [the documentation map](docs/README.md); the enduring references are the
-[design language](docs/DESIGN-LANGUAGE.md), [remote access](docs/REMOTE.md), the
-[headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
+Your keys and providers carry over; the first turn is two minutes away. The
+conversation will feel familiar. Then press `alt+1`.
+
+What is new is everything around the conversation: a home screen across
+projects, tasks that run in their own worktrees and wait for your call, standing
+orders, spend by model, a session you can reach over ssh or from a phone.
+
+## Where this goes
+
+- **Day one.** Ask a question. Hand off one task. Accept it.
+- **Week one.** Three projects on `home`. A daily limit. A standing order for the tests.
+- **Month one.** Your dev box over ssh. Your phone on the train. A specialist task for the job that keeps coming back.
+
+Every line above is a feature that ships today.
+
+## Built in the open
+
+`[N]` changes since v0.1.0 on 2026-08-17, each one written up in
+[docs/changes](docs/changes/). Benchmarks are published as they are run.
+
+| shipped | launch, `[DATE]` | next |
+| --- | --- | --- |
+| conversation, tasks, worktrees, review | installer and binaries for every platform | team server: one machine, every engineer's factory |
+| seven places, standing orders, memory | benchmark results | web view |
+| open-model crew, spend limits | `[..]` | the AgentField control plane: identity, policy and proof for every task |
+| ssh, relay, phone, headless | | |
+
+Vote on what comes next in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
+
+**Help wanted.** Three things move the project most:
+
+1. Run the benchmark on one of your own repositories and send us the run.
+2. Add a provider you use that is not on the list.
+3. When a task goes wrong, `/why` and paste what it says into an issue.
+
+<!-- TODO: Discord link. -->
+
+## Docs
+
+- `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
+- [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
+- [docs/](docs/README.md): architecture, headless, remote, limits.
+
+Built by the team behind [AgentField](https://github.com/Agent-Field/agentfield),
+the open-source AI backend, and Covalent. Apache 2.0.
