@@ -1,7 +1,7 @@
 // Package furrowbin carries furrow inside codeaf and puts it on disk the first
 // time anything wants it.
 //
-// THE RULING THIS PACKAGE EXISTS FOR IS "NO VARIANCE": every codeaf is an
+// THE RULING THIS PACKAGE EXISTS FOR IS "NO VARIANCE": every codeaf is a
 // codeaf with furrow. Before this, furrow was a program the person went and
 // installed, so the four workspace verbs — byte-exact forks that carry the
 // dirty tree, the sealed timeline, the restore that puts a .env back — were a

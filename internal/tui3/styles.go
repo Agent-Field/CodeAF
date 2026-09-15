@@ -1194,7 +1194,7 @@ func detectPalette(env func(string) string) palette {
 // There is deliberately no environment pin here. A human override of a terminal
 // veto is a Display setting (internal/config's registry already fronts the
 // nerd-font tier that way, and the repo's completeness gate says any new pin
-// arrives as a row); inventing an CODEAF_* variable for this one surface would
+// arrives as a row); inventing a CODEAF_* variable for this one surface would
 // be a second door onto the same question.
 func detectASCII(env func(string) string) bool {
 	if env == nil {

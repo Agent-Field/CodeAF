@@ -1104,7 +1104,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happened to aforge", "starting-codeaf"},                // legacy-name
 		{"is this the same thing as aforge", "starting-codeaf"},       // legacy-name
 		{"is this the CodeAF from the benchmarks", "starting-codeaf"}, // legacy-name
-		{"why is the folder called .codeaf now", "starting-codeaf"},   // legacy-name
+		{"why is the folder called .codeaf now", "starting-codeaf"},
 		{"can you access my email", "accounts"},
 
 		// The eighth wave: the chat knowing about the person's OTHER terminals.

@@ -117,9 +117,9 @@ func TestW4GoLegacyNameMarkerExemptsOnlyItsLine(t *testing.T) {
 	}
 }
 
-// TestW4WholeLineLegacyNameMarkerExemptsOneContiguousRun proves that a marker
-// on a line of its own reaches forward only until the first blank line.
-func TestW4WholeLineLegacyNameMarkerExemptsOneContiguousRun(t *testing.T) {
+// A marker on a line of its own marks no retired spelling and cannot exempt
+// any following source line.
+func TestW4WholeLineLegacyNameMarkerDoesNotExemptFollowingGo(t *testing.T) {
 	root := fixtureTree(t, map[string]string{
 		"internal/live/live.go": "package live\n\n" +
 			"// legacy-name\n" +
@@ -127,12 +127,17 @@ func TestW4WholeLineLegacyNameMarkerExemptsOneContiguousRun(t *testing.T) {
 			"var second = \"openaf\"\n\n\n" +
 			"var refused = \"aforge\"\n",
 	})
-	assertOneViolation(t, violations(root), "internal/live/live.go:8 spells the old product name")
+	got := violations(root)
+	for _, line := range []string{"internal/live/live.go:4", "internal/live/live.go:5", "internal/live/live.go:8"} {
+		assertViolation(t, got, line+" spells the old product name")
+	}
+	if len(got) != 3 {
+		t.Fatalf("standalone marker exempted Go source: %v", got)
+	}
 }
 
-// TestW4ShellLegacyNameMarkersHaveTheSameBoundaries proves the inline and
-// whole-line forms used by compatibility scripts, including the blank-line end.
-func TestW4ShellLegacyNameMarkersHaveTheSameBoundaries(t *testing.T) {
+// Shell markers have the same same-line boundary as Go comments.
+func TestW4ShellLegacyNameMarkersExemptOnlyTheirOwnLine(t *testing.T) {
 	root := fixtureTree(t, map[string]string{
 		"scripts/compat.sh": "#!/bin/sh\n" +
 			"echo AFORGE_HOME # legacy-name\n" +
@@ -141,7 +146,13 @@ func TestW4ShellLegacyNameMarkersHaveTheSameBoundaries(t *testing.T) {
 			"echo openaf\n\n" +
 			"echo aforge\n",
 	})
-	assertOneViolation(t, violations(root), "scripts/compat.sh:7 spells the old product name")
+	got := violations(root)
+	for _, line := range []string{"scripts/compat.sh:4", "scripts/compat.sh:5", "scripts/compat.sh:7"} {
+		assertViolation(t, got, line+" spells the old product name")
+	}
+	if len(got) != 3 {
+		t.Fatalf("standalone marker exempted shell source: %v", got)
+	}
 }
 
 // TestW4MarkdownOldNameSectionIsTheOnlyProseExemption proves the section's
@@ -281,7 +292,6 @@ func violations(root string) []string {
 		}
 		lines := strings.Split(string(body), "\n")
 		exempt := make([]bool, len(lines)+1)
-		whole := make([]bool, len(lines)+1)
 		if filepath.Ext(rel) == ".go" {
 			fset := token.NewFileSet()
 			parsed, parseErr := parser.ParseFile(fset, path, body, parser.ParseComments)
@@ -300,7 +310,6 @@ func violations(root string) []string {
 							continue
 						}
 						exempt[line] = true
-						whole[line] = strings.TrimSpace(lines[line-1]) == "// "+legacyMarker
 					}
 				}
 			}
@@ -308,16 +317,7 @@ func violations(root string) []string {
 			for index, line := range lines {
 				if strings.Contains(line, legacyMarker) {
 					exempt[index+1] = true
-					whole[index+1] = strings.TrimSpace(line) == "# "+legacyMarker
 				}
-			}
-		}
-		for line := 1; line <= len(lines); line++ {
-			if !whole[line] {
-				continue
-			}
-			for next := line + 1; next <= len(lines) && strings.TrimSpace(lines[next-1]) != ""; next++ {
-				exempt[next] = true
 			}
 		}
 		if filepath.Ext(rel) == ".md" {

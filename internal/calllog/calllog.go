@@ -486,7 +486,7 @@ var shared = &log{}
 var stderr io.Writer = os.Stderr
 
 // homeJoin is the state-root default, seamed so this package's own tests can
-// exercise the fallback without an CODEAF_HOME.
+// exercise the fallback without a CODEAF_HOME.
 var homeJoin = defaultHomeJoin
 
 // Open points the log at a profile directory and is called once at startup,

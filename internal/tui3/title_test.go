@@ -95,7 +95,7 @@ func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 }
 
 // THE NAME IS CUT, NEVER THE SUFFIX. A tab truncates from the right, so what is
-// sent is already short enough to keep ` · codeaf` — the one part that tells an
+// sent is already short enough to keep ` · codeaf` — the one part that tells a
 // codeaf tab from a shell's.
 func TestALongNameIsCutBeforeTheSuffix(t *testing.T) {
 	_, a := wired()

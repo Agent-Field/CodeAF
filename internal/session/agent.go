@@ -556,7 +556,7 @@ func (a *Agent) threadID() string {
 
 // sessionCacheKey names one session's prompt-cache lineage. It is derived
 // through [provider.RunCacheKey] so the key is the same shape every other
-// codeaf lineage uses — an "codeaf-" prefix an operator can recognize in a
+// codeaf lineage uses — a "codeaf-" prefix an operator can recognize in a
 // router's logs — and so nothing about the session's own id reaches the wire.
 func sessionCacheKey(id string) string {
 	if strings.TrimSpace(id) == "" {

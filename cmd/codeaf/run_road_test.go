@@ -22,7 +22,7 @@ import (
 // file is that law: the same spellings, read from two directories, mean the
 // same two things.
 
-// runRoad is which door an `codeaf run` invocation went through.
+// runRoad is which door a `codeaf run` invocation went through.
 type runRoad string
 
 const (

@@ -17,7 +17,7 @@
 // Two laws shape what it answers with:
 //
 //   - A LIVE-LOOKING ROW IS NOT A LIVE ROW. The project's index is append-only
-//     and a task takes its row when it starts; a machine that lost power, or an
+//     and a task takes its row when it starts; a machine that lost power, or a
 //     codeaf that was killed, leaves rows on disk that say `running` forever.
 //     So this layer never repeats a file's claim of liveness. It asks the
 //     SESSION, through the presence file it refreshes every few seconds

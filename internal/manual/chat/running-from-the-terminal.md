@@ -183,7 +183,7 @@ byte-for-byte what is on disk.
 
 ## What checked my unattended or headless run — what judged the delivery, and why task.audit is not the answer
 
-An `codeaf do` errand's delivery is read at the end by the **delivery gate**. It takes a
+A `codeaf do` errand's delivery is read at the end by the **delivery gate**. It takes a
 reading of the project's own checks before the work and another at the end, maps what you
 asked for onto the checks that exercise it, and answers whether the delivery holds.
 

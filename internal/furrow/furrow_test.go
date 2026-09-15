@@ -724,7 +724,7 @@ func TestAnExtractionThatFailedFallsBackToPathRatherThanRefusing(t *testing.T) {
 	}
 }
 
-// An CODEAF_FURROW that names something missing is an error and never a quiet
+// A CODEAF_FURROW that names something missing is an error and never a quiet
 // fall back to PATH: somebody who set that variable meant that binary.
 func TestAConfiguredBinaryThatIsNotThereIsNotSilentlyReplaced(t *testing.T) {
 	installFake(t, "ok")
