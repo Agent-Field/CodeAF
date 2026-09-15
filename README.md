@@ -11,22 +11,18 @@
 
 <p>
 <a href="#install">Install</a> ·
+<a href="#what-a-factory-is">What a factory is</a> ·
 <a href="#benchmarks">Benchmarks</a> ·
-<a href="#you-are-already-running-a-factory">Why a factory</a> ·
-<a href="#seven-places-one-machine">Places</a> ·
-<a href="#from-your-terminal-your-servers-or-your-phone">Anywhere</a> ·
-<a href="#any-model-open-by-default">Models</a> ·
-<a href="#coming-from-opencode-pi-or-aider">Switching</a> ·
-<a href="#built-in-the-open">Roadmap</a> ·
+<a href="#switching-from-opencode-pi-or-aider">Switching</a> ·
 <a href="docs/GUIDE.md">Guide</a>
 </p>
 
 </div>
 
-codeaf is an open-source software factory for your terminal. You describe work
-across your projects. It runs in its own worktrees, on the model you choose,
-and comes back for your review. One binary. Any model, open models by default.
-Apache 2.0. By [AgentField AI](https://agentfield.ai).
+codeaf is an open-source software factory for your terminal. You describe the
+work. It runs in its own worktree, on the model you choose, and comes back for
+your review. One binary, no account, no service to run. Any model, open models
+by default. Apache 2.0. By [AgentField AI](https://agentfield.ai).
 
 ## Install
 
@@ -35,134 +31,130 @@ curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
 ```
 
-No account. On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi,
-MiniMax or Qwen, or point it at Ollama and use no key at all. Building from
-source, pinning a version and the dev channel are in the [guide](docs/GUIDE.md#install).
+The script fetches the release binary for your platform into `~/.codeaf/bin`.
+Prefer to build it yourself: `git clone`, `make build`, `bin/codeaf`
+([guide](docs/GUIDE.md#install)). Release assets, checksums and version
+pinning are on the [releases page](https://github.com/Agent-Field/codeaf/releases).
 
-## Your first turn
+On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
+Qwen. Point it at Ollama and it needs no key.
 
-Start it inside a repository and ask something.
+Everything is in the one binary: the tools, tasks and their worktrees,
+standing orders, memory, spend, search, remote access, the headless commands
+and a manual about itself.
+
+<!-- TODO: binary size, cold start, idle memory. -->
+
+## Hand it work
+
+Start it inside a repository. Give it something that takes longer than you
+want to watch.
 
 ```text
- › where does codeaf find its api key?
+ › /task move the retry logic out of the three clients into one place, keep the
+   per-client backoff numbers, and make the tests pass
+```
 
-    ▸ read apikey.go                                                          1 call
+The task exists when you press enter. It cuts a worktree, works there, and the
+conversation is yours again. Describe the work without `/task` and codeaf
+proposes one on a card when the job is bigger than a few edits, and waits for
+your yes.
 
-  In Load's order: `$OPENROUTER_API_KEY`, then `$OPENAI_API_KEY`, then the `api_key`
-  field in the profile config. First non-empty wins.
+When it lands, `home` says so under `to check`, with the diff, the test run and
+the cost. `a` accepts and merges, `l` sends it back with a note, `n` drops it.
+Nothing merges without you.
 
+<!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
+     lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
+<img src="assets/readme/screens/tasks.png" alt="a conversation with tasks running in the column beside it" width="100%">
+
+Every turn ends with its price, so you always know what a thing cost.
+
+```text
                                           · 19:31 · 3.2s · 1 tool call · $0.0008 · ❮
  $0.0008 · ⟲ saved $0.0005 · 45% cached   15.6k/1.3M · 1%                        idle
 ```
 
-That is a real turn on the default model, `deepseek/deepseek-v4-flash`: one
-question, one file read, one answer, and what it cost on the last line. The
-same line is there on every turn, so you always know.
-
-Now hand it something you would rather not sit through.
-
-<!-- TODO(G1): hero gif. One message that becomes three tasks, home fills, one task
-     comes back, `a` accepts it. 160x45, ~20s, scripted with vhs. -->
-<img src="assets/readme/screens/tasks.png" alt="a conversation with three tasks running in the column beside it" width="100%">
-
-## Benchmarks
-
-<!-- TODO(C1): pareto chart, two panels: pass rate vs cost, pass rate vs time.
-     Render from the launch run with bench/oneroad/plots/final_board.py, brand colours. -->
-
-codeaf sits on the Pareto frontier of cost, time and pass rate on
-`[BENCHMARK]`: no measured harness reached a higher pass rate at lower cost
-and time. Every harness ran the same open model, `[MODEL]`, on `[N]` held-out
-GitHub issues, `[K]` seeds each.
-
-| harness | pass rate | cost per issue | time per issue |
-| --- | --- | --- | --- |
-| codeaf `[VERSION]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` |
-
-Every run is published with its failures, timeouts and unpriced calls, in
-[BENCHMARKS.md](BENCHMARKS.md). The result comes from the task type described
-under [specialist tasks](#specialist-tasks-the-benchmarked-kind-of-work).
-
-## You are already running a factory
+## What a factory is
 
 If you have three terminals open with three agents, three worktrees and a merge
-waiting, you are running a factory by hand. The agents got fast. The scheduling,
-the merging and the checking stayed with you.
+waiting, you already run a factory, by hand. The agents got fast. The
+scheduling, the merging and the checking stayed with you.
 
 <img src="assets/readme/how-work-changes.png" alt="one agent: you wait. several agents by hand: you are the scheduler. a factory: you assign and review." width="100%">
 
-codeaf is built for the third picture. Work runs where it cannot collide, keeps
-its own record, and reaches you only when it needs a decision or a review.
-Your attention goes to the row that asks for it.
+More work in flight means more to check, so a factory only helps if checking
+gets cheaper. Two things do that here.
 
-## What a copilot does, and what a factory does
+- **Work runs where it cannot collide.** Each task gets its own worktree and
+  its own budget. It keeps a record you can read, and it comes back as one
+  thing to accept or send back, not five terminals to reconcile.
+- **Specialist tasks check themselves.** Work that comes round in the same
+  shape (review this pull request, chase this flaky test, audit these
+  dependencies) runs as a saved program with typed input and typed output.
+  It plans, fans out, tests its own result, and either produces what it
+  promised or is marked incomplete. Those are the tasks in the benchmark below.
+
+<!-- TODO: settle the public name. The manual calls these subharnesses and the
+     command is /subharness; this README says specialist task. -->
+
+## Benchmarks
+
+<!-- TODO(C1): chart, two panels: pass rate vs cost, pass rate vs time.
+     Render from the launch run with bench/oneroad/plots/final_board.py. -->
+
+We ran `[N]` held-out GitHub issues, `[K]` seeds each, through every harness
+below on the same open model, `[MODEL]`. Versions and configs are in
+[BENCHMARKS.md](BENCHMARKS.md), with every failure, timeout and unpriced call.
+
+| harness | version | pass rate | cost per issue | time per issue |
+| --- | --- | --- | --- | --- |
+| codeaf | `[..]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
+| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
+
+codeaf is on the frontier: the harnesses that passed more cost more and took
+longer, and the ones that cost less passed fewer. Rerun it on your own
+repository with `bench/` and send us the numbers.
+
+## What a copilot does, and what codeaf does
 
 | | a copilot | codeaf |
 | --- | --- | --- |
 | where you work | one window, one repository | every project on the machine, from one home screen |
-| what you do | watch it type | assign work, answer questions, review what lands |
-| what it works in | your checkout | its own worktree per task, merged when you accept |
+| what you do | watch it type | describe work, answer questions, review what lands |
+| what it works in | your checkout | a worktree per task, merged when you accept |
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
-| what it costs | a subscription | the price of the tokens, on every turn, with a daily limit you set |
+| what you pay | a seat | the tokens, priced on every turn, under a daily limit you set |
 
 ## Seven places, one machine
 
-A chat has a scrollback. A factory has a floor. codeaf gives every machine
-seven full-screen places, reached with `alt+1` to `alt+7` from anywhere.
+codeaf gives every machine seven full-screen places, reached with `alt+1` to
+`alt+7` from anywhere. `esc` returns to the conversation you were in.
 
-| place | what it answers |
+| place | what it shows |
 | --- | --- |
-| `home` | What needs me? What is running? What happened while I was away? What did today cost? |
-| `tasks` | Every task on the machine, by the conversation that started it, with state and cost. |
-| `spend` | Cost by day, by model and by task. |
-| `settings` | Models, the crew, connected accounts, limits. |
-| `standing` | The orders that keep running: what they do, when they last fired, what they cost. |
-| `memory` | What codeaf remembers about you and your projects, line by line, editable. |
-| `search` | Every past conversation. |
+| `home` | what needs you, what is running, what happened while you were away, what today cost |
+| `tasks` | every task on the machine, by the conversation that started it, with state and cost |
+| `spend` | cost by day, by model and by task |
+| `settings` | models, the crew, connected accounts, limits |
+| `standing` | the orders that keep running, when they last fired, what they cost |
+| `memory` | what codeaf remembers about you and your projects, line by line, editable |
+| `search` | every past conversation |
 
 <img src="assets/readme/screens/home.png" alt="home: needs you, where you were, projects, running, since you left, spend, next up" width="100%">
 
-`home` opens on a bare `codeaf` once the machine has work on it. `esc` puts you
-back in the conversation you came from.
-
-## Hand off work
-
-Say what you want done. When it is more than a few edits, codeaf proposes a
-task: a brief, a worktree, a budget. Say yes and walk away. Several tasks at
-once is the normal case, and each one keeps to its own branch until you accept it.
-
 <img src="assets/readme/screens/tasks-tree.png" alt="the tasks place: conversations, their tasks and sub-tasks, with state and cost" width="100%">
 
-When a task lands it says so on `home`, under `to check`, and waits for your
-call: `a` accept, `l` look again, `n` not right. Nothing merges on its own.
-
 <img src="assets/readme/screens/review.png" alt="a task page: finished, but nobody has checked it. your call." width="100%">
-
-## Specialist tasks: the benchmarked kind of work
-
-<!-- TODO: confirm the public name for this task type. The manual calls them
-     subharnesses; the site copy retires that word. -->
-
-Some work comes round again in the same shape: review this pull request, chase
-this flaky test, audit these dependencies. A specialist task is a saved program
-for one such job. It takes typed input, plans, fans out, checks its own result
-and answers with typed output, so a run either produces what it promised or is
-marked incomplete. The benchmark numbers above are specialist tasks.
-
-<img src="assets/readme/screens/specialist.png" alt="a specialist task: plan, fan out, verify" width="100%">
-
-Describe the job and codeaf writes the program. `/subharness` lists the ones on
-this machine.
 
 ## Standing orders
 
 Say "always run the tests before you land" or "every morning, check the
-release radar". codeaf asks whether you mean this once or from now on, and a
-standing order is born. They run on a timer, in the background, under the same
-budget and the same review as everything else.
+release radar". codeaf asks whether you mean once or from now on, and it
+becomes a standing order: a timer, a budget, and the same review as everything
+else.
 
 <img src="assets/readme/screens/standing.png" alt="the standing place: four orders, when they fired, what they cost" width="100%">
 
@@ -174,10 +166,15 @@ to it.
 <img src="assets/readme/anywhere.png" alt="one conversation on devbox; a terminal, a laptop over ssh and a phone through the relay all attach to it" width="100%">
 
 ```bash
-codeaf chat --host devbox        # the work runs on devbox, over ssh, nothing to install there first
-codeaf serve                     # no ssh? hold a relay open and attach from anywhere
-codeaf chat --at devbox          # ...including your phone
+codeaf chat --host devbox     # the work runs on devbox, over ssh; codeaf on its PATH is all it needs
+codeaf serve                  # no ssh in? hold a connection open through a relay
+codeaf chat --at otter-lamp   # attach to a served machine by name, from any paired device
 ```
+
+The relay puts two connections next to each other and nothing more. It sees a
+machine name and byte counts; the conversation is encrypted end to end, and
+pairing uses a password-authenticated key exchange, so the relay cannot read it
+or sit in the middle. [Details](docs/REMOTE.md).
 
 Close the laptop and the tasks keep running. Open the phone and `home` is
 there at phone width: what needs you, a digit to answer, a key to accept.
@@ -187,12 +184,19 @@ there at phone width: what needs you, a digit to answer, a key to accept.
 <img src="assets/readme/screens/phone.png" alt="home on a phone: needs you, approve" width="32%">
 </p>
 
+## What it is allowed to touch
+
+A task writes in its own worktree and nowhere else. In the conversation, a
+command the rules do not already allow is held up and shown to you first:
+`1` allow once, `2` always this command, `3` deny. `--yolo` turns the asking
+off for a session and says so on the status line. There is no telemetry.
+
+<!-- TODO: confirm "no telemetry" against the code before publishing. -->
+
 ## Any model, open by default
 
-The model is the part you swap. Providers built in: OpenRouter, DeepSeek, GLM,
-Kimi, MiniMax, Qwen, Ollama and any OpenAI-compatible endpoint.
-
-The crew is five seats, one per kind of work, and each seat has its own model.
+Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
+any OpenAI-compatible endpoint. Each of the five crew seats has its own model.
 Three presets ship, all on open weights:
 
 | preset | worker | high | mastermind |
@@ -201,63 +205,35 @@ Three presets ship, all on open weights:
 | balanced | glm-5.3-flash | qwen3.8-27b | glm-5.3 |
 | max | glm-5.3 | kimi-k3 | kimi-k3 |
 
-Set a daily limit on first start. `spend` shows where it went.
-
 <img src="assets/readme/screens/crew.png" alt="/crew: the chat model and five seats, frugal, balanced and max" width="100%">
 
-## One binary. You bring a model.
+Open source under Apache 2.0, all of it, including the runtime and the
+specialist tasks. You are giving a program write access to your repositories.
+You should be able to read every line of it.
 
-Everything above is in `bin/codeaf`: the tools, the tasks and their worktrees,
-standing orders, memory, spend, search, remote access, the headless commands
-and a manual about itself. No daemon to run, no account to make, no other
-service to stand up.
+## Switching from opencode, pi or aider
 
-<!-- TODO: binary size, cold start, idle memory, largest number of tasks run at once. -->
+Your keys and providers carry over. The conversation works the same way.
+Everything around it is new: a home screen across projects, tasks in their own
+worktrees that wait for your call, standing orders, spend by model, and a
+session you can reach over ssh or from a phone.
 
-```bash
-codeaf do "bump every dependency with a changelog worth reading"   # headless, exit code says how it went
-codeaf manual                                                       # the manual the chat reads too
-```
+## Roadmap
 
-Open source under Apache 2.0, all of it. You are giving a program write access
-to your repositories. You should be able to read every line of it.
-
-## Coming from opencode, pi or aider?
-
-Your keys and providers carry over; the first turn is two minutes away. The
-conversation will feel familiar. Then press `alt+1`.
-
-What is new is everything around the conversation: a home screen across
-projects, tasks that run in their own worktrees and wait for your call, standing
-orders, spend by model, a session you can reach over ssh or from a phone.
-
-## Where this goes
-
-- **Day one.** Ask a question. Hand off one task. Accept it.
-- **Week one.** Three projects on `home`. A daily limit. A standing order for the tests.
-- **Month one.** Your dev box over ssh. Your phone on the train. A specialist task for the job that keeps coming back.
-
-Every line above is a feature that ships today.
-
-## Built in the open
-
-`[N]` changes since v0.1.0 on 2026-08-17, each one written up in
-[docs/changes](docs/changes/). Benchmarks are published as they are run.
+v0.1.0 shipped on 2026-08-17. `[N]` changes since, each written up in
+[docs/changes](docs/changes/).
 
 | shipped | launch, `[DATE]` | next |
 | --- | --- | --- |
-| conversation, tasks, worktrees, review | installer and binaries for every platform | team server: one machine, every engineer's factory |
-| seven places, standing orders, memory | benchmark results | web view |
-| open-model crew, spend limits | `[..]` | the AgentField control plane: identity, policy and proof for every task |
+| conversation, tasks, worktrees, review | binaries and installer for every platform | team server: one machine, every engineer's factory |
+| seven places, standing orders, memory | benchmark results and chart | web view |
+| open-model crew, spend limits | `[..]` | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
 | ssh, relay, phone, headless | | |
 
-Vote on what comes next in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
-
-**Help wanted.** Three things move the project most:
-
-1. Run the benchmark on one of your own repositories and send us the run.
-2. Add a provider you use that is not on the list.
-3. When a task goes wrong, `/why` and paste what it says into an issue.
+Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
+Three things help most: run the benchmark on your own repository and send the
+run; add a provider that is missing; when a task goes wrong, `/why` and paste
+what it says into an issue.
 
 <!-- TODO: Discord link. -->
 
@@ -268,4 +244,4 @@ Vote on what comes next in [Discussions](https://github.com/Agent-Field/codeaf/d
 - [docs/](docs/README.md): architecture, headless, remote, limits.
 
 Built by the team behind [AgentField](https://github.com/Agent-Field/agentfield),
-the open-source AI backend, and Covalent. Apache 2.0.
+the open-source AI backend, and Covalent.
