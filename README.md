@@ -116,7 +116,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 | `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's anonymous API limit. |
 
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
-`checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
+`checksums.txt` and refuses a sha256 mismatch. Every release also carries
+`THIRD-PARTY-NOTICES.md` beside its binaries, covered by that same
+`checksums.txt`. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
 last action is `codeaf version`. Release builds cover darwin, linux, and windows on
 amd64 and arm64.
