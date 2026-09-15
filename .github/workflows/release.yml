@@ -289,8 +289,14 @@ jobs:
 
           EOF
           if [ "$CHANNEL" = "stable" ]; then
-            if awk -v tag="## ${TAG} " 'index($0, tag) == 1 {f=1; next} f && /^## / {exit} f' \
-                 CHANGELOG.md > changelog-notes.md && [ -s changelog-notes.md ]; then
+            # THE SECTION IS RENDERED FOR THE PAGE, NOT COPIED ONTO IT. GitHub
+            # refuses a release body over its character ceiling, and a rolled-up
+            # section carries every fold of every entry — the first roll-up here
+            # weighed 1.7 MB. codeaf-changes prints the section whole when it
+            # fits and the headline layer with a pointer to the record when it
+            # does not; it prints nothing for a tag the changelog has no
+            # section for, which is the fall-back below.
+            if go run ./cmd/codeaf-changes notes "$TAG" > changelog-notes.md && [ -s changelog-notes.md ]; then
               { cat changelog-notes.md; echo; cat install.md; } > notes.md
               echo "generated=false" >> "$GITHUB_OUTPUT"
               echo "Release notes taken from the ${TAG} section of CHANGELOG.md."
