@@ -96,14 +96,20 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	if room <= 0 || width <= homeGridLead {
 		return nil
 	}
-	room = min(room, len(field))
 	// A QUESTION HOME HAS RAISED TAKES THE WHOLE COLUMN, beside the row it is
 	// about. One decision is drawn once and nothing is drawn beside it: the
 	// column is otherwise a set of notes about rows, and notes stacked around a
 	// question a person has to answer are the screen talking over it.
+	//
+	// IT IS ASKED BEFORE THE ROOM IS CLAMPED TO THE FIELD'S OWN HEIGHT. A card is
+	// not a note about a row and is not bounded by how many rows there are: a
+	// frame with two conversations on it has the whole column for the question,
+	// and clamping it to the field's length refused to draw one on every quiet
+	// machine.
 	if rows := a.homeAskNote(field, width, room); rows != nil {
 		return rows
 	}
+	room = min(room, len(field))
 	preview := h.previewAt()
 	type note struct {
 		y     int
@@ -626,7 +632,7 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 	// all, and stands at the top of the column instead.
 	at := 0
 	if armed := strings.TrimSpace(h.armed); armed != "" {
-		for y := 0; y < room; y++ {
+		for y := 0; y < min(room, len(field)); y++ {
 			line := field[y].at
 			if line == homeNoLine || line < 0 || line >= len(h.lines) {
 				continue
@@ -638,7 +644,13 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 		}
 	}
 	said := a.homeAskRows(max(1, width-homeGridLead))
-	if len(said) == 0 {
+	// A CARD TALLER THAN THE ROOM IS NOT DRAWN AT ALL. Cutting it takes the
+	// closing edge, the keys and usually an answer off the bottom of the screen,
+	// and a decision whose answers a person cannot see is worse than the same
+	// decision said in one line on the foot — which is exactly what the foot
+	// version is for, and what [app.sayHomeAsk] falls back to when this refuses
+	// ([app.homeAskFitsColumn] is the one predicate both of them ask).
+	if len(said) == 0 || len(said) > room {
 		return nil
 	}
 	top := min(at, max(0, room-len(said)))
@@ -663,4 +675,24 @@ func (a *app) homeDescLead(cell *homeCell, pal palette) string {
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + strings.Repeat(" ", homeDescLeadCells-1)
 	}
 	return homeDescLeadBlank
+}
+
+// homeAskFitsColumn reports that a question home is holding can be drawn WHOLE
+// in the description column of the frame as it last stood.
+//
+// IT IS THE ONE PREDICATE, asked by the column that draws the card and by the
+// foot that would otherwise say it. Two answers to "is the card on this frame"
+// is a question drawn twice on a tall frame and drawn nowhere at all on a short
+// one, and both of those have happened.
+func (a *app) homeAskFitsColumn() bool {
+	if _, ok := a.homeAsking(); !ok || !a.home.gridOn() || !homeDescOn(a.home.cols) {
+		return false
+	}
+	col := homeDescCol(a.home.cols)
+	_, widths := homeGridGeometry(a.home.gridWidth, a.home.cols)
+	if col < 0 || col >= len(widths) {
+		return false
+	}
+	said := a.homeAskRows(max(1, widths[col]-homeGridLead))
+	return len(said) > 0 && len(said) <= a.home.room
 }

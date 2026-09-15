@@ -326,6 +326,62 @@ func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
 	}
 }
 
+// AND A FRAME TOO SHORT FOR THE CARD FALLS BACK TO THE FOOT rather than drawing
+// a cut one. A card with its closing edge, its keys and usually an answer off
+// the bottom of the screen is a decision a person cannot answer; the one-line
+// foot version exists for exactly the frames with no room for a card, and this
+// is one of them (owner, 2026-09-15: "what happens if we run out of vertical
+// space?").
+func TestAFrameTooShortForTheQuestionCardSaysItOnTheFootInstead(t *testing.T) {
+	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	a := lab.a
+	a.width, a.height = 180, 45
+	homeText(a)
+	homeLineOf(t, a, func(l homeLine) bool {
+		return l.cell != nil && l.cell.panel == panelNeeds && l.kind == homeSession
+	})
+	a.placeKeyPress(key("enter"))
+	ask, ok := a.homeAsking()
+	if !ok {
+		t.Fatal("enter raised no question")
+	}
+	head := strings.TrimSpace(ask.question.Head)
+
+	// TALL: the card is in the column and the foot keeps its own sentence.
+	tall := homeText(a)
+	if !a.homeAskFitsColumn() {
+		t.Fatalf("the card does not fit a 45-row frame:\n%s", tall)
+	}
+	if row, _ := homeRowOf(tall, head); row < 0 {
+		t.Fatalf("the question is not in the column on a tall frame:\n%s", tall)
+	}
+	tallFoot := lastLineOf(tall)
+	if strings.Contains(tallFoot, head) {
+		t.Fatalf("the foot repeats a question the column drew: %q", tallFoot)
+	}
+
+	// SHORT: no card at all, and the foot picks it up.
+	a.width, a.height = 180, 12
+	short := homeText(a)
+	if a.homeAskFitsColumn() {
+		t.Fatalf("a 12-row frame claims room for the card:\n%s", short)
+	}
+	for _, line := range strings.Split(short, "\n") {
+		if strings.Contains(line, "╭") || strings.Contains(line, "╰") {
+			t.Fatalf("a cut card was drawn on a frame with no room for it:\n%s", short)
+		}
+	}
+	if foot := lastLineOf(short); !strings.Contains(foot, head) {
+		t.Fatalf("the short frame says the question nowhere; its foot is %q:\n%s", foot, short)
+	}
+}
+
+// lastLineOf is a frame's foot.
+func lastLineOf(frame string) string {
+	lines := strings.Split(frame, "\n")
+	return lines[len(lines)-1]
+}
+
 // firstWordsOf is enough of a sentence to find it on a frame that may have
 // wrapped the rest of it.
 func firstWordsOf(said string) string {

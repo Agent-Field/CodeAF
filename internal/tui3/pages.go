@@ -2089,6 +2089,16 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	if msg == "" && a.at(pageHome) {
 		msg, path = a.home.msg, a.home.msgPath
 	}
+	// AND A QUESTION WITH NOWHERE ELSE TO GO IS ASKED HERE, AT DRAW TIME. The
+	// grid draws a raised question as a card in its description column and the
+	// foot stays quiet ([app.homeAskFitsColumn]); a frame too short or too narrow
+	// for that card has to say it, and it cannot wait for the next keystroke to
+	// find out — [app.sayHomeAsk] runs on a key, and a person who made the window
+	// smaller has pressed none. That left the decision on no part of the screen
+	// at all, which is the one state a question may never be in.
+	if msg == "" && a.at(pageHome) && !a.homeAskFitsColumn() {
+		msg = a.homeAskFoot()
+	}
 	if msg == "" {
 		return "", false
 	}
