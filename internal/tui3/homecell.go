@@ -595,22 +595,28 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 // than one drawn a few lines above the row it belongs to.
 func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine {
 	h := &a.home
-	if _, ok := a.homeAsking(); !ok || strings.TrimSpace(h.armed) == "" {
+	if _, ok := a.homeAsking(); !ok {
 		return nil
 	}
-	at := homeNoLine
-	for y := 0; y < room; y++ {
-		line := field[y].at
-		if line == homeNoLine || line < 0 || line >= len(h.lines) {
-			continue
+	// THE CARD DRAWS WHEREVER THE QUESTION CAME FROM, and it must: the foot stops
+	// saying a question once this column can draw one ([app.sayHomeAsk]), so a
+	// question with no row to stand beside would be a decision on the screen with
+	// nothing on the screen about it. A question raised by `enter` has the row
+	// its key was pressed on ([homeView.armed]); one raised by the LAUNCH — a
+	// window that met a lock on the conversation it was opening — has no row at
+	// all, and stands at the top of the column instead.
+	at := 0
+	if armed := strings.TrimSpace(h.armed); armed != "" {
+		for y := 0; y < room; y++ {
+			line := field[y].at
+			if line == homeNoLine || line < 0 || line >= len(h.lines) {
+				continue
+			}
+			if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == armed {
+				at = y
+				break
+			}
 		}
-		if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == h.armed {
-			at = y
-			break
-		}
-	}
-	if at == homeNoLine {
-		return nil
 	}
 	said := a.homeAskRows(max(1, width-homeGridLead))
 	if len(said) == 0 {
