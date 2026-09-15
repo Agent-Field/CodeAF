@@ -64,6 +64,22 @@ func EnvironWithout(names ...string) []string {
 	return kept
 }
 
+// Spelling names the spelling that supplied an owned variable's value: the
+// current one when it is set and non-empty, the former one when only it is
+// set. A receipt that says which variable answered has to say the one the
+// person actually wrote, or it points them at a row they never set. When
+// neither answers it is the current name, unset.
+func Spelling(name string) (string, bool) {
+	requireOwned(name)
+	if value, set := os.LookupEnv(name); set && value != "" {
+		return name, true
+	}
+	if _, set := os.LookupEnv(Legacy(name)); set {
+		return Legacy(name), true
+	}
+	return name, false
+}
+
 // Legacy returns the former spelling of an owned variable.
 func Legacy(name string) string {
 	requireOwned(name)

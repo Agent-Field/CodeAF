@@ -249,9 +249,13 @@ const (
 
 // Seat is one seat's answer: the model, and where it came from.
 type Seat struct {
-	Role   SeatRole
-	Model  string
-	Source SeatSource
+	// envSpelling is the variable that answered when Source is [SeatEnv] —
+	// the current spelling or the former one — recorded at resolution so the
+	// receipt says the row the person wrote.
+	envSpelling string
+	Role        SeatRole
+	Model       string
+	Source      SeatSource
 	// From is the tier word this seat's model was INHERITED from, and is empty
 	// unless Source is [SeatInherited]. It is carried rather than re-derived
 	// because the line that tells a person what happened has to name the row it
@@ -290,6 +294,9 @@ func (s Seat) Rung() string {
 	case SeatFlag:
 		return s.Flag()
 	case SeatEnv:
+		if s.envSpelling != "" {
+			return s.envSpelling
+		}
 		return s.Env()
 	case SeatCrew:
 		return s.crewRung()
@@ -543,6 +550,10 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	}
 	if value := strings.TrimSpace(env.Value(seat.Env())); value != "" {
 		seat.Model, seat.Source = value, SeatEnv
+		// The receipt names the spelling that answered — the former one is
+		// still read for a release, and a person who set it must not be told
+		// to look at a row they never wrote.
+		seat.envSpelling, _ = env.Spelling(seat.Env())
 		return seat
 	}
 	// AND THE PROFILE IS READ THROUGH THE ROW A CONVERSATION READS IT THROUGH

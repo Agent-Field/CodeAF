@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"io"
 	"io/fs"
 	"net/http"
@@ -815,5 +816,28 @@ func TestTheInheritedNoticeNamesTheSeatItBorrowedFromRatherThanDescribingTheMode
 				"and the two lines are about ONE model:\n%s",
 				"deepseek/deepseek-v4-pro", "your "+describes, report)
 		}
+	}
+}
+
+// A person who set the former spelling of the model variable is told that
+// spelling on the receipt, not the current one they never wrote; with both
+// set, the current one answered and is named.
+func TestTheReceiptNamesTheSpellingOfTheVariableThatAnswered(t *testing.T) {
+	dir := t.TempDir()
+	legacy := env.Legacy(ModelEnv) // AFORGE_MODEL — legacy-name
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	t.Setenv(legacy, "vendor/former")
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Source != SeatEnv || seats.Work.Model != "vendor/former" {
+		t.Fatalf("work seat = %q (%s), want the former spelling's value from the env rung", seats.Work.Model, seats.Work.Rung())
+	}
+	if got := seats.Work.Rung(); got != legacy {
+		t.Fatalf("rung = %q, want %q — the receipt must name the variable the person set", got, legacy)
+	}
+	t.Setenv(ModelEnv, "vendor/current")
+	seats = ResolveSeats(dir, "", "")
+	if got := seats.Work.Rung(); got != ModelEnv || seats.Work.Model != "vendor/current" {
+		t.Fatalf("rung = %q model = %q, want %q and its value", got, seats.Work.Model, ModelEnv)
 	}
 }
