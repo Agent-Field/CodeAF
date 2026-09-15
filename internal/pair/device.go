@@ -167,7 +167,7 @@ func ThisDevice(keeper Keeper) (Device, error) {
 // something that is obviously a mistake.
 func encodeSeed(seed []byte) string {
 	var text strings.Builder
-	text.WriteString("codeaf-device-key ")
+	text.WriteString(persistedDeviceKeyPrefix)
 	for _, b := range seed {
 		text.WriteString(hexDigits[b>>4 : b>>4+1])
 		text.WriteString(hexDigits[b&15 : b&15+1])
@@ -178,9 +178,20 @@ func encodeSeed(seed []byte) string {
 
 const hexDigits = "0123456789abcdef"
 
+// persistedDeviceKeyPrefix is a PERSISTED identifier, not product prose. It
+// keeps its former bytes permanently so an older machine can read a key saved
+// by this build.
+const persistedDeviceKeyPrefix = "aforge-device-key " // legacy-name
+
+const renamedDeviceKeyPrefix = "codeaf-device-key "
+
 func decodeSeed(raw []byte) ([]byte, error) {
 	text := strings.TrimSpace(string(raw))
-	text = strings.TrimPrefix(text, "codeaf-device-key ")
+	if strings.HasPrefix(text, persistedDeviceKeyPrefix) {
+		text = strings.TrimPrefix(text, persistedDeviceKeyPrefix)
+	} else {
+		text = strings.TrimPrefix(text, renamedDeviceKeyPrefix)
+	}
 	text = strings.TrimSpace(text)
 	if len(text) != 64 {
 		return nil, errors.New("wrong length")

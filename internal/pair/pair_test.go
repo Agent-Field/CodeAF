@@ -66,6 +66,56 @@ func TestADeviceKeyIsMadeOnceAndKeptForEver(t *testing.T) {
 	}
 }
 
+// A key file is durable identity. Both the file an earlier release wrote and
+// one this release writes must produce the same device, and the new writer must
+// remain readable by a machine that has not upgraded.
+func TestARenamedBuildKeepsThePersistedDeviceIdentity(t *testing.T) {
+	seed := make([]byte, 32)
+	for index := range seed {
+		seed[index] = byte(index + 1)
+	}
+	path := filepath.Join(t.TempDir(), "device.key")
+	former := "aforge-device-key 0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20\n" // legacy-name
+	if err := os.WriteFile(path, []byte(former), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := ThisDevice(FileKeeper{Path: path})
+	if err != nil {
+		t.Fatalf("load former key: %v", err)
+	}
+	if string(before.Private().Bytes()) != string(seed) {
+		t.Fatal("former key bytes changed while loading")
+	}
+	if err := (FileKeeper{Path: path}).Save(seed); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(written), persistedDeviceKeyPrefix) {
+		t.Fatalf("new key file uses an incompatible prefix: %q", written)
+	}
+	after, err := ThisDevice(FileKeeper{Path: path})
+	if err != nil || string(after.Public()) != string(before.Public()) || after.Name() != before.Name() {
+		t.Fatalf("identity moved across rewrite: before=%q after=%q err=%v", before.Name(), after.Name(), err)
+	}
+
+	current := strings.Replace(former, persistedDeviceKeyPrefix, renamedDeviceKeyPrefix, 1)
+	if _, err := decodeSeed([]byte(current)); err != nil {
+		t.Fatalf("transitional current-prefix key is unreadable: %v", err)
+	}
+}
+
+func TestPairingWireIdentifiersRemainCompatibleWithEarlierBuilds(t *testing.T) {
+	if protocol != "aforge-pair/1" { // legacy-name
+		t.Fatalf("pairing protocol moved to %q", protocol)
+	}
+	if whoSurface != "aforge device" || whoMachine != "aforge machine" { // legacy-name
+		t.Fatalf("PAKE identities moved to %q and %q", whoSurface, whoMachine)
+	}
+}
+
 // The seam is honest about itself: today it is a file and it says so.
 func TestTheKeeperSaysWhereTheKeyActuallyIs(t *testing.T) {
 	where := FileKeeper{Path: "/somewhere/device.key"}.Where()

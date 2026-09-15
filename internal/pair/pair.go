@@ -55,7 +55,9 @@ import "time"
 // prologue and into the tunnel's own greeting, so that two builds that would
 // disagree about any byte below cannot complete a handshake and quietly mean
 // different things.
-const protocol = "codeaf-pair/1"
+// This is an ON-THE-WIRE identifier, not product prose. It stays byte-for-byte
+// compatible with machines that have not upgraded yet.
+const protocol = "aforge-pair/1" // legacy-name
 
 // CodeValidFor is how long a pairing code shown by `codeaf serve` is good for.
 // It is quoted in the person-facing line, and there is exactly one of it.

@@ -35,7 +35,9 @@ import (
 
 // registrationLabel domain-separates this proof from every other use of a
 // machine's long-term key.
-const registrationLabel = "codeaf relay registration v1"
+// This is an ON-THE-WIRE identifier, not product prose. It remains stable so
+// machines on opposite sides of an upgrade derive the same registration key.
+const registrationLabel = "aforge relay registration v1" // legacy-name
 
 // challengeBytes is the relay's ephemeral public key followed by a fresh nonce.
 const challengeBytes = 32 + 32

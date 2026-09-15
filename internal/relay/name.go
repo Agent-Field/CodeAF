@@ -30,7 +30,9 @@ import (
 // nameSalt keeps this derivation from ever colliding with another use of the
 // same key. Every hash of a device key in this tree carries the label of what
 // it is being hashed FOR.
-const nameSalt = "codeaf relay name\x00"
+// This is a PERSISTED identifier, not product prose. Changing it would rename
+// every machine already paired through the relay.
+const nameSalt = "aforge relay name\x00" // legacy-name
 
 // NameFor is the name a machine holding this public key registers under.
 //

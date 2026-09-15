@@ -45,8 +45,10 @@ var suite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.Ha
 // because the two ends have to agree on them exactly, and a machine name is the
 // only part that varies.
 const (
-	whoSurface = "codeaf device"
-	whoMachine = "codeaf machine"
+	// These are ON-THE-WIRE PAKE identities, not product prose. They remain
+	// stable so the two ends derive the same key across an upgrade.
+	whoSurface = "aforge device"  // legacy-name
+	whoMachine = "aforge machine" // legacy-name
 )
 
 // pakeContext binds the exchange to THIS machine and THIS protocol, so that a
