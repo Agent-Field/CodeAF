@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the spend place is three tables in four columns each — no bars, one right edge, money in cents
-pr: 1040
+pr: 1043
 surface: [chat]
 invalidates:
   - "`what it was for` showed the DEAREST THREE and folded the rest; it shows
