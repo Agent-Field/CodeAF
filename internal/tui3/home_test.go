@@ -894,6 +894,46 @@ func TestHomeWithNothingTypedHangsFromTheTop(t *testing.T) {
 	}
 }
 
+// THE CARET STANDS IN THE RESTING BOX, on the first cell a character will land
+// on — so the one primary action on the screen (DESIGN §1 law 1) looks like
+// somewhere to type before anything has been typed into it.
+//
+// IT IS THE SAME CARET THE CONVERSATION HAS: [app.View] draws one blinking
+// [tea.CursorBar] wherever the frame puts it, and this frame puts it behind the
+// dim sentence exactly as a placeholder sits behind a caret in any text field.
+// Hiding it here was the old reading — home at rest is read, not typed at — and
+// the owner overturned it on 2026-09-15.
+func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
+	a, _ := homeRestLab(t, 120)
+	a.caret = true
+	width, height := a.size()
+	lines, _, caretX, caretY := a.homeFrame(width, height)
+	if !a.caret {
+		t.Fatal("the resting box has no caret in it")
+	}
+	if caretY < 0 || caretY >= len(lines) {
+		t.Fatalf("caret row %d is outside the frame of %d rows", caretY, len(lines))
+	}
+	row := ansi.Strip(lines[caretY])
+	if !strings.Contains(row, placeRestWord) {
+		t.Fatalf("the caret stands on row %d %q, not on the box", caretY, row)
+	}
+	// AND ON THE SENTENCE'S FIRST LETTER, not on the prompt and not at the
+	// frame's origin — the two places an unplaced caret ends up.
+	if want := 1 + ansi.StringWidth(prompt); caretX != want {
+		t.Fatalf("the caret is at column %d, want %d — the cell after the prompt", caretX, want)
+	}
+	at := strings.Index(row, placeRestWord)
+	if at < 0 {
+		t.Fatalf("the resting sentence is not on the caret's row: %q", row)
+	}
+	// The column is CELLS, and `›` is three bytes of one — so the byte offset is
+	// measured rather than compared.
+	if cells := ansi.StringWidth(row[:at]); cells != caretX {
+		t.Fatalf("column %d is not the first letter of %q (that is at cell %d): %q", caretX, placeRestWord, cells, row)
+	}
+}
+
 // HOME'S RESTING FOOT, WORD FOR WORD — the two rows the design spells and the
 // clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
 //

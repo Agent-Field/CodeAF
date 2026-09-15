@@ -1386,10 +1386,22 @@ func placeFrameWithBar(a *app, width, height int,
 		for row := 1; row < boxFloor(height); row++ {
 			add("", nil)
 		}
-		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
-		// than left blinking at the frame's origin. The moment a character lands
-		// the box stops being empty and the caret comes back, in the box.
-		a.caret = false
+		// AND THE CARET STANDS IN IT, on the first cell the first character will
+		// land on — which is the dim sentence's own first letter, exactly as a
+		// placeholder sits behind the caret in any other text field. It is the
+		// same caret the conversation's box has ([app.View] draws one
+		// [tea.CursorBar], blinking, wherever this lands it).
+		//
+		// IT USED TO BE HIDDEN HERE, on the reading that home at rest is a
+		// dashboard somebody reads rather than a thing they type at. The owner's
+		// reading (2026-09-15) is the other one: the box is the screen's one
+		// primary action (DESIGN §1 law 1), and a box with no caret in it does
+		// not look like somewhere to type — which is the same complaint that
+		// made the box three rows tall in #1000. The hazard the old comment
+		// names is real and is answered by placing the caret rather than by
+		// hiding it: unplaced, it blinks at the frame's origin over the `home`
+		// heading.
+		caretX, caretY = 1+ansi.StringWidth(prompt), boxTop
 	} else {
 		for i, row := range draftRows {
 			if i == 0 {
