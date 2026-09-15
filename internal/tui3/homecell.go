@@ -166,7 +166,7 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 // rows above and below it and may not grow into them; only a note that is there
 // BECAUSE it is selected has the column to itself and wraps.
 func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
-	room := max(1, width-homeGridLead)
+	room := max(1, width-homeDescLeadCells)
 	answers := ""
 	if selected {
 		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
@@ -176,10 +176,10 @@ func (a *app) homeDescNote(line homeLine, at int, said string, width int, select
 	}
 	var out []string
 	for _, words := range wrap(said, room) {
-		out = append(out, homeCellLeadBlank+pal.dim(words))
+		out = append(out, homeDescLeadBlank+pal.dim(words))
 	}
 	if answers != "" {
-		out = append(out, "", homeCellLeadBlank+paintHint(answers, pal, pal.dim))
+		out = append(out, "", homeDescLeadBlank+paintHint(answers, pal, pal.dim))
 	}
 	return out
 }
@@ -266,6 +266,15 @@ func (h *homeView) marksPanel(at int) bool {
 
 // homeCellLeadBlank is the lead of a row that wears no mark.
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
+
+// homeDescLeadCells is what a note in the description column stands in, and it
+// is ONE CELL WIDER THAN A ROW'S LEAD so the mark and the first letter of the
+// sentence it leads are not touching (owner, 2026-09-15). Every note takes it,
+// marked or not, because notes are read down the column against each other
+// rather than against the rows in the column beside them.
+const homeDescLeadCells = homeGridLead + 1
+
+var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 
 // homeCellHead is a panel's heading: its word in the places' one heading ink
 // (placeprose.go's [placeHeadingInk]), its explainer beside it dim, its clause at
@@ -651,7 +660,7 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 // with a mark and a note without one start their words in the same column.
 func (a *app) homeDescLead(cell *homeCell, pal palette) string {
 	if cell.mark == cellMarkNeeds {
-		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
+		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + strings.Repeat(" ", homeDescLeadCells-1)
 	}
-	return homeCellLeadBlank
+	return homeDescLeadBlank
 }
