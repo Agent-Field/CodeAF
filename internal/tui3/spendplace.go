@@ -50,6 +50,9 @@ type spendReading struct {
 	// unfolded is whether `by topic` draws every subject rather than the
 	// first [spendSubjectCap] and a fold line ([spendReading.unfolding]).
 	unfolded bool
+	// slice is WHICH CUT OF THE LEDGER THIS FRAME DRAWS ([spendSlice]). One is
+	// drawn at a time and the heading is the control that swaps them.
+	slice    spendSlice
 	window   session.UsageWindow
 	now      time.Time
 	totals   session.DaySpend
@@ -226,12 +229,23 @@ type spendStop struct {
 	// fold marks the fold line under the subject tables, whose `enter` opens the
 	// rest of the subjects or folds them back.
 	fold bool
+	// slice marks THE HEADING THAT IS ALSO A CONTROL: the one row of this page
+	// whose `←`, `→` and `enter` swap which cut of the ledger is drawn
+	// ([spendSlice]).
+	slice bool
 }
 
 // unfolding is this reading with the subjects' fold open or shut. It answers a
 // copy, for [spendReading.naming]'s reason.
 func (r spendReading) unfolding(open bool) spendReading {
 	r.unfolded = open
+	return r
+}
+
+// slicing is this reading cut the other way ([spendSlice]). It answers a copy,
+// for [spendReading.naming]'s reason.
+func (r spendReading) slicing(cut spendSlice) spendReading {
+	r.slice = cut
 	return r
 }
 
@@ -390,8 +404,25 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			out = append(out, placeLead+axis)
 		}
 	}
-	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
-		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
+	// ONE CUT OF THE LEDGER IS DRAWN, AND ITS HEADING IS THE CONTROL THAT SWAPS
+	// IT ([spendSlice]). Both used to stand on one page — the same money added up
+	// two ways, every dollar under one heading also a dollar under the other — so
+	// the page asked a person to read one bill twice.
+	cut := -1
+	// THE CONTROL'S ROW IS TAKEN AFTER THE SECTION IS OPENED AND NOT BEFORE.
+	// [appendPlaceSection] eats a trailing blank and writes its own, so the row
+	// the heading lands on is not the row the caller was standing at — and a cut
+	// recorded ahead of the call put the cursor, the band and the arrows on the
+	// blank line above the heading.
+	head := func(caption func(int) string) int {
+		out = appendPlaceSection(out, "")
+		at := len(out) - 1
+		out[at] = caption(at)
+		return at
+	}
+	switch {
+	case r.slice == spendByModel && (len(r.models) > 0 || len(r.crew.unbound) > 0):
+		cut = head(func(at int) string { return placeLead + r.sliceHeading(inner, on(at), pal) })
 		// THE COLUMNS ARE MEASURED ONCE FOR THE WHOLE TABLE and handed to every
 		// row, because a row that measured the table itself would be free to
 		// disagree with the row above it about where the table's own columns are.
@@ -407,17 +438,16 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		for _, slot := range r.crew.unbound {
 			out = append(out, placeLead+spendUnboundRow(slot, inner, pal))
 		}
-	}
-	if len(r.subjects) > 0 {
+	case r.slice == spendByTopic && len(r.subjects) > 0:
 		shown := len(r.subjects)
 		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
-		// THE PROMISES ARE DRAWN APART FROM THE WORK, each group under its own
-		// heading and measured into its own columns ([spendStandingWord]). The
-		// FOLD still counts the whole list: how many things money went on this
-		// window is one answer, and splitting the table two ways must not turn it
-		// into two.
+		// THE PROMISES ARE DRAWN APART FROM THE WORK, under a heading of their own
+		// and measured into their own columns ([spendStandingWord]). They are not
+		// a third CUT — a promise is one of the things money was for — so the
+		// control stays on `by topic` above them and the fold still counts the
+		// whole list.
 		var work, promises []session.SubjectSpend
 		for _, subject := range r.subjects[:shown] {
 			if subject.Kind == session.SubjectStanding {
@@ -426,16 +456,18 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			}
 			work = append(work, subject)
 		}
-		if len(work) > 0 {
-			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendSubjectsWord, spendOpensWord, inner, pal))
-			fields, table := r.subjectTable(work, inner, rule)
-			for at, subject := range work {
-				doors[len(out)] = subject
-				out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
-			}
+		// THE CUT'S HEADING IS DRAWN WHETHER OR NOT THE WORK HAS ROWS, because it
+		// is the only way back to the other cut: a window whose whole bill was
+		// standing orders would otherwise strand a person on a page with no
+		// control on it.
+		cut = head(func(at int) string { return placeLead + r.sliceHeading(inner, on(at), pal) })
+		fields, table := r.subjectTable(work, inner, rule)
+		for at, subject := range work {
+			doors[len(out)] = subject
+			out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
 		}
 		if len(promises) > 0 {
-			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendStandingWord, spendOpensWord, inner, pal))
+			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendStandingWord, inner), pal))
 			fields, table := r.standingTable(promises, inner, rule)
 			for at, subject := range promises {
 				doors[len(out)] = subject
@@ -456,6 +488,9 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	}
 	if fold >= 0 {
 		stops[fold] = spendStop{ok: true, fold: true}
+	}
+	if cut >= 0 {
+		stops[cut] = spendStop{ok: true, slice: true}
 	}
 	stops[rails] = spendStop{ok: true, rails: true}
 	return out, stops
@@ -826,8 +861,64 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 // out at the right, between the chart and the first table: a sentence saying
 // what the line above it already says three facts of, and the only door on this
 // page standing nowhere near a table of doors. It is a clause on the head line
-// now ([spendReading.loudFields]) and the two subject headings name the key
-// ([spendOpensWord]).
+// now ([spendReading.loudFields]), and the foot names the key on every row that
+// is a door (place_spend.go's [spendEnterWord]).
+
+// spendSlice is WHICH WAY THE ONE LEDGER IS CUT on this page, and only one cut
+// is drawn at a time.
+//
+// THE PAGE USED TO DRAW BOTH AT ONCE. `by model` and `by topic` are the same
+// money added up two ways — every dollar under one heading is a dollar under the
+// other — so a page showing both asked a person to read one bill twice and gave
+// them no way to tell which half they were looking at. One cut, and a control
+// that swaps it, is the same information in half the rows.
+type spendSlice int
+
+const (
+	// spendByTopic is the cut this page opens on: what the money was FOR, which
+	// is the question a person walks in with. `by model` answers a narrower one —
+	// which engine ran it — and is a keystroke away.
+	spendByTopic spendSlice = iota
+	spendByModel
+)
+
+// spendSlices is the ring `←` and `→` walk, in the order they walk it.
+var spendSlices = []spendSlice{spendByTopic, spendByModel}
+
+// word is the heading this cut stands under, which is also the label inside the
+// control: the caption and the control are ONE object, exactly as the window's
+// own label is ("the label between the arrows is the control and the reading at
+// once", SCREEN 3d).
+func (s spendSlice) word() string {
+	if s == spendByModel {
+		return spendModelsWord
+	}
+	return spendSubjectsWord
+}
+
+// step walks the ring and wraps, so neither arrow is ever a key that does
+// nothing — there are two cuts, and both arrows reach the other one.
+func (s spendSlice) step(by int) spendSlice {
+	for at, one := range spendSlices {
+		if one == s {
+			return spendSlices[((at+by)%len(spendSlices)+len(spendSlices))%len(spendSlices)]
+		}
+	}
+	return spendByTopic
+}
+
+// spendSliceBack and spendSliceOn are the arrows the cut's heading wears WHILE
+// THE CURSOR IS ON IT, and they are drawn there and nowhere else.
+//
+// A KEY IS DRAWN WHERE IT IS BOUND. `→` on any other row of this place opens
+// that row's verbs (verbstrip.go's first law), so the cycle cannot be bound
+// everywhere — and arrows drawn on a heading the cursor is not standing on would
+// advertise a key that does nothing from where the person actually is. Gaining
+// them on arrival is the strip's own grammar: drawn before it works.
+const (
+	spendSliceBack = "← "
+	spendSliceOn   = " →"
+)
 
 // THE THREE CAPTIONS ARE ONE SET, AND THE TAB ALREADY SAID `spend`.
 //
@@ -860,40 +951,33 @@ const spendModelsWord = "by model"
 // for a task. The row itself says which of the two it is, in its own column.
 const spendSubjectsWord = "by topic"
 
-// spendOpensWord says THAT THESE ROWS ARE DOORS, on the heading directly over
-// them.
+// THE HEADING NO LONGER SAYS `enter opens it`, AND THE FOOT ALWAYS DID.
 //
-// THE PAGE USED TO SAY IT ONCE, ON THE LOUDEST DAY'S OWN ROW, four lines above a
-// heading and a table the sentence was not about — and that row is the one row
-// of the page a cursor cannot reach any more, because the loudest day is a
-// clause on the head line now ([spendReading.loudFields]). A key is drawn where
-// it works or it is drawn nowhere.
-//
-// IT NAMES NO DESTINATION. `by topic` holds two kinds — a task opens in tasks
-// and a conversation opens where it was left — so a heading over both can
-// promise only what they have in common, and the promises below open in the one
-// place a promise lives.
-const spendOpensWord = "enter opens it"
+// The clause was put on these headings when the only statement of the door was
+// four lines above, on the loudest day's own row. The foot names the key on
+// every row that is one — `enter opens what spent it` (place_spend.go's
+// [spendEnterWord]) — so the heading was saying it twice, and the heading has a
+// job now: it is the control that swaps which cut of the ledger is drawn, and a
+// control with an unrelated instruction after it is two objects on one line.
 
-// subjectHeading is one table's caption WITH THE DOOR WORD IN THE SENTENCE —
-// `by topic · enter opens it` — in the grammar this surface uses for a second
-// fact about a heading.
+// sliceHeading is THE CAPTION AND THE CONTROL AT ONCE — SCREEN 3d's own law for
+// the window control, applied to the other thing on this page a person steps
+// through.
 //
-// IT WAS FLUSHED TO THE RIGHT-HAND EDGE OF THE TABLE, which made the heading two
-// objects — a caption at one end of the line and an instruction at the other —
-// on a page whose headings are sentences. A clause after a `·` is what this
-// surface does with a second fact about a heading, and the eye that has just
-// read the caption is already standing where the clause begins.
-//
-// THE DOOR IS THE FIRST THING OFF A NARROW FRAME. The caption says what the
-// table is and the door word says what a key does; rowfit's law 1 is that the
-// identity survives and the fact about it goes.
-func (r spendReading) subjectHeading(caption, door string, width int, pal palette) string {
-	ink := placeHeadingInk(pal)
-	if said := caption + rowSep + door; ansi.StringWidth(said) <= width {
-		return ink(said)
+// IT WEARS ITS ARROWS ONLY WHILE THE CURSOR IS ON IT ([spendSliceBack]). A key
+// is drawn where it is bound, and `→` on every other row of this place opens
+// that row's verbs — so the cycle is the heading's key and the arrows are the
+// heading's ink. Under the band the whole control comes up to the reading tier,
+// which is how every other row of every place answers the cursor.
+func (r spendReading) sliceHeading(width int, lit bool, pal palette) string {
+	said := r.slice.word()
+	if lit {
+		said = spendSliceBack + said + spendSliceOn
 	}
-	return ink(fit(caption, width))
+	if lit {
+		return pal.ink(fit(said, width))
+	}
+	return placeHeading(fit(said, width), pal)
 }
 
 // spendStandingWord heads the STANDING PROMISES, which answer the same question

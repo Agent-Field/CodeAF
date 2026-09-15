@@ -4,6 +4,25 @@ title: the spend place is three tables in four columns each — no bars, one rig
 pr: 1043
 surface: [chat]
 invalidates:
+  - "THE PAGE DRAWS ONE CUT OF THE LEDGER AT A TIME, and the heading is the
+    control that swaps them ([spendSlice]). `by model` and `by topic` stood on
+    one page — the same money added up two ways, every dollar under one heading
+    also a dollar under the other — so a person was asked to read one bill twice
+    with no way of telling which half they were looking at. It opens on `by
+    topic`, which is the question somebody walks in with; `by model` answers a
+    narrower one and is one keystroke away. The promises ride with `by topic`: a
+    promise is one of the things money was FOR, so `by standing order` is a third
+    heading and not a third cut."
+  - "The cut's heading is a cursor stop, and `←`, `→` and `enter` all step it.
+    The ring wraps, so neither arrow is ever a key that does nothing. It wears its
+    arrows — `← by topic →` — ONLY while the cursor is on it: `→` on every other
+    row of this place opens that row's verbs, so the strip stands down on this one
+    ([placeSpend.verbs]) and the arrows are drawn exactly where they are bound.
+    The foot names the cut the arrows lead to rather than the one on the frame."
+  - "The headings no longer say `enter opens it`. The foot has always named the
+    key on every row that is a door (`enter opens what spent it`), and the heading
+    has a job now; a control with an unrelated instruction after it is two objects
+    on one line. `spendOpensWord` is deleted."
   - "THE THREE HEADINGS ARE `by model`, `by topic` and `by standing order`. They
     were sentences — `what ran it · by the model, and the role it was bound to`,
     `what it was for`, `what kept running · standing orders, and what a firing

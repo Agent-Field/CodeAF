@@ -193,7 +193,7 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if slot, ok := config.ModelSlotFor("plan"); ok {
 		crew.unbound = append(crew.unbound, slot)
 	}
-	rows := plainSpendRows(spendTestReading().crewed(crew).rows(120, newPalette(tokens.NoColor, false)))
+	rows := plainSpendRows(spendTestReading().crewed(crew).slicing(spendByModel).rows(120, newPalette(tokens.NoColor, false)))
 	text := strings.Join(rows, "\n")
 	if !strings.Contains(text, spendModelsWord) {
 		t.Fatalf("the models table lost its caption:\n%s", text)
@@ -263,7 +263,7 @@ func TestTheSpendModelFiguresStandInColumns(t *testing.T) {
 	crew := spendCrew{role: map[string]string{
 		"opus 4.1": "conversation", "haiku 4.5": "naming", "sonnet 4.5": "execution",
 	}}
-	r := spendTestReading().crewed(crew)
+	r := spendTestReading().crewed(crew).slicing(spendByModel)
 	for _, width := range []int{80, 100, 160} {
 		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
 		table := spendSectionRows(t, rows, spendModelsWord)
@@ -310,7 +310,7 @@ func TestTheSpendTablesEndWhereTheChartEnds(t *testing.T) {
 		if rule >= width-len(placeLead) {
 			t.Fatalf("at %d cells the chart fills the frame, so this test proves nothing", width)
 		}
-		for _, heading := range []string{spendModelsWord, spendSubjectsWord, spendStandingWord} {
+		for _, heading := range []string{spendSubjectsWord, spendStandingWord} {
 			for _, row := range spendSectionRows(t, rows, heading) {
 				money := regexp.MustCompile(`\$[0-9,]+\.[0-9]{2}$`).FindString(strings.TrimRight(row, " "))
 				if money == "" {
@@ -342,7 +342,7 @@ func TestASpendRoleWordKeepsTheFiguresBehindItInColumn(t *testing.T) {
 		line("deepseek/deepseek-v4-pro-0813", 1204, 0.96),
 		line("qwen/qwen3.8-27b", 88, 0.46),
 	}
-	bare := readSpend(lines, session.LastDays(spendTestNow, 14), spendTestNow)
+	bare := readSpend(lines, session.LastDays(spendTestNow, 14), spendTestNow).slicing(spendByModel)
 	bound := bare.crewed(spendCrew{role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"}})
 	for _, r := range []spendReading{bare, bound} {
 		rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
@@ -598,7 +598,7 @@ func TestTheSpendTableHoldsWithLargeFigures(t *testing.T) {
 		heavy("mistralai/mistral-nemo", 110, 80_000, 10_000, 0.004),
 	}, session.LastDays(spendTestNow, 14), spendTestNow).crewed(spendCrew{
 		role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"},
-	})
+	}).slicing(spendByModel)
 
 	for _, width := range []int{200, 120, 100, 80, 60} {
 		rows := r.rows(width, newPalette(tokens.ANSI256, false))
@@ -662,7 +662,7 @@ func TestSpendFiguresWearOneThousandsMarkAndTheRightUnit(t *testing.T) {
 	// AND NO ROW OF THE PAGE CARRIES A NUMBER WITH AN OUTGROWN UNIT ON IT.
 	r := readSpend([]session.UsageLine{{At: spendTestNow, Model: "anthropic/claude-opus-4.1",
 		Calls: 128_400, Input: 2_800_000_000, Output: 410_000_000, USD: 4210.55, Session: "talk-1"}},
-		session.LastDays(spendTestNow, 14), spendTestNow)
+		session.LastDays(spendTestNow, 14), spendTestNow).slicing(spendByModel)
 	text := strings.Join(plainSpendRows(r.rows(140, newPalette(tokens.NoColor, false))), "\n")
 	if outgrown := regexp.MustCompile(`[0-9]{4,}(\.[0-9])?[kMB]`).FindString(text); outgrown != "" {
 		t.Fatalf("the page drew %q — a number that has outgrown its unit:\n%s", outgrown, text)
@@ -852,10 +852,25 @@ func spendLabOn(t *testing.T, a *app, path string) *app {
 func TestTheSpendPlaceDrawsTheLedgerItWalkedInOn(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	text := placeFrameText(a)
-	for _, want := range []string{"$34.10", spendModelsWord, "opus 4.1", spendSubjectsWord} {
+	for _, want := range []string{"$34.10", spendSubjectsWord, "the-filings-sweep"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the spend place does not carry %q:\n%s", want, text)
 		}
+	}
+	// AND THE OTHER CUT IS ONE KEY AWAY. Both used to stand on one page — the
+	// same money added up two ways — so a person read one bill twice.
+	if strings.Contains(text, spendModelsWord) {
+		t.Fatalf("the page drew both cuts at once:\n%s", text)
+	}
+	a.stepSpendSlice(1)
+	models := placeFrameText(a)
+	for _, want := range []string{spendModelsWord, "opus 4.1"} {
+		if !strings.Contains(models, want) {
+			t.Fatalf("the other cut does not carry %q:\n%s", want, models)
+		}
+	}
+	if strings.Contains(models, "the-filings-sweep") {
+		t.Fatalf("`by model` drew the subject rows too:\n%s", models)
 	}
 	// AND A MACHINE THAT HAS SPENT NOTHING MEETS ITS WHISPER INSTEAD, which is
 	// the one table's words and not a second set (placeprose.go's [placeWhisper]).
@@ -950,7 +965,7 @@ func TestWhatItWasForIsDrawnForAConversationTheLedgerOnlyHasAnIdFor(t *testing.T
 // ([spendPage.held]).
 func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	a := spendLab(t, spendFixture())
-	if !strings.Contains(placeFrameText(a), spendModelsWord) {
+	if !strings.Contains(placeFrameText(a), spendSubjectsWord) {
 		t.Fatalf("the lab did not open on the ledger:\n%s", placeFrameText(a))
 	}
 	// A fortnight back, where this fixture spent nothing.
@@ -1035,6 +1050,12 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 		// nothing money was spent on, so it is counted apart.
 		if stop.fold {
 			folds++
+			continue
+		}
+		// AND SO IS THE CUT'S HEADING, which names nothing money was spent on
+		// either: it is the control that swaps `by topic` for `by model`
+		// ([spendSlice]).
+		if stop.slice {
 			continue
 		}
 		seen++
@@ -1220,4 +1241,104 @@ func spendRowFor(t *testing.T, a *app, kind string) int {
 	}
 	t.Fatalf("no row of the spend place names a %s", kind)
 	return 0
+}
+
+// ── one cut at a time, and the heading is the control ───────────────────────
+
+// THE PAGE DRAWS ONE CUT OF THE LEDGER AND ITS HEADING SWAPS THEM.
+//
+// `by model` and `by topic` are the same money added up two ways — every dollar
+// under one heading is a dollar under the other — so a page showing both asked a
+// person to read one bill twice and gave them no way of telling which half they
+// were looking at.
+func TestTheSpendPageDrawsOneCutAndItsHeadingSwapsThem(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	// IT OPENS ON `by topic`, which is the question a person walks in with.
+	if a.spend.slice != spendByTopic {
+		t.Fatalf("the page opened on %q", a.spend.slice.word())
+	}
+	head := -1
+	for at, stop := range a.spend.stops {
+		if stop.slice {
+			head = at
+		}
+	}
+	if head < 0 {
+		t.Fatal("no row of the page is the cut's control")
+	}
+	// AND THERE IS EXACTLY ONE, because two controls for one setting are two
+	// answers to which cut is drawn.
+	seen := 0
+	for _, stop := range a.spend.stops {
+		if stop.slice {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("%d rows claim to be the cut's control", seen)
+	}
+
+	// `→`, `←` AND `enter` ALL STEP IT, and the ring wraps both ways, so neither
+	// arrow is ever a key that does nothing.
+	for _, press := range []string{"right", "left", "enter"} {
+		a.spend.cursor = head
+		before := a.spend.slice
+		drive(t, a, key(press))
+		if a.spend.slice == before {
+			t.Fatalf("%s on the control left the page on %q", press, a.spend.slice.word())
+		}
+		// AND THE CURSOR STAYS ON THE CONTROL. A cut swapped under a cursor that
+		// then went hunting would leave the person one keystroke from the thing
+		// they had just used and no sign of where it went.
+		if !a.spendStopAt(a.spend.cursor).slice {
+			t.Fatalf("%s left the cursor off the control, on row %d", press, a.spend.cursor)
+		}
+	}
+
+	// AND THE ARROWS ARE DRAWN WHERE THEY ARE BOUND AND NOWHERE ELSE. `→` on
+	// every other row of this place opens that row's verbs, so a heading wearing
+	// arrows while the cursor was elsewhere would advertise a key that does
+	// nothing from where the person is standing.
+	pal := newPalette(tokens.NoColor, false)
+	// THE CONTROL'S ROW IS READ BACK FROM THE PAGE AS IT STANDS NOW: the presses
+	// above swapped the cut, and the two cuts need not put their heading on the
+	// same row.
+	head = -1
+	for at, stop := range a.spend.stops {
+		if stop.slice {
+			head = at
+		}
+	}
+	rest, _ := a.spend.reading.paint(120, pal, nil)
+	lit, _ := a.spend.reading.paint(120, pal, func(i int) bool { return i == head })
+	if strings.Contains(plain(rest[head]), spendSliceBack) {
+		t.Fatalf("the heading wears its arrows with the cursor away: %q", plain(rest[head]))
+	}
+	if !strings.Contains(plain(lit[head]), spendSliceBack+a.spend.slice.word()+spendSliceOn) {
+		t.Fatalf("the heading under the band is %q", plain(lit[head]))
+	}
+
+	// AND THE VERB STRIP STANDS DOWN ON IT, because `→` there is the step and not
+	// the strip.
+	a.spend.cursor = head
+	if verbs := (placeSpend{}).verbs(a); len(verbs) != 0 {
+		t.Fatalf("the control offers %v", verbs)
+	}
+	// THE FOOT NAMES THE CUT THE ARROWS LEAD TO, not the one already drawn.
+	if got := (placeSpend{}).hint(a); !strings.Contains(got, spendSliceWord+a.spend.slice.step(1).word()) {
+		t.Fatalf("the foot over the control reads %q", got)
+	}
+}
+
+// AND THE PROMISES RIDE WITH `by topic`, because a promise is one of the things
+// money was FOR — a third heading, not a third cut.
+func TestTheSpendPromisesRideWithTheTopicCut(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	if got := placeFrameText(a); !strings.Contains(got, spendStandingWord) {
+		t.Fatalf("`by topic` left the promises out:\n%s", got)
+	}
+	a.stepSpendSlice(1)
+	if got := placeFrameText(a); strings.Contains(got, spendStandingWord) {
+		t.Fatalf("`by model` drew the promises:\n%s", got)
+	}
 }

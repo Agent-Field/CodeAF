@@ -99,6 +99,11 @@ type spendPage struct {
 	// to build this map on the spot, walking the standing store once per
 	// project each time. The lines are already in memory and so, now, is this.
 	names map[string]string
+	// slice is WHICH CUT OF THE LEDGER IS DRAWN ([spendSlice]) — `by topic` on
+	// the way in, and `by model` a keystroke away. It lives on the page rather
+	// than in the reading for [spendPage.unfolded]'s reason: a reading is an
+	// immutable answer and this is a thing a person did to the page.
+	slice spendSlice
 }
 
 // spendWindowDays is the window this place opens on: a fortnight, by the day.
@@ -110,6 +115,9 @@ const spendWindowDays = 14
 // that keeps it current.
 func (a *app) openSpend() tea.Cmd {
 	now := a.now()
+	// THE PAGE OPENS ON `by topic`, which is the question a person walks in with:
+	// `by model` answers a narrower one and is one keystroke away. The zero
+	// [spendSlice] is that cut, so the field is not spelled here.
 	a.spend = spendPage{cache: session.UsageCache{Path: a.usageLedger},
 		win: session.LastDays(now, spendWindowDays), hover: -1,
 		world: a.readWorld()}
@@ -124,7 +132,11 @@ func (a *app) openSpend() tea.Cmd {
 // 16). A page with no subjects wakes where it always did.
 func (a *app) spendCenterOfMass() int {
 	at := a.spend.cursor
-	if len(a.spend.reading.subjects) == 0 {
+	// AND ONLY WHERE THAT ROW IS DRAWN. `by model` draws no subject rows at all
+	// ([spendSlice]), so a wake that hunted one there would leave the cursor
+	// standing where the nearest stop happened to be rather than where this
+	// place put it.
+	if a.spend.slice != spendByTopic || len(a.spend.reading.subjects) == 0 {
 		return at
 	}
 	first := spendSubjectKey(a.spend.reading.subjects[0])
@@ -287,7 +299,7 @@ func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
 		railed(a.machineAllowance()).lost(session.UsageDrops()).
-		todayed(spendDayTotal(p.lines, p.read)).unfolding(p.unfolded)
+		todayed(spendDayTotal(p.lines, p.read)).unfolding(p.unfolded).slicing(p.slice)
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -443,6 +455,21 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.moveSpend(1)
 		a.touch()
 		return nil
+	case "left", "right":
+		// `←` AND `→` STEP THE CUT, AND ONLY ON THE ROW THAT DRAWS THEM. The
+		// router offers this place the arrow after the verb strip has declined it
+		// (placekeys.go: "the arrow keeps every meaning it already had on that
+		// place"), and the heading declines the strip ([placeSpend.verbs]) — so
+		// the two claims on one key never meet.
+		if !a.spendStopAt(a.spend.cursor).slice {
+			return nil
+		}
+		step := 1
+		if msg.String() == "left" {
+			step = -1
+		}
+		a.stepSpendSlice(step)
+		return nil
 	case "enter":
 		if cmd, opened := a.openSpendRow(); opened {
 			return cmd
@@ -485,6 +512,13 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	if stop.fold {
 		a.spend.unfolded = !a.spend.unfolded
 		a.rebuildSpend()
+		return nil, true
+	}
+	// AND THE CUT'S HEADING SWAPS THE CUT, on `enter` exactly as on `→`. A row
+	// drawn with arrows on it whose `enter` did nothing would be the one row of
+	// this page that answers the key every other row answers with silence.
+	if stop.slice {
+		a.stepSpendSlice(1)
 		return nil, true
 	}
 	switch stop.subject.Kind {
@@ -570,6 +604,24 @@ func (a *app) spendSessionRow(subject session.SubjectSpend) (session.SessionRow,
 		}
 	}
 	return session.SessionRow{}, false
+}
+
+// stepSpendSlice walks the ring of cuts and keeps the cursor on the control.
+//
+// THE CURSOR STAYS ON THE HEADING. A cut swapped under a cursor that then went
+// hunting for the nearest stop would leave the person one keystroke from the
+// control they had just used and no way of knowing where it went; the heading is
+// the same row in both cuts, so the cursor has nowhere to go.
+func (a *app) stepSpendSlice(by int) {
+	a.spend.slice = a.spend.slice.step(by)
+	a.rebuildSpend()
+	for at, stop := range a.spend.stops {
+		if stop.slice {
+			a.spend.cursor = at
+			break
+		}
+	}
+	a.touch()
 }
 
 // spendWindowKey is [app.placeWindow]'s spend arm: the four drawn arrow chords,
@@ -722,7 +774,10 @@ func (placeSpend) window(a *app, key string) bool { return a.spendWindowKey(key)
 // a compromise — so `b` is drawn before it works, and it works on every row of
 // this place because every row of this place is about money.
 func (placeSpend) verbs(a *app) []verb {
-	if stop := a.spendStopAt(a.spend.cursor); !stop.ok || stop.fold {
+	// AND IT STANDS DOWN ON THE CUT'S HEADING, whose `→` is the step between
+	// cuts ([app.stepSpendSlice]). Two claims on one key are settled by the row:
+	// this one has arrows drawn on it and the strip is not what they mean.
+	if stop := a.spendStopAt(a.spend.cursor); !stop.ok || stop.fold || stop.slice {
 		return nil
 	}
 	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
@@ -744,6 +799,9 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
+	// spendSliceWord introduces the OTHER cut on the foot, while the cursor is
+	// on the heading that swaps them.
+	spendSliceWord = "←→ "
 )
 
 // hint is the foot, assembled from the clauses that are TRUE of the row under
@@ -758,6 +816,11 @@ func (placeSpend) hint(a *app) string {
 	var parts []string
 	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
 		parts = append(parts, foldEnterWord(a.spend.unfolded))
+	} else if stop.slice {
+		// THE FOOT NAMES THE CUT THE ARROWS LEAD TO, not the one already on the
+		// frame. A control with two positions has one useful thing to say about
+		// itself, and it is where the key goes.
+		parts = append(parts, spendSliceWord+a.spend.slice.step(1).word())
 	} else if stop.ok {
 		parts = append(parts, spendEnterWord)
 		for _, v := range (placeSpend{}).verbs(a) {

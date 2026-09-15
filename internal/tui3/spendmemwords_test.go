@@ -161,20 +161,15 @@ func TestTheLoudestDaySaysWhereItsDoorGoes(t *testing.T) {
 	if heading < 0 || table != heading+1 {
 		t.Fatalf("the heading and its first row are not neighbours:\n%s", strings.Join(rows, "\n"))
 	}
-	// AND IT IS A CLAUSE OF THE CAPTION'S OWN SENTENCE, in the grammar the other
-	// caption on this page already uses — `what ran it · by the model, and the
-	// role it was bound to` — rather than an instruction flushed to the far end
-	// of the line, which made one heading two objects.
-	if want := spendSubjectsWord + rowSep + spendOpensWord; !strings.Contains(rows[heading], want) {
-		t.Fatalf("the heading over the doors reads %q, want %q", rows[heading], want)
-	}
-	// AND A FRAME WITH NO ROOM FOR BOTH KEEPS THE CAPTION. rowfit's law 1: the
-	// identity survives and the fact about it goes.
-	tight := len(placeLead) + ansi.StringWidth(spendSubjectsWord+rowSep+spendOpensWord) - 1
-	for _, row := range plainSpendRows(r.rows(tight, pal)) {
-		if strings.Contains(row, spendSubjectsWord) && strings.Contains(row, "enter") {
-			t.Fatalf("a %d-cell frame kept a door word it has no room for: %q", tight, row)
-		}
+	// AND THE KEY IS NAMED ON THE FOOT OF EVERY ROW THAT IS A DOOR
+	// (place_spend.go's [spendEnterWord]), which is where it was all along. The
+	// heading carried the same clause for a while and now carries the control
+	// that swaps which cut of the ledger is drawn instead — a control with an
+	// unrelated instruction after it is two objects on one line.
+	a := spendLab(t, spendFixture())
+	a.spend.cursor = spendRowFor(t, a, session.SubjectTask)
+	if got := (placeSpend{}).hint(a); !strings.Contains(got, spendEnterWord) {
+		t.Fatalf("the foot over a door reads %q, want it to name the key", got)
 	}
 }
 

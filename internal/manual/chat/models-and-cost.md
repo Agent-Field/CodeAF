@@ -2015,6 +2015,14 @@ same three-second beat every place runs on, and it draws three things:
   the day was mostly spent on — that name is a row of *by topic* a few lines below —
   and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
   key that is not drawn is a key that does not work, so the sentence yields to the control;
+- **one cut of the ledger at a time**, and its heading is the control that swaps them.
+  `by model` and `by topic` are the same money added up two ways — every dollar under one
+  heading is also a dollar under the other — so a page drawing both asked you to read one
+  bill twice. Walk the cursor onto the heading and it wears arrows: `← by topic →`.
+  **`←`, `→` and `enter` all step it**, and the ring wraps, so neither arrow is ever a key
+  that does nothing. The arrows are drawn only while the cursor is on that row, because `→`
+  on every other row of this place opens that row's verbs — a key is drawn where it is
+  bound. The foot names the cut the arrows lead to;
 - **by model**, dearest first, each row carrying **the role it is bound to**, its call
   count, its token volume and what it cost. The role stands **first after the name**,
   because what a model *is* on this machine reads with the name it follows, while the
@@ -2042,7 +2050,9 @@ same three-second beat every place runs on, and it draws three things:
   a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
   it belongs to, because that is the only name it has;
-- **by standing order** — the standing promises, under a heading and columns of their own.
+- **by standing order** — the standing promises, under a heading and columns of their own,
+  **drawn with `by topic`**. A promise is one of the things money was *for*, so it is a
+  third heading rather than a third cut, and the control above it stays on `by topic`.
   A promise's facts are not a task's: what you want of one is how often it went off and what
   a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
   rather than carrying a project and a kind word it has no use for.
@@ -2113,7 +2123,9 @@ already reading — the project's own index of what it ran, and the standing sto
 name on the row. A thing neither of them knows keeps its id.
 
 **`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
-each heading says so in its own sentence — `by topic · enter opens it`. A task opens **its own record card** in the tasks place, with the list
+the foot says so on every row that is a door — `enter opens what spent it`. The headings
+said it too for a while; the heading over the cut is the control that swaps cuts now, and
+a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the tasks place, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
@@ -2153,7 +2165,9 @@ Time is two questions, so it gets two arrow axes and no letters:
 | `shift+↑` | coarser — a fortnight of days becomes a fortnight of weeks, then of months |
 | `shift+↓` | finer, the exact inverse |
 
-The window opens on **the last 14 days, by the day**. The label between the arrows is the
+The cut of the ledger is its own control and has nothing to do with time: walk onto the
+heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
+by the day**. The label between the arrows is the
 reading and the control at once, and the same head row is drawn on the tasks place and the
 standing place. A terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys
