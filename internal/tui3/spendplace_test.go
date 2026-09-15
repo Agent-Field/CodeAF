@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -487,6 +488,50 @@ func TestTheSpendTableHoldsWithSaturatedBarsAndLargeFigures(t *testing.T) {
 		if len(bars) > 1 || len(counts) > 1 {
 			t.Fatalf("at %d cells saturated bars start in columns %v and their counts in %v:\n%s",
 				width, bars, counts, strings.Join(plainRows, "\n"))
+		}
+	}
+}
+
+// A COUNT AND A FIGURE ON ONE ROW ARE WRITTEN THE SAME WAY, and a unit is never
+// left on a number that has outgrown it.
+//
+// The spend place made both defects plain by putting them side by side. It drew
+// `128,400 calls · 3210M` and `$4210.55` on one row: the count grouped, the
+// money not — two halves of a row laid out by two people — and a token figure
+// three thousand million strong still wearing the million's own `M`, which is
+// the reading `1000.0k` was avoided for one rung lower.
+func TestSpendFiguresWearOneThousandsMarkAndTheRightUnit(t *testing.T) {
+	for _, c := range []struct{ got, want string }{
+		{groupedInt(128_400), "128,400"},
+		{dollars(4210.55), "$4,210.55"},
+		{dollars(12491.05), "$12,491.05"},
+		{dollars(999.99), "$999.99"},
+		{railFigure(50_000), "$50,000"},
+		{railFigure(500), "$500"},
+		{spendMoneyWord(4210.55), "$4,210.55"},
+		{tokenWord(3_210_000_000), "3.2B"},
+	} {
+		if c.got != c.want {
+			t.Errorf("a figure is drawn %q, want %q", c.got, c.want)
+		}
+	}
+	// AND THE PENCE ARE ROUNDED ONCE. The mark goes into digits the formatter
+	// has already rounded, so a figure cannot be rounded on the way in and again
+	// on the way out.
+	if got := dollars(999.995); got != "$1,000.00" {
+		t.Errorf("a figure on the rounding boundary is drawn %q, want %q", got, "$1,000.00")
+	}
+	// AND NO ROW OF THE PAGE CARRIES A NUMBER WITH AN OUTGROWN UNIT ON IT.
+	r := readSpend([]session.UsageLine{{At: spendTestNow, Model: "anthropic/claude-opus-4.1",
+		Calls: 128_400, Input: 2_800_000_000, Output: 410_000_000, USD: 4210.55, Session: "talk-1"}},
+		session.LastDays(spendTestNow, 14), spendTestNow)
+	text := strings.Join(plainSpendRows(r.rows(140, newPalette(tokens.NoColor, false))), "\n")
+	if outgrown := regexp.MustCompile(`[0-9]{4,}(\.[0-9])?[kMB]`).FindString(text); outgrown != "" {
+		t.Fatalf("the page drew %q — a number that has outgrown its unit:\n%s", outgrown, text)
+	}
+	for _, want := range []string{"128,400 calls", "3.2B", "$4,210.55"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the page does not carry %q:\n%s", want, text)
 		}
 	}
 }

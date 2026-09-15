@@ -32,6 +32,18 @@ invalidates:
     conversation`: `filepath.Base` answers `.` for the empty string. An unknown
     project draws nothing now, which is what the emptiness law always demanded of
     it ([spendSubjectTag])."
+  - "`dollars` did not mark thousands, so the spend place drew `128,400 calls`
+    and `$4210.55` on one row — the count grouped and the money not. Money of a
+    cent or more now wears the same mark a count does (`$4,210.55`), through one
+    `groupDigits` in placeprose.go, and so do whole limits through `railFigure`
+    (`$50,000`). Every surface that quotes a figure through `dollars` moves with
+    it: the status line's bill, /cost, the Spending tab, home. Figures under a
+    thousand are unchanged, and the sub-cent floor `<$0.0001` is untouched."
+  - "`tokenWord`'s ladder stopped at the million, so a fortnight of agent work
+    read `7062.1M tokens` and one model's row `3210M`. It has a `B` rung now —
+    `842`, `12.4k`, `1.2M`, `3.2B` — turning over at 999,950,000 for the reason
+    the rung below turns at 999,950. It is the status line's context meter and
+    tok/s reading too, though nothing there comes near a billion."
   - "The models table gave up its bar and counts below a flat 80 cells. The gate
     is measured against what the table actually holds now, so a frame drops them
     when it genuinely cannot carry them rather than at a round number. Rows of

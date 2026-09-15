@@ -504,10 +504,21 @@ func appendPlaceSection(rows []string, heading string) []string {
 }
 
 // groupedInt is the one thousands spelling for reading-layer counts.
-func groupedInt(n int) string {
-	plain := strconv.Itoa(n)
-	for at := len(plain) - 3; at > 0; at -= 3 {
-		plain = plain[:at] + "," + plain[at:]
+func groupedInt(n int) string { return groupDigits(strconv.Itoa(n)) }
+
+// groupDigits marks the thousands in a run of digits, and it is THE ONE PLACE
+// that mark is put in.
+//
+// [groupedInt] spells counts with it and [dollars] spells money with it, and
+// before they shared this they did not agree: the spend place drew `128,400
+// calls` and `$4210.55` on one row, the count grouped and the money not, which
+// is a row that has been laid out by two people. It takes the digits rather
+// than the number because money has already been rounded to its two places by
+// the time it gets here, and rounding a figure twice is how the halfpenny goes
+// missing.
+func groupDigits(digits string) string {
+	for at := len(digits) - 3; at > 0; at -= 3 {
+		digits = digits[:at] + "," + digits[at:]
 	}
-	return plain
+	return digits
 }

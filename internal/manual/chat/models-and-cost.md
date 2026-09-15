@@ -2051,7 +2051,13 @@ and on one that has not, and they do not move when the model you are talking to 
 under them. A row with no role word draws nothing there rather than closing the gap up.
 
 On a frame too narrow to carry them, the bar and the counts go together and the row keeps
-the name, the role and the money — never a count with its tail cut off.
+the name, the role and the money — never a count with its tail cut off. Rows under *what it
+was for* give up the kind word first and then the project, in that order.
+
+**Figures are written the same way wherever they appear.** Money over a thousand carries the
+mark — `$4,210.55`, and a limit `$50,000` — and so do call counts: `128,400 calls`. Token
+volumes climb `842`, `12.4k`, `1.2M`, `3.2B`, one decimal and no more, so a number never
+keeps a unit it has outgrown.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a

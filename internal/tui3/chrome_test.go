@@ -1279,6 +1279,12 @@ func TestTokenAndSavedWords(t *testing.T) {
 		// wrong unit on it.
 		{999_999, "1M"},
 		{1_200_000, "1.2M"},
+		// THE RUNG ABOVE THE MILLION. Without it a fortnight of agent work read
+		// `3210M`, which is a number with the wrong unit left on it — the same
+		// reading `1000.0k` is avoided for one rung lower.
+		{999_949_999, "999.9M"},
+		{999_950_000, "1B"},
+		{3_210_000_000, "3.2B"},
 	} {
 		if got := tokenWord(test.tokens); got != test.want {
 			t.Fatalf("tokenWord(%d) = %q, want %q", test.tokens, got, test.want)
