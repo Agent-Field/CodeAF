@@ -57,7 +57,7 @@ of them in a tab, and the one you left keeps streaming with its tasks still
 running. `tab` flips back. `ctrl+k` jumps to any conversation, open or closed.
 Each keeps its own approval rules, models and spend limit.
 
-<img src="assets/readme/screens/projects.webp" alt="One window, every project: conversations from three projects open as tabs in one terminal, with the ctrl+k switcher listing them" width="100%">
+<img src="assets/readme/screens/projects.webp" alt="One window, every project: the tasks page listing work from codeaf, pricing-site and infra in one tree, a preview of the selected task with its files, branch, cost and 1 accept or 2 not right, and three projects open as tabs" width="100%">
 
 `home` answers what needs you, what to check, what is running and what it
 cost, for all of them at once. A digit answers a question from its row.
@@ -91,7 +91,7 @@ Work that passes its check lands on your branch by itself, never on `main`,
 Three terminals, three agents and a merge waiting is a factory run by hand.
 The agents got fast. The scheduling, checking and merging stayed with you.
 
-<img src="assets/readme/how-work-changes.png" alt="one agent: one line on you, you wait. several agents by hand: ten lines on you, you schedule, merge and check. a factory: one line out, one line back." width="100%">
+<img src="assets/readme/how-work-changes.webp" alt="one agent: one line on you, you wait. several agents by hand: ten lines on you, you schedule, merge and check. a factory: one line out, one line back." width="100%">
 
 A factory is the third picture: one line out, one line back.
 
@@ -204,7 +204,7 @@ Most agents on a remote box mean ssh, tmux, and a terminal that lags on every
 key. CodeAF splits in two instead. The screen runs on the machine in front of
 you. The conversation runs on the machine that owns the work.
 
-<img src="assets/readme/anywhere.png" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
+<img src="assets/readme/anywhere.webp" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
 ```bash
 codeaf chat --host devbox    # your own ssh: config, keys, jump hosts. nothing to install there but codeaf
