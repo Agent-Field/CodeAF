@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: ctrl+c leaves on the press that lands
-pr: 1060
+pr: 1061
 surface: [chat, docs]
 invalidates:
   - "The chat's door was TWO presses of `ctrl+c` inside 1.5 seconds: the first armed it, the hint slot read `ctrl+c again to quit` with what leaving would stop, and only the second one left. It is ONE press now. At rest `ctrl+c` writes the draft and exits on the keystroke that lands, over every picker, panel, room, page and paste bracket. Mid-turn nothing changed — it is still the interrupt, and that press is spent on the model — so a two-tap mid-turn now stops the answer and then quits."
