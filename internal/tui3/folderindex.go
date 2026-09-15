@@ -34,7 +34,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -411,20 +410,6 @@ func folderIndexPaths(answer folderIndexAnswer) []string {
 		out = append(out, root.Path)
 	}
 	return out
-}
-
-// folderIndexWord says what a walk COULD NOT SEE, and nothing when it saw
-// everything. It is the honest half of the answer, and it is a sentence rather
-// than a number because the number on its own is machinery.
-func folderIndexWord(answer folderIndexAnswer) string {
-	switch {
-	case answer.Denied > 0:
-		return strconv.Itoa(answer.Denied) + plural(" folder", answer.Denied) +
-			" could not be read, so this list may be short"
-	case answer.Bound:
-		return "there was more to look through than this list holds"
-	}
-	return ""
 }
 
 // ── the walk, off the loop ──────────────────────────────────────────────────

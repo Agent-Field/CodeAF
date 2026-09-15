@@ -154,9 +154,6 @@ func TestTheWalkFindsRepositoriesAndPlainFoldersAndLeadsWithRepositories(t *test
 	if answer.Denied != 0 || answer.Bound {
 		t.Fatalf("a walk of a small tree was refused %d and bound %v", answer.Denied, answer.Bound)
 	}
-	if got := folderIndexWord(answer); got != "" {
-		t.Fatalf("a walk that saw everything said %q", got)
-	}
 }
 
 func TestTheWalkNeverDescendsIntoARepositoryOrASkippedName(t *testing.T) {
@@ -225,13 +222,11 @@ func TestTheWalkStopsOnItsCapAndSaysThatItDid(t *testing.T) {
 	if len(answer.Roots) != 5 {
 		t.Fatalf("a cap of 5 collected %d roots", len(answer.Roots))
 	}
+	// AN INDEX THAT IS A PREFIX OF THE TRUTH IS A DIFFERENT THING FROM ONE
+	// THAT IS THE TRUTH, and only [folderIndexAnswer.Bound] can say which is
+	// in hand.
 	if !answer.Bound {
 		t.Fatal("a walk that stopped on its cap did not say so")
-	}
-	// AN INDEX THAT IS A PREFIX OF THE TRUTH IS A DIFFERENT THING FROM ONE
-	// THAT IS THE TRUTH, and only the answer can say which is in hand.
-	if got := folderIndexWord(answer); got == "" {
-		t.Fatal("a bound walk said nothing about being bound")
 	}
 }
 
@@ -270,10 +265,6 @@ func TestTheWalkCountsWhatItWasRefusedAndSaysSo(t *testing.T) {
 	answer := folderIndexWalk(context.Background(), folderIndexDefaults(base))
 	if answer.Denied != 1 {
 		t.Fatalf("the walk counted %d refusals, wanted one", answer.Denied)
-	}
-	word := folderIndexWord(answer)
-	if !strings.Contains(word, "1 folder ") || !strings.Contains(word, "could not be read") {
-		t.Fatalf("a refused walk said %q", word)
 	}
 	// AND IT STILL ANSWERED. An index that refused to exist because of one
 	// permission is worth less than an index with one directory missing.
